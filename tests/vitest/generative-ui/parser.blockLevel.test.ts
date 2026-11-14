@@ -11,6 +11,27 @@ describe('generative-ui parser block-level', () => {
     expect(sanitizeGenerativeJsonBuffer('```json\n{"version":"1"}\n```')).toBe('{"version":"1"}');
   });
 
+  it.each([false, true])('preserves code fences inside markdown blocks (outer fence: %s)', (wrapped) => {
+    const body = '示例：\n```js\nconst count = 1;\n```';
+    const json = JSON.stringify({ version: '1', blocks: [{ type: 'markdown', props: { body } }] });
+    const source = wrapped ? `说明：\n\`\`\`json\n${json}\n\`\`\`` : json;
+
+    expect(sanitizeGenerativeJsonBuffer(source)).toBe(json);
+    expect(tryParsePartialIntent(source)?.blocks[0]?.props?.body).toBe(body);
+  });
+
+  it('commits a markdown block containing code fences before the stream finishes', () => {
+    const body = '```js\nconst count = 1;\n```';
+    const block = JSON.stringify({ type: 'markdown', props: { body } });
+    const parser = new GenerativeUIStreamParser();
+    parser.appendChunk('```json\n{"version":"1","blocks":[');
+    const partial = parser.appendChunk(block);
+    expect(partial.committedBlockCount).toBe(1);
+    expect(partial.intent?.blocks[0]?.props?.body).toBe(body);
+    parser.appendChunk(']}\n```');
+    expect(parser.finalize()?.blocks[0]?.props?.body).toBe(body);
+  });
+
   it('extracts complete blocks from truncated stream', () => {
     const partial =
       '{"version":"1","blocks":[{"type":"text","props":{"body":"a"}},{"type":"stat-card","props":{"title":"T","value":1';

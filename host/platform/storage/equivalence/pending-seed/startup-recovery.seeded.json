@@ -1,0 +1,166 @@
+{
+  "domain": "storage",
+  "commands": [
+    "get_startup_recovery_status",
+    "list_startup_recovery_incidents",
+    "retry_startup_recovery_preflight",
+    "export_startup_recovery_incident",
+    "export_startup_recovery_report",
+    "open_startup_recovery_incident_folder",
+    "resolve_startup_recovery"
+  ],
+  "scenarios": [
+    {
+      "id": "storage.recovery.seeded.status_list_export",
+      "seed": "f3-startup-recovery-incident-w0",
+      "steps": [
+        {
+          "cmd": "get_startup_recovery_status",
+          "args": {}
+        },
+        {
+          "cmd": "list_startup_recovery_incidents",
+          "args": {}
+        },
+        {
+          "cmd": "get_test_slot_info",
+          "args": {}
+        },
+        {
+          "cmd": "export_startup_recovery_incident",
+          "args": {
+            "incidentId": "${0.incident.incident_id}",
+            "destination": "${2.slot_d_dir}"
+          }
+        },
+        {
+          "cmd": "export_startup_recovery_incident",
+          "args": {
+            "incidentId": "${0.incident.incident_id}",
+            "destination": "${2.slot_d_dir}"
+          }
+        },
+        {
+          "cmd": "export_startup_recovery_report",
+          "args": {
+            "destination": "${2.slot_c_dir}"
+          }
+        },
+        {
+          "cmd": "retry_startup_recovery_preflight",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.recovery.seeded.open_folder",
+      "seed": "f3-startup-recovery-incident-w0",
+      "steps": [
+        {
+          "cmd": "get_startup_recovery_status",
+          "args": {}
+        },
+        {
+          "cmd": "open_startup_recovery_incident_folder",
+          "args": {
+            "incidentId": "${0.incident.incident_id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.recovery.seeded.resolve_legacy",
+      "seed": "f3-startup-recovery-incident-w0",
+      "steps": [
+        {
+          "cmd": "resolve_startup_recovery",
+          "args": {
+            "candidateId": "legacy"
+          }
+        },
+        {
+          "cmd": "get_startup_recovery_status",
+          "args": {}
+        },
+        {
+          "cmd": "list_startup_recovery_incidents",
+          "args": {}
+        },
+        {
+          "cmd": "resolve_startup_recovery",
+          "args": {
+            "candidateId": "legacy"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.recovery.seeded.resolve_slot_a",
+      "seed": "f3-startup-recovery-incident-w0",
+      "steps": [
+        {
+          "cmd": "resolve_startup_recovery",
+          "args": {
+            "candidateId": "slotA"
+          }
+        },
+        {
+          "cmd": "list_startup_recovery_incidents",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.recovery.seeded.resolve_slot_b",
+      "seed": "f3-startup-recovery-incident-w0",
+      "steps": [
+        {
+          "cmd": "resolve_startup_recovery",
+          "args": {
+            "candidateId": "slotB"
+          }
+        },
+        {
+          "cmd": "list_startup_recovery_incidents",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

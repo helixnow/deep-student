@@ -1,0 +1,5338 @@
+[
+  {
+    "id": "tokens.estimate:0",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": ""
+    }
+  },
+  {
+    "id": "embedding.estimate:0",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": ""
+    }
+  },
+  {
+    "id": "embedding.chunk:0",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:0",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "",
+      "maxChars": 0
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:0",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "",
+      "maxChars": 0
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:0",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": ""
+    }
+  },
+  {
+    "id": "tokens.estimate:1",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "abc"
+    }
+  },
+  {
+    "id": "embedding.estimate:1",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "abc"
+    }
+  },
+  {
+    "id": "embedding.chunk:1",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "abc",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:1",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "abc",
+      "maxChars": 1
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:1",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "abc",
+      "maxChars": 1
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:1",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "abc"
+    }
+  },
+  {
+    "id": "tokens.estimate:2",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "中文🙂"
+    }
+  },
+  {
+    "id": "embedding.estimate:2",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "中文🙂"
+    }
+  },
+  {
+    "id": "embedding.chunk:2",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "中文🙂",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:2",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "中文🙂",
+      "maxChars": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:2",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "中文🙂",
+      "maxChars": 2
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:2",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "中文🙂"
+    }
+  },
+  {
+    "id": "tokens.estimate:3",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "\u000b\u000b\u000b\u000b\u000b\u000b\u000b\u000b\u000b\u000b"
+    }
+  },
+  {
+    "id": "embedding.estimate:3",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "\u000b\u000b\u000b\u000b\u000b\u000b\u000b\u000b\u000b\u000b"
+    }
+  },
+  {
+    "id": "embedding.chunk:3",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "\u000b\u000b\u000b\u000b\u000b\u000b\u000b\u000b\u000b\u000b",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:3",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "\u000b\u000b\u000b\u000b\u000b\u000b\u000b\u000b\u000b\u000b",
+      "maxChars": 3
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:3",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "\u000b\u000b\u000b\u000b\u000b\u000b\u000b\u000b\u000b\u000b",
+      "maxChars": 3
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:3",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "\u000b\u000b\u000b\u000b\u000b\u000b\u000b\u000b\u000b\u000b"
+    }
+  },
+  {
+    "id": "tokens.estimate:4",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "ꥠꥠꥠ"
+    }
+  },
+  {
+    "id": "embedding.estimate:4",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "ꥠꥠꥠ"
+    }
+  },
+  {
+    "id": "embedding.chunk:4",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "ꥠꥠꥠ",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:4",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "ꥠꥠꥠ",
+      "maxChars": 4
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:4",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "ꥠꥠꥠ",
+      "maxChars": 4
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:4",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "ꥠꥠꥠ"
+    }
+  },
+  {
+    "id": "tokens.estimate:5",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "ힰힰힰ"
+    }
+  },
+  {
+    "id": "embedding.estimate:5",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "ힰힰힰ"
+    }
+  },
+  {
+    "id": "embedding.chunk:5",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "ힰힰힰ",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:5",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "ힰힰힰ",
+      "maxChars": 0
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:5",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "ힰힰힰ",
+      "maxChars": 0
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:5",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "ힰힰힰ"
+    }
+  },
+  {
+    "id": "tokens.estimate:6",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "㄰㄰㄰"
+    }
+  },
+  {
+    "id": "embedding.estimate:6",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "㄰㄰㄰"
+    }
+  },
+  {
+    "id": "embedding.chunk:6",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "㄰㄰㄰",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:6",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "㄰㄰㄰",
+      "maxChars": 1
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:6",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "㄰㄰㄰",
+      "maxChars": 1
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:6",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "㄰㄰㄰"
+    }
+  },
+  {
+    "id": "tokens.estimate:7",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+    }
+  },
+  {
+    "id": "embedding.estimate:7",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+    }
+  },
+  {
+    "id": "embedding.chunk:7",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:7",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
+      "maxChars": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:7",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
+      "maxChars": 2
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:7",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+    }
+  },
+  {
+    "id": "tokens.estimate:8",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "a​b／c"
+    }
+  },
+  {
+    "id": "embedding.estimate:8",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "a​b／c"
+    }
+  },
+  {
+    "id": "embedding.chunk:8",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "a​b／c",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:8",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "a​b／c",
+      "maxChars": 3
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:8",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "a​b／c",
+      "maxChars": 3
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:8",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "a​b／c"
+    }
+  },
+  {
+    "id": "tokens.estimate:9",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "﻿ "
+    }
+  },
+  {
+    "id": "embedding.estimate:9",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "﻿ "
+    }
+  },
+  {
+    "id": "embedding.chunk:9",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "﻿ ",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:9",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "﻿ ",
+      "maxChars": 4
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:9",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "﻿ ",
+      "maxChars": 4
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:9",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "﻿ "
+    }
+  },
+  {
+    "id": "tokens.estimate:10",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "ힰ🙂a㄰9\nힰZ文㄰Z文?!a0🙂Za\t ꥠ \t🙂 ?🙂a! 中9🙂\n\t0㄰ꥠ🙂9中🙂0!ꥠ  🙂"
+    }
+  },
+  {
+    "id": "embedding.estimate:10",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "ힰ🙂a㄰9\nힰZ文㄰Z文?!a0🙂Za\t ꥠ \t🙂 ?🙂a! 中9🙂\n\t0㄰ꥠ🙂9中🙂0!ꥠ  🙂"
+    }
+  },
+  {
+    "id": "embedding.chunk:10",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "ힰ🙂a㄰9\nힰZ文㄰Z文?!a0🙂Za\t ꥠ \t🙂 ?🙂a! 中9🙂\n\t0㄰ꥠ🙂9中🙂0!ꥠ  🙂",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:10",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "ힰ🙂a㄰9\nힰZ文㄰Z文?!a0🙂Za\t ꥠ \t🙂 ?🙂a! 中9🙂\n\t0㄰ꥠ🙂9中🙂0!ꥠ  🙂",
+      "maxChars": 0
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:10",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "ힰ🙂a㄰9\nힰZ文㄰Z文?!a0🙂Za\t ꥠ \t🙂 ?🙂a! 中9🙂\n\t0㄰ꥠ🙂9中🙂0!ꥠ  🙂",
+      "maxChars": 0
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:10",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "ힰ🙂a㄰9\nힰZ文㄰Z文?!a0🙂Za\t ꥠ \t🙂 ?🙂a! 中9🙂\n\t0㄰ꥠ🙂9中🙂0!ꥠ  🙂"
+    }
+  },
+  {
+    "id": "tokens.estimate:11",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "! 文文!!0文a㄰ꥠ00ힰ9?Z0a㄰㄰中\n㄰\tힰ文9中9ꥠ9\t文? ?\nꥠ  ㄰0中?0ꥠힰힰZ中文a\t㄰0\n0文9文ힰ文?中ZZ\tꥠ00?🙂a?ꥠ0文㄰a\n ㄰ a Za?ꥠa\t🙂ힰ\n!"
+    }
+  },
+  {
+    "id": "embedding.estimate:11",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "! 文文!!0文a㄰ꥠ00ힰ9?Z0a㄰㄰中\n㄰\tힰ文9中9ꥠ9\t文? ?\nꥠ  ㄰0中?0ꥠힰힰZ中文a\t㄰0\n0文9文ힰ文?中ZZ\tꥠ00?🙂a?ꥠ0文㄰a\n ㄰ a Za?ꥠa\t🙂ힰ\n!"
+    }
+  },
+  {
+    "id": "embedding.chunk:11",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "! 文文!!0文a㄰ꥠ00ힰ9?Z0a㄰㄰中\n㄰\tힰ文9中9ꥠ9\t文? ?\nꥠ  ㄰0中?0ꥠힰힰZ中文a\t㄰0\n0文9文ힰ文?中ZZ\tꥠ00?🙂a?ꥠ0文㄰a\n ㄰ a Za?ꥠa\t🙂ힰ\n!",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:11",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "! 文文!!0文a㄰ꥠ00ힰ9?Z0a㄰㄰中\n㄰\tힰ文9中9ꥠ9\t文? ?\nꥠ  ㄰0中?0ꥠힰힰZ中文a\t㄰0\n0文9文ힰ文?中ZZ\tꥠ00?🙂a?ꥠ0文㄰a\n ㄰ a Za?ꥠa\t🙂ힰ\n!",
+      "maxChars": 1
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:11",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "! 文文!!0文a㄰ꥠ00ힰ9?Z0a㄰㄰中\n㄰\tힰ文9中9ꥠ9\t文? ?\nꥠ  ㄰0中?0ꥠힰힰZ中文a\t㄰0\n0文9文ힰ文?中ZZ\tꥠ00?🙂a?ꥠ0文㄰a\n ㄰ a Za?ꥠa\t🙂ힰ\n!",
+      "maxChars": 1
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:11",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "! 文文!!0文a㄰ꥠ00ힰ9?Z0a㄰㄰中\n㄰\tힰ文9中9ꥠ9\t文? ?\nꥠ  ㄰0中?0ꥠힰힰZ中文a\t㄰0\n0文9文ힰ文?中ZZ\tꥠ00?🙂a?ꥠ0文㄰a\n ㄰ a Za?ꥠa\t🙂ힰ\n!"
+    }
+  },
+  {
+    "id": "tokens.estimate:12",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": " 990中ꥠ㄰文a文ힰ🙂🙂!ힰZ🙂ힰ0 ꥠ\t㄰\t?🙂Z!09a文🙂Z?\t!a中㄰0?中??\n0㄰🙂ힰ?!🙂中a🙂0"
+    }
+  },
+  {
+    "id": "embedding.estimate:12",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": " 990中ꥠ㄰文a文ힰ🙂🙂!ힰZ🙂ힰ0 ꥠ\t㄰\t?🙂Z!09a文🙂Z?\t!a中㄰0?中??\n0㄰🙂ힰ?!🙂中a🙂0"
+    }
+  },
+  {
+    "id": "embedding.chunk:12",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": " 990中ꥠ㄰文a文ힰ🙂🙂!ힰZ🙂ힰ0 ꥠ\t㄰\t?🙂Z!09a文🙂Z?\t!a中㄰0?中??\n0㄰🙂ힰ?!🙂中a🙂0",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:12",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": " 990中ꥠ㄰文a文ힰ🙂🙂!ힰZ🙂ힰ0 ꥠ\t㄰\t?🙂Z!09a文🙂Z?\t!a中㄰0?中??\n0㄰🙂ힰ?!🙂中a🙂0",
+      "maxChars": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:12",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": " 990中ꥠ㄰文a文ힰ🙂🙂!ힰZ🙂ힰ0 ꥠ\t㄰\t?🙂Z!09a文🙂Z?\t!a中㄰0?中??\n0㄰🙂ힰ?!🙂中a🙂0",
+      "maxChars": 2
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:12",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": " 990中ꥠ㄰文a文ힰ🙂🙂!ힰZ🙂ힰ0 ꥠ\t㄰\t?🙂Z!09a文🙂Z?\t!a中㄰0?中??\n0㄰🙂ힰ?!🙂中a🙂0"
+    }
+  },
+  {
+    "id": "tokens.estimate:13",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": " aaZ?㄰?\t\ta ㄰🙂9🙂\n\t? ?9Z9🙂!Z\n🙂 9\n?㄰\t9a文㄰\t 9"
+    }
+  },
+  {
+    "id": "embedding.estimate:13",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": " aaZ?㄰?\t\ta ㄰🙂9🙂\n\t? ?9Z9🙂!Z\n🙂 9\n?㄰\t9a文㄰\t 9"
+    }
+  },
+  {
+    "id": "embedding.chunk:13",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": " aaZ?㄰?\t\ta ㄰🙂9🙂\n\t? ?9Z9🙂!Z\n🙂 9\n?㄰\t9a文㄰\t 9",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:13",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": " aaZ?㄰?\t\ta ㄰🙂9🙂\n\t? ?9Z9🙂!Z\n🙂 9\n?㄰\t9a文㄰\t 9",
+      "maxChars": 3
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:13",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": " aaZ?㄰?\t\ta ㄰🙂9🙂\n\t? ?9Z9🙂!Z\n🙂 9\n?㄰\t9a文㄰\t 9",
+      "maxChars": 3
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:13",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": " aaZ?㄰?\t\ta ㄰🙂9🙂\n\t? ?9Z9🙂!Z\n🙂 9\n?㄰\t9a文㄰\t 9"
+    }
+  },
+  {
+    "id": "tokens.estimate:14",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "9a\n中㄰㄰🙂ꥠ㄰9中?\t\tꥠZ\n0ꥠꥠa 9a!Z?ꥠ\t\n?中 0中ꥠ9㄰㄰文中文!!??a9ힰ文0?Zힰ 中中中!\n0ힰZ ?ힰ🙂9中 Z\t?文ힰ㄰??9a㄰ꥠힰ?0\t\t! ힰ文!!\n文ힰ9🙂🙂🙂\t?㄰ZZꥠ!0中\tꥠ0ힰ\n中ힰa㄰文aaa㄰\n文\tZ0\n0ꥠ中0文 \n\t0!9中 ?ꥠꥠ\nꥠ文!0㄰中\n㄰中\n?文🙂\n?中ꥠ\n??🙂\t"
+    }
+  },
+  {
+    "id": "embedding.estimate:14",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "9a\n中㄰㄰🙂ꥠ㄰9中?\t\tꥠZ\n0ꥠꥠa 9a!Z?ꥠ\t\n?中 0中ꥠ9㄰㄰文中文!!??a9ힰ文0?Zힰ 中中中!\n0ힰZ ?ힰ🙂9中 Z\t?文ힰ㄰??9a㄰ꥠힰ?0\t\t! ힰ文!!\n文ힰ9🙂🙂🙂\t?㄰ZZꥠ!0中\tꥠ0ힰ\n中ힰa㄰文aaa㄰\n文\tZ0\n0ꥠ中0文 \n\t0!9中 ?ꥠꥠ\nꥠ文!0㄰中\n㄰中\n?文🙂\n?中ꥠ\n??🙂\t"
+    }
+  },
+  {
+    "id": "embedding.chunk:14",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "9a\n中㄰㄰🙂ꥠ㄰9中?\t\tꥠZ\n0ꥠꥠa 9a!Z?ꥠ\t\n?中 0中ꥠ9㄰㄰文中文!!??a9ힰ文0?Zힰ 中中中!\n0ힰZ ?ힰ🙂9中 Z\t?文ힰ㄰??9a㄰ꥠힰ?0\t\t! ힰ文!!\n文ힰ9🙂🙂🙂\t?㄰ZZꥠ!0中\tꥠ0ힰ\n中ힰa㄰文aaa㄰\n文\tZ0\n0ꥠ中0文 \n\t0!9中 ?ꥠꥠ\nꥠ文!0㄰中\n㄰中\n?文🙂\n?中ꥠ\n??🙂\t",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:14",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "9a\n中㄰㄰🙂ꥠ㄰9中?\t\tꥠZ\n0ꥠꥠa 9a!Z?ꥠ\t\n?中 0中ꥠ9㄰㄰文中文!!??a9ힰ文0?Zힰ 中中中!\n0ힰZ ?ힰ🙂9中 Z\t?文ힰ㄰??9a㄰ꥠힰ?0\t\t! ힰ文!!\n文ힰ9🙂🙂🙂\t?㄰ZZꥠ!0中\tꥠ0ힰ\n中ힰa㄰文aaa㄰\n文\tZ0\n0ꥠ中0文 \n\t0!9中 ?ꥠꥠ\nꥠ文!0㄰中\n㄰中\n?文🙂\n?中ꥠ\n??🙂\t",
+      "maxChars": 4
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:14",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "9a\n中㄰㄰🙂ꥠ㄰9中?\t\tꥠZ\n0ꥠꥠa 9a!Z?ꥠ\t\n?中 0中ꥠ9㄰㄰文中文!!??a9ힰ文0?Zힰ 中中中!\n0ힰZ ?ힰ🙂9中 Z\t?文ힰ㄰??9a㄰ꥠힰ?0\t\t! ힰ文!!\n文ힰ9🙂🙂🙂\t?㄰ZZꥠ!0中\tꥠ0ힰ\n中ힰa㄰文aaa㄰\n文\tZ0\n0ꥠ中0文 \n\t0!9中 ?ꥠꥠ\nꥠ文!0㄰中\n㄰中\n?文🙂\n?中ꥠ\n??🙂\t",
+      "maxChars": 4
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:14",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "9a\n中㄰㄰🙂ꥠ㄰9中?\t\tꥠZ\n0ꥠꥠa 9a!Z?ꥠ\t\n?中 0中ꥠ9㄰㄰文中文!!??a9ힰ文0?Zힰ 中中中!\n0ힰZ ?ힰ🙂9中 Z\t?文ힰ㄰??9a㄰ꥠힰ?0\t\t! ힰ文!!\n文ힰ9🙂🙂🙂\t?㄰ZZꥠ!0中\tꥠ0ힰ\n中ힰa㄰文aaa㄰\n文\tZ0\n0ꥠ中0文 \n\t0!9中 ?ꥠꥠ\nꥠ文!0㄰中\n㄰中\n?文🙂\n?中ꥠ\n??🙂\t"
+    }
+  },
+  {
+    "id": "tokens.estimate:15",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "文ꥠ文ꥠ 文🙂ꥠꥠZ中!Z ힰ!ꥠힰ?0! 9中a㄰a?中㄰90🙂\na㄰9!🙂\na?!㄰中ힰꥠ\t9!㄰ 中ힰ ?\na9!9\na文 \n㄰!ꥠힰ0文!🙂ힰa!㄰㄰㄰\t!🙂Z文ꥠ中\t中0🙂\tힰ0!9🙂ꥠ9! 9㄰a文Z 9Z0"
+    }
+  },
+  {
+    "id": "embedding.estimate:15",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "文ꥠ文ꥠ 文🙂ꥠꥠZ中!Z ힰ!ꥠힰ?0! 9中a㄰a?中㄰90🙂\na㄰9!🙂\na?!㄰中ힰꥠ\t9!㄰ 中ힰ ?\na9!9\na文 \n㄰!ꥠힰ0文!🙂ힰa!㄰㄰㄰\t!🙂Z文ꥠ中\t中0🙂\tힰ0!9🙂ꥠ9! 9㄰a文Z 9Z0"
+    }
+  },
+  {
+    "id": "embedding.chunk:15",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "文ꥠ文ꥠ 文🙂ꥠꥠZ中!Z ힰ!ꥠힰ?0! 9中a㄰a?中㄰90🙂\na㄰9!🙂\na?!㄰中ힰꥠ\t9!㄰ 中ힰ ?\na9!9\na文 \n㄰!ꥠힰ0文!🙂ힰa!㄰㄰㄰\t!🙂Z文ꥠ中\t中0🙂\tힰ0!9🙂ꥠ9! 9㄰a文Z 9Z0",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:15",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "文ꥠ文ꥠ 文🙂ꥠꥠZ中!Z ힰ!ꥠힰ?0! 9中a㄰a?中㄰90🙂\na㄰9!🙂\na?!㄰中ힰꥠ\t9!㄰ 中ힰ ?\na9!9\na文 \n㄰!ꥠힰ0文!🙂ힰa!㄰㄰㄰\t!🙂Z文ꥠ中\t中0🙂\tힰ0!9🙂ꥠ9! 9㄰a文Z 9Z0",
+      "maxChars": 0
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:15",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "文ꥠ文ꥠ 文🙂ꥠꥠZ中!Z ힰ!ꥠힰ?0! 9中a㄰a?中㄰90🙂\na㄰9!🙂\na?!㄰中ힰꥠ\t9!㄰ 中ힰ ?\na9!9\na文 \n㄰!ꥠힰ0文!🙂ힰa!㄰㄰㄰\t!🙂Z文ꥠ中\t中0🙂\tힰ0!9🙂ꥠ9! 9㄰a文Z 9Z0",
+      "maxChars": 0
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:15",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "文ꥠ文ꥠ 文🙂ꥠꥠZ中!Z ힰ!ꥠힰ?0! 9中a㄰a?中㄰90🙂\na㄰9!🙂\na?!㄰中ힰꥠ\t9!㄰ 中ힰ ?\na9!9\na文 \n㄰!ꥠힰ0文!🙂ힰa!㄰㄰㄰\t!🙂Z文ꥠ中\t中0🙂\tힰ0!9🙂ꥠ9! 9㄰a文Z 9Z0"
+    }
+  },
+  {
+    "id": "tokens.estimate:16",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "㄰㄰\n!9㄰中Z !!🙂🙂!9㄰?🙂0\t\n文??🙂中文0a\t\taa\tZ文!9ꥠ㄰中㄰\na?🙂中ꥠꥠZ🙂!🙂9🙂文㄰9\t\tힰ㄰ꥠ\t㄰\n?🙂文a㄰0??中ꥠ\t\n!中a中a9文!a㄰文中0\nힰ 🙂!\n\t㄰9 9aZZ\nZZ\n文Z!?\n🙂0㄰\t🙂 文文99ힰ"
+    }
+  },
+  {
+    "id": "embedding.estimate:16",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "㄰㄰\n!9㄰中Z !!🙂🙂!9㄰?🙂0\t\n文??🙂中文0a\t\taa\tZ文!9ꥠ㄰中㄰\na?🙂中ꥠꥠZ🙂!🙂9🙂文㄰9\t\tힰ㄰ꥠ\t㄰\n?🙂文a㄰0??中ꥠ\t\n!中a中a9文!a㄰文中0\nힰ 🙂!\n\t㄰9 9aZZ\nZZ\n文Z!?\n🙂0㄰\t🙂 文文99ힰ"
+    }
+  },
+  {
+    "id": "embedding.chunk:16",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "㄰㄰\n!9㄰中Z !!🙂🙂!9㄰?🙂0\t\n文??🙂中文0a\t\taa\tZ文!9ꥠ㄰中㄰\na?🙂中ꥠꥠZ🙂!🙂9🙂文㄰9\t\tힰ㄰ꥠ\t㄰\n?🙂文a㄰0??中ꥠ\t\n!中a中a9文!a㄰文中0\nힰ 🙂!\n\t㄰9 9aZZ\nZZ\n文Z!?\n🙂0㄰\t🙂 文文99ힰ",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:16",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "㄰㄰\n!9㄰中Z !!🙂🙂!9㄰?🙂0\t\n文??🙂中文0a\t\taa\tZ文!9ꥠ㄰中㄰\na?🙂中ꥠꥠZ🙂!🙂9🙂文㄰9\t\tힰ㄰ꥠ\t㄰\n?🙂文a㄰0??中ꥠ\t\n!中a中a9文!a㄰文中0\nힰ 🙂!\n\t㄰9 9aZZ\nZZ\n文Z!?\n🙂0㄰\t🙂 文文99ힰ",
+      "maxChars": 1
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:16",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "㄰㄰\n!9㄰中Z !!🙂🙂!9㄰?🙂0\t\n文??🙂中文0a\t\taa\tZ文!9ꥠ㄰中㄰\na?🙂中ꥠꥠZ🙂!🙂9🙂文㄰9\t\tힰ㄰ꥠ\t㄰\n?🙂文a㄰0??中ꥠ\t\n!中a中a9文!a㄰文中0\nힰ 🙂!\n\t㄰9 9aZZ\nZZ\n文Z!?\n🙂0㄰\t🙂 文文99ힰ",
+      "maxChars": 1
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:16",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "㄰㄰\n!9㄰中Z !!🙂🙂!9㄰?🙂0\t\n文??🙂中文0a\t\taa\tZ文!9ꥠ㄰中㄰\na?🙂中ꥠꥠZ🙂!🙂9🙂文㄰9\t\tힰ㄰ꥠ\t㄰\n?🙂文a㄰0??中ꥠ\t\n!中a中a9文!a㄰文中0\nힰ 🙂!\n\t㄰9 9aZZ\nZZ\n文Z!?\n🙂0㄰\t🙂 文文99ힰ"
+    }
+  },
+  {
+    "id": "tokens.estimate:17",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "ힰa㄰文文ꥠ!a0? a0中 \nힰힰힰ9aힰZ\n9ꥠꥠ!9!ꥠ?a?!文中ꥠ文\n!ힰ🙂Z\t文Z🙂ꥠ990🙂文文文 Z!\n文ꥠ文中0ꥠ\n9🙂9中\n文!9\n?0 ힰ0文\t中  ㄰\n中Z?9文文!㄰\t9㄰ZZ? 9中Z ꥠ🙂09文0㄰🙂 ힰ\t㄰Z?🙂\t \n中ힰ9? ㄰\n9文中\t?ힰ9\n\t\t?\nZ🙂 🙂文\n!中ힰa\t\n \t🙂 9Zꥠ中🙂ꥠ!a?中0文 \n"
+    }
+  },
+  {
+    "id": "embedding.estimate:17",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "ힰa㄰文文ꥠ!a0? a0中 \nힰힰힰ9aힰZ\n9ꥠꥠ!9!ꥠ?a?!文中ꥠ文\n!ힰ🙂Z\t文Z🙂ꥠ990🙂文文文 Z!\n文ꥠ文中0ꥠ\n9🙂9中\n文!9\n?0 ힰ0文\t中  ㄰\n中Z?9文文!㄰\t9㄰ZZ? 9中Z ꥠ🙂09文0㄰🙂 ힰ\t㄰Z?🙂\t \n中ힰ9? ㄰\n9文中\t?ힰ9\n\t\t?\nZ🙂 🙂文\n!中ힰa\t\n \t🙂 9Zꥠ中🙂ꥠ!a?中0文 \n"
+    }
+  },
+  {
+    "id": "embedding.chunk:17",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "ힰa㄰文文ꥠ!a0? a0中 \nힰힰힰ9aힰZ\n9ꥠꥠ!9!ꥠ?a?!文中ꥠ文\n!ힰ🙂Z\t文Z🙂ꥠ990🙂文文文 Z!\n文ꥠ文中0ꥠ\n9🙂9中\n文!9\n?0 ힰ0文\t中  ㄰\n中Z?9文文!㄰\t9㄰ZZ? 9中Z ꥠ🙂09文0㄰🙂 ힰ\t㄰Z?🙂\t \n中ힰ9? ㄰\n9文中\t?ힰ9\n\t\t?\nZ🙂 🙂文\n!中ힰa\t\n \t🙂 9Zꥠ中🙂ꥠ!a?中0文 \n",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:17",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "ힰa㄰文文ꥠ!a0? a0中 \nힰힰힰ9aힰZ\n9ꥠꥠ!9!ꥠ?a?!文中ꥠ文\n!ힰ🙂Z\t文Z🙂ꥠ990🙂文文文 Z!\n文ꥠ文中0ꥠ\n9🙂9中\n文!9\n?0 ힰ0文\t中  ㄰\n中Z?9文文!㄰\t9㄰ZZ? 9中Z ꥠ🙂09文0㄰🙂 ힰ\t㄰Z?🙂\t \n中ힰ9? ㄰\n9文中\t?ힰ9\n\t\t?\nZ🙂 🙂文\n!中ힰa\t\n \t🙂 9Zꥠ中🙂ꥠ!a?中0文 \n",
+      "maxChars": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:17",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "ힰa㄰文文ꥠ!a0? a0中 \nힰힰힰ9aힰZ\n9ꥠꥠ!9!ꥠ?a?!文中ꥠ文\n!ힰ🙂Z\t文Z🙂ꥠ990🙂文文文 Z!\n文ꥠ文中0ꥠ\n9🙂9中\n文!9\n?0 ힰ0文\t中  ㄰\n中Z?9文文!㄰\t9㄰ZZ? 9中Z ꥠ🙂09文0㄰🙂 ힰ\t㄰Z?🙂\t \n中ힰ9? ㄰\n9文中\t?ힰ9\n\t\t?\nZ🙂 🙂文\n!中ힰa\t\n \t🙂 9Zꥠ中🙂ꥠ!a?中0文 \n",
+      "maxChars": 2
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:17",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "ힰa㄰文文ꥠ!a0? a0中 \nힰힰힰ9aힰZ\n9ꥠꥠ!9!ꥠ?a?!文中ꥠ文\n!ힰ🙂Z\t文Z🙂ꥠ990🙂文文文 Z!\n文ꥠ文中0ꥠ\n9🙂9中\n文!9\n?0 ힰ0文\t中  ㄰\n中Z?9文文!㄰\t9㄰ZZ? 9中Z ꥠ🙂09文0㄰🙂 ힰ\t㄰Z?🙂\t \n中ힰ9? ㄰\n9文中\t?ힰ9\n\t\t?\nZ🙂 🙂文\n!中ힰa\t\n \t🙂 9Zꥠ中🙂ꥠ!a?中0文 \n"
+    }
+  },
+  {
+    "id": "tokens.estimate:18",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "Z0aa 文ힰa\n!ZZ?\t90\n0㄰ꥠ0ꥠ  \n㄰!\t!🙂🙂文ힰZ ㄰\nꥠ㄰㄰ꥠ㄰0ꥠa ꥠ中中?\n中文㄰aa\t9a\t\tZ\nힰ\nힰ "
+    }
+  },
+  {
+    "id": "embedding.estimate:18",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "Z0aa 文ힰa\n!ZZ?\t90\n0㄰ꥠ0ꥠ  \n㄰!\t!🙂🙂文ힰZ ㄰\nꥠ㄰㄰ꥠ㄰0ꥠa ꥠ中中?\n中文㄰aa\t9a\t\tZ\nힰ\nힰ "
+    }
+  },
+  {
+    "id": "embedding.chunk:18",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "Z0aa 文ힰa\n!ZZ?\t90\n0㄰ꥠ0ꥠ  \n㄰!\t!🙂🙂文ힰZ ㄰\nꥠ㄰㄰ꥠ㄰0ꥠa ꥠ中中?\n中文㄰aa\t9a\t\tZ\nힰ\nힰ ",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:18",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "Z0aa 文ힰa\n!ZZ?\t90\n0㄰ꥠ0ꥠ  \n㄰!\t!🙂🙂文ힰZ ㄰\nꥠ㄰㄰ꥠ㄰0ꥠa ꥠ中中?\n中文㄰aa\t9a\t\tZ\nힰ\nힰ ",
+      "maxChars": 3
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:18",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "Z0aa 文ힰa\n!ZZ?\t90\n0㄰ꥠ0ꥠ  \n㄰!\t!🙂🙂文ힰZ ㄰\nꥠ㄰㄰ꥠ㄰0ꥠa ꥠ中中?\n中文㄰aa\t9a\t\tZ\nힰ\nힰ ",
+      "maxChars": 3
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:18",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "Z0aa 文ힰa\n!ZZ?\t90\n0㄰ꥠ0ꥠ  \n㄰!\t!🙂🙂文ힰZ ㄰\nꥠ㄰㄰ꥠ㄰0ꥠa ꥠ中中?\n中文㄰aa\t9a\t\tZ\nힰ\nힰ "
+    }
+  },
+  {
+    "id": "tokens.estimate:19",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "🙂0🙂 0!㄰Zꥠ\tꥠ🙂🙂🙂中🙂0ힰ??㄰0Z\t\t㄰?a 🙂中🙂 9ZZZꥠ\tꥠaZힰ文\nힰZ🙂a!0中 ㄰中a!\n🙂ꥠ9Z ꥠZ0!?9?🙂ꥠ0Z㄰9?Z?\tힰ9 0!Z\t0a文🙂9!ힰ🙂🙂\t99\n文\n中\t?09\tꥠZ9!????㄰\t🙂0?🙂中09Z0Z? 0🙂!ꥠ!ힰꥠZ㄰aꥠ㄰中 Z\t文㄰\n\t\t 中ꥠꥠ\nힰ?中ힰ0Za? 中0\t9\n?\n9㄰文!09\n 0aힰ9ힰ文ힰ?9㄰?\t\n?!!!Z🙂9ꥠ㄰\n\t!?Z中!?🙂中🙂!㄰㄰!ힰ!ힰힰ00?ꥠ\n文ꥠZ"
+    }
+  },
+  {
+    "id": "embedding.estimate:19",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "🙂0🙂 0!㄰Zꥠ\tꥠ🙂🙂🙂中🙂0ힰ??㄰0Z\t\t㄰?a 🙂中🙂 9ZZZꥠ\tꥠaZힰ文\nힰZ🙂a!0中 ㄰中a!\n🙂ꥠ9Z ꥠZ0!?9?🙂ꥠ0Z㄰9?Z?\tힰ9 0!Z\t0a文🙂9!ힰ🙂🙂\t99\n文\n中\t?09\tꥠZ9!????㄰\t🙂0?🙂中09Z0Z? 0🙂!ꥠ!ힰꥠZ㄰aꥠ㄰中 Z\t文㄰\n\t\t 中ꥠꥠ\nힰ?中ힰ0Za? 中0\t9\n?\n9㄰文!09\n 0aힰ9ힰ文ힰ?9㄰?\t\n?!!!Z🙂9ꥠ㄰\n\t!?Z中!?🙂中🙂!㄰㄰!ힰ!ힰힰ00?ꥠ\n文ꥠZ"
+    }
+  },
+  {
+    "id": "embedding.chunk:19",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "🙂0🙂 0!㄰Zꥠ\tꥠ🙂🙂🙂中🙂0ힰ??㄰0Z\t\t㄰?a 🙂中🙂 9ZZZꥠ\tꥠaZힰ文\nힰZ🙂a!0中 ㄰中a!\n🙂ꥠ9Z ꥠZ0!?9?🙂ꥠ0Z㄰9?Z?\tힰ9 0!Z\t0a文🙂9!ힰ🙂🙂\t99\n文\n中\t?09\tꥠZ9!????㄰\t🙂0?🙂中09Z0Z? 0🙂!ꥠ!ힰꥠZ㄰aꥠ㄰中 Z\t文㄰\n\t\t 中ꥠꥠ\nힰ?中ힰ0Za? 中0\t9\n?\n9㄰文!09\n 0aힰ9ힰ文ힰ?9㄰?\t\n?!!!Z🙂9ꥠ㄰\n\t!?Z中!?🙂中🙂!㄰㄰!ힰ!ힰힰ00?ꥠ\n文ꥠZ",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:19",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "🙂0🙂 0!㄰Zꥠ\tꥠ🙂🙂🙂中🙂0ힰ??㄰0Z\t\t㄰?a 🙂中🙂 9ZZZꥠ\tꥠaZힰ文\nힰZ🙂a!0中 ㄰中a!\n🙂ꥠ9Z ꥠZ0!?9?🙂ꥠ0Z㄰9?Z?\tힰ9 0!Z\t0a文🙂9!ힰ🙂🙂\t99\n文\n中\t?09\tꥠZ9!????㄰\t🙂0?🙂中09Z0Z? 0🙂!ꥠ!ힰꥠZ㄰aꥠ㄰中 Z\t文㄰\n\t\t 中ꥠꥠ\nힰ?中ힰ0Za? 中0\t9\n?\n9㄰文!09\n 0aힰ9ힰ文ힰ?9㄰?\t\n?!!!Z🙂9ꥠ㄰\n\t!?Z中!?🙂中🙂!㄰㄰!ힰ!ힰힰ00?ꥠ\n文ꥠZ",
+      "maxChars": 4
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:19",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "🙂0🙂 0!㄰Zꥠ\tꥠ🙂🙂🙂中🙂0ힰ??㄰0Z\t\t㄰?a 🙂中🙂 9ZZZꥠ\tꥠaZힰ文\nힰZ🙂a!0中 ㄰中a!\n🙂ꥠ9Z ꥠZ0!?9?🙂ꥠ0Z㄰9?Z?\tힰ9 0!Z\t0a文🙂9!ힰ🙂🙂\t99\n文\n中\t?09\tꥠZ9!????㄰\t🙂0?🙂中09Z0Z? 0🙂!ꥠ!ힰꥠZ㄰aꥠ㄰中 Z\t文㄰\n\t\t 中ꥠꥠ\nힰ?中ힰ0Za? 中0\t9\n?\n9㄰文!09\n 0aힰ9ힰ文ힰ?9㄰?\t\n?!!!Z🙂9ꥠ㄰\n\t!?Z中!?🙂中🙂!㄰㄰!ힰ!ힰힰ00?ꥠ\n文ꥠZ",
+      "maxChars": 4
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:19",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "🙂0🙂 0!㄰Zꥠ\tꥠ🙂🙂🙂中🙂0ힰ??㄰0Z\t\t㄰?a 🙂中🙂 9ZZZꥠ\tꥠaZힰ文\nힰZ🙂a!0中 ㄰中a!\n🙂ꥠ9Z ꥠZ0!?9?🙂ꥠ0Z㄰9?Z?\tힰ9 0!Z\t0a文🙂9!ힰ🙂🙂\t99\n文\n中\t?09\tꥠZ9!????㄰\t🙂0?🙂中09Z0Z? 0🙂!ꥠ!ힰꥠZ㄰aꥠ㄰中 Z\t文㄰\n\t\t 中ꥠꥠ\nힰ?中ힰ0Za? 中0\t9\n?\n9㄰文!09\n 0aힰ9ힰ文ힰ?9㄰?\t\n?!!!Z🙂9ꥠ㄰\n\t!?Z中!?🙂中🙂!㄰㄰!ힰ!ힰힰ00?ꥠ\n文ꥠZ"
+    }
+  },
+  {
+    "id": "tokens.estimate:20",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "Z㄰🙂中㄰0㄰\t中\n🙂🙂 ㄰🙂㄰0!90㄰ힰ?aힰa\nힰ🙂!ힰ文中中 🙂ힰaZힰ a㄰ ㄰㄰a文中㄰中Z?🙂0ꥠꥠ㄰?\n🙂文aZ0 \n9㄰?文🙂9🙂?ꥠ !a\tZ文!中ힰ\n㄰㄰ힰ! \ta ?"
+    }
+  },
+  {
+    "id": "embedding.estimate:20",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "Z㄰🙂中㄰0㄰\t中\n🙂🙂 ㄰🙂㄰0!90㄰ힰ?aힰa\nힰ🙂!ힰ文中中 🙂ힰaZힰ a㄰ ㄰㄰a文中㄰中Z?🙂0ꥠꥠ㄰?\n🙂文aZ0 \n9㄰?文🙂9🙂?ꥠ !a\tZ文!中ힰ\n㄰㄰ힰ! \ta ?"
+    }
+  },
+  {
+    "id": "embedding.chunk:20",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "Z㄰🙂中㄰0㄰\t中\n🙂🙂 ㄰🙂㄰0!90㄰ힰ?aힰa\nힰ🙂!ힰ文中中 🙂ힰaZힰ a㄰ ㄰㄰a文中㄰中Z?🙂0ꥠꥠ㄰?\n🙂文aZ0 \n9㄰?文🙂9🙂?ꥠ !a\tZ文!中ힰ\n㄰㄰ힰ! \ta ?",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:20",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "Z㄰🙂中㄰0㄰\t中\n🙂🙂 ㄰🙂㄰0!90㄰ힰ?aힰa\nힰ🙂!ힰ文中中 🙂ힰaZힰ a㄰ ㄰㄰a文中㄰中Z?🙂0ꥠꥠ㄰?\n🙂文aZ0 \n9㄰?文🙂9🙂?ꥠ !a\tZ文!中ힰ\n㄰㄰ힰ! \ta ?",
+      "maxChars": 0
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:20",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "Z㄰🙂中㄰0㄰\t中\n🙂🙂 ㄰🙂㄰0!90㄰ힰ?aힰa\nힰ🙂!ힰ文中中 🙂ힰaZힰ a㄰ ㄰㄰a文中㄰中Z?🙂0ꥠꥠ㄰?\n🙂文aZ0 \n9㄰?文🙂9🙂?ꥠ !a\tZ文!中ힰ\n㄰㄰ힰ! \ta ?",
+      "maxChars": 0
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:20",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "Z㄰🙂中㄰0㄰\t中\n🙂🙂 ㄰🙂㄰0!90㄰ힰ?aힰa\nힰ🙂!ힰ文中中 🙂ힰaZힰ a㄰ ㄰㄰a文中㄰中Z?🙂0ꥠꥠ㄰?\n🙂文aZ0 \n9㄰?文🙂9🙂?ꥠ !a\tZ文!中ힰ\n㄰㄰ힰ! \ta ?"
+    }
+  },
+  {
+    "id": "tokens.estimate:21",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": " 🙂0中9文㄰\n\t!\na?\n文中ힰ\na\t?!文?Z\n🙂㄰㄰ힰힰ中?9ힰ㄰文!!!文0ힰꥠ9🙂ힰ🙂ꥠ中中a\tힰ!🙂 ힰힰ\n9ힰ\tힰ0㄰ힰힰ\tZꥠa\t9!ꥠ?文\nힰa!\n9a0文中中!0Za00🙂\t ㄰\n\n ㄰0Z文aZ! ힰ🙂\t文\t㄰文\n!\t\nힰZ\t\tힰ\n文🙂?㄰ힰ🙂!! 🙂㄰900ힰ !?中文\t中\t\n!? 中文 ힰ0ힰ ㄰文Za\t \n9\tꥠ㄰🙂㄰9 中!文?\t?🙂ꥠ!Z??aa中?\t0?a㄰\tꥠ\n中?!!!🙂 0ꥠ??Z中中9文ힰ中㄰?0\nힰ 文🙂ꥠ中Z文中!🙂文"
+    }
+  },
+  {
+    "id": "embedding.estimate:21",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": " 🙂0中9文㄰\n\t!\na?\n文中ힰ\na\t?!文?Z\n🙂㄰㄰ힰힰ中?9ힰ㄰文!!!文0ힰꥠ9🙂ힰ🙂ꥠ中中a\tힰ!🙂 ힰힰ\n9ힰ\tힰ0㄰ힰힰ\tZꥠa\t9!ꥠ?文\nힰa!\n9a0文中中!0Za00🙂\t ㄰\n\n ㄰0Z文aZ! ힰ🙂\t文\t㄰文\n!\t\nힰZ\t\tힰ\n文🙂?㄰ힰ🙂!! 🙂㄰900ힰ !?中文\t中\t\n!? 中文 ힰ0ힰ ㄰文Za\t \n9\tꥠ㄰🙂㄰9 中!文?\t?🙂ꥠ!Z??aa中?\t0?a㄰\tꥠ\n中?!!!🙂 0ꥠ??Z中中9文ힰ中㄰?0\nힰ 文🙂ꥠ中Z文中!🙂文"
+    }
+  },
+  {
+    "id": "embedding.chunk:21",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": " 🙂0中9文㄰\n\t!\na?\n文中ힰ\na\t?!文?Z\n🙂㄰㄰ힰힰ中?9ힰ㄰文!!!文0ힰꥠ9🙂ힰ🙂ꥠ中中a\tힰ!🙂 ힰힰ\n9ힰ\tힰ0㄰ힰힰ\tZꥠa\t9!ꥠ?文\nힰa!\n9a0文中中!0Za00🙂\t ㄰\n\n ㄰0Z文aZ! ힰ🙂\t文\t㄰文\n!\t\nힰZ\t\tힰ\n文🙂?㄰ힰ🙂!! 🙂㄰900ힰ !?中文\t中\t\n!? 中文 ힰ0ힰ ㄰文Za\t \n9\tꥠ㄰🙂㄰9 中!文?\t?🙂ꥠ!Z??aa中?\t0?a㄰\tꥠ\n中?!!!🙂 0ꥠ??Z中中9文ힰ中㄰?0\nힰ 文🙂ꥠ中Z文中!🙂文",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:21",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": " 🙂0中9文㄰\n\t!\na?\n文中ힰ\na\t?!文?Z\n🙂㄰㄰ힰힰ中?9ힰ㄰文!!!文0ힰꥠ9🙂ힰ🙂ꥠ中中a\tힰ!🙂 ힰힰ\n9ힰ\tힰ0㄰ힰힰ\tZꥠa\t9!ꥠ?文\nힰa!\n9a0文中中!0Za00🙂\t ㄰\n\n ㄰0Z文aZ! ힰ🙂\t文\t㄰文\n!\t\nힰZ\t\tힰ\n文🙂?㄰ힰ🙂!! 🙂㄰900ힰ !?中文\t中\t\n!? 中文 ힰ0ힰ ㄰文Za\t \n9\tꥠ㄰🙂㄰9 中!文?\t?🙂ꥠ!Z??aa中?\t0?a㄰\tꥠ\n中?!!!🙂 0ꥠ??Z中中9文ힰ中㄰?0\nힰ 文🙂ꥠ中Z文中!🙂文",
+      "maxChars": 1
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:21",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": " 🙂0中9文㄰\n\t!\na?\n文中ힰ\na\t?!文?Z\n🙂㄰㄰ힰힰ中?9ힰ㄰文!!!文0ힰꥠ9🙂ힰ🙂ꥠ中中a\tힰ!🙂 ힰힰ\n9ힰ\tힰ0㄰ힰힰ\tZꥠa\t9!ꥠ?文\nힰa!\n9a0文中中!0Za00🙂\t ㄰\n\n ㄰0Z文aZ! ힰ🙂\t文\t㄰文\n!\t\nힰZ\t\tힰ\n文🙂?㄰ힰ🙂!! 🙂㄰900ힰ !?中文\t中\t\n!? 中文 ힰ0ힰ ㄰文Za\t \n9\tꥠ㄰🙂㄰9 中!文?\t?🙂ꥠ!Z??aa中?\t0?a㄰\tꥠ\n中?!!!🙂 0ꥠ??Z中中9文ힰ中㄰?0\nힰ 文🙂ꥠ中Z文中!🙂文",
+      "maxChars": 1
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:21",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": " 🙂0中9文㄰\n\t!\na?\n文中ힰ\na\t?!文?Z\n🙂㄰㄰ힰힰ中?9ힰ㄰文!!!文0ힰꥠ9🙂ힰ🙂ꥠ中中a\tힰ!🙂 ힰힰ\n9ힰ\tힰ0㄰ힰힰ\tZꥠa\t9!ꥠ?文\nힰa!\n9a0文中中!0Za00🙂\t ㄰\n\n ㄰0Z文aZ! ힰ🙂\t文\t㄰文\n!\t\nힰZ\t\tힰ\n文🙂?㄰ힰ🙂!! 🙂㄰900ힰ !?中文\t中\t\n!? 中文 ힰ0ힰ ㄰文Za\t \n9\tꥠ㄰🙂㄰9 中!文?\t?🙂ꥠ!Z??aa中?\t0?a㄰\tꥠ\n中?!!!🙂 0ꥠ??Z中中9文ힰ中㄰?0\nힰ 文🙂ꥠ中Z文中!🙂文"
+    }
+  },
+  {
+    "id": "tokens.estimate:22",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": " Z文a中!🙂ힰꥠ?ힰꥠ9Z🙂9ꥠ? 99🙂\tힰa\t\t9 \n\t中㄰🙂ힰ\n㄰ 9a\n ㄰\nힰ\t9 ㄰0\t 0🙂ힰ0Z\t Z\tꥠ9\tZZ中ꥠ9㄰\t?!文"
+    }
+  },
+  {
+    "id": "embedding.estimate:22",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": " Z文a中!🙂ힰꥠ?ힰꥠ9Z🙂9ꥠ? 99🙂\tힰa\t\t9 \n\t中㄰🙂ힰ\n㄰ 9a\n ㄰\nힰ\t9 ㄰0\t 0🙂ힰ0Z\t Z\tꥠ9\tZZ中ꥠ9㄰\t?!文"
+    }
+  },
+  {
+    "id": "embedding.chunk:22",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": " Z文a中!🙂ힰꥠ?ힰꥠ9Z🙂9ꥠ? 99🙂\tힰa\t\t9 \n\t中㄰🙂ힰ\n㄰ 9a\n ㄰\nힰ\t9 ㄰0\t 0🙂ힰ0Z\t Z\tꥠ9\tZZ中ꥠ9㄰\t?!文",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:22",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": " Z文a中!🙂ힰꥠ?ힰꥠ9Z🙂9ꥠ? 99🙂\tힰa\t\t9 \n\t中㄰🙂ힰ\n㄰ 9a\n ㄰\nힰ\t9 ㄰0\t 0🙂ힰ0Z\t Z\tꥠ9\tZZ中ꥠ9㄰\t?!文",
+      "maxChars": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:22",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": " Z文a中!🙂ힰꥠ?ힰꥠ9Z🙂9ꥠ? 99🙂\tힰa\t\t9 \n\t中㄰🙂ힰ\n㄰ 9a\n ㄰\nힰ\t9 ㄰0\t 0🙂ힰ0Z\t Z\tꥠ9\tZZ中ꥠ9㄰\t?!文",
+      "maxChars": 2
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:22",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": " Z文a中!🙂ힰꥠ?ힰꥠ9Z🙂9ꥠ? 99🙂\tힰa\t\t9 \n\t中㄰🙂ힰ\n㄰ 9a\n ㄰\nힰ\t9 ㄰0\t 0🙂ힰ0Z\t Z\tꥠ9\tZZ中ꥠ9㄰\t?!文"
+    }
+  },
+  {
+    "id": "tokens.estimate:23",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "文ힰ!\n中?🙂9文9ꥠꥠ!ힰZ9!ힰ🙂Z9文㄰ZZ0!Za9ힰ!\t🙂9ힰ\n?0ꥠ中ꥠZꥠ\n中ힰ? \n文 9\n9Z\n!中文!ힰ!Z?文\n?㄰中0\n中㄰文? ힰ中Z9ힰ0ힰ 中9aힰ\tힰZꥠ\nힰ㄰?0 文aa"
+    }
+  },
+  {
+    "id": "embedding.estimate:23",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "文ힰ!\n中?🙂9文9ꥠꥠ!ힰZ9!ힰ🙂Z9文㄰ZZ0!Za9ힰ!\t🙂9ힰ\n?0ꥠ中ꥠZꥠ\n中ힰ? \n文 9\n9Z\n!中文!ힰ!Z?文\n?㄰中0\n中㄰文? ힰ中Z9ힰ0ힰ 中9aힰ\tힰZꥠ\nힰ㄰?0 文aa"
+    }
+  },
+  {
+    "id": "embedding.chunk:23",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "文ힰ!\n中?🙂9文9ꥠꥠ!ힰZ9!ힰ🙂Z9文㄰ZZ0!Za9ힰ!\t🙂9ힰ\n?0ꥠ中ꥠZꥠ\n中ힰ? \n文 9\n9Z\n!中文!ힰ!Z?文\n?㄰中0\n中㄰文? ힰ中Z9ힰ0ힰ 中9aힰ\tힰZꥠ\nힰ㄰?0 文aa",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:23",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "文ힰ!\n中?🙂9文9ꥠꥠ!ힰZ9!ힰ🙂Z9文㄰ZZ0!Za9ힰ!\t🙂9ힰ\n?0ꥠ中ꥠZꥠ\n中ힰ? \n文 9\n9Z\n!中文!ힰ!Z?文\n?㄰中0\n中㄰文? ힰ中Z9ힰ0ힰ 中9aힰ\tힰZꥠ\nힰ㄰?0 文aa",
+      "maxChars": 3
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:23",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "文ힰ!\n中?🙂9文9ꥠꥠ!ힰZ9!ힰ🙂Z9文㄰ZZ0!Za9ힰ!\t🙂9ힰ\n?0ꥠ中ꥠZꥠ\n中ힰ? \n文 9\n9Z\n!中文!ힰ!Z?文\n?㄰中0\n中㄰文? ힰ中Z9ힰ0ힰ 中9aힰ\tힰZꥠ\nힰ㄰?0 文aa",
+      "maxChars": 3
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:23",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "文ힰ!\n中?🙂9文9ꥠꥠ!ힰZ9!ힰ🙂Z9文㄰ZZ0!Za9ힰ!\t🙂9ힰ\n?0ꥠ中ꥠZꥠ\n中ힰ? \n文 9\n9Z\n!中文!ힰ!Z?文\n?㄰中0\n中㄰文? ힰ中Z9ힰ0ힰ 中9aힰ\tힰZꥠ\nힰ㄰?0 文aa"
+    }
+  },
+  {
+    "id": "tokens.estimate:24",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "9㄰中\n中"
+    }
+  },
+  {
+    "id": "embedding.estimate:24",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "9㄰中\n中"
+    }
+  },
+  {
+    "id": "embedding.chunk:24",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "9㄰中\n中",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:24",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "9㄰中\n中",
+      "maxChars": 4
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:24",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "9㄰中\n中",
+      "maxChars": 4
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:24",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "9㄰中\n中"
+    }
+  },
+  {
+    "id": "tokens.estimate:25",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "㄰0 !文\nힰ\n中9a9\nힰ中?ힰ中中\t9 🙂㄰ힰ文ꥠ㄰㄰文ힰ9!Z\t㄰\n9a?\n?!!\n文文㄰?Zꥠힰaa㄰!㄰0ꥠ\n🙂\n9"
+    }
+  },
+  {
+    "id": "embedding.estimate:25",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "㄰0 !文\nힰ\n中9a9\nힰ中?ힰ中中\t9 🙂㄰ힰ文ꥠ㄰㄰文ힰ9!Z\t㄰\n9a?\n?!!\n文文㄰?Zꥠힰaa㄰!㄰0ꥠ\n🙂\n9"
+    }
+  },
+  {
+    "id": "embedding.chunk:25",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "㄰0 !文\nힰ\n中9a9\nힰ中?ힰ中中\t9 🙂㄰ힰ文ꥠ㄰㄰文ힰ9!Z\t㄰\n9a?\n?!!\n文文㄰?Zꥠힰaa㄰!㄰0ꥠ\n🙂\n9",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:25",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "㄰0 !文\nힰ\n中9a9\nힰ中?ힰ中中\t9 🙂㄰ힰ文ꥠ㄰㄰文ힰ9!Z\t㄰\n9a?\n?!!\n文文㄰?Zꥠힰaa㄰!㄰0ꥠ\n🙂\n9",
+      "maxChars": 0
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:25",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "㄰0 !文\nힰ\n中9a9\nힰ中?ힰ中中\t9 🙂㄰ힰ文ꥠ㄰㄰文ힰ9!Z\t㄰\n9a?\n?!!\n文文㄰?Zꥠힰaa㄰!㄰0ꥠ\n🙂\n9",
+      "maxChars": 0
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:25",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "㄰0 !文\nힰ\n中9a9\nힰ中?ힰ中中\t9 🙂㄰ힰ文ꥠ㄰㄰文ힰ9!Z\t㄰\n9a?\n?!!\n文文㄰?Zꥠힰaa㄰!㄰0ꥠ\n🙂\n9"
+    }
+  },
+  {
+    "id": "tokens.estimate:26",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "ꥠa\t 中9ꥠ9文ꥠ !\t㄰Zꥠ0\t🙂Zꥠꥠ?0ힰ🙂\t0?!  Z0  ㄰ힰ\t0文中ꥠZꥠ中?ힰ9\n\n文!!aꥠ🙂㄰?文??㄰9!aaힰ?0Z\n🙂9 ힰ \tꥠ🙂aa㄰中ힰ🙂ꥠ !0㄰中a!?a\n\t🙂9!0文9a9\n文a中aZ0\nZ?文ꥠힰa ힰ文Z9中Z🙂?\t! 中文"
+    }
+  },
+  {
+    "id": "embedding.estimate:26",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "ꥠa\t 中9ꥠ9文ꥠ !\t㄰Zꥠ0\t🙂Zꥠꥠ?0ힰ🙂\t0?!  Z0  ㄰ힰ\t0文中ꥠZꥠ中?ힰ9\n\n文!!aꥠ🙂㄰?文??㄰9!aaힰ?0Z\n🙂9 ힰ \tꥠ🙂aa㄰中ힰ🙂ꥠ !0㄰中a!?a\n\t🙂9!0文9a9\n文a中aZ0\nZ?文ꥠힰa ힰ文Z9中Z🙂?\t! 中文"
+    }
+  },
+  {
+    "id": "embedding.chunk:26",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "ꥠa\t 中9ꥠ9文ꥠ !\t㄰Zꥠ0\t🙂Zꥠꥠ?0ힰ🙂\t0?!  Z0  ㄰ힰ\t0文中ꥠZꥠ中?ힰ9\n\n文!!aꥠ🙂㄰?文??㄰9!aaힰ?0Z\n🙂9 ힰ \tꥠ🙂aa㄰中ힰ🙂ꥠ !0㄰中a!?a\n\t🙂9!0文9a9\n文a中aZ0\nZ?文ꥠힰa ힰ文Z9中Z🙂?\t! 中文",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:26",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "ꥠa\t 中9ꥠ9文ꥠ !\t㄰Zꥠ0\t🙂Zꥠꥠ?0ힰ🙂\t0?!  Z0  ㄰ힰ\t0文中ꥠZꥠ中?ힰ9\n\n文!!aꥠ🙂㄰?文??㄰9!aaힰ?0Z\n🙂9 ힰ \tꥠ🙂aa㄰中ힰ🙂ꥠ !0㄰中a!?a\n\t🙂9!0文9a9\n文a中aZ0\nZ?文ꥠힰa ힰ文Z9中Z🙂?\t! 中文",
+      "maxChars": 1
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:26",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "ꥠa\t 中9ꥠ9文ꥠ !\t㄰Zꥠ0\t🙂Zꥠꥠ?0ힰ🙂\t0?!  Z0  ㄰ힰ\t0文中ꥠZꥠ中?ힰ9\n\n文!!aꥠ🙂㄰?文??㄰9!aaힰ?0Z\n🙂9 ힰ \tꥠ🙂aa㄰中ힰ🙂ꥠ !0㄰中a!?a\n\t🙂9!0文9a9\n文a中aZ0\nZ?文ꥠힰa ힰ文Z9中Z🙂?\t! 中文",
+      "maxChars": 1
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:26",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "ꥠa\t 中9ꥠ9文ꥠ !\t㄰Zꥠ0\t🙂Zꥠꥠ?0ힰ🙂\t0?!  Z0  ㄰ힰ\t0文中ꥠZꥠ中?ힰ9\n\n文!!aꥠ🙂㄰?文??㄰9!aaힰ?0Z\n🙂9 ힰ \tꥠ🙂aa㄰中ힰ🙂ꥠ !0㄰中a!?a\n\t🙂9!0文9a9\n文a中aZ0\nZ?文ꥠힰa ힰ文Z9中Z🙂?\t! 中文"
+    }
+  },
+  {
+    "id": "tokens.estimate:27",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "aힰa🙂0🙂?    ힰ🙂\n?ꥠ?ꥠ?㄰a㄰中㄰ 9"
+    }
+  },
+  {
+    "id": "embedding.estimate:27",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "aힰa🙂0🙂?    ힰ🙂\n?ꥠ?ꥠ?㄰a㄰中㄰ 9"
+    }
+  },
+  {
+    "id": "embedding.chunk:27",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "aힰa🙂0🙂?    ힰ🙂\n?ꥠ?ꥠ?㄰a㄰中㄰ 9",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:27",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "aힰa🙂0🙂?    ힰ🙂\n?ꥠ?ꥠ?㄰a㄰中㄰ 9",
+      "maxChars": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:27",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "aힰa🙂0🙂?    ힰ🙂\n?ꥠ?ꥠ?㄰a㄰中㄰ 9",
+      "maxChars": 2
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:27",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "aힰa🙂0🙂?    ힰ🙂\n?ꥠ?ꥠ?㄰a㄰中㄰ 9"
+    }
+  },
+  {
+    "id": "tokens.estimate:28",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "🙂ꥠ\n🙂中Z文 0\n\t?中9\t🙂Z㄰中\n90a0\n!中!9㄰ꥠ🙂中\tꥠ中?Z文文\t\n9a \t文🙂🙂文!!?\tZ中㄰!中0中㄰ힰZ9㄰0㄰中Z9🙂Za文ힰ!0Z🙂9!ힰힰ0aힰꥠa🙂ꥠ文 \nZZ㄰a中0中9🙂 中0\tꥠꥠ\t\tힰꥠ?㄰🙂\t0🙂ꥠ!???9\n \ta ힰZ9ꥠa 9Z🙂 0ꥠ9Z!\n🙂\t中🙂99🙂文9\n9 \n\nꥠힰ🙂9Z㄰\tZ㄰🙂ꥠힰ文ힰ\n🙂\t9ꥠa文?9\nꥠ"
+    }
+  },
+  {
+    "id": "embedding.estimate:28",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "🙂ꥠ\n🙂中Z文 0\n\t?中9\t🙂Z㄰中\n90a0\n!中!9㄰ꥠ🙂中\tꥠ中?Z文文\t\n9a \t文🙂🙂文!!?\tZ中㄰!中0中㄰ힰZ9㄰0㄰中Z9🙂Za文ힰ!0Z🙂9!ힰힰ0aힰꥠa🙂ꥠ文 \nZZ㄰a中0中9🙂 中0\tꥠꥠ\t\tힰꥠ?㄰🙂\t0🙂ꥠ!???9\n \ta ힰZ9ꥠa 9Z🙂 0ꥠ9Z!\n🙂\t中🙂99🙂文9\n9 \n\nꥠힰ🙂9Z㄰\tZ㄰🙂ꥠힰ文ힰ\n🙂\t9ꥠa文?9\nꥠ"
+    }
+  },
+  {
+    "id": "embedding.chunk:28",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "🙂ꥠ\n🙂中Z文 0\n\t?中9\t🙂Z㄰中\n90a0\n!中!9㄰ꥠ🙂中\tꥠ中?Z文文\t\n9a \t文🙂🙂文!!?\tZ中㄰!中0中㄰ힰZ9㄰0㄰中Z9🙂Za文ힰ!0Z🙂9!ힰힰ0aힰꥠa🙂ꥠ文 \nZZ㄰a中0中9🙂 中0\tꥠꥠ\t\tힰꥠ?㄰🙂\t0🙂ꥠ!???9\n \ta ힰZ9ꥠa 9Z🙂 0ꥠ9Z!\n🙂\t中🙂99🙂文9\n9 \n\nꥠힰ🙂9Z㄰\tZ㄰🙂ꥠힰ文ힰ\n🙂\t9ꥠa文?9\nꥠ",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:28",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "🙂ꥠ\n🙂中Z文 0\n\t?中9\t🙂Z㄰中\n90a0\n!中!9㄰ꥠ🙂中\tꥠ中?Z文文\t\n9a \t文🙂🙂文!!?\tZ中㄰!中0中㄰ힰZ9㄰0㄰中Z9🙂Za文ힰ!0Z🙂9!ힰힰ0aힰꥠa🙂ꥠ文 \nZZ㄰a中0中9🙂 中0\tꥠꥠ\t\tힰꥠ?㄰🙂\t0🙂ꥠ!???9\n \ta ힰZ9ꥠa 9Z🙂 0ꥠ9Z!\n🙂\t中🙂99🙂文9\n9 \n\nꥠힰ🙂9Z㄰\tZ㄰🙂ꥠힰ文ힰ\n🙂\t9ꥠa文?9\nꥠ",
+      "maxChars": 3
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:28",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "🙂ꥠ\n🙂中Z文 0\n\t?中9\t🙂Z㄰中\n90a0\n!中!9㄰ꥠ🙂中\tꥠ中?Z文文\t\n9a \t文🙂🙂文!!?\tZ中㄰!中0中㄰ힰZ9㄰0㄰中Z9🙂Za文ힰ!0Z🙂9!ힰힰ0aힰꥠa🙂ꥠ文 \nZZ㄰a中0中9🙂 中0\tꥠꥠ\t\tힰꥠ?㄰🙂\t0🙂ꥠ!???9\n \ta ힰZ9ꥠa 9Z🙂 0ꥠ9Z!\n🙂\t中🙂99🙂文9\n9 \n\nꥠힰ🙂9Z㄰\tZ㄰🙂ꥠힰ文ힰ\n🙂\t9ꥠa文?9\nꥠ",
+      "maxChars": 3
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:28",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "🙂ꥠ\n🙂中Z文 0\n\t?中9\t🙂Z㄰中\n90a0\n!中!9㄰ꥠ🙂中\tꥠ中?Z文文\t\n9a \t文🙂🙂文!!?\tZ中㄰!中0中㄰ힰZ9㄰0㄰中Z9🙂Za文ힰ!0Z🙂9!ힰힰ0aힰꥠa🙂ꥠ文 \nZZ㄰a中0中9🙂 中0\tꥠꥠ\t\tힰꥠ?㄰🙂\t0🙂ꥠ!???9\n \ta ힰZ9ꥠa 9Z🙂 0ꥠ9Z!\n🙂\t中🙂99🙂文9\n9 \n\nꥠힰ🙂9Z㄰\tZ㄰🙂ꥠힰ文ힰ\n🙂\t9ꥠa文?9\nꥠ"
+    }
+  },
+  {
+    "id": "tokens.estimate:29",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "\tZ㄰㄰a?ꥠ中㄰?00?中中aZ!🙂ힰ0a0 ힰힰ\na! \t文ힰ0\n中中\t文\ta9中! Z! ힰ㄰"
+    }
+  },
+  {
+    "id": "embedding.estimate:29",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "\tZ㄰㄰a?ꥠ中㄰?00?中中aZ!🙂ힰ0a0 ힰힰ\na! \t文ힰ0\n中中\t文\ta9中! Z! ힰ㄰"
+    }
+  },
+  {
+    "id": "embedding.chunk:29",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "\tZ㄰㄰a?ꥠ中㄰?00?中中aZ!🙂ힰ0a0 ힰힰ\na! \t文ힰ0\n中中\t文\ta9中! Z! ힰ㄰",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:29",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "\tZ㄰㄰a?ꥠ中㄰?00?中中aZ!🙂ힰ0a0 ힰힰ\na! \t文ힰ0\n中中\t文\ta9中! Z! ힰ㄰",
+      "maxChars": 4
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:29",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "\tZ㄰㄰a?ꥠ中㄰?00?中中aZ!🙂ힰ0a0 ힰힰ\na! \t文ힰ0\n中中\t文\ta9中! Z! ힰ㄰",
+      "maxChars": 4
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:29",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "\tZ㄰㄰a?ꥠ中㄰?00?中中aZ!🙂ힰ0a0 ힰힰ\na! \t文ힰ0\n中中\t文\ta9中! Z! ힰ㄰"
+    }
+  },
+  {
+    "id": "tokens.estimate:30",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "a\taힰꥠa中9??0ힰ  !文Z🙂ힰ㄰ꥠ0\t"
+    }
+  },
+  {
+    "id": "embedding.estimate:30",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "a\taힰꥠa中9??0ힰ  !文Z🙂ힰ㄰ꥠ0\t"
+    }
+  },
+  {
+    "id": "embedding.chunk:30",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "a\taힰꥠa中9??0ힰ  !文Z🙂ힰ㄰ꥠ0\t",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:30",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "a\taힰꥠa中9??0ힰ  !文Z🙂ힰ㄰ꥠ0\t",
+      "maxChars": 0
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:30",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "a\taힰꥠa中9??0ힰ  !文Z🙂ힰ㄰ꥠ0\t",
+      "maxChars": 0
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:30",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "a\taힰꥠa中9??0ힰ  !文Z🙂ힰ㄰ꥠ0\t"
+    }
+  },
+  {
+    "id": "tokens.estimate:31",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "a9\t0\tZ!?🙂ힰ㄰?9\tꥠ\t9\t\n\n\n9🙂\n 9Z !\t99ힰZ09?aꥠa?\n\t?!文ꥠꥠꥠ\tZ9㄰文\t🙂ꥠ文文㄰🙂㄰a\n\n\tZힰ!\t\na🙂ꥠZ文㄰\ta9a\n\n09!Z中🙂!!0文Z中ힰ文㄰ꥠ文文9\n!?  文ힰ9中9 !\n9\t!㄰Z㄰0\nZ中00🙂Zꥠힰ!aꥠ! ㄰ 文ꥠa🙂ힰaa㄰ힰ🙂9㄰🙂ꥠ🙂?9㄰🙂\n\tZ!㄰9\t中?文🙂 \t㄰中\nꥠ㄰㄰!\na\t?aힰ文文\nZ"
+    }
+  },
+  {
+    "id": "embedding.estimate:31",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "a9\t0\tZ!?🙂ힰ㄰?9\tꥠ\t9\t\n\n\n9🙂\n 9Z !\t99ힰZ09?aꥠa?\n\t?!文ꥠꥠꥠ\tZ9㄰文\t🙂ꥠ文文㄰🙂㄰a\n\n\tZힰ!\t\na🙂ꥠZ文㄰\ta9a\n\n09!Z中🙂!!0文Z中ힰ文㄰ꥠ文文9\n!?  文ힰ9中9 !\n9\t!㄰Z㄰0\nZ中00🙂Zꥠힰ!aꥠ! ㄰ 文ꥠa🙂ힰaa㄰ힰ🙂9㄰🙂ꥠ🙂?9㄰🙂\n\tZ!㄰9\t中?文🙂 \t㄰中\nꥠ㄰㄰!\na\t?aힰ文文\nZ"
+    }
+  },
+  {
+    "id": "embedding.chunk:31",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "a9\t0\tZ!?🙂ힰ㄰?9\tꥠ\t9\t\n\n\n9🙂\n 9Z !\t99ힰZ09?aꥠa?\n\t?!文ꥠꥠꥠ\tZ9㄰文\t🙂ꥠ文文㄰🙂㄰a\n\n\tZힰ!\t\na🙂ꥠZ文㄰\ta9a\n\n09!Z中🙂!!0文Z中ힰ文㄰ꥠ文文9\n!?  文ힰ9中9 !\n9\t!㄰Z㄰0\nZ中00🙂Zꥠힰ!aꥠ! ㄰ 文ꥠa🙂ힰaa㄰ힰ🙂9㄰🙂ꥠ🙂?9㄰🙂\n\tZ!㄰9\t中?文🙂 \t㄰中\nꥠ㄰㄰!\na\t?aힰ文文\nZ",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:31",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "a9\t0\tZ!?🙂ힰ㄰?9\tꥠ\t9\t\n\n\n9🙂\n 9Z !\t99ힰZ09?aꥠa?\n\t?!文ꥠꥠꥠ\tZ9㄰文\t🙂ꥠ文文㄰🙂㄰a\n\n\tZힰ!\t\na🙂ꥠZ文㄰\ta9a\n\n09!Z中🙂!!0文Z中ힰ文㄰ꥠ文文9\n!?  文ힰ9中9 !\n9\t!㄰Z㄰0\nZ中00🙂Zꥠힰ!aꥠ! ㄰ 文ꥠa🙂ힰaa㄰ힰ🙂9㄰🙂ꥠ🙂?9㄰🙂\n\tZ!㄰9\t中?文🙂 \t㄰中\nꥠ㄰㄰!\na\t?aힰ文文\nZ",
+      "maxChars": 1
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:31",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "a9\t0\tZ!?🙂ힰ㄰?9\tꥠ\t9\t\n\n\n9🙂\n 9Z !\t99ힰZ09?aꥠa?\n\t?!文ꥠꥠꥠ\tZ9㄰文\t🙂ꥠ文文㄰🙂㄰a\n\n\tZힰ!\t\na🙂ꥠZ文㄰\ta9a\n\n09!Z中🙂!!0文Z中ힰ文㄰ꥠ文文9\n!?  文ힰ9中9 !\n9\t!㄰Z㄰0\nZ中00🙂Zꥠힰ!aꥠ! ㄰ 文ꥠa🙂ힰaa㄰ힰ🙂9㄰🙂ꥠ🙂?9㄰🙂\n\tZ!㄰9\t中?文🙂 \t㄰中\nꥠ㄰㄰!\na\t?aힰ文文\nZ",
+      "maxChars": 1
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:31",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "a9\t0\tZ!?🙂ힰ㄰?9\tꥠ\t9\t\n\n\n9🙂\n 9Z !\t99ힰZ09?aꥠa?\n\t?!文ꥠꥠꥠ\tZ9㄰文\t🙂ꥠ文文㄰🙂㄰a\n\n\tZힰ!\t\na🙂ꥠZ文㄰\ta9a\n\n09!Z中🙂!!0文Z中ힰ文㄰ꥠ文文9\n!?  文ힰ9中9 !\n9\t!㄰Z㄰0\nZ中00🙂Zꥠힰ!aꥠ! ㄰ 文ꥠa🙂ힰaa㄰ힰ🙂9㄰🙂ꥠ🙂?9㄰🙂\n\tZ!㄰9\t中?文🙂 \t㄰中\nꥠ㄰㄰!\na\t?aힰ文文\nZ"
+    }
+  },
+  {
+    "id": "tokens.estimate:32",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "Z?🙂ꥠ?ꥠ\n  \n文\n 中中文ힰ\n🙂9!ힰ00中🙂\n㄰文! ꥠ\na9 ?9!ힰힰ!a9文?㄰aힰힰ?㄰文9Z🙂"
+    }
+  },
+  {
+    "id": "embedding.estimate:32",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "Z?🙂ꥠ?ꥠ\n  \n文\n 中中文ힰ\n🙂9!ힰ00中🙂\n㄰文! ꥠ\na9 ?9!ힰힰ!a9文?㄰aힰힰ?㄰文9Z🙂"
+    }
+  },
+  {
+    "id": "embedding.chunk:32",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "Z?🙂ꥠ?ꥠ\n  \n文\n 中中文ힰ\n🙂9!ힰ00中🙂\n㄰文! ꥠ\na9 ?9!ힰힰ!a9文?㄰aힰힰ?㄰文9Z🙂",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:32",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "Z?🙂ꥠ?ꥠ\n  \n文\n 中中文ힰ\n🙂9!ힰ00中🙂\n㄰文! ꥠ\na9 ?9!ힰힰ!a9文?㄰aힰힰ?㄰文9Z🙂",
+      "maxChars": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:32",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "Z?🙂ꥠ?ꥠ\n  \n文\n 中中文ힰ\n🙂9!ힰ00中🙂\n㄰文! ꥠ\na9 ?9!ힰힰ!a9文?㄰aힰힰ?㄰文9Z🙂",
+      "maxChars": 2
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:32",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "Z?🙂ꥠ?ꥠ\n  \n文\n 中中文ힰ\n🙂9!ힰ00中🙂\n㄰文! ꥠ\na9 ?9!ힰힰ!a9文?㄰aힰힰ?㄰文9Z🙂"
+    }
+  },
+  {
+    "id": "tokens.estimate:33",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "🙂㄰Z?Z 🙂\n?\t中\t🙂9?\n🙂aꥠꥠ\tꥠ㄰ \n!9?中中ꥠ🙂ꥠ🙂\n9?🙂 ힰ99ힰZZ 文0 "
+    }
+  },
+  {
+    "id": "embedding.estimate:33",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "🙂㄰Z?Z 🙂\n?\t中\t🙂9?\n🙂aꥠꥠ\tꥠ㄰ \n!9?中中ꥠ🙂ꥠ🙂\n9?🙂 ힰ99ힰZZ 文0 "
+    }
+  },
+  {
+    "id": "embedding.chunk:33",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "🙂㄰Z?Z 🙂\n?\t中\t🙂9?\n🙂aꥠꥠ\tꥠ㄰ \n!9?中中ꥠ🙂ꥠ🙂\n9?🙂 ힰ99ힰZZ 文0 ",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:33",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "🙂㄰Z?Z 🙂\n?\t中\t🙂9?\n🙂aꥠꥠ\tꥠ㄰ \n!9?中中ꥠ🙂ꥠ🙂\n9?🙂 ힰ99ힰZZ 文0 ",
+      "maxChars": 3
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:33",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "🙂㄰Z?Z 🙂\n?\t中\t🙂9?\n🙂aꥠꥠ\tꥠ㄰ \n!9?中中ꥠ🙂ꥠ🙂\n9?🙂 ힰ99ힰZZ 文0 ",
+      "maxChars": 3
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:33",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "🙂㄰Z?Z 🙂\n?\t中\t🙂9?\n🙂aꥠꥠ\tꥠ㄰ \n!9?中中ꥠ🙂ꥠ🙂\n9?🙂 ힰ99ힰZZ 文0 "
+    }
+  },
+  {
+    "id": "tokens.estimate:34",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "?a 中a!中aa㄰ힰ9ힰ中文🙂中㄰㄰🙂中a\n0\t90\t\t09a\t\t \n  \t?Z!Z9\n中ힰힰ中9㄰ ힰꥠ?a?!aힰ9🙂ꥠ文中Z\t9文? ? 00ꥠ\t0aa\t9ힰ\t文aa\n?\tZ"
+    }
+  },
+  {
+    "id": "embedding.estimate:34",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "?a 中a!中aa㄰ힰ9ힰ中文🙂中㄰㄰🙂中a\n0\t90\t\t09a\t\t \n  \t?Z!Z9\n中ힰힰ中9㄰ ힰꥠ?a?!aힰ9🙂ꥠ文中Z\t9文? ? 00ꥠ\t0aa\t9ힰ\t文aa\n?\tZ"
+    }
+  },
+  {
+    "id": "embedding.chunk:34",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "?a 中a!中aa㄰ힰ9ힰ中文🙂中㄰㄰🙂中a\n0\t90\t\t09a\t\t \n  \t?Z!Z9\n中ힰힰ中9㄰ ힰꥠ?a?!aힰ9🙂ꥠ文中Z\t9文? ? 00ꥠ\t0aa\t9ힰ\t文aa\n?\tZ",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:34",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "?a 中a!中aa㄰ힰ9ힰ中文🙂中㄰㄰🙂中a\n0\t90\t\t09a\t\t \n  \t?Z!Z9\n中ힰힰ中9㄰ ힰꥠ?a?!aힰ9🙂ꥠ文中Z\t9文? ? 00ꥠ\t0aa\t9ힰ\t文aa\n?\tZ",
+      "maxChars": 4
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:34",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "?a 中a!中aa㄰ힰ9ힰ中文🙂中㄰㄰🙂中a\n0\t90\t\t09a\t\t \n  \t?Z!Z9\n中ힰힰ中9㄰ ힰꥠ?a?!aힰ9🙂ꥠ文中Z\t9文? ? 00ꥠ\t0aa\t9ힰ\t文aa\n?\tZ",
+      "maxChars": 4
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:34",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "?a 中a!中aa㄰ힰ9ힰ中文🙂中㄰㄰🙂中a\n0\t90\t\t09a\t\t \n  \t?Z!Z9\n中ힰힰ中9㄰ ힰꥠ?a?!aힰ9🙂ꥠ文中Z\t9文? ? 00ꥠ\t0aa\t9ힰ\t文aa\n?\tZ"
+    }
+  },
+  {
+    "id": "tokens.estimate:35",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "9🙂㄰ꥠ?aZ?a!?!ꥠힰ文Zꥠ🙂a㄰ힰ文文!文0Z\t㄰中ꥠ🙂aꥠ中㄰文a\t\n0文ꥠ中Z99\n9㄰\n?㄰?\n文ힰ9文中90a🙂🙂文 Z🙂Z文中ꥠ🙂!ힰ09\naힰ\t㄰Zힰ?0ힰ文a!\n0aZ0\t文\na?ힰ090文🙂?中 9ꥠ!9文文!99\n 文ꥠ\t\t9a🙂🙂ꥠ9Z㄰ힰힰ9a㄰ힰ\n㄰!Z\n\ta🙂\t中🙂0Z🙂00㄰ힰꥠ㄰00文\n!\n文ힰZꥠ"
+    }
+  },
+  {
+    "id": "embedding.estimate:35",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "9🙂㄰ꥠ?aZ?a!?!ꥠힰ文Zꥠ🙂a㄰ힰ文文!文0Z\t㄰中ꥠ🙂aꥠ中㄰文a\t\n0文ꥠ中Z99\n9㄰\n?㄰?\n文ힰ9文中90a🙂🙂文 Z🙂Z文中ꥠ🙂!ힰ09\naힰ\t㄰Zힰ?0ힰ文a!\n0aZ0\t文\na?ힰ090文🙂?中 9ꥠ!9文文!99\n 文ꥠ\t\t9a🙂🙂ꥠ9Z㄰ힰힰ9a㄰ힰ\n㄰!Z\n\ta🙂\t中🙂0Z🙂00㄰ힰꥠ㄰00文\n!\n文ힰZꥠ"
+    }
+  },
+  {
+    "id": "embedding.chunk:35",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "9🙂㄰ꥠ?aZ?a!?!ꥠힰ文Zꥠ🙂a㄰ힰ文文!文0Z\t㄰中ꥠ🙂aꥠ中㄰文a\t\n0文ꥠ中Z99\n9㄰\n?㄰?\n文ힰ9文中90a🙂🙂文 Z🙂Z文中ꥠ🙂!ힰ09\naힰ\t㄰Zힰ?0ힰ文a!\n0aZ0\t文\na?ힰ090文🙂?中 9ꥠ!9文文!99\n 文ꥠ\t\t9a🙂🙂ꥠ9Z㄰ힰힰ9a㄰ힰ\n㄰!Z\n\ta🙂\t中🙂0Z🙂00㄰ힰꥠ㄰00文\n!\n文ힰZꥠ",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:35",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "9🙂㄰ꥠ?aZ?a!?!ꥠힰ文Zꥠ🙂a㄰ힰ文文!文0Z\t㄰中ꥠ🙂aꥠ中㄰文a\t\n0文ꥠ中Z99\n9㄰\n?㄰?\n文ힰ9文中90a🙂🙂文 Z🙂Z文中ꥠ🙂!ힰ09\naힰ\t㄰Zힰ?0ힰ文a!\n0aZ0\t文\na?ힰ090文🙂?中 9ꥠ!9文文!99\n 文ꥠ\t\t9a🙂🙂ꥠ9Z㄰ힰힰ9a㄰ힰ\n㄰!Z\n\ta🙂\t中🙂0Z🙂00㄰ힰꥠ㄰00文\n!\n文ힰZꥠ",
+      "maxChars": 0
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:35",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "9🙂㄰ꥠ?aZ?a!?!ꥠힰ文Zꥠ🙂a㄰ힰ文文!文0Z\t㄰中ꥠ🙂aꥠ中㄰文a\t\n0文ꥠ中Z99\n9㄰\n?㄰?\n文ힰ9文中90a🙂🙂文 Z🙂Z文中ꥠ🙂!ힰ09\naힰ\t㄰Zힰ?0ힰ文a!\n0aZ0\t文\na?ힰ090文🙂?中 9ꥠ!9文文!99\n 文ꥠ\t\t9a🙂🙂ꥠ9Z㄰ힰힰ9a㄰ힰ\n㄰!Z\n\ta🙂\t中🙂0Z🙂00㄰ힰꥠ㄰00文\n!\n文ힰZꥠ",
+      "maxChars": 0
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:35",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "9🙂㄰ꥠ?aZ?a!?!ꥠힰ文Zꥠ🙂a㄰ힰ文文!文0Z\t㄰中ꥠ🙂aꥠ中㄰文a\t\n0文ꥠ中Z99\n9㄰\n?㄰?\n文ힰ9文中90a🙂🙂文 Z🙂Z文中ꥠ🙂!ힰ09\naힰ\t㄰Zힰ?0ힰ文a!\n0aZ0\t文\na?ힰ090文🙂?中 9ꥠ!9文文!99\n 文ꥠ\t\t9a🙂🙂ꥠ9Z㄰ힰힰ9a㄰ힰ\n㄰!Z\n\ta🙂\t中🙂0Z🙂00㄰ힰꥠ㄰00文\n!\n文ힰZꥠ"
+    }
+  },
+  {
+    "id": "tokens.estimate:36",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": " \t9!ꥠ???Z 9 🙂9㄰㄰\t\n9 0\t\n  中a中9\t文Zힰ 0Z \n中\n! 文 Z 9!ꥠ中\ta㄰ꥠaa\t "
+    }
+  },
+  {
+    "id": "embedding.estimate:36",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": " \t9!ꥠ???Z 9 🙂9㄰㄰\t\n9 0\t\n  中a中9\t文Zힰ 0Z \n中\n! 文 Z 9!ꥠ中\ta㄰ꥠaa\t "
+    }
+  },
+  {
+    "id": "embedding.chunk:36",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": " \t9!ꥠ???Z 9 🙂9㄰㄰\t\n9 0\t\n  中a中9\t文Zힰ 0Z \n中\n! 文 Z 9!ꥠ中\ta㄰ꥠaa\t ",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:36",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": " \t9!ꥠ???Z 9 🙂9㄰㄰\t\n9 0\t\n  中a中9\t文Zힰ 0Z \n中\n! 文 Z 9!ꥠ中\ta㄰ꥠaa\t ",
+      "maxChars": 1
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:36",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": " \t9!ꥠ???Z 9 🙂9㄰㄰\t\n9 0\t\n  中a中9\t文Zힰ 0Z \n中\n! 文 Z 9!ꥠ中\ta㄰ꥠaa\t ",
+      "maxChars": 1
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:36",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": " \t9!ꥠ???Z 9 🙂9㄰㄰\t\n9 0\t\n  中a中9\t文Zힰ 0Z \n中\n! 文 Z 9!ꥠ中\ta㄰ꥠaa\t "
+    }
+  },
+  {
+    "id": "tokens.estimate:37",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "0a9?\n\n!文ꥠ0ꥠa0 🙂\n9\tZZ㄰文0ힰ!ힰ0\n9ힰힰ??Z\tꥠ ꥠ中㄰Zힰ?9?\t9ힰ 文中!\t中?a!0㄰!文中中🙂a㄰ힰ!?\n文\t㄰㄰?文Zힰ🙂文㄰🙂a\nힰ㄰Z㄰中?中9\n!!Za㄰㄰?文🙂㄰\t㄰!! 0中㄰中ힰ㄰Z文\n🙂文0!9!0🙂9㄰ힰ🙂!文㄰! 中中 \n"
+    }
+  },
+  {
+    "id": "embedding.estimate:37",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "0a9?\n\n!文ꥠ0ꥠa0 🙂\n9\tZZ㄰文0ힰ!ힰ0\n9ힰힰ??Z\tꥠ ꥠ中㄰Zힰ?9?\t9ힰ 文中!\t中?a!0㄰!文中中🙂a㄰ힰ!?\n文\t㄰㄰?文Zힰ🙂文㄰🙂a\nힰ㄰Z㄰中?中9\n!!Za㄰㄰?文🙂㄰\t㄰!! 0中㄰中ힰ㄰Z文\n🙂文0!9!0🙂9㄰ힰ🙂!文㄰! 中中 \n"
+    }
+  },
+  {
+    "id": "embedding.chunk:37",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "0a9?\n\n!文ꥠ0ꥠa0 🙂\n9\tZZ㄰文0ힰ!ힰ0\n9ힰힰ??Z\tꥠ ꥠ中㄰Zힰ?9?\t9ힰ 文中!\t中?a!0㄰!文中中🙂a㄰ힰ!?\n文\t㄰㄰?文Zힰ🙂文㄰🙂a\nힰ㄰Z㄰中?中9\n!!Za㄰㄰?文🙂㄰\t㄰!! 0中㄰中ힰ㄰Z文\n🙂文0!9!0🙂9㄰ힰ🙂!文㄰! 中中 \n",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:37",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "0a9?\n\n!文ꥠ0ꥠa0 🙂\n9\tZZ㄰文0ힰ!ힰ0\n9ힰힰ??Z\tꥠ ꥠ中㄰Zힰ?9?\t9ힰ 文中!\t中?a!0㄰!文中中🙂a㄰ힰ!?\n文\t㄰㄰?文Zힰ🙂文㄰🙂a\nힰ㄰Z㄰中?中9\n!!Za㄰㄰?文🙂㄰\t㄰!! 0中㄰中ힰ㄰Z文\n🙂文0!9!0🙂9㄰ힰ🙂!文㄰! 中中 \n",
+      "maxChars": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:37",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "0a9?\n\n!文ꥠ0ꥠa0 🙂\n9\tZZ㄰文0ힰ!ힰ0\n9ힰힰ??Z\tꥠ ꥠ中㄰Zힰ?9?\t9ힰ 文中!\t中?a!0㄰!文中中🙂a㄰ힰ!?\n文\t㄰㄰?文Zힰ🙂文㄰🙂a\nힰ㄰Z㄰中?中9\n!!Za㄰㄰?文🙂㄰\t㄰!! 0中㄰中ힰ㄰Z文\n🙂文0!9!0🙂9㄰ힰ🙂!文㄰! 中中 \n",
+      "maxChars": 2
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:37",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "0a9?\n\n!文ꥠ0ꥠa0 🙂\n9\tZZ㄰文0ힰ!ힰ0\n9ힰힰ??Z\tꥠ ꥠ中㄰Zힰ?9?\t9ힰ 文中!\t中?a!0㄰!文中中🙂a㄰ힰ!?\n文\t㄰㄰?文Zힰ🙂文㄰🙂a\nힰ㄰Z㄰中?中9\n!!Za㄰㄰?文🙂㄰\t㄰!! 0中㄰中ힰ㄰Z文\n🙂文0!9!0🙂9㄰ힰ🙂!文㄰! 中中 \n"
+    }
+  },
+  {
+    "id": "tokens.estimate:38",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "\ta🙂🙂文\n9🙂文0ꥠ🙂9Z\tZ㄰! \tZ!?\t文a?文aힰힰ ?中\t文ힰힰ0!Z Z 文🙂文ꥠ  文a\n\t🙂中 \n!Z\nힰ\t文!aힰ!中中文a9🙂a🙂9\n!㄰0\n文9!a!!?ꥠ 中90!0㄰9ힰ中\n㄰a?㄰文㄰?\nힰ!0?\n中㄰!"
+    }
+  },
+  {
+    "id": "embedding.estimate:38",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "\ta🙂🙂文\n9🙂文0ꥠ🙂9Z\tZ㄰! \tZ!?\t文a?文aힰힰ ?中\t文ힰힰ0!Z Z 文🙂文ꥠ  文a\n\t🙂中 \n!Z\nힰ\t文!aힰ!中中文a9🙂a🙂9\n!㄰0\n文9!a!!?ꥠ 中90!0㄰9ힰ中\n㄰a?㄰文㄰?\nힰ!0?\n中㄰!"
+    }
+  },
+  {
+    "id": "embedding.chunk:38",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "\ta🙂🙂文\n9🙂文0ꥠ🙂9Z\tZ㄰! \tZ!?\t文a?文aힰힰ ?中\t文ힰힰ0!Z Z 文🙂文ꥠ  文a\n\t🙂中 \n!Z\nힰ\t文!aힰ!中中文a9🙂a🙂9\n!㄰0\n文9!a!!?ꥠ 中90!0㄰9ힰ中\n㄰a?㄰文㄰?\nힰ!0?\n中㄰!",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:38",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "\ta🙂🙂文\n9🙂文0ꥠ🙂9Z\tZ㄰! \tZ!?\t文a?文aힰힰ ?中\t文ힰힰ0!Z Z 文🙂文ꥠ  文a\n\t🙂中 \n!Z\nힰ\t文!aힰ!中中文a9🙂a🙂9\n!㄰0\n文9!a!!?ꥠ 中90!0㄰9ힰ中\n㄰a?㄰文㄰?\nힰ!0?\n中㄰!",
+      "maxChars": 3
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:38",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "\ta🙂🙂文\n9🙂文0ꥠ🙂9Z\tZ㄰! \tZ!?\t文a?文aힰힰ ?中\t文ힰힰ0!Z Z 文🙂文ꥠ  文a\n\t🙂中 \n!Z\nힰ\t文!aힰ!中中文a9🙂a🙂9\n!㄰0\n文9!a!!?ꥠ 中90!0㄰9ힰ中\n㄰a?㄰文㄰?\nힰ!0?\n中㄰!",
+      "maxChars": 3
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:38",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "\ta🙂🙂文\n9🙂文0ꥠ🙂9Z\tZ㄰! \tZ!?\t文a?文aힰힰ ?中\t文ힰힰ0!Z Z 文🙂文ꥠ  文a\n\t🙂中 \n!Z\nힰ\t文!aힰ!中中文a9🙂a🙂9\n!㄰0\n文9!a!!?ꥠ 中90!0㄰9ힰ中\n㄰a?㄰文㄰?\nힰ!0?\n中㄰!"
+    }
+  },
+  {
+    "id": "tokens.estimate:39",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "0Z\nꥠ \nힰ9?ힰ?9ힰ!? \t\n!?9?文Z! !ꥠ🙂a 🙂!ힰ9ힰ0\n0Z中㄰ힰa文9Zꥠ!\n🙂9 ힰ中文?\tꥠힰ\nힰ文㄰中文㄰中㄰!中\n9🙂Z9a\t\n🙂!ꥠꥠ\nힰ\n 中!㄰Zaaꥠ0Z中🙂🙂ꥠힰꥠaꥠ?a\t!\nힰ中0ힰ!\naa中9ꥠ中Z!ꥠ文 🙂ꥠ\t9?中㄰0ꥠa0Z\t 中ힰ中文🙂㄰㄰9🙂文!aZ ?🙂0文aZaힰ9ힰ!a9ꥠa9文\n!0ꥠ文09\n?㄰ힰ㄰9\n!🙂ힰ㄰9\t🙂ꥠ 文??🙂aꥠ 9🙂ꥠZힰ㄰Zힰ?ꥠ9中㄰!Z\n🙂㄰中ꥠ!Za! a 文9Zힰ🙂\n🙂9"
+    }
+  },
+  {
+    "id": "embedding.estimate:39",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "0Z\nꥠ \nힰ9?ힰ?9ힰ!? \t\n!?9?文Z! !ꥠ🙂a 🙂!ힰ9ힰ0\n0Z中㄰ힰa文9Zꥠ!\n🙂9 ힰ中文?\tꥠힰ\nힰ文㄰中文㄰中㄰!中\n9🙂Z9a\t\n🙂!ꥠꥠ\nힰ\n 中!㄰Zaaꥠ0Z中🙂🙂ꥠힰꥠaꥠ?a\t!\nힰ中0ힰ!\naa中9ꥠ中Z!ꥠ文 🙂ꥠ\t9?中㄰0ꥠa0Z\t 中ힰ中文🙂㄰㄰9🙂文!aZ ?🙂0文aZaힰ9ힰ!a9ꥠa9文\n!0ꥠ文09\n?㄰ힰ㄰9\n!🙂ힰ㄰9\t🙂ꥠ 文??🙂aꥠ 9🙂ꥠZힰ㄰Zힰ?ꥠ9中㄰!Z\n🙂㄰中ꥠ!Za! a 文9Zힰ🙂\n🙂9"
+    }
+  },
+  {
+    "id": "embedding.chunk:39",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "0Z\nꥠ \nힰ9?ힰ?9ힰ!? \t\n!?9?文Z! !ꥠ🙂a 🙂!ힰ9ힰ0\n0Z中㄰ힰa文9Zꥠ!\n🙂9 ힰ中文?\tꥠힰ\nힰ文㄰中文㄰中㄰!中\n9🙂Z9a\t\n🙂!ꥠꥠ\nힰ\n 中!㄰Zaaꥠ0Z中🙂🙂ꥠힰꥠaꥠ?a\t!\nힰ中0ힰ!\naa中9ꥠ中Z!ꥠ文 🙂ꥠ\t9?中㄰0ꥠa0Z\t 中ힰ中文🙂㄰㄰9🙂文!aZ ?🙂0文aZaힰ9ힰ!a9ꥠa9文\n!0ꥠ文09\n?㄰ힰ㄰9\n!🙂ힰ㄰9\t🙂ꥠ 文??🙂aꥠ 9🙂ꥠZힰ㄰Zힰ?ꥠ9中㄰!Z\n🙂㄰中ꥠ!Za! a 文9Zힰ🙂\n🙂9",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:39",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "0Z\nꥠ \nힰ9?ힰ?9ힰ!? \t\n!?9?文Z! !ꥠ🙂a 🙂!ힰ9ힰ0\n0Z中㄰ힰa文9Zꥠ!\n🙂9 ힰ中文?\tꥠힰ\nힰ文㄰中文㄰中㄰!中\n9🙂Z9a\t\n🙂!ꥠꥠ\nힰ\n 中!㄰Zaaꥠ0Z中🙂🙂ꥠힰꥠaꥠ?a\t!\nힰ中0ힰ!\naa中9ꥠ中Z!ꥠ文 🙂ꥠ\t9?中㄰0ꥠa0Z\t 中ힰ中文🙂㄰㄰9🙂文!aZ ?🙂0文aZaힰ9ힰ!a9ꥠa9文\n!0ꥠ文09\n?㄰ힰ㄰9\n!🙂ힰ㄰9\t🙂ꥠ 文??🙂aꥠ 9🙂ꥠZힰ㄰Zힰ?ꥠ9中㄰!Z\n🙂㄰中ꥠ!Za! a 文9Zힰ🙂\n🙂9",
+      "maxChars": 4
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:39",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "0Z\nꥠ \nힰ9?ힰ?9ힰ!? \t\n!?9?文Z! !ꥠ🙂a 🙂!ힰ9ힰ0\n0Z中㄰ힰa文9Zꥠ!\n🙂9 ힰ中文?\tꥠힰ\nힰ文㄰中文㄰中㄰!中\n9🙂Z9a\t\n🙂!ꥠꥠ\nힰ\n 中!㄰Zaaꥠ0Z中🙂🙂ꥠힰꥠaꥠ?a\t!\nힰ中0ힰ!\naa中9ꥠ中Z!ꥠ文 🙂ꥠ\t9?中㄰0ꥠa0Z\t 中ힰ中文🙂㄰㄰9🙂文!aZ ?🙂0文aZaힰ9ힰ!a9ꥠa9文\n!0ꥠ文09\n?㄰ힰ㄰9\n!🙂ힰ㄰9\t🙂ꥠ 文??🙂aꥠ 9🙂ꥠZힰ㄰Zힰ?ꥠ9中㄰!Z\n🙂㄰中ꥠ!Za! a 文9Zힰ🙂\n🙂9",
+      "maxChars": 4
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:39",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "0Z\nꥠ \nힰ9?ힰ?9ힰ!? \t\n!?9?文Z! !ꥠ🙂a 🙂!ힰ9ힰ0\n0Z中㄰ힰa文9Zꥠ!\n🙂9 ힰ中文?\tꥠힰ\nힰ文㄰中文㄰中㄰!中\n9🙂Z9a\t\n🙂!ꥠꥠ\nힰ\n 中!㄰Zaaꥠ0Z中🙂🙂ꥠힰꥠaꥠ?a\t!\nힰ中0ힰ!\naa中9ꥠ中Z!ꥠ文 🙂ꥠ\t9?中㄰0ꥠa0Z\t 中ힰ中文🙂㄰㄰9🙂文!aZ ?🙂0文aZaힰ9ힰ!a9ꥠa9文\n!0ꥠ文09\n?㄰ힰ㄰9\n!🙂ힰ㄰9\t🙂ꥠ 文??🙂aꥠ 9🙂ꥠZힰ㄰Zힰ?ꥠ9中㄰!Z\n🙂㄰中ꥠ!Za! a 文9Zힰ🙂\n🙂9"
+    }
+  },
+  {
+    "id": "tokens.estimate:40",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "🙂0 ㄰ힰ🙂a\n🙂🙂\t0🙂中ힰ文 \n\n00ힰ\t\n!a㄰!Z\n文Za🙂Za ힰ文 \t ! 中?0\nힰaힰ中🙂9ힰꥠ 文ꥠ🙂文!㄰\nힰ9文中9㄰文㄰aa\t㄰🙂🙂? 中㄰\taa?ZZ0中\t\n\t0🙂ꥠ ? 中文中\n ힰ0!\t9\n!文中a㄰文99中🙂ힰힰힰ\t0aZ9中🙂0ힰ㄰㄰!㄰文ힰ\n\t中中🙂?ꥠ?a 🙂Zꥠ0\t文aힰ🙂\n 文🙂文㄰ힰힰa!0文9ힰꥠ 文a㄰0ꥠ0文!!0文中㄰文中!a\n中a㄰9\n中a\t?ꥠZ🙂ꥠZ文中90?!!?文中?㄰Z文?㄰"
+    }
+  },
+  {
+    "id": "embedding.estimate:40",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "🙂0 ㄰ힰ🙂a\n🙂🙂\t0🙂中ힰ文 \n\n00ힰ\t\n!a㄰!Z\n文Za🙂Za ힰ文 \t ! 中?0\nힰaힰ中🙂9ힰꥠ 文ꥠ🙂文!㄰\nힰ9文中9㄰文㄰aa\t㄰🙂🙂? 中㄰\taa?ZZ0中\t\n\t0🙂ꥠ ? 中文中\n ힰ0!\t9\n!文中a㄰文99中🙂ힰힰힰ\t0aZ9中🙂0ힰ㄰㄰!㄰文ힰ\n\t中中🙂?ꥠ?a 🙂Zꥠ0\t文aힰ🙂\n 文🙂文㄰ힰힰa!0文9ힰꥠ 文a㄰0ꥠ0文!!0文中㄰文中!a\n中a㄰9\n中a\t?ꥠZ🙂ꥠZ文中90?!!?文中?㄰Z文?㄰"
+    }
+  },
+  {
+    "id": "embedding.chunk:40",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "🙂0 ㄰ힰ🙂a\n🙂🙂\t0🙂中ힰ文 \n\n00ힰ\t\n!a㄰!Z\n文Za🙂Za ힰ文 \t ! 中?0\nힰaힰ中🙂9ힰꥠ 文ꥠ🙂文!㄰\nힰ9文中9㄰文㄰aa\t㄰🙂🙂? 中㄰\taa?ZZ0中\t\n\t0🙂ꥠ ? 中文中\n ힰ0!\t9\n!文中a㄰文99中🙂ힰힰힰ\t0aZ9中🙂0ힰ㄰㄰!㄰文ힰ\n\t中中🙂?ꥠ?a 🙂Zꥠ0\t文aힰ🙂\n 文🙂文㄰ힰힰa!0文9ힰꥠ 文a㄰0ꥠ0文!!0文中㄰文中!a\n中a㄰9\n中a\t?ꥠZ🙂ꥠZ文中90?!!?文中?㄰Z文?㄰",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:40",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "🙂0 ㄰ힰ🙂a\n🙂🙂\t0🙂中ힰ文 \n\n00ힰ\t\n!a㄰!Z\n文Za🙂Za ힰ文 \t ! 中?0\nힰaힰ中🙂9ힰꥠ 文ꥠ🙂文!㄰\nힰ9文中9㄰文㄰aa\t㄰🙂🙂? 中㄰\taa?ZZ0中\t\n\t0🙂ꥠ ? 中文中\n ힰ0!\t9\n!文中a㄰文99中🙂ힰힰힰ\t0aZ9中🙂0ힰ㄰㄰!㄰文ힰ\n\t中中🙂?ꥠ?a 🙂Zꥠ0\t文aힰ🙂\n 文🙂文㄰ힰힰa!0文9ힰꥠ 文a㄰0ꥠ0文!!0文中㄰文中!a\n中a㄰9\n中a\t?ꥠZ🙂ꥠZ文中90?!!?文中?㄰Z文?㄰",
+      "maxChars": 0
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:40",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "🙂0 ㄰ힰ🙂a\n🙂🙂\t0🙂中ힰ文 \n\n00ힰ\t\n!a㄰!Z\n文Za🙂Za ힰ文 \t ! 中?0\nힰaힰ中🙂9ힰꥠ 文ꥠ🙂文!㄰\nힰ9文中9㄰文㄰aa\t㄰🙂🙂? 中㄰\taa?ZZ0中\t\n\t0🙂ꥠ ? 中文中\n ힰ0!\t9\n!文中a㄰文99中🙂ힰힰힰ\t0aZ9中🙂0ힰ㄰㄰!㄰文ힰ\n\t中中🙂?ꥠ?a 🙂Zꥠ0\t文aힰ🙂\n 文🙂文㄰ힰힰa!0文9ힰꥠ 文a㄰0ꥠ0文!!0文中㄰文中!a\n中a㄰9\n中a\t?ꥠZ🙂ꥠZ文中90?!!?文中?㄰Z文?㄰",
+      "maxChars": 0
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:40",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "🙂0 ㄰ힰ🙂a\n🙂🙂\t0🙂中ힰ文 \n\n00ힰ\t\n!a㄰!Z\n文Za🙂Za ힰ文 \t ! 中?0\nힰaힰ中🙂9ힰꥠ 文ꥠ🙂文!㄰\nힰ9文中9㄰文㄰aa\t㄰🙂🙂? 中㄰\taa?ZZ0中\t\n\t0🙂ꥠ ? 中文中\n ힰ0!\t9\n!文中a㄰文99中🙂ힰힰힰ\t0aZ9中🙂0ힰ㄰㄰!㄰文ힰ\n\t中中🙂?ꥠ?a 🙂Zꥠ0\t文aힰ🙂\n 文🙂文㄰ힰힰa!0文9ힰꥠ 文a㄰0ꥠ0文!!0文中㄰文中!a\n中a㄰9\n中a\t?ꥠZ🙂ꥠZ文中90?!!?文中?㄰Z文?㄰"
+    }
+  },
+  {
+    "id": "tokens.estimate:41",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "0ZZ  !ힰ0中ꥠ ㄰ \n?ힰa\t0文ꥠ9?0ꥠힰힰ !9文!ꥠ0ꥠ?中a\t0!a0\naa\t0a! \t?中ힰ㄰"
+    }
+  },
+  {
+    "id": "embedding.estimate:41",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "0ZZ  !ힰ0中ꥠ ㄰ \n?ힰa\t0文ꥠ9?0ꥠힰힰ !9文!ꥠ0ꥠ?中a\t0!a0\naa\t0a! \t?中ힰ㄰"
+    }
+  },
+  {
+    "id": "embedding.chunk:41",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "0ZZ  !ힰ0中ꥠ ㄰ \n?ힰa\t0文ꥠ9?0ꥠힰힰ !9文!ꥠ0ꥠ?中a\t0!a0\naa\t0a! \t?中ힰ㄰",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:41",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "0ZZ  !ힰ0中ꥠ ㄰ \n?ힰa\t0文ꥠ9?0ꥠힰힰ !9文!ꥠ0ꥠ?中a\t0!a0\naa\t0a! \t?中ힰ㄰",
+      "maxChars": 1
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:41",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "0ZZ  !ힰ0中ꥠ ㄰ \n?ힰa\t0文ꥠ9?0ꥠힰힰ !9文!ꥠ0ꥠ?中a\t0!a0\naa\t0a! \t?中ힰ㄰",
+      "maxChars": 1
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:41",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "0ZZ  !ힰ0中ꥠ ㄰ \n?ힰa\t0文ꥠ9?0ꥠힰힰ !9文!ꥠ0ꥠ?中a\t0!a0\naa\t0a! \t?中ힰ㄰"
+    }
+  },
+  {
+    "id": "tokens.estimate:42",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "\taꥠ!Z文ힰ!?中文Zꥠ中ힰZ中9?0🙂\n\t9a!\t0中\ta\t文ힰꥠ文ힰ 9Z 🙂中ힰ中ힰꥠ中中?9🙂ꥠ㄰文🙂㄰9ZZ㄰\nZힰ文?ힰZ㄰!Za㄰ꥠ9?㄰!Z?a? ꥠaZ\tZ9 0 ?Z?9\t\n\n\n中中 🙂\n9文9文㄰ꥠꥠ㄰\t🙂0㄰文!0??中文!\t㄰\t文中㄰ꥠꥠ㄰中!中ꥠ0\n文ꥠ\nZ?!㄰a\tꥠ?ힰ0 文ힰa㄰ힰ\t?ꥠힰ㄰🙂?\nZ中 文ꥠ9ힰ 0ힰ?!\na㄰aꥠ🙂\na\t中! ? 文\t?\t\nힰ!ힰ\t\t 文ힰ "
+    }
+  },
+  {
+    "id": "embedding.estimate:42",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "\taꥠ!Z文ힰ!?中文Zꥠ中ힰZ中9?0🙂\n\t9a!\t0中\ta\t文ힰꥠ文ힰ 9Z 🙂中ힰ中ힰꥠ中中?9🙂ꥠ㄰文🙂㄰9ZZ㄰\nZힰ文?ힰZ㄰!Za㄰ꥠ9?㄰!Z?a? ꥠaZ\tZ9 0 ?Z?9\t\n\n\n中中 🙂\n9文9文㄰ꥠꥠ㄰\t🙂0㄰文!0??中文!\t㄰\t文中㄰ꥠꥠ㄰中!中ꥠ0\n文ꥠ\nZ?!㄰a\tꥠ?ힰ0 文ힰa㄰ힰ\t?ꥠힰ㄰🙂?\nZ中 文ꥠ9ힰ 0ힰ?!\na㄰aꥠ🙂\na\t中! ? 文\t?\t\nힰ!ힰ\t\t 文ힰ "
+    }
+  },
+  {
+    "id": "embedding.chunk:42",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "\taꥠ!Z文ힰ!?中文Zꥠ中ힰZ中9?0🙂\n\t9a!\t0中\ta\t文ힰꥠ文ힰ 9Z 🙂中ힰ中ힰꥠ中中?9🙂ꥠ㄰文🙂㄰9ZZ㄰\nZힰ文?ힰZ㄰!Za㄰ꥠ9?㄰!Z?a? ꥠaZ\tZ9 0 ?Z?9\t\n\n\n中中 🙂\n9文9文㄰ꥠꥠ㄰\t🙂0㄰文!0??中文!\t㄰\t文中㄰ꥠꥠ㄰中!中ꥠ0\n文ꥠ\nZ?!㄰a\tꥠ?ힰ0 文ힰa㄰ힰ\t?ꥠힰ㄰🙂?\nZ中 文ꥠ9ힰ 0ힰ?!\na㄰aꥠ🙂\na\t中! ? 文\t?\t\nힰ!ힰ\t\t 文ힰ ",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:42",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "\taꥠ!Z文ힰ!?中文Zꥠ中ힰZ中9?0🙂\n\t9a!\t0中\ta\t文ힰꥠ文ힰ 9Z 🙂中ힰ中ힰꥠ中中?9🙂ꥠ㄰文🙂㄰9ZZ㄰\nZힰ文?ힰZ㄰!Za㄰ꥠ9?㄰!Z?a? ꥠaZ\tZ9 0 ?Z?9\t\n\n\n中中 🙂\n9文9文㄰ꥠꥠ㄰\t🙂0㄰文!0??中文!\t㄰\t文中㄰ꥠꥠ㄰中!中ꥠ0\n文ꥠ\nZ?!㄰a\tꥠ?ힰ0 文ힰa㄰ힰ\t?ꥠힰ㄰🙂?\nZ中 文ꥠ9ힰ 0ힰ?!\na㄰aꥠ🙂\na\t中! ? 文\t?\t\nힰ!ힰ\t\t 文ힰ ",
+      "maxChars": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:42",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "\taꥠ!Z文ힰ!?中文Zꥠ中ힰZ中9?0🙂\n\t9a!\t0中\ta\t文ힰꥠ文ힰ 9Z 🙂中ힰ中ힰꥠ中中?9🙂ꥠ㄰文🙂㄰9ZZ㄰\nZힰ文?ힰZ㄰!Za㄰ꥠ9?㄰!Z?a? ꥠaZ\tZ9 0 ?Z?9\t\n\n\n中中 🙂\n9文9文㄰ꥠꥠ㄰\t🙂0㄰文!0??中文!\t㄰\t文中㄰ꥠꥠ㄰中!中ꥠ0\n文ꥠ\nZ?!㄰a\tꥠ?ힰ0 文ힰa㄰ힰ\t?ꥠힰ㄰🙂?\nZ中 文ꥠ9ힰ 0ힰ?!\na㄰aꥠ🙂\na\t中! ? 文\t?\t\nힰ!ힰ\t\t 文ힰ ",
+      "maxChars": 2
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:42",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "\taꥠ!Z文ힰ!?中文Zꥠ中ힰZ中9?0🙂\n\t9a!\t0中\ta\t文ힰꥠ文ힰ 9Z 🙂中ힰ中ힰꥠ中中?9🙂ꥠ㄰文🙂㄰9ZZ㄰\nZힰ文?ힰZ㄰!Za㄰ꥠ9?㄰!Z?a? ꥠaZ\tZ9 0 ?Z?9\t\n\n\n中中 🙂\n9文9文㄰ꥠꥠ㄰\t🙂0㄰文!0??中文!\t㄰\t文中㄰ꥠꥠ㄰中!中ꥠ0\n文ꥠ\nZ?!㄰a\tꥠ?ힰ0 文ힰa㄰ힰ\t?ꥠힰ㄰🙂?\nZ中 文ꥠ9ힰ 0ힰ?!\na㄰aꥠ🙂\na\t中! ? 文\t?\t\nힰ!ힰ\t\t 文ힰ "
+    }
+  },
+  {
+    "id": "tokens.estimate:43",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "Z0🙂ힰ00!Z!ZZ中\n\nZ0Z文ힰ㄰?中"
+    }
+  },
+  {
+    "id": "embedding.estimate:43",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "Z0🙂ힰ00!Z!ZZ中\n\nZ0Z文ힰ㄰?中"
+    }
+  },
+  {
+    "id": "embedding.chunk:43",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "Z0🙂ힰ00!Z!ZZ中\n\nZ0Z文ힰ㄰?中",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:43",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "Z0🙂ힰ00!Z!ZZ中\n\nZ0Z文ힰ㄰?中",
+      "maxChars": 3
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:43",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "Z0🙂ힰ00!Z!ZZ中\n\nZ0Z文ힰ㄰?中",
+      "maxChars": 3
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:43",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "Z0🙂ힰ00!Z!ZZ中\n\nZ0Z文ힰ㄰?中"
+    }
+  },
+  {
+    "id": "tokens.estimate:44",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "?中?0Z  0\n0\n9ꥠ09ꥠꥠ㄰ힰ!9\t9文中ꥠ\naa\t90a\tꥠힰힰ?0文aힰa"
+    }
+  },
+  {
+    "id": "embedding.estimate:44",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "?中?0Z  0\n0\n9ꥠ09ꥠꥠ㄰ힰ!9\t9文中ꥠ\naa\t90a\tꥠힰힰ?0文aힰa"
+    }
+  },
+  {
+    "id": "embedding.chunk:44",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "?中?0Z  0\n0\n9ꥠ09ꥠꥠ㄰ힰ!9\t9文中ꥠ\naa\t90a\tꥠힰힰ?0文aힰa",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:44",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "?中?0Z  0\n0\n9ꥠ09ꥠꥠ㄰ힰ!9\t9文中ꥠ\naa\t90a\tꥠힰힰ?0文aힰa",
+      "maxChars": 4
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:44",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "?中?0Z  0\n0\n9ꥠ09ꥠꥠ㄰ힰ!9\t9文中ꥠ\naa\t90a\tꥠힰힰ?0文aힰa",
+      "maxChars": 4
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:44",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "?中?0Z  0\n0\n9ꥠ09ꥠꥠ㄰ힰ!9\t9文中ꥠ\naa\t90a\tꥠힰힰ?0文aힰa"
+    }
+  },
+  {
+    "id": "tokens.estimate:45",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "ꥠ?中a\n🙂00?文Z\t中\t㄰\t ꥠ🙂ꥠ??Z!a9中9aaa?\t\tZZ中9ꥠ!中9 文ꥠ\n!ힰ!\n㄰ꥠ\t🙂ힰ0 \n9a\n🙂 🙂文0\n🙂\n中9? 0\t🙂ꥠ !\t🙂🙂9?9\nꥠ9?ꥠZ!Z㄰\n\n🙂ힰ0\n\t中中\t文?🙂🙂🙂0!\tꥠ ힰ中Z??   \t中ZZZ\n\n\n文!ힰ㄰99文\n中"
+    }
+  },
+  {
+    "id": "embedding.estimate:45",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "ꥠ?中a\n🙂00?文Z\t中\t㄰\t ꥠ🙂ꥠ??Z!a9中9aaa?\t\tZZ中9ꥠ!中9 文ꥠ\n!ힰ!\n㄰ꥠ\t🙂ힰ0 \n9a\n🙂 🙂文0\n🙂\n中9? 0\t🙂ꥠ !\t🙂🙂9?9\nꥠ9?ꥠZ!Z㄰\n\n🙂ힰ0\n\t中中\t文?🙂🙂🙂0!\tꥠ ힰ中Z??   \t中ZZZ\n\n\n文!ힰ㄰99文\n中"
+    }
+  },
+  {
+    "id": "embedding.chunk:45",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "ꥠ?中a\n🙂00?文Z\t中\t㄰\t ꥠ🙂ꥠ??Z!a9中9aaa?\t\tZZ中9ꥠ!中9 文ꥠ\n!ힰ!\n㄰ꥠ\t🙂ힰ0 \n9a\n🙂 🙂文0\n🙂\n中9? 0\t🙂ꥠ !\t🙂🙂9?9\nꥠ9?ꥠZ!Z㄰\n\n🙂ힰ0\n\t中中\t文?🙂🙂🙂0!\tꥠ ힰ中Z??   \t中ZZZ\n\n\n文!ힰ㄰99文\n中",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:45",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "ꥠ?中a\n🙂00?文Z\t中\t㄰\t ꥠ🙂ꥠ??Z!a9中9aaa?\t\tZZ中9ꥠ!中9 文ꥠ\n!ힰ!\n㄰ꥠ\t🙂ힰ0 \n9a\n🙂 🙂文0\n🙂\n中9? 0\t🙂ꥠ !\t🙂🙂9?9\nꥠ9?ꥠZ!Z㄰\n\n🙂ힰ0\n\t中中\t文?🙂🙂🙂0!\tꥠ ힰ中Z??   \t中ZZZ\n\n\n文!ힰ㄰99文\n中",
+      "maxChars": 0
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:45",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "ꥠ?中a\n🙂00?文Z\t中\t㄰\t ꥠ🙂ꥠ??Z!a9中9aaa?\t\tZZ中9ꥠ!中9 文ꥠ\n!ힰ!\n㄰ꥠ\t🙂ힰ0 \n9a\n🙂 🙂文0\n🙂\n中9? 0\t🙂ꥠ !\t🙂🙂9?9\nꥠ9?ꥠZ!Z㄰\n\n🙂ힰ0\n\t中中\t文?🙂🙂🙂0!\tꥠ ힰ中Z??   \t中ZZZ\n\n\n文!ힰ㄰99文\n中",
+      "maxChars": 0
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:45",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "ꥠ?中a\n🙂00?文Z\t中\t㄰\t ꥠ🙂ꥠ??Z!a9中9aaa?\t\tZZ中9ꥠ!中9 文ꥠ\n!ힰ!\n㄰ꥠ\t🙂ힰ0 \n9a\n🙂 🙂文0\n🙂\n中9? 0\t🙂ꥠ !\t🙂🙂9?9\nꥠ9?ꥠZ!Z㄰\n\n🙂ힰ0\n\t中中\t文?🙂🙂🙂0!\tꥠ ힰ中Z??   \t中ZZZ\n\n\n文!ힰ㄰99文\n中"
+    }
+  },
+  {
+    "id": "tokens.estimate:46",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "🙂\t\t0 ꥠ中中\tꥠ🙂ꥠꥠ㄰00!🙂文ꥠZ文Z0文ힰힰ㄰中?0ꥠ文0🙂9文\t🙂🙂㄰0?ힰ🙂Zힰ㄰!0!\t?🙂\na㄰\t中🙂9\tꥠ🙂Z\na!\tZ\n㄰ ힰZ文中a9 Z Z文a🙂ힰ a㄰?ZZ\t文9Z中9ZZaZ🙂9\t\n!ힰힰ㄰a中\t 文?a? ꥠ中文㄰?㄰㄰\t!99文中9㄰"
+    }
+  },
+  {
+    "id": "embedding.estimate:46",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "🙂\t\t0 ꥠ中中\tꥠ🙂ꥠꥠ㄰00!🙂文ꥠZ文Z0文ힰힰ㄰中?0ꥠ文0🙂9文\t🙂🙂㄰0?ힰ🙂Zힰ㄰!0!\t?🙂\na㄰\t中🙂9\tꥠ🙂Z\na!\tZ\n㄰ ힰZ文中a9 Z Z文a🙂ힰ a㄰?ZZ\t文9Z中9ZZaZ🙂9\t\n!ힰힰ㄰a中\t 文?a? ꥠ中文㄰?㄰㄰\t!99文中9㄰"
+    }
+  },
+  {
+    "id": "embedding.chunk:46",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "🙂\t\t0 ꥠ中中\tꥠ🙂ꥠꥠ㄰00!🙂文ꥠZ文Z0文ힰힰ㄰中?0ꥠ文0🙂9文\t🙂🙂㄰0?ힰ🙂Zힰ㄰!0!\t?🙂\na㄰\t中🙂9\tꥠ🙂Z\na!\tZ\n㄰ ힰZ文中a9 Z Z文a🙂ힰ a㄰?ZZ\t文9Z中9ZZaZ🙂9\t\n!ힰힰ㄰a中\t 文?a? ꥠ中文㄰?㄰㄰\t!99文中9㄰",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:46",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "🙂\t\t0 ꥠ中中\tꥠ🙂ꥠꥠ㄰00!🙂文ꥠZ文Z0文ힰힰ㄰中?0ꥠ文0🙂9文\t🙂🙂㄰0?ힰ🙂Zힰ㄰!0!\t?🙂\na㄰\t中🙂9\tꥠ🙂Z\na!\tZ\n㄰ ힰZ文中a9 Z Z文a🙂ힰ a㄰?ZZ\t文9Z中9ZZaZ🙂9\t\n!ힰힰ㄰a中\t 文?a? ꥠ中文㄰?㄰㄰\t!99文中9㄰",
+      "maxChars": 1
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:46",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "🙂\t\t0 ꥠ中中\tꥠ🙂ꥠꥠ㄰00!🙂文ꥠZ文Z0文ힰힰ㄰中?0ꥠ文0🙂9文\t🙂🙂㄰0?ힰ🙂Zힰ㄰!0!\t?🙂\na㄰\t中🙂9\tꥠ🙂Z\na!\tZ\n㄰ ힰZ文中a9 Z Z文a🙂ힰ a㄰?ZZ\t文9Z中9ZZaZ🙂9\t\n!ힰힰ㄰a中\t 文?a? ꥠ中文㄰?㄰㄰\t!99文中9㄰",
+      "maxChars": 1
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:46",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "🙂\t\t0 ꥠ中中\tꥠ🙂ꥠꥠ㄰00!🙂文ꥠZ文Z0文ힰힰ㄰中?0ꥠ文0🙂9文\t🙂🙂㄰0?ힰ🙂Zힰ㄰!0!\t?🙂\na㄰\t中🙂9\tꥠ🙂Z\na!\tZ\n㄰ ힰZ文中a9 Z Z文a🙂ힰ a㄰?ZZ\t文9Z中9ZZaZ🙂9\t\n!ힰힰ㄰a中\t 文?a? ꥠ中文㄰?㄰㄰\t!99文中9㄰"
+    }
+  },
+  {
+    "id": "tokens.estimate:47",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "!Z?99中 a9文9!?aힰ9ꥠaꥠ? 0?\t文0\tꥠ? 0中ꥠ!0ힰힰ\tZ㄰ힰ中a\n🙂!9?ꥠ?a\ta0?文a ! \t中ꥠ㄰00文9a中0 ힰ0🙂!9🙂09\t文\n?㄰0文! 0㄰?中㄰9中0ꥠ?9ꥠ🙂🙂\t\nꥠ9a ㄰文\n\nZ\n中\t?\t0aꥠ文 文ힰ\n?9ힰ㄰!中 🙂!0a\t中中!文ꥠ!\n\tZa a9ꥠ㄰文 !中 aZ 文ꥠZ9?9ꥠ文\n㄰ힰ🙂🙂99a \nꥠ中!ힰꥠ文00🙂 ?ꥠힰ ?㄰ힰa㄰ힰ0\n9🙂!Z\tힰힰ🙂\t\na🙂\nힰힰힰa!ꥠ ꥠ㄰?Zힰꥠa🙂a0?a\n"
+    }
+  },
+  {
+    "id": "embedding.estimate:47",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "!Z?99中 a9文9!?aힰ9ꥠaꥠ? 0?\t文0\tꥠ? 0中ꥠ!0ힰힰ\tZ㄰ힰ中a\n🙂!9?ꥠ?a\ta0?文a ! \t中ꥠ㄰00文9a中0 ힰ0🙂!9🙂09\t文\n?㄰0文! 0㄰?中㄰9中0ꥠ?9ꥠ🙂🙂\t\nꥠ9a ㄰文\n\nZ\n中\t?\t0aꥠ文 文ힰ\n?9ힰ㄰!中 🙂!0a\t中中!文ꥠ!\n\tZa a9ꥠ㄰文 !中 aZ 文ꥠZ9?9ꥠ文\n㄰ힰ🙂🙂99a \nꥠ中!ힰꥠ文00🙂 ?ꥠힰ ?㄰ힰa㄰ힰ0\n9🙂!Z\tힰힰ🙂\t\na🙂\nힰힰힰa!ꥠ ꥠ㄰?Zힰꥠa🙂a0?a\n"
+    }
+  },
+  {
+    "id": "embedding.chunk:47",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "!Z?99中 a9文9!?aힰ9ꥠaꥠ? 0?\t文0\tꥠ? 0中ꥠ!0ힰힰ\tZ㄰ힰ中a\n🙂!9?ꥠ?a\ta0?文a ! \t中ꥠ㄰00文9a中0 ힰ0🙂!9🙂09\t文\n?㄰0文! 0㄰?中㄰9中0ꥠ?9ꥠ🙂🙂\t\nꥠ9a ㄰文\n\nZ\n中\t?\t0aꥠ文 文ힰ\n?9ힰ㄰!中 🙂!0a\t中中!文ꥠ!\n\tZa a9ꥠ㄰文 !中 aZ 文ꥠZ9?9ꥠ文\n㄰ힰ🙂🙂99a \nꥠ中!ힰꥠ文00🙂 ?ꥠힰ ?㄰ힰa㄰ힰ0\n9🙂!Z\tힰힰ🙂\t\na🙂\nힰힰힰa!ꥠ ꥠ㄰?Zힰꥠa🙂a0?a\n",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:47",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "!Z?99中 a9文9!?aힰ9ꥠaꥠ? 0?\t文0\tꥠ? 0中ꥠ!0ힰힰ\tZ㄰ힰ中a\n🙂!9?ꥠ?a\ta0?文a ! \t中ꥠ㄰00文9a中0 ힰ0🙂!9🙂09\t文\n?㄰0文! 0㄰?中㄰9中0ꥠ?9ꥠ🙂🙂\t\nꥠ9a ㄰文\n\nZ\n中\t?\t0aꥠ文 文ힰ\n?9ힰ㄰!中 🙂!0a\t中中!文ꥠ!\n\tZa a9ꥠ㄰文 !中 aZ 文ꥠZ9?9ꥠ文\n㄰ힰ🙂🙂99a \nꥠ中!ힰꥠ文00🙂 ?ꥠힰ ?㄰ힰa㄰ힰ0\n9🙂!Z\tힰힰ🙂\t\na🙂\nힰힰힰa!ꥠ ꥠ㄰?Zힰꥠa🙂a0?a\n",
+      "maxChars": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:47",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "!Z?99中 a9文9!?aힰ9ꥠaꥠ? 0?\t文0\tꥠ? 0中ꥠ!0ힰힰ\tZ㄰ힰ中a\n🙂!9?ꥠ?a\ta0?文a ! \t中ꥠ㄰00文9a中0 ힰ0🙂!9🙂09\t文\n?㄰0文! 0㄰?中㄰9中0ꥠ?9ꥠ🙂🙂\t\nꥠ9a ㄰文\n\nZ\n中\t?\t0aꥠ文 文ힰ\n?9ힰ㄰!中 🙂!0a\t中中!文ꥠ!\n\tZa a9ꥠ㄰文 !中 aZ 文ꥠZ9?9ꥠ文\n㄰ힰ🙂🙂99a \nꥠ中!ힰꥠ文00🙂 ?ꥠힰ ?㄰ힰa㄰ힰ0\n9🙂!Z\tힰힰ🙂\t\na🙂\nힰힰힰa!ꥠ ꥠ㄰?Zힰꥠa🙂a0?a\n",
+      "maxChars": 2
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:47",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "!Z?99中 a9文9!?aힰ9ꥠaꥠ? 0?\t文0\tꥠ? 0中ꥠ!0ힰힰ\tZ㄰ힰ中a\n🙂!9?ꥠ?a\ta0?文a ! \t中ꥠ㄰00文9a中0 ힰ0🙂!9🙂09\t文\n?㄰0文! 0㄰?中㄰9中0ꥠ?9ꥠ🙂🙂\t\nꥠ9a ㄰文\n\nZ\n中\t?\t0aꥠ文 文ힰ\n?9ힰ㄰!中 🙂!0a\t中中!文ꥠ!\n\tZa a9ꥠ㄰文 !中 aZ 文ꥠZ9?9ꥠ文\n㄰ힰ🙂🙂99a \nꥠ中!ힰꥠ文00🙂 ?ꥠힰ ?㄰ힰa㄰ힰ0\n9🙂!Z\tힰힰ🙂\t\na🙂\nힰힰힰa!ꥠ ꥠ㄰?Zힰꥠa🙂a0?a\n"
+    }
+  },
+  {
+    "id": "tokens.estimate:48",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "\t🙂 \n!Z文㄰ꥠ0a\n㄰\t\tZ9🙂 \na0\n\n9🙂Z中\t!a㄰Z中?0中\nힰ文!?9\n中?0\n㄰?9🙂!9中?\t!ꥠ㄰ꥠ0?\t00?🙂ힰ🙂ힰ㄰Zힰힰ\n🙂中 0 0文Z中文ꥠ?㄰ힰ㄰?Z🙂\n\nZ🙂ힰ🙂ꥠ ힰ0中\t??㄰9㄰\t9\t?㄰文ힰ\t🙂ꥠ0!㄰!Zꥠ9ꥠힰ0a ZힰZꥠZ9Z?ힰ00㄰Z?🙂\t0🙂ힰꥠ㄰\n文文㄰"
+    }
+  },
+  {
+    "id": "embedding.estimate:48",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "\t🙂 \n!Z文㄰ꥠ0a\n㄰\t\tZ9🙂 \na0\n\n9🙂Z中\t!a㄰Z中?0中\nힰ文!?9\n中?0\n㄰?9🙂!9中?\t!ꥠ㄰ꥠ0?\t00?🙂ힰ🙂ힰ㄰Zힰힰ\n🙂中 0 0文Z中文ꥠ?㄰ힰ㄰?Z🙂\n\nZ🙂ힰ🙂ꥠ ힰ0中\t??㄰9㄰\t9\t?㄰文ힰ\t🙂ꥠ0!㄰!Zꥠ9ꥠힰ0a ZힰZꥠZ9Z?ힰ00㄰Z?🙂\t0🙂ힰꥠ㄰\n文文㄰"
+    }
+  },
+  {
+    "id": "embedding.chunk:48",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "\t🙂 \n!Z文㄰ꥠ0a\n㄰\t\tZ9🙂 \na0\n\n9🙂Z中\t!a㄰Z中?0中\nힰ文!?9\n中?0\n㄰?9🙂!9中?\t!ꥠ㄰ꥠ0?\t00?🙂ힰ🙂ힰ㄰Zힰힰ\n🙂中 0 0文Z中文ꥠ?㄰ힰ㄰?Z🙂\n\nZ🙂ힰ🙂ꥠ ힰ0中\t??㄰9㄰\t9\t?㄰文ힰ\t🙂ꥠ0!㄰!Zꥠ9ꥠힰ0a ZힰZꥠZ9Z?ힰ00㄰Z?🙂\t0🙂ힰꥠ㄰\n文文㄰",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:48",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "\t🙂 \n!Z文㄰ꥠ0a\n㄰\t\tZ9🙂 \na0\n\n9🙂Z中\t!a㄰Z中?0中\nힰ文!?9\n中?0\n㄰?9🙂!9中?\t!ꥠ㄰ꥠ0?\t00?🙂ힰ🙂ힰ㄰Zힰힰ\n🙂中 0 0文Z中文ꥠ?㄰ힰ㄰?Z🙂\n\nZ🙂ힰ🙂ꥠ ힰ0中\t??㄰9㄰\t9\t?㄰文ힰ\t🙂ꥠ0!㄰!Zꥠ9ꥠힰ0a ZힰZꥠZ9Z?ힰ00㄰Z?🙂\t0🙂ힰꥠ㄰\n文文㄰",
+      "maxChars": 3
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:48",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "\t🙂 \n!Z文㄰ꥠ0a\n㄰\t\tZ9🙂 \na0\n\n9🙂Z中\t!a㄰Z中?0中\nힰ文!?9\n中?0\n㄰?9🙂!9中?\t!ꥠ㄰ꥠ0?\t00?🙂ힰ🙂ힰ㄰Zힰힰ\n🙂中 0 0文Z中文ꥠ?㄰ힰ㄰?Z🙂\n\nZ🙂ힰ🙂ꥠ ힰ0中\t??㄰9㄰\t9\t?㄰文ힰ\t🙂ꥠ0!㄰!Zꥠ9ꥠힰ0a ZힰZꥠZ9Z?ힰ00㄰Z?🙂\t0🙂ힰꥠ㄰\n文文㄰",
+      "maxChars": 3
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:48",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "\t🙂 \n!Z文㄰ꥠ0a\n㄰\t\tZ9🙂 \na0\n\n9🙂Z中\t!a㄰Z中?0中\nힰ文!?9\n中?0\n㄰?9🙂!9中?\t!ꥠ㄰ꥠ0?\t00?🙂ힰ🙂ힰ㄰Zힰힰ\n🙂中 0 0文Z中文ꥠ?㄰ힰ㄰?Z🙂\n\nZ🙂ힰ🙂ꥠ ힰ0中\t??㄰9㄰\t9\t?㄰文ힰ\t🙂ꥠ0!㄰!Zꥠ9ꥠힰ0a ZힰZꥠZ9Z?ힰ00㄰Z?🙂\t0🙂ힰꥠ㄰\n文文㄰"
+    }
+  },
+  {
+    "id": "tokens.estimate:49",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "🙂文中a\t中 ?ꥠ9ힰ9ힰZ中009 00中a🙂!\t㄰0ힰꥠ?🙂中ힰ\nZa中!9\nힰꥠힰ🙂Z!!!0🙂 ힰa\n㄰㄰ힰ文中0Z\tꥠ?\t 文\nힰa?a0\n!㄰?㄰"
+    }
+  },
+  {
+    "id": "embedding.estimate:49",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "🙂文中a\t中 ?ꥠ9ힰ9ힰZ中009 00中a🙂!\t㄰0ힰꥠ?🙂中ힰ\nZa中!9\nힰꥠힰ🙂Z!!!0🙂 ힰa\n㄰㄰ힰ文中0Z\tꥠ?\t 文\nힰa?a0\n!㄰?㄰"
+    }
+  },
+  {
+    "id": "embedding.chunk:49",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "🙂文中a\t中 ?ꥠ9ힰ9ힰZ中009 00中a🙂!\t㄰0ힰꥠ?🙂中ힰ\nZa中!9\nힰꥠힰ🙂Z!!!0🙂 ힰa\n㄰㄰ힰ文中0Z\tꥠ?\t 文\nힰa?a0\n!㄰?㄰",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:49",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "🙂文中a\t中 ?ꥠ9ힰ9ힰZ中009 00中a🙂!\t㄰0ힰꥠ?🙂中ힰ\nZa中!9\nힰꥠힰ🙂Z!!!0🙂 ힰa\n㄰㄰ힰ文中0Z\tꥠ?\t 文\nힰa?a0\n!㄰?㄰",
+      "maxChars": 4
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:49",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "🙂文中a\t中 ?ꥠ9ힰ9ힰZ中009 00中a🙂!\t㄰0ힰꥠ?🙂中ힰ\nZa中!9\nힰꥠힰ🙂Z!!!0🙂 ힰa\n㄰㄰ힰ文中0Z\tꥠ?\t 文\nힰa?a0\n!㄰?㄰",
+      "maxChars": 4
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:49",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "🙂文中a\t中 ?ꥠ9ힰ9ힰZ中009 00中a🙂!\t㄰0ힰꥠ?🙂中ힰ\nZa中!9\nힰꥠힰ🙂Z!!!0🙂 ힰa\n㄰㄰ힰ文中0Z\tꥠ?\t 文\nힰa?a0\n!㄰?㄰"
+    }
+  },
+  {
+    "id": "tokens.estimate:50",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "? !中\n9  ꥠa中文!ꥠ\n!\n?🙂文ꥠ中🙂0ꥠ文中中?ꥠZ\t㄰🙂文㄰?\n\t\n?9\n"
+    }
+  },
+  {
+    "id": "embedding.estimate:50",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "? !中\n9  ꥠa中文!ꥠ\n!\n?🙂文ꥠ中🙂0ꥠ文中中?ꥠZ\t㄰🙂文㄰?\n\t\n?9\n"
+    }
+  },
+  {
+    "id": "embedding.chunk:50",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "? !中\n9  ꥠa中文!ꥠ\n!\n?🙂文ꥠ中🙂0ꥠ文中中?ꥠZ\t㄰🙂文㄰?\n\t\n?9\n",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:50",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "? !中\n9  ꥠa中文!ꥠ\n!\n?🙂文ꥠ中🙂0ꥠ文中中?ꥠZ\t㄰🙂文㄰?\n\t\n?9\n",
+      "maxChars": 0
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:50",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "? !中\n9  ꥠa中文!ꥠ\n!\n?🙂文ꥠ中🙂0ꥠ文中中?ꥠZ\t㄰🙂文㄰?\n\t\n?9\n",
+      "maxChars": 0
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:50",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "? !中\n9  ꥠa中文!ꥠ\n!\n?🙂文ꥠ中🙂0ꥠ文中中?ꥠZ\t㄰🙂文㄰?\n\t\n?9\n"
+    }
+  },
+  {
+    "id": "tokens.estimate:51",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "?  ꥠ?0!\t!!Za?ힰ ꥠꥠ\t中9中🙂文\t中9㄰9ힰ中0aZ9中🙂ꥠ?Zힰ㄰文Z aZ㄰中㄰ ힰ㄰Z?9!!Z9ힰ!?aꥠꥠ中ힰ🙂ZZ文ힰ㄰ ힰힰ9Za ힰ🙂"
+    }
+  },
+  {
+    "id": "embedding.estimate:51",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "?  ꥠ?0!\t!!Za?ힰ ꥠꥠ\t中9中🙂文\t中9㄰9ힰ中0aZ9中🙂ꥠ?Zힰ㄰文Z aZ㄰中㄰ ힰ㄰Z?9!!Z9ힰ!?aꥠꥠ中ힰ🙂ZZ文ힰ㄰ ힰힰ9Za ힰ🙂"
+    }
+  },
+  {
+    "id": "embedding.chunk:51",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "?  ꥠ?0!\t!!Za?ힰ ꥠꥠ\t中9中🙂文\t中9㄰9ힰ中0aZ9中🙂ꥠ?Zힰ㄰文Z aZ㄰中㄰ ힰ㄰Z?9!!Z9ힰ!?aꥠꥠ中ힰ🙂ZZ文ힰ㄰ ힰힰ9Za ힰ🙂",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:51",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "?  ꥠ?0!\t!!Za?ힰ ꥠꥠ\t中9中🙂文\t中9㄰9ힰ中0aZ9中🙂ꥠ?Zힰ㄰文Z aZ㄰中㄰ ힰ㄰Z?9!!Z9ힰ!?aꥠꥠ中ힰ🙂ZZ文ힰ㄰ ힰힰ9Za ힰ🙂",
+      "maxChars": 1
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:51",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "?  ꥠ?0!\t!!Za?ힰ ꥠꥠ\t中9中🙂文\t中9㄰9ힰ中0aZ9中🙂ꥠ?Zힰ㄰文Z aZ㄰中㄰ ힰ㄰Z?9!!Z9ힰ!?aꥠꥠ中ힰ🙂ZZ文ힰ㄰ ힰힰ9Za ힰ🙂",
+      "maxChars": 1
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:51",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "?  ꥠ?0!\t!!Za?ힰ ꥠꥠ\t中9中🙂文\t中9㄰9ힰ中0aZ9中🙂ꥠ?Zힰ㄰文Z aZ㄰中㄰ ힰ㄰Z?9!!Z9ힰ!?aꥠꥠ中ힰ🙂ZZ文ힰ㄰ ힰힰ9Za ힰ🙂"
+    }
+  },
+  {
+    "id": "tokens.estimate:52",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "ힰ !!9ힰ🙂0?㄰9?0Z0aힰ文🙂 99中a中🙂0a9aZힰ?文ꥠ!0a㄰文9 \ta99ힰ\n!99a?文\n9?Za\t中\t\tힰ中0㄰Z!??9中文文! ꥠZ㄰中0ힰ\n文9\t?🙂?Z\n!中?㄰90Z0文ힰ09 a90 ?\nZꥠ\t中中㄰a9㄰0? ㄰文\tힰힰ\t aZa文\n\n\t9?"
+    }
+  },
+  {
+    "id": "embedding.estimate:52",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "ힰ !!9ힰ🙂0?㄰9?0Z0aힰ文🙂 99中a中🙂0a9aZힰ?文ꥠ!0a㄰文9 \ta99ힰ\n!99a?文\n9?Za\t中\t\tힰ中0㄰Z!??9中文文! ꥠZ㄰中0ힰ\n文9\t?🙂?Z\n!中?㄰90Z0文ힰ09 a90 ?\nZꥠ\t中中㄰a9㄰0? ㄰文\tힰힰ\t aZa文\n\n\t9?"
+    }
+  },
+  {
+    "id": "embedding.chunk:52",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "ힰ !!9ힰ🙂0?㄰9?0Z0aힰ文🙂 99中a中🙂0a9aZힰ?文ꥠ!0a㄰文9 \ta99ힰ\n!99a?文\n9?Za\t中\t\tힰ中0㄰Z!??9中文文! ꥠZ㄰中0ힰ\n文9\t?🙂?Z\n!中?㄰90Z0文ힰ09 a90 ?\nZꥠ\t中中㄰a9㄰0? ㄰文\tힰힰ\t aZa文\n\n\t9?",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:52",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "ힰ !!9ힰ🙂0?㄰9?0Z0aힰ文🙂 99中a中🙂0a9aZힰ?文ꥠ!0a㄰文9 \ta99ힰ\n!99a?文\n9?Za\t中\t\tힰ中0㄰Z!??9中文文! ꥠZ㄰中0ힰ\n文9\t?🙂?Z\n!中?㄰90Z0文ힰ09 a90 ?\nZꥠ\t中中㄰a9㄰0? ㄰文\tힰힰ\t aZa文\n\n\t9?",
+      "maxChars": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:52",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "ힰ !!9ힰ🙂0?㄰9?0Z0aힰ文🙂 99中a中🙂0a9aZힰ?文ꥠ!0a㄰文9 \ta99ힰ\n!99a?文\n9?Za\t中\t\tힰ中0㄰Z!??9中文文! ꥠZ㄰中0ힰ\n文9\t?🙂?Z\n!中?㄰90Z0文ힰ09 a90 ?\nZꥠ\t中中㄰a9㄰0? ㄰文\tힰힰ\t aZa文\n\n\t9?",
+      "maxChars": 2
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:52",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "ힰ !!9ힰ🙂0?㄰9?0Z0aힰ文🙂 99中a中🙂0a9aZힰ?文ꥠ!0a㄰文9 \ta99ힰ\n!99a?文\n9?Za\t中\t\tힰ中0㄰Z!??9中文文! ꥠZ㄰中0ힰ\n文9\t?🙂?Z\n!中?㄰90Z0文ힰ09 a90 ?\nZꥠ\t中中㄰a9㄰0? ㄰文\tힰힰ\t aZa文\n\n\t9?"
+    }
+  },
+  {
+    "id": "tokens.estimate:53",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "🙂aZ🙂9文9!"
+    }
+  },
+  {
+    "id": "embedding.estimate:53",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "🙂aZ🙂9文9!"
+    }
+  },
+  {
+    "id": "embedding.chunk:53",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "🙂aZ🙂9文9!",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:53",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "🙂aZ🙂9文9!",
+      "maxChars": 3
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:53",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "🙂aZ🙂9文9!",
+      "maxChars": 3
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:53",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "🙂aZ🙂9文9!"
+    }
+  },
+  {
+    "id": "tokens.estimate:54",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "aa9ힰZ0㄰Z!\n中ힰaZ\n🙂 ힰힰ 9Z0 a\t!\n㄰\nힰ\tힰ?\t! \n\t🙂ꥠaꥠ ꥠ?🙂中文!?🙂 \n?\n\t中中9 ꥠ中中 🙂\tힰ㄰\tZ🙂9ힰ\n🙂 ힰꥠ?\n中a\t0 ힰ中a中! 9㄰!\n9ꥠꥠZ! \n中㄰㄰\tꥠ??a中🙂🙂a文㄰a中!中a 9? ㄰!㄰0\n文文Z🙂!Z? \t!Z!!ힰ"
+    }
+  },
+  {
+    "id": "embedding.estimate:54",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "aa9ힰZ0㄰Z!\n中ힰaZ\n🙂 ힰힰ 9Z0 a\t!\n㄰\nힰ\tힰ?\t! \n\t🙂ꥠaꥠ ꥠ?🙂中文!?🙂 \n?\n\t中中9 ꥠ中中 🙂\tힰ㄰\tZ🙂9ힰ\n🙂 ힰꥠ?\n中a\t0 ힰ中a中! 9㄰!\n9ꥠꥠZ! \n中㄰㄰\tꥠ??a中🙂🙂a文㄰a中!中a 9? ㄰!㄰0\n文文Z🙂!Z? \t!Z!!ힰ"
+    }
+  },
+  {
+    "id": "embedding.chunk:54",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "aa9ힰZ0㄰Z!\n中ힰaZ\n🙂 ힰힰ 9Z0 a\t!\n㄰\nힰ\tힰ?\t! \n\t🙂ꥠaꥠ ꥠ?🙂中文!?🙂 \n?\n\t中中9 ꥠ中中 🙂\tힰ㄰\tZ🙂9ힰ\n🙂 ힰꥠ?\n中a\t0 ힰ中a中! 9㄰!\n9ꥠꥠZ! \n中㄰㄰\tꥠ??a中🙂🙂a文㄰a中!中a 9? ㄰!㄰0\n文文Z🙂!Z? \t!Z!!ힰ",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:54",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "aa9ힰZ0㄰Z!\n中ힰaZ\n🙂 ힰힰ 9Z0 a\t!\n㄰\nힰ\tힰ?\t! \n\t🙂ꥠaꥠ ꥠ?🙂中文!?🙂 \n?\n\t中中9 ꥠ中中 🙂\tힰ㄰\tZ🙂9ힰ\n🙂 ힰꥠ?\n中a\t0 ힰ中a中! 9㄰!\n9ꥠꥠZ! \n中㄰㄰\tꥠ??a中🙂🙂a文㄰a中!中a 9? ㄰!㄰0\n文文Z🙂!Z? \t!Z!!ힰ",
+      "maxChars": 4
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:54",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "aa9ힰZ0㄰Z!\n中ힰaZ\n🙂 ힰힰ 9Z0 a\t!\n㄰\nힰ\tힰ?\t! \n\t🙂ꥠaꥠ ꥠ?🙂中文!?🙂 \n?\n\t中中9 ꥠ中中 🙂\tힰ㄰\tZ🙂9ힰ\n🙂 ힰꥠ?\n中a\t0 ힰ中a中! 9㄰!\n9ꥠꥠZ! \n中㄰㄰\tꥠ??a中🙂🙂a文㄰a中!中a 9? ㄰!㄰0\n文文Z🙂!Z? \t!Z!!ힰ",
+      "maxChars": 4
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:54",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "aa9ힰZ0㄰Z!\n中ힰaZ\n🙂 ힰힰ 9Z0 a\t!\n㄰\nힰ\tힰ?\t! \n\t🙂ꥠaꥠ ꥠ?🙂中文!?🙂 \n?\n\t中中9 ꥠ中中 🙂\tힰ㄰\tZ🙂9ힰ\n🙂 ힰꥠ?\n中a\t0 ힰ中a中! 9㄰!\n9ꥠꥠZ! \n中㄰㄰\tꥠ??a中🙂🙂a文㄰a中!中a 9? ㄰!㄰0\n文文Z🙂!Z? \t!Z!!ힰ"
+    }
+  },
+  {
+    "id": "tokens.estimate:55",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "㄰ 🙂\t\t?🙂?文\nZa ힰ🙂㄰\nힰ\n中中\nꥠힰ? ?文\nZ?Zힰ\t \n0?Z0\t中 !?ꥠa9🙂ꥠa!\n\nZ中aa0aꥠ0 aꥠ!ZZ\t㄰\n中\t🙂\t文中?9!中!🙂ꥠa!a!㄰\t9?🙂Zힰ \n0文aힰꥠ🙂0㄰中Z0Zꥠ9"
+    }
+  },
+  {
+    "id": "embedding.estimate:55",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "㄰ 🙂\t\t?🙂?文\nZa ힰ🙂㄰\nힰ\n中中\nꥠힰ? ?文\nZ?Zힰ\t \n0?Z0\t中 !?ꥠa9🙂ꥠa!\n\nZ中aa0aꥠ0 aꥠ!ZZ\t㄰\n中\t🙂\t文中?9!中!🙂ꥠa!a!㄰\t9?🙂Zힰ \n0文aힰꥠ🙂0㄰中Z0Zꥠ9"
+    }
+  },
+  {
+    "id": "embedding.chunk:55",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "㄰ 🙂\t\t?🙂?文\nZa ힰ🙂㄰\nힰ\n中中\nꥠힰ? ?文\nZ?Zힰ\t \n0?Z0\t中 !?ꥠa9🙂ꥠa!\n\nZ中aa0aꥠ0 aꥠ!ZZ\t㄰\n中\t🙂\t文中?9!中!🙂ꥠa!a!㄰\t9?🙂Zힰ \n0文aힰꥠ🙂0㄰中Z0Zꥠ9",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:55",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "㄰ 🙂\t\t?🙂?文\nZa ힰ🙂㄰\nힰ\n中中\nꥠힰ? ?文\nZ?Zힰ\t \n0?Z0\t中 !?ꥠa9🙂ꥠa!\n\nZ中aa0aꥠ0 aꥠ!ZZ\t㄰\n中\t🙂\t文中?9!中!🙂ꥠa!a!㄰\t9?🙂Zힰ \n0文aힰꥠ🙂0㄰中Z0Zꥠ9",
+      "maxChars": 0
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:55",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "㄰ 🙂\t\t?🙂?文\nZa ힰ🙂㄰\nힰ\n中中\nꥠힰ? ?文\nZ?Zힰ\t \n0?Z0\t中 !?ꥠa9🙂ꥠa!\n\nZ中aa0aꥠ0 aꥠ!ZZ\t㄰\n中\t🙂\t文中?9!中!🙂ꥠa!a!㄰\t9?🙂Zힰ \n0文aힰꥠ🙂0㄰中Z0Zꥠ9",
+      "maxChars": 0
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:55",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "㄰ 🙂\t\t?🙂?文\nZa ힰ🙂㄰\nힰ\n中中\nꥠힰ? ?文\nZ?Zힰ\t \n0?Z0\t中 !?ꥠa9🙂ꥠa!\n\nZ中aa0aꥠ0 aꥠ!ZZ\t㄰\n中\t🙂\t文中?9!中!🙂ꥠa!a!㄰\t9?🙂Zힰ \n0文aힰꥠ🙂0㄰中Z0Zꥠ9"
+    }
+  },
+  {
+    "id": "tokens.estimate:56",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "a文9 ힰ??ힰힰힰ 0🙂99中\nꥠ?0!!a 9㄰?9Zꥠa中ꥠ9!ꥠ0!\t🙂文中aa㄰中  !9!中㄰Zꥠa🙂🙂文ꥠ\t!\t㄰!㄰a"
+    }
+  },
+  {
+    "id": "embedding.estimate:56",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "a文9 ힰ??ힰힰힰ 0🙂99中\nꥠ?0!!a 9㄰?9Zꥠa中ꥠ9!ꥠ0!\t🙂文中aa㄰中  !9!中㄰Zꥠa🙂🙂文ꥠ\t!\t㄰!㄰a"
+    }
+  },
+  {
+    "id": "embedding.chunk:56",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "a文9 ힰ??ힰힰힰ 0🙂99中\nꥠ?0!!a 9㄰?9Zꥠa中ꥠ9!ꥠ0!\t🙂文中aa㄰中  !9!中㄰Zꥠa🙂🙂文ꥠ\t!\t㄰!㄰a",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:56",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "a文9 ힰ??ힰힰힰ 0🙂99中\nꥠ?0!!a 9㄰?9Zꥠa中ꥠ9!ꥠ0!\t🙂文中aa㄰中  !9!中㄰Zꥠa🙂🙂文ꥠ\t!\t㄰!㄰a",
+      "maxChars": 1
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:56",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "a文9 ힰ??ힰힰힰ 0🙂99中\nꥠ?0!!a 9㄰?9Zꥠa中ꥠ9!ꥠ0!\t🙂文中aa㄰中  !9!中㄰Zꥠa🙂🙂文ꥠ\t!\t㄰!㄰a",
+      "maxChars": 1
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:56",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "a文9 ힰ??ힰힰힰ 0🙂99中\nꥠ?0!!a 9㄰?9Zꥠa中ꥠ9!ꥠ0!\t🙂文中aa㄰中  !9!中㄰Zꥠa🙂🙂文ꥠ\t!\t㄰!㄰a"
+    }
+  },
+  {
+    "id": "tokens.estimate:57",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "文9a文 \n?aힰ00Z\t \n  \t?🙂 !中ힰ!a文㄰9ꥠꥠ㄰🙂ꥠa🙂ꥠZ㄰ꥠ9㄰㄰ !aힰ9\nZa文Z"
+    }
+  },
+  {
+    "id": "embedding.estimate:57",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "文9a文 \n?aힰ00Z\t \n  \t?🙂 !中ힰ!a文㄰9ꥠꥠ㄰🙂ꥠa🙂ꥠZ㄰ꥠ9㄰㄰ !aힰ9\nZa文Z"
+    }
+  },
+  {
+    "id": "embedding.chunk:57",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "文9a文 \n?aힰ00Z\t \n  \t?🙂 !中ힰ!a文㄰9ꥠꥠ㄰🙂ꥠa🙂ꥠZ㄰ꥠ9㄰㄰ !aힰ9\nZa文Z",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:57",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "文9a文 \n?aힰ00Z\t \n  \t?🙂 !中ힰ!a文㄰9ꥠꥠ㄰🙂ꥠa🙂ꥠZ㄰ꥠ9㄰㄰ !aힰ9\nZa文Z",
+      "maxChars": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:57",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "文9a文 \n?aힰ00Z\t \n  \t?🙂 !中ힰ!a文㄰9ꥠꥠ㄰🙂ꥠa🙂ꥠZ㄰ꥠ9㄰㄰ !aힰ9\nZa文Z",
+      "maxChars": 2
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:57",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "文9a文 \n?aힰ00Z\t \n  \t?🙂 !中ힰ!a文㄰9ꥠꥠ㄰🙂ꥠa🙂ꥠZ㄰ꥠ9㄰㄰ !aힰ9\nZa文Z"
+    }
+  },
+  {
+    "id": "tokens.estimate:58",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "ꥠ\t\taힰힰꥠ!ꥠ\t\n中🙂0 \n\t㄰🙂文中\n\n\ta?🙂中ힰZힰ0 "
+    }
+  },
+  {
+    "id": "embedding.estimate:58",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "ꥠ\t\taힰힰꥠ!ꥠ\t\n中🙂0 \n\t㄰🙂文中\n\n\ta?🙂中ힰZힰ0 "
+    }
+  },
+  {
+    "id": "embedding.chunk:58",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "ꥠ\t\taힰힰꥠ!ꥠ\t\n中🙂0 \n\t㄰🙂文中\n\n\ta?🙂中ힰZힰ0 ",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:58",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "ꥠ\t\taힰힰꥠ!ꥠ\t\n中🙂0 \n\t㄰🙂文中\n\n\ta?🙂中ힰZힰ0 ",
+      "maxChars": 3
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:58",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "ꥠ\t\taힰힰꥠ!ꥠ\t\n中🙂0 \n\t㄰🙂文中\n\n\ta?🙂中ힰZힰ0 ",
+      "maxChars": 3
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:58",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "ꥠ\t\taힰힰꥠ!ꥠ\t\n中🙂0 \n\t㄰🙂文中\n\n\ta?🙂中ힰZힰ0 "
+    }
+  },
+  {
+    "id": "tokens.estimate:59",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "文ꥠ中  \ta!Z㄰㄰9Z aힰ!\t🙂㄰!\taힰZ文aaힰ?9!0!文 ꥠ文?9\tힰZ\t文ힰZ 🙂ꥠ\tꥠ Zꥠ9Zꥠ🙂9\na9ꥠ 🙂0🙂文文中aힰ0中㄰a0㄰🙂\t9ꥠힰ㄰㄰ꥠ🙂  0!9!Z🙂文aZ\t! Z文中ꥠ9中\t\na\tힰ00文文🙂\tZ "
+    }
+  },
+  {
+    "id": "embedding.estimate:59",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "文ꥠ中  \ta!Z㄰㄰9Z aힰ!\t🙂㄰!\taힰZ文aaힰ?9!0!文 ꥠ文?9\tힰZ\t文ힰZ 🙂ꥠ\tꥠ Zꥠ9Zꥠ🙂9\na9ꥠ 🙂0🙂文文中aힰ0中㄰a0㄰🙂\t9ꥠힰ㄰㄰ꥠ🙂  0!9!Z🙂文aZ\t! Z文中ꥠ9中\t\na\tힰ00文文🙂\tZ "
+    }
+  },
+  {
+    "id": "embedding.chunk:59",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "文ꥠ中  \ta!Z㄰㄰9Z aힰ!\t🙂㄰!\taힰZ文aaힰ?9!0!文 ꥠ文?9\tힰZ\t文ힰZ 🙂ꥠ\tꥠ Zꥠ9Zꥠ🙂9\na9ꥠ 🙂0🙂文文中aힰ0中㄰a0㄰🙂\t9ꥠힰ㄰㄰ꥠ🙂  0!9!Z🙂文aZ\t! Z文中ꥠ9中\t\na\tힰ00文文🙂\tZ ",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:59",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "文ꥠ中  \ta!Z㄰㄰9Z aힰ!\t🙂㄰!\taힰZ文aaힰ?9!0!文 ꥠ文?9\tힰZ\t文ힰZ 🙂ꥠ\tꥠ Zꥠ9Zꥠ🙂9\na9ꥠ 🙂0🙂文文中aힰ0中㄰a0㄰🙂\t9ꥠힰ㄰㄰ꥠ🙂  0!9!Z🙂文aZ\t! Z文中ꥠ9中\t\na\tힰ00文文🙂\tZ ",
+      "maxChars": 4
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:59",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "文ꥠ中  \ta!Z㄰㄰9Z aힰ!\t🙂㄰!\taힰZ文aaힰ?9!0!文 ꥠ文?9\tힰZ\t文ힰZ 🙂ꥠ\tꥠ Zꥠ9Zꥠ🙂9\na9ꥠ 🙂0🙂文文中aힰ0中㄰a0㄰🙂\t9ꥠힰ㄰㄰ꥠ🙂  0!9!Z🙂文aZ\t! Z文中ꥠ9中\t\na\tힰ00文文🙂\tZ ",
+      "maxChars": 4
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:59",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "文ꥠ中  \ta!Z㄰㄰9Z aힰ!\t🙂㄰!\taힰZ文aaힰ?9!0!文 ꥠ文?9\tힰZ\t文ힰZ 🙂ꥠ\tꥠ Zꥠ9Zꥠ🙂9\na9ꥠ 🙂0🙂文文中aힰ0中㄰a0㄰🙂\t9ꥠힰ㄰㄰ꥠ🙂  0!9!Z🙂文aZ\t! Z文中ꥠ9中\t\na\tힰ00文文🙂\tZ "
+    }
+  },
+  {
+    "id": "tokens.estimate:60",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "🙂中\na!a文\nꥠ? ?Z9ힰ!ힰ🙂!\t\t\n?🙂Z?aꥠ 文㄰0a\t\n   \t文9中a \tZ🙂🙂ힰ\t?🙂0中ꥠ9㄰㄰🙂 ! 中\t中㄰Z中Zꥠ\n??文 文ꥠ9 09?Z!\n中文0ힰ?9a中🙂?㄰ꥠ文中a"
+    }
+  },
+  {
+    "id": "embedding.estimate:60",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "🙂中\na!a文\nꥠ? ?Z9ힰ!ힰ🙂!\t\t\n?🙂Z?aꥠ 文㄰0a\t\n   \t文9中a \tZ🙂🙂ힰ\t?🙂0中ꥠ9㄰㄰🙂 ! 中\t中㄰Z中Zꥠ\n??文 文ꥠ9 09?Z!\n中文0ힰ?9a中🙂?㄰ꥠ文中a"
+    }
+  },
+  {
+    "id": "embedding.chunk:60",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "🙂中\na!a文\nꥠ? ?Z9ힰ!ힰ🙂!\t\t\n?🙂Z?aꥠ 文㄰0a\t\n   \t文9中a \tZ🙂🙂ힰ\t?🙂0中ꥠ9㄰㄰🙂 ! 中\t中㄰Z中Zꥠ\n??文 文ꥠ9 09?Z!\n中文0ힰ?9a中🙂?㄰ꥠ文中a",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:60",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "🙂中\na!a文\nꥠ? ?Z9ힰ!ힰ🙂!\t\t\n?🙂Z?aꥠ 文㄰0a\t\n   \t文9中a \tZ🙂🙂ힰ\t?🙂0中ꥠ9㄰㄰🙂 ! 中\t中㄰Z中Zꥠ\n??文 文ꥠ9 09?Z!\n中文0ힰ?9a中🙂?㄰ꥠ文中a",
+      "maxChars": 0
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:60",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "🙂中\na!a文\nꥠ? ?Z9ힰ!ힰ🙂!\t\t\n?🙂Z?aꥠ 文㄰0a\t\n   \t文9中a \tZ🙂🙂ힰ\t?🙂0中ꥠ9㄰㄰🙂 ! 中\t中㄰Z中Zꥠ\n??文 文ꥠ9 09?Z!\n中文0ힰ?9a中🙂?㄰ꥠ文中a",
+      "maxChars": 0
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:60",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "🙂中\na!a文\nꥠ? ?Z9ힰ!ힰ🙂!\t\t\n?🙂Z?aꥠ 文㄰0a\t\n   \t文9中a \tZ🙂🙂ힰ\t?🙂0中ꥠ9㄰㄰🙂 ! 中\t中㄰Z中Zꥠ\n??文 文ꥠ9 09?Z!\n中文0ힰ?9a中🙂?㄰ꥠ文中a"
+    }
+  },
+  {
+    "id": "tokens.estimate:61",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "中\t\taힰa"
+    }
+  },
+  {
+    "id": "embedding.estimate:61",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "中\t\taힰa"
+    }
+  },
+  {
+    "id": "embedding.chunk:61",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "中\t\taힰa",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:61",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "中\t\taힰa",
+      "maxChars": 1
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:61",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "中\t\taힰa",
+      "maxChars": 1
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:61",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "中\t\taힰa"
+    }
+  },
+  {
+    "id": "tokens.estimate:62",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "中?! 文a㄰Zힰ\tZ🙂㄰ힰ中Z!\taa!0\tZ 9㄰\t\nꥠ!\t?ꥠ\t9\t!\nힰZ\t9ힰힰ?㄰a文Zꥠ9ힰ\nힰ9文\t  \ta㄰ꥠ㄰a\t中文0㄰0Z文\n🙂文9🙂文\n㄰9Zaꥠ!?Z! ㄰㄰!ힰ!0🙂㄰ ힰ中Zힰ中文a9㄰㄰\t文\t文\t!\nZ??中\t中aZ9ힰ!9\n ힰZ 🙂0中文ힰꥠ\t0㄰0\n!文中9㄰\t\t🙂中?文文aꥠaZZ🙂🙂中0"
+    }
+  },
+  {
+    "id": "embedding.estimate:62",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "中?! 文a㄰Zힰ\tZ🙂㄰ힰ中Z!\taa!0\tZ 9㄰\t\nꥠ!\t?ꥠ\t9\t!\nힰZ\t9ힰힰ?㄰a文Zꥠ9ힰ\nힰ9文\t  \ta㄰ꥠ㄰a\t中文0㄰0Z文\n🙂文9🙂文\n㄰9Zaꥠ!?Z! ㄰㄰!ힰ!0🙂㄰ ힰ中Zힰ中文a9㄰㄰\t文\t文\t!\nZ??中\t中aZ9ힰ!9\n ힰZ 🙂0中文ힰꥠ\t0㄰0\n!文中9㄰\t\t🙂中?文文aꥠaZZ🙂🙂中0"
+    }
+  },
+  {
+    "id": "embedding.chunk:62",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "中?! 文a㄰Zힰ\tZ🙂㄰ힰ中Z!\taa!0\tZ 9㄰\t\nꥠ!\t?ꥠ\t9\t!\nힰZ\t9ힰힰ?㄰a文Zꥠ9ힰ\nힰ9文\t  \ta㄰ꥠ㄰a\t中文0㄰0Z文\n🙂文9🙂文\n㄰9Zaꥠ!?Z! ㄰㄰!ힰ!0🙂㄰ ힰ中Zힰ中文a9㄰㄰\t文\t文\t!\nZ??中\t中aZ9ힰ!9\n ힰZ 🙂0中文ힰꥠ\t0㄰0\n!文中9㄰\t\t🙂中?文文aꥠaZZ🙂🙂中0",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:62",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "中?! 文a㄰Zힰ\tZ🙂㄰ힰ中Z!\taa!0\tZ 9㄰\t\nꥠ!\t?ꥠ\t9\t!\nힰZ\t9ힰힰ?㄰a文Zꥠ9ힰ\nힰ9文\t  \ta㄰ꥠ㄰a\t中文0㄰0Z文\n🙂文9🙂文\n㄰9Zaꥠ!?Z! ㄰㄰!ힰ!0🙂㄰ ힰ中Zힰ中文a9㄰㄰\t文\t文\t!\nZ??中\t中aZ9ힰ!9\n ힰZ 🙂0中文ힰꥠ\t0㄰0\n!文中9㄰\t\t🙂中?文文aꥠaZZ🙂🙂中0",
+      "maxChars": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:62",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "中?! 文a㄰Zힰ\tZ🙂㄰ힰ中Z!\taa!0\tZ 9㄰\t\nꥠ!\t?ꥠ\t9\t!\nힰZ\t9ힰힰ?㄰a文Zꥠ9ힰ\nힰ9文\t  \ta㄰ꥠ㄰a\t中文0㄰0Z文\n🙂文9🙂文\n㄰9Zaꥠ!?Z! ㄰㄰!ힰ!0🙂㄰ ힰ中Zힰ中文a9㄰㄰\t文\t文\t!\nZ??中\t中aZ9ힰ!9\n ힰZ 🙂0中文ힰꥠ\t0㄰0\n!文中9㄰\t\t🙂中?文文aꥠaZZ🙂🙂中0",
+      "maxChars": 2
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:62",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "中?! 文a㄰Zힰ\tZ🙂㄰ힰ中Z!\taa!0\tZ 9㄰\t\nꥠ!\t?ꥠ\t9\t!\nힰZ\t9ힰힰ?㄰a文Zꥠ9ힰ\nힰ9文\t  \ta㄰ꥠ㄰a\t中文0㄰0Z文\n🙂文9🙂文\n㄰9Zaꥠ!?Z! ㄰㄰!ힰ!0🙂㄰ ힰ中Zힰ中文a9㄰㄰\t文\t文\t!\nZ??中\t中aZ9ힰ!9\n ힰZ 🙂0中文ힰꥠ\t0㄰0\n!文中9㄰\t\t🙂中?文文aꥠaZZ🙂🙂中0"
+    }
+  },
+  {
+    "id": "tokens.estimate:63",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "ힰ㄰  \nힰ㄰文ힰZZa99\t?🙂文中㄰0ힰ\n0ힰZ 🙂文aꥠZ中!中中ힰa🙂㄰a  9\t中Zꥠ 9🙂ꥠ !ힰ?Z㄰9!\n ힰힰZ㄰\n\t🙂㄰㄰\nힰa🙂文\tꥠZ文Z\t㄰!!!0\n0! 9?ꥠ中0\t9 0!\n中9\nZ\t0?Z\t㄰中\t9a㄰文0\t㄰a文\tZ\nꥠힰZ中\n0 🙂ꥠaaaa\n 🙂!文㄰🙂90🙂?\t9\n?a文\t🙂\n ㄰中ힰힰZa9中 Z0ꥠ中ힰ9?9文ힰ\n\n9🙂?ꥠ9 ㄰中🙂Z🙂文㄰ꥠ\t0㄰🙂\n0!?ힰ文 ힰ\t中9㄰!9\tힰ"
+    }
+  },
+  {
+    "id": "embedding.estimate:63",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "ힰ㄰  \nힰ㄰文ힰZZa99\t?🙂文中㄰0ힰ\n0ힰZ 🙂文aꥠZ中!中中ힰa🙂㄰a  9\t中Zꥠ 9🙂ꥠ !ힰ?Z㄰9!\n ힰힰZ㄰\n\t🙂㄰㄰\nힰa🙂文\tꥠZ文Z\t㄰!!!0\n0! 9?ꥠ中0\t9 0!\n中9\nZ\t0?Z\t㄰中\t9a㄰文0\t㄰a文\tZ\nꥠힰZ中\n0 🙂ꥠaaaa\n 🙂!文㄰🙂90🙂?\t9\n?a文\t🙂\n ㄰中ힰힰZa9中 Z0ꥠ中ힰ9?9文ힰ\n\n9🙂?ꥠ9 ㄰中🙂Z🙂文㄰ꥠ\t0㄰🙂\n0!?ힰ文 ힰ\t中9㄰!9\tힰ"
+    }
+  },
+  {
+    "id": "embedding.chunk:63",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "ힰ㄰  \nힰ㄰文ힰZZa99\t?🙂文中㄰0ힰ\n0ힰZ 🙂文aꥠZ中!中中ힰa🙂㄰a  9\t中Zꥠ 9🙂ꥠ !ힰ?Z㄰9!\n ힰힰZ㄰\n\t🙂㄰㄰\nힰa🙂文\tꥠZ文Z\t㄰!!!0\n0! 9?ꥠ中0\t9 0!\n中9\nZ\t0?Z\t㄰中\t9a㄰文0\t㄰a文\tZ\nꥠힰZ中\n0 🙂ꥠaaaa\n 🙂!文㄰🙂90🙂?\t9\n?a文\t🙂\n ㄰中ힰힰZa9中 Z0ꥠ中ힰ9?9文ힰ\n\n9🙂?ꥠ9 ㄰中🙂Z🙂文㄰ꥠ\t0㄰🙂\n0!?ힰ文 ힰ\t中9㄰!9\tힰ",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:63",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "ힰ㄰  \nힰ㄰文ힰZZa99\t?🙂文中㄰0ힰ\n0ힰZ 🙂文aꥠZ中!中中ힰa🙂㄰a  9\t中Zꥠ 9🙂ꥠ !ힰ?Z㄰9!\n ힰힰZ㄰\n\t🙂㄰㄰\nힰa🙂文\tꥠZ文Z\t㄰!!!0\n0! 9?ꥠ中0\t9 0!\n中9\nZ\t0?Z\t㄰中\t9a㄰文0\t㄰a文\tZ\nꥠힰZ中\n0 🙂ꥠaaaa\n 🙂!文㄰🙂90🙂?\t9\n?a文\t🙂\n ㄰中ힰힰZa9中 Z0ꥠ中ힰ9?9文ힰ\n\n9🙂?ꥠ9 ㄰中🙂Z🙂文㄰ꥠ\t0㄰🙂\n0!?ힰ文 ힰ\t中9㄰!9\tힰ",
+      "maxChars": 3
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:63",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "ힰ㄰  \nힰ㄰文ힰZZa99\t?🙂文中㄰0ힰ\n0ힰZ 🙂文aꥠZ中!中中ힰa🙂㄰a  9\t中Zꥠ 9🙂ꥠ !ힰ?Z㄰9!\n ힰힰZ㄰\n\t🙂㄰㄰\nힰa🙂文\tꥠZ文Z\t㄰!!!0\n0! 9?ꥠ中0\t9 0!\n中9\nZ\t0?Z\t㄰中\t9a㄰文0\t㄰a文\tZ\nꥠힰZ中\n0 🙂ꥠaaaa\n 🙂!文㄰🙂90🙂?\t9\n?a文\t🙂\n ㄰中ힰힰZa9中 Z0ꥠ中ힰ9?9文ힰ\n\n9🙂?ꥠ9 ㄰中🙂Z🙂文㄰ꥠ\t0㄰🙂\n0!?ힰ文 ힰ\t中9㄰!9\tힰ",
+      "maxChars": 3
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:63",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "ힰ㄰  \nힰ㄰文ힰZZa99\t?🙂文中㄰0ힰ\n0ힰZ 🙂文aꥠZ中!中中ힰa🙂㄰a  9\t中Zꥠ 9🙂ꥠ !ힰ?Z㄰9!\n ힰힰZ㄰\n\t🙂㄰㄰\nힰa🙂文\tꥠZ文Z\t㄰!!!0\n0! 9?ꥠ中0\t9 0!\n中9\nZ\t0?Z\t㄰中\t9a㄰文0\t㄰a文\tZ\nꥠힰZ中\n0 🙂ꥠaaaa\n 🙂!文㄰🙂90🙂?\t9\n?a文\t🙂\n ㄰中ힰힰZa9中 Z0ꥠ中ힰ9?9文ힰ\n\n9🙂?ꥠ9 ㄰中🙂Z🙂文㄰ꥠ\t0㄰🙂\n0!?ힰ文 ힰ\t中9㄰!9\tힰ"
+    }
+  },
+  {
+    "id": "tokens.estimate:64",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "ힰ㄰Z??文9ZZ㄰ힰ中中ꥠaa90ꥠ㄰Za\n??? 9ힰꥠ0Zꥠힰ09㄰0a0?🙂! !!!0!文Z文aZ?9?!中ꥠ中Z?  9中🙂㄰?ZZힰꥠa90\n中0\nZힰ?\n㄰a㄰?㄰a 🙂aa🙂a00ꥠힰ!!a中?🙂🙂  Z㄰0ꥠ!中a ㄰aZZZ?\n文ꥠ0ힰ ㄰!\t\tꥠZ\n文\tZ㄰!Z?中㄰9aힰ0ꥠ\t中?\t文ힰ?a㄰?\t🙂㄰ힰ🙂ힰ90?0中\t!Z🙂文 ㄰!ힰ00\n中ힰ\nힰa文文a㄰aힰ㄰?\t!ꥠ!中\n\nꥠ!0\n\t\t\n!ힰ中!0\n\t\t㄰\t0文中a文中\t !🙂㄰90"
+    }
+  },
+  {
+    "id": "embedding.estimate:64",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "ힰ㄰Z??文9ZZ㄰ힰ中中ꥠaa90ꥠ㄰Za\n??? 9ힰꥠ0Zꥠힰ09㄰0a0?🙂! !!!0!文Z文aZ?9?!中ꥠ中Z?  9中🙂㄰?ZZힰꥠa90\n中0\nZힰ?\n㄰a㄰?㄰a 🙂aa🙂a00ꥠힰ!!a中?🙂🙂  Z㄰0ꥠ!中a ㄰aZZZ?\n文ꥠ0ힰ ㄰!\t\tꥠZ\n文\tZ㄰!Z?中㄰9aힰ0ꥠ\t中?\t文ힰ?a㄰?\t🙂㄰ힰ🙂ힰ90?0中\t!Z🙂文 ㄰!ힰ00\n中ힰ\nힰa文文a㄰aힰ㄰?\t!ꥠ!中\n\nꥠ!0\n\t\t\n!ힰ中!0\n\t\t㄰\t0文中a文中\t !🙂㄰90"
+    }
+  },
+  {
+    "id": "embedding.chunk:64",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "ힰ㄰Z??文9ZZ㄰ힰ中中ꥠaa90ꥠ㄰Za\n??? 9ힰꥠ0Zꥠힰ09㄰0a0?🙂! !!!0!文Z文aZ?9?!中ꥠ中Z?  9中🙂㄰?ZZힰꥠa90\n中0\nZힰ?\n㄰a㄰?㄰a 🙂aa🙂a00ꥠힰ!!a中?🙂🙂  Z㄰0ꥠ!中a ㄰aZZZ?\n文ꥠ0ힰ ㄰!\t\tꥠZ\n文\tZ㄰!Z?中㄰9aힰ0ꥠ\t中?\t文ힰ?a㄰?\t🙂㄰ힰ🙂ힰ90?0中\t!Z🙂文 ㄰!ힰ00\n中ힰ\nힰa文文a㄰aힰ㄰?\t!ꥠ!中\n\nꥠ!0\n\t\t\n!ힰ中!0\n\t\t㄰\t0文中a文中\t !🙂㄰90",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:64",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "ힰ㄰Z??文9ZZ㄰ힰ中中ꥠaa90ꥠ㄰Za\n??? 9ힰꥠ0Zꥠힰ09㄰0a0?🙂! !!!0!文Z文aZ?9?!中ꥠ中Z?  9中🙂㄰?ZZힰꥠa90\n中0\nZힰ?\n㄰a㄰?㄰a 🙂aa🙂a00ꥠힰ!!a中?🙂🙂  Z㄰0ꥠ!中a ㄰aZZZ?\n文ꥠ0ힰ ㄰!\t\tꥠZ\n文\tZ㄰!Z?中㄰9aힰ0ꥠ\t中?\t文ힰ?a㄰?\t🙂㄰ힰ🙂ힰ90?0中\t!Z🙂文 ㄰!ힰ00\n中ힰ\nힰa文文a㄰aힰ㄰?\t!ꥠ!中\n\nꥠ!0\n\t\t\n!ힰ中!0\n\t\t㄰\t0文中a文中\t !🙂㄰90",
+      "maxChars": 4
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:64",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "ힰ㄰Z??文9ZZ㄰ힰ中中ꥠaa90ꥠ㄰Za\n??? 9ힰꥠ0Zꥠힰ09㄰0a0?🙂! !!!0!文Z文aZ?9?!中ꥠ中Z?  9中🙂㄰?ZZힰꥠa90\n中0\nZힰ?\n㄰a㄰?㄰a 🙂aa🙂a00ꥠힰ!!a中?🙂🙂  Z㄰0ꥠ!中a ㄰aZZZ?\n文ꥠ0ힰ ㄰!\t\tꥠZ\n文\tZ㄰!Z?中㄰9aힰ0ꥠ\t中?\t文ힰ?a㄰?\t🙂㄰ힰ🙂ힰ90?0中\t!Z🙂文 ㄰!ힰ00\n中ힰ\nힰa文文a㄰aힰ㄰?\t!ꥠ!中\n\nꥠ!0\n\t\t\n!ힰ中!0\n\t\t㄰\t0文中a文中\t !🙂㄰90",
+      "maxChars": 4
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:64",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "ힰ㄰Z??文9ZZ㄰ힰ中中ꥠaa90ꥠ㄰Za\n??? 9ힰꥠ0Zꥠힰ09㄰0a0?🙂! !!!0!文Z文aZ?9?!中ꥠ中Z?  9中🙂㄰?ZZힰꥠa90\n中0\nZힰ?\n㄰a㄰?㄰a 🙂aa🙂a00ꥠힰ!!a中?🙂🙂  Z㄰0ꥠ!中a ㄰aZZZ?\n文ꥠ0ힰ ㄰!\t\tꥠZ\n文\tZ㄰!Z?中㄰9aힰ0ꥠ\t中?\t文ힰ?a㄰?\t🙂㄰ힰ🙂ힰ90?0中\t!Z🙂文 ㄰!ힰ00\n中ힰ\nힰa文文a㄰aힰ㄰?\t!ꥠ!中\n\nꥠ!0\n\t\t\n!ힰ中!0\n\t\t㄰\t0文中a文中\t !🙂㄰90"
+    }
+  },
+  {
+    "id": "tokens.estimate:65",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": " 中\n 9㄰a?ힰZꥠ?ힰ99🙂文!🙂!!aힰ9\n 🙂㄰ힰ中文\tZꥠ!Z9aa90㄰\ta?! ?0中a中! \na9aힰ㄰㄰ힰힰaa9ZZ文9ힰ \n?aZ㄰0\t文a中ꥠ \tꥠ0ힰ?aa?中a文Zaꥠ\nZꥠZ文㄰🙂!ꥠ㄰文ꥠ中\n?ZZ\n㄰ !中?文\n文90!㄰?ힰ中ꥠힰ\nZꥠa中 !中㄰ힰ Z中文99 Z ힰ🙂🙂!\tꥠ!? 中\t中!ꥠ🙂!a?中?ힰ0ힰ\t㄰ ꥠ0a9 \n!文\t9中文??Z9㄰?ힰ"
+    }
+  },
+  {
+    "id": "embedding.estimate:65",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": " 中\n 9㄰a?ힰZꥠ?ힰ99🙂文!🙂!!aힰ9\n 🙂㄰ힰ中文\tZꥠ!Z9aa90㄰\ta?! ?0中a中! \na9aힰ㄰㄰ힰힰaa9ZZ文9ힰ \n?aZ㄰0\t文a中ꥠ \tꥠ0ힰ?aa?中a文Zaꥠ\nZꥠZ文㄰🙂!ꥠ㄰文ꥠ中\n?ZZ\n㄰ !中?文\n文90!㄰?ힰ中ꥠힰ\nZꥠa中 !中㄰ힰ Z中文99 Z ힰ🙂🙂!\tꥠ!? 中\t中!ꥠ🙂!a?中?ힰ0ힰ\t㄰ ꥠ0a9 \n!文\t9中文??Z9㄰?ힰ"
+    }
+  },
+  {
+    "id": "embedding.chunk:65",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": " 中\n 9㄰a?ힰZꥠ?ힰ99🙂文!🙂!!aힰ9\n 🙂㄰ힰ中文\tZꥠ!Z9aa90㄰\ta?! ?0中a中! \na9aힰ㄰㄰ힰힰaa9ZZ文9ힰ \n?aZ㄰0\t文a中ꥠ \tꥠ0ힰ?aa?中a文Zaꥠ\nZꥠZ文㄰🙂!ꥠ㄰文ꥠ中\n?ZZ\n㄰ !中?文\n文90!㄰?ힰ中ꥠힰ\nZꥠa中 !中㄰ힰ Z中文99 Z ힰ🙂🙂!\tꥠ!? 中\t中!ꥠ🙂!a?中?ힰ0ힰ\t㄰ ꥠ0a9 \n!文\t9中文??Z9㄰?ힰ",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:65",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": " 中\n 9㄰a?ힰZꥠ?ힰ99🙂文!🙂!!aힰ9\n 🙂㄰ힰ中文\tZꥠ!Z9aa90㄰\ta?! ?0中a中! \na9aힰ㄰㄰ힰힰaa9ZZ文9ힰ \n?aZ㄰0\t文a中ꥠ \tꥠ0ힰ?aa?中a文Zaꥠ\nZꥠZ文㄰🙂!ꥠ㄰文ꥠ中\n?ZZ\n㄰ !中?文\n文90!㄰?ힰ中ꥠힰ\nZꥠa中 !中㄰ힰ Z中文99 Z ힰ🙂🙂!\tꥠ!? 中\t中!ꥠ🙂!a?中?ힰ0ힰ\t㄰ ꥠ0a9 \n!文\t9中文??Z9㄰?ힰ",
+      "maxChars": 0
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:65",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": " 中\n 9㄰a?ힰZꥠ?ힰ99🙂文!🙂!!aힰ9\n 🙂㄰ힰ中文\tZꥠ!Z9aa90㄰\ta?! ?0中a中! \na9aힰ㄰㄰ힰힰaa9ZZ文9ힰ \n?aZ㄰0\t文a中ꥠ \tꥠ0ힰ?aa?中a文Zaꥠ\nZꥠZ文㄰🙂!ꥠ㄰文ꥠ中\n?ZZ\n㄰ !中?文\n文90!㄰?ힰ中ꥠힰ\nZꥠa中 !中㄰ힰ Z中文99 Z ힰ🙂🙂!\tꥠ!? 中\t中!ꥠ🙂!a?中?ힰ0ힰ\t㄰ ꥠ0a9 \n!文\t9中文??Z9㄰?ힰ",
+      "maxChars": 0
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:65",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": " 中\n 9㄰a?ힰZꥠ?ힰ99🙂文!🙂!!aힰ9\n 🙂㄰ힰ中文\tZꥠ!Z9aa90㄰\ta?! ?0中a中! \na9aힰ㄰㄰ힰힰaa9ZZ文9ힰ \n?aZ㄰0\t文a中ꥠ \tꥠ0ힰ?aa?中a文Zaꥠ\nZꥠZ文㄰🙂!ꥠ㄰文ꥠ中\n?ZZ\n㄰ !中?文\n文90!㄰?ힰ中ꥠힰ\nZꥠa中 !中㄰ힰ Z中文99 Z ힰ🙂🙂!\tꥠ!? 中\t中!ꥠ🙂!a?中?ힰ0ힰ\t㄰ ꥠ0a9 \n!文\t9中文??Z9㄰?ힰ"
+    }
+  },
+  {
+    "id": "tokens.estimate:66",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "\n0㄰!?a?\n中㄰9?!?09\tힰ㄰!㄰  0 🙂0Zꥠ㄰\n!99a00㄰文文 中㄰ힰa中🙂㄰Z\t?Z中!文\t0㄰ꥠ!中!🙂??a\n中ꥠ🙂a🙂ꥠ0\t0㄰㄰a🙂\t\n\t\t\n0!ힰaa中a\na中ꥠ🙂中!?a\t㄰ꥠꥠ9 ?0ꥠa!"
+    }
+  },
+  {
+    "id": "embedding.estimate:66",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "\n0㄰!?a?\n中㄰9?!?09\tힰ㄰!㄰  0 🙂0Zꥠ㄰\n!99a00㄰文文 中㄰ힰa中🙂㄰Z\t?Z中!文\t0㄰ꥠ!中!🙂??a\n中ꥠ🙂a🙂ꥠ0\t0㄰㄰a🙂\t\n\t\t\n0!ힰaa中a\na中ꥠ🙂中!?a\t㄰ꥠꥠ9 ?0ꥠa!"
+    }
+  },
+  {
+    "id": "embedding.chunk:66",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "\n0㄰!?a?\n中㄰9?!?09\tힰ㄰!㄰  0 🙂0Zꥠ㄰\n!99a00㄰文文 中㄰ힰa中🙂㄰Z\t?Z中!文\t0㄰ꥠ!中!🙂??a\n中ꥠ🙂a🙂ꥠ0\t0㄰㄰a🙂\t\n\t\t\n0!ힰaa中a\na中ꥠ🙂中!?a\t㄰ꥠꥠ9 ?0ꥠa!",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:66",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "\n0㄰!?a?\n中㄰9?!?09\tힰ㄰!㄰  0 🙂0Zꥠ㄰\n!99a00㄰文文 中㄰ힰa中🙂㄰Z\t?Z中!文\t0㄰ꥠ!中!🙂??a\n中ꥠ🙂a🙂ꥠ0\t0㄰㄰a🙂\t\n\t\t\n0!ힰaa中a\na中ꥠ🙂中!?a\t㄰ꥠꥠ9 ?0ꥠa!",
+      "maxChars": 1
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:66",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "\n0㄰!?a?\n中㄰9?!?09\tힰ㄰!㄰  0 🙂0Zꥠ㄰\n!99a00㄰文文 中㄰ힰa中🙂㄰Z\t?Z中!文\t0㄰ꥠ!中!🙂??a\n中ꥠ🙂a🙂ꥠ0\t0㄰㄰a🙂\t\n\t\t\n0!ힰaa中a\na中ꥠ🙂中!?a\t㄰ꥠꥠ9 ?0ꥠa!",
+      "maxChars": 1
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:66",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "\n0㄰!?a?\n中㄰9?!?09\tힰ㄰!㄰  0 🙂0Zꥠ㄰\n!99a00㄰文文 中㄰ힰa中🙂㄰Z\t?Z中!文\t0㄰ꥠ!中!🙂??a\n中ꥠ🙂a🙂ꥠ0\t0㄰㄰a🙂\t\n\t\t\n0!ힰaa中a\na中ꥠ🙂中!?a\t㄰ꥠꥠ9 ?0ꥠa!"
+    }
+  },
+  {
+    "id": "tokens.estimate:67",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": " 9a?ힰ中 \t? Za🙂㄰!0\nꥠ\n㄰ힰ㄰文!?  🙂Z文\n?a中中a\n中? Z0!文Za🙂9ꥠꥠ中Z文Z!?中0 a9ힰ🙂!ힰ㄰㄰aힰZ\n文!?文?ꥠ?文0中中\t🙂ힰ㄰\nힰ9中a\n㄰ힰ文ꥠZꥠ9㄰a!🙂ꥠힰa9ힰ 中?!🙂\tힰ0ꥠ\t9\nZZꥠ99ힰZ中\t a㄰?\t\n\n文9㄰!?0\t中🙂中Zힰힰ!Z\t\nZힰ㄰\tZaힰ\t㄰\tힰ\n㄰㄰中9! 9🙂\tꥠힰ0ꥠ中9㄰㄰0?文🙂a\nZힰ!0 ?ꥠ\t\t!文\n\t0\n中ꥠ\t9a0Z0\n🙂a文9 文㄰ ?\tꥠ?!!中ힰ!Z!"
+    }
+  },
+  {
+    "id": "embedding.estimate:67",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": " 9a?ힰ中 \t? Za🙂㄰!0\nꥠ\n㄰ힰ㄰文!?  🙂Z文\n?a中中a\n中? Z0!文Za🙂9ꥠꥠ中Z文Z!?中0 a9ힰ🙂!ힰ㄰㄰aힰZ\n文!?文?ꥠ?文0中中\t🙂ힰ㄰\nힰ9中a\n㄰ힰ文ꥠZꥠ9㄰a!🙂ꥠힰa9ힰ 中?!🙂\tힰ0ꥠ\t9\nZZꥠ99ힰZ中\t a㄰?\t\n\n文9㄰!?0\t中🙂中Zힰힰ!Z\t\nZힰ㄰\tZaힰ\t㄰\tힰ\n㄰㄰中9! 9🙂\tꥠힰ0ꥠ中9㄰㄰0?文🙂a\nZힰ!0 ?ꥠ\t\t!文\n\t0\n中ꥠ\t9a0Z0\n🙂a文9 文㄰ ?\tꥠ?!!中ힰ!Z!"
+    }
+  },
+  {
+    "id": "embedding.chunk:67",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": " 9a?ힰ中 \t? Za🙂㄰!0\nꥠ\n㄰ힰ㄰文!?  🙂Z文\n?a中中a\n中? Z0!文Za🙂9ꥠꥠ中Z文Z!?中0 a9ힰ🙂!ힰ㄰㄰aힰZ\n文!?文?ꥠ?文0中中\t🙂ힰ㄰\nힰ9中a\n㄰ힰ文ꥠZꥠ9㄰a!🙂ꥠힰa9ힰ 中?!🙂\tힰ0ꥠ\t9\nZZꥠ99ힰZ中\t a㄰?\t\n\n文9㄰!?0\t中🙂中Zힰힰ!Z\t\nZힰ㄰\tZaힰ\t㄰\tힰ\n㄰㄰中9! 9🙂\tꥠힰ0ꥠ中9㄰㄰0?文🙂a\nZힰ!0 ?ꥠ\t\t!文\n\t0\n中ꥠ\t9a0Z0\n🙂a文9 文㄰ ?\tꥠ?!!中ힰ!Z!",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:67",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": " 9a?ힰ中 \t? Za🙂㄰!0\nꥠ\n㄰ힰ㄰文!?  🙂Z文\n?a中中a\n中? Z0!文Za🙂9ꥠꥠ中Z文Z!?中0 a9ힰ🙂!ힰ㄰㄰aힰZ\n文!?文?ꥠ?文0中中\t🙂ힰ㄰\nힰ9中a\n㄰ힰ文ꥠZꥠ9㄰a!🙂ꥠힰa9ힰ 中?!🙂\tힰ0ꥠ\t9\nZZꥠ99ힰZ中\t a㄰?\t\n\n文9㄰!?0\t中🙂中Zힰힰ!Z\t\nZힰ㄰\tZaힰ\t㄰\tힰ\n㄰㄰中9! 9🙂\tꥠힰ0ꥠ中9㄰㄰0?文🙂a\nZힰ!0 ?ꥠ\t\t!文\n\t0\n中ꥠ\t9a0Z0\n🙂a文9 文㄰ ?\tꥠ?!!中ힰ!Z!",
+      "maxChars": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:67",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": " 9a?ힰ中 \t? Za🙂㄰!0\nꥠ\n㄰ힰ㄰文!?  🙂Z文\n?a中中a\n中? Z0!文Za🙂9ꥠꥠ中Z文Z!?中0 a9ힰ🙂!ힰ㄰㄰aힰZ\n文!?文?ꥠ?文0中中\t🙂ힰ㄰\nힰ9中a\n㄰ힰ文ꥠZꥠ9㄰a!🙂ꥠힰa9ힰ 中?!🙂\tힰ0ꥠ\t9\nZZꥠ99ힰZ中\t a㄰?\t\n\n文9㄰!?0\t中🙂中Zힰힰ!Z\t\nZힰ㄰\tZaힰ\t㄰\tힰ\n㄰㄰中9! 9🙂\tꥠힰ0ꥠ中9㄰㄰0?文🙂a\nZힰ!0 ?ꥠ\t\t!文\n\t0\n中ꥠ\t9a0Z0\n🙂a文9 文㄰ ?\tꥠ?!!中ힰ!Z!",
+      "maxChars": 2
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:67",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": " 9a?ힰ中 \t? Za🙂㄰!0\nꥠ\n㄰ힰ㄰文!?  🙂Z文\n?a中中a\n中? Z0!文Za🙂9ꥠꥠ中Z文Z!?中0 a9ힰ🙂!ힰ㄰㄰aힰZ\n文!?文?ꥠ?文0中中\t🙂ힰ㄰\nힰ9中a\n㄰ힰ文ꥠZꥠ9㄰a!🙂ꥠힰa9ힰ 中?!🙂\tힰ0ꥠ\t9\nZZꥠ99ힰZ中\t a㄰?\t\n\n文9㄰!?0\t中🙂中Zힰힰ!Z\t\nZힰ㄰\tZaힰ\t㄰\tힰ\n㄰㄰中9! 9🙂\tꥠힰ0ꥠ中9㄰㄰0?文🙂a\nZힰ!0 ?ꥠ\t\t!文\n\t0\n中ꥠ\t9a0Z0\n🙂a文9 文㄰ ?\tꥠ?!!中ힰ!Z!"
+    }
+  },
+  {
+    "id": "tokens.estimate:68",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "ힰaa\t 9Z中!ZZ文㄰\t!中ힰힰꥠZ🙂9\t🙂?🙂?ꥠ!? ?Z0🙂 09㄰中0\n㄰🙂a㄰ \n中?!\n中 9🙂?!ꥠ\t 中中a\n文0a\na?㄰?9!文Z中ힰꥠꥠ🙂?文\n\t🙂!9ꥠ\n中 中\n㄰ힰ  ꥠ中ꥠ0🙂 ?文0? 0㄰㄰?㄰文?ힰ?ꥠ\nZ🙂!\n文 中㄰㄰9a0?中文\n\t9\n9!文㄰中\tZaaZZ ?㄰aힰ9ꥠ文?"
+    }
+  },
+  {
+    "id": "embedding.estimate:68",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "ힰaa\t 9Z中!ZZ文㄰\t!中ힰힰꥠZ🙂9\t🙂?🙂?ꥠ!? ?Z0🙂 09㄰中0\n㄰🙂a㄰ \n中?!\n中 9🙂?!ꥠ\t 中中a\n文0a\na?㄰?9!文Z中ힰꥠꥠ🙂?文\n\t🙂!9ꥠ\n中 中\n㄰ힰ  ꥠ中ꥠ0🙂 ?文0? 0㄰㄰?㄰文?ힰ?ꥠ\nZ🙂!\n文 中㄰㄰9a0?中文\n\t9\n9!文㄰中\tZaaZZ ?㄰aힰ9ꥠ文?"
+    }
+  },
+  {
+    "id": "embedding.chunk:68",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "ힰaa\t 9Z中!ZZ文㄰\t!中ힰힰꥠZ🙂9\t🙂?🙂?ꥠ!? ?Z0🙂 09㄰中0\n㄰🙂a㄰ \n中?!\n中 9🙂?!ꥠ\t 中中a\n文0a\na?㄰?9!文Z中ힰꥠꥠ🙂?文\n\t🙂!9ꥠ\n中 中\n㄰ힰ  ꥠ中ꥠ0🙂 ?文0? 0㄰㄰?㄰文?ힰ?ꥠ\nZ🙂!\n文 中㄰㄰9a0?中文\n\t9\n9!文㄰中\tZaaZZ ?㄰aힰ9ꥠ文?",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:68",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "ힰaa\t 9Z中!ZZ文㄰\t!中ힰힰꥠZ🙂9\t🙂?🙂?ꥠ!? ?Z0🙂 09㄰中0\n㄰🙂a㄰ \n中?!\n中 9🙂?!ꥠ\t 中中a\n文0a\na?㄰?9!文Z中ힰꥠꥠ🙂?文\n\t🙂!9ꥠ\n中 中\n㄰ힰ  ꥠ中ꥠ0🙂 ?文0? 0㄰㄰?㄰文?ힰ?ꥠ\nZ🙂!\n文 中㄰㄰9a0?中文\n\t9\n9!文㄰中\tZaaZZ ?㄰aힰ9ꥠ文?",
+      "maxChars": 3
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:68",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "ힰaa\t 9Z中!ZZ文㄰\t!中ힰힰꥠZ🙂9\t🙂?🙂?ꥠ!? ?Z0🙂 09㄰中0\n㄰🙂a㄰ \n中?!\n中 9🙂?!ꥠ\t 中中a\n文0a\na?㄰?9!文Z中ힰꥠꥠ🙂?文\n\t🙂!9ꥠ\n中 中\n㄰ힰ  ꥠ中ꥠ0🙂 ?文0? 0㄰㄰?㄰文?ힰ?ꥠ\nZ🙂!\n文 中㄰㄰9a0?中文\n\t9\n9!文㄰中\tZaaZZ ?㄰aힰ9ꥠ文?",
+      "maxChars": 3
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:68",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "ힰaa\t 9Z中!ZZ文㄰\t!中ힰힰꥠZ🙂9\t🙂?🙂?ꥠ!? ?Z0🙂 09㄰中0\n㄰🙂a㄰ \n中?!\n中 9🙂?!ꥠ\t 中中a\n文0a\na?㄰?9!文Z中ힰꥠꥠ🙂?文\n\t🙂!9ꥠ\n中 中\n㄰ힰ  ꥠ中ꥠ0🙂 ?文0? 0㄰㄰?㄰文?ힰ?ꥠ\nZ🙂!\n文 中㄰㄰9a0?中文\n\t9\n9!文㄰中\tZaaZZ ?㄰aힰ9ꥠ文?"
+    }
+  },
+  {
+    "id": "tokens.estimate:69",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "ꥠ㄰9ힰ㄰\taaa !🙂文!㄰0Z🙂? \n  中?文0Z中🙂🙂Z\na9\nꥠ\t㄰🙂0a9\n\n9aa中9\tꥠ\nꥠ9文\n文!00ힰ中Za?!9㄰\n\t?ힰ㄰ Z!a\t0ힰ?Z0🙂ힰ\n0?中㄰ힰ文文🙂🙂㄰?㄰ꥠ"
+    }
+  },
+  {
+    "id": "embedding.estimate:69",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "ꥠ㄰9ힰ㄰\taaa !🙂文!㄰0Z🙂? \n  中?文0Z中🙂🙂Z\na9\nꥠ\t㄰🙂0a9\n\n9aa中9\tꥠ\nꥠ9文\n文!00ힰ中Za?!9㄰\n\t?ힰ㄰ Z!a\t0ힰ?Z0🙂ힰ\n0?中㄰ힰ文文🙂🙂㄰?㄰ꥠ"
+    }
+  },
+  {
+    "id": "embedding.chunk:69",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "ꥠ㄰9ힰ㄰\taaa !🙂文!㄰0Z🙂? \n  中?文0Z中🙂🙂Z\na9\nꥠ\t㄰🙂0a9\n\n9aa中9\tꥠ\nꥠ9文\n文!00ힰ中Za?!9㄰\n\t?ힰ㄰ Z!a\t0ힰ?Z0🙂ힰ\n0?中㄰ힰ文文🙂🙂㄰?㄰ꥠ",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:69",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "ꥠ㄰9ힰ㄰\taaa !🙂文!㄰0Z🙂? \n  中?文0Z中🙂🙂Z\na9\nꥠ\t㄰🙂0a9\n\n9aa中9\tꥠ\nꥠ9文\n文!00ힰ中Za?!9㄰\n\t?ힰ㄰ Z!a\t0ힰ?Z0🙂ힰ\n0?中㄰ힰ文文🙂🙂㄰?㄰ꥠ",
+      "maxChars": 4
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:69",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "ꥠ㄰9ힰ㄰\taaa !🙂文!㄰0Z🙂? \n  中?文0Z中🙂🙂Z\na9\nꥠ\t㄰🙂0a9\n\n9aa中9\tꥠ\nꥠ9文\n文!00ힰ中Za?!9㄰\n\t?ힰ㄰ Z!a\t0ힰ?Z0🙂ힰ\n0?中㄰ힰ文文🙂🙂㄰?㄰ꥠ",
+      "maxChars": 4
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:69",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "ꥠ㄰9ힰ㄰\taaa !🙂文!㄰0Z🙂? \n  中?文0Z中🙂🙂Z\na9\nꥠ\t㄰🙂0a9\n\n9aa中9\tꥠ\nꥠ9文\n文!00ힰ中Za?!9㄰\n\t?ힰ㄰ Z!a\t0ힰ?Z0🙂ힰ\n0?中㄰ힰ文文🙂🙂㄰?㄰ꥠ"
+    }
+  },
+  {
+    "id": "tokens.estimate:70",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "㄰00a\n🙂中ힰힰ🙂?文🙂a\nZ\t0ꥠ ꥠ文ힰ9🙂!\n!0㄰文文aZ㄰ 0a!文ꥠ0ힰ?9??文文Z0?0中ힰ\tZ文? 🙂 ힰ中aꥠ🙂9 文\t\t中a\t0?9Z中9中\t\t!!! 0\t9?㄰0文!\n"
+    }
+  },
+  {
+    "id": "embedding.estimate:70",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "㄰00a\n🙂中ힰힰ🙂?文🙂a\nZ\t0ꥠ ꥠ文ힰ9🙂!\n!0㄰文文aZ㄰ 0a!文ꥠ0ힰ?9??文文Z0?0中ힰ\tZ文? 🙂 ힰ中aꥠ🙂9 文\t\t中a\t0?9Z中9中\t\t!!! 0\t9?㄰0文!\n"
+    }
+  },
+  {
+    "id": "embedding.chunk:70",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "㄰00a\n🙂中ힰힰ🙂?文🙂a\nZ\t0ꥠ ꥠ文ힰ9🙂!\n!0㄰文文aZ㄰ 0a!文ꥠ0ힰ?9??文文Z0?0中ힰ\tZ文? 🙂 ힰ中aꥠ🙂9 文\t\t中a\t0?9Z中9中\t\t!!! 0\t9?㄰0文!\n",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:70",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "㄰00a\n🙂中ힰힰ🙂?文🙂a\nZ\t0ꥠ ꥠ文ힰ9🙂!\n!0㄰文文aZ㄰ 0a!文ꥠ0ힰ?9??文文Z0?0中ힰ\tZ文? 🙂 ힰ中aꥠ🙂9 文\t\t中a\t0?9Z中9中\t\t!!! 0\t9?㄰0文!\n",
+      "maxChars": 0
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:70",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "㄰00a\n🙂中ힰힰ🙂?文🙂a\nZ\t0ꥠ ꥠ文ힰ9🙂!\n!0㄰文文aZ㄰ 0a!文ꥠ0ힰ?9??文文Z0?0中ힰ\tZ文? 🙂 ힰ中aꥠ🙂9 文\t\t中a\t0?9Z中9中\t\t!!! 0\t9?㄰0文!\n",
+      "maxChars": 0
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:70",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "㄰00a\n🙂中ힰힰ🙂?文🙂a\nZ\t0ꥠ ꥠ文ힰ9🙂!\n!0㄰文文aZ㄰ 0a!文ꥠ0ힰ?9??文文Z0?0中ힰ\tZ文? 🙂 ힰ中aꥠ🙂9 文\t\t中a\t0?9Z中9中\t\t!!! 0\t9?㄰0文!\n"
+    }
+  },
+  {
+    "id": "tokens.estimate:71",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "0?Zꥠ中a文ힰꥠ\tꥠ  🙂\n\n🙂ힰZ0a!ힰꥠ0文Z\t\n🙂🙂中🙂\n\ta0?㄰中🙂\taaꥠa\n中㄰aZ!中!ꥠ ㄰\t文?!文!中Z🙂中ힰ?Z🙂"
+    }
+  },
+  {
+    "id": "embedding.estimate:71",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "0?Zꥠ中a文ힰꥠ\tꥠ  🙂\n\n🙂ힰZ0a!ힰꥠ0文Z\t\n🙂🙂中🙂\n\ta0?㄰中🙂\taaꥠa\n中㄰aZ!中!ꥠ ㄰\t文?!文!中Z🙂中ힰ?Z🙂"
+    }
+  },
+  {
+    "id": "embedding.chunk:71",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "0?Zꥠ中a文ힰꥠ\tꥠ  🙂\n\n🙂ힰZ0a!ힰꥠ0文Z\t\n🙂🙂中🙂\n\ta0?㄰中🙂\taaꥠa\n中㄰aZ!中!ꥠ ㄰\t文?!文!中Z🙂中ힰ?Z🙂",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:71",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "0?Zꥠ中a文ힰꥠ\tꥠ  🙂\n\n🙂ힰZ0a!ힰꥠ0文Z\t\n🙂🙂中🙂\n\ta0?㄰中🙂\taaꥠa\n中㄰aZ!中!ꥠ ㄰\t文?!文!中Z🙂中ힰ?Z🙂",
+      "maxChars": 1
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:71",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "0?Zꥠ中a文ힰꥠ\tꥠ  🙂\n\n🙂ힰZ0a!ힰꥠ0文Z\t\n🙂🙂中🙂\n\ta0?㄰中🙂\taaꥠa\n中㄰aZ!中!ꥠ ㄰\t文?!文!中Z🙂中ힰ?Z🙂",
+      "maxChars": 1
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:71",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "0?Zꥠ中a文ힰꥠ\tꥠ  🙂\n\n🙂ힰZ0a!ힰꥠ0文Z\t\n🙂🙂中🙂\n\ta0?㄰中🙂\taaꥠa\n中㄰aZ!中!ꥠ ㄰\t文?!文!中Z🙂中ힰ?Z🙂"
+    }
+  },
+  {
+    "id": "tokens.estimate:72",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "0文\n中🙂㄰?ힰ㄰ힰ文 ㄰\n ?\t \nZa9中a\t🙂Z㄰文文a a🙂文! ZZ㄰🙂0ힰ\t0ꥠ文🙂\t 00?㄰!\t🙂\t\n \t㄰a🙂 ㄰\n㄰0?ꥠ㄰🙂中ힰ文\na🙂㄰ꥠힰ\n!9中中㄰9aힰ㄰9🙂🙂㄰?中中Z\n\t🙂!中ힰꥠ🙂 ?!🙂??中㄰"
+    }
+  },
+  {
+    "id": "embedding.estimate:72",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "0文\n中🙂㄰?ힰ㄰ힰ文 ㄰\n ?\t \nZa9中a\t🙂Z㄰文文a a🙂文! ZZ㄰🙂0ힰ\t0ꥠ文🙂\t 00?㄰!\t🙂\t\n \t㄰a🙂 ㄰\n㄰0?ꥠ㄰🙂中ힰ文\na🙂㄰ꥠힰ\n!9中中㄰9aힰ㄰9🙂🙂㄰?中中Z\n\t🙂!中ힰꥠ🙂 ?!🙂??中㄰"
+    }
+  },
+  {
+    "id": "embedding.chunk:72",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "0文\n中🙂㄰?ힰ㄰ힰ文 ㄰\n ?\t \nZa9中a\t🙂Z㄰文文a a🙂文! ZZ㄰🙂0ힰ\t0ꥠ文🙂\t 00?㄰!\t🙂\t\n \t㄰a🙂 ㄰\n㄰0?ꥠ㄰🙂中ힰ文\na🙂㄰ꥠힰ\n!9中中㄰9aힰ㄰9🙂🙂㄰?中中Z\n\t🙂!中ힰꥠ🙂 ?!🙂??中㄰",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:72",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "0文\n中🙂㄰?ힰ㄰ힰ文 ㄰\n ?\t \nZa9中a\t🙂Z㄰文文a a🙂文! ZZ㄰🙂0ힰ\t0ꥠ文🙂\t 00?㄰!\t🙂\t\n \t㄰a🙂 ㄰\n㄰0?ꥠ㄰🙂中ힰ文\na🙂㄰ꥠힰ\n!9中中㄰9aힰ㄰9🙂🙂㄰?中中Z\n\t🙂!中ힰꥠ🙂 ?!🙂??中㄰",
+      "maxChars": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:72",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "0文\n中🙂㄰?ힰ㄰ힰ文 ㄰\n ?\t \nZa9中a\t🙂Z㄰文文a a🙂文! ZZ㄰🙂0ힰ\t0ꥠ文🙂\t 00?㄰!\t🙂\t\n \t㄰a🙂 ㄰\n㄰0?ꥠ㄰🙂中ힰ文\na🙂㄰ꥠힰ\n!9中中㄰9aힰ㄰9🙂🙂㄰?中中Z\n\t🙂!中ힰꥠ🙂 ?!🙂??中㄰",
+      "maxChars": 2
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:72",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "0文\n中🙂㄰?ힰ㄰ힰ文 ㄰\n ?\t \nZa9中a\t🙂Z㄰文文a a🙂文! ZZ㄰🙂0ힰ\t0ꥠ文🙂\t 00?㄰!\t🙂\t\n \t㄰a🙂 ㄰\n㄰0?ꥠ㄰🙂中ힰ文\na🙂㄰ꥠힰ\n!9中中㄰9aힰ㄰9🙂🙂㄰?中中Z\n\t🙂!中ힰꥠ🙂 ?!🙂??中㄰"
+    }
+  },
+  {
+    "id": "tokens.estimate:73",
+    "lane": "L02-llm-manager",
+    "fn": "tokens.estimate",
+    "args": {
+      "text": "?ힰZ🙂ꥠꥠ\taa\tힰힰ!ힰZ\t文!㄰ꥠ中ힰ0文ꥠ\na中Zힰꥠ\n  文aa\na099!🙂ZꥠZ!!🙂a㄰?\n中"
+    }
+  },
+  {
+    "id": "embedding.estimate:73",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.estimate",
+    "args": {
+      "text": "?ힰZ🙂ꥠꥠ\taa\tힰힰ!ힰZ\t文!㄰ꥠ中ힰ0文ꥠ\na中Zힰꥠ\n  文aa\na099!🙂ZꥠZ!!🙂a㄰?\n中"
+    }
+  },
+  {
+    "id": "embedding.chunk:73",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.chunk",
+    "args": {
+      "text": "?ힰZ🙂ꥠꥠ\taa\tힰힰ!ힰZ\t文!㄰ꥠ中ힰ0文ꥠ\na中Zힰꥠ\n  文aa\na099!🙂ZꥠZ!!🙂a㄰?\n中",
+      "maxTokens": 8,
+      "overlap": 2
+    }
+  },
+  {
+    "id": "text.safe_truncate:73",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate",
+    "args": {
+      "text": "?ힰZ🙂ꥠꥠ\taa\tힰힰ!ힰZ\t文!㄰ꥠ中ힰ0文ꥠ\na中Zힰꥠ\n  文aa\na099!🙂ZꥠZ!!🙂a㄰?\n中",
+      "maxChars": 3
+    }
+  },
+  {
+    "id": "text.safe_truncate_chars:73",
+    "lane": "F4-security",
+    "fn": "text.safe_truncate_chars",
+    "args": {
+      "text": "?ힰZ🙂ꥠꥠ\taa\tힰힰ!ힰZ\t文!㄰ꥠ中ힰ0文ꥠ\na中Zힰꥠ\n  文aa\na099!🙂ZꥠZ!!🙂a㄰?\n中",
+      "maxChars": 3
+    }
+  },
+  {
+    "id": "text.sanitize_unicode:73",
+    "lane": "F4-security",
+    "fn": "text.sanitize_unicode",
+    "args": {
+      "text": "?ힰZ🙂ꥠꥠ\taa\tힰힰ!ힰZ\t文!㄰ꥠ中ힰ0文ꥠ\na中Zힰꥠ\n  文aa\na099!🙂ZꥠZ!!🙂a㄰?\n中"
+    }
+  },
+  {
+    "id": "embedding.limit:444",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.limit",
+    "args": {
+      "model": "BAAI/bge-m3"
+    }
+  },
+  {
+    "id": "embedding.limit:445",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.limit",
+    "args": {
+      "model": "Qwen/Qwen3-Embedding"
+    }
+  },
+  {
+    "id": "embedding.limit:446",
+    "lane": "L01-llm-providers",
+    "fn": "embedding.limit",
+    "args": {
+      "model": "unknown"
+    }
+  },
+  {
+    "id": "wrap.stream:447",
+    "lane": "F4-security",
+    "fn": "wrap.stream",
+    "args": {
+      "model": "qwen",
+      "providerType": null,
+      "providerScope": null,
+      "chunks": [
+        "<|im_start|>assistant\n正文<|im_end|>"
+      ]
+    }
+  },
+  {
+    "id": "wrap.stream:448",
+    "lane": "F4-security",
+    "fn": "wrap.stream",
+    "args": {
+      "model": "qwen",
+      "providerType": null,
+      "providerScope": null,
+      "chunks": [
+        "<",
+        "|",
+        "i",
+        "m",
+        "_",
+        "s",
+        "t",
+        "a",
+        "r",
+        "t",
+        "|",
+        ">",
+        "a",
+        "s",
+        "s",
+        "i",
+        "s",
+        "t",
+        "a",
+        "n",
+        "t",
+        "\n",
+        "正",
+        "文",
+        "<",
+        "|",
+        "i",
+        "m",
+        "_",
+        "e",
+        "n",
+        "d",
+        "|",
+        ">"
+      ]
+    }
+  },
+  {
+    "id": "wrap.stream:449",
+    "lane": "F4-security",
+    "fn": "wrap.stream",
+    "args": {
+      "model": "qwen",
+      "providerType": null,
+      "providerScope": null,
+      "chunks": [
+        "`<|im_end|>`"
+      ]
+    }
+  },
+  {
+    "id": "wrap.stream:450",
+    "lane": "F4-security",
+    "fn": "wrap.stream",
+    "args": {
+      "model": "qwen",
+      "providerType": null,
+      "providerScope": null,
+      "chunks": [
+        "`",
+        "<",
+        "|",
+        "i",
+        "m",
+        "_",
+        "e",
+        "n",
+        "d",
+        "|",
+        ">",
+        "`"
+      ]
+    }
+  },
+  {
+    "id": "wrap.stream:451",
+    "lane": "F4-security",
+    "fn": "wrap.stream",
+    "args": {
+      "model": "qwen",
+      "providerType": null,
+      "providerScope": null,
+      "chunks": [
+        "x<|endoftext|>\n"
+      ]
+    }
+  },
+  {
+    "id": "wrap.stream:452",
+    "lane": "F4-security",
+    "fn": "wrap.stream",
+    "args": {
+      "model": "qwen",
+      "providerType": null,
+      "providerScope": null,
+      "chunks": [
+        "x",
+        "<",
+        "|",
+        "e",
+        "n",
+        "d",
+        "o",
+        "f",
+        "t",
+        "e",
+        "x",
+        "t",
+        "|",
+        ">",
+        "\n"
+      ]
+    }
+  },
+  {
+    "id": "fsrs.sanitize:453",
+    "lane": "L15-review-analytics",
+    "fn": "fsrs.sanitize",
+    "args": {
+      "steps": []
+    }
+  },
+  {
+    "id": "fsrs.sanitize:454",
+    "lane": "L15-review-analytics",
+    "fn": "fsrs.sanitize",
+    "args": {
+      "steps": [
+        0,
+        -1,
+        1,
+        10,
+        525601
+      ]
+    }
+  },
+  {
+    "id": "fsrs.sanitize:455",
+    "lane": "L15-review-analytics",
+    "fn": "fsrs.sanitize",
+    "args": {
+      "steps": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ]
+    }
+  },
+  {
+    "id": "fsrs.fuzzFactor:456",
+    "lane": "L15-review-analytics",
+    "fn": "fsrs.fuzzFactor",
+    "args": {
+      "id": "卡🙂",
+      "reps": -2147483648
+    }
+  },
+  {
+    "id": "fsrs.fuzzFactor:457",
+    "lane": "L15-review-analytics",
+    "fn": "fsrs.fuzzFactor",
+    "args": {
+      "id": "卡🙂",
+      "reps": -1
+    }
+  },
+  {
+    "id": "fsrs.fuzzFactor:458",
+    "lane": "L15-review-analytics",
+    "fn": "fsrs.fuzzFactor",
+    "args": {
+      "id": "卡🙂",
+      "reps": 0
+    }
+  },
+  {
+    "id": "fsrs.fuzzFactor:459",
+    "lane": "L15-review-analytics",
+    "fn": "fsrs.fuzzFactor",
+    "args": {
+      "id": "卡🙂",
+      "reps": 1
+    }
+  },
+  {
+    "id": "fsrs.fuzzFactor:460",
+    "lane": "L15-review-analytics",
+    "fn": "fsrs.fuzzFactor",
+    "args": {
+      "id": "卡🙂",
+      "reps": 2147483647
+    }
+  },
+  {
+    "id": "fsrs.fuzz:461",
+    "lane": "L15-review-analytics",
+    "fn": "fsrs.fuzz",
+    "args": {
+      "interval": 0,
+      "factor": null,
+      "minimum": 1,
+      "maximum": 36500
+    }
+  },
+  {
+    "id": "fsrs.fuzz:462",
+    "lane": "L15-review-analytics",
+    "fn": "fsrs.fuzz",
+    "args": {
+      "interval": 0,
+      "factor": 0,
+      "minimum": 1,
+      "maximum": 36500
+    }
+  },
+  {
+    "id": "fsrs.fuzz:463",
+    "lane": "L15-review-analytics",
+    "fn": "fsrs.fuzz",
+    "args": {
+      "interval": 0,
+      "factor": 0.999999,
+      "minimum": 1,
+      "maximum": 36500
+    }
+  },
+  {
+    "id": "fsrs.fuzz:464",
+    "lane": "L15-review-analytics",
+    "fn": "fsrs.fuzz",
+    "args": {
+      "interval": 2.5,
+      "factor": null,
+      "minimum": 1,
+      "maximum": 36500
+    }
+  },
+  {
+    "id": "fsrs.fuzz:465",
+    "lane": "L15-review-analytics",
+    "fn": "fsrs.fuzz",
+    "args": {
+      "interval": 2.5,
+      "factor": 0,
+      "minimum": 1,
+      "maximum": 36500
+    }
+  },
+  {
+    "id": "fsrs.fuzz:466",
+    "lane": "L15-review-analytics",
+    "fn": "fsrs.fuzz",
+    "args": {
+      "interval": 2.5,
+      "factor": 0.999999,
+      "minimum": 1,
+      "maximum": 36500
+    }
+  },
+  {
+    "id": "fsrs.fuzz:467",
+    "lane": "L15-review-analytics",
+    "fn": "fsrs.fuzz",
+    "args": {
+      "interval": 7,
+      "factor": null,
+      "minimum": 1,
+      "maximum": 36500
+    }
+  },
+  {
+    "id": "fsrs.fuzz:468",
+    "lane": "L15-review-analytics",
+    "fn": "fsrs.fuzz",
+    "args": {
+      "interval": 7,
+      "factor": 0,
+      "minimum": 1,
+      "maximum": 36500
+    }
+  },
+  {
+    "id": "fsrs.fuzz:469",
+    "lane": "L15-review-analytics",
+    "fn": "fsrs.fuzz",
+    "args": {
+      "interval": 7,
+      "factor": 0.999999,
+      "minimum": 1,
+      "maximum": 36500
+    }
+  },
+  {
+    "id": "fsrs.fuzz:470",
+    "lane": "L15-review-analytics",
+    "fn": "fsrs.fuzz",
+    "args": {
+      "interval": 20,
+      "factor": null,
+      "minimum": 1,
+      "maximum": 36500
+    }
+  },
+  {
+    "id": "fsrs.fuzz:471",
+    "lane": "L15-review-analytics",
+    "fn": "fsrs.fuzz",
+    "args": {
+      "interval": 20,
+      "factor": 0,
+      "minimum": 1,
+      "maximum": 36500
+    }
+  },
+  {
+    "id": "fsrs.fuzz:472",
+    "lane": "L15-review-analytics",
+    "fn": "fsrs.fuzz",
+    "args": {
+      "interval": 20,
+      "factor": 0.999999,
+      "minimum": 1,
+      "maximum": 36500
+    }
+  },
+  {
+    "id": "fsrs.fuzz:473",
+    "lane": "L15-review-analytics",
+    "fn": "fsrs.fuzz",
+    "args": {
+      "interval": 36500,
+      "factor": null,
+      "minimum": 1,
+      "maximum": 36500
+    }
+  },
+  {
+    "id": "fsrs.fuzz:474",
+    "lane": "L15-review-analytics",
+    "fn": "fsrs.fuzz",
+    "args": {
+      "interval": 36500,
+      "factor": 0,
+      "minimum": 1,
+      "maximum": 36500
+    }
+  },
+  {
+    "id": "fsrs.fuzz:475",
+    "lane": "L15-review-analytics",
+    "fn": "fsrs.fuzz",
+    "args": {
+      "interval": 36500,
+      "factor": 0.999999,
+      "minimum": 1,
+      "maximum": 36500
+    }
+  },
+  {
+    "id": "fsrs.parameters:476",
+    "lane": "L15-review-analytics",
+    "fn": "fsrs.parameters",
+    "args": {
+      "parameters": []
+    }
+  },
+  {
+    "id": "fsrs.curve:477",
+    "lane": "L15-review-analytics",
+    "fn": "fsrs.curve",
+    "args": {
+      "parameters": []
+    }
+  },
+  {
+    "id": "fsrs.parameters:478",
+    "lane": "L15-review-analytics",
+    "fn": "fsrs.parameters",
+    "args": {
+      "parameters": [
+        1
+      ]
+    }
+  },
+  {
+    "id": "fsrs.curve:479",
+    "lane": "L15-review-analytics",
+    "fn": "fsrs.curve",
+    "args": {
+      "parameters": [
+        1
+      ]
+    }
+  },
+  {
+    "id": "fsrs.parameters:480",
+    "lane": "L15-review-analytics",
+    "fn": "fsrs.parameters",
+    "args": {
+      "parameters": [
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5
+      ]
+    }
+  },
+  {
+    "id": "fsrs.curve:481",
+    "lane": "L15-review-analytics",
+    "fn": "fsrs.curve",
+    "args": {
+      "parameters": [
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5
+      ]
+    }
+  },
+  {
+    "id": "fsrs.parameters:482",
+    "lane": "L15-review-analytics",
+    "fn": "fsrs.parameters",
+    "args": {
+      "parameters": [
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5
+      ]
+    }
+  },
+  {
+    "id": "fsrs.curve:483",
+    "lane": "L15-review-analytics",
+    "fn": "fsrs.curve",
+    "args": {
+      "parameters": [
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5
+      ]
+    }
+  },
+  {
+    "id": "fsrs.parameters:484",
+    "lane": "L15-review-analytics",
+    "fn": "fsrs.parameters",
+    "args": {
+      "parameters": [
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5
+      ]
+    }
+  },
+  {
+    "id": "fsrs.curve:485",
+    "lane": "L15-review-analytics",
+    "fn": "fsrs.curve",
+    "args": {
+      "parameters": [
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5
+      ]
+    }
+  },
+  {
+    "id": "fsrs.schedule:486",
+    "lane": "L15-review-analytics",
+    "fn": "fsrs.schedule",
+    "args": {
+      "parameters": [],
+      "card": {
+        "phase": "new",
+        "memory": null,
+        "learningStep": 0,
+        "daysElapsed": 3,
+        "reps": 2,
+        "lapses": 0
+      },
+      "context": {
+        "desiredRetention": 0.9,
+        "learningSteps": [
+          1,
+          10
+        ],
+        "relearningSteps": [
+          10
+        ],
+        "maximumInterval": 36500,
+        "fuzzFactor": null
+      }
+    }
+  },
+  {
+    "id": "fsrs.schedule:487",
+    "lane": "L15-review-analytics",
+    "fn": "fsrs.schedule",
+    "args": {
+      "parameters": [],
+      "card": {
+        "phase": "learning",
+        "memory": {
+          "stability": 5,
+          "difficulty": 3
+        },
+        "learningStep": 0,
+        "daysElapsed": 3,
+        "reps": 2,
+        "lapses": 0
+      },
+      "context": {
+        "desiredRetention": 0.9,
+        "learningSteps": [
+          1,
+          10
+        ],
+        "relearningSteps": [
+          10
+        ],
+        "maximumInterval": 36500,
+        "fuzzFactor": null
+      }
+    }
+  },
+  {
+    "id": "fsrs.schedule:488",
+    "lane": "L15-review-analytics",
+    "fn": "fsrs.schedule",
+    "args": {
+      "parameters": [],
+      "card": {
+        "phase": "review",
+        "memory": {
+          "stability": 5,
+          "difficulty": 3
+        },
+        "learningStep": 0,
+        "daysElapsed": 3,
+        "reps": 2,
+        "lapses": 0
+      },
+      "context": {
+        "desiredRetention": 0.9,
+        "learningSteps": [
+          1,
+          10
+        ],
+        "relearningSteps": [
+          10
+        ],
+        "maximumInterval": 36500,
+        "fuzzFactor": null
+      }
+    }
+  },
+  {
+    "id": "fsrs.schedule:489",
+    "lane": "L15-review-analytics",
+    "fn": "fsrs.schedule",
+    "args": {
+      "parameters": [],
+      "card": {
+        "phase": "relearning",
+        "memory": {
+          "stability": 5,
+          "difficulty": 3
+        },
+        "learningStep": 0,
+        "daysElapsed": 3,
+        "reps": 2,
+        "lapses": 0
+      },
+      "context": {
+        "desiredRetention": 0.9,
+        "learningSteps": [
+          1,
+          10
+        ],
+        "relearningSteps": [
+          10
+        ],
+        "maximumInterval": 36500,
+        "fuzzFactor": null
+      }
+    }
+  },
+  {
+    "id": "crypto.staticKey:490",
+    "lane": "F4-security",
+    "fn": "crypto.staticKey",
+    "args": {
+      "seed": ""
+    }
+  },
+  {
+    "id": "crypto.staticKey:491",
+    "lane": "F4-security",
+    "fn": "crypto.staticKey",
+    "args": {
+      "seed": "builtin-seed"
+    }
+  },
+  {
+    "id": "crypto.staticKey:492",
+    "lane": "F4-security",
+    "fn": "crypto.staticKey",
+    "args": {
+      "seed": "中文\u0000🙂"
+    }
+  },
+  {
+    "id": "serde.EncryptedData:493",
+    "lane": "F4-security",
+    "fn": "serde.EncryptedData",
+    "args": {
+      "json": "{}"
+    }
+  },
+  {
+    "id": "crypto.isEncrypted:494",
+    "lane": "F4-security",
+    "fn": "crypto.isEncrypted",
+    "args": {
+      "json": "{}"
+    }
+  },
+  {
+    "id": "serde.EncryptedData:495",
+    "lane": "F4-security",
+    "fn": "serde.EncryptedData",
+    "args": {
+      "json": "{\"ciphertext\":\"a\",\"nonce\":\"b\"}"
+    }
+  },
+  {
+    "id": "crypto.isEncrypted:496",
+    "lane": "F4-security",
+    "fn": "crypto.isEncrypted",
+    "args": {
+      "json": "{\"ciphertext\":\"a\",\"nonce\":\"b\"}"
+    }
+  },
+  {
+    "id": "serde.EncryptedData:497",
+    "lane": "F4-security",
+    "fn": "serde.EncryptedData",
+    "args": {
+      "json": "[\"a\",\"b\"]"
+    }
+  },
+  {
+    "id": "crypto.isEncrypted:498",
+    "lane": "F4-security",
+    "fn": "crypto.isEncrypted",
+    "args": {
+      "json": "[\"a\",\"b\"]"
+    }
+  },
+  {
+    "id": "serde.EncryptedData:499",
+    "lane": "F4-security",
+    "fn": "serde.EncryptedData",
+    "args": {
+      "json": "[\"a\",\"b\",255]"
+    }
+  },
+  {
+    "id": "crypto.isEncrypted:500",
+    "lane": "F4-security",
+    "fn": "crypto.isEncrypted",
+    "args": {
+      "json": "[\"a\",\"b\",255]"
+    }
+  },
+  {
+    "id": "serde.EncryptedData:501",
+    "lane": "F4-security",
+    "fn": "serde.EncryptedData",
+    "args": {
+      "json": "{\"ciphertext\":\"a\",\"nonce\":\"b\",\"version\":256}"
+    }
+  },
+  {
+    "id": "crypto.isEncrypted:502",
+    "lane": "F4-security",
+    "fn": "crypto.isEncrypted",
+    "args": {
+      "json": "{\"ciphertext\":\"a\",\"nonce\":\"b\",\"version\":256}"
+    }
+  },
+  {
+    "id": "serde.EncryptedData:503",
+    "lane": "F4-security",
+    "fn": "serde.EncryptedData",
+    "args": {
+      "json": "{\"ciphertext\":\"a\",\"nonce\":\"b\",\"extra\":9223372036854775807}"
+    }
+  },
+  {
+    "id": "crypto.isEncrypted:504",
+    "lane": "F4-security",
+    "fn": "crypto.isEncrypted",
+    "args": {
+      "json": "{\"ciphertext\":\"a\",\"nonce\":\"b\",\"extra\":9223372036854775807}"
+    }
+  },
+  {
+    "id": "serde.EncryptedData:505",
+    "lane": "F4-security",
+    "fn": "serde.EncryptedData",
+    "args": {
+      "json": "{\"ciphertext\":\"a\",\"nonce\":\"b\",\"version\":1.0}"
+    }
+  },
+  {
+    "id": "crypto.isEncrypted:506",
+    "lane": "F4-security",
+    "fn": "crypto.isEncrypted",
+    "args": {
+      "json": "{\"ciphertext\":\"a\",\"nonce\":\"b\",\"version\":1.0}"
+    }
+  },
+  {
+    "id": "crypto.decryptBackup:507",
+    "lane": "F4-security",
+    "fn": "crypto.decryptBackup",
+    "args": {
+      "hex": "",
+      "password": "fixture-only"
+    }
+  },
+  {
+    "id": "crypto.decryptBackup:508",
+    "lane": "F4-security",
+    "fn": "crypto.decryptBackup",
+    "args": {
+      "hex": "4453424b01",
+      "password": "fixture-only"
+    }
+  },
+  {
+    "id": "crypto.decryptBackup:509",
+    "lane": "F4-security",
+    "fn": "crypto.decryptBackup",
+    "args": {
+      "hex": "4453424bff",
+      "password": "fixture-only"
+    }
+  },
+  {
+    "id": "crypto.checkVerifier:510",
+    "lane": "F4-security",
+    "fn": "crypto.checkVerifier",
+    "args": {
+      "password": "fixture-only",
+      "verifier": {
+        "kdf": "unknown",
+        "mCost": 8,
+        "tCost": 1,
+        "pCost": 1,
+        "salt": "0011223344556677",
+        "digest": "0000000000000000000000000000000000000000000000000000000000000000"
+      }
+    }
+  },
+  {
+    "id": "crypto.checkVerifier:511",
+    "lane": "F4-security",
+    "fn": "crypto.checkVerifier",
+    "args": {
+      "password": "fixture-only",
+      "verifier": {
+        "kdf": "argon2id",
+        "mCost": 8,
+        "tCost": 1,
+        "pCost": 1,
+        "salt": "0011223344556677",
+        "digest": "0000000000000000000000000000000000000000000000000000000000000000"
+      }
+    }
+  },
+  {
+    "id": "regex.replaceAll:512",
+    "lane": "F7-native",
+    "fn": "regex.replaceAll",
+    "args": {
+      "pattern": "(?P<suffix>\\Bb)",
+      "text": "xbZ",
+      "replacement": "${suffix}${suffix}${suffix}",
+      "limit": 3
+    }
+  },
+  {
+    "id": "regex.projected:513",
+    "lane": "F7-native",
+    "fn": "regex.projected",
+    "args": {
+      "pattern": "(?P<suffix>\\Bb)",
+      "text": "xbZ",
+      "replacement": "${suffix}${suffix}${suffix}",
+      "limit": 3
+    },
+    "oracleKind": "adapted-explicit-limit"
+  },
+  {
+    "id": "regex.replaceAll:514",
+    "lane": "F7-native",
+    "fn": "regex.replaceAll",
+    "args": {
+      "pattern": "(?P<a>a)?(b)",
+      "text": "b",
+      "replacement": "$a-${2}-$$",
+      "limit": 3
+    }
+  },
+  {
+    "id": "regex.projected:515",
+    "lane": "F7-native",
+    "fn": "regex.projected",
+    "args": {
+      "pattern": "(?P<a>a)?(b)",
+      "text": "b",
+      "replacement": "$a-${2}-$$",
+      "limit": 3
+    },
+    "oracleKind": "adapted-explicit-limit"
+  },
+  {
+    "id": "regex.replaceAll:516",
+    "lane": "F7-native",
+    "fn": "regex.replaceAll",
+    "args": {
+      "pattern": "",
+      "text": "中🙂",
+      "replacement": "$0x",
+      "limit": 8
+    }
+  },
+  {
+    "id": "regex.projected:517",
+    "lane": "F7-native",
+    "fn": "regex.projected",
+    "args": {
+      "pattern": "",
+      "text": "中🙂",
+      "replacement": "$0x",
+      "limit": 8
+    },
+    "oracleKind": "adapted-explicit-limit"
+  },
+  {
+    "id": "regex.replaceAll:518",
+    "lane": "F7-native",
+    "fn": "regex.replaceAll",
+    "args": {
+      "pattern": "(a)",
+      "text": "a",
+      "replacement": "$1x/${1}/$999999999999999999999999",
+      "limit": 5
+    }
+  },
+  {
+    "id": "regex.projected:519",
+    "lane": "F7-native",
+    "fn": "regex.projected",
+    "args": {
+      "pattern": "(a)",
+      "text": "a",
+      "replacement": "$1x/${1}/$999999999999999999999999",
+      "limit": 5
+    },
+    "oracleKind": "adapted-explicit-limit"
+  },
+  {
+    "id": "regex.boundedOriginal:520",
+    "lane": "L24-chatanki",
+    "fn": "regex.boundedOriginal",
+    "args": {
+      "pattern": "b",
+      "text": "xbZ",
+      "replacement": "bbb"
+    },
+    "oracleKind": "original-bounded-function"
+  },
+  {
+    "id": "regex.boundedOriginal:521",
+    "lane": "L24-chatanki",
+    "fn": "regex.boundedOriginal",
+    "args": {
+      "pattern": "(?P<suffix>\\Bb)",
+      "text": "xbZ",
+      "replacement": "${suffix}${suffix}${suffix}"
+    },
+    "oracleKind": "original-bounded-function"
+  },
+  {
+    "id": "regex.boundedOriginal:522",
+    "lane": "L24-chatanki",
+    "fn": "regex.boundedOriginal",
+    "args": {
+      "pattern": "x",
+      "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "replacement": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    },
+    "oracleKind": "original-bounded-function"
+  },
+  {
+    "id": "regex.accumulate:523",
+    "lane": "F7-native",
+    "fn": "regex.accumulate",
+    "args": {
+      "initial": 4294967295,
+      "additions": [
+        1,
+        1
+      ],
+      "limit": 4294967296
+    }
+  },
+  {
+    "id": "regex.accumulate:524",
+    "lane": "F7-native",
+    "fn": "regex.accumulate",
+    "args": {
+      "initial": 18446744073709551614,
+      "additions": [
+        7
+      ],
+      "limit": 18446744073709551615
+    }
+  },
+  {
+    "id": "time.utc:525",
+    "lane": "F4-security",
+    "fn": "time.utc",
+    "args": {
+      "text": "2026-11-04T00:00:00Z",
+      "useZ": true
+    }
+  },
+  {
+    "id": "time.utc:526",
+    "lane": "F4-security",
+    "fn": "time.utc",
+    "args": {
+      "text": "2026-11-04T00:00:00Z",
+      "useZ": false
+    }
+  },
+  {
+    "id": "time.utc:527",
+    "lane": "F4-security",
+    "fn": "time.utc",
+    "args": {
+      "text": "2026-11-04T08:00:00.123456789+08:00",
+      "useZ": true
+    }
+  },
+  {
+    "id": "time.utc:528",
+    "lane": "F4-security",
+    "fn": "time.utc",
+    "args": {
+      "text": "2026-11-04T08:00:00.123456789+08:00",
+      "useZ": false
+    }
+  },
+  {
+    "id": "time.utc:529",
+    "lane": "F4-security",
+    "fn": "time.utc",
+    "args": {
+      "text": "2026-11-04T00:00:00.120Z",
+      "useZ": true
+    }
+  },
+  {
+    "id": "time.utc:530",
+    "lane": "F4-security",
+    "fn": "time.utc",
+    "args": {
+      "text": "2026-11-04T00:00:00.120Z",
+      "useZ": false
+    }
+  },
+  {
+    "id": "cloze.fields:531",
+    "lane": "L16-anki",
+    "fn": "cloze.fields",
+    "args": {
+      "spec": {
+        "imageRef": "vfs://fixture",
+        "boxes": [
+          {
+            "x": 0.1,
+            "y": 0.2,
+            "w": 0.3,
+            "h": 0.15,
+            "label": "A::B}}C"
+          }
+        ]
+      },
+      "imageFileName": "a&\"b.png",
+      "extraNote": " note "
+    }
+  },
+  {
+    "id": "cloze.fields:532",
+    "lane": "L16-anki",
+    "fn": "cloze.fields",
+    "args": {
+      "spec": {
+        "imageRef": "vfs://fixture",
+        "boxes": [
+          {
+            "x": 0.1,
+            "y": 0.2,
+            "w": 0.3,
+            "h": 0.15,
+            "label": "中文🙂"
+          }
+        ]
+      },
+      "imageFileName": "a&\"b.png",
+      "extraNote": " note "
+    }
+  },
+  {
+    "id": "cloze.fields:533",
+    "lane": "L16-anki",
+    "fn": "cloze.fields",
+    "args": {
+      "spec": {
+        "imageRef": "vfs://fixture",
+        "boxes": [
+          {
+            "x": 0.1,
+            "y": 0.2,
+            "w": 0.3,
+            "h": 0.15,
+            "label": ""
+          }
+        ]
+      },
+      "imageFileName": "a&\"b.png",
+      "extraNote": " note "
+    }
+  },
+  {
+    "id": "serde.AnkiCard:534",
+    "lane": "L16-anki",
+    "fn": "serde.AnkiCard",
+    "args": {
+      "json": "{\"id\":\"fixture-card\",\"created_at\":\"2026-11-04T00:00:00Z\",\"updated_at\":\"2026-11-04T00:00:00Z\"}"
+    }
+  },
+  {
+    "id": "serde.AnkiCard:535",
+    "lane": "L16-anki",
+    "fn": "serde.AnkiCard",
+    "args": {
+      "json": "{\"id\":\"fixture-card\",\"created_at\":\"2026-11-04T00:00:00Z\",\"updated_at\":\"2026-11-04T00:00:00Z\",\"unknown\":1}"
+    }
+  },
+  {
+    "id": "serde.AnkiCard:536",
+    "lane": "L16-anki",
+    "fn": "serde.AnkiCard",
+    "args": {
+      "json": "{\"id\":\"fixture-card\",\"created_at\":\"2026-11-04T00:00:00Z\",\"updated_at\":\"2026-11-04T00:00:00Z\",\"front\":3}"
+    }
+  },
+  {
+    "id": "serde.AnkiCard:537",
+    "lane": "L16-anki",
+    "fn": "serde.AnkiCard",
+    "args": {
+      "json": "{\"id\":\"fixture-card\",\"created_at\":\"2026-11-04T00:00:00Z\",\"updated_at\":\"2026-11-04T00:00:00Z\",\"tags\":[3]}"
+    }
+  },
+  {
+    "id": "serde.AnkiCard:538",
+    "lane": "L16-anki",
+    "fn": "serde.AnkiCard",
+    "args": {
+      "json": "{\"id\":\"fixture-card\",\"created_at\":\"2026-11-04T00:00:00Z\",\"updated_at\":\"2026-11-04T00:00:00Z\",\"extra_fields\":{\"key\":4}}"
+    }
+  },
+  {
+    "id": "serde.ChatMessage:539",
+    "lane": "F5-contracts",
+    "fn": "serde.ChatMessage",
+    "args": {
+      "json": "{\"role\":\"user\",\"content\":\"hi\",\"timestamp\":\"2026-11-04T08:00:00+08:00\"}"
+    }
+  },
+  {
+    "id": "serde.ChatMessage:540",
+    "lane": "F5-contracts",
+    "fn": "serde.ChatMessage",
+    "args": {
+      "json": "{\"role\":\"user\",\"content\":\"hi\",\"timestamp\":\"2026-11-04T08:00:00+08:00\",\"__unknown\":true}"
+    }
+  },
+  {
+    "id": "serde.ChatMessage:541",
+    "lane": "F5-contracts",
+    "fn": "serde.ChatMessage",
+    "args": {
+      "json": "{}"
+    }
+  },
+  {
+    "id": "serde.ToolCall:542",
+    "lane": "F5-contracts",
+    "fn": "serde.ToolCall",
+    "args": {
+      "json": "{\"id\":\"1\",\"tool_name\":\"fixture\",\"args_json\":{\"generation\":9223372036854775807}}"
+    }
+  },
+  {
+    "id": "serde.ToolCall:543",
+    "lane": "F5-contracts",
+    "fn": "serde.ToolCall",
+    "args": {
+      "json": "{\"id\":\"1\",\"tool_name\":\"fixture\",\"args_json\":{\"generation\":9223372036854775807},\"__unknown\":true}"
+    }
+  },
+  {
+    "id": "serde.ToolCall:544",
+    "lane": "F5-contracts",
+    "fn": "serde.ToolCall",
+    "args": {
+      "json": "{}"
+    }
+  },
+  {
+    "id": "serde.ToolResult:545",
+    "lane": "F5-contracts",
+    "fn": "serde.ToolResult",
+    "args": {
+      "json": "{\"call_id\":\"1\",\"ok\":true}"
+    }
+  },
+  {
+    "id": "serde.ToolResult:546",
+    "lane": "F5-contracts",
+    "fn": "serde.ToolResult",
+    "args": {
+      "json": "{\"call_id\":\"1\",\"ok\":true,\"__unknown\":true}"
+    }
+  },
+  {
+    "id": "serde.ToolResult:547",
+    "lane": "F5-contracts",
+    "fn": "serde.ToolResult",
+    "args": {
+      "json": "{\"call_id\":\"1\",\"ok\":false,\"error\":null}"
+    }
+  },
+  {
+    "id": "serde.ToolResult:548",
+    "lane": "F5-contracts",
+    "fn": "serde.ToolResult",
+    "args": {
+      "json": "{\"call_id\":\"1\",\"ok\":false,\"error\":null,\"__unknown\":true}"
+    }
+  },
+  {
+    "id": "serde.ToolResult:549",
+    "lane": "F5-contracts",
+    "fn": "serde.ToolResult",
+    "args": {
+      "json": "{}"
+    }
+  },
+  {
+    "id": "serde.RagSourceInfo:550",
+    "lane": "F5-contracts",
+    "fn": "serde.RagSourceInfo",
+    "args": {
+      "json": "{\"document_id\":\"d\",\"file_name\":\"f\",\"chunk_text\":\"text\",\"score\":0.1,\"chunk_index\":18446744073709551615}"
+    }
+  },
+  {
+    "id": "serde.RagSourceInfo:551",
+    "lane": "F5-contracts",
+    "fn": "serde.RagSourceInfo",
+    "args": {
+      "json": "{\"document_id\":\"d\",\"file_name\":\"f\",\"chunk_text\":\"text\",\"score\":0.1,\"chunk_index\":18446744073709551615,\"__unknown\":true}"
+    }
+  },
+  {
+    "id": "serde.RagSourceInfo:552",
+    "lane": "F5-contracts",
+    "fn": "serde.RagSourceInfo",
+    "args": {
+      "json": "{}"
+    }
+  },
+  {
+    "id": "serde.DocumentAttachment:553",
+    "lane": "F5-contracts",
+    "fn": "serde.DocumentAttachment",
+    "args": {
+      "json": "{\"name\":\"f\",\"mime_type\":\"text/plain\",\"size_bytes\":9007199254740993}"
+    }
+  },
+  {
+    "id": "serde.DocumentAttachment:554",
+    "lane": "F5-contracts",
+    "fn": "serde.DocumentAttachment",
+    "args": {
+      "json": "{\"name\":\"f\",\"mime_type\":\"text/plain\",\"size_bytes\":9007199254740993,\"__unknown\":true}"
+    }
+  },
+  {
+    "id": "serde.DocumentAttachment:555",
+    "lane": "F5-contracts",
+    "fn": "serde.DocumentAttachment",
+    "args": {
+      "json": "{}"
+    }
+  },
+  {
+    "id": "serde.MultimodalContentPart:556",
+    "lane": "F5-contracts",
+    "fn": "serde.MultimodalContentPart",
+    "args": {
+      "json": "{\"type\":\"text\",\"text\":\"hi\"}"
+    }
+  },
+  {
+    "id": "serde.MultimodalContentPart:557",
+    "lane": "F5-contracts",
+    "fn": "serde.MultimodalContentPart",
+    "args": {
+      "json": "{\"type\":\"text\",\"text\":\"hi\",\"__unknown\":true}"
+    }
+  },
+  {
+    "id": "serde.MultimodalContentPart:558",
+    "lane": "F5-contracts",
+    "fn": "serde.MultimodalContentPart",
+    "args": {
+      "json": "{\"type\":\"image_url\",\"mediaType\":\"image/png\",\"base64\":\"\"}"
+    }
+  },
+  {
+    "id": "serde.MultimodalContentPart:559",
+    "lane": "F5-contracts",
+    "fn": "serde.MultimodalContentPart",
+    "args": {
+      "json": "{\"type\":\"image_url\",\"mediaType\":\"image/png\",\"base64\":\"\",\"__unknown\":true}"
+    }
+  },
+  {
+    "id": "serde.MultimodalContentPart:560",
+    "lane": "F5-contracts",
+    "fn": "serde.MultimodalContentPart",
+    "args": {
+      "json": "{}"
+    }
+  },
+  {
+    "id": "serde.TempStreamState:561",
+    "lane": "F5-contracts",
+    "fn": "serde.TempStreamState",
+    "args": {
+      "json": "\"in_progress\""
+    }
+  },
+  {
+    "id": "serde.TempStreamState:562",
+    "lane": "F5-contracts",
+    "fn": "serde.TempStreamState",
+    "args": {
+      "json": "\"completed\""
+    }
+  },
+  {
+    "id": "serde.TempStreamState:563",
+    "lane": "F5-contracts",
+    "fn": "serde.TempStreamState",
+    "args": {
+      "json": "\"failed\""
+    }
+  },
+  {
+    "id": "serde.TempStreamState:564",
+    "lane": "F5-contracts",
+    "fn": "serde.TempStreamState",
+    "args": {
+      "json": "\"unknown\""
+    }
+  },
+  {
+    "id": "serde.TempStreamState:565",
+    "lane": "F5-contracts",
+    "fn": "serde.TempStreamState",
+    "args": {
+      "json": "{}"
+    }
+  },
+  {
+    "id": "serde.PasswordVerifier:566",
+    "lane": "F4-security",
+    "fn": "serde.PasswordVerifier",
+    "args": {
+      "json": "{\"kdf\":\"argon2id\",\"mCost\":8,\"tCost\":1,\"pCost\":1,\"salt\":\"\",\"digest\":\"\"}"
+    }
+  },
+  {
+    "id": "serde.PasswordVerifier:567",
+    "lane": "F5-contracts",
+    "fn": "serde.PasswordVerifier",
+    "args": {
+      "json": "{\"kdf\":\"argon2id\",\"mCost\":8,\"tCost\":1,\"pCost\":1,\"salt\":\"\",\"digest\":\"\",\"__unknown\":true}"
+    }
+  },
+  {
+    "id": "serde.PasswordVerifier:568",
+    "lane": "F5-contracts",
+    "fn": "serde.PasswordVerifier",
+    "args": {
+      "json": "{}"
+    }
+  }
+]

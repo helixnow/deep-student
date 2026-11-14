@@ -1,0 +1,25 @@
+{
+  "id": "RF-W09-material-conflict-apperror-message",
+  "kind": "deliberate",
+  "status": "proposed",
+  "title": "共享材料保存失败时按 AppError 的 message 判断冲突并显示原因，不再显示 [object Object]（审计 V05-06）",
+  "rust": {
+    "file": "src/components/QuestionMaterialView.tsx",
+    "line": 213,
+    "behavior": "参照仓 deep-student（快照 21c9d808）的前端在材料保存失败时用 err instanceof Error ? err.message : String(err) 取文本；qbank_update_material 在 Rust（src-tauri/src/commands.rs:1433-1439，Result<_, AppError>）下 reject 的是 AppError 普通对象，得到 \"[object Object]\"：版本冲突正则永远不命中，materials.versionConflict 提示永远不出现，界面直接显示 [object Object]"
+  },
+  "fix": {
+    "files": ["src/components/QuestionMaterialView.tsx"],
+    "behavior": "改用 getErrorMessage(err) 取文本：AppError 的 message 为 CONFLICT: 材料版本已变化或材料不存在 时显示 materials.versionConflict（请重新载入，草稿保留）；其他错误显示后端 message。Error 实例与字符串的处理不变"
+  },
+  "evidence": "审计 .reports/reviews/V05-error-texts.md 第 105-109 行：Rust 与 Host（host/plugins/qbank/src/plugin-deps.ts:62-69 → CommandError(AppError)）都 reject AppError 普通对象，两端行为相同，不是迁移差异。修复前 src/components/__tests__/QuestionMaterialView.test.tsx 的两条新用例收到的提示文本是 [object Object]",
+  "userVisible": "能：编辑共享材料时如果材料已被别处改过，保存失败后显示“材料已被其他修改更新，请重新载入后再保存（你的草稿仍在）。”；其他保存失败显示后端给出的原因。原来两种情况都显示 [object Object]",
+  "dataCompat": "只改前端错误提示文本的取法；不改 IPC、落库数据、同步载荷与备份格式",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "src/components/__tests__/QuestionMaterialView.test.tsx",
+      "name": "RF-W09-material-conflict-apperror-message: an AppError CONFLICT rejection shows the version-conflict hint"
+    }
+  ]
+}

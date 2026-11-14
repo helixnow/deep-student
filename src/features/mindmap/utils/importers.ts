@@ -18,6 +18,11 @@ import type {
 } from '../types';
 import { markdownListToNodes } from './pasteMarkdown';
 import { createImageSanitizeBudget, sanitizeNodeImages } from './imageSanitize';
+import {
+  normalizeNodeExcerptFields,
+  sanitizeStagingExcerpts,
+} from './nodeAnchors';
+import { sanitizeDocumentSummaries } from './summaryBraces';
 
 /**
  * 最大导入深度限制，防止恶意数据导致栈溢出
@@ -1198,6 +1203,7 @@ export function importFromJson(jsonContent: string): MindMapDocument {
       if (images) result.images = images;
       else delete result.images;
     }
+    normalizeNodeExcerptFields(result);
     return result;
   }
 
@@ -1207,13 +1213,19 @@ export function importFromJson(jsonContent: string): MindMapDocument {
       ? rawMeta.createdAt
       : new Date().toISOString();
 
+  const normalizedRoot = ensureIds(doc.root as MindMapNode, 0);
+  const stagingExcerpts = sanitizeStagingExcerpts(doc.stagingExcerpts);
+  const summaries = sanitizeDocumentSummaries(doc.summaries, normalizedRoot);
+
   return {
     version: '1.0',
-    root: ensureIds(doc.root as MindMapNode, 0),
+    root: normalizedRoot,
     meta: {
       ...(rawMeta || {}),
       createdAt,
     },
+    ...(stagingExcerpts ? { stagingExcerpts } : {}),
+    ...(summaries ? { summaries } : {}),
   };
 }
 

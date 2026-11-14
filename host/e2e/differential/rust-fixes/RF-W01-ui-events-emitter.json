@@ -1,0 +1,33 @@
+{
+  "id": "RF-W01-ui-events-emitter",
+  "kind": "deliberate",
+  "status": "proposed",
+  "title": "插件向自己的 UI 半发私有事件只能经 ctx.uiEvents.emit，事件名必须落在本插件 pluginEventName 前缀内；卸载后保留的发射器不再投递",
+  "rust": {
+    "file": "src-tauri/src/plugins/events.rs",
+    "line": 8,
+    "behavior": "Rust 没有社区插件的事件 API：plugins/events.rs 只有 Host 自己发 plugin-state-changed / plugin-qrcode / plugin-activity 三个固定事件，插件代码无法向 UI 半发自定义事件（Cordis 侧只有 kernel 自己的 ctx.backendEvents 无限制 app.emit）。FE-C4 要求社区插件通过受限入口发私有事件，Rust 里没有对应能力"
+  },
+  "fix": {
+    "files": [
+      "host/kernel/core.ts",
+      "host/kernel/events.ts",
+      "host/kernel/runtime.ts"
+    ],
+    "behavior": "新增 kernel 服务 ctx.uiEvents（core.ts 声明，events.ts UiEventService 实现）：emit(event, payload) 同步返回 void，事件名必须是 isEventNameValid 且以本插件 pluginNamespaces(id).eventPrefix 开头、且不只有前缀；载荷按既有 JSON 边界检查（findNonJson）后经 backendEvents._emit 的同一线上传输广播。归属由 Cordis traceable 的调用方 ctx.fiber 决定（不是 payload 里的 caller）：根上下文/内核没有 owner 时抛错；fiber 进入 DISPOSED/FAILED 后，保留的发射器抛 not active，不再投递。没有新增全局事件注册，也不向插件开放 backendEvents/commands/protocols/shell。同进程防误用，不是物理隔离"
+  },
+  "evidence": "FE-C4/W27（PLUGIN-CLOSEOUT-BRIEF 第 5 条）：W01 统一 pluginEventName/isEventNameValid 并强制本插件前缀。测试 host/kernel/tests/ui-events.test.ts 用真实测试宿主与真实事件线路，覆盖：只发本前缀、裸后缀/别的插件前缀/近似前缀被拒且不产生事件、非纯 JSON 载荷被拒、根上下文无 owner、卸载后保留的发射器与 ctx 都不能投递、官方插件同一规则。前缀来自 plugin-id.ts 的唯一派生实现，没有第二份正则。W17 的 ctx.ui.host.on 与 W27 的示例/文档按 interfaces/host-manifest.md 公布的全名契约消费",
+  "userVisible": "插件作者可以给自己 UI 半发私有事件（如 study-goal 更新后刷新已挂载的设置分区），不必轮询；发给别的插件命名空间或内核事件（含 host://ui-manifest）会被拒绝并在插件日志里报错。卸载插件后旧的发射器不再生效，不会把事件发给已卸载插件的 UI",
+  "dataCompat": "不改变落库数据、同步载荷与备份格式；事件名走既有 Tauri 事件名规则与前端 emit/listen 通道，没有新增持久化字段",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "host/kernel/tests/ui-events.test.ts",
+      "name": "RF-W01-ui-events-emitter: community ctx.uiEvents emits only its own prefix over the real Host event wire"
+    },
+    {
+      "file": "host/kernel/tests/ui-events.test.ts",
+      "name": "RF-W01-ui-events-emitter: an official plugin uses the same prefix rule and a retained emitter stops after unload"
+    }
+  ]
+}

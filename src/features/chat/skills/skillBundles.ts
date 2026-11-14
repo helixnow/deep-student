@@ -6,6 +6,8 @@
  * 全部存于 localStorage，随导出/沉淀策略演进可迁移到 settings。
  */
 
+import { saveSkillUiSetting } from './skillSettingsMirror';
+
 export interface SkillBundle {
   id: string;
   name: string;
@@ -40,7 +42,9 @@ function loadBundles(): SkillBundle[] {
 
 function saveBundles(bundles: SkillBundle[]): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(bundles));
+    const serialized = JSON.stringify(bundles);
+    localStorage.setItem(STORAGE_KEY, serialized);
+    saveSkillUiSetting('bundles', serialized);
     window.dispatchEvent(new CustomEvent(SKILL_BUNDLES_CHANGED_EVENT));
   } catch {
     // localStorage 不可用时静默降级

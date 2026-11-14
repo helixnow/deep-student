@@ -1,0 +1,28 @@
+{
+  "id": "RF-W09-inline-viewer-in-app-expand",
+  "kind": "deliberate",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T08:32+08:00",
+  "title": "内联文档查看器的“新窗口打开”改为应用内全视口展开",
+  "rust": {
+    "file": "src/features/chat/components/InlineDocumentViewer.tsx",
+    "line": 546,
+    "behavior": "Rust 快照 21c9d808 的 handleOpenExternal 把文本做成 blob: URL 后 window.open 到新窗口；移动端因为只有一个 WebView 会把整个应用替换成纯文本页，所以按钮在移动端隐藏"
+  },
+  "fix": {
+    "files": ["src/features/chat/components/InlineDocumentViewer.tsx"],
+    "behavior": "按钮在应用内把面板展开为全视口浮层（portal 到 body），再按一次或 Esc 收回；不创建 blob URL、不调 window.open；移动端也提供该按钮；导出仍走下载按钮"
+  },
+  "evidence": "Electron 版窗口策略（electron/ 的 setWindowOpenHandler）拒绝新窗口，原行为在新版里点击无反应；移动端原行为会丢失应用状态，只能靠隐藏按钮规避。应用内展开在两端都可用且不泄漏 blob URL。",
+  "userVisible": "能：桌面端点“放大查看”不再弹出独立窗口，而是在当前窗口内铺满显示，可再点或按 Esc 收回；移动端多了这个按钮。",
+  "dataCompat": "不改变落库数据、同步载荷与备份格式，纯界面行为。",
+  "commits": ["b1c58de0"],
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "src/features/chat/components/__tests__/InlineDocumentViewer.expand.test.tsx",
+      "name": "RF-W09-inline-viewer-in-app-expand: InlineDocumentViewer expanded preview"
+    }
+  ]
+}

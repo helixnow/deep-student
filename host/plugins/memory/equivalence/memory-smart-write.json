@@ -1,0 +1,190 @@
+{
+  "domain": "memory",
+  "commands": ["memory_write_smart","memory_write_batch"],
+  "scenarios": [
+    {
+      "id": "memory.write_smart.study_and_note",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"memory_write_smart","args":{"title":"错题记录","content":"三角函数诱导公式记反了","memoryType":"study"}},
+        {"cmd":"memory_write_smart","args":{"folderPath":"方法","title":"复习方法","content":"先做错题再看笔记","memoryType":"note","memoryPurpose":"internalized"}},
+        {"cmd":"memory_write_smart","args":{"title":"系统性","content":"章节框架笔记","memoryType":"NOTE","memoryPurpose":" Systemic "}},
+        {"cmd":"memory_write_smart","args":{"title":"错题记录","content":"三角函数诱导公式又记反了","memoryType":"study"}},
+        {"cmd":"memory_list","args":{"limit":100,"offset":0}},
+        {"cmd":"memory_get_tree","args":{}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "memory.write_smart.fact_privacy_local_dedup",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"memory_set_privacy_mode","args":{"enabled":true}},
+        {"cmd":"memory_write_smart","args":{"title":"饮品","content":"用户喜欢喝乌龙茶"}},
+        {"cmd":"memory_write_smart","args":{"title":"饮品","content":"用户喜欢喝红茶"}},
+        {"cmd":"memory_write_smart","args":{"folderPath":"偏好","title":"饮品","content":"用户喜欢喝红茶","memoryType":"fact"}},
+        {"cmd":"memory_list","args":{"limit":100,"offset":0}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "memory.write_smart.fact_llm_decision",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"memory_write","args":{"folderPath":"偏好","title":"饮品","content":"用户喜欢喝乌龙茶"}},
+        {"cmd":"memory_write_smart","args":{"folderPath":"偏好","title":"饮品","content":"用户喜欢喝红茶"}},
+        {"cmd":"memory_write_smart","args":{"title":"运动","content":"用户每周跑步三次"}},
+        {"cmd":"memory_list","args":{"limit":100,"offset":0}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "memory.write_smart.handler_validation",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"memory_write_smart","args":{"title":"","content":"c"},"expect":"error"},
+        {"cmd":"memory_write_smart","args":{"title":"   ","content":"c"},"expect":"error"},
+        {"cmd":"memory_write_smart","args":{"title":"t","content":""},"expect":"error"},
+        {"cmd":"memory_write_smart","args":{"title":"t","content":" \n\t"},"expect":"error"},
+        {"cmd":"memory_write_smart","args":{"title":"t","content":"c","memoryType":"memo"},"expect":"error"},
+        {"cmd":"memory_write_smart","args":{"title":"t","content":"c","memoryType":""},"expect":"error"},
+        {"cmd":"memory_write_smart","args":{"title":"t","content":"c","memoryPurpose":"random"},"expect":"error"},
+        {"cmd":"memory_list","args":{"limit":100,"offset":0}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "memory.write_smart.reserved_names",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"memory_write_smart","args":{"title":"__secret","content":"用户喜欢蓝色"},"expect":"error"},
+        {"cmd":"memory_write_smart","args":{"title":"  __lead","content":"用户喜欢蓝色"},"expect":"error"},
+        {"cmd":"memory_write_smart","args":{"folderPath":"__system__","title":"ok","content":"用户喜欢蓝色"},"expect":"error"},
+        {"cmd":"memory_write_smart","args":{"folderPath":"经历/__x","title":"ok","content":"用户喜欢蓝色","memoryType":"study"},"expect":"error"},
+        {"cmd":"memory_get_tree","args":{}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "memory.write_smart.filtered_outputs",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"memory_write_smart","args":{"title":"电话","content":"手机号13812345678"}},
+        {"cmd":"memory_write_smart","args":{"title":"a@example.com","content":"邮箱标题","memoryType":"study"}},
+        {"cmd":"memory_write_smart","args":{"title":"长事实","content":"长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长"}},
+        {"cmd":"memory_write_smart","args":{"title":"事实边界","content":"长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长","memoryType":"fact"}},
+        {"cmd":"memory_write_smart","args":{"title":"长笔记","content":"长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长","memoryType":"note"}},
+        {"cmd":"memory_write_smart","args":{"title":"知识点","content":"勾股定理的公式是a²+b²=c²"}},
+        {"cmd":"memory_list","args":{"limit":100,"offset":0}},
+        {"cmd":"memory_get_audit_logs","args":{}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "memory.write_smart.idempotency_key",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"memory_write_smart","args":{"title":"错题","content":"导数概念混淆","memoryType":"study","idempotencyKey":"k1"}},
+        {"cmd":"memory_write_smart","args":{"title":"错题二","content":"另一条内容","memoryType":"study","idempotencyKey":"k1"}},
+        {"cmd":"memory_write_smart","args":{"title":"错题三","content":"空白键","memoryType":"study","idempotencyKey":"   "}},
+        {"cmd":"memory_write_smart","args":{"title":"电话","content":"手机号13812345678","idempotencyKey":"k2"}},
+        {"cmd":"memory_write_smart","args":{"title":"电话","content":"手机号13812345678","idempotencyKey":"k2"}},
+        {"cmd":"memory_list","args":{"limit":100,"offset":0}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "memory.write_smart.bad_args",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"memory_write_smart","args":{"content":"c"},"expect":"error"},
+        {"cmd":"memory_write_smart","args":{"title":"t"},"expect":"error"},
+        {"cmd":"memory_write_smart","args":{"title":1,"content":"c"},"expect":"error"},
+        {"cmd":"memory_write_smart","args":{"title":"t","content":"c","memoryType":1},"expect":"error"},
+        {"cmd":"memory_write_smart","args":{"title":"t","content":"c","idempotencyKey":1},"expect":"error"},
+        {"cmd":"memory_list","args":{"limit":100,"offset":0}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "memory.write_batch.empty_and_too_many",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"memory_write_batch","args":{"items":[]}},
+        {"cmd":"memory_write_batch","args":{"items":[{"title":"t0","content":"c0","memoryType":"study"},{"title":"t1","content":"c1","memoryType":"study"},{"title":"t2","content":"c2","memoryType":"study"},{"title":"t3","content":"c3","memoryType":"study"},{"title":"t4","content":"c4","memoryType":"study"},{"title":"t5","content":"c5","memoryType":"study"},{"title":"t6","content":"c6","memoryType":"study"},{"title":"t7","content":"c7","memoryType":"study"},{"title":"t8","content":"c8","memoryType":"study"},{"title":"t9","content":"c9","memoryType":"study"},{"title":"t10","content":"c10","memoryType":"study"},{"title":"t11","content":"c11","memoryType":"study"},{"title":"t12","content":"c12","memoryType":"study"},{"title":"t13","content":"c13","memoryType":"study"},{"title":"t14","content":"c14","memoryType":"study"},{"title":"t15","content":"c15","memoryType":"study"},{"title":"t16","content":"c16","memoryType":"study"},{"title":"t17","content":"c17","memoryType":"study"},{"title":"t18","content":"c18","memoryType":"study"},{"title":"t19","content":"c19","memoryType":"study"},{"title":"t20","content":"c20","memoryType":"study"},{"title":"t21","content":"c21","memoryType":"study"},{"title":"t22","content":"c22","memoryType":"study"},{"title":"t23","content":"c23","memoryType":"study"},{"title":"t24","content":"c24","memoryType":"study"},{"title":"t25","content":"c25","memoryType":"study"},{"title":"t26","content":"c26","memoryType":"study"},{"title":"t27","content":"c27","memoryType":"study"},{"title":"t28","content":"c28","memoryType":"study"},{"title":"t29","content":"c29","memoryType":"study"},{"title":"t30","content":"c30","memoryType":"study"},{"title":"t31","content":"c31","memoryType":"study"},{"title":"t32","content":"c32","memoryType":"study"},{"title":"t33","content":"c33","memoryType":"study"},{"title":"t34","content":"c34","memoryType":"study"},{"title":"t35","content":"c35","memoryType":"study"},{"title":"t36","content":"c36","memoryType":"study"},{"title":"t37","content":"c37","memoryType":"study"},{"title":"t38","content":"c38","memoryType":"study"},{"title":"t39","content":"c39","memoryType":"study"},{"title":"t40","content":"c40","memoryType":"study"},{"title":"t41","content":"c41","memoryType":"study"},{"title":"t42","content":"c42","memoryType":"study"},{"title":"t43","content":"c43","memoryType":"study"},{"title":"t44","content":"c44","memoryType":"study"},{"title":"t45","content":"c45","memoryType":"study"},{"title":"t46","content":"c46","memoryType":"study"},{"title":"t47","content":"c47","memoryType":"study"},{"title":"t48","content":"c48","memoryType":"study"},{"title":"t49","content":"c49","memoryType":"study"},{"title":"t50","content":"c50","memoryType":"study"},{"title":"t51","content":"c51","memoryType":"study"},{"title":"t52","content":"c52","memoryType":"study"},{"title":"t53","content":"c53","memoryType":"study"},{"title":"t54","content":"c54","memoryType":"study"},{"title":"t55","content":"c55","memoryType":"study"},{"title":"t56","content":"c56","memoryType":"study"},{"title":"t57","content":"c57","memoryType":"study"},{"title":"t58","content":"c58","memoryType":"study"},{"title":"t59","content":"c59","memoryType":"study"},{"title":"t60","content":"c60","memoryType":"study"},{"title":"t61","content":"c61","memoryType":"study"},{"title":"t62","content":"c62","memoryType":"study"},{"title":"t63","content":"c63","memoryType":"study"},{"title":"t64","content":"c64","memoryType":"study"},{"title":"t65","content":"c65","memoryType":"study"},{"title":"t66","content":"c66","memoryType":"study"},{"title":"t67","content":"c67","memoryType":"study"},{"title":"t68","content":"c68","memoryType":"study"},{"title":"t69","content":"c69","memoryType":"study"},{"title":"t70","content":"c70","memoryType":"study"},{"title":"t71","content":"c71","memoryType":"study"},{"title":"t72","content":"c72","memoryType":"study"},{"title":"t73","content":"c73","memoryType":"study"},{"title":"t74","content":"c74","memoryType":"study"},{"title":"t75","content":"c75","memoryType":"study"},{"title":"t76","content":"c76","memoryType":"study"},{"title":"t77","content":"c77","memoryType":"study"},{"title":"t78","content":"c78","memoryType":"study"},{"title":"t79","content":"c79","memoryType":"study"},{"title":"t80","content":"c80","memoryType":"study"},{"title":"t81","content":"c81","memoryType":"study"},{"title":"t82","content":"c82","memoryType":"study"},{"title":"t83","content":"c83","memoryType":"study"},{"title":"t84","content":"c84","memoryType":"study"},{"title":"t85","content":"c85","memoryType":"study"},{"title":"t86","content":"c86","memoryType":"study"},{"title":"t87","content":"c87","memoryType":"study"},{"title":"t88","content":"c88","memoryType":"study"},{"title":"t89","content":"c89","memoryType":"study"},{"title":"t90","content":"c90","memoryType":"study"},{"title":"t91","content":"c91","memoryType":"study"},{"title":"t92","content":"c92","memoryType":"study"},{"title":"t93","content":"c93","memoryType":"study"},{"title":"t94","content":"c94","memoryType":"study"},{"title":"t95","content":"c95","memoryType":"study"},{"title":"t96","content":"c96","memoryType":"study"},{"title":"t97","content":"c97","memoryType":"study"},{"title":"t98","content":"c98","memoryType":"study"},{"title":"t99","content":"c99","memoryType":"study"},{"title":"t100","content":"c100","memoryType":"study"},{"title":"t101","content":"c101","memoryType":"study"},{"title":"t102","content":"c102","memoryType":"study"},{"title":"t103","content":"c103","memoryType":"study"},{"title":"t104","content":"c104","memoryType":"study"},{"title":"t105","content":"c105","memoryType":"study"},{"title":"t106","content":"c106","memoryType":"study"},{"title":"t107","content":"c107","memoryType":"study"},{"title":"t108","content":"c108","memoryType":"study"},{"title":"t109","content":"c109","memoryType":"study"},{"title":"t110","content":"c110","memoryType":"study"},{"title":"t111","content":"c111","memoryType":"study"},{"title":"t112","content":"c112","memoryType":"study"},{"title":"t113","content":"c113","memoryType":"study"},{"title":"t114","content":"c114","memoryType":"study"},{"title":"t115","content":"c115","memoryType":"study"},{"title":"t116","content":"c116","memoryType":"study"},{"title":"t117","content":"c117","memoryType":"study"},{"title":"t118","content":"c118","memoryType":"study"},{"title":"t119","content":"c119","memoryType":"study"},{"title":"t120","content":"c120","memoryType":"study"},{"title":"t121","content":"c121","memoryType":"study"},{"title":"t122","content":"c122","memoryType":"study"},{"title":"t123","content":"c123","memoryType":"study"},{"title":"t124","content":"c124","memoryType":"study"},{"title":"t125","content":"c125","memoryType":"study"},{"title":"t126","content":"c126","memoryType":"study"},{"title":"t127","content":"c127","memoryType":"study"},{"title":"t128","content":"c128","memoryType":"study"},{"title":"t129","content":"c129","memoryType":"study"},{"title":"t130","content":"c130","memoryType":"study"},{"title":"t131","content":"c131","memoryType":"study"},{"title":"t132","content":"c132","memoryType":"study"},{"title":"t133","content":"c133","memoryType":"study"},{"title":"t134","content":"c134","memoryType":"study"},{"title":"t135","content":"c135","memoryType":"study"},{"title":"t136","content":"c136","memoryType":"study"},{"title":"t137","content":"c137","memoryType":"study"},{"title":"t138","content":"c138","memoryType":"study"},{"title":"t139","content":"c139","memoryType":"study"},{"title":"t140","content":"c140","memoryType":"study"},{"title":"t141","content":"c141","memoryType":"study"},{"title":"t142","content":"c142","memoryType":"study"},{"title":"t143","content":"c143","memoryType":"study"},{"title":"t144","content":"c144","memoryType":"study"},{"title":"t145","content":"c145","memoryType":"study"},{"title":"t146","content":"c146","memoryType":"study"},{"title":"t147","content":"c147","memoryType":"study"},{"title":"t148","content":"c148","memoryType":"study"},{"title":"t149","content":"c149","memoryType":"study"},{"title":"t150","content":"c150","memoryType":"study"},{"title":"t151","content":"c151","memoryType":"study"},{"title":"t152","content":"c152","memoryType":"study"},{"title":"t153","content":"c153","memoryType":"study"},{"title":"t154","content":"c154","memoryType":"study"},{"title":"t155","content":"c155","memoryType":"study"},{"title":"t156","content":"c156","memoryType":"study"},{"title":"t157","content":"c157","memoryType":"study"},{"title":"t158","content":"c158","memoryType":"study"},{"title":"t159","content":"c159","memoryType":"study"},{"title":"t160","content":"c160","memoryType":"study"},{"title":"t161","content":"c161","memoryType":"study"},{"title":"t162","content":"c162","memoryType":"study"},{"title":"t163","content":"c163","memoryType":"study"},{"title":"t164","content":"c164","memoryType":"study"},{"title":"t165","content":"c165","memoryType":"study"},{"title":"t166","content":"c166","memoryType":"study"},{"title":"t167","content":"c167","memoryType":"study"},{"title":"t168","content":"c168","memoryType":"study"},{"title":"t169","content":"c169","memoryType":"study"},{"title":"t170","content":"c170","memoryType":"study"},{"title":"t171","content":"c171","memoryType":"study"},{"title":"t172","content":"c172","memoryType":"study"},{"title":"t173","content":"c173","memoryType":"study"},{"title":"t174","content":"c174","memoryType":"study"},{"title":"t175","content":"c175","memoryType":"study"},{"title":"t176","content":"c176","memoryType":"study"},{"title":"t177","content":"c177","memoryType":"study"},{"title":"t178","content":"c178","memoryType":"study"},{"title":"t179","content":"c179","memoryType":"study"},{"title":"t180","content":"c180","memoryType":"study"},{"title":"t181","content":"c181","memoryType":"study"},{"title":"t182","content":"c182","memoryType":"study"},{"title":"t183","content":"c183","memoryType":"study"},{"title":"t184","content":"c184","memoryType":"study"},{"title":"t185","content":"c185","memoryType":"study"},{"title":"t186","content":"c186","memoryType":"study"},{"title":"t187","content":"c187","memoryType":"study"},{"title":"t188","content":"c188","memoryType":"study"},{"title":"t189","content":"c189","memoryType":"study"},{"title":"t190","content":"c190","memoryType":"study"},{"title":"t191","content":"c191","memoryType":"study"},{"title":"t192","content":"c192","memoryType":"study"},{"title":"t193","content":"c193","memoryType":"study"},{"title":"t194","content":"c194","memoryType":"study"},{"title":"t195","content":"c195","memoryType":"study"},{"title":"t196","content":"c196","memoryType":"study"},{"title":"t197","content":"c197","memoryType":"study"},{"title":"t198","content":"c198","memoryType":"study"},{"title":"t199","content":"c199","memoryType":"study"},{"title":"t200","content":"c200","memoryType":"study"}]},"expect":"error"},
+        {"cmd":"memory_list","args":{"limit":100,"offset":0}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "memory.write_batch.default_study_and_overrides",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"memory_write_batch","args":{"items":[{"title":"错题一","content":"导数定义"},{"title":"错题二","content":"积分换元","folderPath":"数学/积分"},{"title":"方法","content":"先画图再列式","memoryType":"note"},{"title":"空内容","content":""}],"defaultFolderPath":"数学","defaultMemoryPurpose":"memorized"}},
+        {"cmd":"memory_list","args":{"limit":100,"offset":0}},
+        {"cmd":"memory_get_tree","args":{}},
+        {"cmd":"memory_get_audit_logs","args":{}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "memory.write_batch.fact_privacy",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"memory_set_privacy_mode","args":{"enabled":true}},
+        {"cmd":"memory_write_batch","args":{"items":[{"title":"饮品","content":"用户喜欢喝乌龙茶","memoryType":"fact"},{"title":"饮品","content":"用户喜欢喝红茶","memoryType":"fact"},{"title":"空事实","content":"","memoryType":"fact"},{"title":"学习","content":"用户在准备考研","idempotencyKey":"bk1"}],"defaultMemoryType":"fact"}},
+        {"cmd":"memory_list","args":{"limit":100,"offset":0}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "memory.write_batch.invalid_defaults",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"memory_write_batch","args":{"items":[{"title":"t","content":"c"}],"defaultMemoryType":"memo"},"expect":"error"},
+        {"cmd":"memory_write_batch","args":{"items":[{"title":"t","content":"c"}],"defaultMemoryPurpose":"random"},"expect":"error"},
+        {"cmd":"memory_list","args":{"limit":100,"offset":0}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "memory.write_batch.invalid_item_mid_batch",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"memory_write_batch","args":{"items":[{"title":"先写入","content":"导数定义"},{"title":"坏类型","content":"c","memoryType":"memo"},{"title":"不会写入","content":"积分换元"}]},"expect":"error"},
+        {"cmd":"memory_write_batch","args":{"items":[{"title":"先写入二","content":"极限定义"},{"title":"坏目的","content":"c","memoryPurpose":"random"}]},"expect":"error"},
+        {"cmd":"memory_write_batch","args":{"items":[{"title":"先写入三","content":"级数收敛"},{"title":"__secret","content":"保留标题"}]},"expect":"error"},
+        {"cmd":"memory_write_batch","args":{"items":[{"title":"先写入四","content":"泰勒展开"},{"title":"电话","content":"手机号13812345678"}],"defaultFolderPath":"数学"},"expect":"error"},
+        {"cmd":"memory_list","args":{"limit":100,"offset":0}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "memory.write_batch.bad_args",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"memory_write_batch","args":{},"expect":"error"},
+        {"cmd":"memory_write_batch","args":{"items":"x"},"expect":"error"},
+        {"cmd":"memory_write_batch","args":{"items":[{"title":"t"}]},"expect":"error"},
+        {"cmd":"memory_write_batch","args":{"items":[{"content":"c"}]},"expect":"error"},
+        {"cmd":"memory_write_batch","args":{"items":[],"defaultFolderPath":1},"expect":"error"},
+        {"cmd":"memory_list","args":{"limit":100,"offset":0}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    }
+  ]
+}

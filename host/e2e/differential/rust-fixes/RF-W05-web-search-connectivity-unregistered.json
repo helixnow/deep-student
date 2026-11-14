@@ -1,0 +1,52 @@
+{
+  "id": "RF-W05-web-search-connectivity-unregistered",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T09:20+08:00",
+  "title": "test_web_search_connectivity 在 Rust 里定义为 #[tauri::command] 却没有注册，前端调用只会得到“命令不存在”",
+  "rust": {
+    "file": "src-tauri/src/cmd/web_search.rs",
+    "line": 43,
+    "behavior": "基线快照 21c9d808 中 test_web_search_connectivity 已实现并标注 #[tauri::command]，但 lib.rs 的 generate_handler! 与 permissions/application-commands.toml 都没有它；invoke('test_web_search_connectivity') 被 Tauri 以未注册命令拒绝。"
+  },
+  "fix": {
+    "files": [
+      "host/plugins/browser/index.ts"
+    ],
+    "behavior": "host 注册该命令（语义逐行对齐 cmd/web_search.rs:43：空白 engine 保留默认引擎，失败时返回序列化的 ToolResult），并加入生产 ACL（src-tauri/permissions/application-commands.toml，该目录不在标记扫描范围内）；调用返回 {success, usage} 或 {success:false, detail}。"
+  },
+  "evidence": "与 Rust 自身意图和前端期望矛盾：命令按 Tauri 命令实现、带完整的成功/失败返回形状，前端 src/utils/settingsApi.ts:173 的 testWebSearchConnectivity 包装也按这个形状调用，但因漏注册永远走不到实现。复现：在基线 Rust 版调用 invoke('test_web_search_connectivity', {engine:null}) 得到命令不存在错误。说明：当前前端只有包装函数，未找到界面调用点；W09 在 f99c2b4d 把它补进了参考 Rust 的 generate_handler!，如果 G3 的 A 侧用的是补过的 Rust，这处差异不会出现。",
+  "userVisible": "有调用方时能感知：连通性测试返回真实结果，Rust 版报命令不存在。当前界面没有调用点，用户暂时感知不到。",
+  "dataCompat": "不改变落库数据、同步载荷与备份格式；只新增一个可调用的 IPC 命令（契约 L19 已有该命令）。",
+  "notes": "注册在 5d5d4f87（W05），ACL 与断言改为成功在 c51d6415（W09）；本条只补登记、标记与守护测试。撤回需 revert 这两个提交并删除本文件。",
+  "g3": {
+    "affects": true,
+    "selectors": [
+      {
+        "scenario": "*",
+        "surface": "ipc",
+        "command": "test_web_search_connectivity",
+        "jsonPath": "$.success"
+      },
+      {
+        "scenario": "*",
+        "surface": "ipc",
+        "command": "test_web_search_connectivity",
+        "jsonPath": "$.usage"
+      },
+      {
+        "scenario": "*",
+        "surface": "ipc",
+        "command": "test_web_search_connectivity",
+        "jsonPath": "$.detail"
+      }
+    ]
+  },
+  "tests": [
+    {
+      "file": "host/plugins/browser/tests/search-commands.test.ts",
+      "name": "RF-W05-web-search-connectivity-unregistered: test_web_search_connectivity is registered and allowed by the production ACL (application-commands.toml)"
+    }
+  ]
+}

@@ -1,0 +1,58 @@
+{
+  "id": "RF-W23-fs-deny-protected-ancestor",
+  "kind": "deliberate",
+  "status": "proposed",
+  "title": "plugin:fs 的 rename（源和目标）与递归 remove：路径之下有受保护的目录时拒绝，改名或删掉上级目录不能绕过 deny",
+  "rust": {
+    "file": "src-tauri/Cargo.toml",
+    "line": 156,
+    "behavior": "tauri-plugin-fs 2.4.5 的 rename / remove 只用 resolve_path 判定请求路径本身（deny 优先，再 allow）。Rust 版的 capability 没有任何 fs deny，所以这在 Rust 版没有可见后果；Electron 版新增了 deny（RF-W23-fs-deny-host-plugin-dir 的 $APPDATA/plugins、RF-W23-fs-deny-browser-profiles 的 slots/*/browser-profiles、RF-W23-fs-deny-webview-data-user-data 的 userData 与 Windows 的 $APPLOCALDATA/EBWebView/**），沿用只看请求路径本身的判定后，改名或递归删除它们的上级目录、或把准备好的目录整体改名到上级位置，就能绕过"
+  },
+  "fix": {
+    "files": ["electron/shell/scope.ts", "electron/shell/plugins/fs.ts"],
+    "behavior": "FsScope.forbidsBelow(path)：某条 deny 模式能否匹配 path 之下的路径（按组件比较，* 只在一个组件内，** 吃掉其余部分；path 的组件用完而模式还有组件即为能），比较的形态与 isForbidden 相同（规范形态、不存在时的字面形态、macOS / Windows 的大小写折叠、Windows 的流后缀与尾点尾空格）。fs 插件在 rename 的源和目标、以及对真实目录（lstat 为目录）的递归 remove 上，对运行时、全局、本次 ACL 三个作用域调用它，任一为真即返回 forbidden path。被拒的只有包含受保护目录的目录本身：$APPDATA、$APPDATA/slots、$APPDATA/slots/<x>（含尚不存在的新槽位；slots/* 的 * 匹配任何名字，所以 slots 下的文件也算上级，例如 rename x.txt → $APPDATA/slots/x.txt 被拒）、Windows 的 $APPLOCALDATA 与 $APPLOCALDATA/EBWebView 目录本身、userData 的各级上级（只在运行时作用域覆盖它们时可达）。这些目录下的文件与其他子目录的改名、删除不受影响；非递归 remove、mkdir、写入、复制不变"
+  },
+  "evidence": "A08 复核（.reports/audit/reviews/W23-6daff78f.md 清单 1 附注 a）。在 INT 1d1fdb78 上复现（host/e2e/security/shell-builtin-acl.test.ts 本 RF 的三例，修复前 3 failed | 1 passed）：1) rename $APPDATA/slots → $APPDATA/slotz 成功，之后 slotz/<slot>/browser-profiles/default/Cookies 不再命中 deny；2) Tauri 的 scope-appdata-recursive 同时授予 $APPDATA 目录本身，rename $APPDATA → $DOCUMENT/old-appdata 成功；$APPDATA 不在时 rename $DOCUMENT/stage → $APPDATA 把 stage/plugins/user.profile.json 一次放进 Host 插件目录（下次启动 Host 在沙箱外加载）；3) rename $APPDATA/staging → $APPDATA/slots/slotB 把准备好的 browser-profiles（攻击者的 cookie）放进新槽位；4) 用户经对话框选中家目录后（运行时作用域），rename userData 的上级目录成功，userData 的 Cookies 换了路径。前提都是主窗口页面脚本被控制（XSS），与 RF-W23-fs-deny-host-plugin-dir 等同级。Windows 上 Electron 不再打开 EBWebView，rename $APPLOCALDATA/EBWebView 不受占用阻挡，原来的 deny 只有 EBWebView/**、不含目录本身。修复后上述请求都得到 forbidden path，前端的合法操作（apkg 暂存文件、壁纸库文件的删除，槽位内文件与其他目录的改名和递归删除）照常成功。前端审计：src/** 没有任何 plugin:fs rename 调用；remove 只有两处，都是非递归删除托管目录里的单个文件（src/features/flashcards/store/libraryStore.ts:499 的 $APPDATA/tmp_apkg_import/*，src/features/settings/components/wallpaperLibrary.ts:358 的 $APPDATA/workbench-wallpapers/*）。槽位切换、备份恢复等对槽位目录的整体操作都在 Host 里用 Node fs 完成，不经过外壳的 fs 插件",
+  "userVisible": "正常使用感知不到；页面脚本经 plugin:fs 改名或递归删除包含受保护目录的目录（$APPDATA、slots、某个槽位、Windows 的 EBWebView、用户选中的含 userData 的目录），或把目录改名到这些位置时被拒绝（forbidden path）。改名符号链接本身而链接指向这类目录时也会被拒绝，前端没有这样的调用。$APPDATA/slots 下的直接子项（文件或目录，任何名字）都不能作为改名的源或目标，例如 rename x.txt → $APPDATA/slots/x.txt 也被拒绝；前端没有这种调用，槽位切换和备份恢复都在 Host 里完成。",
+  "notes": "撤回依赖（A19b 复核 W23-faaf6d40 清单 5 附注 a）：本条（4fb22176）、RF-W23-fs-scope-literal-win32-normalize（bd3d4b82）、RF-W23-fs-deny-symlink-entry（2a1825b7）按这个顺序提交；2a1825b7 把 bd3d4b82 改的那一行搬进 scope.ts 的 literalForm，又改了本条新增的 denyCandidates 的参数形状，所以前两条不能单独 git revert。否决本条：撤回 plugins/fs.ts 的 refuseProtectedBelow 及其在 rename 两端、递归 remove 上的调用，以及 scope.ts 的 forbidsBelow / mayMatchBelow / reachesBelowAny；denyCandidates 留下（symlink-entry 也用）。否决 literal-win32-normalize：手工把 literalForm 的函数体改回 collectComponents(path, this.platform)，并撤回 electron/tests/__fixtures__/scope-fs.ts 里非 \\\\?\\ 路径先 win32.normalize 的分支。只否决 symlink-entry：直接 revert 2a1825b7。RF-W23-asset-scope-protected-deny 不依赖这三条。",
+  "dataCompat": "不改变落库数据、同步载荷与备份格式。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "host/e2e/security/shell-builtin-acl.test.ts",
+      "name": "RF-W23-fs-deny-protected-ancestor: main cannot carry a protected directory off by renaming or recursively removing a directory above it"
+    },
+    {
+      "file": "host/e2e/security/shell-builtin-acl.test.ts",
+      "name": "RF-W23-fs-deny-protected-ancestor: main cannot plant a prepared browser-profiles or plugins directory by renaming a whole directory onto a new slot or onto $APPDATA"
+    },
+    {
+      "file": "host/e2e/security/shell-builtin-acl.test.ts",
+      "name": "RF-W23-fs-deny-protected-ancestor: a folder the user picked that holds the webview data cannot be renamed to read it under another path"
+    },
+    {
+      "file": "host/e2e/security/shell-builtin-acl.test.ts",
+      "name": "RF-W23-fs-deny-protected-ancestor: renames and removals that carry no protected directory keep working (apkg staging, wallpaper library, files and folders inside a slot)"
+    },
+    {
+      "file": "electron/tests/fs-scope-deny-ancestor.test.ts",
+      "name": "RF-W23-fs-deny-protected-ancestor: mayMatchBelow compares component by component; * stays in one component, ** reaches everything"
+    },
+    {
+      "file": "electron/tests/fs-scope-deny-ancestor.test.ts",
+      "name": "RF-W23-fs-deny-protected-ancestor: $APPDATA, slots and each slot hold a protected directory; files and other folders do not"
+    },
+    {
+      "file": "electron/tests/fs-scope-deny-ancestor.test.ts",
+      "name": "RF-W23-fs-deny-protected-ancestor: on Windows the EBWebView folder itself and $APPLOCALDATA hold the denied webview data"
+    },
+    {
+      "file": "electron/tests/fs-scope-deny-ancestor.test.ts",
+      "name": "RF-W23-fs-deny-protected-ancestor: other spellings of an ancestor count on macOS and Windows (case, \\\\.\\ trailing dots, NTFS streams), not on Linux"
+    },
+    {
+      "file": "electron/tests/fs-scope-deny-ancestor.test.ts",
+      "name": "RF-W23-fs-deny-protected-ancestor: an ancestor reached through a symbolic link or junction is judged at its real location"
+    }
+  ]
+}

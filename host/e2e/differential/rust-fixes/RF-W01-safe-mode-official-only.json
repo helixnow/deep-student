@@ -1,0 +1,44 @@
+{
+  "id": "RF-W01-safe-mode-official-only",
+  "kind": "deliberate",
+  "status": "proposed",
+  "title": "安全模式（--safe-mode）下 Host 只装载官方插件：社区 profile 条目与直接安装都以 SAFE_MODE_ACTIVE 拒绝，UI 清单 v2 上报 safeMode",
+  "rust": {
+    "file": "src-tauri/src/lib.rs",
+    "line": 953,
+    "behavior": "Rust 版没有安全模式：启动时按 profile 直接装载全部条目，没有 --safe-mode，也没有“上次启动未就绪”计数或恢复对话框；用户 profile 里的社区条目每次都会执行。崩溃后只能靠恢复预检（lib.rs:953-959）跳过业务初始化，不能只禁用社区插件"
+  },
+  "fix": {
+    "files": [
+      "host/kernel/runtime.ts",
+      "host/kernel/profile.ts"
+    ],
+    "behavior": "HostRuntime 新增 safeMode 选项（serveHost/serveImportedHost 透传，main.ts 由 --safe-mode 或 DS_SAFE_MODE=1 设置）。safeMode 为 true 时：(1) start() 对社区来源（packageRoot 存在，或模块 URL 不在 host/、electron/ 内）抛 PluginLoadError SAFE_MODE_ACTIVE，直接安装/启用同样被拒；(2) prepareProfile 在 screenEntry 之后、import 之前把社区条目记入 degraded（reason 以 SAFE_MODE_ACTIVE: 开头），不评估模块；(3) uiManifestV2() 的 safeMode 字段如实上报，host://ui-manifest-v2 与 plugin:ui|manifest {version:2} 同步携带。官方（builtin）插件行为不变；外壳仍负责强制官方 profile 与恢复对话框，Host 侧不依赖外壳"
+  },
+  "evidence": "P1-2/W06（PLUGIN-CLOSEOUT-BRIEF 第 4 条）：W06 负责 electron 的 --safe-mode、启动计数与原生对话框；W01 提供 Host 侧官方-only 装载与 profile 安全模式入口。W06 safe-mode 契约（interfaces/safe-mode.md）要求 W01 “enforce official-only loading AND reject community install/enable/profile reload for the entire safe session using DS_SAFE_MODE === '1' or --safe-mode”，并让 manifest v2 带 top-level safeMode 供 W17 在装载社区 UI 前消费。测试 host/kernel/tests/safe-mode-host.test.ts：safeMode 上报、社区 profile 条目在 import 前被拒（全局求值标记为空）、同一条目在非安全模式下正常装载（对照）、直接安装社区插件被拒而官方插件仍可安装；5 例通过。此前 ui-events/e2e 失败暴露的 TypeScript 参数属性问题已改为显式字段，真实 Node 类型剥离下 Host 可启动",
+  "userVisible": "用户从原生对话框选择“以安全模式重启”后，应用只显示官方界面；社区插件不出现在运行列表，降级原因显示 SAFE_MODE_ACTIVE。安全模式下安装/启用社区插件会被拒绝并提示原因。正常启动完全不变",
+  "dataCompat": "不改变落库数据、profile 格式、同步载荷与备份格式；safeMode 只影响本次进程的装载与 UI 清单字段，重启后按正常规则装载",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "host/kernel/tests/safe-mode-host.test.ts",
+      "name": "RF-W01-safe-mode-official-only: reports safeMode in the v2 manifest and still loads builtin plugins"
+    },
+    {
+      "file": "host/kernel/tests/safe-mode-host.test.ts",
+      "name": "RF-W01-safe-mode-official-only: keeps safeMode false outside safe mode"
+    },
+    {
+      "file": "host/kernel/tests/safe-mode-host.test.ts",
+      "name": "RF-W01-safe-mode-official-only: rejects community plugins from a profile with SAFE_MODE_ACTIVE before importing them"
+    },
+    {
+      "file": "host/kernel/tests/safe-mode-host.test.ts",
+      "name": "RF-W01-safe-mode-official-only: loads the same community plugin outside safe mode as a control"
+    },
+    {
+      "file": "host/kernel/tests/safe-mode-host.test.ts",
+      "name": "RF-W01-safe-mode-official-only: rejects a direct community install (source outside the app) while official installs keep working"
+    }
+  ]
+}

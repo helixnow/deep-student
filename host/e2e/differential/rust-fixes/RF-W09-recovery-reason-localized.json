@@ -1,0 +1,27 @@
+{
+  "id": "RF-W09-recovery-reason-localized",
+  "kind": "deliberate",
+  "status": "approved",
+  "approvedBy": "main-agent",
+  "approvedAt": "2026-11-07T13:00:00+08:00",
+  "title": "恢复页、数据治理恢复中心、功能不可用面板按界面语言显示组件失败原因（#29）",
+  "rust": {
+    "file": "src/features/data-recovery/ComponentRecoveryShell.tsx",
+    "line": 141,
+    "behavior": "Rust 快照 21c9d808 的三个界面（ComponentRecoveryShell.tsx:141、RecoveryCenter.tsx:323、FeatureUnavailablePanel.tsx:51）原样显示后端 component_health.reason。单库迁移失败、依赖跳过、恢复失败、结构读取失败等原因由 dstu-storage coordinator.rs（329、379、395、608、634、5345-5377）用英文拼成，中文界面里整句是英文（W12 冒烟 ⑪：“Database 'vfs' migration failed: … No earlier snapshot contains this database.”）；只有 lib.rs:1253-1275、1573、1601 与 init.rs:164 这几条全局失败用中文前缀"
+  },
+  "fix": {
+    "files": ["src/components/system-status/useComponentReasonText.ts"],
+    "behavior": "useComponentReasonText（ComponentRecoveryShell、RecoveryCenter、FeatureUnavailablePanel 三处调用；解析在 componentReason.ts；文案在 zh-CN/en-US data.json 的 recovery.component_reason）按 Rust 与 Host 的固定句式拆出数据库名、底层错误、恢复结果（已从快照恢复 / 删除失败升级新建的文件 / 原文件保留 / 恢复也失败）、依赖名、路径与快照名，用 data:recovery.component_reason.* 重组。zh-CN 显示中文句子，底层错误原文、路径、快照名原样嵌入；Rust 已有的中文原因（迁移失败后已恢复旧版数据结构、启动迁移无法建立安全状态、Chat V2/LLM Usage 数据库初始化失败、审计日志初始化失败）逐字不变，与 Tauri 一致；en-US 输出与后端原句逐字相同。认不出的句式原样显示，空原因仍显示各界面原有的兜底文案"
+  },
+  "evidence": "W12-PROGRESS #29：中文界面原样显示后端英文原因。同一界面其余文案全部走 i18n（data:recovery.*），只有原因一行是英文；Rust 自己在 lib.rs 里给全局失败写了中文原因，说明面向用户的原因本应是界面语言。后端 IPC 载荷不变。",
+  "userVisible": "能：中文界面里恢复页组件卡片、设置 › 数据治理 › 恢复、各功能的“暂不可用”面板显示中文原因，例如“数据库 vfs 升级失败：Database error: file is not a database。本次升级前没有建立快照，因此没有执行恢复；数据库文件保留在原位置 …/vfs.db，没有被删除或覆盖。更早的快照里也没有这个数据库。”英文界面不变。",
+  "dataCompat": "只改前端显示；不改 IPC 载荷、落库数据、同步载荷与备份格式。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "src/components/system-status/useComponentReasonText.test.tsx",
+      "name": "RF-W09-recovery-reason-localized: en-US reproduces every backend sentence verbatim"
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "id": "RF-S01-web-fetch-dns-pinning",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main-agent",
+  "approvedAt": "2026-11-07T09:40:00+08:00",
+  "title": "web_fetch：通过 SSRF 校验的 DNS 结果被钉住用于实际连接，最终 URL 校验也只认这个地址（封堵 DNS rebinding）",
+  "rust": {
+    "file": "src-tauri/crates/dstu-agent/src/chat_v2/tools/fetch_executor.rs",
+    "line": 332,
+    "behavior": "首跳与重定向策略各自 to_socket_addrs() 校验后，reqwest 连接时再解析一次；validate_public_url_target 又解析第三次。TTL 为 0 的恶意域名可以“校验时给公网地址、连接时给 127.0.0.1/10.x”，绕过内网拦截；最终校验的第三次解析既可能被同样绕过，也可能因 DNS 抖动让已完成的抓取失败"
+  },
+  "fix": {
+    "files": ["host/plugins/agent-skills/src/tools/fetch-chat-executor.ts"],
+    "behavior": "每一跳只解析一次，连接经 pinnedNodeGet 的 lookup 钉到通过校验的那个地址（HTTPS 仍按原主机名做 SNI 与证书校验）；validatePublicUrlTarget 不再重新解析，改为用最后一跳实际连接的地址判定。钉住连接在 W02 的原始移植里已经实现（当时未登记）；本登记对应的提交只把最终校验改为判定钉住的地址"
+  },
+  "evidence": "与 Rust 自身意图矛盾：注释写明“每一跳验证目标 IP”，但被验证的 IP 与连接的 IP 不是同一次解析结果，经典 DNS rebinding TOCTOU，后果是安全问题（SSRF 到内网/本机）。复现：resolver 第一次返回 93.184.216.34、之后返回 127.0.0.1；Rust 校验通过后 reqwest 连接 127.0.0.1，最终校验再解析也拿到 127.0.0.1（或在应答变化时误判）。修复后只解析一次、连接 93.184.216.34，测试断言连接地址与解析次数。撤回本登记只会恢复最终 URL 的重复解析，不会去掉连接钉住。",
+  "userVisible": "基本不可感知：正常网站行为不变；最终 URL 不再因第二次 DNS 解析失败而报 'Final URL DNS resolution failed'",
+  "dataCompat": "不改变落库数据、同步载荷或备份格式",
+  "g3": {
+    "affects": false,
+    "selectors": []
+  },
+  "tests": [
+    {
+      "file": "host/plugins/agent-skills/tests/web-fetch-dns.test.ts",
+      "name": "RF-S01-web-fetch-dns-pinning: the connection uses the validated answer and the name is resolved once"
+    },
+    {
+      "file": "host/plugins/agent-skills/tests/web-fetch-dns.test.ts",
+      "name": "RF-S01-web-fetch-dns-pinning: each redirect hop connects to the address its own check accepted"
+    },
+    {
+      "file": "host/plugins/agent-skills/tests/web-fetch-dns.test.ts",
+      "name": "RF-S01-web-fetch-dns-pinning: the final-URL check judges the pinned address, so a later DNS failure cannot fail a completed fetch"
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "id": "RF-W08-zip-import-cleanup-before-failed",
+  "kind": "deliberate",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T09:20+08:00",
+  "title": "ZIP 导入失败时先删除半成品目录，再把任务标记为 failed",
+  "rust": {
+    "file": "src-tauri/src/data_governance/commands_zip.rs",
+    "line": 1584,
+    "behavior": "先 job_ctx.fail（发出 failed 事件），写审计后才 remove_dir_all(target_dir)（commands_zip.rs:1612）；前端收到 failed 时半成品目录可能还在"
+  },
+  "fix": {
+    "files": ["host/plugins/backup/src/zip-commands.ts"],
+    "behavior": "非可恢复任务失败时先写审计、再删除目标目录（失败只记 warn），最后 job.fail；前端看到 failed 时目录已不存在"
+  },
+  "evidence": "Rust 在同一个阻塞任务里紧接着删目录，时间窗很短；Host 里删除是异步的，若沿用原顺序，前端在 failed 后立即刷新备份列表会看到半成品备份。按产品决策登记。",
+  "userVisible": "基本不可感知：失败后刷新备份列表不会短暂出现半成品条目。最终状态与 Rust 相同。",
+  "dataCompat": "不改变任何落库数据、同步载荷或备份格式。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    { "file": "host/plugins/backup/tests/rust-fixes.test.ts", "name": "RF-W08-zip-import-cleanup-before-failed: the half-imported directory is gone when the job reports failed" }
+  ]
+}

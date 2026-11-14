@@ -17,8 +17,10 @@ import {
 } from '@/components/layout/mobileDrawerStyles';
 import { DsButton } from '@/components/ui/DsButton';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { getAppKernel } from '@/ui-kernel/bootstrap';
 import { BACK_PRIORITY, registerVisibilityGuardedBackHandler } from '@/app/navigation/androidBackCoordinator';
 import { FlashcardsMobileChromeContext, type FlashcardsMobileChrome } from './useFlashcardsMobileChrome';
+import { ImageOcclusionBuilderModal } from './occlusion/ImageOcclusionBuilderModal';
 import { TodayScreen } from './screens/TodayScreen';
 import { LibraryScreen } from './screens/LibraryScreen';
 import { ReviewSessionScreen } from './screens/ReviewSessionScreen';
@@ -92,6 +94,24 @@ export const FlashcardsApp: React.FC<FlashcardsAppProps> = ({
   useEffect(() => {
     applyLaunchPayload(launchPayload);
   }, [applyLaunchPayload, launchPayload]);
+
+  useEffect(() => {
+    const kernel = getAppKernel();
+    if (!kernel?.anchors) return;
+    return kernel.anchors.registerAnchorRevealHandler('custom', {
+      canHandle: (anchor) => {
+        if (anchor.namespace !== 'flashcard' || !anchor.resourceId) return false;
+        const activeEl = typeof document !== 'undefined' ? document.activeElement : null;
+        const isFocused = Boolean(activeEl && rootRef.current?.contains(activeEl));
+        return isFocused || isActive ? 'exact-focused' : 'exact-mounted';
+      },
+      reveal: (anchor) => {
+        if (anchor.namespace !== 'flashcard' || !anchor.resourceId) return false;
+        applyLaunchPayload({ mode: 'batch', cardIds: [anchor.resourceId] });
+        return true;
+      },
+    });
+  }, [applyLaunchPayload, isActive]);
 
   const content = screen === 'session' ? (
     <div key="session" className="wb-fcx-screen-anim flex min-h-0 flex-1 flex-col">
@@ -180,6 +200,7 @@ export const FlashcardsApp: React.FC<FlashcardsAppProps> = ({
           </MobileSlidingLayout>
         ) : content}
       </FlashcardsMobileChromeContext.Provider>
+      <ImageOcclusionBuilderModal />
     </div>
   );
 };

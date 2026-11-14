@@ -1,28 +1,4 @@
-# macOS 构建（reusable）
-#
-# release.yml / rebuild-release.yml 共用的唯一 macOS 构建实现。
-# 调用方需 `secrets: inherit`。
-#
-# 审查 F4 修复：APPLE_* 签名/公证 secrets 此前只写在 release.yml 头部注释里，
-# 从未传入构建环境 —— Tauri 只从 env 读取这些配置，导致产物一直是 ad-hoc
-# 签名、未公证。现已显式注入。
-#
-# 生产签名链（fail-closed）：
-#   1. Preflight 校验全部生产 secrets（缺失 ⇒ 立即失败并列出缺失项，
-#      绝不静默产出 ad-hoc 签名/未公证产物）
-#   2. 导入 Developer ID Application 证书到独立临时 keychain
-#   3. tauri build：codesign（APPLE_SIGNING_IDENTITY）+ notarytool 公证
-#      + staple（APPLE_ID / APPLE_PASSWORD / APPLE_TEAM_ID）
-#   4. 构建后强制验证：codesign --verify --strict、xcrun stapler validate、
-#      spctl --assess（Gatekeeper 通过才算构建成功）
-#   5. 无论成败清理临时 keychain
-#
-# 需要的生产 secrets：
-#   APPLE_CERTIFICATE_BASE64（Developer ID Application .p12 的 base64）
-#   APPLE_CERTIFICATE_PASSWORD / APPLE_SIGNING_IDENTITY
-#   APPLE_ID / APPLE_PASSWORD（app-specific password）/ APPLE_TEAM_ID
-#   TAURI_SIGNING_PRIVATE_KEY / TAURI_SIGNING_PRIVATE_KEY_PASSWORD（updater 签名）
-
+# macOS Electron release build (arm64 + x64, signed + notarized + stapled + minisign)
 name: Build macOS (reusable)
 
 on:
@@ -32,25 +8,25 @@ on:
         default: false
         type: boolean
       targets:
-        description: Native target matrix (recovery can build one architecture)
+        description: Native target matrix
         type: string
-        default: '[{"target":"aarch64-apple-darwin","runner":"macos-15"},{"target":"x86_64-apple-darwin","runner":"macos-15-intel"}]'
+        default: '[{"target":"aarch64-apple-darwin","arch":"arm64","runner":"macos-15"},{"target":"x86_64-apple-darwin","arch":"x64","runner":"macos-15-intel"}]'
       source_sha:
-        description: '已解析的不可变源码 SHA；留空仅兼容历史独立补发调用'
+        description: 'Immutable 40-char source commit SHA'
         required: false
         type: string
         default: ''
       tag_name:
-        description: '构建的 tag（如 v0.9.42）'
+        description: 'Release tag (e.g. v0.20.0)'
         required: true
         type: string
       allow_unsigned:
-        description: '仅供手动恢复发布：缺少 Apple 生产签名凭据时允许未公证构建'
+        description: 'Manual recovery only: allow ad-hoc signing without Apple Developer ID/notarization'
         required: false
-        default: false
         type: boolean
+        default: false
       frontend_dist_artifact:
-        description: 'WI-4: 预构建前端 dist 的 artifact 名称；留空则由 beforeBuildCommand 在本 job 内构建前端'
+        description: 'Prebuilt frontend dist artifact name; builds locally when empty'
         required: false
         type: string
         default: ''
@@ -59,86 +35,61 @@ permissions:
   contents: read
   actions: read
 
-env:
-  # 固定工具版本（升级需显式改这里）
-  SENTRY_CLI_VERSION: '2.58.6'
-
 jobs:
   build:
-    # macos-latest is ARM64. Running the Intel target there forces a very slow
-    # cross-architecture release build, so each target must use its native host.
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 240
+    timeout-minutes: 90
     env:
       RELEASE_SOURCE_SHA: ${{ inputs.source_sha }}
       RELEASE_WORKFLOW_SHA: ${{ github.workflow_sha }}
       RELEASE_FORCE_REBUILD: ${{ inputs.force_rebuild }}
       GH_TOKEN: ${{ github.token }}
-      CARGO_BUILD_JOBS: '2'
-      SCCACHE_IDLE_TIMEOUT: '0'
-      SCCACHE_IGNORE_SERVER_IO_ERROR: '1'
       NODE_OPTIONS: '--max-old-space-size=4096'
-      SENTRY_UPLOAD_ENABLED: ${{ secrets.SENTRY_AUTH_TOKEN != '' && secrets.SENTRY_ORG != '' && secrets.SENTRY_PROJECT != '' && 'true' || 'false' }}
-      # The repository release profile uses one codegen unit + ThinLTO + packed
-      # debug info. On standard hosted macOS runners that made the final rustc /
-      # dSYM phase exceed three hours. Keep symbols only when they can actually
-      # be uploaded, and favor a bounded, reproducible release build otherwise.
-      CARGO_PROFILE_RELEASE_LTO: 'false'
-      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: '16'
-      CARGO_PROFILE_RELEASE_DEBUG: ${{ secrets.SENTRY_AUTH_TOKEN != '' && secrets.SENTRY_ORG != '' && secrets.SENTRY_PROJECT != '' && '1' || '0' }}
-      CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO: ${{ secrets.SENTRY_AUTH_TOKEN != '' && secrets.SENTRY_ORG != '' && secrets.SENTRY_PROJECT != '' && 'packed' || 'off' }}
-      # sccache（GHA cache 后端）与 rust-cache 叠加：rust-cache 负责 registry/
-      # git 依赖与 target 目录整体缓存，sccache 按编译单元缓存 rustc 输出，
-      # 依赖版本或 profile 变化导致 rust-cache miss 时仍可大量命中。
-      SCCACHE_GHA_ENABLED: 'true'
-      RUSTC_WRAPPER: sccache
+      ELECTRON_MIRROR: https://registry.npmmirror.com/-/binary/electron/
+      ELECTRON_CUSTOM_DIR: '{{ version }}'
+      ELECTRON_BUILDER_BINARIES_MIRROR: https://registry.npmmirror.com/-/binary/electron-builder-binaries/
     strategy:
       fail-fast: false
       matrix:
         include: ${{ fromJSON(inputs.targets) }}
     steps:
-      # ── 生产签名 secrets 预检（fail-closed, 在任何耗时步骤之前）──
-      - name: Preflight — require production signing secrets (fail-closed)
+      - name: Preflight — require signing and updater secrets (fail-closed)
         env:
+          ALLOW_UNSIGNED: ${{ inputs.allow_unsigned }}
           APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          ALLOW_UNSIGNED: ${{ inputs.allow_unsigned && '1' || '0' }}
         run: |
           MISSING=""
-          REQUIRED_VARS="TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD"
-          if [ "$ALLOW_UNSIGNED" != "1" ]; then
-            REQUIRED_VARS="APPLE_CERTIFICATE_BASE64 APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID $REQUIRED_VARS"
-          fi
-          for VAR in $REQUIRED_VARS; do
-            if [ -z "${!VAR}" ]; then
-              MISSING="${MISSING} ${VAR}"
-            fi
+          for VAR in TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD; do
+            if [ -z "${!VAR}" ]; then MISSING="${MISSING} ${VAR}"; fi
           done
+          if [ "$ALLOW_UNSIGNED" != "true" ]; then
+            for VAR in APPLE_CERTIFICATE_BASE64 APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_TEAM_ID; do
+              if [ -z "${!VAR}" ]; then MISSING="${MISSING} ${VAR}"; fi
+            done
+            if [ -z "${APPLE_APP_SPECIFIC_PASSWORD}" ] && [ -z "${APPLE_PASSWORD}" ]; then
+              MISSING="${MISSING} APPLE_PASSWORD/APPLE_APP_SPECIFIC_PASSWORD"
+            fi
+          fi
           if [ -n "$MISSING" ]; then
-            echo "::error::macOS release build refuses to run without production signing secrets (fail-closed)."
-            echo "::error::Missing secrets:${MISSING}"
-            echo "::error::Configure them in repository/organization secrets. Unsigned builds are only allowed via local scripts (e.g. scripts/build_all.sh with DS_ALLOW_UNSIGNED=1)."
+            echo "::error::macOS release build missing required secrets:${MISSING}"
             exit 1
           fi
-          if [ "$ALLOW_UNSIGNED" = "1" ]; then
-            echo "::warning::Building macOS without Developer ID signing or Apple notarization under an explicit manual rebuild override."
-            exit 0
-          fi
-          echo "✅ All required macOS production signing secrets are present"
 
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
           ref: ${{ inputs.source_sha || inputs.tag_name }}
 
       - name: Checkout release tooling from workflow revision
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ github.workflow_sha }}
           path: .release-tooling
@@ -146,27 +97,10 @@ jobs:
             scripts/ci
             .github/actions
 
-      - name: Overlay release pdfium tooling from workflow revision
-        run: |
-          WORKFLOW_SHA="${{ github.sha }}"
-          for FILE in \
-            scripts/download-pdfium.sh \
-            scripts/prepare-pdfium-macos.sh \
-            scripts/verify-macos-pdfium-bundle.sh
-          do
-            git cat-file -e "${WORKFLOW_SHA}:${FILE}" || {
-              echo "::error::Missing ${FILE} at workflow revision ${WORKFLOW_SHA}"
-              exit 1
-            }
-            git show "${WORKFLOW_SHA}:${FILE}" > "${FILE}"
-            chmod +x "${FILE}"
-          done
-          echo "✅ Overlaid macOS pdfium release tooling from ${WORKFLOW_SHA}"
-
       - name: Setup Node.js
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
-          node-version: 22
+          node-version: '24'
           cache: npm
 
       - name: Verify pinned release source before installing dependencies
@@ -174,80 +108,37 @@ jobs:
         shell: bash
         run: node .release-tooling/scripts/ci/release-contracts.mjs source
 
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
-        with:
-          toolchain: '1.98.1'
-          targets: ${{ matrix.target }}
-
-      # 必须先于任何 cargo 调用：RUSTC_WRAPPER 是 job 级 env，
-      # sccache 二进制不存在时 cargo 会直接报错。
-      - name: Setup sccache
-        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
-        continue-on-error: true
-
-      - name: Check optional compiler cache
-        run: bash .release-tooling/scripts/ci/prepare-sccache.sh
-
-      - name: Setup protoc
-        uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Rust cache
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-        with:
-          workspaces: './src-tauri -> target'
-          shared-key: release-${{ matrix.target }}
-          cache-on-failure: true
-
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
 
-      # Legacy standalone recovery keeps its existing metadata refresh behavior.
-      # A pinned normal release must never silently mutate the candidate lockfile.
-      - name: Verify locked release dependency graph
-        if: ${{ inputs.source_sha != '' }}
+      - name: Rebuild better-sqlite3 for Electron
+        run: |
+          ARCH="${{ matrix.arch }}"
+          if [ -z "$ARCH" ]; then
+            case "${{ matrix.target }}" in
+              aarch64-*) ARCH="arm64" ;;
+              x86_64-*) ARCH="x64" ;;
+              *) echo "::error::Unknown target ${{ matrix.target }}"; exit 1 ;;
+            esac
+          fi
+          npx @electron/rebuild -f -w better-sqlite3 --arch="$ARCH"
+
+      - name: Install Electron binary
         shell: bash
         run: |
-          (cd src-tauri && cargo metadata --locked --format-version 1 > /dev/null)
-          node .release-tooling/scripts/ci/release-contracts.mjs source
-
-      - name: Refresh release lock metadata and third-party notices
-        if: ${{ inputs.source_sha == '' }}
-        run: |
-          (cd src-tauri && cargo metadata --format-version 1 > /dev/null)
-          npm run licenses:generate
-
-      - name: Install Sentry CLI (pinned)
-        if: ${{ env.SENTRY_UPLOAD_ENABLED == 'true' }}
-        run: npm install --global "@sentry/cli@${SENTRY_CLI_VERSION}"
-
-      - name: Print build tool manifest
-        run: |
-          echo "=== macOS build tool manifest (target: ${{ matrix.target }}) ==="
-          echo "node            : $(node --version)"
-          echo "npm             : $(npm --version)"
-          echo "rustc           : $(rustc --version)"
-          echo "cargo           : $(cargo --version)"
-          echo "tauri-cli       : $(npx --no-install tauri --version 2>/dev/null || echo 'from package-lock.json')"
-          echo "runner          : ${{ matrix.runner }} ($(uname -m))"
-          echo "sccache         : $(sccache --version) (RUSTC_WRAPPER, GHA cache backend)"
-          echo "release profile : lto=${CARGO_PROFILE_RELEASE_LTO}, codegen-units=${CARGO_PROFILE_RELEASE_CODEGEN_UNITS}, debug=${CARGO_PROFILE_RELEASE_DEBUG}, split-debuginfo=${CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO}"
-          echo "sentry-cli      : ${SENTRY_CLI_VERSION} (pinned; installed only when Sentry secrets present)"
-          echo "xcode           : $(xcodebuild -version | tr '\n' ' ')"
-          echo "actions         : checkout v7.0.0 / setup-node v6.5.0 / rust-toolchain stable / sccache-action v0.0.11 / setup-protoc v3.0.0 / rust-cache v2.9.1 / upload-artifact v7.0.1 (all SHA-pinned)"
+          for attempt in 1 2 3; do
+            if node node_modules/electron/install.js; then exit 0; fi
+            echo "electron download failed (attempt ${attempt}/3), retrying in 15s"
+            sleep 15
+          done
+          exit 1
 
       - name: Generate version info
         run: node scripts/generate-version.mjs
 
-      # ── WI-4: 预构建前端 dist（可选）──
-      # release/rebuild 主流程由 build-frontend job 统一构建一次前端并以
-      # artifact 分发；传入名称时这里下载复用, tauri build 用 --config 把
-      # beforeBuildCommand 置空跳过重复的 npm run build。留空时保持原行为。
       - name: Download prebuilt frontend dist
         if: ${{ inputs.frontend_dist_artifact != '' }}
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: ${{ inputs.frontend_dist_artifact }}
           path: dist
@@ -255,16 +146,17 @@ jobs:
       - name: Verify prebuilt frontend dist
         if: ${{ inputs.frontend_dist_artifact != '' }}
         run: |
-          test -f dist/index.html || { echo "::error::Prebuilt frontend dist artifact '${{ inputs.frontend_dist_artifact }}' is missing index.html"; exit 1; }
-          echo "✅ Prebuilt frontend dist ready ($(find dist -type f | wc -l | tr -d ' ') files)"
+          test -f dist/index.html || { echo "::error::Prebuilt frontend dist missing index.html"; exit 1; }
+          echo "Prebuilt frontend dist ready ($(find dist -type f | wc -l | tr -d ' ') files)"
 
-      # ── 导入 Developer ID 证书到独立临时 keychain ──
-      # 不污染 login keychain；keychain 密码为一次性随机值；构建结束
-      # (无论成败) 由 post 步骤删除。
       - name: Verify prebuilt frontend identity and contents
         if: ${{ inputs.source_sha != '' && inputs.frontend_dist_artifact != '' }}
         shell: bash
         run: node .release-tooling/scripts/ci/release-contracts.mjs frontend-check --dir dist
+
+      - name: Build frontend locally (fallback)
+        if: ${{ inputs.frontend_dist_artifact == '' }}
+        run: npm run build
 
       - name: Import Apple signing certificate
         if: ${{ !inputs.allow_unsigned }}
@@ -296,217 +188,112 @@ jobs:
 
           rm -f "$CERT_PATH"
 
-          # 证书必须真实可用于 codesign, 且与声明的 identity 匹配
-          if ! security find-identity -v -p codesigning "$KEYCHAIN_PATH" \
-              | grep -F "$APPLE_SIGNING_IDENTITY"; then
+          if ! security find-identity -v -p codesigning "$KEYCHAIN_PATH" | grep -F "$APPLE_SIGNING_IDENTITY"; then
             echo "::error::Imported certificate does not match APPLE_SIGNING_IDENTITY ('${APPLE_SIGNING_IDENTITY}')"
             security find-identity -v -p codesigning "$KEYCHAIN_PATH" || true
             exit 1
           fi
 
           echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
-          echo "✅ Developer ID certificate imported into temporary keychain"
+          echo "Developer ID certificate imported into temporary keychain"
 
-      - name: Prepare target-specific pdfium
-        run: |
-          TARGET="${{ matrix.target }}"
-          if [[ -x "scripts/prepare-pdfium-macos.sh" ]]; then
-            bash scripts/prepare-pdfium-macos.sh "$TARGET"
-            exit 0
-          fi
-
-          echo "[warn] scripts/prepare-pdfium-macos.sh not found, falling back to legacy prepare flow."
-          if [[ ! -x "scripts/download-pdfium.sh" ]]; then
-            echo "[warn] scripts/download-pdfium.sh not found, skip pdfium prepare."
-            exit 0
-          fi
-
-          case "$TARGET" in
-            aarch64-apple-darwin)
-              rm -f src-tauri/resources/pdfium/libpdfium.dylib
-              bash scripts/download-pdfium.sh macos-arm64
-              ;;
-            x86_64-apple-darwin)
-              rm -f src-tauri/resources/pdfium/libpdfium.dylib
-              bash scripts/download-pdfium.sh macos-x64
-              ;;
-            *)
-              echo "::error::Unsupported macOS target: $TARGET"
-              exit 1
-              ;;
-          esac
-
-      - name: Compile or recover native executable
+      - name: Package macOS Electron app (signed + notarized + .app.tar.gz)
         env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          SILICONFLOW_BUILTIN_TEXT_KEY: ${{ secrets.SILICONFLOW_BUILTIN_TEXT_KEY }}
-          SILICONFLOW_BUILTIN_VISION_KEY: ${{ secrets.SILICONFLOW_BUILTIN_VISION_KEY }}
-          SILICONFLOW_BUILTIN_EMBED_KEY: ${{ secrets.SILICONFLOW_BUILTIN_EMBED_KEY }}
+          CSC_NAME: ${{ !inputs.allow_unsigned && secrets.APPLE_SIGNING_IDENTITY || '' }}
+          CSC_KEYCHAIN: ${{ !inputs.allow_unsigned && env.KEYCHAIN_PATH || '' }}
+          CSC_IDENTITY_AUTO_DISCOVERY: ${{ inputs.allow_unsigned && 'false' || 'true' }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           VITE_SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
-          # macOS 代码签名 + notarytool 公证 + staple（Preflight 已保证
-          # secrets 全部就绪; 证书已导入临时 keychain）
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          ALLOW_UNSIGNED: ${{ inputs.allow_unsigned && '1' || '0' }}
-          FRONTEND_DIST_ARTIFACT: ${{ inputs.frontend_dist_artifact }}
         run: |
-          node .release-tooling/scripts/ci/native-build.mjs compile '${{ matrix.target }}'
+          set -euo pipefail
+          ARCH="${{ matrix.arch }}"
+          if [ -z "$ARCH" ]; then
+            case "${{ matrix.target }}" in
+              aarch64-*) ARCH="arm64" ;;
+              x86_64-*) ARCH="x64" ;;
+            esac
+          fi
+          for attempt in 1 2 3; do
+            if node electron/scripts/package.mjs --mac --"$ARCH"; then exit 0; fi
+            echo "packaging failed (attempt ${attempt}/3), retrying in 20s"
+            sleep 20
+          done
+          exit 1
 
-      - name: Preserve compilation before packaging
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: native-${{ matrix.target }}
-          path: |
-            src-tauri/target/${{ matrix.target }}/release/deep-student*
-            src-tauri/target/${{ matrix.target }}/release/native-build.json
-          retention-days: 30
-          overwrite: true
-          if-no-files-found: error
+      - name: Verify fuses and asar integrity
+        run: |
+          set -euo pipefail
+          APP_DIR=$(find release -maxdepth 2 -type d -name '*.app' | head -n 1)
+          test -n "$APP_DIR"
+          node electron/scripts/verify-fuses.mjs --mac --app "$APP_DIR" --static
 
-      - name: Bundle with bounded retry (no Rust compilation)
+      - name: Verify codesign / notarization / staple / Gatekeeper
+        if: ${{ !inputs.allow_unsigned }}
+        run: |
+          set -euo pipefail
+          APP_DIR=$(find release -maxdepth 2 -type d -name '*.app' | head -n 1)
+          if [ -z "$APP_DIR" ]; then
+            echo "::error::No .app bundle found under release/"
+            exit 1
+          fi
+          echo "Verifying: $APP_DIR"
+          codesign --verify --deep --strict --verbose=2 "$APP_DIR"
+          if ! codesign -dv --verbose=4 "$APP_DIR" 2>&1 | grep -q 'Authority=Developer ID Application'; then
+            echo "::error::.app is not signed with a Developer ID Application certificate"
+            exit 1
+          fi
+          xcrun stapler validate "$APP_DIR"
+          spctl --assess --type execute --verbose=2 "$APP_DIR"
+
+          DMG=$(find release -maxdepth 1 -name '*.dmg' | head -n 1)
+          if [ -z "$DMG" ]; then
+            echo "::error::No .dmg found under release/"
+            exit 1
+          fi
+          codesign --verify --verbose=2 "$DMG"
+          echo "codesign + notarization + staple + Gatekeeper checks all passed"
+
+      - name: Sign updater archive with minisign
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          ALLOW_UNSIGNED: ${{ inputs.allow_unsigned && '1' || '0' }}
-          FRONTEND_DIST_ARTIFACT: ${{ inputs.frontend_dist_artifact }}
-        run: node .release-tooling/scripts/ci/native-build.mjs bundle '${{ matrix.target }}' app,dmg
-
-      # 与 ci.yml 各 Rust job 的 sccache 摘要模式对齐：if: always() 保证编译
-      # 失败时也能拿到命中率，结果同时写入日志与 job summary。
-      # Linux/Windows 的 reusable-build-* 同结构。
-      - name: Show sccache stats
-        if: always()
-        run: |
-          STATS="$(sccache --show-stats 2>&1 || echo 'sccache unavailable')"
-          echo "$STATS"
-          {
-            echo "## sccache stats (release ${{ matrix.target }})"
-            echo ""
-            echo '```'
-            echo "$STATS"
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      # ── 签名/公证结果强制验证（fail-closed）──
-      # codesign --verify --strict + stapler validate + spctl --assess:
-      # 任何一项不通过, 产物一律不允许进入 publish。
-      - name: Verify codesign / notarization / staple / Gatekeeper
-        if: ${{ !inputs.allow_unsigned }}
-        env:
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
         run: |
           set -euo pipefail
-          TARGET="${{ matrix.target }}"
-          BUNDLE_DIR="src-tauri/target/${TARGET}/release/bundle"
-
-          APP_DIR=$(find "$BUNDLE_DIR/macos" -maxdepth 1 -type d -name '*.app' | head -n 1)
-          if [ -z "$APP_DIR" ]; then
-            echo "::error::No .app bundle found under $BUNDLE_DIR/macos"
+          TAR=$(find release -maxdepth 1 -name '*.app.tar.gz' ! -name '*.sig' | head -n 1)
+          if [ -z "$TAR" ]; then
+            echo "::error::No .app.tar.gz updater archive found under release/"
+            ls -la release/ || true
             exit 1
           fi
-          echo "🔍 Verifying: $APP_DIR"
+          node .release-tooling/scripts/ci/sign-updater.mjs "$TAR"
+          test -s "${TAR}.sig"
 
-          echo "── codesign --verify --deep --strict ──"
-          codesign --verify --deep --strict --verbose=2 "$APP_DIR"
-
-          echo "── signing authority must be Developer ID (not ad-hoc) ──"
-          AUTHORITY=$(codesign -dv --verbose=4 "$APP_DIR" 2>&1 | grep '^Authority=' | head -1 || true)
-          echo "  $AUTHORITY"
-          if ! codesign -dv --verbose=4 "$APP_DIR" 2>&1 | grep -q 'Authority=Developer ID Application'; then
-            echo "::error::.app is not signed with a Developer ID Application certificate (ad-hoc or wrong identity)"
-            exit 1
-          fi
-
-          echo "── stapler validate (notarization ticket must be attached) ──"
-          xcrun stapler validate "$APP_DIR"
-
-          echo "── spctl --assess (Gatekeeper) ──"
-          spctl --assess --type execute --verbose=2 "$APP_DIR"
-
-          # DMG: 必须由 Developer ID 签名（公证票随内部已 staple 的 .app）
-          DMG=$(find "$BUNDLE_DIR/dmg" -maxdepth 1 -name '*.dmg' | head -n 1)
-          if [ -z "$DMG" ]; then
-            echo "::error::No .dmg found under $BUNDLE_DIR/dmg"
-            exit 1
-          fi
-          echo "🔍 Verifying DMG signature: $DMG"
-          codesign --verify --verbose=2 "$DMG"
-
-          echo "✅ codesign + notarization + staple + Gatekeeper checks all passed"
-
-      # ── 更新器签名产物存在性校验（publish 前置防线）──
-      - name: Verify updater artifact and signature exist
+      - name: Verify updater archive, signature, and DMG exist
         run: |
           set -euo pipefail
-          BUNDLE_DIR="src-tauri/target/${{ matrix.target }}/release/bundle/macos"
-          TAR_COUNT=$(find "$BUNDLE_DIR" -maxdepth 1 -name '*.app.tar.gz' ! -name '*.sig' | wc -l | tr -d ' ')
-          SIG_COUNT=$(find "$BUNDLE_DIR" -maxdepth 1 -name '*.app.tar.gz.sig' | wc -l | tr -d ' ')
-          if [ "$TAR_COUNT" -ne 1 ] || [ "$SIG_COUNT" -ne 1 ]; then
-            echo "::error::Expected exactly 1 updater archive + 1 .sig, got ${TAR_COUNT} archive(s) / ${SIG_COUNT} sig(s)"
-            ls -la "$BUNDLE_DIR" || true
+          TAR_COUNT=$(find release -maxdepth 1 -name '*.app.tar.gz' ! -name '*.sig' | wc -l | tr -d ' ')
+          SIG_COUNT=$(find release -maxdepth 1 -name '*.app.tar.gz.sig' | wc -l | tr -d ' ')
+          DMG_COUNT=$(find release -maxdepth 1 -name '*.dmg' | wc -l | tr -d ' ')
+          if [ "$TAR_COUNT" -ne 1 ] || [ "$SIG_COUNT" -ne 1 ] || [ "$DMG_COUNT" -ne 1 ]; then
+            echo "::error::Expected 1 .app.tar.gz, 1 .sig, 1 .dmg; got ${TAR_COUNT}/${SIG_COUNT}/${DMG_COUNT}"
+            ls -la release/ || true
             exit 1
           fi
-          echo "✅ Updater archive + signature present"
 
-      - name: Upload native symbols to Sentry
-        if: ${{ env.SENTRY_UPLOAD_ENABLED == 'true' }}
-        env:
-          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
-          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
-        run: bash scripts/upload-sentry-symbols.sh "src-tauri/target/${{ matrix.target }}/release"
+      - name: Cleanup temporary keychain
+        if: ${{ always() && !inputs.allow_unsigned && env.KEYCHAIN_PATH != '' }}
+        run: security delete-keychain "$KEYCHAIN_PATH" || true
 
-      - name: Verify bundled pdfium architecture
+      - name: Stage macOS release deliverables
         run: |
-          TARGET="${{ matrix.target }}"
-          if [[ -x "scripts/verify-macos-pdfium-bundle.sh" ]]; then
-            bash scripts/verify-macos-pdfium-bundle.sh "$TARGET"
-            exit 0
-          fi
-
-          echo "[warn] scripts/verify-macos-pdfium-bundle.sh not found, falling back to legacy verify flow."
-          APP_DIR=$(find "src-tauri/target/$TARGET/release/bundle/macos" -maxdepth 1 -type d -name '*.app' | head -n 1)
-          if [[ -z "$APP_DIR" ]]; then
-            echo "[warn] No .app found for $TARGET, skip verify."
-            exit 0
-          fi
-          LIB="$APP_DIR/Contents/Resources/libpdfium.dylib"
-          if [[ ! -f "$LIB" ]]; then
-            echo "[warn] Bundled libpdfium.dylib missing, skip verify."
-            exit 0
-          fi
-          ARCH_INFO=$(lipo -info "$LIB" 2>/dev/null || true)
-          case "$TARGET" in
-            aarch64-apple-darwin)
-              [[ "$ARCH_INFO" == *"arm64"* ]] || { echo "::error::Bundled libpdfium missing arm64: $ARCH_INFO"; exit 1; }
-              ;;
-            x86_64-apple-darwin)
-              [[ "$ARCH_INFO" == *"x86_64"* ]] || { echo "::error::Bundled libpdfium missing x86_64: $ARCH_INFO"; exit 1; }
-              ;;
-          esac
-          echo "Verified bundled pdfium: $ARCH_INFO"
-
-      - name: Rename updater artifacts with version and arch suffix
-        run: |
-          BUNDLE_DIR="src-tauri/target/${{ matrix.target }}/release/bundle/macos"
-          ARCH=$(echo "${{ matrix.target }}" | cut -d'-' -f1)
-          VERSION=$(node -p "require('./package.json').version")
-          for f in "$BUNDLE_DIR"/*.app.tar.gz; do
-            [ -f "$f" ] || continue
-            BASE=$(basename "$f" .app.tar.gz | tr ' ' '.')
-            mv "$f" "$BUNDLE_DIR/${BASE}_${VERSION}_${ARCH}.app.tar.gz"
-            [ -f "$f.sig" ] && mv "$f.sig" "$BUNDLE_DIR/${BASE}_${VERSION}_${ARCH}.app.tar.gz.sig"
-          done
-          echo "📦 Renamed updater artifacts:"
-          ls -la "$BUNDLE_DIR"/
+          mkdir -p macos-output
+          cp release/*.dmg macos-output/
+          cp release/*.app.tar.gz macos-output/
+          cp release/*.app.tar.gz.sig macos-output/
 
       - name: Record locally built frontend identity
         if: ${{ inputs.source_sha != '' && inputs.frontend_dist_artifact == '' }}
@@ -518,7 +305,7 @@ jobs:
         shell: bash
         env:
           RELEASE_TARGET: ${{ matrix.target }}
-          RELEASE_ARTIFACT_DIR: src-tauri/target/${{ matrix.target }}/release/bundle
+          RELEASE_ARTIFACT_DIR: macos-output
         run: >-
           node .release-tooling/scripts/ci/release-contracts.mjs provenance-write
           --target "$RELEASE_TARGET" --dir "$RELEASE_ARTIFACT_DIR"
@@ -526,7 +313,7 @@ jobs:
 
       - name: Upload release asset provenance
         if: ${{ inputs.source_sha != '' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: release-provenance-${{ matrix.target }}
           path: ${{ runner.temp }}/release-provenance.json
@@ -534,29 +321,17 @@ jobs:
           overwrite: true
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           if-no-files-found: error
           overwrite: true
           name: macos-${{ matrix.target }}
           retention-days: 30
           compression-level: 0
-          path: |
-            src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.app.tar.gz
-            src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.app.tar.gz.sig
-            src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
+          path: macos-output/*
 
       - uses: ./.release-tooling/.github/actions/release-checkpoint
         if: inputs.source_sha != ''
         with:
           stage: ${{ matrix.target == 'aarch64-apple-darwin' && 'macos-arm' || 'macos-intel' }}
           policy: ${{ inputs.allow_unsigned }}
-
-      # 无论成败都清理临时 keychain, 不让证书残留在 runner 上
-      - name: Cleanup signing keychain
-        if: always()
-        run: |
-          if [ -n "${KEYCHAIN_PATH:-}" ] && [ -f "$KEYCHAIN_PATH" ]; then
-            security delete-keychain "$KEYCHAIN_PATH"
-            echo "🧹 Temporary signing keychain removed"
-          fi

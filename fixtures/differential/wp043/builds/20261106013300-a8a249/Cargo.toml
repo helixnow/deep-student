@@ -1,0 +1,704 @@
+[package]
+name = "deep-student"
+version = "0.11.0"
+description = "Deep Student - AI驱动的智能学习助手"
+authors = ["helixnow"]
+edition = "2021"
+default-run = "deep-student"
+license = "AGPL-3.0-or-later"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "deep_student_lib"
+crate-type = ["cdylib", "rlib", "staticlib"]
+
+# =============================================================================
+# Workspace：app 包 `deep-student` 是 workspace 根；后端模块按层拆成 crates/dstu-*。
+# 分层规则与守卫见 scripts/check-crate-layers.mjs。
+# 第三方依赖的版本与 feature 只在 [workspace.dependencies] 声明一次，成员用
+# `xxx = { workspace = true }` 引用，保证所有 crate 解析到同一组版本与 feature。
+# [patch]、[profile] 只能写在这里（workspace 根）。
+# =============================================================================
+[workspace]
+resolver = "2"
+members = [
+    ".",
+    "crates/dstu-agent-api",
+    "crates/dstu-browser",
+    "crates/dstu-core",
+    "crates/dstu-docs",
+    "crates/dstu-kernel",
+    "crates/dstu-learning",
+    "crates/dstu-media",
+    "crates/dstu-llm",
+    "crates/dstu-mcp",
+    "crates/dstu-notes",
+    "crates/dstu-memory",
+    "crates/dstu-qbank",
+    "crates/dstu-util",
+    "crates/dstu-platform",
+    "crates/dstu-security",
+    "crates/dstu-storage",
+    "crates/dstu-testkit",
+    "crates/dstu-tutor",
+    "crates/dstu-translation-core",
+    "crates/dstu-vfs",
+    "crates/dstu-vision",
+    "crates/dstu-research",
+    "crates/dstu-anki",
+    "crates/dstu-sync",
+    "crates/dstu-agent",
+]
+# vendor/* 是 [patch] 用的补丁版第三方 crate，不是 workspace 成员。
+exclude = ["vendor"]
+
+[workspace.package]
+edition = "2021"
+authors = ["helixnow"]
+license = "AGPL-3.0-or-later"
+publish = false
+
+[workspace.dependencies]
+# 内部 crate（分层见 scripts/check-crate-layers.mjs）
+dstu-agent-api = { path = "crates/dstu-agent-api", default-features = false }
+dstu-browser = { path = "crates/dstu-browser", default-features = false }
+dstu-core = { path = "crates/dstu-core", default-features = false }
+dstu-docs = { path = "crates/dstu-docs", default-features = false }
+dstu-kernel = { path = "crates/dstu-kernel", default-features = false }
+dstu-learning = { path = "crates/dstu-learning", default-features = false }
+dstu-media = { path = "crates/dstu-media", default-features = false }
+dstu-llm = { path = "crates/dstu-llm", default-features = false }
+dstu-mcp = { path = "crates/dstu-mcp", default-features = false }
+dstu-notes = { path = "crates/dstu-notes", default-features = false }
+dstu-memory = { path = "crates/dstu-memory", default-features = false }
+dstu-util = { path = "crates/dstu-util", default-features = false }
+dstu-platform = { path = "crates/dstu-platform", default-features = false }
+dstu-qbank = { path = "crates/dstu-qbank", default-features = false }
+dstu-security = { path = "crates/dstu-security", default-features = false }
+dstu-storage = { path = "crates/dstu-storage", default-features = false }
+dstu-testkit = { path = "crates/dstu-testkit", default-features = false }
+dstu-tutor = { path = "crates/dstu-tutor", default-features = false }
+dstu-translation-core = { path = "crates/dstu-translation-core", default-features = false }
+dstu-vfs = { path = "crates/dstu-vfs", default-features = false }
+dstu-vision = { path = "crates/dstu-vision", default-features = false }
+dstu-research = { path = "crates/dstu-research", default-features = false }
+dstu-anki = { path = "crates/dstu-anki", default-features = false }
+dstu-sync = { path = "crates/dstu-sync", default-features = false }
+dstu-agent = { path = "crates/dstu-agent", default-features = false }
+
+# 公共依赖
+tauri-plugin-opener = "2.5"
+tauri-plugin-dialog = "2.6"
+tauri-plugin-http = "2.5.7"
+tauri-plugin-fs = "2"
+tauri-plugin-log = "2.8"
+tauri-plugin-notification = "2"
+serde = { version = "1.0", features = ["derive", "rc"] }
+serde_json = { version = "1.0", features = ["preserve_order"] }
+uuid = { version = "1.7.0", features = ["v4", "serde"] }
+tokio = { version = "1.35.1", features = ["full"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+rusqlite = { version = "0.40.1", default-features = false, features = ["bundled", "backup", "hooks", "cache", "fallible_uint"] }  # bundled SQLite >= 3.51.3 includes the WAL-reset corruption fix
+base64 = "0.21.7"
+tempfile = "3.10.1"
+cap-std = "3.4.5"
+chrono = { version = "0.4.38", features = ["serde"] }
+chrono-tz = "0.10"
+anyhow = "1.0.80"
+thiserror = "1.0"
+async-trait = "0.1.77"
+prost = "0.13.5"
+flate2 = "1.1"
+futures-util = "0.3"
+r2d2 = "0.8.9"
+r2d2_sqlite = "0.35.0"
+regex = "1.0"
+pulldown-cmark = "0.10.3" # Root-level stable note block boundaries (also a transitive dependency).
+# html2md 已移除（与 panic=abort 不兼容），使用 html2text 替代
+aes-gcm = "0.10"
+rand = "0.8"
+sha2 = "0.10.8"
+hex = "0.4"
+hostname = "0.4"  # P0-22: 获取主机名用于密钥生成
+nanoid = "0.4"
+ulid = "1.1"
+tracing = { version = "0.1", features = ["log"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+jsonschema = "0.42"
+# blake3 = "1.5"  # 临时禁用避免C编译问题
+# 凭据正文仍用加密文件；根密钥种子由下方 target-specific keyring 保护。
+zip = { version = "0.6", default-features = false, features = ["deflate"] }
+url = "2.4"
+dirs = "4.0"
+image = "0.24"
+# 音视频转写解码（纯 Rust，可交叉编译到 Android；只开必要的容器与编码，无 ffmpeg/onnx）
+# 容器：MP4/M4A、MKV/WebM、OGG、WAV；编码：AAC、ALAC、MP3、FLAC、Vorbis、PCM、ADPCM。
+# Opus/AC-3/WMA 无纯 Rust 解码器，由 media::decoder 给出“请转为 MP4/M4A”的明确提示。
+symphonia = { version = "0.5.5", default-features = false, features = ["aac", "adpcm", "alac", "flac", "mp3", "pcm", "vorbis", "isomp4", "mkv", "ogg", "wav"] }
+qrcode = { version = "0.13", default-features = false, features = ["image"] }
+zerocopy = "0.7"
+backon = "0.4"
+config = { version = "0.14", features = ["toml"] }
+dotenvy = "0.15"
+sha1 = "0.10"
+html2text = "0.16.7"
+# PTC（程序化工具组合，G05-P1）脚本宿主：Starlark 解释器（Meta starlark-rust）。
+# 确定性、无 FFI、无 IO；资源限制（栈/堆/tick/取消）由解释器层强制。
+# 下限 0.14.2：0.14.0/0.14.1 的 pagable 0.3.x 会额外拉入 rusqlite 0.37 bundled
+# 与 sled（重且重复编译 SQLite）；0.14.2 起 pagable 0.4.1 已移除它们。
+starlark = "0.14.2"
+
+# 所有平台统一依赖配置
+tauri = { version = "2", features = ["macos-private-api", "protocol-asset", "unstable"] }
+reqwest = { version = "0.11", default-features = false, features = ["json", "rustls-tls", "stream", "blocking", "multipart"] }
+# 高性能缓存库
+moka = { version = "0.12", features = ["future"] }
+lru = "0.12"
+# 轻量级内置指标服务
+hyper = { version = "0.14", features = ["full"] }
+# RAG文档处理依赖（PDF 文本提取已统一使用 pdfium-render，不再依赖 pdf-extract）
+docx-rs = "0.4"
+calamine = "0.26"  # Excel/OpenDocument 电子表格解析（纯Rust实现）
+# 扩展文档格式支持（纯 Rust，跨平台友好）
+pptx-to-md = "0.2"   # PowerPoint → Markdown（只读）
+ppt-rs = { version = "0.2", default-features = false }  # PowerPoint 创建/编辑（禁用 web2ppt 避免 openssl）
+umya-spreadsheet = "2.3"  # Excel XLSX 读写编辑（round-trip）
+# EPUB 解析已改用 zip + quick-xml 自行实现（epub crate 为 GPL-3.0，与双许可证战略不兼容）
+rtf-parser = "0.3"   # RTF 富文本解析
+csv = "1.3"          # CSV 解析
+encoding_rs = "0.8"  # 多编码支持（UTF-8/GBK）
+quick-xml = "0.37"   # XML 解析
+# 序列化支持
+bincode = "1.3"
+# 并行计算优化
+rayon = "1.8"
+# FSRS 记忆模型 + 参数优化器（与 Anki 同一实现；6.x 运行时不依赖 Burn）
+fsrs = "=6.6.2"
+# 高性能并发哈希表
+dashmap = "5.5.3"
+log = "0.4"
+# 错误上报（Sentry）- Android 使用 rustls 避免 OpenSSL
+# 启用 debug-images 支持 Native crash 符号化，anyhow 捕获 C/C++ 层面异常
+sentry = { version = "0.32", default-features = false, features = ["backtrace", "contexts", "panic", "rustls", "debug-images", "anyhow"] }
+sentry-tracing = { version = "0.32", default-features = false }
+futures = "0.3"
+tokio-tungstenite = { version = "0.21", default-features = false, features = ["connect", "rustls-tls-webpki-roots"] }
+tungstenite = { version = "0.21", default-features = false }
+
+# Optional: LanceDB backend for vectors (feature-gated)
+lancedb = { version = "0.22.1", default-features = false }
+arrow-array = { version = "55.2.0" }
+arrow-schema = { version = "55.2.0" }
+## Optional tokenizer for precise token counting
+tiktoken-rs = { version = "0.5" }
+# 数据治理迁移框架
+refinery = { version = "=0.9.0", features = ["rusqlite"] }
+
+# Additional deps for backup module
+walkdir = "2"
+# 磁盘空间检查: Unix 平台通过 libc::statvfs 获取可用空间
+libc = "0.2"
+
+# PDF 后端渲染（pdfium-render）
+# 注意：需要运行 scripts/download-pdfium.sh 下载对应平台的 pdfium 动态库
+# 使用 image_024 匹配项目的 image = "0.24" 版本
+# 0.9.4 修复了 thread_safe feature 只在 init/destroy 加锁的问题（现逐调用加锁），见 docs/dev/pdfium-crash-diagnosis-2026-09-08.md
+pdfium-render = { version = "0.9.4", default-features = false, features = ["image_024", "pdfium_7350", "thread_safe"] }
+fs_extra = "1.3"
+urlencoding = "2.1.3"
+roxmltree = "0.20"
+argon2 = "0.5"
+zeroize = { version = "1", features = ["derive"] }
+# FTP/FTPS 支持（v7+ 已切到 tokio + rustls）
+suppaftp = { version = "7", default-features = false, features = ["tokio", "tokio-rustls"] }
+tokio-rustls = "0.26"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+webpki-roots = "0.26"
+
+# 云存储 S3 兼容（可选，feature-gated 避免默认增加编译时间）
+aws-sdk-s3 = { version = "1.65", default-features = false, features = ["behavior-version-latest", "rt-tokio", "default-https-client"] }
+aws-config = { version = "1.5", default-features = false, features = ["behavior-version-latest", "rt-tokio"] }
+
+# MCP SSE和OAuth支持
+eventsource-stream = "0.2"
+reqwest-eventsource = "0.5"
+zstd = "0.13.3"
+tauri-plugin-clipboard-manager = "~2.2"
+fs2 = "0.4.3"
+unicode-normalization = "0.1"
+
+# 桌面端专用插件（更新器 + 进程管理 + 单实例锁），只在桌面 target 段引用
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
+# 单实例锁（审阅 34 P1-2）：防止双开进程共享同一套 SQLite/数据空间
+tauri-plugin-single-instance = "2"
+tauri-plugin-global-shortcut = "2.3.2"
+
+# OAuth2 在 Android 上暂不支持（会引入 native-tls），只在非 Android target 段引用
+oauth2 = "4.4"
+pkce = "0.2"
+
+# 开发调试插件（使用 mcp-debug feature 启用）
+# 注意：使用 hypothesi 的 mcp-server-tauri 桥接插件
+# 功能：截图、DOM访问、IPC监控、输入模拟、控制台日志等
+# 文档：https://hypothesi.github.io/mcp-server-tauri
+tauri-plugin-mcp-bridge = { version = "0.8" }
+
+# macOS / Linux 共用的 keyring：版本在此统一，平台 feature 在各 target 段追加
+keyring = { version = "=3.6.3", default-features = false }
+# macOS 特定依赖
+cocoa = "0.25"
+objc = "0.2"
+window-vibrancy = "0.6"
+# 与 wry 0.54 对齐；仅用于 browser::bridge eval_with_result（WKWebView evaluateJavaScript）
+objc2 = "0.6.3"
+block2 = "0.6.2"
+objc2-foundation = { version = "0.3.2", default-features = false, features = [
+    "std",
+    "NSString",
+    "NSData",
+    "NSError",
+    "NSJSONSerialization",
+    "NSObject",
+] }
+objc2-web-kit = { version = "0.3.2", default-features = false, features = [
+    "std",
+    "block2",
+    "WKWebView",
+] }
+# Linux 特定依赖（browser bridge WebKitGTK evaluate_javascript）
+# 与 wry 0.54 / tauri-runtime-wry linux-body 对齐；仅用于 browser::bridge eval_with_result
+webkit2gtk = { version = "=2.0.2", features = ["v2_40"] }
+javascriptcore-rs = "1.1"
+# Windows 特定依赖（系统 OCR + browser bridge WebView2 ExecuteScript）
+# 与 wry/tauri 对齐；仅用于 browser::bridge eval_with_result（勿与下方 OCR windows 0.58 混用类型）
+webview2-com = "0.38"
+windows = { version = "0.58", features = [
+    "Media_Ocr",
+    "Graphics_Imaging",
+    "Storage_Streams",
+    "Globalization",
+    "Foundation",
+    # ★ A3-C2：迭代 OcrResult.Lines()（IVectorView<OcrLine>）需要此 feature，
+    # 用于按行以 \n 连接、保留换行结构（Text() 会把所有行拼成单行丢失换行）
+    "Foundation_Collections",
+] }
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_Security_Isolation",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Console",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_JobObjects",
+    "Win32_System_SystemServices",
+    "Win32_System_Threading",
+] }
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+serde_json = "1.0"
+syn = { version = "2", features = ["full", "parsing", "visit"] }
+# 使用内置的 protoc 可执行文件，避免系统依赖
+protoc-bin-vendored = "3.0"
+
+[dependencies]
+dstu-agent-api = { workspace = true }
+dstu-browser = { workspace = true }
+dstu-core = { workspace = true }
+dstu-docs = { workspace = true }
+dstu-kernel = { workspace = true }
+dstu-learning = { workspace = true }
+dstu-media = { workspace = true }
+dstu-llm = { workspace = true }
+dstu-mcp = { workspace = true }
+dstu-notes = { workspace = true }
+dstu-memory = { workspace = true }
+dstu-util = { workspace = true }
+dstu-platform = { workspace = true }
+dstu-qbank = { workspace = true }
+dstu-security = { workspace = true }
+dstu-storage = { workspace = true }
+dstu-tutor = { workspace = true }
+dstu-vfs = { workspace = true }
+dstu-vision = { workspace = true }
+dstu-research = { workspace = true }
+dstu-anki = { workspace = true }
+dstu-sync = { workspace = true }
+dstu-agent = { workspace = true }
+tauri-plugin-opener = { workspace = true }
+tauri-plugin-dialog = { workspace = true }
+tauri-plugin-http = { workspace = true }
+tauri-plugin-fs = { workspace = true }
+tauri-plugin-log = { workspace = true }
+tauri-plugin-notification = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+rusqlite = { workspace = true }
+base64 = { workspace = true }
+tempfile = { workspace = true }
+cap-std = { workspace = true }
+chrono = { workspace = true }
+chrono-tz = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+async-trait = { workspace = true }
+prost = { workspace = true }
+flate2 = { workspace = true }
+futures-util = { workspace = true }
+r2d2 = { workspace = true }
+r2d2_sqlite = { workspace = true }
+regex = { workspace = true }
+pulldown-cmark = { workspace = true }
+aes-gcm = { workspace = true }
+rand = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+hostname = { workspace = true }
+nanoid = { workspace = true }
+ulid = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+jsonschema = { workspace = true }
+zip = { workspace = true }
+url = { workspace = true }
+dirs = { workspace = true }
+image = { workspace = true }
+symphonia = { workspace = true }
+qrcode = { workspace = true }
+zerocopy = { workspace = true }
+backon = { workspace = true }
+config = { workspace = true }
+dotenvy = { workspace = true }
+sha1 = { workspace = true }
+html2text = { workspace = true }
+starlark = { workspace = true }
+tauri = { workspace = true }
+reqwest = { workspace = true }
+moka = { workspace = true }
+lru = { workspace = true }
+hyper = { workspace = true }
+docx-rs = { workspace = true }
+calamine = { workspace = true }
+pptx-to-md = { workspace = true }
+ppt-rs = { workspace = true }
+umya-spreadsheet = { workspace = true }
+rtf-parser = { workspace = true }
+csv = { workspace = true }
+encoding_rs = { workspace = true }
+quick-xml = { workspace = true }
+bincode = { workspace = true }
+rayon = { workspace = true }
+fsrs = { workspace = true }
+dashmap = { workspace = true }
+log = { workspace = true }
+sentry = { workspace = true }
+sentry-tracing = { workspace = true }
+futures = { workspace = true }
+tokio-tungstenite = { workspace = true }
+tungstenite = { workspace = true }
+lancedb = { workspace = true, optional = true }
+arrow-array = { workspace = true, optional = true }
+arrow-schema = { workspace = true, optional = true }
+tiktoken-rs = { workspace = true, optional = true }
+refinery = { workspace = true, optional = true }
+walkdir = { workspace = true }
+libc = { workspace = true }
+pdfium-render = { workspace = true }
+fs_extra = { workspace = true }
+urlencoding = { workspace = true }
+roxmltree = { workspace = true }
+argon2 = { workspace = true }
+zeroize = { workspace = true }
+suppaftp = { workspace = true }
+tokio-rustls = { workspace = true }
+rustls = { workspace = true }
+webpki-roots = { workspace = true }
+aws-sdk-s3 = { workspace = true, optional = true }
+aws-config = { workspace = true, optional = true }
+eventsource-stream = { workspace = true }
+reqwest-eventsource = { workspace = true }
+zstd = { workspace = true }
+tauri-plugin-clipboard-manager = { workspace = true }
+fs2 = { workspace = true }
+unicode-normalization = { workspace = true }
+
+# 桌面端专用插件（更新器 + 进程管理 + 单实例锁）
+# 官方推荐白名单写法：仅在 macOS/Windows/Linux 编译
+[target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
+tauri-plugin-updater = { workspace = true }
+tauri-plugin-process = { workspace = true }
+tauri-plugin-single-instance = { workspace = true }
+tauri-plugin-global-shortcut = { workspace = true }
+
+# OAuth2 在 Android 上暂不支持（会引入 native-tls）
+[target.'cfg(not(target_os = "android"))'.dependencies]
+oauth2 = { workspace = true }
+pkce = { workspace = true }
+# MCP客户端库
+
+
+# 开发调试插件（使用 mcp-debug feature 启用）
+# 注意：使用 hypothesi 的 mcp-server-tauri 桥接插件
+# 功能：截图、DOM访问、IPC监控、输入模拟、控制台日志等
+# 文档：https://hypothesi.github.io/mcp-server-tauri
+tauri-plugin-mcp-bridge = { workspace = true, optional = true }
+
+[dev-dependencies]
+# Tauri mock runtime for ACL boundary tests.
+tauri = { version = "2", features = ["test", "macos-private-api", "protocol-asset", "unstable"] }
+syn = { version = "2", features = ["full", "parsing", "visit"] }
+# 测试框架
+tokio-test = "0.4"
+# 断言增强
+assert_matches = "1.5"
+# 异步测试工具
+futures = "0.3"
+# HTTP模拟服务器
+mockito = "1.0"
+# 临时目录（用于测试）
+tempfile = "3.0"
+# 基准测试
+criterion = { version = "0.5", features = ["html_reports"] }
+# 属性测试（Property-Based Testing）—— 用随机输入发现场景测试遗漏的边界
+proptest = "1.5"
+env_logger = "0.11.11"
+# 单测按原路径 `crate::vfs::database::setup_migrated_test_db` 取迁移好的 VFS 测试库：
+# dstu-vfs 的 test-util feature 公开该函数（夹具本体在 dev-only 的 dstu-testkit）。
+dstu-vfs = { workspace = true, features = ["test-util"] }
+# 单测按原路径 `crate::mastery::service::set_now_override_ms` 覆盖 mastery 事件时钟。
+dstu-learning = { workspace = true, features = ["test-util"] }
+# 单测按原路径 `crate::memory::test_support::setup_memory_service` 与
+# `MemoryService::fail_next_idempotent_write_before_receipt`（拆分前的 cfg(test) 项）。
+dstu-memory = { workspace = true, features = ["test-util"] }
+# 单测 `fsrs_review_service::tests`（留在 app 的跨域用例）经 test-util 取未偏置的 FSRS due。
+dstu-anki = { workspace = true, features = ["test-util"] }
+
+[[test]]
+name = "chatanki_apkg_executor_e2e"
+path = "tests/chatanki_apkg_executor_e2e.rs"
+harness = false
+
+[[test]]
+name = "session_executor_e2e"
+path = "tests/session_executor_e2e.rs"
+harness = false
+
+[[test]]
+name = "dstu_canvas_executor_e2e"
+path = "tests/dstu_canvas_executor_e2e.rs"
+harness = false
+
+[[test]]
+name = "phase5_tool_execution_e2e"
+path = "tests/phase5_tool_execution_e2e.rs"
+harness = false
+
+[[test]]
+name = "translation_executor_e2e"
+path = "tests/translation_executor_e2e.rs"
+harness = false
+
+[[test]]
+name = "qbank_executor_e2e"
+path = "tests/qbank_executor_e2e.rs"
+harness = false
+
+[[test]]
+name = "phase7_system_executor_e2e"
+path = "tests/phase7_system_executor_e2e.rs"
+harness = false
+
+[[test]]
+name = "phase8_9_executor_e2e"
+path = "tests/phase8_9_executor_e2e.rs"
+harness = false
+
+[[bench]]
+name = "tool_performance"
+harness = false
+
+
+# macOS 特定依赖
+[target.'cfg(target_os = "macos")'.dependencies]
+# TD-08（修订）：根密钥种子可选存入 macOS Keychain（secure_store::platform keystore）。
+# 默认关闭（Keychain 授权弹窗侵扰），仅用户在设置中开启后才迁入。
+# keyring 只在桌面 macOS/Linux 目标编译，Android/iOS 维持加密文件方案。
+keyring = { workspace = true, features = ["apple-native"] }
+cocoa = { workspace = true }
+objc = { workspace = true }
+window-vibrancy = { workspace = true }
+objc2 = { workspace = true }
+block2 = { workspace = true }
+objc2-foundation = { workspace = true }
+objc2-web-kit = { workspace = true }
+
+# Linux 特定依赖（browser bridge WebKitGTK evaluate_javascript）
+[target.'cfg(target_os = "linux")'.dependencies]
+# TD-08（修订）：根密钥种子可选存入 Secret Service（gnome-keyring/KWallet），
+# 默认关闭，仅用户在设置中开启后才迁入；曾迁入的种子在关闭时自动回迁为文件。
+# vendored 静态链接 libdbus，避免用户机器缺 libdbus-1。
+keyring = { workspace = true, features = ["sync-secret-service", "crypto-rust", "vendored"] }
+webkit2gtk = { workspace = true }
+javascriptcore-rs = { workspace = true }
+
+# Windows 特定依赖（系统 OCR + browser bridge WebView2 ExecuteScript）
+[target.'cfg(windows)'.dependencies]
+webview2-com = { workspace = true }
+windows = { workspace = true }
+windows-sys = { workspace = true }
+
+[profile.release]
+opt-level = "s"        # 优化大小
+lto = "thin"          # 使用thin LTO减少编译时间
+codegen-units = 1     # 减少代码生成单元以提高优化效果
+panic = "unwind"      # 使用unwind以支持catch_unwind捕获第三方库的panic
+debug = 1             # 生成行号信息，供 Sentry 原生崩溃符号化
+split-debuginfo = "packed" # macOS 生成 dSYM，Windows 生成 PDB，避免调试信息进入主二进制
+strip = "symbols"     # 安装包内二进制剥离符号；独立调试文件由发布流程上传
+
+# 开发配置：最大化增量与并行，不牺牲产物语义（仅影响dev/bench/test，release不变）
+[profile.dev]
+opt-level = 0          # 保持零优化，编译更快，语义与默认一致
+debug = "line-tables-only" # 行号级调试：保留断点行号与回溯，显著缩小 target/PDB；需要变量级调试时用 CARGO_PROFILE_DEV_DEBUG=true 临时覆盖
+incremental = true     # 开启增量编译（cargo build / tauri dev）
+codegen-units = 256    # 最大化并行代码生成
+lto = false            # 调试/开发无需LTO
+
+# 第三方依赖只保留行号级调试信息：回溯和断点行号不受影响，但能大幅缩小
+# target 体积、PDB 和链接时间，并降低测试编译的内存峰值。本地 crate 同样使用
+# 行号级调试信息；需要完整变量级调试时用 CARGO_PROFILE_DEV_DEBUG=true 临时覆盖。
+# test profile 继承 dev。注意 src-tauri/.cargo/config.toml 里有同一份 profile，
+# 两处需同步修改。
+[profile.dev.package."*"]
+debug = "line-tables-only"
+
+# 测试目标数量多（每个集成测试一个二进制）。增量缓存会为每个测试二进制、
+# 每个 worktree 各存一份，曾把 target 撑到数十 GB。测试统一关闭增量；
+# cargo build / tauri dev 仍保留 dev 增量，日常改代码速度不受影响。
+[profile.test]
+incremental = false
+
+# 移除所有 Cozo/Neo4j 测试二进制，仅保留主程序
+
+[features]
+# 默认启用 SQLite、Lance 与 MCP（确保现有行为不变）
+# 默认启用内部预置模型，可在开源版本中移除该特性
+# 默认启用 S3 云存储支持
+default = ["sqlite", "lance", "mcp", "builtin_free_models", "tokenizer_tiktoken", "cloud_storage_s3", "data_governance"]
+# 启用 SQLite 代码（始终开启占位）
+sqlite = []
+# 启用 LanceDB 向量后端（需网络拉取依赖）
+# app 自身已不直接用 lancedb/arrow（notes_manager 已拆到 dstu-notes），三项保留不改依赖图；vfs / notes 侧分别由 dstu-vfs/lance、dstu-notes/lance 转发。
+lance = ["lancedb", "arrow-array", "arrow-schema", "dstu-vfs/lance", "dstu-notes/lance", "dstu-agent/lance"]
+# P2修复：精确 tokenizer（默认启用以提供准确的 token 计数，避免启发式估算偏差）
+tokenizer_tiktoken = ["tiktoken-rs", "dstu-util/tokenizer_tiktoken", "dstu-agent/tokenizer_tiktoken"]
+# 可选：MCP 客户端与 rmcp 校验
+mcp = ["dstu-mcp/mcp", "dstu-agent/mcp"]
+# MCP 调试插件：允许 AI 代理（如 Cursor）通过 MCP 协议调试应用
+# 功能：截图、DOM 快照、IPC 监控、输入模拟、控制台日志流、JS 执行
+mcp-debug = ["tauri-plugin-mcp-bridge"]
+# 已废弃且已移除：neo4j 特性占位（代码已完全清理）
+# neo4j = []
+# 其他开关
+db_migration = []
+# 仅为消除条件编译告警：不产生实际功能影响
+http = ["dstu-mcp/http"]
+old_migration_impl = []
+# 内置免费模型（发行版使用）。开源版本可禁用
+builtin_free_models = ["dstu-llm/builtin_free_models"]
+# 云存储 S3 兼容支持（可选，避免默认增加编译时间）
+cloud_storage_s3 = ["aws-sdk-s3", "aws-config", "dstu-sync/cloud_storage_s3"]
+# 数据治理模块（迁移、审计、同步等）
+data_governance = ["refinery", "dstu-storage/data_governance", "dstu-browser/data_governance", "dstu-sync/data_governance", "dstu-agent/data_governance"]
+# DevTools：仅在开发构建中启用，release 构建不应包含
+# 使用方式：cargo tauri dev --features devtools
+devtools = ["tauri/devtools"]
+
+# =============================================================================
+# 移动端生产 feature profile（mobile-slim）
+# =============================================================================
+# 状态：R2 已完成编译门控，R3 起 Android release/recovery workflow 均使用本 profile；
+# 默认 features 不变，不影响桌面构建。
+# 目标：移动端构建体积/编译时间/内存占用最小化。
+#
+# 可裁剪项评估（相对 default）：
+#   - mcp / mcp-debug     : MCP 客户端为桌面能力（本地进程/stdio 桥、调试插件），移动端裁掉
+#   - cloud_storage_s3    : aws-sdk-s3 + aws-config 依赖树重；移动端云备份可先走 WebDAV/FTP 路径
+#   - tokenizer_tiktoken  : 精确 token 计数（tiktoken-rs 带词表数据）；移动端退化为启发式估算
+#   - lance               : LanceDB + arrow 系列为最大编译负担之一；移动端首版可仅用 SQLite 检索路径
+#   - devtools            : 仅开发构建使用
+# 保留项：
+#   - sqlite / builtin_free_models / data_governance（核心数据与迁移能力）
+# 无需进 feature 的裁剪：
+#   - updater/process/single-instance/global-shortcut 等桌面插件已由
+#     [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'] 条件依赖天然排除
+#
+# 使用方式（与 Android CI/release 一致）：
+#   cargo tauri android build --no-default-features --features mobile-slim
+mobile-slim = ["sqlite", "builtin_free_models", "data_governance"]
+
+# Legacy opt-in profile retained for manual compatibility. Release/recovery
+# workflows use mobile-slim; this broader set is no longer selected by CI.
+android-release = [
+    "sqlite",
+    "lance",
+    "mcp",
+    "builtin_free_models",
+    "tokenizer_tiktoken",
+    "data_governance",
+]
+
+# =============================================================================
+# Clippy / rustc lint gate (code-quality plan W0–W1 / C3)
+# =============================================================================
+# correctness: deny (must stay clean).
+# style: warn for now — remaining style debt below is allow-listed until later
+# waves (should_implement_trait / if_same_then_else / doc noise / ptr_arg leftovers).
+# Large-refactor complexity lints are allow (signature / type alias churn).
+[lints]
+workspace = true
+
+[workspace.lints.rust]
+# objc macros probe cfg(feature = "cargo-clippy"); register so check-cfg is quiet.
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("cargo-clippy", "examples"))'] }
+
+[workspace.lints.clippy]
+# Groups at lower priority so per-lint allow/deny overrides win.
+correctness = { level = "deny", priority = -1 }
+# Prefer deny; kept at warn until remaining style items below are cleared.
+style = { level = "warn", priority = -1 }
+# --- deferred: large refactors / API surface ---
+too_many_arguments = "allow"
+type_complexity = "allow"
+should_implement_trait = "allow"
+manual_clamp = "allow"
+large_enum_variant = "allow"
+result_large_err = "allow"
+new_ret_no_self = "allow"
+inherent_to_string = "allow"
+# --- remaining style debt after W1 mechanical batch (style stays warn) ---
+if_same_then_else = "allow"
+doc_lazy_continuation = "allow"
+empty_line_after_doc_comments = "allow"
+empty_line_after_outer_attr = "allow"
+field_reassign_with_default = "allow"
+
+# Workaround for chrono/arrow trait method conflict (force a compatible chrono)
+
+[patch.crates-io]
+lancedb = { path = "vendor/lancedb" }
+object_store = { path = "vendor/object_store" }
+# refinery-core 0.9.0 is API-compatible with rusqlite 0.40, but its published
+# manifest caps the dependency at 0.37. Keep the compatibility patch local and
+# remove it once the upstream crate publishes the relaxed bound.
+refinery-core = { path = "vendor/refinery-core" }
+r2d2_sqlite = { path = "vendor/r2d2_sqlite" }

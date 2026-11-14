@@ -1,0 +1,451 @@
+{
+  "domain": "anki",
+  "commands": [
+    "start_enhanced_document_processing",
+    "cancel_document_processing",
+    "trigger_task_processing",
+    "save_anki_cards",
+    "update_anki_card",
+    "delete_anki_card",
+    "delete_document_session",
+    "set_document_session_source",
+    "get_pending_memory_candidates",
+    "dismiss_pending_memory_candidates",
+    "mark_pending_memory_candidates_saved"
+  ],
+  "scenarios": [
+    {
+      "id": "g3w.anki.start_enhanced_document_processing.blank_content",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "start_enhanced_document_processing",
+          "args": {
+            "documentContent": "   ",
+            "originalDocumentName": "Default",
+            "options": {
+              "deck_name": "Default",
+              "note_type": "Basic",
+              "enable_images": true,
+              "max_cards_per_mistake": 50,
+              "max_cards_total": 50,
+              "fsrs_feedback": false,
+              "template_ids": [],
+              "segment_overlap_size": 200,
+              "enable_llm_boundary_detection": true
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.anki.start_enhanced_document_processing.name_path_traversal",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "start_enhanced_document_processing",
+          "args": {
+            "documentContent": "光合作用把光能转化为化学能。",
+            "originalDocumentName": "../Default",
+            "options": {
+              "deck_name": "Default",
+              "note_type": "Basic",
+              "enable_images": true,
+              "max_cards_per_mistake": 50,
+              "max_cards_total": 50,
+              "fsrs_feedback": false,
+              "template_ids": [],
+              "segment_overlap_size": 200,
+              "enable_llm_boundary_detection": true
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.anki.start_enhanced_document_processing.name_too_long",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "start_enhanced_document_processing",
+          "args": {
+            "documentContent": "光合作用把光能转化为化学能。",
+            "originalDocumentName": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "options": {
+              "deck_name": "Default",
+              "note_type": "Basic",
+              "enable_images": true,
+              "max_cards_per_mistake": 50,
+              "max_cards_total": 50,
+              "fsrs_feedback": false,
+              "template_ids": [],
+              "segment_overlap_size": 200,
+              "enable_llm_boundary_detection": true
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.anki.start_enhanced_document_processing.max_cards_per_mistake_over_100",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "start_enhanced_document_processing",
+          "args": {
+            "documentContent": "光合作用把光能转化为化学能。",
+            "originalDocumentName": "Default",
+            "options": {
+              "deck_name": "Default",
+              "note_type": "Basic",
+              "enable_images": true,
+              "max_cards_per_mistake": 101,
+              "max_cards_total": 50,
+              "fsrs_feedback": false,
+              "template_ids": [],
+              "segment_overlap_size": 200,
+              "enable_llm_boundary_detection": true
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.anki.cancel_document_processing.empty_document_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "cancel_document_processing",
+          "args": {
+            "documentId": ""
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.anki.trigger_task_processing.missing_task",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "trigger_task_processing",
+          "args": {
+            "taskId": "w0-missing-task"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.anki.trigger_task_processing.completed_task",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_anki_cards",
+          "args": {
+            "request": {
+              "document_id": "w0-doc-trigger",
+              "business_session_id": null,
+              "message_stable_id": null,
+              "block_id": null,
+              "template_id": null,
+              "cards": [
+                {
+                  "id": "w0-trigger-card",
+                  "front": "Q",
+                  "back": "A",
+                  "text": null,
+                  "tags": [],
+                  "images": [],
+                  "fields": {},
+                  "template_id": null
+                }
+              ],
+              "options": null
+            }
+          }
+        },
+        {
+          "cmd": "trigger_task_processing",
+          "args": {
+            "taskId": "${0.taskId}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.anki.update_anki_card.empty_front",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "update_anki_card",
+          "args": {
+            "card": {
+              "id": "card-validation",
+              "task_id": "task-validation",
+              "front": "  ",
+              "back": "A",
+              "text": null
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.anki.update_anki_card.empty_back",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "update_anki_card",
+          "args": {
+            "card": {
+              "id": "card-validation",
+              "task_id": "task-validation",
+              "front": "{{c1::}}",
+              "back": "",
+              "text": "{{c1::}}"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.anki.update_anki_card.card_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "update_anki_card",
+          "args": {
+            "card": {
+              "id": "w0-missing-card",
+              "task_id": "w0-missing-task",
+              "front": "Q",
+              "back": "A",
+              "text": null
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.anki.delete_anki_card.empty_card_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "delete_anki_card",
+          "args": {
+            "cardId": ""
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.anki.delete_document_session.empty_document_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "delete_document_session",
+          "args": {
+            "documentId": ""
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.anki.set_document_session_source.blank_document_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "set_document_session_source",
+          "args": {
+            "documentId": "  ",
+            "sessionId": "sess_w0"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.anki.set_document_session_source.blank_session_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "set_document_session_source",
+          "args": {
+            "documentId": "w0-doc",
+            "sessionId": "  "
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.anki.get_pending_memory_candidates.blank_conversation_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_pending_memory_candidates",
+          "args": {
+            "conversationId": "  "
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.anki.dismiss_pending_memory_candidates.blank_conversation_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dismiss_pending_memory_candidates",
+          "args": {
+            "conversationId": "  "
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.anki.mark_pending_memory_candidates_saved.blank_conversation_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "mark_pending_memory_candidates_saved",
+          "args": {
+            "conversationId": "  "
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

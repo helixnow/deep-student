@@ -20,7 +20,7 @@ import {
   Image,
   GitBranch,
 } from '@phosphor-icons/react';
-import { getWorkspaceActiveResource } from '@/features/workbench/apps/notes/workspaceRegistry';
+import { getWorkspaceActiveResourceType } from '@/shared/workbenchHost';
 import type { Command, CommandView, DependencyResolver } from '../registry/types';
 
 export const NOTES_WORKSPACE_COMMAND_EVENT = 'notes:workspace-command' as const;
@@ -73,7 +73,7 @@ function isFinderShellCommandEnabled(deps: DependencyResolver): boolean {
 function isNoteEditorCommandEnabled(deps: DependencyResolver): boolean {
   if (!isNotesCommandEnabled(deps)) return false;
   if (deps.getCurrentView() !== 'workbench') return true;
-  return getWorkspaceActiveResource()?.type === 'note';
+  return getWorkspaceActiveResourceType() === 'note';
 }
 
 function isWorkbenchNotesCommandEnabled(deps: DependencyResolver): boolean {
@@ -85,7 +85,7 @@ function isMindMapCommandEnabled(deps: DependencyResolver): boolean {
   if (deps.getCurrentView() !== 'workbench') return false;
   const appType = deps.getFocusedWorkbenchAppTypeId();
   return appType === 'mindmap'
-    || (appType === 'notes' && getWorkspaceActiveResource()?.type === 'mindmap');
+    || (appType === 'notes' && getWorkspaceActiveResourceType() === 'mindmap');
 }
 
 function dispatchNotesCommand(
@@ -123,21 +123,25 @@ function dispatchNotesCommand(
 
 const notesCommandScope = {
   visibleInViews: NOTES_COMMAND_VIEWS,
+  workbenchApps: ['notes'],
   isEnabled: isNotesCommandEnabled,
 };
 
 const finderShellCommandScope = {
   visibleInViews: NOTES_COMMAND_VIEWS,
+  workbenchApps: ['files', 'notes'],
   isEnabled: isFinderShellCommandEnabled,
 };
 
 const noteEditorCommandScope = {
   visibleInViews: NOTES_COMMAND_VIEWS,
+  workbenchApps: ['notes'],
   isEnabled: isNoteEditorCommandEnabled,
 };
 
 const workbenchNotesCommandScope = {
   visibleInViews: ['workbench'] satisfies CommandView[],
+  workbenchApps: ['notes'],
   isEnabled: isWorkbenchNotesCommandEnabled,
 };
 
@@ -249,6 +253,7 @@ export const notesCommands: Command[] = [
     get keywords() { return kw('mindmap.toggle-view'); },
     priority: 88,
     visibleInViews: ['workbench'],
+    workbenchApps: ['mindmap', 'notes'],
     isEnabled: isMindMapCommandEnabled,
     execute: () => {
       window.dispatchEvent(new CustomEvent('mindmap:toggle-view'));

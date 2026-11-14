@@ -13,8 +13,9 @@
  * - 空数据友好占位
  */
 
+import { useRefreshOnReturn } from '@/hooks/useRefreshOnReturn';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { TrendUp, ArrowsClockwise } from '@phosphor-icons/react';
+import { TrendUp } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
 import { DsButton } from '@/components/ui/DsButton';
@@ -115,19 +116,13 @@ const ChartSkeleton: React.FC = () => (
 // 空状态组件
 // ============================================================================
 
-const EmptyState: React.FC<{ onRefresh?: () => void }> = ({ onRefresh }) => {
+const EmptyState: React.FC = () => {
   const { t } = useTranslation('stats');
 
   return (
     <div className="ui-rise-in flex h-64 flex-col items-center justify-center text-center text-muted-foreground">
       <TrendUp size={28} className="mb-3 opacity-40" />
       <p className="text-sm">{t('trendChart.noRecord')}</p>
-      {onRefresh && (
-        <DsButton variant="ghost" size="sm" className="mt-3 [@media(pointer:coarse)]:!min-h-11" onClick={onRefresh}>
-          <ArrowsClockwise size={14} />
-          {t('trendChart.refreshData')}
-        </DsButton>
-      )}
     </div>
   );
 };
@@ -530,6 +525,8 @@ export const LearningTrendChart: React.FC<LearningTrendChartProps> = ({
   }, [isLoading]);
 
   // 加载数据
+  useRefreshOnReturn(() => { void loadLearningTrend(examId).catch(console.error); });
+
   useEffect(() => {
     loadLearningTrend(examId).catch(console.error);
   }, [examId, selectedRange, loadLearningTrend]);
@@ -541,9 +538,6 @@ export const LearningTrendChart: React.FC<LearningTrendChartProps> = ({
   };
 
   // 刷新数据
-  const handleRefresh = () => {
-    loadLearningTrend(examId).catch(console.error);
-  };
 
   // 格式化 X 轴日期。
   // parseLocalDate：纯日期串按本地时区解析（裸 new Date("YYYY-MM-DD") 是 UTC，
@@ -630,17 +624,6 @@ export const LearningTrendChart: React.FC<LearningTrendChartProps> = ({
               ))}
             </div>
           )}
-
-          {/* 刷新按钮 */}
-          <DsButton
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 text-muted-foreground hover:text-foreground"
-            onClick={handleRefresh}
-            aria-label={t('trendChart.refreshData')}
-          >
-            <ArrowsClockwise size={14} className={cn(isLoading && 'animate-spin')} />
-          </DsButton>
         </div>
       </div>
 
@@ -668,7 +651,7 @@ export const LearningTrendChart: React.FC<LearningTrendChartProps> = ({
 
       {/* 图表区域 */}
       {!hasData ? (
-        <EmptyState onRefresh={handleRefresh} />
+        <EmptyState />
       ) : (
         <div className={cn('transition-opacity duration-200', isLoading && 'opacity-50 pointer-events-none')}>
           <TrendSvgChart

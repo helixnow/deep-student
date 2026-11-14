@@ -54,7 +54,7 @@ const TemplatesAppWindow: React.FC<AppWindowProps> = ({ windowId, onTitleChange 
       data-wb-sys-app="templates"
     >
       <Suspense fallback={<WbSysSkeleton variant="list" />}>
-        <WbSysFade>
+        <WbSysFade className="h-full min-h-0">
           <TemplateManagementApp workbenchWindowId={windowId} />
         </WbSysFade>
       </Suspense>

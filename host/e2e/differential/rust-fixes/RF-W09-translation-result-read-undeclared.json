@@ -1,0 +1,28 @@
+{
+  "id": "RF-W09-translation-result-read-undeclared",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T08:32+08:00",
+  "title": "翻译技能未声明 translation_result_read，模型被 translate_text 的返回提示引向一个调不到的工具",
+  "rust": {
+    "file": "src-tauri/src/chat_v2/tools/translation_executor.rs",
+    "line": 1128,
+    "behavior": "长译文时 translate_text 返回 \"Use builtin-translation_result_read with this translation_result_id to page through the full translation\"，执行器也实现了 translation_result_read，但同版本前端翻译技能的 allowedTools/embeddedTools 只有 translate_text 与 translation_save，模型无法分页读取全文。"
+  },
+  "fix": {
+    "files": ["src/features/chat/skills/builtin-tools/translation-tools.ts"],
+    "behavior": "翻译技能声明 builtin-translation_result_read（参数边界与 Rust/host 执行器一致），技能说明里给出分页读取步骤。"
+  },
+  "evidence": "Rust 自身的返回提示与前端工具清单矛盾：模型按提示调用会得到未知工具错误，长译文（超过 translated_preview 的 2000 字符）在对话里无法查看全文。host 执行器（host/plugins/translation/src/tool_executor.ts）同样实现该工具。修复只改变发给模型的工具清单，不改变数据库、事件、IPC 或文件输出。",
+  "userVisible": "能：长译文时模型可以按页读出全文并在对话中展示，Rust 版只能看到 2000 字符预览，模型按提示调用会报未知工具。",
+  "dataCompat": "不改变落库数据、同步载荷与备份格式；只改变发给模型的工具清单。",
+  "commits": ["485f51df"],
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "src/features/chat/skills/__tests__/phase6TranslationTools.test.ts",
+      "name": "RF-W09-translation-result-read-undeclared: every tool the translate_text result tells the model to call is declared"
+    }
+  ]
+}

@@ -5,6 +5,7 @@
  */
 
 export interface SchedulerConfig {
+  model?: 'fsrs-7';
   newPerDay: number;
   reviewsPerDay: number;
   desiredRetention: number;
@@ -92,6 +93,7 @@ export function parseSchedulerConfig(raw: unknown): SchedulerConfig | null {
   const reviewOrder = read('reviewOrder', 'review_order');
   const newReviewOrder = read('newReviewOrder', 'new_review_order');
   return {
+    ...(row.model === 'fsrs-7' && { model: row.model }),
     newPerDay,
     reviewsPerDay,
     desiredRetention,

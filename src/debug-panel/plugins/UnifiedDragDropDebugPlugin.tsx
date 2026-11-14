@@ -75,7 +75,6 @@ interface ZoneInfo {
   name: string;
   description: string;
   icon: React.FC<any>;
-  navigationEvent?: string; // 导航事件名称
   tabName?: string; // 用于切换标签页的名称
 }
 
@@ -147,14 +146,7 @@ const navigateToZone = (zoneId: string) => {
       showGlobalNotification('info', `正在导航到：${zoneInfo.name}`);
     }
     
-    // 方案2: 如果有自定义导航事件（保留扩展性）
-    if (zoneInfo.navigationEvent) {
-      const event = new CustomEvent(zoneInfo.navigationEvent);
-      window.dispatchEvent(event);
-      console.log(`[UnifiedDragDropDebug] ✅ 已派发自定义事件: ${zoneInfo.navigationEvent}`);
-    }
-    
-    if (!zoneInfo.tabName && !zoneInfo.navigationEvent) {
+    if (!zoneInfo.tabName) {
       console.warn(`[UnifiedDragDropDebug] ⚠️ 区域 ${zoneId} 未配置导航方式`);
     }
   } catch (e) {

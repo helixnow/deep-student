@@ -1,0 +1,13 @@
+{
+  "domain": "shell",
+  "commands": ["get_app_version"],
+  "scenarios": [
+    {
+      "id": "shell.get-app-version.first",
+      "seed": "empty",
+      "steps": [{ "cmd": "get_app_version", "args": {} }],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    }
+  ]
+}

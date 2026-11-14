@@ -7,10 +7,16 @@
  * - overlay 外观（视频黑底悬浮控制条上使用白色系）
  * - 键盘 ←/→ ±5s、Home/End
  * - 时间标记（课中检查点 / 章节起点）与区间高亮（薄弱片段），只做展示不拦截拖动
+ * - YouTube/Bilibili 级 160ms 延迟防抖缩略图预览 + 160px 横竖屏封顶尺寸 + 首帧未就绪防黑块闪烁
  */
 
-import React, { useCallback, useRef, useState } from 'react';
-import { cn } from '@/lib/utils';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { cn } from '@/utils/cn';
+import { formatMediaTime } from '../previewUtils';
+import {
+  HoverThumbnailPreviewController,
+  type HoverPreviewSnapshot,
+} from './playerMicroInteractions';
 
 export interface MediaScrubberMarker {
   /** 秒 */
@@ -40,6 +46,10 @@ export interface MediaScrubberProps {
   markers?: readonly MediaScrubberMarker[];
   /** 需要回看的区间（答错的检查点附近） */
   highlightRanges?: readonly MediaScrubberRange[];
+  /** 可选：用于悬停 160ms 后解码预览帧的视频源 URL */
+  previewSrc?: string;
+  /** 可选：预览视频跨域属性 */
+  previewCrossOrigin?: 'anonymous';
 }
 
 const MARKER_TONE: Record<NonNullable<MediaScrubberMarker['state']>, string> = {
@@ -59,11 +69,79 @@ export const MediaScrubber: React.FC<MediaScrubberProps> = ({
   className,
   markers,
   highlightRanges,
+  previewSrc,
+  previewCrossOrigin,
 }) => {
   const trackRef = useRef<HTMLDivElement>(null);
+  const previewVideoRef = useRef<HTMLVideoElement | null>(null);
+  const pendingSeekTimeRef = useRef<number>(0);
   const [isDragging, setIsDragging] = useState(false);
 
+  const applyPreviewSeek = useCallback((targetTime: number) => {
+    pendingSeekTimeRef.current = targetTime;
+    const video = previewVideoRef.current;
+    if (!video) return;
+    try {
+      if (Math.abs(video.currentTime - targetTime) >= 0.05) {
+        video.currentTime = targetTime;
+      }
+    } catch {
+      // 元数据未就绪时由 onLoadedMetadata 补做一次 seek
+    }
+  }, []);
+
+  const hoverControllerRef = useRef<HoverThumbnailPreviewController | null>(null);
+  if (hoverControllerRef.current === null) {
+    hoverControllerRef.current = new HoverThumbnailPreviewController({
+      onDecodeRequest: (targetTime) => {
+        applyPreviewSeek(targetTime);
+      },
+      onStateChange: (snapshot) => {
+        setHoverSnapshot(snapshot);
+      },
+    });
+  }
+
+  const [hoverSnapshot, setHoverSnapshot] = useState<HoverPreviewSnapshot>(() =>
+    hoverControllerRef.current!.getSnapshot(),
+  );
+
+  useEffect(() => {
+    const controller = hoverControllerRef.current;
+    return () => {
+      controller?.dispose();
+    };
+  }, []);
+
+  // 切换视频源时重置悬停预览状态
+  useEffect(() => {
+    hoverControllerRef.current?.leaveHover();
+  }, [previewSrc]);
+
+  // 预览解码激活且 DOM 挂载后，立即同步一次目标时间
+  useEffect(() => {
+    if (hoverSnapshot.isDecodeActive && previewSrc) {
+      applyPreviewSeek(hoverSnapshot.targetTime);
+    }
+  }, [hoverSnapshot.isDecodeActive, hoverSnapshot.targetTime, previewSrc, applyPreviewSeek]);
+
   const seekable = !disabled && isFinite(duration) && duration > 0;
+
+  const updateHoverFromClientX = useCallback(
+    (clientX: number) => {
+      const track = trackRef.current;
+      if (!track || !isFinite(duration) || duration <= 0) return;
+      const rect = track.getBoundingClientRect();
+      const trackWidth = rect.width > 0 ? rect.width : track.clientWidth || 160;
+      const pointerOffsetX = clientX - rect.left;
+      hoverControllerRef.current?.updateHover({
+        pointerOffsetX,
+        trackWidth,
+        duration,
+      });
+    },
+    [duration],
+  );
 
   const seekFromClientX = useCallback(
     (clientX: number) => {
@@ -77,6 +155,17 @@ export const MediaScrubber: React.FC<MediaScrubberProps> = ({
     [duration, onSeek],
   );
 
+  const handlePointerEnter = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (!seekable) return;
+      const pointerType =
+        event.pointerType || (event.nativeEvent as { pointerType?: string })?.pointerType;
+      if (pointerType === 'touch' && !isDragging) return;
+      updateHoverFromClientX(event.clientX);
+    },
+    [seekable, isDragging, updateHoverFromClientX],
+  );
+
   const handlePointerDown = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
       if (!seekable) return;
@@ -87,21 +176,28 @@ export const MediaScrubber: React.FC<MediaScrubberProps> = ({
         // pointer capture 不可用时退化为点击定位
       }
       setIsDragging(true);
+      updateHoverFromClientX(event.clientX);
       seekFromClientX(event.clientX);
     },
-    [seekable, seekFromClientX],
+    [seekable, updateHoverFromClientX, seekFromClientX],
   );
 
   const handlePointerMove = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
+      if (seekable && (event.pointerType !== 'touch' || isDragging)) {
+        updateHoverFromClientX(event.clientX);
+      }
       if (!isDragging) return;
       seekFromClientX(event.clientX);
     },
-    [isDragging, seekFromClientX],
+    [seekable, isDragging, updateHoverFromClientX, seekFromClientX],
   );
 
   const handlePointerUp = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
+      if (event.pointerType !== 'mouse') {
+        hoverControllerRef.current?.leaveHover();
+      }
       if (!isDragging) return;
       setIsDragging(false);
       try {
@@ -112,6 +208,21 @@ export const MediaScrubber: React.FC<MediaScrubberProps> = ({
     },
     [isDragging],
   );
+
+  const handlePointerCancel = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (event.pointerType !== 'mouse') {
+        hoverControllerRef.current?.leaveHover();
+      }
+      handlePointerUp(event);
+      hoverControllerRef.current?.leaveHover();
+    },
+    [handlePointerUp],
+  );
+
+  const handlePointerLeave = useCallback(() => {
+    hoverControllerRef.current?.leaveHover();
+  }, []);
 
   const handleKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -147,6 +258,8 @@ export const MediaScrubber: React.FC<MediaScrubberProps> = ({
   const playedPct = duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0;
   const bufferedPct = duration > 0 ? Math.min(100, (bufferedEnd / duration) * 100) : 0;
   const overlay = appearance === 'overlay';
+  const showHoverPreview = seekable && hoverSnapshot.isHovering;
+  const showThumbnailVideo = Boolean(previewSrc) && hoverSnapshot.isDecodeActive;
 
   return (
     <div
@@ -166,12 +279,80 @@ export const MediaScrubber: React.FC<MediaScrubberProps> = ({
         seekable ? 'cursor-pointer' : 'cursor-default opacity-50',
         className,
       )}
+      onPointerEnter={handlePointerEnter}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
-      onPointerCancel={handlePointerUp}
+      onPointerCancel={handlePointerCancel}
+      onPointerLeave={handlePointerLeave}
       onKeyDown={handleKeyDown}
     >
+      {/* 悬停预览浮层：160ms 内仅展示时间胶囊，满 160ms 后挂载 160px 封顶缩略图解码器 */}
+      {showHoverPreview && (
+        <div
+          aria-hidden="true"
+          data-testid="scrubber-hover-preview"
+          data-decode-active={showThumbnailVideo ? 'true' : 'false'}
+          className="pointer-events-none absolute bottom-full z-30 mb-2.5 flex -translate-x-1/2 flex-col items-center"
+          style={{ left: `${hoverSnapshot.clampedCenterX}px` }}
+        >
+          {showThumbnailVideo ? (
+            <div
+              data-testid="scrubber-preview-box"
+              className="relative overflow-hidden rounded border border-white/40 bg-black shadow-lg"
+              style={{
+                width: `${hoverSnapshot.dimensions.width}px`,
+                height: `${hoverSnapshot.dimensions.height}px`,
+              }}
+            >
+              <video
+                ref={previewVideoRef}
+                data-testid="scrubber-preview-video"
+                data-ready={hoverSnapshot.isFirstFrameReady ? 'true' : 'false'}
+                src={previewSrc}
+                crossOrigin={previewCrossOrigin}
+                preload="metadata"
+                muted
+                playsInline
+                className={cn(
+                  'block h-full w-full object-cover transition-opacity duration-150 motion-reduce:transition-none',
+                  hoverSnapshot.isFirstFrameReady ? 'opacity-100' : 'opacity-0',
+                )}
+                onLoadedMetadata={(event) => {
+                  const video = event.currentTarget;
+                  if (video.videoWidth > 0 && video.videoHeight > 0) {
+                    hoverControllerRef.current?.setVideoMetadata(
+                      video.videoWidth,
+                      video.videoHeight,
+                    );
+                  }
+                  applyPreviewSeek(pendingSeekTimeRef.current);
+                }}
+                onLoadedData={() => {
+                  hoverControllerRef.current?.markFirstFrameReady(true);
+                }}
+                onSeeked={() => {
+                  hoverControllerRef.current?.markFirstFrameReady(true);
+                }}
+              />
+              <span
+                data-testid="scrubber-preview-time"
+                className=" absolute bottom-1 left-1/2 -translate-x-1/2 rounded bg-black/80 px-1.5 py-0.5 font-mono text-[11px] leading-4 tabular-nums text-white"
+              >
+                {formatMediaTime(hoverSnapshot.targetTime)}
+              </span>
+            </div>
+          ) : (
+            <span
+              data-testid="scrubber-preview-time"
+              className="rounded bg-black/80 px-1.5 py-0.5 font-mono text-[11px] leading-4 tabular-nums text-white shadow-sm"
+            >
+              {formatMediaTime(hoverSnapshot.targetTime)}
+            </span>
+          )}
+        </div>
+      )}
+
       <div
         className={cn(
           'relative h-1 w-full overflow-hidden rounded-full transition-[height] duration-150 motion-reduce:transition-none',

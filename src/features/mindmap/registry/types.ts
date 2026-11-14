@@ -177,6 +177,8 @@ export interface IThemeEdgeStyle {
   type: EdgeType;
   /** 边颜色 */
   stroke: string;
+  /** 激活/焦点路径边颜色（可选，缺省回退 --mm-primary） */
+  strokeActive?: string;
   /** 边宽度 */
   strokeWidth: number;
   /** 虚线样式 */

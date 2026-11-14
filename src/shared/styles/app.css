@@ -377,54 +377,54 @@ body {
   isolation: isolate;
 }
 
-/*
- * 桌面壳层内容入场动画（transitions-dev 观感语言，与标题栏 TextSwap 成组）：
- * 淡入 + 上移 8px 归位，只动 opacity/transform，避免逐帧重采样。
- * 三处消费：视图层激活（ViewLayerRenderer 激活时挂类）、侧栏内容整体替换、
- * 设置页 tab 切换（后两者靠 keyed 重挂载重触发）。
- * 用 animation 而非 transition：激活/重挂载即重播；离场侧不做动画，
- * visibility:hidden 同帧生效是刻意行为。
- * 不设 fill-mode：动画结束回到元素静止样式。
- */
+/* Desktop content slides in from the right. Sidebars use their navigation depth. */
 @keyframes desktop-shell-content-enter {
   from {
     opacity: 0;
-    transform: translateY(var(--text-swap-translate-y, 8px));
+    transform: translateX(var(--page-slide-distance, 8px));
   }
 
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateX(0);
   }
 }
 
 .desktop-shell-content-enter {
-  animation: desktop-shell-content-enter var(--text-swap-dur, 200ms) var(--page-slide-ease, cubic-bezier(0.22, 1, 0.36, 1));
+  animation: desktop-shell-content-enter var(--page-slide-dur, 200ms) var(--page-slide-ease, cubic-bezier(0.22, 1, 0.36, 1));
 }
 
-@keyframes desktop-shell-content-exit {
-  from {
-    opacity: 1;
-    transform: translateY(0);
-  }
-
-  to {
-    opacity: 0;
-    transform: translateY(calc(-1 * var(--text-swap-translate-y, 8px)));
-  }
-}
-
-.desktop-shell-content-exit {
-  animation: desktop-shell-content-exit var(--text-swap-dur, 200ms) var(--page-slide-ease, cubic-bezier(0.22, 1, 0.36, 1));
-}
-
-/* 反向变体：桌面端与正向同动画（纵向淡入淡出无方向语义），移动端在下方 media 内镜像 */
-.desktop-shell-content-enter-rev {
-  animation: desktop-shell-content-enter var(--text-swap-dur, 200ms) var(--page-slide-ease, cubic-bezier(0.22, 1, 0.36, 1));
-}
-
+/* Keep the old page available for the mobile transition only. */
+.desktop-shell-content-exit,
 .desktop-shell-content-exit-rev {
-  animation: desktop-shell-content-exit var(--text-swap-dur, 200ms) var(--page-slide-ease, cubic-bezier(0.22, 1, 0.36, 1));
+  visibility: hidden;
+}
+
+.desktop-shell-content-enter-rev {
+  animation: desktop-shell-content-enter var(--page-slide-dur, 200ms) var(--page-slide-ease, cubic-bezier(0.22, 1, 0.36, 1));
+}
+
+@keyframes desktop-shell-sidebar-enter {
+  from { opacity: 0; transform: translateX(calc(100% * var(--sidebar-nav-direction))); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes desktop-shell-sidebar-exit {
+  from { opacity: 1; transform: translateX(0); }
+  to { opacity: 0; transform: translateX(calc(-100% * var(--sidebar-nav-direction))); }
+}
+
+[data-sidebar-phase="enter"] {
+  animation: desktop-shell-sidebar-enter var(--page-slide-dur, 200ms) var(--page-slide-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
+}
+
+[data-sidebar-phase="exit"] {
+  animation: desktop-shell-sidebar-exit var(--page-slide-dur, 200ms) var(--page-slide-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-sidebar-phase="enter"] { animation: none; }
+  [data-sidebar-phase="exit"] { animation: none; visibility: hidden; }
 }
 
 /*
@@ -464,6 +464,7 @@ body {
   }
 
   .desktop-shell-view-layer.desktop-shell-content-exit {
+    visibility: visible;
     animation: mobile-shell-content-exit var(--page-slide-dur, 200ms) var(--page-slide-ease, cubic-bezier(0.22, 1, 0.36, 1));
   }
 
@@ -497,6 +498,7 @@ body {
   }
 
   .desktop-shell-view-layer.desktop-shell-content-exit-rev {
+    visibility: visible;
     animation: mobile-shell-content-exit-rev var(--page-slide-dur, 200ms) var(--page-slide-ease, cubic-bezier(0.22, 1, 0.36, 1));
   }
 }

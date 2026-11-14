@@ -284,10 +284,13 @@ export const ATTACHMENT_AUDIO_TYPES = [
   'audio/aac',       // aac
   'audio/x-ms-wma',  // wma
   'audio/opus',      // opus
+  'audio/aiff',      // aiff
+  'audio/x-aiff',    // aiff (alternative)
+  'audio/x-caf',     // caf
 ];
 
 /** 允许的音频扩展名 */
-export const ATTACHMENT_AUDIO_EXTENSIONS = ['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'wma', 'opus'];
+export const ATTACHMENT_AUDIO_EXTENSIONS = ['mp3', 'wav', 'ogg', 'oga', 'm4a', 'flac', 'aac', 'wma', 'opus', 'aiff', 'aif', 'caf'];
 
 /** 允许的视频类型 */
 export const ATTACHMENT_VIDEO_TYPES = [
@@ -299,10 +302,13 @@ export const ATTACHMENT_VIDEO_TYPES = [
   'video/x-m4v',      // m4v
   'video/x-ms-wmv',   // wmv
   'video/x-flv',      // flv
+  'video/ogg',        // ogv
+  'video/mpeg',       // mpg/mpeg
+  'video/3gpp',       // 3gp
 ];
 
 /** 允许的视频扩展名 */
-export const ATTACHMENT_VIDEO_EXTENSIONS = ['mp4', 'webm', 'mov', 'avi', 'mkv', 'm4v', 'wmv', 'flv'];
+export const ATTACHMENT_VIDEO_EXTENSIONS = ['mp4', 'webm', 'mov', 'avi', 'mkv', 'm4v', 'wmv', 'flv', 'ogv', 'mpg', 'mpeg', '3gp'];
 
 /** 允许作为附件进入受控 stage/scan 链路的压缩包类型（聊天入口不自动解压） */
 export const ATTACHMENT_ARCHIVE_TYPES = [

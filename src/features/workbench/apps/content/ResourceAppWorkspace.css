@@ -50,7 +50,7 @@
   height: 26px;
   flex: 0 0 26px;
   place-items: center;
-  border: 1px solid hsl(var(--border) / 70%);
+  border: 1px solid hsl(var(--border) / 0.35);
   border-radius: 6px;
   color: hsl(var(--muted-foreground));
   background: hsl(var(--background) / 72%);
@@ -64,16 +64,16 @@
   flex: 0 0 auto;
   align-items: center;
   gap: 6px;
-  border: 1px solid color-mix(in hsl, hsl(var(--border)) 60%, transparent 40%);
+  border: 1px solid hsl(var(--border) / 0.35);
   border-radius: 5px;
   color: hsl(var(--muted-foreground));
 
   /* 玻璃面搜索框：低透明墨色 inset，不用实色灰底 */
-  background: color-mix(in hsl, hsl(var(--foreground)) 5%, transparent 95%);
+  background: color-mix(in hsl, hsl(var(--foreground)) 4%, transparent 96%);
 }
 
 .wb-resource-workspace-search:focus-within {
-  border-color: hsl(var(--border));
+  border-color: hsl(var(--border) / 0.65);
   box-shadow: none;
 }
 
@@ -98,7 +98,7 @@
   display: grid;
   padding: 1px 6px 5px;
   gap: 2px;
-  border-bottom: 1px solid hsl(var(--border) / 70%);
+  border-bottom: 1px solid hsl(var(--border) / 0.35);
 }
 
 .wb-resource-workspace-list-scroll {
@@ -119,7 +119,7 @@
   display: grid;
   padding: 5px 6px;
   flex: 0 0 auto;
-  border-top: 1px solid hsl(var(--border) / 70%);
+  border-top: 1px solid hsl(var(--border) / 0.35);
 }
 
 /* 「设置」禁用原因的内联提示（title 在触屏不可见） */
@@ -132,15 +132,16 @@
 
 .wb-resource-workspace-sidebar-footer {
   display: flex;
-  height: 22px;
+  height: 24px;
   padding: 0 5px 0 9px;
-  flex: 0 0 22px;
+  flex: 0 0 24px;
   align-items: center;
   justify-content: space-between;
-  border-top: 1px solid hsl(var(--border));
+  border-top: 1px solid hsl(var(--border) / 0.35);
   color: hsl(var(--muted-foreground));
-  background: hsl(var(--muted) / 24%);
+  background: transparent;
   font-size: 10px;
+  font-variant-numeric: tabular-nums;
 }
 
 .wb-resource-workspace-sidebar-footer button {

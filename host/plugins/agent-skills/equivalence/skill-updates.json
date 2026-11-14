@@ -1,0 +1,420 @@
+{
+  "domain": "agent-skills",
+  "commands": [
+    "skill_check_updates",
+    "save_setting",
+    "skill_update_from_source"
+  ],
+  "scenarios": [
+    {
+      "id": "skills.check_updates.no_provenance",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "skill_check_updates",
+          "args": {}
+        },
+        {
+          "cmd": "skill_check_updates",
+          "args": {
+            "skillIds": null
+          }
+        },
+        {
+          "cmd": "skill_check_updates",
+          "args": {
+            "skillIds": []
+          }
+        },
+        {
+          "cmd": "skill_check_updates",
+          "args": {
+            "skillIds": [
+              "w0-none"
+            ]
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": []
+      },
+      "normalize": []
+    },
+    {
+      "id": "skills.check_updates.offline_provenance_kinds",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "skill.provenance.w0-zip",
+            "value": "{\"sourceKind\":\"zip\",\"sourceDetail\":\"local.zip\",\"packageSha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}"
+          }
+        },
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "skill.provenance.w0-http",
+            "value": "{\"sourceKind\":\"url\",\"sourceDetail\":\"http://example.invalid/pkg.zip\",\"packageSha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"riskLevel\":\"low\"}"
+          }
+        },
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "skill.provenance.w0-loop",
+            "value": "{\"sourceKind\":\"url\",\"sourceDetail\":\"https://127.0.0.1/pkg.zip\",\"packageSha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}"
+          }
+        },
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "skill.provenance.w0-badurl",
+            "value": "{\"sourceKind\":\"url\",\"sourceDetail\":\"not a url\",\"packageSha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}"
+          }
+        },
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "skill.provenance.w0-tapnohash",
+            "value": "{\"sourceKind\":\"tap\",\"sourceDetail\":\"https://codeload.github.com/a/b/zip/main\",\"packageSha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}"
+          }
+        },
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "skill.provenance.w0-tapnohttps",
+            "value": "{\"sourceKind\":\"tap\",\"sourceDetail\":\"http://x#sub\",\"packageSha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}"
+          }
+        },
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "skill.provenance.w0-mkt-bad",
+            "value": "{\"sourceKind\":\"skill_market\",\"sourceDetail\":\"https://example.com/pkg.zip\",\"packageSha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}"
+          }
+        },
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "skill.provenance.w0-mkt-slug",
+            "value": "{\"sourceKind\":\"skill_market\",\"sourceDetail\":\"\",\"packageSha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"marketSlug\":\"bad slug!\"}"
+          }
+        },
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "skill.provenance.w0-corrupt",
+            "value": "{not json"
+          }
+        },
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "skill.provenance.w0-missingfield",
+            "value": "{\"sourceKind\":\"zip\"}"
+          }
+        },
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "skill.provenance.bad id",
+            "value": "{\"sourceKind\":\"zip\",\"sourceDetail\":\"local.zip\",\"packageSha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}"
+          }
+        },
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "SKILL.PROVENANCE.w0-upper",
+            "value": "{\"sourceKind\":\"zip\",\"sourceDetail\":\"local.zip\",\"packageSha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}"
+          }
+        },
+        {
+          "cmd": "skill_check_updates",
+          "args": {
+            "skillIds": [
+              "w0-zip"
+            ]
+          }
+        },
+        {
+          "cmd": "skill_check_updates",
+          "args": {
+            "skillIds": [
+              "w0-http"
+            ]
+          }
+        },
+        {
+          "cmd": "skill_check_updates",
+          "args": {
+            "skillIds": [
+              "w0-loop"
+            ]
+          }
+        },
+        {
+          "cmd": "skill_check_updates",
+          "args": {
+            "skillIds": [
+              "w0-badurl"
+            ]
+          }
+        },
+        {
+          "cmd": "skill_check_updates",
+          "args": {
+            "skillIds": [
+              "w0-tapnohash"
+            ]
+          }
+        },
+        {
+          "cmd": "skill_check_updates",
+          "args": {
+            "skillIds": [
+              "w0-tapnohttps"
+            ]
+          }
+        },
+        {
+          "cmd": "skill_check_updates",
+          "args": {
+            "skillIds": [
+              "w0-mkt-bad"
+            ]
+          }
+        },
+        {
+          "cmd": "skill_check_updates",
+          "args": {
+            "skillIds": [
+              "w0-mkt-slug"
+            ]
+          }
+        },
+        {
+          "cmd": "skill_check_updates",
+          "args": {
+            "skillIds": [
+              "w0-corrupt",
+              "w0-missingfield",
+              "bad id",
+              "w0-upper"
+            ]
+          }
+        },
+        {
+          "cmd": "skill_check_updates",
+          "args": {
+            "skillIds": [
+              "w0-zip",
+              "w0-zip"
+            ]
+          }
+        },
+        {
+          "cmd": "skill_check_updates",
+          "args": {
+            "skillIds": null
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "skills.update_from_source.errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "skill_update_from_source",
+          "args": {
+            "skillId": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_update_from_source",
+          "args": {
+            "skillId": "   "
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_update_from_source",
+          "args": {
+            "skillId": "技能"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_update_from_source",
+          "args": {
+            "skillId": "a.b"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_update_from_source",
+          "args": {
+            "skillId": " w0-none "
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "skill.provenance.w0-zip",
+            "value": "{\"sourceKind\":\"zip\",\"sourceDetail\":\"local.zip\",\"packageSha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}"
+          }
+        },
+        {
+          "cmd": "skill_update_from_source",
+          "args": {
+            "skillId": "w0-zip"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "skill.provenance.w0-corrupt",
+            "value": "{not json"
+          }
+        },
+        {
+          "cmd": "skill_update_from_source",
+          "args": {
+            "skillId": "w0-corrupt"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "skill.provenance.w0-missingfield",
+            "value": "{\"sourceKind\":\"zip\"}"
+          }
+        },
+        {
+          "cmd": "skill_update_from_source",
+          "args": {
+            "skillId": "w0-missingfield"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "skill.provenance.w0-http",
+            "value": "{\"sourceKind\":\"url\",\"sourceDetail\":\"http://example.invalid/pkg.zip\",\"packageSha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"riskLevel\":\"low\"}"
+          }
+        },
+        {
+          "cmd": "skill_update_from_source",
+          "args": {
+            "skillId": "w0-http"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "skill.provenance.w0-loop",
+            "value": "{\"sourceKind\":\"url\",\"sourceDetail\":\"https://127.0.0.1/pkg.zip\",\"packageSha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}"
+          }
+        },
+        {
+          "cmd": "skill_update_from_source",
+          "args": {
+            "skillId": "w0-loop"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "skill.provenance.w0-badurl",
+            "value": "{\"sourceKind\":\"url\",\"sourceDetail\":\"not a url\",\"packageSha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}"
+          }
+        },
+        {
+          "cmd": "skill_update_from_source",
+          "args": {
+            "skillId": "w0-badurl"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "skill.provenance.w0-tapnohash",
+            "value": "{\"sourceKind\":\"tap\",\"sourceDetail\":\"https://codeload.github.com/a/b/zip/main\",\"packageSha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}"
+          }
+        },
+        {
+          "cmd": "skill_update_from_source",
+          "args": {
+            "skillId": "w0-tapnohash"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "skill.provenance.w0-tapnohttps",
+            "value": "{\"sourceKind\":\"tap\",\"sourceDetail\":\"http://x#sub\",\"packageSha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}"
+          }
+        },
+        {
+          "cmd": "skill_update_from_source",
+          "args": {
+            "skillId": "w0-tapnohttps"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "skill.provenance.w0-mkt-bad",
+            "value": "{\"sourceKind\":\"skill_market\",\"sourceDetail\":\"https://example.com/pkg.zip\",\"packageSha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}"
+          }
+        },
+        {
+          "cmd": "skill_update_from_source",
+          "args": {
+            "skillId": "w0-mkt-bad"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "skill.provenance.w0-mkt-slug",
+            "value": "{\"sourceKind\":\"skill_market\",\"sourceDetail\":\"\",\"packageSha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"marketSlug\":\"bad slug!\"}"
+          }
+        },
+        {
+          "cmd": "skill_update_from_source",
+          "args": {
+            "skillId": "w0-mkt-slug"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

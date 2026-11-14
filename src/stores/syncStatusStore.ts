@@ -236,6 +236,10 @@ export const AUTO_SYNC_LEASE_HELD_MARKERS: readonly string[] = [
 export const AUTO_SYNC_BUSY_MARKERS: readonly string[] = [
   '另一个数据治理任务',
   '已有数据治理操作正在运行',
+  // 跨进程排他锁（`host/platform/storage/backup-common.ts` 的
+  // `acquireProcessOperationLockAt`）：另一个客户端进程正在同步/备份/恢复，
+  // 语义与进程内全局锁被占相同，跳过本轮即可，不计失败。
+  '另一个客户端进程正在执行数据治理操作',
 ];
 
 /**
@@ -353,6 +357,11 @@ export function createAutoSyncScheduler(
     // 定时器触发与用户关闭开关之间存在窗口：触发时再查一次开关
     if (!options.isEnabled()) return;
     if (running) return;
+    // Wake-up may precede network recovery; offline time is not a sync failure.
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      schedule(10_000);
+      return;
+    }
     running = true;
     let outcome: AutoSyncOutcome;
     try {

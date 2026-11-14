@@ -1,0 +1,76 @@
+name: Electron Host checks
+
+on:
+  pull_request:
+    paths:
+      - 'host/**'
+      - 'electron/**'
+      - 'contracts/**'
+      - 'scripts/electron-migration/**'
+      - 'tsconfig.host.json'
+      - 'vitest.host.config.ts'
+      - '.github/workflows/electron-migration.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'host/**'
+      - 'electron/**'
+      - 'contracts/**'
+      - 'scripts/electron-migration/**'
+      - 'tsconfig.host.json'
+      - 'vitest.host.config.ts'
+      - '.github/workflows/electron-migration.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: electron-migration-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gates:
+    name: Host typecheck / tests / contracts / boundaries
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --legacy-peer-deps
+
+      - name: Typecheck host
+        run: npm run typecheck:host
+
+      - name: Host tests (Node ABI; better-sqlite3 tests run in the electron job)
+        run: npm run test:host
+
+      - name: Contracts drift check
+        if: ${{ !cancelled() }}
+        run: npm run contracts:check
+
+      - name: Architecture boundaries
+        if: ${{ !cancelled() }}
+        run: node scripts/electron-migration/boundaries.mjs
+
+  host-electron:
+    name: Host tests in Electron's Node (native modules, Electron ABI)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '24'
+          cache: npm
+      # ELECTRON_MIRROR 只在需要镜像的网络环境（本地 GFW 内）设置；CI 直连官方下载源。
+      - run: npm ci --legacy-peer-deps
+      - name: Rebuild native modules for Electron ABI
+        run: npx @electron/rebuild -f -w better-sqlite3
+      - name: Electron runtime libraries
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends xvfb libnss3 libgbm1 libasound2 libgtk-3-0
+      - name: Host tests (ELECTRON_RUN_AS_NODE)
+        run: xvfb-run -a npm run test:host:electron

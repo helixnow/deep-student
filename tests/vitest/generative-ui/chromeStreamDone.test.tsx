@@ -29,6 +29,14 @@ describe('GenerativeUIChrome stream_done live region', () => {
     expect(live).toHaveTextContent('chrome.stream_done');
     expect(live).not.toHaveTextContent('chrome.streaming');
     expect(live).toHaveClass('sr-only');
+
+    const chrome = container.querySelector('[data-generative-ui-chrome]') as HTMLElement;
+    expect(chrome.className).toContain('rounded-lg');
+    expect(chrome.className).toContain('border-border/50');
+    expect(chrome.className).not.toContain('bg-primary/5');
+    for (const button of container.querySelectorAll('button')) {
+      expect(button.className).toContain('[@media(pointer:coarse)]:!min-h-11');
+    }
   });
 
   it('announces chrome.streaming (not stream_done) while streaming', () => {

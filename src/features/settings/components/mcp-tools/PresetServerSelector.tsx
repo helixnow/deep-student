@@ -191,7 +191,7 @@ export function PresetServerSelector({
                             {(preset.requiresApiKey || preset.authKind === 'api_key' || preset.authKind === 'api_key_or_oauth') && (
                               <span className="text-2xs px-1 py-0.5 rounded bg-warning/10 text-warning font-medium">
                                 <Key className="w-2.5 h-2.5 inline mr-0.5" />
-                                API Key
+                                {t('settings:mcp.api_key')}
                               </span>
                             )}
                             {oauthSupported && isOAuthCapablePreset(preset) && (

@@ -1,0 +1,1587 @@
+{
+  "domain": "vfs",
+  "commands": [
+    "todo_list_today",
+    "todo_list_overdue",
+    "todo_list_upcoming",
+    "todo_list_reminders",
+    "todo_list_all_pending",
+    "todo_list_completed",
+    "todo_search",
+    "todo_stats_overview",
+    "todo_list_all_tags",
+    "todo_list_items_with_stats",
+    "todo_trash_counts"
+  ],
+  "scenarios": [
+    {
+      "id": "vfs.todo_list_today.ok_pending_overdue_paged",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_ensure_inbox",
+          "args": {
+            "title": "收件箱"
+          }
+        },
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 日期"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${1.id}",
+              "title": "WP224 逾期",
+              "dueDate": "2020-01-01",
+              "priority": "low"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${1.id}",
+              "title": "WP224 逾期高",
+              "dueDate": "2020-01-01",
+              "priority": "urgent",
+              "dueTime": "08:00"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${1.id}",
+              "title": "WP224 已完成逾期",
+              "dueDate": "2020-02-01"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${1.id}",
+              "title": "WP224 未来",
+              "dueDate": "2099-12-31",
+              "reminder": "2099-12-31T09:00",
+              "priority": "high"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${1.id}",
+              "title": "WP224 无日期",
+              "reminder": "2030-05-05T07:30"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${1.id}",
+              "title": "WP224 已删逾期",
+              "dueDate": "2020-01-01",
+              "reminder": "2030-05-05T07:00"
+            }
+          }
+        },
+        {
+          "cmd": "todo_toggle_item",
+          "args": {
+            "itemId": "${4.id}"
+          }
+        },
+        {
+          "cmd": "todo_delete_item",
+          "args": {
+            "itemId": "${7.id}"
+          }
+        },
+        {
+          "cmd": "todo_list_today",
+          "args": {
+            "includeCompleted": false
+          }
+        },
+        {
+          "cmd": "todo_list_today",
+          "args": {
+            "includeCompleted": true
+          }
+        },
+        {
+          "cmd": "todo_list_today",
+          "args": {
+            "includeCompleted": false,
+            "limit": 1,
+            "offset": 1
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_list_today.ok_empty",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_list_today",
+          "args": {
+            "includeCompleted": false
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_list_today.err_missing_include_completed",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_list_today",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_list_overdue.ok_pending_vs_completed_paged",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_ensure_inbox",
+          "args": {
+            "title": "收件箱"
+          }
+        },
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 日期"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${1.id}",
+              "title": "WP224 逾期",
+              "dueDate": "2020-01-01",
+              "priority": "low"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${1.id}",
+              "title": "WP224 逾期高",
+              "dueDate": "2020-01-01",
+              "priority": "urgent",
+              "dueTime": "08:00"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${1.id}",
+              "title": "WP224 已完成逾期",
+              "dueDate": "2020-02-01"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${1.id}",
+              "title": "WP224 未来",
+              "dueDate": "2099-12-31",
+              "reminder": "2099-12-31T09:00",
+              "priority": "high"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${1.id}",
+              "title": "WP224 无日期",
+              "reminder": "2030-05-05T07:30"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${1.id}",
+              "title": "WP224 已删逾期",
+              "dueDate": "2020-01-01",
+              "reminder": "2030-05-05T07:00"
+            }
+          }
+        },
+        {
+          "cmd": "todo_toggle_item",
+          "args": {
+            "itemId": "${4.id}"
+          }
+        },
+        {
+          "cmd": "todo_delete_item",
+          "args": {
+            "itemId": "${7.id}"
+          }
+        },
+        {
+          "cmd": "todo_list_overdue",
+          "args": {
+            "includeCompleted": false
+          }
+        },
+        {
+          "cmd": "todo_list_overdue",
+          "args": {
+            "includeCompleted": true
+          }
+        },
+        {
+          "cmd": "todo_list_overdue",
+          "args": {
+            "includeCompleted": true,
+            "limit": 2,
+            "offset": 0
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_list_overdue.err_include_completed_wrong_type",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_list_overdue",
+          "args": {
+            "includeCompleted": "false"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_list_upcoming.ok_window",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_ensure_inbox",
+          "args": {
+            "title": "收件箱"
+          }
+        },
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 日期"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${1.id}",
+              "title": "WP224 逾期",
+              "dueDate": "2020-01-01",
+              "priority": "low"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${1.id}",
+              "title": "WP224 逾期高",
+              "dueDate": "2020-01-01",
+              "priority": "urgent",
+              "dueTime": "08:00"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${1.id}",
+              "title": "WP224 已完成逾期",
+              "dueDate": "2020-02-01"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${1.id}",
+              "title": "WP224 未来",
+              "dueDate": "2099-12-31",
+              "reminder": "2099-12-31T09:00",
+              "priority": "high"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${1.id}",
+              "title": "WP224 无日期",
+              "reminder": "2030-05-05T07:30"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${1.id}",
+              "title": "WP224 已删逾期",
+              "dueDate": "2020-01-01",
+              "reminder": "2030-05-05T07:00"
+            }
+          }
+        },
+        {
+          "cmd": "todo_toggle_item",
+          "args": {
+            "itemId": "${4.id}"
+          }
+        },
+        {
+          "cmd": "todo_delete_item",
+          "args": {
+            "itemId": "${7.id}"
+          }
+        },
+        {
+          "cmd": "todo_list_upcoming",
+          "args": {
+            "days": 7,
+            "includeCompleted": false
+          }
+        },
+        {
+          "cmd": "todo_list_upcoming",
+          "args": {
+            "days": 40000,
+            "includeCompleted": false
+          }
+        },
+        {
+          "cmd": "todo_list_upcoming",
+          "args": {
+            "days": 40000,
+            "includeCompleted": true
+          }
+        },
+        {
+          "cmd": "todo_list_upcoming",
+          "args": {
+            "days": 0,
+            "includeCompleted": false
+          }
+        },
+        {
+          "cmd": "todo_list_upcoming",
+          "args": {
+            "days": -30,
+            "includeCompleted": false
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_list_upcoming.err_days_overflow_panic",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_list_upcoming",
+          "args": {
+            "days": 9007199254740991,
+            "includeCompleted": false
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_list_upcoming.err_days_float",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_list_upcoming",
+          "args": {
+            "days": 1.5,
+            "includeCompleted": false
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_list_upcoming.err_missing_days",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_list_upcoming",
+          "args": {
+            "includeCompleted": false
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_list_reminders.ok_pending_with_reminder",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_ensure_inbox",
+          "args": {
+            "title": "收件箱"
+          }
+        },
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 日期"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${1.id}",
+              "title": "WP224 逾期",
+              "dueDate": "2020-01-01",
+              "priority": "low"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${1.id}",
+              "title": "WP224 逾期高",
+              "dueDate": "2020-01-01",
+              "priority": "urgent",
+              "dueTime": "08:00"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${1.id}",
+              "title": "WP224 已完成逾期",
+              "dueDate": "2020-02-01"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${1.id}",
+              "title": "WP224 未来",
+              "dueDate": "2099-12-31",
+              "reminder": "2099-12-31T09:00",
+              "priority": "high"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${1.id}",
+              "title": "WP224 无日期",
+              "reminder": "2030-05-05T07:30"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${1.id}",
+              "title": "WP224 已删逾期",
+              "dueDate": "2020-01-01",
+              "reminder": "2030-05-05T07:00"
+            }
+          }
+        },
+        {
+          "cmd": "todo_toggle_item",
+          "args": {
+            "itemId": "${4.id}"
+          }
+        },
+        {
+          "cmd": "todo_delete_item",
+          "args": {
+            "itemId": "${7.id}"
+          }
+        },
+        {
+          "cmd": "todo_list_reminders",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_list_reminders.ok_empty",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_list_reminders",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_list_all_pending.ok_cross_list",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_ensure_inbox",
+          "args": {
+            "title": "收件箱"
+          }
+        },
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 日期"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${1.id}",
+              "title": "WP224 逾期",
+              "dueDate": "2020-01-01",
+              "priority": "low"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${1.id}",
+              "title": "WP224 逾期高",
+              "dueDate": "2020-01-01",
+              "priority": "urgent",
+              "dueTime": "08:00"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${1.id}",
+              "title": "WP224 已完成逾期",
+              "dueDate": "2020-02-01"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${1.id}",
+              "title": "WP224 未来",
+              "dueDate": "2099-12-31",
+              "reminder": "2099-12-31T09:00",
+              "priority": "high"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${1.id}",
+              "title": "WP224 无日期",
+              "reminder": "2030-05-05T07:30"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${1.id}",
+              "title": "WP224 已删逾期",
+              "dueDate": "2020-01-01",
+              "reminder": "2030-05-05T07:00"
+            }
+          }
+        },
+        {
+          "cmd": "todo_toggle_item",
+          "args": {
+            "itemId": "${4.id}"
+          }
+        },
+        {
+          "cmd": "todo_delete_item",
+          "args": {
+            "itemId": "${7.id}"
+          }
+        },
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 第二清单"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${10.id}",
+              "title": "WP224 第二清单条目",
+              "priority": "medium"
+            }
+          }
+        },
+        {
+          "cmd": "todo_list_all_pending",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_list_all_pending.ok_empty",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_list_all_pending",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_list_completed.ok_by_list_and_all",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 A"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 B"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 A1"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${1.id}",
+              "title": "WP224 B1"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${1.id}",
+              "title": "WP224 B2 未完成"
+            }
+          }
+        },
+        {
+          "cmd": "todo_toggle_item",
+          "args": {
+            "itemId": "${2.id}"
+          }
+        },
+        {
+          "cmd": "todo_toggle_item",
+          "args": {
+            "itemId": "${3.id}"
+          }
+        },
+        {
+          "cmd": "todo_list_completed",
+          "args": {
+            "listId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "todo_list_completed",
+          "args": {}
+        },
+        {
+          "cmd": "todo_list_completed",
+          "args": {
+            "listId": null
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_list_completed.ok_empty",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_list_completed",
+          "args": {
+            "listId": "tdl_wp224_missing"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_list_completed.err_list_id_wrong_type",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_list_completed",
+          "args": {
+            "listId": 1
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_search.ok_title_description_paged",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 搜索"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 复习物理",
+              "description": "电磁学"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 数学作业",
+              "description": "包含物理建模"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 英语"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 已删物理"
+            }
+          }
+        },
+        {
+          "cmd": "todo_delete_item",
+          "args": {
+            "itemId": "${4.id}"
+          }
+        },
+        {
+          "cmd": "todo_search",
+          "args": {
+            "query": "物理"
+          }
+        },
+        {
+          "cmd": "todo_search",
+          "args": {
+            "query": "  物理  ",
+            "limit": 1,
+            "offset": 1
+          }
+        },
+        {
+          "cmd": "todo_search",
+          "args": {
+            "query": ""
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_search.ok_like_wildcards_escaped",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 搜索"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 完成率 100%"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 snake_case"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 snakeXcase"
+            }
+          }
+        },
+        {
+          "cmd": "todo_search",
+          "args": {
+            "query": "%"
+          }
+        },
+        {
+          "cmd": "todo_search",
+          "args": {
+            "query": "e_c"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_search.err_missing_query",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_search",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_stats_overview.ok_days_default_and_clamp",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_ensure_inbox",
+          "args": {
+            "title": "收件箱"
+          }
+        },
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 日期"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${1.id}",
+              "title": "WP224 逾期",
+              "dueDate": "2020-01-01",
+              "priority": "low"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${1.id}",
+              "title": "WP224 逾期高",
+              "dueDate": "2020-01-01",
+              "priority": "urgent",
+              "dueTime": "08:00"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${1.id}",
+              "title": "WP224 已完成逾期",
+              "dueDate": "2020-02-01"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${1.id}",
+              "title": "WP224 未来",
+              "dueDate": "2099-12-31",
+              "reminder": "2099-12-31T09:00",
+              "priority": "high"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${1.id}",
+              "title": "WP224 无日期",
+              "reminder": "2030-05-05T07:30"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${1.id}",
+              "title": "WP224 已删逾期",
+              "dueDate": "2020-01-01",
+              "reminder": "2030-05-05T07:00"
+            }
+          }
+        },
+        {
+          "cmd": "todo_toggle_item",
+          "args": {
+            "itemId": "${4.id}"
+          }
+        },
+        {
+          "cmd": "todo_delete_item",
+          "args": {
+            "itemId": "${7.id}"
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${1.id}",
+              "title": "WP224 标签",
+              "tags": [
+                "数学",
+                "数学",
+                "exam"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "todo_stats_overview",
+          "args": {}
+        },
+        {
+          "cmd": "todo_stats_overview",
+          "args": {
+            "days": 0
+          }
+        },
+        {
+          "cmd": "todo_stats_overview",
+          "args": {
+            "days": 7
+          }
+        },
+        {
+          "cmd": "todo_stats_overview",
+          "args": {
+            "days": 10000
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_stats_overview.ok_empty",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_stats_overview",
+          "args": {
+            "days": 30
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_stats_overview.err_negative_days",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_stats_overview",
+          "args": {
+            "days": -1
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_list_all_tags.ok_counts_excludes_deleted",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 标签"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 已删清单"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 A",
+              "tags": [
+                "数学",
+                "exam"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 B",
+              "tags": [
+                "数学",
+                "数学"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 C",
+              "tags": [
+                "已删条目标签"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${1.id}",
+              "title": "WP224 D",
+              "tags": [
+                "已删清单标签"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "todo_delete_item",
+          "args": {
+            "itemId": "${4.id}"
+          }
+        },
+        {
+          "cmd": "todo_delete_list",
+          "args": {
+            "listId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "todo_list_all_tags",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_list_all_tags.ok_empty",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_list_all_tags",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_list_items_with_stats.ok_child_counts_paged",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 子任务"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 父"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 子1",
+              "parentId": "${1.id}"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 子2",
+              "parentId": "${1.id}"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 子3 已删",
+              "parentId": "${1.id}"
+            }
+          }
+        },
+        {
+          "cmd": "todo_toggle_item",
+          "args": {
+            "itemId": "${2.id}"
+          }
+        },
+        {
+          "cmd": "todo_delete_item",
+          "args": {
+            "itemId": "${4.id}"
+          }
+        },
+        {
+          "cmd": "todo_list_items_with_stats",
+          "args": {
+            "listId": "${0.id}",
+            "includeCompleted": false
+          }
+        },
+        {
+          "cmd": "todo_list_items_with_stats",
+          "args": {
+            "listId": "${0.id}",
+            "includeCompleted": true
+          }
+        },
+        {
+          "cmd": "todo_list_items_with_stats",
+          "args": {
+            "listId": "${0.id}",
+            "includeCompleted": true,
+            "limit": 1,
+            "offset": 1
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_list_items_with_stats.ok_unknown_list_empty",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_list_items_with_stats",
+          "args": {
+            "listId": "tdl_wp224_missing",
+            "includeCompleted": true
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_list_items_with_stats.err_missing_list_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_list_items_with_stats",
+          "args": {
+            "includeCompleted": true
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo_trash_counts.ok_items_and_lists",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 A"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "WP224 B"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 父"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "WP224 子",
+              "parentId": "${2.id}"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${1.id}",
+              "title": "WP224 X"
+            }
+          }
+        },
+        {
+          "cmd": "todo_trash_counts",
+          "args": {}
+        },
+        {
+          "cmd": "todo_delete_item",
+          "args": {
+            "itemId": "${2.id}"
+          }
+        },
+        {
+          "cmd": "todo_delete_list",
+          "args": {
+            "listId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "todo_trash_counts",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

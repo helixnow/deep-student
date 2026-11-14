@@ -759,10 +759,11 @@ export function getSessionManager(): ISessionManager {
  * 紧急保存所有活跃会话
  * 
  * 在 beforeunload/visibilitychange 时由 main.tsx 调用。
- * 使用同步方式触发保存（因为 beforeunload 不支持异步）。
+ * beforeunload 同步触发；显式退出时等待所有保存完成。
  */
-function emergencySaveAllSessions(): void {
+async function emergencySaveAllSessions(): Promise<void> {
   const activeSessions = sessionManager.getAllSessionIds();
+  const pending: Promise<unknown>[] = [];
   
   console.log(`[SessionManager] 🆘 Emergency save triggered for ${activeSessions.length} sessions`);
   
@@ -776,14 +777,15 @@ function emergencySaveAllSessions(): void {
       }
       const store = sessionManager.get(sessionId);
       if (store) {
-        autoSave.forceImmediateSave(store.getState()).catch((err) => {
+        pending.push(autoSave.forceImmediateSave(store.getState()).catch((err) => {
           console.warn(`[SessionManager] Emergency save failed for ${sessionId}:`, err);
-        });
+        }));
       }
     } catch (err: unknown) {
       console.warn(`[SessionManager] Emergency save error for ${sessionId}:`, err);
     }
   }
+  await Promise.all(pending);
 }
 
 // 注册到 window 对象，供 main.tsx 调用

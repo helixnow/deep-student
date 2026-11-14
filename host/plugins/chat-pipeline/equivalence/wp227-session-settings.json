@@ -1,0 +1,271 @@
+{
+  "domain": "chat-session",
+  "commands": ["chat_v2_reorder_groups", "chat_v2_restore_group", "chat_v2_set_authority_mode", "chat_v2_set_permission_preset", "chat_v2_set_rag_scope", "chat_v2_search_sessions", "chat_v2_resume_agents", "chat_v2_resume_automations", "chat_v2_stage_context_attachments", "chat_v2_rollback_migration"],
+  "scenarios": [
+    {
+      "id": "chat-session.wp227.reorder_groups.basic",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "chat_v2_create_group", "args": { "request": { "name": "物理" } } },
+        { "cmd": "chat_v2_create_group", "args": { "request": { "name": "化学", "workspaceId": null } } },
+        { "cmd": "chat_v2_create_group", "args": { "request": { "name": "生物" } } },
+        { "cmd": "chat_v2_reorder_groups", "args": { "groupIds": ["${2.id}", "${0.id}", "${1.id}"] } },
+        { "cmd": "chat_v2_list_groups", "args": { "status": "active" } },
+        { "cmd": "chat_v2_reorder_groups", "args": { "groupIds": ["${1.id}", "grp_wp227_missing", "${1.id}"] } },
+        { "cmd": "chat_v2_list_groups", "args": { "status": "active" } },
+        { "cmd": "chat_v2_reorder_groups", "args": { "groupIds": [] } },
+        { "cmd": "chat_v2_list_groups", "args": { "status": "active", "workspaceId": null } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "chat-session.wp227.reorder_groups.bad_args",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "chat_v2_reorder_groups", "args": {}, "expect": "error" },
+        { "cmd": "chat_v2_reorder_groups", "args": { "groupIds": null }, "expect": "error" },
+        { "cmd": "chat_v2_reorder_groups", "args": { "groupIds": "grp_a" }, "expect": "error" },
+        { "cmd": "chat_v2_reorder_groups", "args": { "groupIds": [1, 2] }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "chat-session.wp227.restore_group.archived_with_sessions",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "chat_v2_create_group", "args": { "request": { "name": "  期末复习/第一章  " } } },
+        { "cmd": "chat_v2_create_session", "args": { "mode": "chat", "title": "组内会话", "metadata": null, "groupId": "${0.id}" } },
+        { "cmd": "chat_v2_create_session", "args": { "mode": "chat", "title": "组外会话", "metadata": null, "groupId": null } },
+        { "cmd": "chat_v2_update_group", "args": { "groupId": "${0.id}", "request": { "persistStatus": "archived", "workspaceId": null } } },
+        { "cmd": "chat_v2_list_groups", "args": { "status": "archived" } },
+        { "cmd": "chat_v2_restore_group", "args": { "groupId": "${0.id}" } },
+        { "cmd": "chat_v2_list_groups", "args": { "status": "active" } },
+        { "cmd": "chat_v2_get_session", "args": { "sessionId": "${1.id}" } },
+        { "cmd": "chat_v2_restore_group", "args": { "groupId": "${0.id}" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "chat-session.wp227.restore_group.not_found_and_deleted",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "chat_v2_restore_group", "args": { "groupId": "grp_wp227_missing" }, "expect": "error" },
+        { "cmd": "chat_v2_restore_group", "args": { "groupId": "" }, "expect": "error" },
+        { "cmd": "chat_v2_create_group", "args": { "request": { "name": "待删除课题" } } },
+        { "cmd": "chat_v2_update_group", "args": { "groupId": "${2.id}", "request": { "persistStatus": "archived" } } },
+        { "cmd": "chat_v2_delete_group", "args": { "groupId": "${2.id}" } },
+        { "cmd": "chat_v2_restore_group", "args": { "groupId": "${2.id}" } },
+        { "cmd": "chat_v2_restore_group", "args": {}, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "chat-session.wp227.set_authority_mode.transitions",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "chat_v2_create_session", "args": { "mode": "chat", "title": "权限模式", "metadata": { "source": "wp227", "authorityMode": "ask" }, "groupId": null } },
+        { "cmd": "chat_v2_set_authority_mode", "args": { "sessionId": "${0.id}", "mode": "plan" } },
+        { "cmd": "chat_v2_set_authority_mode", "args": { "sessionId": "${0.id}", "mode": " ASK " } },
+        { "cmd": "chat_v2_set_authority_mode", "args": { "sessionId": "${0.id}", "mode": "Craft" } },
+        { "cmd": "chat_v2_get_session", "args": { "sessionId": "${0.id}" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "chat-session.wp227.set_authority_mode.errors",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "chat_v2_create_session", "args": { "mode": "chat", "title": null, "metadata": null, "groupId": null } },
+        { "cmd": "chat_v2_set_authority_mode", "args": { "sessionId": "${0.id}", "mode": "auto" }, "expect": "error" },
+        { "cmd": "chat_v2_set_authority_mode", "args": { "sessionId": "${0.id}", "mode": "" }, "expect": "error" },
+        { "cmd": "chat_v2_set_authority_mode", "args": { "sessionId": "sess_wp227_missing", "mode": "plan" }, "expect": "error" },
+        { "cmd": "chat_v2_set_authority_mode", "args": { "sessionId": "sess_wp227_missing", "mode": "invalid" }, "expect": "error" },
+        { "cmd": "chat_v2_set_authority_mode", "args": { "sessionId": "${0.id}" }, "expect": "error" },
+        { "cmd": "chat_v2_get_session", "args": { "sessionId": "${0.id}" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "chat-session.wp227.set_permission_preset.transitions",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "chat_v2_create_session", "args": { "mode": "chat", "title": "权限档位", "metadata": null, "groupId": null } },
+        { "cmd": "chat_v2_set_permission_preset", "args": { "sessionId": "${0.id}", "preset": "cautious", "confirm": null } },
+        { "cmd": "chat_v2_set_permission_preset", "args": { "sessionId": "${0.id}", "preset": " Full_Access ", "confirm": null } },
+        { "cmd": "chat_v2_set_permission_preset", "args": { "sessionId": "${0.id}", "preset": "danger_full_access", "confirm": true } },
+        { "cmd": "chat_v2_set_permission_preset", "args": { "sessionId": "${0.id}", "preset": "relaxed", "confirm": true } },
+        { "cmd": "chat_v2_set_permission_preset", "args": { "sessionId": "${0.id}", "preset": "cautious" } },
+        { "cmd": "chat_v2_get_session", "args": { "sessionId": "${0.id}" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "chat-session.wp227.set_permission_preset.errors",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "chat_v2_create_session", "args": { "mode": "chat", "title": "危险档确认", "metadata": null, "groupId": null } },
+        { "cmd": "chat_v2_set_permission_preset", "args": { "sessionId": "${0.id}", "preset": "danger_full_access", "confirm": null }, "expect": "error" },
+        { "cmd": "chat_v2_set_permission_preset", "args": { "sessionId": "${0.id}", "preset": "danger_full_access", "confirm": false }, "expect": "error" },
+        { "cmd": "chat_v2_set_permission_preset", "args": { "sessionId": "${0.id}", "preset": "danger_full_access" }, "expect": "error" },
+        { "cmd": "chat_v2_set_permission_preset", "args": { "sessionId": "${0.id}", "preset": "root", "confirm": true }, "expect": "error" },
+        { "cmd": "chat_v2_set_permission_preset", "args": { "sessionId": "sess_wp227_missing", "preset": "cautious", "confirm": null }, "expect": "error" },
+        { "cmd": "chat_v2_set_permission_preset", "args": { "sessionId": "sess_wp227_missing", "preset": "danger_full_access", "confirm": null }, "expect": "error" },
+        { "cmd": "chat_v2_set_permission_preset", "args": { "sessionId": "${0.id}", "preset": "cautious", "confirm": "yes" }, "expect": "error" },
+        { "cmd": "chat_v2_get_session", "args": { "sessionId": "${0.id}" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "chat-session.wp227.set_rag_scope.set_trim_clear",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "chat_v2_create_session", "args": { "mode": "chat", "title": "检索范围", "metadata": null, "groupId": null } },
+        { "cmd": "chat_v2_set_rag_scope", "args": { "sessionId": "${0.id}", "folderIds": [" fld_wp227_a ", "", "fld_wp227_b", "   ", "fld_wp227_a"] } },
+        { "cmd": "chat_v2_get_rag_scope", "args": { "sessionId": "${0.id}" } },
+        { "cmd": "chat_v2_set_rag_scope", "args": { "sessionId": "${0.id}", "folderIds": ["fld_wp227_c"] } },
+        { "cmd": "chat_v2_get_rag_scope", "args": { "sessionId": "${0.id}" } },
+        { "cmd": "chat_v2_set_rag_scope", "args": { "sessionId": "${0.id}", "folderIds": ["  ", ""] } },
+        { "cmd": "chat_v2_get_rag_scope", "args": { "sessionId": "${0.id}" } },
+        { "cmd": "chat_v2_set_rag_scope", "args": { "sessionId": "${0.id}", "folderIds": [] } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "chat-session.wp227.set_rag_scope.errors",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "chat_v2_set_rag_scope", "args": { "sessionId": "sess_wp227_unsaved", "folderIds": ["fld_wp227_a"] }, "expect": "error" },
+        { "cmd": "chat_v2_set_rag_scope", "args": { "sessionId": "sess_wp227_unsaved", "folderIds": [] }, "expect": "error" },
+        { "cmd": "chat_v2_set_rag_scope", "args": { "sessionId": "sess_wp227_unsaved" }, "expect": "error" },
+        { "cmd": "chat_v2_set_rag_scope", "args": { "folderIds": ["fld_wp227_a"] }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "chat-session.wp227.search_sessions.title_like_and_archive",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "chat_v2_create_session", "args": { "mode": "chat", "title": "牛顿第二定律 100% 掌握", "metadata": null, "groupId": null } },
+        { "cmd": "chat_v2_create_session", "args": { "mode": "analysis", "title": "牛顿_笔记", "metadata": null, "groupId": null } },
+        { "cmd": "chat_v2_create_session", "args": { "mode": "chat", "title": "牛顿X笔记", "metadata": null, "groupId": null } },
+        { "cmd": "chat_v2_search_sessions", "args": { "query": "牛顿" } },
+        { "cmd": "chat_v2_search_sessions", "args": { "query": "100%" } },
+        { "cmd": "chat_v2_search_sessions", "args": { "query": "牛顿_笔记", "limit": null, "includeArchived": null } },
+        { "cmd": "chat_v2_search_sessions", "args": { "query": "牛顿", "limit": 1 } },
+        { "cmd": "chat_v2_search_sessions", "args": { "query": "牛顿", "limit": 0 } },
+        { "cmd": "chat_v2_search_sessions", "args": { "query": "牛顿", "limit": 4294967295 } },
+        { "cmd": "chat_v2_archive_session", "args": { "sessionId": "${0.id}" } },
+        { "cmd": "chat_v2_search_sessions", "args": { "query": "牛顿", "includeArchived": false } },
+        { "cmd": "chat_v2_search_sessions", "args": { "query": "牛顿", "includeArchived": true } },
+        { "cmd": "chat_v2_search_sessions", "args": { "query": "" } },
+        { "cmd": "chat_v2_search_sessions", "args": { "query": " \t\n" } },
+        { "cmd": "chat_v2_search_sessions", "args": { "query": "不存在的标题" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "chat-session.wp227.search_sessions.bad_args",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "chat_v2_search_sessions", "args": {}, "expect": "error" },
+        { "cmd": "chat_v2_search_sessions", "args": { "query": "牛顿", "limit": -1 }, "expect": "error" },
+        { "cmd": "chat_v2_search_sessions", "args": { "query": "牛顿", "limit": 4294967296 }, "expect": "error" },
+        { "cmd": "chat_v2_search_sessions", "args": { "query": "牛顿", "limit": 1.5 }, "expect": "error" },
+        { "cmd": "chat_v2_search_sessions", "args": { "query": "牛顿", "includeArchived": "true" }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "chat-session.wp227.kill_switch.resume_cycle",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "chat_v2_kill_switch_status", "args": {} },
+        { "cmd": "chat_v2_resume_agents", "args": {} },
+        { "cmd": "chat_v2_resume_automations", "args": {} },
+        { "cmd": "chat_v2_emergency_stop", "args": { "reason": "user_emergency_stop" } },
+        { "cmd": "chat_v2_resume_automations", "args": {}, "expect": "error" },
+        { "cmd": "chat_v2_kill_switch_status", "args": {} },
+        { "cmd": "chat_v2_resume_agents", "args": {} },
+        { "cmd": "chat_v2_kill_switch_status", "args": {} },
+        { "cmd": "chat_v2_resume_automations", "args": {} },
+        { "cmd": "chat_v2_kill_switch_status", "args": {} },
+        { "cmd": "chat_v2_resume_agents", "args": {} }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "chat-session.wp227.kill_switch.default_reason_trip",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "chat_v2_emergency_stop", "args": { "reason": "   " } },
+        { "cmd": "chat_v2_emergency_stop", "args": {} },
+        { "cmd": "chat_v2_resume_automations", "args": {}, "expect": "error" },
+        { "cmd": "chat_v2_resume_agents", "args": {} },
+        { "cmd": "chat_v2_resume_automations", "args": {} }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "chat-session.wp227.stage_context_attachments.text_and_failure",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "chat_v2_create_session", "args": { "mode": "chat", "title": "附件物化", "metadata": null, "groupId": null } },
+        { "cmd": "vfs_upload_attachment", "args": { "params": { "name": "讲义.txt", "mimeType": "text/plain", "base64Content": "5Lit5paH6ZmE5Lu25YaF5a65CuesrOS6jOihjA==", "attachmentType": "file" } } },
+        { "cmd": "chat_v2_stage_context_attachments", "args": { "sessionId": "${0.id}", "items": [{ "resourceId": "res_wp227_ctx", "sourceId": "${1.sourceId}", "displayName": "讲义副本.txt" }] } },
+        { "cmd": "chat_v2_stage_context_attachments", "args": { "sessionId": "${0.id}", "items": [{ "resourceId": "res_wp227_ctx", "sourceId": "${1.sourceId}", "displayName": "讲义副本.txt" }] } },
+        { "cmd": "chat_v2_stage_context_attachments", "args": { "sessionId": "${0.id}", "items": [{ "resourceId": "res_wp227_ctx2", "sourceId": "${1.sourceId}", "displayName": "  " }, { "resourceId": "res_wp227_missing", "sourceId": "att_wp227_missing", "displayName": "缺失.pdf" }] } },
+        { "cmd": "chat_v2_stage_context_attachments", "args": { "sessionId": "${0.id}", "items": [] } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "chat-session.wp227.stage_context_attachments.errors",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "chat_v2_stage_context_attachments", "args": { "sessionId": "", "items": [] }, "expect": "error" },
+        { "cmd": "chat_v2_stage_context_attachments", "args": { "sessionId": " \t ", "items": [{ "resourceId": "res_x", "sourceId": "att_x", "displayName": "x.pdf" }] }, "expect": "error" },
+        { "cmd": "chat_v2_stage_context_attachments", "args": { "sessionId": "sess_wp227_stage", "items": [{ "resourceId": "res_x", "sourceId": "att_x" }] }, "expect": "error" },
+        { "cmd": "chat_v2_stage_context_attachments", "args": { "sessionId": "sess_wp227_stage" }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "chat-session.wp227.rollback_migration.empty_no_legacy_column",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "chat_v2_check_migration_status", "args": {} },
+        { "cmd": "chat_v2_rollback_migration", "args": {}, "expect": "error" },
+        { "cmd": "chat_v2_check_migration_status", "args": {} }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "chat-session.wp227.rollback_migration.migrate_noop_then_rollback",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "chat_v2_migrate_legacy_chat", "args": {} },
+        { "cmd": "chat_v2_rollback_migration", "args": {} },
+        { "cmd": "chat_v2_check_migration_status", "args": {} }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    }
+  ]
+}

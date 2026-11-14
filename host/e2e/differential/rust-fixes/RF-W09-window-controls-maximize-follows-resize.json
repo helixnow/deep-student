@@ -1,0 +1,29 @@
+{
+  "id": "RF-W09-window-controls-maximize-follows-resize",
+  "kind": "rust-bug",
+  "status": "proposed",
+  "title": "Windows 自绘标题栏的最大化/还原图标跟随窗口实际状态（改为在 tauri://resize 后重新查询 isMaximized）",
+  "rust": {
+    "file": "src/components/WindowControls.tsx",
+    "line": 47,
+    "behavior": "Rust 快照的前端只在挂载时取一次 isMaximized，之后监听 tauri://window-maximized / tauri://window-unmaximized；Tauri 2 没有这两个事件（@tauri-apps/api/event 的内置事件枚举里没有，src-tauri 也不发），所以双击标题栏、Win+↑、拖到屏幕顶端等不经这个按钮的最大化/还原之后，图标和 title/aria-label 一直停在旧状态。代码注释写的是“监听最大化/还原两个离散事件”，与实际不符"
+  },
+  "fix": {
+    "files": ["src/components/WindowControls.tsx"],
+    "behavior": "改为监听 tauri://resize（Tauri 原生会发，Electron 壳 electron/shell/windows.ts 在 BrowserWindow 'resize' 时发），每次重新查询 isMaximized；连续 resize 期间同一时刻只有一次查询在途，期间到达的事件合并为结束后的一次补查。卸载时（含监听尚未注册完就卸载）取消监听。点击按钮的行为不变"
+  },
+  "evidence": "event-emit 门禁把这两个监听列为 unemitted-event（Rust 与 Electron 都没有发射端，A18 复核 W09-19890468 第 3 项逐一核对过 src-tauri 与 Tauri 2.11 事件枚举）。单元测试：修复前组件不注册任何 tauri://resize 监听，模拟壳在最大化后发 resize，图标不变（测试红）；修复后图标和 aria-label 变为“还原”，还原后变回“最大化”。",
+  "userVisible": "Windows 上不通过这个按钮最大化或还原窗口后，右上角按钮的图标与悬停提示会随之切换为“还原”/“最大化”；原来一直保持旧图标。",
+  "dataCompat": "只改前端显示；不改 IPC、落库数据、同步载荷与备份格式。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "src/components/__tests__/WindowControls.maximizeState.test.tsx",
+      "name": "RF-W09-window-controls-maximize-follows-resize: re-reads isMaximized on tauri://resize"
+    },
+    {
+      "file": "src/components/__tests__/WindowControls.maximizeState.test.tsx",
+      "name": "RF-W09-window-controls-maximize-follows-resize: a burst of resize events keeps one query in flight and settles on the last state"
+    }
+  ]
+}

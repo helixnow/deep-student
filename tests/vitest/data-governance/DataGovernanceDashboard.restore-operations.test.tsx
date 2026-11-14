@@ -187,7 +187,7 @@ beforeEach(() => {
 
 /** 导航到备份 Tab 的辅助函数 */
 async function navigateToBackupTab() {
-  const backupTab = await screen.findByRole('button', {
+  const backupTab = await screen.findByRole('tab', {
     name: /^(?:备份|data:governance\.tab_backup)$/i,
   });
   fireEvent.click(backupTab);

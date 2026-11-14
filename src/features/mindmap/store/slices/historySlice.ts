@@ -4,6 +4,8 @@
 
 import type { MindMapHistoryEntry } from '../mindmapStoreTypes';
 import type { MindMapSliceCreator } from '../mindmapStoreRuntime';
+import { syncMindMapAnchorEdges } from '../../utils/excerptIngest';
+import { reconcileMindMapProjectedFlashcards } from '../../interop/mindmapCardProjection';
 
 export const createHistorySlice: MindMapSliceCreator<
   | 'undo'
@@ -59,6 +61,10 @@ export const createHistorySlice: MindMapSliceCreator<
       if (nextState.mindmapId) {
         scheduleDraftPersist();
       }
+      syncMindMapAnchorEdges(nextState.mindmapId, nextState.document.root, {
+        styleId: nextState.styleId,
+      });
+      reconcileMindMapProjectedFlashcards(nextState.mindmapId, nextState.document.root);
 
       debounceSave();
     },
@@ -98,6 +104,10 @@ export const createHistorySlice: MindMapSliceCreator<
       if (nextState.mindmapId) {
         scheduleDraftPersist();
       }
+      syncMindMapAnchorEdges(nextState.mindmapId, nextState.document.root, {
+        styleId: nextState.styleId,
+      });
+      reconcileMindMapProjectedFlashcards(nextState.mindmapId, nextState.document.root);
 
       debounceSave();
     },

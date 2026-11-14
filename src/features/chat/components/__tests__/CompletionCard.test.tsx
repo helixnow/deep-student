@@ -50,9 +50,13 @@ describe('CompletionCard 验收徽章（五种 verdict）', () => {
   });
 
   it('无 finalization 字段的旧完成块不显示徽章（旧行为零变化）', () => {
-    render(<CompletionCard data={{ result: '模型自述完成' }} />);
+    const { container } = render(<CompletionCard data={{ result: '模型自述完成' }} />);
     expect(screen.queryByTestId('completion-finalization-badge')).toBeNull();
     expect(screen.getByText('模型自述完成')).toBeInTheDocument();
+    const card = container.firstElementChild as HTMLElement;
+    expect(card.className).toContain('rounded-lg');
+    expect(card.className).toContain('border-success/25');
+    expect(screen.getByRole('heading', { level: 3 }).className).toContain('text-sm');
   });
 
   it('verdict 为未知字符串时按缺失处理，不显示徽章', () => {

@@ -31,12 +31,12 @@ interface VirtualQuestionListProps {
   estimateSize?: number;
 }
 
-// 语义色 token：跟随主题深浅模式，与做题视图状态配色一致
-const statusColors: Record<QuestionStatus, string> = {
-  new: 'bg-muted text-muted-foreground',
-  in_progress: 'bg-primary/10 text-primary',
-  mastered: 'bg-success/10 text-success',
-  review: 'bg-warning/10 text-warning',
+// 语义色圆点 token：跟随主题深浅模式，与做题视图状态配色一致
+const statusDots: Record<QuestionStatus, string> = {
+  new: 'bg-muted-foreground/35',
+  in_progress: 'bg-primary',
+  mastered: 'bg-success',
+  review: 'bg-warning',
 };
 
 // Status labels are resolved via i18n at render time
@@ -47,12 +47,12 @@ const STATUS_KEYS: Record<QuestionStatus, string> = {
   review: 'review',
 };
 
-// 语义色 token：与 ReviewQuestionsView / QuestionBankEditor 的难度配色一致
-const difficultyColors: Record<Difficulty, string> = {
-  easy: 'text-success',
-  medium: 'text-warning',
-  hard: 'text-destructive/80',
-  very_hard: 'text-destructive',
+// 语义色圆点 token：与做题视图的难度指示一致
+const difficultyDots: Record<Difficulty, string> = {
+  easy: 'bg-success/75',
+  medium: 'bg-warning/75',
+  hard: 'bg-warning',
+  very_hard: 'bg-destructive/80',
 };
 
 export const VirtualQuestionList: React.FC<VirtualQuestionListProps> = ({
@@ -130,15 +130,15 @@ export const VirtualQuestionList: React.FC<VirtualQuestionListProps> = ({
               <div
                 className={cn(
                   // 触屏：整行命中高度 ≥44px（桌面精确指针保持紧凑行高）
-                  'flex items-center gap-3 px-3 py-2 border-b border-border/50 cursor-pointer transition-colors [@media(pointer:coarse)]:min-h-11',
+                  'flex items-center gap-3 rounded-lg px-3 py-2.5 cursor-pointer transition-colors [@media(pointer:coarse)]:min-h-11',
                   isActive
-                    ? 'bg-primary/10 border-l-2 border-l-primary'
-                    : 'hover:bg-[var(--interactive-hover)]',
+                    ? 'bg-primary/[0.06]'
+                    : 'hover:bg-foreground/[0.035]',
                 )}
                 onClick={() => handleSelect(question, virtualItem.index)}
               >
                 {/* 序号 */}
-                <div className="w-8 text-center text-sm text-muted-foreground font-mono">
+                <div className="w-8 text-center font-mono text-xs tabular-nums text-muted-foreground">
                   {virtualItem.index + 1}
                 </div>
 
@@ -155,9 +155,10 @@ export const VirtualQuestionList: React.FC<VirtualQuestionListProps> = ({
                       <XCircle size={14} className="text-destructive flex-shrink-0" />
                     )}
                     {question.difficulty && (
-                      <span className={cn('text-xs', difficultyColors[question.difficulty])}>
-                        ●
-                      </span>
+                      <span
+                        className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', difficultyDots[question.difficulty])}
+                        aria-hidden="true"
+                      />
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground truncate mt-0.5">
@@ -167,9 +168,10 @@ export const VirtualQuestionList: React.FC<VirtualQuestionListProps> = ({
                 </div>
 
                 {/* 状态 */}
-                <Badge className={cn('text-xs flex-shrink-0', statusColors[status])}>
-                  {t(`questionBank.status.${STATUS_KEYS[status]}`)}
-                </Badge>
+                <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground flex-shrink-0">
+                  <span className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', statusDots[status])} aria-hidden="true" />
+                  <span>{t(`questionBank.status.${STATUS_KEYS[status]}`)}</span>
+                </span>
 
                 {/* 操作 */}
                 <div className="flex items-center gap-1 flex-shrink-0">

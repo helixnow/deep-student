@@ -92,7 +92,7 @@ const NativeBilibiliAccountPanel: React.FC<BilibiliAccountPanelProps> = ({ class
   }, []);
 
   const rowClass = cn(
-    'flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[var(--radius-shell-control)] bg-[color:var(--surface-muted)] px-3 py-2 text-xs',
+    'flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-border/35 bg-foreground/[0.025] px-3 py-2 text-xs',
     className,
   );
 

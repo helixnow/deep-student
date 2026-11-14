@@ -8,7 +8,7 @@
 import { Pause, Play, Plus, Robot } from '@phosphor-icons/react';
 import i18next from 'i18next';
 import type { Command } from '../registry/types';
-import { workbenchBus } from '@/features/workbench/core/workbenchBus';
+import { activateWorkbenchApp } from '@/shared/workbenchHost';
 import { useAutomationStore } from '@/features/todo/stores/useAutomationStore';
 import { isMobilePlatform } from '@/utils/platform';
 import {
@@ -28,7 +28,7 @@ export const AUTOMATION_EVENTS = {
 
 /** 与 StatusBar / todoActivation 一致的 showAutomations 打开路径 */
 function openAutomationsWorkspace(): Promise<boolean> {
-  return workbenchBus.activate({
+  return activateWorkbenchApp({
     typeId: 'todo',
     instanceKey: '',
     action: 'showAutomations',

@@ -93,9 +93,22 @@ const emitDebugEvent = (
   }
 };
 
+export interface DroppedPathFile {
+  path: string;
+  name: string;
+  mimeType: string;
+  size: number;
+}
+
 interface UseTauriDragAndDropProps {
   dropZoneRef: React.RefObject<HTMLElement>;
   onDropFiles: (files: File[]) => void;
+  /**
+   * 可选：对已落盘的拖拽路径直接消费（如 WebUI 已通过 /api/files/stage 暂存），
+   * 返回 true 的文件不再调用 `read_file_bytes` 整包回读到前端内存。
+   */
+  canReuseDroppedPath?: (file: DroppedPathFile) => boolean;
+  onDropPaths?: (files: DroppedPathFile[]) => void;
   isEnabled?: boolean;
   /**
    * If true, visibility checks will not fail when any ancestor has
@@ -131,6 +144,8 @@ interface UseTauriDragAndDropProps {
 export const useTauriDragAndDrop = ({
   dropZoneRef,
   onDropFiles,
+  canReuseDroppedPath,
+  onDropPaths,
   isEnabled = true,
   ignorePointerEventsNoneAncestors = false,
   debugZoneId,
@@ -151,11 +166,19 @@ export const useTauriDragAndDrop = ({
     });
   }, [feedbackExtensions]);
   const onDropFilesRef = useRef(onDropFiles);
+  const canReuseDroppedPathRef = useRef(canReuseDroppedPath);
+  const onDropPathsRef = useRef(onDropPaths);
   const zoneId = debugZoneId || 'chat-input-legacy';
 
   useEffect(() => {
     onDropFilesRef.current = onDropFiles;
   }, [onDropFiles]);
+  useEffect(() => {
+    canReuseDroppedPathRef.current = canReuseDroppedPath;
+  }, [canReuseDroppedPath]);
+  useEffect(() => {
+    onDropPathsRef.current = onDropPaths;
+  }, [onDropPaths]);
 
   const isDropZoneVisible = useCallback(() => {
     if (!dropZoneRef.current) return false;
@@ -168,8 +191,11 @@ export const useTauriDragAndDrop = ({
     const style = window.getComputedStyle(el);
     if (style.display === 'none' || style.visibility === 'hidden') return false;
     
-    // 🔥 关键修复：检查祖先容器的 opacity、pointer-events、z-index（页面切换机制）
+    // 🔥 关键修复：检查祖先容器的 opacity、z-index（页面切换机制）
+    // pointer-events 会继承：只看元素自身的计算值。工作台窗口层把父层设为 none、
+    // 再在窗口上恢复 auto，逐级检查祖先会把可见的输入框误判为不可见。
     // ⚠️ 不在这里发送调试事件，避免性能问题
+    if (!ignorePointerEventsNoneAncestors && style.pointerEvents === 'none') return false;
     let current: HTMLElement | null = el;
     while (current) {
       const computedStyle = window.getComputedStyle(current);
@@ -177,9 +203,6 @@ export const useTauriDragAndDrop = ({
       // 检查 opacity（App.tsx 的页面切换使用 opacity: 0 隐藏）
       const opacity = parseFloat(computedStyle.opacity);
       if (opacity === 0) return false;
-      
-      // 检查 pointer-events（除非明确忽略）
-      if (!ignorePointerEventsNoneAncestors && computedStyle.pointerEvents === 'none') return false;
       
       // 检查 z-index（App.tsx 的页面切换使用 z-index: -1）
       const zIndexValue = parseInt(computedStyle.zIndex, 10);
@@ -204,6 +227,7 @@ export const useTauriDragAndDrop = ({
         });
 
         const acceptedFiles: File[] = [];
+        const acceptedPaths: DroppedPathFile[] = [];
         const rejectedFiles: string[] = [];
         let oversizeCount = 0;
         let overLimitCount = 0;
@@ -247,10 +271,22 @@ export const useTauriDragAndDrop = ({
           }
           
           try {
+            // 推断 MIME 类型（使用完整映射表，与 UnifiedDragDropZone 保持一致）
+            const ext = fileName.split('.').pop()?.toLowerCase() || '';
+            const mimeType = EXTENSION_TO_MIME[ext] || 'application/octet-stream';
+            let finalFileName = fileName;
+            if (!finalFileName.includes('.')) {
+              const fallbackExt = isImage ? 'jpg' : 'bin';
+              finalFileName = `${finalFileName}.${fallbackExt}`;
+            }
+
             // 先检查文件大小（避免读入超大文件到内存）
             // 图片即使入口传 200MB 也按 VFS Image 50MB 拦截。
-            if (maxFileSize) {
-              const fileSize = await invoke<number>('get_file_size', { path });
+            let fileSize: number | undefined;
+            if (maxFileSize || onDropPathsRef.current) {
+              fileSize = await invoke<number>('get_file_size', { path });
+            }
+            if (maxFileSize && fileSize !== undefined) {
               const effectiveMaxSize = getAttachmentSizeLimitForFile(fileName, maxFileSize);
               if (fileSize > effectiveMaxSize) {
                 oversizeCount++;
@@ -265,19 +301,27 @@ export const useTauriDragAndDrop = ({
               }
             }
 
+            if (onDropPathsRef.current && fileSize !== undefined) {
+              const candidate: DroppedPathFile = {
+                path,
+                name: finalFileName,
+                mimeType,
+                size: fileSize,
+              };
+              if (!canReuseDroppedPathRef.current || canReuseDroppedPathRef.current(candidate)) {
+                acceptedPaths.push(candidate);
+                emitDebugEvent(zoneId, 'file_converted', 'debug', `复用暂存路径: ${finalFileName}`, {
+                  fileName: finalFileName,
+                  fileSize: `${(fileSize / (1024 * 1024)).toFixed(2)}MB`,
+                  mimeType,
+                });
+                continue;
+              }
+            }
+
             const rawBytes = await invoke<ArrayBuffer>('read_file_bytes', { path });
             const bytes = new Uint8Array(rawBytes);
-            
-            // 推断 MIME 类型（使用完整映射表，与 UnifiedDragDropZone 保持一致）
-            const ext = fileName.split('.').pop()?.toLowerCase() || '';
-            const mimeType = EXTENSION_TO_MIME[ext] || 'application/octet-stream';
-            
-            let finalFileName = fileName;
-            if (!finalFileName.includes('.')) {
-              const fallbackExt = isImage ? 'jpg' : 'bin';
-              finalFileName = `${finalFileName}.${fallbackExt}`;
-            }
-            
+
             const file = new File([bytes], finalFileName, {
               type: mimeType,
               lastModified: Date.now(),
@@ -306,6 +350,17 @@ export const useTauriDragAndDrop = ({
           });
         }
 
+        let uniquePaths: DroppedPathFile[] = [];
+        if (acceptedPaths.length > 0 && onDropPathsRef.current) {
+          const uniqPathMap = new Map<string, DroppedPathFile>();
+          for (const p of acceptedPaths) {
+            const k = `${p.name}_${p.size}_${p.mimeType}`;
+            if (!uniqPathMap.has(k)) uniqPathMap.set(k, p);
+          }
+          uniquePaths = Array.from(uniqPathMap.values());
+          onDropPathsRef.current(uniquePaths);
+        }
+
         if (acceptedFiles.length > 0) {
           // 去重：同一批次内部按 name+size 去重
           const keyOf = (f: File) => `${f.name}_${f.size}_${f.type}`;
@@ -332,8 +387,16 @@ export const useTauriDragAndDrop = ({
           
           onDropFilesRef.current(uniqueFiles);
           
-          emitDebugEvent(zoneId, 'complete', 'info', `文件处理完成: ${uniqueFiles.length} 个成功, ${rejectedFiles.length} 个失败`, {
-            successCount: uniqueFiles.length,
+          emitDebugEvent(zoneId, 'complete', 'info', `文件处理完成: ${uniqueFiles.length + uniquePaths.length} 个成功, ${rejectedFiles.length} 个失败`, {
+            successCount: uniqueFiles.length + uniquePaths.length,
+            rejectedCount: rejectedFiles.length,
+            oversizeCount,
+            overLimitCount,
+            processingTime: `${(performance.now() - startTime).toFixed(2)}ms`,
+          });
+        } else if (uniquePaths.length > 0) {
+          emitDebugEvent(zoneId, 'complete', 'info', `文件处理完成: ${uniquePaths.length} 个成功, ${rejectedFiles.length} 个失败`, {
+            successCount: uniquePaths.length,
             rejectedCount: rejectedFiles.length,
             oversizeCount,
             overLimitCount,

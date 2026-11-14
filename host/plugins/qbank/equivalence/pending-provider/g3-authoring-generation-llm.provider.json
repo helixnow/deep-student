@@ -1,0 +1,31 @@
+{
+  "note": "Responses of the scripted local LLM per scenario id and per request order. Each scenario makes exactly one streaming run_question_json request on A (multimodal import: one call for the single page; generation without references: one call). Request bodies are recorded from A and compared to B; not pre-written here.",
+  "qbank.g3.authgen.pending.source_images_and_crop_from_imported_page": [
+    {
+      "status": 200,
+      "headers": {
+        "content-type": "text/event-stream"
+      },
+      "chunks": [
+        "data: {\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"{\\\"schema_version\\\":2,\\\"mode\\\":\\\"extract\\\",\\\"materials\\\":[],\\\"groups\\\":[],\"}}]}\n\n",
+        "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"\\\"questions\\\":[{\\\"local_id\\\":\\\"q1\\\",\\\"group_id\\\":null,\\\"original_label\\\":\\\"1\\\",\\\"section_path\\\":[],\\\"content\\\":\\\"判断：1 既不是质数也不是合数。\\\",\\\"question_type\\\":\\\"true_false\\\",\\\"options\\\":null,\\\"answer\\\":\\\"true\\\",\\\"answer_origin\\\":\\\"source\\\",\\\"explanation\\\":null,\\\"structured_data\\\":null,\\\"difficulty\\\":\\\"easy\\\",\\\"tags\\\":[],\\\"source_refs\\\":[{\\\"source_id\\\":\\\"s1\\\",\\\"page\\\":1}],\\\"answer_source_refs\\\":[{\\\"source_id\\\":\\\"s1\\\",\\\"page\\\":1}],\\\"figures\\\":[]}],\\\"coverage\\\":[{\\\"source_id\\\":\\\"s1\\\",\\\"page\\\":1,\\\"status\\\":\\\"processed\\\"}],\\\"unmatched_answers\\\":[],\\\"issues\\\":[]}\"}}]}\n\n",
+        "data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n",
+        "data: [DONE]\n\n"
+      ]
+    }
+  ],
+  "qbank.g3.authgen.pending.generate_completed_authoring_draft": [
+    {
+      "status": 200,
+      "headers": {
+        "content-type": "text/event-stream"
+      },
+      "chunks": [
+        "data: {\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"{\\\"schema_version\\\":2,\\\"mode\\\":\\\"generate\\\",\\\"materials\\\":[],\\\"groups\\\":[],\"}}]}\n\n",
+        "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"\\\"questions\\\":[{\\\"local_id\\\":\\\"q1\\\",\\\"group_id\\\":null,\\\"original_label\\\":null,\\\"section_path\\\":[],\\\"content\\\":\\\"下列各数中，哪一个是质数？\\\",\\\"question_type\\\":\\\"single_choice\\\",\\\"options\\\":[{\\\"key\\\":\\\"A\\\",\\\"content\\\":\\\"9\\\"},{\\\"key\\\":\\\"B\\\",\\\"content\\\":\\\"11\\\"},{\\\"key\\\":\\\"C\\\",\\\"content\\\":\\\"15\\\"},{\\\"key\\\":\\\"D\\\",\\\"content\\\":\\\"21\\\"}],\\\"answer\\\":\\\"B\\\",\\\"answer_origin\\\":\\\"generated\\\",\\\"explanation\\\":\\\"11 只有 1 和 11 两个因数，其余各数都能被 3 整除。\\\",\\\"structured_data\\\":null,\\\"difficulty\\\":\\\"easy\\\",\\\"tags\\\":[\\\"质数与合数\\\"],\\\"source_refs\\\":[],\\\"answer_source_refs\\\":[],\\\"figures\\\":[]}],\\\"coverage\\\":[],\\\"unmatched_answers\\\":[],\\\"issues\\\":[]}\"}}]}\n\n",
+        "data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n",
+        "data: [DONE]\n\n"
+      ]
+    }
+  ]
+}

@@ -2,10 +2,8 @@ import type { IStyleTheme } from '../../registry/types';
 import { MINIMAL_DARK_PALETTE } from './palettes';
 
 /**
- * 极简主题 - 暗色变体
+ * Stone 冷灰石韵 - 暗色变体
  *
- * 保持极简风格（纯色、无装饰）。根节点使用半透明主题色底 + 浅字，
- * 避免旧版白底黑字在暗色模式下突兀。
  * 结构参数（fontSize / padding / borderRadius / 边宽）与 minimal 亮色严格镜像。
  */
 export const minimalDarkTheme: IStyleTheme = {
@@ -14,38 +12,42 @@ export const minimalDarkTheme: IStyleTheme = {
   hidden: true,
   node: {
     root: {
-      background: 'hsl(var(--primary) / 0.22)',
-      foreground: 'hsl(var(--foreground))',
-      border: 'transparent',
-      borderRadius: 4,
-      fontSize: 16,
+      background: '#262B35',
+      foreground: '#F1F5F9',
+      border: '1px solid rgba(255, 255, 255, 0.12)',
+      borderRadius: 10,
+      fontSize: 17,
       fontWeight: '600',
-      padding: '8px 16px',
+      padding: '10px 20px',
+      shadow: '0 4px 14px -2px rgba(0, 0, 0, 0.34)',
     },
     branch: {
-      background: 'hsl(var(--secondary))',
-      foreground: 'hsl(var(--foreground) / 0.9)',
-      border: '1px solid hsl(var(--foreground) / 0.12)',
-      borderRadius: 4,
-      fontSize: 14,
-      padding: '6px 12px',
+      background: '#1A1D24',
+      foreground: '#E2E8F0',
+      border: '1px solid rgba(255, 255, 255, 0.08)',
+      borderRadius: 8,
+      fontSize: 15,
+      fontWeight: '500',
+      padding: '7px 14px',
+      shadow: '0 1px 3px 0 rgba(0, 0, 0, 0.22)',
     },
     leaf: {
       background: 'transparent',
-      foreground: 'hsl(var(--foreground) / 0.85)',
+      foreground: '#94A3B8',
       border: 'transparent',
-      borderRadius: 4,
+      borderRadius: 6,
       fontSize: 14,
       padding: '4px 8px',
     },
   },
   edge: {
     type: 'bezier',
-    stroke: 'hsl(var(--foreground) / 0.12)',
-    strokeWidth: 1,
+    stroke: '#333945',
+    strokeActive: '#6B9EBD',
+    strokeWidth: 1.35,
   },
   palette: MINIMAL_DARK_PALETTE,
   canvas: {
-    background: 'var(--mm-bg)',
+    background: '#121316',
   },
 };

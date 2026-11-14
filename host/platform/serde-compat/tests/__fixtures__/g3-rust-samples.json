@@ -1,0 +1,594 @@
+{
+  "schema": "serde-compat-g3-rust-samples/v1",
+  "source": {
+    "file": "ds-g3-DIFF-TRIAGE.json.gz",
+    "sha256": "6f9de78fce589f697388d0a071c21c203f81eeda16af6ca60218232cd1900776",
+    "side": "A (Tauri/Rust)",
+    "at": "2026-11-06T15:40:34.302Z"
+  },
+  "samples": [
+    {
+      "db": "mistakes.db",
+      "table": "anki_decks",
+      "column": "config_json",
+      "rust": "{\"desired_retention\":0.9,\"fsrs_params\":[0.212,1.2931,2.3065,8.2956,6.4133,0.8334,3.0194,0.001,1.8722,0.1666,0.796,1.4835,0.0614,0.2629,1.6483,0.6014,1.8729]}",
+      "provenance": {
+        "group": [
+          "database-sample",
+          "value",
+          "app-data/com.deepstudent.differential/slots/slotA/mistakes.db",
+          "anki_decks",
+          "config_json",
+          null
+        ],
+        "evidence": "fixtures/differential/g3/runs/full/compare/host__plugins__review__equivalence__fsrs-config-and-reads.v0/review.config.legacy-parameter-lengths.compare.json.gz",
+        "evidenceSha256": "81c4738b4ce00897c7dc43fad3583c38656eeb9e0a3c70e00745ca29b9cd1889",
+        "trace": "fixtures/differential/g3/runs/full/A/host__plugins__review__equivalence__fsrs-config-and-reads.v0/000/review.config.legacy-parameter-lengths/A1/trace.json.gz"
+      }
+    },
+    {
+      "db": "mistakes.db",
+      "table": "anki_decks",
+      "column": "config_json",
+      "rust": "{\"desired_retention\":0.9,\"new_per_day\":4294967295,\"learn_ahead_minutes\":60,\"reviews_per_day\":4294967295,\"leech_threshold\":4294967295,\"learning_steps\":[0.5,525600.0],\"relearning_steps\":[525600.0],\"maximum_interval\":36500,\"day_rollover_hour\":23,\"max_answer_seconds\":3600}",
+      "provenance": {
+        "group": [
+          "database-sample",
+          "value",
+          "app-data/com.deepstudent.differential/slots/slotA/mistakes.db",
+          "anki_decks",
+          "config_json",
+          "N-009"
+        ],
+        "evidence": "fixtures/differential/g3/runs/full/compare/host__plugins__review__equivalence__fsrs-config-and-reads.v0/review.config.accepted-boundaries.compare.json.gz",
+        "evidenceSha256": "6f2fe1da0968a28b99726dba35ac9177256ba4c9c8e8e726c305208fd8cb20bf",
+        "trace": "fixtures/differential/g3/runs/full/A/host__plugins__review__equivalence__fsrs-config-and-reads.v0/000/review.config.accepted-boundaries/A1/trace.json.gz"
+      }
+    },
+    {
+      "db": "mistakes.db",
+      "table": "anki_decks",
+      "column": "config_json",
+      "rust": "{\"desired_retention\":0.9,\"new_per_day\":4294967295,\"learn_ahead_minutes\":60,\"reviews_per_day\":4294967295,\"leech_threshold\":4294967295,\"learning_steps\":[0.5,525600.0],\"relearning_steps\":[525600.0],\"maximum_interval\":36500,\"day_rollover_hour\":23,\"max_answer_seconds\":3600,\"memory_state_version\":\"fsrs-rs-6.6\"}",
+      "provenance": {
+        "group": [
+          "database",
+          "fsrs_get_due"
+        ],
+        "evidence": "fixtures/differential/g3/runs/full/compare/host__plugins__review__equivalence__fsrs-config-and-reads.v0/review.config.accepted-boundaries.compare.json.gz",
+        "evidenceSha256": "6f2fe1da0968a28b99726dba35ac9177256ba4c9c8e8e726c305208fd8cb20bf",
+        "trace": "fixtures/differential/g3/runs/full/A/host__plugins__review__equivalence__fsrs-config-and-reads.v0/000/review.config.accepted-boundaries/A1/trace.json.gz"
+      }
+    },
+    {
+      "db": "mistakes.db",
+      "table": "custom_anki_templates",
+      "column": "field_extraction_rules_json",
+      "rust": "{\"Back\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"答案\"},\"Front\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"问题\"}}",
+      "provenance": {
+        "group": [
+          "database",
+          "create_custom_template"
+        ],
+        "evidence": "fixtures/differential/g3/runs/full/compare/host__plugins__anki__equivalence__cards-crud/anki.cards.library-list-filters-and-pagination.compare.json.gz",
+        "evidenceSha256": "cea8df55c95180fca1f939a39b61e3ead6e0bd565138b991418cae21611830ce",
+        "trace": "fixtures/differential/g3/runs/full/A/host__plugins__anki__equivalence__cards-crud/000/anki.cards.library-list-filters-and-pagination/A1/trace.json.gz"
+      }
+    },
+    {
+      "db": "mistakes.db",
+      "table": "custom_anki_templates",
+      "column": "field_extraction_rules_json",
+      "rust": "{\"Extra\":{\"field_type\":\"Text\",\"is_required\":false,\"default_value\":null,\"validation_pattern\":null,\"description\":\"补充\"},\"Text\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"含 {{c1::...}} 的正文\"}}",
+      "provenance": {
+        "group": [
+          "database",
+          "export_multi_template_apkg"
+        ],
+        "evidence": "fixtures/differential/g3/runs/full/compare/host__plugins__anki__equivalence__exports-imports/anki.export.multi-template-output-paths.compare.json.gz",
+        "evidenceSha256": "8a1ea9bff25c03b73c6e4db8d4c524718e399f0a6e01ca80bb7281958a52908f",
+        "trace": "fixtures/differential/g3/runs/full/A/host__plugins__anki__equivalence__exports-imports/000/anki.export.multi-template-output-paths/A1/trace.json.gz"
+      }
+    },
+    {
+      "db": "mistakes.db",
+      "table": "custom_anki_templates",
+      "column": "field_extraction_rules_json",
+      "rust": "{\"Source\":{\"field_type\":\"Text\",\"is_required\":false,\"default_value\":null,\"validation_pattern\":null,\"description\":\"页眉出处/章节（≤30字）\",\"max_length\":30},\"Question\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"正文陈述与问题（≤200字）\",\"max_length\":200},\"Answer\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"脚注中的答案/解释，可多句（≤600字）\",\"max_length\":600}}",
+      "provenance": {
+        "group": [
+          "database",
+          "list_anki_library_cards"
+        ],
+        "evidence": "fixtures/differential/g3/runs/full/compare/host__plugins__anki__equivalence__cards-crud/anki.cards.builtin-template-referenced-delete-deactivates.compare.json.gz",
+        "evidenceSha256": "d34e01e3b3908e828c6ffa6933f0311418ff2a57f96b4b50bd0bf8683ac80f01",
+        "trace": "fixtures/differential/g3/runs/full/A/host__plugins__anki__equivalence__cards-crud/000/anki.cards.builtin-template-referenced-delete-deactivates/A1/trace.json.gz"
+      }
+    },
+    {
+      "db": "mistakes.db",
+      "table": "custom_anki_templates",
+      "column": "field_extraction_rules_json",
+      "rust": "{\"Question\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"正文陈述与问题（≤200字）\",\"max_length\":200},\"Source\":{\"field_type\":\"Text\",\"is_required\":false,\"default_value\":null,\"validation_pattern\":null,\"description\":\"页眉出处/章节（≤30字）\",\"max_length\":30},\"Answer\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"脚注中的答案/解释，可多句（≤600字）\",\"max_length\":600}}",
+      "provenance": {
+        "group": [
+          "database",
+          "start_enhanced_document_processing"
+        ],
+        "evidence": "fixtures/differential/g3/runs/full/compare/host__plugins__anki__equivalence__generation/anki.generate.selection-source-ref-single-template.compare.json.gz",
+        "evidenceSha256": "f49f183763d7996b1f507965475f96162e17fba20b37387ad7ce27b2c398c305",
+        "trace": "fixtures/differential/g3/runs/full/A/host__plugins__anki__equivalence__generation/000/anki.generate.selection-source-ref-single-template/A1/trace.json.gz"
+      }
+    },
+    {
+      "db": "mistakes.db",
+      "table": "custom_anki_templates",
+      "column": "field_extraction_rules_json",
+      "rust": "{\"Extra\":{\"field_type\":\"Text\",\"is_required\":false,\"default_value\":null,\"validation_pattern\":null,\"description\":\"补充说明：一句（≤80字）\",\"max_length\":80},\"Header\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"标题/小节（≤16字）\",\"max_length\":16},\"Text\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"1–2 句完整陈述，含 {{c1::...}} 挖空（≤200字）\",\"max_length\":200}}",
+      "provenance": {
+        "group": [
+          "database",
+          "list_anki_library_cards"
+        ],
+        "evidence": "fixtures/differential/g3/runs/full/compare/host__plugins__anki__equivalence__cards-crud/anki.cards.builtin-template-referenced-delete-deactivates.compare.json.gz",
+        "evidenceSha256": "d34e01e3b3908e828c6ffa6933f0311418ff2a57f96b4b50bd0bf8683ac80f01",
+        "trace": "fixtures/differential/g3/runs/full/A/host__plugins__anki__equivalence__cards-crud/000/anki.cards.builtin-template-referenced-delete-deactivates/A1/trace.json.gz"
+      }
+    },
+    {
+      "db": "mistakes.db",
+      "table": "custom_anki_templates",
+      "column": "field_extraction_rules_json",
+      "rust": "{\"Section\":{\"field_type\":\"Text\",\"is_required\":false,\"default_value\":null,\"validation_pattern\":null,\"description\":\"科目/试卷标题（≤24字）\",\"max_length\":24},\"Extra\":{\"field_type\":\"Text\",\"is_required\":false,\"default_value\":null,\"validation_pattern\":null,\"description\":\"评注或一条补充公式（≤80字）\",\"max_length\":80},\"Text\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"包含 {{c1::...}} 填空标记的完整陈述（≤250字）\",\"max_length\":250}}",
+      "provenance": {
+        "group": [
+          "database",
+          "list_anki_library_cards"
+        ],
+        "evidence": "fixtures/differential/g3/runs/full/compare/host__plugins__anki__equivalence__cards-crud/anki.cards.builtin-template-referenced-delete-deactivates.compare.json.gz",
+        "evidenceSha256": "d34e01e3b3908e828c6ffa6933f0311418ff2a57f96b4b50bd0bf8683ac80f01",
+        "trace": "fixtures/differential/g3/runs/full/A/host__plugins__anki__equivalence__cards-crud/000/anki.cards.builtin-template-referenced-delete-deactivates/A1/trace.json.gz"
+      }
+    },
+    {
+      "db": "mistakes.db",
+      "table": "custom_anki_templates",
+      "column": "field_extraction_rules_json",
+      "rust": "{\"Text\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"1–3 句完整陈述，含 {{c1::...}} 挖空，只挖关键词（≤250字）\",\"max_length\":250},\"Subject\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"学科/主题（≤16字）\",\"max_length\":16},\"Extra\":{\"field_type\":\"Text\",\"is_required\":false,\"default_value\":null,\"validation_pattern\":null,\"description\":\"补充说明：1–2 句（≤120字）\",\"max_length\":120}}",
+      "provenance": {
+        "group": [
+          "database",
+          "list_anki_library_cards"
+        ],
+        "evidence": "fixtures/differential/g3/runs/full/compare/host__plugins__anki__equivalence__cards-crud/anki.cards.builtin-template-referenced-delete-deactivates.compare.json.gz",
+        "evidenceSha256": "d34e01e3b3908e828c6ffa6933f0311418ff2a57f96b4b50bd0bf8683ac80f01",
+        "trace": "fixtures/differential/g3/runs/full/A/host__plugins__anki__equivalence__cards-crud/000/anki.cards.builtin-template-referenced-delete-deactivates/A1/trace.json.gz"
+      }
+    },
+    {
+      "db": "mistakes.db",
+      "table": "custom_anki_templates",
+      "column": "field_extraction_rules_json",
+      "rust": "{\"Extra\":{\"field_type\":\"Text\",\"is_required\":false,\"default_value\":null,\"validation_pattern\":null,\"description\":\"补充说明：1–2 句（≤120字）\",\"max_length\":120},\"Subject\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"学科/主题（≤16字）\",\"max_length\":16},\"Text\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"1–3 句完整陈述，含 {{c1::...}} 挖空，只挖关键词（≤250字）\",\"max_length\":250}}",
+      "provenance": {
+        "group": [
+          "database",
+          "start_enhanced_document_processing"
+        ],
+        "evidence": "fixtures/differential/g3/runs/full/compare/host__plugins__anki__equivalence__generation/anki.generate.selection-source-ref-single-template.compare.json.gz",
+        "evidenceSha256": "f49f183763d7996b1f507965475f96162e17fba20b37387ad7ce27b2c398c305",
+        "trace": "fixtures/differential/g3/runs/full/A/host__plugins__anki__equivalence__generation/000/anki.generate.selection-source-ref-single-template/A1/trace.json.gz"
+      }
+    },
+    {
+      "db": "mistakes.db",
+      "table": "custom_anki_templates",
+      "column": "field_extraction_rules_json",
+      "rust": "{\"Quote\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"引用/名言原句（≤80字）\",\"max_length\":80},\"Author\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"作者名（≤20字）\",\"max_length\":20},\"Prompt\":{\"field_type\":\"Text\",\"is_required\":false,\"default_value\":null,\"validation_pattern\":null,\"description\":\"提示语（≤20字）\",\"max_length\":20},\"Source\":{\"field_type\":\"Text\",\"is_required\":false,\"default_value\":null,\"validation_pattern\":null,\"description\":\"出处/来源（≤30字）\",\"max_length\":30}}",
+      "provenance": {
+        "group": [
+          "database",
+          "list_anki_library_cards"
+        ],
+        "evidence": "fixtures/differential/g3/runs/full/compare/host__plugins__anki__equivalence__cards-crud/anki.cards.builtin-template-referenced-delete-deactivates.compare.json.gz",
+        "evidenceSha256": "d34e01e3b3908e828c6ffa6933f0311418ff2a57f96b4b50bd0bf8683ac80f01",
+        "trace": "fixtures/differential/g3/runs/full/A/host__plugins__anki__equivalence__cards-crud/000/anki.cards.builtin-template-referenced-delete-deactivates/A1/trace.json.gz"
+      }
+    },
+    {
+      "db": "mistakes.db",
+      "table": "custom_anki_templates",
+      "column": "field_extraction_rules_json",
+      "rust": "{\"Name\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"名称/读法（≤30字）\",\"max_length\":30},\"Field\":{\"field_type\":\"Text\",\"is_required\":false,\"default_value\":null,\"validation_pattern\":null,\"description\":\"所属领域（≤16字）\",\"max_length\":16},\"Symbol\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"仅符号/缩写/记号，大字显示（≤12字符）\",\"max_length\":12},\"Detail\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"完整定义与说明（≤200字）\",\"max_length\":200}}",
+      "provenance": {
+        "group": [
+          "database",
+          "list_anki_library_cards"
+        ],
+        "evidence": "fixtures/differential/g3/runs/full/compare/host__plugins__anki__equivalence__cards-crud/anki.cards.builtin-template-referenced-delete-deactivates.compare.json.gz",
+        "evidenceSha256": "d34e01e3b3908e828c6ffa6933f0311418ff2a57f96b4b50bd0bf8683ac80f01",
+        "trace": "fixtures/differential/g3/runs/full/A/host__plugins__anki__equivalence__cards-crud/000/anki.cards.builtin-template-referenced-delete-deactivates/A1/trace.json.gz"
+      }
+    },
+    {
+      "db": "mistakes.db",
+      "table": "custom_anki_templates",
+      "column": "field_extraction_rules_json",
+      "rust": "{\"Field\":{\"field_type\":\"Text\",\"is_required\":false,\"default_value\":null,\"validation_pattern\":null,\"description\":\"所属领域（≤16字）\",\"max_length\":16},\"Symbol\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"仅符号/缩写/记号，大字显示（≤12字符）\",\"max_length\":12},\"Detail\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"完整定义与说明（≤200字）\",\"max_length\":200},\"Name\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"名称/读法（≤30字）\",\"max_length\":30}}",
+      "provenance": {
+        "group": [
+          "database",
+          "start_enhanced_document_processing"
+        ],
+        "evidence": "fixtures/differential/g3/runs/full/compare/host__plugins__anki__equivalence__generation/anki.generate.selection-source-ref-single-template.compare.json.gz",
+        "evidenceSha256": "f49f183763d7996b1f507965475f96162e17fba20b37387ad7ce27b2c398c305",
+        "trace": "fixtures/differential/g3/runs/full/A/host__plugins__anki__equivalence__generation/000/anki.generate.selection-source-ref-single-template/A1/trace.json.gz"
+      }
+    },
+    {
+      "db": "mistakes.db",
+      "table": "custom_anki_templates",
+      "column": "field_extraction_rules_json",
+      "rust": "{\"Back\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"正文内容（≤200字）\",\"max_length\":200},\"Collection\":{\"field_type\":\"Text\",\"is_required\":false,\"default_value\":null,\"validation_pattern\":null,\"description\":\"集合/栏目（≤16字）\",\"max_length\":16},\"Front\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"标题词，大字显示，不写问句（≤16字）\",\"max_length\":16},\"Sub\":{\"field_type\":\"Text\",\"is_required\":false,\"default_value\":null,\"validation_pattern\":null,\"description\":\"副标题/次级信息（≤30字）\",\"max_length\":30}}",
+      "provenance": {
+        "group": [
+          "database",
+          "list_anki_library_cards"
+        ],
+        "evidence": "fixtures/differential/g3/runs/full/compare/host__plugins__anki__equivalence__cards-crud/anki.cards.builtin-template-referenced-delete-deactivates.compare.json.gz",
+        "evidenceSha256": "d34e01e3b3908e828c6ffa6933f0311418ff2a57f96b4b50bd0bf8683ac80f01",
+        "trace": "fixtures/differential/g3/runs/full/A/host__plugins__anki__equivalence__cards-crud/000/anki.cards.builtin-template-referenced-delete-deactivates/A1/trace.json.gz"
+      }
+    },
+    {
+      "db": "mistakes.db",
+      "table": "custom_anki_templates",
+      "column": "field_extraction_rules_json",
+      "rust": "{\"Note\":{\"field_type\":\"Text\",\"is_required\":false,\"default_value\":null,\"validation_pattern\":null,\"description\":\"页边批注：例证/联想一句（≤60字）\",\"max_length\":60},\"Definition\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"术语释义（≤200字）\",\"max_length\":200},\"Term\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"核心术语/概念名（≤30字）\",\"max_length\":30},\"Source\":{\"field_type\":\"Text\",\"is_required\":false,\"default_value\":null,\"validation_pattern\":null,\"description\":\"参考文献（≤40字）\",\"max_length\":40}}",
+      "provenance": {
+        "group": [
+          "database",
+          "list_anki_library_cards"
+        ],
+        "evidence": "fixtures/differential/g3/runs/full/compare/host__plugins__anki__equivalence__cards-crud/anki.cards.builtin-template-referenced-delete-deactivates.compare.json.gz",
+        "evidenceSha256": "d34e01e3b3908e828c6ffa6933f0311418ff2a57f96b4b50bd0bf8683ac80f01",
+        "trace": "fixtures/differential/g3/runs/full/A/host__plugins__anki__equivalence__cards-crud/000/anki.cards.builtin-template-referenced-delete-deactivates/A1/trace.json.gz"
+      }
+    },
+    {
+      "db": "mistakes.db",
+      "table": "custom_anki_templates",
+      "column": "field_extraction_rules_json",
+      "rust": "{\"Front\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"标题词，大字显示，不写问句（≤16字）\",\"max_length\":16},\"Back\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"正文内容（≤200字）\",\"max_length\":200},\"Sub\":{\"field_type\":\"Text\",\"is_required\":false,\"default_value\":null,\"validation_pattern\":null,\"description\":\"副标题/次级信息（≤30字）\",\"max_length\":30},\"Collection\":{\"field_type\":\"Text\",\"is_required\":false,\"default_value\":null,\"validation_pattern\":null,\"description\":\"集合/栏目（≤16字）\",\"max_length\":16}}",
+      "provenance": {
+        "group": [
+          "database",
+          "start_enhanced_document_processing"
+        ],
+        "evidence": "fixtures/differential/g3/runs/full/compare/host__plugins__anki__equivalence__generation/anki.generate.selection-source-ref-single-template.compare.json.gz",
+        "evidenceSha256": "f49f183763d7996b1f507965475f96162e17fba20b37387ad7ce27b2c398c305",
+        "trace": "fixtures/differential/g3/runs/full/A/host__plugins__anki__equivalence__generation/000/anki.generate.selection-source-ref-single-template/A1/trace.json.gz"
+      }
+    },
+    {
+      "db": "mistakes.db",
+      "table": "custom_anki_templates",
+      "column": "field_extraction_rules_json",
+      "rust": "{\"CommonName\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"中文名/通用名（≤16字）\",\"max_length\":16},\"Specimen\":{\"field_type\":\"Text\",\"is_required\":false,\"default_value\":null,\"validation_pattern\":null,\"description\":\"标本编号/分类（≤20字）\",\"max_length\":20},\"Desc\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"描述说明：2–3 句（≤150字）\",\"max_length\":150},\"Name\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"学名/英文名，大字显示（≤30字符）\",\"max_length\":30}}",
+      "provenance": {
+        "group": [
+          "database",
+          "list_anki_library_cards"
+        ],
+        "evidence": "fixtures/differential/g3/runs/full/compare/host__plugins__anki__equivalence__cards-crud/anki.cards.builtin-template-referenced-delete-deactivates.compare.json.gz",
+        "evidenceSha256": "d34e01e3b3908e828c6ffa6933f0311418ff2a57f96b4b50bd0bf8683ac80f01",
+        "trace": "fixtures/differential/g3/runs/full/A/host__plugins__anki__equivalence__cards-crud/000/anki.cards.builtin-template-referenced-delete-deactivates/A1/trace.json.gz"
+      }
+    },
+    {
+      "db": "mistakes.db",
+      "table": "custom_anki_templates",
+      "column": "field_extraction_rules_json",
+      "rust": "{\"Desc\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"描述说明：2–3 句（≤150字）\",\"max_length\":150},\"CommonName\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"中文名/通用名（≤16字）\",\"max_length\":16},\"Name\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"学名/英文名，大字显示（≤30字符）\",\"max_length\":30},\"Specimen\":{\"field_type\":\"Text\",\"is_required\":false,\"default_value\":null,\"validation_pattern\":null,\"description\":\"标本编号/分类（≤20字）\",\"max_length\":20}}",
+      "provenance": {
+        "group": [
+          "database",
+          "start_enhanced_document_processing"
+        ],
+        "evidence": "fixtures/differential/g3/runs/full/compare/host__plugins__anki__equivalence__generation/anki.generate.selection-source-ref-single-template.compare.json.gz",
+        "evidenceSha256": "f49f183763d7996b1f507965475f96162e17fba20b37387ad7ce27b2c398c305",
+        "trace": "fixtures/differential/g3/runs/full/A/host__plugins__anki__equivalence__generation/000/anki.generate.selection-source-ref-single-template/A1/trace.json.gz"
+      }
+    },
+    {
+      "db": "mistakes.db",
+      "table": "custom_anki_templates",
+      "column": "field_extraction_rules_json",
+      "rust": "{\"Question\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"核心问题（≤120字）\",\"max_length\":120},\"Source\":{\"field_type\":\"Text\",\"is_required\":false,\"default_value\":null,\"validation_pattern\":null,\"description\":\"出处/作者/年份（≤40字）\",\"max_length\":40},\"Series\":{\"field_type\":\"Text\",\"is_required\":false,\"default_value\":null,\"validation_pattern\":null,\"description\":\"系列/学科标签（≤20字）\",\"max_length\":20},\"Answer\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"答案与阐述，可多句；证明写关键步骤（≤600字）\",\"max_length\":600}}",
+      "provenance": {
+        "group": [
+          "database",
+          "list_anki_library_cards"
+        ],
+        "evidence": "fixtures/differential/g3/runs/full/compare/host__plugins__anki__equivalence__cards-crud/anki.cards.builtin-template-referenced-delete-deactivates.compare.json.gz",
+        "evidenceSha256": "d34e01e3b3908e828c6ffa6933f0311418ff2a57f96b4b50bd0bf8683ac80f01",
+        "trace": "fixtures/differential/g3/runs/full/A/host__plugins__anki__equivalence__cards-crud/000/anki.cards.builtin-template-referenced-delete-deactivates/A1/trace.json.gz"
+      }
+    },
+    {
+      "db": "mistakes.db",
+      "table": "custom_anki_templates",
+      "column": "field_extraction_rules_json",
+      "rust": "{\"Series\":{\"field_type\":\"Text\",\"is_required\":false,\"default_value\":null,\"validation_pattern\":null,\"description\":\"系列/学科标签（≤20字）\",\"max_length\":20},\"Source\":{\"field_type\":\"Text\",\"is_required\":false,\"default_value\":null,\"validation_pattern\":null,\"description\":\"出处/作者/年份（≤40字）\",\"max_length\":40},\"Question\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"核心问题（≤120字）\",\"max_length\":120},\"Answer\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"答案与阐述，可多句；证明写关键步骤（≤600字）\",\"max_length\":600}}",
+      "provenance": {
+        "group": [
+          "database",
+          "start_enhanced_document_processing"
+        ],
+        "evidence": "fixtures/differential/g3/runs/full/compare/host__plugins__anki__equivalence__generation/anki.generate.selection-source-ref-single-template.compare.json.gz",
+        "evidenceSha256": "f49f183763d7996b1f507965475f96162e17fba20b37387ad7ce27b2c398c305",
+        "trace": "fixtures/differential/g3/runs/full/A/host__plugins__anki__equivalence__generation/000/anki.generate.selection-source-ref-single-template/A1/trace.json.gz"
+      }
+    },
+    {
+      "db": "mistakes.db",
+      "table": "custom_anki_templates",
+      "column": "field_extraction_rules_json",
+      "rust": "{\"Question\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"定理/公式名或一句短问（≤30字）\",\"max_length\":30},\"Expl\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"一句话说明含义或符号（≤60字）\",\"max_length\":60},\"ID\":{\"field_type\":\"Text\",\"is_required\":false,\"default_value\":null,\"validation_pattern\":null,\"description\":\"索引/编号（≤12字符）\",\"max_length\":12},\"Formula\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"仅一条公式或短表达式，不写文字/证明/多条公式（≤60字符）\",\"max_length\":60}}",
+      "provenance": {
+        "group": [
+          "database-sample",
+          "value",
+          "app-data/com.deepstudent.differential/slots/slotA/mistakes.db",
+          "custom_anki_templates",
+          "field_extraction_rules_json",
+          "N-009"
+        ],
+        "evidence": "fixtures/differential/g3/runs/full/compare/host__plugins__anki__equivalence__cards-crud/anki.cards.builtin-template-referenced-delete-deactivates.compare.json.gz",
+        "evidenceSha256": "d34e01e3b3908e828c6ffa6933f0311418ff2a57f96b4b50bd0bf8683ac80f01",
+        "trace": "fixtures/differential/g3/runs/full/A/host__plugins__anki__equivalence__cards-crud/000/anki.cards.builtin-template-referenced-delete-deactivates/A1/trace.json.gz"
+      }
+    },
+    {
+      "db": "mistakes.db",
+      "table": "custom_anki_templates",
+      "column": "field_extraction_rules_json",
+      "rust": "{\"ID\":{\"field_type\":\"Text\",\"is_required\":false,\"default_value\":null,\"validation_pattern\":null,\"description\":\"索引/编号（≤12字符）\",\"max_length\":12},\"Question\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"定理/公式名或一句短问（≤30字）\",\"max_length\":30},\"Expl\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"一句话说明含义或符号（≤60字）\",\"max_length\":60},\"Formula\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"仅一条公式或短表达式，不写文字/证明/多条公式（≤60字符）\",\"max_length\":60}}",
+      "provenance": {
+        "group": [
+          "database",
+          "start_enhanced_document_processing"
+        ],
+        "evidence": "fixtures/differential/g3/runs/full/compare/host__plugins__anki__equivalence__generation/anki.generate.selection-source-ref-single-template.compare.json.gz",
+        "evidenceSha256": "f49f183763d7996b1f507965475f96162e17fba20b37387ad7ce27b2c398c305",
+        "trace": "fixtures/differential/g3/runs/full/A/host__plugins__anki__equivalence__generation/000/anki.generate.selection-source-ref-single-template/A1/trace.json.gz"
+      }
+    },
+    {
+      "db": "mistakes.db",
+      "table": "custom_anki_templates",
+      "column": "field_extraction_rules_json",
+      "rust": "{\"Phonetic\":{\"field_type\":\"Text\",\"is_required\":false,\"default_value\":null,\"validation_pattern\":null,\"description\":\"音标（≤30字符）\",\"max_length\":30},\"Definition\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"简明释义（≤80字）\",\"max_length\":80},\"Etym\":{\"field_type\":\"Text\",\"is_required\":false,\"default_value\":null,\"validation_pattern\":null,\"description\":\"词源/出处（≤80字）\",\"max_length\":80},\"Word\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"单词/词条：单个词或短语（≤24字符）\",\"max_length\":24},\"Pos\":{\"field_type\":\"Text\",\"is_required\":false,\"default_value\":null,\"validation_pattern\":null,\"description\":\"词性缩写（≤10字符）\",\"max_length\":10}}",
+      "provenance": {
+        "group": [
+          "database",
+          "list_anki_library_cards"
+        ],
+        "evidence": "fixtures/differential/g3/runs/full/compare/host__plugins__anki__equivalence__cards-crud/anki.cards.builtin-template-referenced-delete-deactivates.compare.json.gz",
+        "evidenceSha256": "d34e01e3b3908e828c6ffa6933f0311418ff2a57f96b4b50bd0bf8683ac80f01",
+        "trace": "fixtures/differential/g3/runs/full/A/host__plugins__anki__equivalence__cards-crud/000/anki.cards.builtin-template-referenced-delete-deactivates/A1/trace.json.gz"
+      }
+    },
+    {
+      "db": "mistakes.db",
+      "table": "custom_anki_templates",
+      "column": "field_extraction_rules_json",
+      "rust": "{\"Etym\":{\"field_type\":\"Text\",\"is_required\":false,\"default_value\":null,\"validation_pattern\":null,\"description\":\"词源/出处（≤80字）\",\"max_length\":80},\"Phonetic\":{\"field_type\":\"Text\",\"is_required\":false,\"default_value\":null,\"validation_pattern\":null,\"description\":\"音标（≤30字符）\",\"max_length\":30},\"Pos\":{\"field_type\":\"Text\",\"is_required\":false,\"default_value\":null,\"validation_pattern\":null,\"description\":\"词性缩写（≤10字符）\",\"max_length\":10},\"Word\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"单词/词条：单个词或短语（≤24字符）\",\"max_length\":24},\"Definition\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"简明释义（≤80字）\",\"max_length\":80}}",
+      "provenance": {
+        "group": [
+          "database",
+          "start_enhanced_document_processing"
+        ],
+        "evidence": "fixtures/differential/g3/runs/full/compare/host__plugins__anki__equivalence__generation/anki.generate.selection-source-ref-single-template.compare.json.gz",
+        "evidenceSha256": "f49f183763d7996b1f507965475f96162e17fba20b37387ad7ce27b2c398c305",
+        "trace": "fixtures/differential/g3/runs/full/A/host__plugins__anki__equivalence__generation/000/anki.generate.selection-source-ref-single-template/A1/trace.json.gz"
+      }
+    },
+    {
+      "db": "mistakes.db",
+      "table": "custom_anki_templates",
+      "column": "field_extraction_rules_json",
+      "rust": "{\"Step2\":{\"field_type\":\"Text\",\"is_required\":false,\"default_value\":null,\"validation_pattern\":null,\"description\":\"第二步：一句（≤80字）\",\"max_length\":80},\"Step4\":{\"field_type\":\"Text\",\"is_required\":false,\"default_value\":null,\"validation_pattern\":null,\"description\":\"第四步：一句（≤80字）\",\"max_length\":80},\"Step3\":{\"field_type\":\"Text\",\"is_required\":false,\"default_value\":null,\"validation_pattern\":null,\"description\":\"第三步：一句（≤80字）\",\"max_length\":80},\"Question\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"要记忆的流程问题（≤80字）\",\"max_length\":80},\"Note\":{\"field_type\":\"Text\",\"is_required\":false,\"default_value\":null,\"validation_pattern\":null,\"description\":\"注意事项（N.B.）一句（≤60字）\",\"max_length\":60},\"Step1\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"第一步：一句（≤80字）\",\"max_length\":80}}",
+      "provenance": {
+        "group": [
+          "database",
+          "list_anki_library_cards"
+        ],
+        "evidence": "fixtures/differential/g3/runs/full/compare/host__plugins__anki__equivalence__cards-crud/anki.cards.builtin-template-referenced-delete-deactivates.compare.json.gz",
+        "evidenceSha256": "d34e01e3b3908e828c6ffa6933f0311418ff2a57f96b4b50bd0bf8683ac80f01",
+        "trace": "fixtures/differential/g3/runs/full/A/host__plugins__anki__equivalence__cards-crud/000/anki.cards.builtin-template-referenced-delete-deactivates/A1/trace.json.gz"
+      }
+    },
+    {
+      "db": "mistakes.db",
+      "table": "custom_anki_templates",
+      "column": "field_extraction_rules_json",
+      "rust": "{\"Step1\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"第一步：一句（≤80字）\",\"max_length\":80},\"Question\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"要记忆的流程问题（≤80字）\",\"max_length\":80},\"Step4\":{\"field_type\":\"Text\",\"is_required\":false,\"default_value\":null,\"validation_pattern\":null,\"description\":\"第四步：一句（≤80字）\",\"max_length\":80},\"Step3\":{\"field_type\":\"Text\",\"is_required\":false,\"default_value\":null,\"validation_pattern\":null,\"description\":\"第三步：一句（≤80字）\",\"max_length\":80},\"Step2\":{\"field_type\":\"Text\",\"is_required\":false,\"default_value\":null,\"validation_pattern\":null,\"description\":\"第二步：一句（≤80字）\",\"max_length\":80},\"Note\":{\"field_type\":\"Text\",\"is_required\":false,\"default_value\":null,\"validation_pattern\":null,\"description\":\"注意事项（N.B.）一句（≤60字）\",\"max_length\":60}}",
+      "provenance": {
+        "group": [
+          "database",
+          "start_enhanced_document_processing"
+        ],
+        "evidence": "fixtures/differential/g3/runs/full/compare/host__plugins__anki__equivalence__generation/anki.generate.selection-source-ref-single-template.compare.json.gz",
+        "evidenceSha256": "f49f183763d7996b1f507965475f96162e17fba20b37387ad7ce27b2c398c305",
+        "trace": "fixtures/differential/g3/runs/full/A/host__plugins__anki__equivalence__generation/000/anki.generate.selection-source-ref-single-template/A1/trace.json.gz"
+      }
+    },
+    {
+      "db": "mistakes.db",
+      "table": "custom_anki_templates",
+      "column": "field_extraction_rules_json",
+      "rust": "{\"optione\":{\"field_type\":\"Text\",\"is_required\":false,\"default_value\":null,\"validation_pattern\":null,\"description\":\"选项E（可选）：简短短语（≤60字）\",\"max_length\":60},\"optionc\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"选项C：简短短语，不写解释（≤60字）\",\"max_length\":60},\"optionb\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"选项B：简短短语，不写解释（≤60字）\",\"max_length\":60},\"correct\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"正确答案：仅字母，可多选，如 A 或 A,C\",\"max_length\":9},\"explanation\":{\"field_type\":\"Text\",\"is_required\":false,\"default_value\":null,\"validation_pattern\":null,\"description\":\"解析：1–2 句（≤150字）\",\"max_length\":150},\"Question\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"题干，一个明确问题（≤150字）\",\"max_length\":150},\"optiona\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"选项A：简短短语，不写解释（≤60字）\",\"max_length\":60},\"Subject\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"学科/科目（≤12字）\",\"max_length\":12},\"optiond\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"选项D：简短短语，不写解释（≤60字）\",\"max_length\":60}}",
+      "provenance": {
+        "group": [
+          "database",
+          "list_anki_library_cards"
+        ],
+        "evidence": "fixtures/differential/g3/runs/full/compare/host__plugins__anki__equivalence__cards-crud/anki.cards.builtin-template-referenced-delete-deactivates.compare.json.gz",
+        "evidenceSha256": "d34e01e3b3908e828c6ffa6933f0311418ff2a57f96b4b50bd0bf8683ac80f01",
+        "trace": "fixtures/differential/g3/runs/full/A/host__plugins__anki__equivalence__cards-crud/000/anki.cards.builtin-template-referenced-delete-deactivates/A1/trace.json.gz"
+      }
+    },
+    {
+      "db": "mistakes.db",
+      "table": "custom_anki_templates",
+      "column": "field_extraction_rules_json",
+      "rust": "{\"optionc\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"选项C：简短短语，不写解释（≤60字）\",\"max_length\":60},\"optione\":{\"field_type\":\"Text\",\"is_required\":false,\"default_value\":null,\"validation_pattern\":null,\"description\":\"选项E（可选）：简短短语（≤60字）\",\"max_length\":60},\"Question\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"题干，一个明确问题（≤120字）\",\"max_length\":120},\"explanation\":{\"field_type\":\"Text\",\"is_required\":false,\"default_value\":null,\"validation_pattern\":null,\"description\":\"解析：1–2 句（≤150字）\",\"max_length\":150},\"optiona\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"选项A：简短短语，不写解释（≤60字）\",\"max_length\":60},\"correct\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"正确答案：仅字母，可多选，如 B 或 A,C\",\"max_length\":9},\"Figure\":{\"field_type\":\"Text\",\"is_required\":false,\"default_value\":null,\"validation_pattern\":null,\"description\":\"图注/分类（≤20字）\",\"max_length\":20},\"optionb\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"选项B：简短短语，不写解释（≤60字）\",\"max_length\":60},\"optiond\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"选项D：简短短语，不写解释（≤60字）\",\"max_length\":60}}",
+      "provenance": {
+        "group": [
+          "database",
+          "list_anki_library_cards"
+        ],
+        "evidence": "fixtures/differential/g3/runs/full/compare/host__plugins__anki__equivalence__cards-crud/anki.cards.builtin-template-referenced-delete-deactivates.compare.json.gz",
+        "evidenceSha256": "d34e01e3b3908e828c6ffa6933f0311418ff2a57f96b4b50bd0bf8683ac80f01",
+        "trace": "fixtures/differential/g3/runs/full/A/host__plugins__anki__equivalence__cards-crud/000/anki.cards.builtin-template-referenced-delete-deactivates/A1/trace.json.gz"
+      }
+    },
+    {
+      "db": "mistakes.db",
+      "table": "custom_anki_templates",
+      "column": "field_extraction_rules_json",
+      "rust": "{\"optiona\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"选项A：简短短语，不写解释（≤60字）\",\"max_length\":60},\"optionb\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"选项B：简短短语，不写解释（≤60字）\",\"max_length\":60},\"Subject\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"学科/科目（≤12字）\",\"max_length\":12},\"Question\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"题干，一个明确问题（≤150字）\",\"max_length\":150},\"optiond\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"选项D：简短短语，不写解释（≤60字）\",\"max_length\":60},\"optione\":{\"field_type\":\"Text\",\"is_required\":false,\"default_value\":null,\"validation_pattern\":null,\"description\":\"选项E（可选）：简短短语（≤60字）\",\"max_length\":60},\"explanation\":{\"field_type\":\"Text\",\"is_required\":false,\"default_value\":null,\"validation_pattern\":null,\"description\":\"解析：1–2 句（≤150字）\",\"max_length\":150},\"optionc\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"选项C：简短短语，不写解释（≤60字）\",\"max_length\":60},\"correct\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"正确答案：仅字母，可多选，如 A 或 A,C\",\"max_length\":9}}",
+      "provenance": {
+        "group": [
+          "database",
+          "start_enhanced_document_processing"
+        ],
+        "evidence": "fixtures/differential/g3/runs/full/compare/host__plugins__anki__equivalence__generation/anki.generate.selection-source-ref-single-template.compare.json.gz",
+        "evidenceSha256": "f49f183763d7996b1f507965475f96162e17fba20b37387ad7ce27b2c398c305",
+        "trace": "fixtures/differential/g3/runs/full/A/host__plugins__anki__equivalence__generation/000/anki.generate.selection-source-ref-single-template/A1/trace.json.gz"
+      }
+    },
+    {
+      "db": "mistakes.db",
+      "table": "custom_anki_templates",
+      "column": "field_extraction_rules_json",
+      "rust": "{\"optionb\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"选项B：简短短语，不写解释（≤60字）\",\"max_length\":60},\"optiond\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"选项D：简短短语，不写解释（≤60字）\",\"max_length\":60},\"optionc\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"选项C：简短短语，不写解释（≤60字）\",\"max_length\":60},\"correct\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"正确答案：仅字母，可多选，如 B 或 A,C\",\"max_length\":9},\"Figure\":{\"field_type\":\"Text\",\"is_required\":false,\"default_value\":null,\"validation_pattern\":null,\"description\":\"图注/分类（≤20字）\",\"max_length\":20},\"explanation\":{\"field_type\":\"Text\",\"is_required\":false,\"default_value\":null,\"validation_pattern\":null,\"description\":\"解析：1–2 句（≤150字）\",\"max_length\":150},\"Question\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"题干，一个明确问题（≤120字）\",\"max_length\":120},\"optione\":{\"field_type\":\"Text\",\"is_required\":false,\"default_value\":null,\"validation_pattern\":null,\"description\":\"选项E（可选）：简短短语（≤60字）\",\"max_length\":60},\"optiona\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"选项A：简短短语，不写解释（≤60字）\",\"max_length\":60}}",
+      "provenance": {
+        "group": [
+          "database",
+          "start_enhanced_document_processing"
+        ],
+        "evidence": "fixtures/differential/g3/runs/full/compare/host__plugins__anki__equivalence__generation/anki.generate.selection-source-ref-single-template.compare.json.gz",
+        "evidenceSha256": "f49f183763d7996b1f507965475f96162e17fba20b37387ad7ce27b2c398c305",
+        "trace": "fixtures/differential/g3/runs/full/A/host__plugins__anki__equivalence__generation/000/anki.generate.selection-source-ref-single-template/A1/trace.json.gz"
+      }
+    },
+    {
+      "db": "mistakes.db",
+      "table": "document_tasks",
+      "column": "anki_generation_options_json",
+      "rust": "{\"source_ref\":{\"kind\":\"resource\",\"id\":\"w233-resource-1\",\"title\":\"外刊精读.pdf\",\"page\":3},\"deck_name\":\"划词制卡::外刊精读\",\"note_type\":\"Cloze\",\"enable_images\":true,\"max_cards_per_mistake\":10,\"max_cards_total\":10,\"max_tokens\":null,\"temperature\":null,\"max_output_tokens_override\":null,\"temperature_override\":null,\"template_id\":\"design-exam\",\"custom_anki_prompt\":\"你是一位专业的 Anki 记忆卡片制作专家。你的任务是将学习材料转化为高质量的记忆卡片。\\n\\n【你的能力】\\n- 识别知识点并选择最合适的卡片模板\\n- 生成清晰、准确、易于记忆的卡片内容\\n- 确保卡片遵循最小信息原则\\n- 支持多种卡片类型：基础问答、填空、代码理解等\\n\\n【你的限制】\\n- 只输出 Anki 卡片数据，不做其他事情\\n- 输出的组织方式（如何分隔或包装每张卡片）以请求中的「重要指令」为准，本段不另行约定任何输出格式\\n- 不要添加与学习内容无关的信息\\n\\n【语言规则】\\n- 卡片内容（front/back/text/tags）的语言必须与学习材料保持一致：英文材料生成英文卡片，中文材料生成中文卡片，其他语言同理\\n- 专业术语可保留原文，不要把材料语言翻译成本提示词的语言\\n\\n【卡片 JSON 内容规则（与输出组织方式无关，始终适用）】\\n1. 每张卡片的 JSON 必须是合法的严格 JSON：键和字符串一律用双引号；禁止尾逗号、注释、单引号\\n2. 字符串内的换行必须写成 \\\\n，双引号必须写成 \\\\\\\"；不要输出未转义的控制字符\\n3. tags 必须是字符串数组（如 [\\\"数学\\\", \\\"定义\\\"]），不能是逗号分隔的字符串\\n4. 数值字段（如 confidence）直接写数字，不要加引号\\n5. 若某张卡片生成到一半发现内容不完整，宁可整张放弃，也不要输出残缺 JSON\\n\",\"template_fields\":[\"Text\",\"Section\",\"Extra\"],\"field_extraction_rules\":{\"Extra\":{\"field_type\":\"Text\",\"is_required\":false,\"default_value\":null,\"validation_pattern\":null,\"description\":\"评注或一条补充公式（≤80字）\",\"max_length\":80},\"Section\":{\"field_type\":\"Text\",\"is_required\":false,\"default_value\":null,\"validation_pattern\":null,\"description\":\"科目/试卷标题（≤24字）\",\"max_length\":24},\"Text\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"包含 {{c1::...}} 填空标记的完整陈述（≤250字）\",\"max_length\":250}},\"template_fields_by_id\":{\"design-exam\":[\"Text\",\"Section\",\"Extra\"]},\"field_extraction_rules_by_id\":{\"design-exam\":{\"Section\":{\"field_type\":\"Text\",\"is_required\":false,\"default_value\":null,\"validation_pattern\":null,\"description\":\"科目/试卷标题（≤24字）\",\"max_length\":24},\"Extra\":{\"field_type\":\"Text\",\"is_required\":false,\"default_value\":null,\"validation_pattern\":null,\"description\":\"评注或一条补充公式（≤80字）\",\"max_length\":80},\"Text\":{\"field_type\":\"Text\",\"is_required\":true,\"default_value\":null,\"validation_pattern\":null,\"description\":\"包含 {{c1::...}} 填空标记的完整陈述（≤250字）\",\"max_length\":250}}},\"custom_requirements\":\"根据用户划选的片段生成高质量记忆卡片，优先覆盖选中内容中的关键概念与事实。\",\"segment_overlap_size\":200,\"system_prompt\":null,\"template_ids\":[\"design-exam\"],\"template_descriptions\":[{\"id\":\"design-exam\",\"name\":\"The Examination (试卷风格)\",\"description\":\"试卷式填空：正面留白横线作答，背面以批阅笔色揭示，无脚本依赖\",\"fields\":[\"Text\",\"Section\",\"Extra\"],\"generation_prompt\":\"适用：考试式填空——在定理/定律/定义的完整陈述中挖关键项。不适用：证明过程、多步推导、需要整段解释的问答（通用问答（多句答案/证明/推导/解释）改用 design-footnote 或 design-monograph）。字段：Text 包含 {{c1::...}} 的完整陈述（≤250字）；Section 科目/试卷标题（≤24字）；Extra 评注或一条补充公式（≤80字）。数学公式必须用 $...$ 包裹（如 $F=ma$），禁止裸写。\"}],\"enable_llm_boundary_detection\":true,\"fsrs_feedback\":false,\"user_review_profile\":null}",
+      "provenance": {
+        "group": [
+          "database-sample",
+          "value",
+          "app-data/com.deepstudent.differential/slots/slotA/mistakes.db",
+          "document_tasks",
+          "anki_generation_options_json",
+          "N-009"
+        ],
+        "evidence": "fixtures/differential/g3/runs/full/compare/host__plugins__anki__equivalence__generation/anki.generate.selection-source-ref-single-template.compare.json.gz",
+        "evidenceSha256": "f49f183763d7996b1f507965475f96162e17fba20b37387ad7ce27b2c398c305",
+        "trace": "fixtures/differential/g3/runs/full/A/host__plugins__anki__equivalence__generation/000/anki.generate.selection-source-ref-single-template/A1/trace.json.gz"
+      }
+    },
+    {
+      "db": "vfs.db",
+      "table": "essays",
+      "column": "dimension_scores_json",
+      "rust": "{\"total\":52.0,\"max_total\":60.0,\"grade\":\"good\",\"dimensions\":[{\"name\":\"内容\",\"score\":18.0,\"max_score\":20.0,\"comment\":\"切题\"},{\"name\":\"表达\",\"score\":17.0,\"max_score\":20.0,\"comment\":\"流畅\"},{\"name\":\"发展等级\",\"score\":17.0,\"max_score\":20.0,\"comment\":\"有文采\"}]}",
+      "provenance": {
+        "group": [
+          "database",
+          "essay_grading_get_session"
+        ],
+        "evidence": "fixtures/differential/g3/runs/full/compare/host__plugins__review__equivalence__pending-provider__wp229-essay-stream-scripted/review.essay.scripted.stream-success-round-persisted.compare.json.gz",
+        "evidenceSha256": "b7b76bf022c167a7435394d76ec12c0802badd74ef3a2ad2c3421f732c3edf9a",
+        "trace": "fixtures/differential/g3/runs/full/A/host__plugins__review__equivalence__pending-provider__wp229-essay-stream-scripted/000/review.essay.scripted.stream-success-round-persisted/A1/trace.json.gz"
+      }
+    },
+    {
+      "db": "vfs.db",
+      "table": "exam_sheets",
+      "column": "preview_json",
+      "rust": "{\"temp_id\":\"legacy_t\",\"exam_name\":\"历史卷\",\"pages\":[{\"page_index\":0,\"width\":1000,\"height\":1400,\"original_image_path\":\"\",\"cards\":[{\"card_id\":\"c1\",\"page_index\":0,\"question_label\":\"1\",\"bbox\":{\"x\":0.05,\"y\":0.05,\"width\":0.9,\"height\":0.25},\"resolved_bbox\":{\"x\":50.0,\"y\":70.0,\"width\":900.0,\"height\":350.0},\"cropped_image_path\":\"\",\"ocr_text\":\"已知 2 和 3 都是质数，那么最小的质数是？\",\"tags\":[\"质数\"],\"question_type\":\"single_choice\",\"options\":[{\"key\":\"A\",\"content\":\"2\"},{\"key\":\"B\",\"content\":\"3\"}],\"answer\":\"A\",\"difficulty\":\"easy\"}]}]}",
+      "provenance": {
+        "group": [
+          "database-sample",
+          "value",
+          "app-data/com.deepstudent.differential/slots/slotA/databases/vfs.db",
+          "exam_sheets",
+          "preview_json",
+          "N-009"
+        ],
+        "evidence": "fixtures/differential/g3/runs/full/compare/host__plugins__qbank__equivalence__g3-structure/qbank.g3.structure.legacy_audit.preview_card_unmatched.compare.json.gz",
+        "evidenceSha256": "f2d5aad46fcd48cd0b19ff844b841f216622fb9d67191b1033373470496f069f",
+        "trace": "fixtures/differential/g3/runs/full/A/host__plugins__qbank__equivalence__g3-structure/000/qbank.g3.structure.legacy_audit.preview_card_unmatched/A1/trace.json.gz"
+      }
+    },
+    {
+      "db": "vfs.db",
+      "table": "files",
+      "column": "processing_progress",
+      "rust": "{\"stage\":\"decode\",\"percent\":1.0,\"readyModes\":[],\"mediaType\":\"audio\"}",
+      "provenance": {
+        "group": [
+          "database-sample",
+          "value",
+          "app-data/com.deepstudent.differential/slots/slotA/databases/vfs.db",
+          "files",
+          "processing_progress",
+          "N-009"
+        ],
+        "evidence": "fixtures/differential/g3/runs/full/compare/host__plugins__media__equivalence__media-player-ledger/media.transcribe.start_cancel_scripted_asr.compare.json.gz",
+        "evidenceSha256": "1a01f2988f58a529737cb499f71c87f808561f21b89d80f3a85f51e6d6529491",
+        "trace": "fixtures/differential/g3/runs/full/A/host__plugins__media__equivalence__media-player-ledger/000/media.transcribe.start_cancel_scripted_asr/A1/trace.json.gz"
+      }
+    },
+    {
+      "db": "vfs.db",
+      "table": "files",
+      "column": "processing_progress",
+      "rust": "{\"stage\":\"indexing\",\"percent\":85.0,\"readyModes\":[\"text\"],\"mediaType\":\"audio\"}",
+      "provenance": {
+        "group": [
+          "database-sample",
+          "value",
+          "app-data/com.deepstudent.differential/slots/slotA/databases/vfs.db",
+          "files",
+          "processing_progress",
+          null
+        ],
+        "evidence": "fixtures/differential/g3/runs/full/compare/host__plugins__media__equivalence__media-transcripts/media.transcript.import_formats_and_errors.compare.json.gz",
+        "evidenceSha256": "94526028d964ce3db35e5c30a7265c067290adefc88d4cd0e4bfca092e6d5fe6",
+        "trace": "fixtures/differential/g3/runs/full/A/host__plugins__media__equivalence__media-transcripts/000/media.transcript.import_formats_and_errors/A1/trace.json.gz"
+      }
+    },
+    {
+      "db": "vfs.db",
+      "table": "files",
+      "column": "processing_progress",
+      "rust": "{\"stage\":\"completed\",\"percent\":100.0,\"readyModes\":[\"text\"],\"mediaType\":\"audio\"}",
+      "provenance": {
+        "group": [
+          "database",
+          "media_transcript_export"
+        ],
+        "evidence": "fixtures/differential/g3/runs/full/compare/host__plugins__media__equivalence__media-transcripts/media.transcript.srt_import_get_export.compare.json.gz",
+        "evidenceSha256": "9859ba5fc2a68a505ed3e3c661b37aac9e4ce96d5c983f99f5379e4d6dc5d6fb",
+        "trace": "fixtures/differential/g3/runs/full/A/host__plugins__media__equivalence__media-transcripts/000/media.transcript.srt_import_get_export/A1/trace.json.gz"
+      }
+    }
+  ]
+}

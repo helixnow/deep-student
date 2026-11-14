@@ -1,0 +1,6397 @@
+{
+  "domain": "qbank",
+  "commands": [
+    "qbank_search_questions",
+    "qbank_rebuild_fts_index"
+  ],
+  "scenarios": [
+    {
+      "id": "qbank.search.keyword_in_exam_frontend_shape",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "检索题目集A",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "检索题目集B",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "Photosynthesis converts light energy",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": "Chlorophyll absorbs light",
+              "difficulty": "easy",
+              "tags": [
+                "biology",
+                "光合作用"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "Light travels faster than sound",
+              "question_type": "true_false",
+              "options": null,
+              "answer": "true",
+              "structured_data": null,
+              "explanation": "Speed of light",
+              "difficulty": "medium",
+              "tags": [
+                "physics"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "C++ 是什么? 下列说法正确",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "A",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "hard",
+              "tags": [
+                "programming"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${1.id}",
+              "content": "The Sun emits light and heat",
+              "question_type": "short_answer",
+              "options": null,
+              "answer": "photosynthesis depends on sunlight",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "very_hard",
+              "tags": [
+                "astronomy"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "光合作用 发生在 叶绿体",
+              "question_type": "fill_blank",
+              "options": null,
+              "answer": "叶绿体",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "medium",
+              "tags": [
+                "biology"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "light",
+              "exam_id": "${0.id}",
+              "filters": {},
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.search.global_across_exams",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "检索题目集A",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "检索题目集B",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "Photosynthesis converts light energy",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": "Chlorophyll absorbs light",
+              "difficulty": "easy",
+              "tags": [
+                "biology",
+                "光合作用"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "Light travels faster than sound",
+              "question_type": "true_false",
+              "options": null,
+              "answer": "true",
+              "structured_data": null,
+              "explanation": "Speed of light",
+              "difficulty": "medium",
+              "tags": [
+                "physics"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "C++ 是什么? 下列说法正确",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "A",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "hard",
+              "tags": [
+                "programming"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${1.id}",
+              "content": "The Sun emits light and heat",
+              "question_type": "short_answer",
+              "options": null,
+              "answer": "photosynthesis depends on sunlight",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "very_hard",
+              "tags": [
+                "astronomy"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "光合作用 发生在 叶绿体",
+              "question_type": "fill_blank",
+              "options": null,
+              "answer": "叶绿体",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "medium",
+              "tags": [
+                "biology"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "light",
+              "exam_id": null,
+              "filters": {},
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.search.defaults_omitted_fields_and_null_filters",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "检索题目集A",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "检索题目集B",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "Photosynthesis converts light energy",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": "Chlorophyll absorbs light",
+              "difficulty": "easy",
+              "tags": [
+                "biology",
+                "光合作用"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "Light travels faster than sound",
+              "question_type": "true_false",
+              "options": null,
+              "answer": "true",
+              "structured_data": null,
+              "explanation": "Speed of light",
+              "difficulty": "medium",
+              "tags": [
+                "physics"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "C++ 是什么? 下列说法正确",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "A",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "hard",
+              "tags": [
+                "programming"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${1.id}",
+              "content": "The Sun emits light and heat",
+              "question_type": "short_answer",
+              "options": null,
+              "answer": "photosynthesis depends on sunlight",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "very_hard",
+              "tags": [
+                "astronomy"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "光合作用 发生在 叶绿体",
+              "question_type": "fill_blank",
+              "options": null,
+              "answer": "叶绿体",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "medium",
+              "tags": [
+                "biology"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "light"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "light",
+              "exam_id": null,
+              "filters": null
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.search.case_insensitive_multi_column",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "检索题目集A",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "检索题目集B",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "Photosynthesis converts light energy",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": "Chlorophyll absorbs light",
+              "difficulty": "easy",
+              "tags": [
+                "biology",
+                "光合作用"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "Light travels faster than sound",
+              "question_type": "true_false",
+              "options": null,
+              "answer": "true",
+              "structured_data": null,
+              "explanation": "Speed of light",
+              "difficulty": "medium",
+              "tags": [
+                "physics"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "C++ 是什么? 下列说法正确",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "A",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "hard",
+              "tags": [
+                "programming"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${1.id}",
+              "content": "The Sun emits light and heat",
+              "question_type": "short_answer",
+              "options": null,
+              "answer": "photosynthesis depends on sunlight",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "very_hard",
+              "tags": [
+                "astronomy"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "光合作用 发生在 叶绿体",
+              "question_type": "fill_blank",
+              "options": null,
+              "answer": "叶绿体",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "medium",
+              "tags": [
+                "biology"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "CHLOROPHYLL",
+              "exam_id": null,
+              "filters": {},
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "sunlight",
+              "exam_id": null,
+              "filters": {},
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "astronomy",
+              "exam_id": null,
+              "filters": {},
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.search.multi_token_implicit_and",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "检索题目集A",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "检索题目集B",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "Photosynthesis converts light energy",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": "Chlorophyll absorbs light",
+              "difficulty": "easy",
+              "tags": [
+                "biology",
+                "光合作用"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "Light travels faster than sound",
+              "question_type": "true_false",
+              "options": null,
+              "answer": "true",
+              "structured_data": null,
+              "explanation": "Speed of light",
+              "difficulty": "medium",
+              "tags": [
+                "physics"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "C++ 是什么? 下列说法正确",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "A",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "hard",
+              "tags": [
+                "programming"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${1.id}",
+              "content": "The Sun emits light and heat",
+              "question_type": "short_answer",
+              "options": null,
+              "answer": "photosynthesis depends on sunlight",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "very_hard",
+              "tags": [
+                "astronomy"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "光合作用 发生在 叶绿体",
+              "question_type": "fill_blank",
+              "options": null,
+              "answer": "叶绿体",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "medium",
+              "tags": [
+                "biology"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "light sound",
+              "exam_id": null,
+              "filters": {},
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "light banana",
+              "exam_id": null,
+              "filters": {},
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.search.special_chars_escaped",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "检索题目集A",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "检索题目集B",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "Photosynthesis converts light energy",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": "Chlorophyll absorbs light",
+              "difficulty": "easy",
+              "tags": [
+                "biology",
+                "光合作用"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "Light travels faster than sound",
+              "question_type": "true_false",
+              "options": null,
+              "answer": "true",
+              "structured_data": null,
+              "explanation": "Speed of light",
+              "difficulty": "medium",
+              "tags": [
+                "physics"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "C++ 是什么? 下列说法正确",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "A",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "hard",
+              "tags": [
+                "programming"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${1.id}",
+              "content": "The Sun emits light and heat",
+              "question_type": "short_answer",
+              "options": null,
+              "answer": "photosynthesis depends on sunlight",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "very_hard",
+              "tags": [
+                "astronomy"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "光合作用 发生在 叶绿体",
+              "question_type": "fill_blank",
+              "options": null,
+              "answer": "叶绿体",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "medium",
+              "tags": [
+                "biology"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "C++",
+              "exam_id": null,
+              "filters": {},
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "say \"hi\"",
+              "exam_id": null,
+              "filters": {},
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "a.b",
+              "exam_id": null,
+              "filters": {},
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "NOT",
+              "exam_id": null,
+              "filters": {},
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "(light)",
+              "exam_id": null,
+              "filters": {},
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "light*",
+              "exam_id": null,
+              "filters": {},
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "light OR sound",
+              "exam_id": null,
+              "filters": {},
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "-light",
+              "exam_id": null,
+              "filters": {},
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "physics:light",
+              "exam_id": null,
+              "filters": {},
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.search.cjk_unicode61_tokens",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "检索题目集A",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "检索题目集B",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "Photosynthesis converts light energy",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": "Chlorophyll absorbs light",
+              "difficulty": "easy",
+              "tags": [
+                "biology",
+                "光合作用"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "Light travels faster than sound",
+              "question_type": "true_false",
+              "options": null,
+              "answer": "true",
+              "structured_data": null,
+              "explanation": "Speed of light",
+              "difficulty": "medium",
+              "tags": [
+                "physics"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "C++ 是什么? 下列说法正确",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "A",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "hard",
+              "tags": [
+                "programming"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${1.id}",
+              "content": "The Sun emits light and heat",
+              "question_type": "short_answer",
+              "options": null,
+              "answer": "photosynthesis depends on sunlight",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "very_hard",
+              "tags": [
+                "astronomy"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "光合作用 发生在 叶绿体",
+              "question_type": "fill_blank",
+              "options": null,
+              "answer": "叶绿体",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "medium",
+              "tags": [
+                "biology"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "光合作用",
+              "exam_id": null,
+              "filters": {},
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "叶绿",
+              "exam_id": null,
+              "filters": {},
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "叶绿体",
+              "exam_id": null,
+              "filters": {},
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "下列说法正确",
+              "exam_id": null,
+              "filters": {},
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.search.blank_keyword_early_return_unclamped",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "检索题目集A",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "检索题目集B",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "Photosynthesis converts light energy",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": "Chlorophyll absorbs light",
+              "difficulty": "easy",
+              "tags": [
+                "biology",
+                "光合作用"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "Light travels faster than sound",
+              "question_type": "true_false",
+              "options": null,
+              "answer": "true",
+              "structured_data": null,
+              "explanation": "Speed of light",
+              "difficulty": "medium",
+              "tags": [
+                "physics"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "C++ 是什么? 下列说法正确",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "A",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "hard",
+              "tags": [
+                "programming"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${1.id}",
+              "content": "The Sun emits light and heat",
+              "question_type": "short_answer",
+              "options": null,
+              "answer": "photosynthesis depends on sunlight",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "very_hard",
+              "tags": [
+                "astronomy"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "光合作用 发生在 叶绿体",
+              "question_type": "fill_blank",
+              "options": null,
+              "answer": "叶绿体",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "medium",
+              "tags": [
+                "biology"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "",
+              "exam_id": null,
+              "filters": {},
+              "page": 0,
+              "page_size": 0
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "   \t\n ",
+              "exam_id": null,
+              "filters": {},
+              "page": 7,
+              "page_size": 1000
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.search.long_keyword_truncated_200_chars",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "检索题目集A",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "检索题目集B",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "Photosynthesis converts light energy",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": "Chlorophyll absorbs light",
+              "difficulty": "easy",
+              "tags": [
+                "biology",
+                "光合作用"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "Light travels faster than sound",
+              "question_type": "true_false",
+              "options": null,
+              "answer": "true",
+              "structured_data": null,
+              "explanation": "Speed of light",
+              "difficulty": "medium",
+              "tags": [
+                "physics"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "C++ 是什么? 下列说法正确",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "A",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "hard",
+              "tags": [
+                "programming"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${1.id}",
+              "content": "The Sun emits light and heat",
+              "question_type": "short_answer",
+              "options": null,
+              "answer": "photosynthesis depends on sunlight",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "very_hard",
+              "tags": [
+                "astronomy"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "光合作用 发生在 叶绿体",
+              "question_type": "fill_blank",
+              "options": null,
+              "answer": "叶绿体",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "medium",
+              "tags": [
+                "biology"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "light                                                                                                                                                                                                                                                                                                            zzzz",
+              "exam_id": null,
+              "filters": {},
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字",
+              "exam_id": null,
+              "filters": {},
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.search.page_clamp_bounds",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "检索题目集A",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "检索题目集B",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "Photosynthesis converts light energy",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": "Chlorophyll absorbs light",
+              "difficulty": "easy",
+              "tags": [
+                "biology",
+                "光合作用"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "Light travels faster than sound",
+              "question_type": "true_false",
+              "options": null,
+              "answer": "true",
+              "structured_data": null,
+              "explanation": "Speed of light",
+              "difficulty": "medium",
+              "tags": [
+                "physics"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "C++ 是什么? 下列说法正确",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "A",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "hard",
+              "tags": [
+                "programming"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${1.id}",
+              "content": "The Sun emits light and heat",
+              "question_type": "short_answer",
+              "options": null,
+              "answer": "photosynthesis depends on sunlight",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "very_hard",
+              "tags": [
+                "astronomy"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "光合作用 发生在 叶绿体",
+              "question_type": "fill_blank",
+              "options": null,
+              "answer": "叶绿体",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "medium",
+              "tags": [
+                "biology"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "light",
+              "exam_id": null,
+              "filters": {},
+              "page": 0,
+              "page_size": 0
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "light",
+              "exam_id": null,
+              "filters": {},
+              "page": 2,
+              "page_size": 1
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "light",
+              "exam_id": null,
+              "filters": {},
+              "page": 1,
+              "page_size": 1000
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "light",
+              "exam_id": null,
+              "filters": {},
+              "page": 99,
+              "page_size": 2
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "light",
+              "exam_id": null,
+              "filters": {},
+              "page": 1000,
+              "page_size": 100
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.search.filter_status_difficulty",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "检索题目集A",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "检索题目集B",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "Photosynthesis converts light energy",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": "Chlorophyll absorbs light",
+              "difficulty": "easy",
+              "tags": [
+                "biology",
+                "光合作用"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "Light travels faster than sound",
+              "question_type": "true_false",
+              "options": null,
+              "answer": "true",
+              "structured_data": null,
+              "explanation": "Speed of light",
+              "difficulty": "medium",
+              "tags": [
+                "physics"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "C++ 是什么? 下列说法正确",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "A",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "hard",
+              "tags": [
+                "programming"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${1.id}",
+              "content": "The Sun emits light and heat",
+              "question_type": "short_answer",
+              "options": null,
+              "answer": "photosynthesis depends on sunlight",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "very_hard",
+              "tags": [
+                "astronomy"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "光合作用 发生在 叶绿体",
+              "question_type": "fill_blank",
+              "options": null,
+              "answer": "叶绿体",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "medium",
+              "tags": [
+                "biology"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${2.id}",
+              "user_answer": "B",
+              "client_request_id": "req-search.filter_status_difficulty-1"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${3.id}",
+              "user_answer": "false",
+              "client_request_id": "req-search.filter_status_difficulty-2"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "light",
+              "exam_id": null,
+              "filters": {
+                "status": [
+                  "review"
+                ]
+              },
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "light",
+              "exam_id": null,
+              "filters": {
+                "status": [
+                  "in_progress",
+                  "new"
+                ]
+              },
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "light",
+              "exam_id": null,
+              "filters": {
+                "difficulty": [
+                  "easy"
+                ]
+              },
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "light",
+              "exam_id": null,
+              "filters": {
+                "difficulty": [
+                  "medium",
+                  "hard"
+                ],
+                "status": [
+                  "review"
+                ]
+              },
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.search.filter_type_tags_empty_arrays",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "检索题目集A",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "检索题目集B",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "Photosynthesis converts light energy",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": "Chlorophyll absorbs light",
+              "difficulty": "easy",
+              "tags": [
+                "biology",
+                "光合作用"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "Light travels faster than sound",
+              "question_type": "true_false",
+              "options": null,
+              "answer": "true",
+              "structured_data": null,
+              "explanation": "Speed of light",
+              "difficulty": "medium",
+              "tags": [
+                "physics"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "C++ 是什么? 下列说法正确",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "A",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "hard",
+              "tags": [
+                "programming"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${1.id}",
+              "content": "The Sun emits light and heat",
+              "question_type": "short_answer",
+              "options": null,
+              "answer": "photosynthesis depends on sunlight",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "very_hard",
+              "tags": [
+                "astronomy"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "光合作用 发生在 叶绿体",
+              "question_type": "fill_blank",
+              "options": null,
+              "answer": "叶绿体",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "medium",
+              "tags": [
+                "biology"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "light",
+              "exam_id": null,
+              "filters": {
+                "question_type": [
+                  "true_false"
+                ]
+              },
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "light",
+              "exam_id": null,
+              "filters": {
+                "tags": [
+                  "biology"
+                ]
+              },
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "light",
+              "exam_id": null,
+              "filters": {
+                "tags": [
+                  "missing-tag"
+                ]
+              },
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "light",
+              "exam_id": null,
+              "filters": {
+                "status": [],
+                "difficulty": [],
+                "question_type": [],
+                "tags": []
+              },
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "light",
+              "exam_id": null,
+              "filters": {
+                "question_type": [
+                  "single_choice",
+                  "short_answer"
+                ],
+                "tags": [
+                  "biology",
+                  "astronomy"
+                ]
+              },
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.search.filter_favorite_bookmark",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "检索题目集A",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "检索题目集B",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "Photosynthesis converts light energy",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": "Chlorophyll absorbs light",
+              "difficulty": "easy",
+              "tags": [
+                "biology",
+                "光合作用"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "Light travels faster than sound",
+              "question_type": "true_false",
+              "options": null,
+              "answer": "true",
+              "structured_data": null,
+              "explanation": "Speed of light",
+              "difficulty": "medium",
+              "tags": [
+                "physics"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "C++ 是什么? 下列说法正确",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "A",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "hard",
+              "tags": [
+                "programming"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${1.id}",
+              "content": "The Sun emits light and heat",
+              "question_type": "short_answer",
+              "options": null,
+              "answer": "photosynthesis depends on sunlight",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "very_hard",
+              "tags": [
+                "astronomy"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "光合作用 发生在 叶绿体",
+              "question_type": "fill_blank",
+              "options": null,
+              "answer": "叶绿体",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "medium",
+              "tags": [
+                "biology"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_toggle_favorite",
+          "args": {
+            "questionId": "${2.id}"
+          }
+        },
+        {
+          "cmd": "qbank_update_question",
+          "args": {
+            "request": {
+              "question_id": "${3.id}",
+              "params": {
+                "is_bookmarked": true
+              },
+              "record_history": true
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "light",
+              "exam_id": null,
+              "filters": {
+                "is_favorite": true
+              },
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "light",
+              "exam_id": null,
+              "filters": {
+                "is_favorite": false
+              },
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "light",
+              "exam_id": null,
+              "filters": {
+                "is_bookmarked": true
+              },
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "light",
+              "exam_id": "${0.id}",
+              "filters": {
+                "is_favorite": false,
+                "is_bookmarked": false
+              },
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.search.frontend_base_wrapper_and_search_field_ignored",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "检索题目集A",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "检索题目集B",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "Photosynthesis converts light energy",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": "Chlorophyll absorbs light",
+              "difficulty": "easy",
+              "tags": [
+                "biology",
+                "光合作用"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "Light travels faster than sound",
+              "question_type": "true_false",
+              "options": null,
+              "answer": "true",
+              "structured_data": null,
+              "explanation": "Speed of light",
+              "difficulty": "medium",
+              "tags": [
+                "physics"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "C++ 是什么? 下列说法正确",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "A",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "hard",
+              "tags": [
+                "programming"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${1.id}",
+              "content": "The Sun emits light and heat",
+              "question_type": "short_answer",
+              "options": null,
+              "answer": "photosynthesis depends on sunlight",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "very_hard",
+              "tags": [
+                "astronomy"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "光合作用 发生在 叶绿体",
+              "question_type": "fill_blank",
+              "options": null,
+              "answer": "叶绿体",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "medium",
+              "tags": [
+                "biology"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${3.id}",
+              "user_answer": "false",
+              "client_request_id": "req-search.frontend_base_wrapper_and_search_field_ignored-1"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "light",
+              "exam_id": null,
+              "filters": {
+                "base": {
+                  "status": [
+                    "review"
+                  ]
+                }
+              },
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "light",
+              "exam_id": null,
+              "filters": {
+                "search": "nomatch"
+              },
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.search.sort_by_variants",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "检索题目集A",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "检索题目集B",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "Photosynthesis converts light energy",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": "Chlorophyll absorbs light",
+              "difficulty": "easy",
+              "tags": [
+                "biology",
+                "光合作用"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "Light travels faster than sound",
+              "question_type": "true_false",
+              "options": null,
+              "answer": "true",
+              "structured_data": null,
+              "explanation": "Speed of light",
+              "difficulty": "medium",
+              "tags": [
+                "physics"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "C++ 是什么? 下列说法正确",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "A",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "hard",
+              "tags": [
+                "programming"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${1.id}",
+              "content": "The Sun emits light and heat",
+              "question_type": "short_answer",
+              "options": null,
+              "answer": "photosynthesis depends on sunlight",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "very_hard",
+              "tags": [
+                "astronomy"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "光合作用 发生在 叶绿体",
+              "question_type": "fill_blank",
+              "options": null,
+              "answer": "叶绿体",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "medium",
+              "tags": [
+                "biology"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_update_question",
+          "args": {
+            "request": {
+              "question_id": "${2.id}",
+              "params": {
+                "explanation": "Chlorophyll absorbs light (edited)"
+              },
+              "record_history": true
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "light",
+              "exam_id": null,
+              "filters": {
+                "sort_by": "relevance"
+              },
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "light",
+              "exam_id": null,
+              "filters": {
+                "sort_by": "created_desc"
+              },
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "light",
+              "exam_id": null,
+              "filters": {
+                "sort_by": "created_asc"
+              },
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "light",
+              "exam_id": null,
+              "filters": {
+                "sort_by": "updated_desc"
+              },
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "light",
+              "exam_id": null,
+              "filters": {
+                "sort_by": {
+                  "created_desc": null
+                }
+              },
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.search.soft_deleted_excluded",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "检索题目集A",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "检索题目集B",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "Photosynthesis converts light energy",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": "Chlorophyll absorbs light",
+              "difficulty": "easy",
+              "tags": [
+                "biology",
+                "光合作用"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "Light travels faster than sound",
+              "question_type": "true_false",
+              "options": null,
+              "answer": "true",
+              "structured_data": null,
+              "explanation": "Speed of light",
+              "difficulty": "medium",
+              "tags": [
+                "physics"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "C++ 是什么? 下列说法正确",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "A",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "hard",
+              "tags": [
+                "programming"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${1.id}",
+              "content": "The Sun emits light and heat",
+              "question_type": "short_answer",
+              "options": null,
+              "answer": "photosynthesis depends on sunlight",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "very_hard",
+              "tags": [
+                "astronomy"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "光合作用 发生在 叶绿体",
+              "question_type": "fill_blank",
+              "options": null,
+              "answer": "叶绿体",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "medium",
+              "tags": [
+                "biology"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "photosynthesis",
+              "exam_id": null,
+              "filters": {},
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        },
+        {
+          "cmd": "qbank_delete_question",
+          "args": {
+            "questionId": "${2.id}"
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "photosynthesis",
+              "exam_id": null,
+              "filters": {},
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.search.update_reindexes_content",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "检索题目集A",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "检索题目集B",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "Photosynthesis converts light energy",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": "Chlorophyll absorbs light",
+              "difficulty": "easy",
+              "tags": [
+                "biology",
+                "光合作用"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "Light travels faster than sound",
+              "question_type": "true_false",
+              "options": null,
+              "answer": "true",
+              "structured_data": null,
+              "explanation": "Speed of light",
+              "difficulty": "medium",
+              "tags": [
+                "physics"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "C++ 是什么? 下列说法正确",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "A",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "hard",
+              "tags": [
+                "programming"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${1.id}",
+              "content": "The Sun emits light and heat",
+              "question_type": "short_answer",
+              "options": null,
+              "answer": "photosynthesis depends on sunlight",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "very_hard",
+              "tags": [
+                "astronomy"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "光合作用 发生在 叶绿体",
+              "question_type": "fill_blank",
+              "options": null,
+              "answer": "叶绿体",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "medium",
+              "tags": [
+                "biology"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_update_question",
+          "args": {
+            "request": {
+              "question_id": "${3.id}",
+              "params": {
+                "content": "Sound is slower"
+              },
+              "record_history": true
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "faster",
+              "exam_id": null,
+              "filters": {},
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "slower",
+              "exam_id": null,
+              "filters": {},
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.search.unknown_and_empty_exam_scope",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "检索题目集A",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "检索题目集B",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "Photosynthesis converts light energy",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": "Chlorophyll absorbs light",
+              "difficulty": "easy",
+              "tags": [
+                "biology",
+                "光合作用"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "Light travels faster than sound",
+              "question_type": "true_false",
+              "options": null,
+              "answer": "true",
+              "structured_data": null,
+              "explanation": "Speed of light",
+              "difficulty": "medium",
+              "tags": [
+                "physics"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "C++ 是什么? 下列说法正确",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "A",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "hard",
+              "tags": [
+                "programming"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${1.id}",
+              "content": "The Sun emits light and heat",
+              "question_type": "short_answer",
+              "options": null,
+              "answer": "photosynthesis depends on sunlight",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "very_hard",
+              "tags": [
+                "astronomy"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "光合作用 发生在 叶绿体",
+              "question_type": "fill_blank",
+              "options": null,
+              "answer": "叶绿体",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "medium",
+              "tags": [
+                "biology"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "light",
+              "exam_id": "exam_missing",
+              "filters": {},
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "light",
+              "exam_id": "",
+              "filters": {},
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.search.empty_db_no_rows",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "light",
+              "exam_id": null,
+              "filters": {},
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.search.err_missing_keyword",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "检索题目集A",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "检索题目集B",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "Photosynthesis converts light energy",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": "Chlorophyll absorbs light",
+              "difficulty": "easy",
+              "tags": [
+                "biology",
+                "光合作用"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "Light travels faster than sound",
+              "question_type": "true_false",
+              "options": null,
+              "answer": "true",
+              "structured_data": null,
+              "explanation": "Speed of light",
+              "difficulty": "medium",
+              "tags": [
+                "physics"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "C++ 是什么? 下列说法正确",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "A",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "hard",
+              "tags": [
+                "programming"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${1.id}",
+              "content": "The Sun emits light and heat",
+              "question_type": "short_answer",
+              "options": null,
+              "answer": "photosynthesis depends on sunlight",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "very_hard",
+              "tags": [
+                "astronomy"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "光合作用 发生在 叶绿体",
+              "question_type": "fill_blank",
+              "options": null,
+              "answer": "叶绿体",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "medium",
+              "tags": [
+                "biology"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "exam_id": null,
+              "filters": {},
+              "page": 1,
+              "page_size": 50
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.search.err_invalid_status_enum",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "检索题目集A",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "检索题目集B",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "Photosynthesis converts light energy",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": "Chlorophyll absorbs light",
+              "difficulty": "easy",
+              "tags": [
+                "biology",
+                "光合作用"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "Light travels faster than sound",
+              "question_type": "true_false",
+              "options": null,
+              "answer": "true",
+              "structured_data": null,
+              "explanation": "Speed of light",
+              "difficulty": "medium",
+              "tags": [
+                "physics"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "C++ 是什么? 下列说法正确",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "A",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "hard",
+              "tags": [
+                "programming"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${1.id}",
+              "content": "The Sun emits light and heat",
+              "question_type": "short_answer",
+              "options": null,
+              "answer": "photosynthesis depends on sunlight",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "very_hard",
+              "tags": [
+                "astronomy"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "光合作用 发生在 叶绿体",
+              "question_type": "fill_blank",
+              "options": null,
+              "answer": "叶绿体",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "medium",
+              "tags": [
+                "biology"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "light",
+              "filters": {
+                "status": [
+                  "done"
+                ]
+              }
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.search.err_invalid_sort_by",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "检索题目集A",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "检索题目集B",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "Photosynthesis converts light energy",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": "Chlorophyll absorbs light",
+              "difficulty": "easy",
+              "tags": [
+                "biology",
+                "光合作用"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "Light travels faster than sound",
+              "question_type": "true_false",
+              "options": null,
+              "answer": "true",
+              "structured_data": null,
+              "explanation": "Speed of light",
+              "difficulty": "medium",
+              "tags": [
+                "physics"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "C++ 是什么? 下列说法正确",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "A",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "hard",
+              "tags": [
+                "programming"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${1.id}",
+              "content": "The Sun emits light and heat",
+              "question_type": "short_answer",
+              "options": null,
+              "answer": "photosynthesis depends on sunlight",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "very_hard",
+              "tags": [
+                "astronomy"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "光合作用 发生在 叶绿体",
+              "question_type": "fill_blank",
+              "options": null,
+              "answer": "叶绿体",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "medium",
+              "tags": [
+                "biology"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "light",
+              "filters": {
+                "sort_by": "score"
+              }
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.search.err_negative_page",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "检索题目集A",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "检索题目集B",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "Photosynthesis converts light energy",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": "Chlorophyll absorbs light",
+              "difficulty": "easy",
+              "tags": [
+                "biology",
+                "光合作用"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "Light travels faster than sound",
+              "question_type": "true_false",
+              "options": null,
+              "answer": "true",
+              "structured_data": null,
+              "explanation": "Speed of light",
+              "difficulty": "medium",
+              "tags": [
+                "physics"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "C++ 是什么? 下列说法正确",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "A",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "hard",
+              "tags": [
+                "programming"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${1.id}",
+              "content": "The Sun emits light and heat",
+              "question_type": "short_answer",
+              "options": null,
+              "answer": "photosynthesis depends on sunlight",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "very_hard",
+              "tags": [
+                "astronomy"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "光合作用 发生在 叶绿体",
+              "question_type": "fill_blank",
+              "options": null,
+              "answer": "叶绿体",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "medium",
+              "tags": [
+                "biology"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "light",
+              "page": -1
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.search.err_keyword_not_string",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "检索题目集A",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "检索题目集B",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "Photosynthesis converts light energy",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": "Chlorophyll absorbs light",
+              "difficulty": "easy",
+              "tags": [
+                "biology",
+                "光合作用"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "Light travels faster than sound",
+              "question_type": "true_false",
+              "options": null,
+              "answer": "true",
+              "structured_data": null,
+              "explanation": "Speed of light",
+              "difficulty": "medium",
+              "tags": [
+                "physics"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "C++ 是什么? 下列说法正确",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "A",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "hard",
+              "tags": [
+                "programming"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${1.id}",
+              "content": "The Sun emits light and heat",
+              "question_type": "short_answer",
+              "options": null,
+              "answer": "photosynthesis depends on sunlight",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "very_hard",
+              "tags": [
+                "astronomy"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "光合作用 发生在 叶绿体",
+              "question_type": "fill_blank",
+              "options": null,
+              "answer": "叶绿体",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "medium",
+              "tags": [
+                "biology"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": 123
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.search.err_filters_wrong_type",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "检索题目集A",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "检索题目集B",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "Photosynthesis converts light energy",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": "Chlorophyll absorbs light",
+              "difficulty": "easy",
+              "tags": [
+                "biology",
+                "光合作用"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "Light travels faster than sound",
+              "question_type": "true_false",
+              "options": null,
+              "answer": "true",
+              "structured_data": null,
+              "explanation": "Speed of light",
+              "difficulty": "medium",
+              "tags": [
+                "physics"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "C++ 是什么? 下列说法正确",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "A",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "hard",
+              "tags": [
+                "programming"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${1.id}",
+              "content": "The Sun emits light and heat",
+              "question_type": "short_answer",
+              "options": null,
+              "answer": "photosynthesis depends on sunlight",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "very_hard",
+              "tags": [
+                "astronomy"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "光合作用 发生在 叶绿体",
+              "question_type": "fill_blank",
+              "options": null,
+              "answer": "叶绿体",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "medium",
+              "tags": [
+                "biology"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "light",
+              "filters": "all"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.search.err_missing_request",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "检索题目集A",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "检索题目集B",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "Photosynthesis converts light energy",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": "Chlorophyll absorbs light",
+              "difficulty": "easy",
+              "tags": [
+                "biology",
+                "光合作用"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "Light travels faster than sound",
+              "question_type": "true_false",
+              "options": null,
+              "answer": "true",
+              "structured_data": null,
+              "explanation": "Speed of light",
+              "difficulty": "medium",
+              "tags": [
+                "physics"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "C++ 是什么? 下列说法正确",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "A",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "hard",
+              "tags": [
+                "programming"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${1.id}",
+              "content": "The Sun emits light and heat",
+              "question_type": "short_answer",
+              "options": null,
+              "answer": "photosynthesis depends on sunlight",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "very_hard",
+              "tags": [
+                "astronomy"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "光合作用 发生在 叶绿体",
+              "question_type": "fill_blank",
+              "options": null,
+              "answer": "叶绿体",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "medium",
+              "tags": [
+                "biology"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.rebuild_fts.empty_db",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_rebuild_fts_index",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.rebuild_fts.excludes_soft_deleted_idempotent",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "检索题目集A",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "检索题目集B",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "Photosynthesis converts light energy",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": "Chlorophyll absorbs light",
+              "difficulty": "easy",
+              "tags": [
+                "biology",
+                "光合作用"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "Light travels faster than sound",
+              "question_type": "true_false",
+              "options": null,
+              "answer": "true",
+              "structured_data": null,
+              "explanation": "Speed of light",
+              "difficulty": "medium",
+              "tags": [
+                "physics"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "C++ 是什么? 下列说法正确",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "A",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "hard",
+              "tags": [
+                "programming"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${1.id}",
+              "content": "The Sun emits light and heat",
+              "question_type": "short_answer",
+              "options": null,
+              "answer": "photosynthesis depends on sunlight",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "very_hard",
+              "tags": [
+                "astronomy"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "光合作用 发生在 叶绿体",
+              "question_type": "fill_blank",
+              "options": null,
+              "answer": "叶绿体",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "medium",
+              "tags": [
+                "biology"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_delete_question",
+          "args": {
+            "questionId": "${4.id}"
+          }
+        },
+        {
+          "cmd": "qbank_rebuild_fts_index",
+          "args": {}
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "light",
+              "exam_id": null,
+              "filters": {},
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "C++",
+              "exam_id": null,
+              "filters": {},
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        },
+        {
+          "cmd": "qbank_rebuild_fts_index",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.rebuild_fts.after_update_and_delete",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "检索题目集A",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "检索题目集B",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "Photosynthesis converts light energy",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": "Chlorophyll absorbs light",
+              "difficulty": "easy",
+              "tags": [
+                "biology",
+                "光合作用"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "Light travels faster than sound",
+              "question_type": "true_false",
+              "options": null,
+              "answer": "true",
+              "structured_data": null,
+              "explanation": "Speed of light",
+              "difficulty": "medium",
+              "tags": [
+                "physics"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "C++ 是什么? 下列说法正确",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "A",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "hard",
+              "tags": [
+                "programming"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${1.id}",
+              "content": "The Sun emits light and heat",
+              "question_type": "short_answer",
+              "options": null,
+              "answer": "photosynthesis depends on sunlight",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "very_hard",
+              "tags": [
+                "astronomy"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "光合作用 发生在 叶绿体",
+              "question_type": "fill_blank",
+              "options": null,
+              "answer": "叶绿体",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "medium",
+              "tags": [
+                "biology"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_update_question",
+          "args": {
+            "request": {
+              "question_id": "${3.id}",
+              "params": {
+                "content": "Sound is slower"
+              },
+              "record_history": true
+            }
+          }
+        },
+        {
+          "cmd": "qbank_delete_question",
+          "args": {
+            "questionId": "${2.id}"
+          }
+        },
+        {
+          "cmd": "qbank_rebuild_fts_index",
+          "args": {}
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "photosynthesis",
+              "exam_id": null,
+              "filters": {},
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "slower",
+              "exam_id": null,
+              "filters": {},
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        },
+        {
+          "cmd": "qbank_search_questions",
+          "args": {
+            "request": {
+              "keyword": "faster",
+              "exam_id": null,
+              "filters": {},
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

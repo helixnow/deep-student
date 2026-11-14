@@ -1,0 +1,173 @@
+{
+  "kind": "static-source-vs-production-not-C",
+  "revision": "2a86d348b516db6cbbb52a83ed7a07cb17060861",
+  "findings": [
+    {
+      "id": "X7-L02-HANGUL-A",
+      "text": "ꥠꥠꥠ",
+      "expected": 3,
+      "source": "dstu-util/src/utils/token_budget.rs:173",
+      "lane": "L02-llm-manager",
+      "actual": {
+        "ok": true,
+        "value": 2
+      },
+      "mismatch": true
+    },
+    {
+      "id": "X7-L02-HANGUL-B",
+      "text": "ힰힰힰ",
+      "expected": 3,
+      "source": "dstu-util/src/utils/token_budget.rs:174",
+      "lane": "L02-llm-manager",
+      "actual": {
+        "ok": true,
+        "value": 2
+      },
+      "mismatch": true
+    },
+    {
+      "id": "X7-L02-HANGUL-COMPAT",
+      "text": "㄰㄰㄰",
+      "expected": 2,
+      "source": "dstu-util/src/utils/token_budget.rs:170-174,28",
+      "lane": "L02-llm-manager",
+      "actual": {
+        "ok": true,
+        "value": 3
+      },
+      "mismatch": true
+    },
+    {
+      "id": "X7-L16-SERDE-front",
+      "scope": "production decoder direct call / internal assembly; not an IPC contract bypass",
+      "lane": "L16-anki",
+      "source": "dstu-core/src/models.rs:1380-1411",
+      "input": {
+        "id": "fixture",
+        "created_at": "2026-11-04T00:00:00Z",
+        "updated_at": "2026-11-04T00:00:00Z",
+        "front": 3
+      },
+      "expected": "serde rejects a non-string value in String / Vec<String> / HashMap<String,String>",
+      "actual": {
+        "ok": true,
+        "value": {
+          "front": "",
+          "back": "",
+          "text": null,
+          "tags": [],
+          "images": [],
+          "id": "fixture",
+          "task_id": "",
+          "is_error_card": false,
+          "error_content": null,
+          "created_at": "2026-11-04T00:00:00Z",
+          "updated_at": "2026-11-04T00:00:00Z",
+          "extra_fields": {},
+          "template_id": null
+        }
+      }
+    },
+    {
+      "id": "X7-L16-SERDE-tags",
+      "scope": "production decoder direct call / internal assembly; not an IPC contract bypass",
+      "lane": "L16-anki",
+      "source": "dstu-core/src/models.rs:1380-1411",
+      "input": {
+        "id": "fixture",
+        "created_at": "2026-11-04T00:00:00Z",
+        "updated_at": "2026-11-04T00:00:00Z",
+        "tags": [
+          3
+        ]
+      },
+      "expected": "serde rejects a non-string value in String / Vec<String> / HashMap<String,String>",
+      "actual": {
+        "ok": true,
+        "value": {
+          "front": "",
+          "back": "",
+          "text": null,
+          "tags": [
+            3
+          ],
+          "images": [],
+          "id": "fixture",
+          "task_id": "",
+          "is_error_card": false,
+          "error_content": null,
+          "created_at": "2026-11-04T00:00:00Z",
+          "updated_at": "2026-11-04T00:00:00Z",
+          "extra_fields": {},
+          "template_id": null
+        }
+      }
+    },
+    {
+      "id": "X7-L16-SERDE-extra_fields",
+      "scope": "production decoder direct call / internal assembly; not an IPC contract bypass",
+      "lane": "L16-anki",
+      "source": "dstu-core/src/models.rs:1380-1411",
+      "input": {
+        "id": "fixture",
+        "created_at": "2026-11-04T00:00:00Z",
+        "updated_at": "2026-11-04T00:00:00Z",
+        "extra_fields": {
+          "key": 3
+        }
+      },
+      "expected": "serde rejects a non-string value in String / Vec<String> / HashMap<String,String>",
+      "actual": {
+        "ok": true,
+        "value": {
+          "front": "",
+          "back": "",
+          "text": null,
+          "tags": [],
+          "images": [],
+          "id": "fixture",
+          "task_id": "",
+          "is_error_card": false,
+          "error_content": null,
+          "created_at": "2026-11-04T00:00:00Z",
+          "updated_at": "2026-11-04T00:00:00Z",
+          "extra_fields": {
+            "key": 3
+          },
+          "template_id": null
+        }
+      }
+    },
+    {
+      "id": "X7-L03-MULTIMODAL-TEXT-TAG",
+      "lane": "L03-chat-pipeline",
+      "source": "dstu-core/src/models.rs:107-123 (serde tag=type, rename_all=lowercase)",
+      "expected": {
+        "type": "text",
+        "text": "fixture"
+      },
+      "actual": {
+        "Text": {
+          "text": "fixture"
+        }
+      }
+    },
+    {
+      "id": "X7-L03-MULTIMODAL-IMAGE-TAG",
+      "lane": "L03-chat-pipeline",
+      "source": "dstu-core/src/models.rs:107-123 (image_url rename, mediaType field rename)",
+      "expected": {
+        "type": "image_url",
+        "mediaType": "image/png",
+        "base64": "AA=="
+      },
+      "actual": {
+        "image_url": {
+          "mediaType": "image/png",
+          "base64": "AA=="
+        }
+      }
+    }
+  ]
+}

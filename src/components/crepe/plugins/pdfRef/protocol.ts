@@ -17,11 +17,14 @@ export interface PdfRefHrefTarget {
   sourceId: string;
   /** 目标页码（1-based） */
   page: number;
+  quote?: string;
 }
 
 /** 构造来源行回链 href：`pdfref://tb_xxx?page=3` */
-export function buildPdfRefHref(sourceId: string, page: number): string {
-  return `${PDF_REF_HREF_PROTOCOL}${encodeURIComponent(sourceId)}?page=${page}`;
+export function buildPdfRefHref(sourceId: string, page: number, quote?: string): string {
+  const base = `${PDF_REF_HREF_PROTOCOL}${encodeURIComponent(sourceId)}?page=${page}`;
+  const normalizedQuote = quote?.replace(/[\r\n]+/g, ' ').replace(/[)\]\\]/g, '').replace(/\s+/g, ' ').trim().slice(0, 120);
+  return normalizedQuote ? `${base}&quote=${encodeURIComponent(normalizedQuote)}` : base;
 }
 
 /**
@@ -51,5 +54,10 @@ export function parsePdfRefHref(href: string | null | undefined): PdfRefHrefTarg
   const page = Number.parseInt(pageMatch[1], 10);
   if (!Number.isInteger(page) || page <= 0) return null;
 
-  return { sourceId, page };
+  const quoteMatch = /(?:^|[?&#])quote=([^&#]*)/.exec(query);
+  let quote: string | undefined;
+  if (quoteMatch) {
+    try { quote = decodeURIComponent(quoteMatch[1]).trim() || undefined; } catch { /* malformed quote is ignored */ }
+  }
+  return quote ? { sourceId, page, quote } : { sourceId, page };
 }

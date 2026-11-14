@@ -1,9 +1,10 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TFunction } from 'i18next';
 
 import { openFileFromPalette } from '@/command-palette/hooks/useResourceSearch';
 import type { DependencyResolver } from '@/command-palette/registry/types';
 import { workbenchBus } from '@/features/workbench/core/workbenchBus';
+import { installWorkbenchHost, uninstallWorkbenchHost } from '@/app/workbench/host-runtime';
 import type { DstuNode } from '@/dstu/types';
 
 const note: DstuNode = {
@@ -33,6 +34,14 @@ function workbenchDeps(navigate: ReturnType<typeof vi.fn>): DependencyResolver {
 }
 
 describe('command palette resource routing in the Workbench', () => {
+  beforeEach(() => {
+    installWorkbenchHost();
+  });
+
+  afterEach(() => {
+    uninstallWorkbenchHost();
+  });
+
   it('opens a note through the Workbench instead of navigating to the unmounted Learning Hub', async () => {
     const navigate = vi.fn();
     const launch = vi.spyOn(workbenchBus, 'launch').mockReturnValue('notes-window');

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- ad-hoc + hardened runtime（本地与未签名分发），主程序与全部 helper 共用。V8 / WebAssembly 需要 MAP_JIT。 -->
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <key>com.apple.security.device.audio-input</key>
+  <true/>
+  <!-- ad-hoc 签名没有 Team ID，library validation 会拒绝包内的原生模块（Electron Framework、.node、libvips）。
+       src-tauri/Entitlements.plist 同项。正式发布签名不带它（entitlements.mac.plist）。 -->
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
+</dict>
+</plist>

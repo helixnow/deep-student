@@ -1,0 +1,676 @@
+{
+  "domain": "chat",
+  "commands": [
+    "chat_v2_create_group",
+    "chat_v2_update_group",
+    "chat_v2_delete_group",
+    "chat_v2_get_group",
+    "chat_v2_list_groups",
+    "chat_v2_move_session_to_group"
+  ],
+  "scenarios": [
+    {
+      "id": "chat.group.lifecycle_get_list_move_delete",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_group",
+          "args": {
+            "request": {
+              "name": "课题甲",
+              "description": "描述",
+              "icon": "📘",
+              "color": "#123456",
+              "systemPrompt": "你是助教",
+              "defaultSkillIds": [
+                "skill_a"
+              ],
+              "pinnedResourceIds": [
+                "res_wp226_x"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_create_group",
+          "args": {
+            "request": {
+              "name": "  "
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_create_group",
+          "args": {
+            "request": {
+              "name": "课题甲"
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_create_group",
+          "args": {
+            "request": {
+              "name": "a/b\\c",
+              "workspaceId": "ws_wp226_grp"
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "会话A",
+            "groupId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "会话B"
+          }
+        },
+        {
+          "cmd": "chat_v2_get_group",
+          "args": {
+            "groupId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_get_group",
+          "args": {
+            "groupId": "grp_wp226_missing"
+          }
+        },
+        {
+          "cmd": "chat_v2_get_group",
+          "args": {
+            "groupId": ""
+          }
+        },
+        {
+          "cmd": "chat_v2_list_groups",
+          "args": {}
+        },
+        {
+          "cmd": "chat_v2_list_groups",
+          "args": {
+            "status": "active"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_groups",
+          "args": {
+            "status": "archived"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_groups",
+          "args": {
+            "workspaceId": "ws_wp226_grp"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_groups",
+          "args": {
+            "status": null,
+            "workspaceId": null
+          }
+        },
+        {
+          "cmd": "chat_v2_list_groups",
+          "args": {
+            "status": "bogus"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_groups",
+          "args": {
+            "status": "active",
+            "workspaceId": "ws_wp226_none"
+          }
+        },
+        {
+          "cmd": "chat_v2_move_session_to_group",
+          "args": {
+            "sessionId": "${5.id}",
+            "groupId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_move_session_to_group",
+          "args": {
+            "sessionId": "${5.id}",
+            "groupId": "  "
+          }
+        },
+        {
+          "cmd": "chat_v2_move_session_to_group",
+          "args": {
+            "sessionId": "${5.id}",
+            "groupId": "${2.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_move_session_to_group",
+          "args": {
+            "sessionId": "${5.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_move_session_to_group",
+          "args": {
+            "sessionId": "${5.id}",
+            "groupId": "${2.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_move_session_to_group",
+          "args": {
+            "sessionId": "${5.id}",
+            "groupId": null
+          }
+        },
+        {
+          "cmd": "chat_v2_move_session_to_group",
+          "args": {
+            "sessionId": "sess_wp226_missing",
+            "groupId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_move_session_to_group",
+          "args": {
+            "sessionId": "",
+            "groupId": ""
+          }
+        },
+        {
+          "cmd": "chat_v2_update_group",
+          "args": {
+            "groupId": "${0.id}",
+            "request": {
+              "persistStatus": "archived"
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_get_group",
+          "args": {
+            "groupId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_groups",
+          "args": {
+            "status": "archived"
+          }
+        },
+        {
+          "cmd": "chat_v2_delete_group",
+          "args": {
+            "groupId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_get_group",
+          "args": {
+            "groupId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_get_session",
+          "args": {
+            "sessionId": "${4.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_groups",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "chat.group.delete_errors_and_deleted_status",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_group",
+          "args": {
+            "request": {
+              "name": "活跃课题"
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_delete_group",
+          "args": {
+            "groupId": "${0.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_delete_group",
+          "args": {
+            "groupId": "grp_wp226_missing"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_delete_group",
+          "args": {
+            "groupId": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "课题内会话",
+            "groupId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_wp226_g_anki",
+            "messageId": "msg_wp226_g_anki",
+            "sessionId": "${4.id}",
+            "blockType": "anki_cards",
+            "content": ""
+          }
+        },
+        {
+          "cmd": "chat_v2_update_group",
+          "args": {
+            "groupId": "${0.id}",
+            "request": {
+              "persistStatus": "archived"
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_delete_group",
+          "args": {
+            "groupId": "${0.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_wp226_g_anki",
+            "messageId": "msg_wp226_g_anki",
+            "sessionId": "${4.id}",
+            "blockType": "anki_cards",
+            "content": "",
+            "status": "pending"
+          }
+        },
+        {
+          "cmd": "chat_v2_delete_group",
+          "args": {
+            "groupId": "${0.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_wp226_g_anki",
+            "messageId": "msg_wp226_g_anki",
+            "sessionId": "${4.id}",
+            "blockType": "anki_cards",
+            "content": "",
+            "status": "success"
+          }
+        },
+        {
+          "cmd": "chat_v2_delete_group",
+          "args": {
+            "groupId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_delete_group",
+          "args": {
+            "groupId": "${0.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_create_group",
+          "args": {
+            "request": {
+              "name": "已删课题"
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_update_group",
+          "args": {
+            "groupId": "${13.id}",
+            "request": {
+              "persistStatus": "deleted"
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_delete_group",
+          "args": {
+            "groupId": "${13.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_delete_group",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "chat.group.move_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_group",
+          "args": {
+            "request": {
+              "name": "移动目标"
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "待移动"
+          }
+        },
+        {
+          "cmd": "chat_v2_move_session_to_group",
+          "args": {
+            "sessionId": "${1.id}",
+            "groupId": "grp_wp226_missing"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_update_group",
+          "args": {
+            "groupId": "${0.id}",
+            "request": {
+              "persistStatus": "archived"
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_move_session_to_group",
+          "args": {
+            "sessionId": "${1.id}",
+            "groupId": "${0.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_create_group",
+          "args": {
+            "request": {
+              "name": "删除态"
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_update_group",
+          "args": {
+            "groupId": "${5.id}",
+            "request": {
+              "persistStatus": "deleted"
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_move_session_to_group",
+          "args": {
+            "sessionId": "${1.id}",
+            "groupId": "${5.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_move_session_to_group",
+          "args": {
+            "sessionId": "sess_wp226_missing",
+            "groupId": "grp_wp226_missing"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_move_session_to_group",
+          "args": {
+            "groupId": "${5.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_get_session",
+          "args": {
+            "sessionId": "${1.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "chat.group.create_update_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_group",
+          "args": {
+            "request": {
+              "name": "绝对路径",
+              "defaultRuntimeRootId": "/tmp/wp226-abs"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_create_group",
+          "args": {
+            "request": {
+              "name": "未知根",
+              "defaultRuntimeRootId": "authorized_wp226_missing"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_create_group",
+          "args": {
+            "request": {
+              "name": "空根",
+              "defaultRuntimeRootId": "  ",
+              "preferredProjectRootPath": "/ignored/by/backend"
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_create_group",
+          "args": {
+            "request": {
+              "name": "工作区根",
+              "defaultRuntimeRootId": "workspace"
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_create_group",
+          "args": {
+            "request": {}
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_create_group",
+          "args": {
+            "request": {
+              "name": 1
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_create_group",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_list_groups",
+          "args": {}
+        },
+        {
+          "cmd": "chat_v2_update_group",
+          "args": {
+            "groupId": "grp_wp226_missing",
+            "request": {
+              "name": "x"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_update_group",
+          "args": {
+            "groupId": "grp_wp226_missing",
+            "request": {
+              "defaultRuntimeRootId": "/abs"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_update_group",
+          "args": {
+            "groupId": "${2.id}",
+            "request": {
+              "defaultRuntimeRootId": "/tmp/wp226-abs"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_update_group",
+          "args": {
+            "groupId": "${2.id}",
+            "request": {
+              "defaultRuntimeRootId": "authorized_wp226_missing"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_update_group",
+          "args": {
+            "groupId": "${2.id}",
+            "request": {
+              "persistStatus": "bogus"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_update_group",
+          "args": {
+            "groupId": "${2.id}",
+            "request": {
+              "sortOrder": 2147483648
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_update_group",
+          "args": {
+            "groupId": "${2.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_update_group",
+          "args": {
+            "groupId": "${2.id}",
+            "request": {
+              "name": "改名",
+              "description": "",
+              "icon": "  ",
+              "color": "#fff",
+              "sortOrder": -3,
+              "preferredProjectRootPath": ""
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_update_group",
+          "args": {
+            "groupId": "${2.id}",
+            "request": {
+              "defaultRuntimeRootId": ""
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_update_group",
+          "args": {
+            "groupId": "${2.id}",
+            "request": {
+              "persistStatus": "active"
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_update_group",
+          "args": {
+            "groupId": "${2.id}",
+            "request": {}
+          }
+        },
+        {
+          "cmd": "chat_v2_get_group",
+          "args": {
+            "groupId": "${2.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

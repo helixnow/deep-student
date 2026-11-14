@@ -1,0 +1,27 @@
+{
+  "id": "RF-W09-dstu-resource-file-source-id-prefix",
+  "kind": "rust-bug",
+  "status": "proposed",
+  "title": "DSTU 路径取 sourceId 时认 res_、file_ 前缀，导入资料不再刷“路径格式不合法”警告（W12 冒烟 #33）",
+  "rust": {
+    "file": "src/dstu/api.ts",
+    "line": 189,
+    "behavior": "参照仓 deep-student（快照 21c9d808）的 extractSourceIdFromPath 白名单只有 note|tb|fld|exam|tr|essay|img|att|retrieval，而 VFS 给资源和文件发的 id 是 res_*、file_*（src-tauri 里 format!(\"res_{}\") 11 处、format!(\"file_{}\") 3 处）。这类路径走“消毒”分支，结果与原 id 相同，但每次都 console.warn“路径格式不合法，已消毒”"
+  },
+  "fix": {
+    "files": [
+      "src/dstu/api.ts"
+    ],
+    "behavior": "白名单加入 res、file。合法字符集与长度上限不变，返回的 sourceId 与修复前逐字相同，只是不再打警告"
+  },
+  "evidence": "W12 r8 冒烟（.reports/agent-final/W12-1354-1e89caaf.md:39）：导入资料时 6 条“路径格式不合法”日志。src/dstu/__tests__/sourceIdPrefixes.test.ts 经 purge() 走真实提取逻辑，修复前 res_/file_ 两条路径各打一条警告",
+  "userVisible": "否：只少了控制台警告，缓存失效用的 sourceId 不变",
+  "dataCompat": "不涉及",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "src/dstu/__tests__/sourceIdPrefixes.test.ts",
+      "name": "RF-W09-dstu-resource-file-source-id-prefix: imported resource and file ids are valid sourceIds, not sanitized with a warning"
+    }
+  ]
+}

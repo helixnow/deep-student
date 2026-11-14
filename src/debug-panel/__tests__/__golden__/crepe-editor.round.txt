@@ -1,0 +1,474 @@
+<div>
+  <div class="p-4 space-y-4">
+    <div class="flex items-center justify-between gap-4 flex-wrap">
+      <h2 class="text-lg font-semibold flex items-center gap-2">
+        <svg size=20 icon="M69.12,94.15,28.5,128l40">
+        "Crepe 编辑器调试"
+      <div class="flex items-center gap-2 flex-wrap">
+        <button class="px-3 py-1 [@media(pointer:coarse)]:min-h-11 text-sm bg-cyan-500 text-white rounded hover:bg-cyan-600" title="手动捕获 DOM 快照">
+          <svg size=16 icon="M247.31,124.76c-.35-.79-" class="inline mr-1">
+          "快照"
+        <button class="px-3 py-1 [@media(pointer:coarse)]:min-h-11 text-sm rounded bg-gray-200 text-gray-700" title="仅显示错误和警告">
+          <svg size=16 icon="M230.6,49.53A15.81,15.81">
+        <button class="px-3 py-1 [@media(pointer:coarse)]:min-h-11 text-sm rounded bg-green-500 text-white" title="自动滚动到底部">
+          "自动滚动"
+        <button class="px-3 py-1 [@media(pointer:coarse)]:min-h-11 text-sm bg-blue-500 text-white rounded hover:bg-blue-600" title="复制所有日志到剪贴板">
+          <svg size=16 icon="M200,32H163.74a47.92,47.">
+        <button class="px-3 py-1 [@media(pointer:coarse)]:min-h-11 text-sm bg-indigo-500 text-white rounded hover:bg-indigo-600" title="导出日志为JSON文件">
+          <svg size=16 icon="M219.31,72,184,36.69A15.">
+        <button class="px-3 py-1 [@media(pointer:coarse)]:min-h-11 text-sm bg-gray-500 text-white rounded hover:bg-gray-600" title="清空日志">
+          <svg size=16 icon="M216,48H176V40a24,24,0,0">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="border rounded-lg p-3 bg-slate-50">
+        <div class="text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+          <svg size=16 icon="M247.31,124.76c-.35-.79-">
+          "实时 DOM 快照"
+        <div class="text-xs font-mono space-y-1">
+          <div class="text-green-600">
+            "wrapper:"
+            "✓"
+          <div class="text-red-600">
+            "data-ready:"
+            "false"
+          <div class="text-green-600">
+            ".milkdown:"
+            "✓"
+          <div class="text-green-600">
+            ".ProseMirror:"
+            "✓"
+          <div class="text-orange-600">
+            "contentEditable:"
+            "false"
+          <div class="text-red-600">
+            "pointer-events:"
+            "none"
+          <div class="text-gray-500">
+            "opacity:"
+            "0.5"
+          <div class="text-gray-500">
+            "children:"
+            "2"
+      <div class="border rounded-lg p-3 bg-red-50 border-red-200">
+        <div class="text-sm font-medium mb-2 flex items-center gap-2">
+          <svg size=16 icon="M236.8,188.09,149.35,36." class="text-red-600">
+          <span class="text-red-700">
+            "检测到问题"
+        <div class="space-y-2">
+          <div class="text-xs space-y-1">
+            <div class="text-red-700">
+              "❌ data-ready=\"false\"，编辑器未就绪"
+            <div class="text-red-700">
+              "⚠️ contentEditable=\"false\"，应为 \"true\""
+            <div class="text-red-700">
+              "❌ pointer-events: none，点击事件被阻止"
+            <div class="text-red-700">
+              "⚠️ 存在 3 条错误日志"
+          <div class="text-xs text-gray-600 border-t pt-2 mt-2">
+            <div class="font-medium mb-1">
+              "建议："
+            <div>
+              "•"
+              "检查 Crepe.create() 是否成功完成"
+            <div>
+              "•"
+              "编辑器可能处于只读模式或未正确初始化"
+            <div>
+              "•"
+              "检查 CSS 规则，可能是 data-ready=\"false\" 导致"
+            <div>
+              "•"
+              "Prism 加载错误可能导致代码高亮失败"
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
+      <div class="p-3 bg-gray-100 rounded">
+        <div class="text-xs text-gray-500">
+          "调试"
+        <div class="text-lg font-semibold text-gray-600">
+          "2"
+      <div class="p-3 bg-blue-100 rounded">
+        <div class="text-xs text-blue-600">
+          "信息"
+        <div class="text-lg font-semibold text-blue-700">
+          "4"
+      <div class="p-3 bg-yellow-100 rounded">
+        <div class="text-xs text-yellow-600">
+          "警告"
+        <div class="text-lg font-semibold text-yellow-700">
+          "1"
+      <div class="p-3 bg-red-100 rounded">
+        <div class="text-xs text-red-600">
+          "错误"
+        <div class="text-lg font-semibold text-red-700">
+          "3"
+    <div class="border rounded-lg p-3 bg-gradient-to-r from-purple-50 to-blue-50">
+      <div class="text-sm font-medium text-gray-700 mb-2">
+        "事件分类统计"
+      <div class="flex flex-wrap gap-2">
+        <button class="px-3 py-1 [@media(pointer:coarse)]:min-h-11 text-xs rounded-full transition-all opacity-75 hover:opacity-100" style="background-color: rgba(139, 92, 246, 0.125); color: rgb(139, 92, 246);">
+          "生命周期"
+          ":"
+          "2"
+        <button class="px-3 py-1 [@media(pointer:coarse)]:min-h-11 text-xs rounded-full transition-all opacity-75 hover:opacity-100" style="background-color: rgba(99, 102, 241, 0.125); color: rgb(99, 102, 241);">
+          "初始化"
+          ":"
+          "1"
+        <button class="px-3 py-1 [@media(pointer:coarse)]:min-h-11 text-xs rounded-full transition-all opacity-75 hover:opacity-100" style="background-color: rgba(16, 185, 129, 0.125); color: rgb(16, 185, 129);">
+          "依赖加载"
+          ":"
+          "1"
+        <button class="px-3 py-1 [@media(pointer:coarse)]:min-h-11 text-xs rounded-full transition-all opacity-75 hover:opacity-100" style="background-color: rgba(249, 115, 22, 0.125); color: rgb(249, 115, 22);">
+          "DOM状态"
+          ":"
+          "1"
+        <button class="px-3 py-1 [@media(pointer:coarse)]:min-h-11 text-xs rounded-full transition-all opacity-75 hover:opacity-100" style="background-color: rgba(59, 130, 246, 0.125); color: rgb(59, 130, 246);">
+          "编辑器事件"
+          ":"
+          "1"
+        <button class="px-3 py-1 [@media(pointer:coarse)]:min-h-11 text-xs rounded-full transition-all opacity-75 hover:opacity-100" style="background-color: rgba(239, 68, 68, 0.125); color: rgb(239, 68, 68);">
+          "错误"
+          ":"
+          "3"
+        <button class="px-3 py-1 [@media(pointer:coarse)]:min-h-11 text-xs rounded-full transition-all opacity-75 hover:opacity-100" style="background-color: rgba(6, 182, 212, 0.125); color: rgb(6, 182, 212);">
+          "状态快照"
+          ":"
+          "1"
+    <div class="flex flex-wrap gap-3">
+      <div class="flex-1 min-w-[200px]">
+        <label class="block text-xs text-gray-600 mb-1">
+          "搜索关键词"
+        <input class="w-full px-3 py-1.5 [@media(pointer:coarse)]:min-h-11 text-sm [@media(pointer:coarse)]:text-[16px] border rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+      <div class="min-w-[150px]">
+        <label class="block text-xs text-gray-600 mb-1">
+          "事件分类"
+        <select class="w-full px-3 py-1.5 [@media(pointer:coarse)]:min-h-11 text-sm border rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <option>
+            "全部分类"
+          <option>
+            "生命周期"
+            "("
+            "2"
+            ")"
+          <option>
+            "初始化"
+            "("
+            "1"
+            ")"
+          <option>
+            "依赖加载"
+            "("
+            "1"
+            ")"
+          <option>
+            "DOM状态"
+            "("
+            "1"
+            ")"
+          <option>
+            "编辑器事件"
+            "("
+            "1"
+            ")"
+          <option>
+            "错误"
+            "("
+            "3"
+            ")"
+          <option>
+            "状态快照"
+            "("
+            "1"
+            ")"
+      <div class="min-w-[120px]">
+        <label class="block text-xs text-gray-600 mb-1">
+          "日志级别"
+        <select class="w-full px-3 py-1.5 [@media(pointer:coarse)]:min-h-11 text-sm border rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <option>
+            "全部级别"
+          <option>
+            "调试"
+          <option>
+            "信息"
+          <option>
+            "警告"
+          <option>
+            "错误"
+    <div class="border rounded-lg overflow-hidden">
+      <div class="bg-gray-100 px-3 py-2 text-sm font-medium text-gray-700 flex items-center justify-between">
+        <span>
+          "日志记录 ("
+          "10"
+          "/"
+          "10"
+          ")"
+      <div class="max-h-[400px] overflow-auto">
+        <div class="divide-y">
+          <div class="p-3 hover:bg-gray-50">
+            <div class="flex items-start gap-3">
+              <svg size=20 icon="M173.66,98.34a8,8,0,0,1," class="mt-0.5 flex-shrink-0" style="color: rgb(59, 130, 246);">
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 mb-1 flex-wrap">
+                  <span class="text-xs text-gray-500 font-mono">
+                    "10:00:00"
+                    "."
+                    "000"
+                  <span class="px-2 py-0.5 text-xs rounded flex items-center gap-1" style="background-color: rgba(139, 92, 246, 0.125); color: rgb(139, 92, 246);">
+                    <svg size=12 icon="M240,56v48a8,8,0,0,1-8,8">
+                    "生命周期"
+                  <span class="px-2 py-0.5 text-xs rounded" style="background-color: rgba(59, 130, 246, 0.125); color: rgb(59, 130, 246);">
+                    "INFO"
+                <div class="text-sm text-gray-800 mb-1 font-medium">
+                  "Crepe 编辑器调试插件已激活"
+                <details class="text-xs mt-2">
+                  <summary class="cursor-pointer text-gray-600 hover:text-gray-800 [@media(pointer:coarse)]:min-h-11">
+                    "查看详细信息 ("
+                    "1"
+                    "项)"
+                  <pre class="mt-2 p-2 bg-gray-100 rounded overflow-auto text-xs max-h-48">
+                    "{ \"timestamp\": \"START+0ms\" }"
+              <button class="p-1 text-gray-400 hover:text-gray-600 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11" title="复制日志">
+                <svg size=16 icon="M216,32H88a8,8,0,0,0-8,8">
+          <div class="p-3 hover:bg-gray-50">
+            <div class="flex items-start gap-3">
+              <svg size=20 icon="M173.66,98.34a8,8,0,0,1," class="mt-0.5 flex-shrink-0" style="color: rgb(59, 130, 246);">
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 mb-1 flex-wrap">
+                  <span class="text-xs text-gray-500 font-mono">
+                    "10:00:00"
+                    "."
+                    "029"
+                  <span class="px-2 py-0.5 text-xs rounded flex items-center gap-1" style="background-color: rgba(139, 92, 246, 0.125); color: rgb(139, 92, 246);">
+                    <svg size=12 icon="M240,56v48a8,8,0,0,1-8,8">
+                    "生命周期"
+                  <span class="px-2 py-0.5 text-xs rounded" style="background-color: rgba(59, 130, 246, 0.125); color: rgb(59, 130, 246);">
+                    "INFO"
+                <div class="text-sm text-gray-800 mb-1 font-medium">
+                  "CrepeEditor mount"
+                <details class="text-xs mt-2">
+                  <summary class="cursor-pointer text-gray-600 hover:text-gray-800 [@media(pointer:coarse)]:min-h-11">
+                    "查看详细信息 ("
+                    "1"
+                    "项)"
+                  <pre class="mt-2 p-2 bg-gray-100 rounded overflow-auto text-xs max-h-48">
+                    "{ \"noteId\": \"note_1\" }"
+              <button class="p-1 text-gray-400 hover:text-gray-600 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11" title="复制日志">
+                <svg size=16 icon="M216,32H88a8,8,0,0,0-8,8">
+          <div class="p-3 hover:bg-gray-50">
+            <div class="flex items-start gap-3">
+              <svg size=20 icon="M240,56v48a8,8,0,0,1-8,8" class="mt-0.5 flex-shrink-0" style="color: rgb(107, 114, 128);">
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 mb-1 flex-wrap">
+                  <span class="text-xs text-gray-500 font-mono">
+                    "10:00:00"
+                    "."
+                    "058"
+                  <span class="px-2 py-0.5 text-xs rounded flex items-center gap-1" style="background-color: rgba(99, 102, 241, 0.125); color: rgb(99, 102, 241);">
+                    <svg size=12 icon="M128,80a48,48,0,1,0,48,4">
+                    "初始化"
+                  <span class="px-2 py-0.5 text-xs rounded" style="background-color: rgba(107, 114, 128, 0.125); color: rgb(107, 114, 128);">
+                    "DEBUG"
+                <div class="text-sm text-gray-800 mb-1 font-medium">
+                  "创建 Crepe 实例"
+                <details class="text-xs mt-2">
+                  <summary class="cursor-pointer text-gray-600 hover:text-gray-800 [@media(pointer:coarse)]:min-h-11">
+                    "查看详细信息 ("
+                    "1"
+                    "项)"
+                  <pre class="mt-2 p-2 bg-gray-100 rounded overflow-auto text-xs max-h-48">
+                    "{ \"features\": [ \"code-mirror\", \"image-block\" ] }"
+              <button class="p-1 text-gray-400 hover:text-gray-600 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11" title="复制日志">
+                <svg size=16 icon="M216,32H88a8,8,0,0,0-8,8">
+          <div class="p-3 hover:bg-gray-50">
+            <div class="flex items-start gap-3">
+              <svg size=20 icon="M236.8,188.09,149.35,36." class="mt-0.5 flex-shrink-0" style="color: rgb(245, 158, 11);">
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 mb-1 flex-wrap">
+                  <span class="text-xs text-gray-500 font-mono">
+                    "10:00:00"
+                    "."
+                    "087"
+                  <span class="px-2 py-0.5 text-xs rounded flex items-center gap-1" style="background-color: rgba(16, 185, 129, 0.125); color: rgb(16, 185, 129);">
+                    <svg size=12 icon="M69.12,94.15,28.5,128l40">
+                    "依赖加载"
+                  <span class="px-2 py-0.5 text-xs rounded" style="background-color: rgba(245, 158, 11, 0.125); color: rgb(245, 158, 11);">
+                    "WARNING"
+                <div class="text-sm text-gray-800 mb-1 font-medium">
+                  "Prism 语言包加载慢"
+                <details class="text-xs mt-2">
+                  <summary class="cursor-pointer text-gray-600 hover:text-gray-800 [@media(pointer:coarse)]:min-h-11">
+                    "查看详细信息 ("
+                    "1"
+                    "项)"
+                  <pre class="mt-2 p-2 bg-gray-100 rounded overflow-auto text-xs max-h-48">
+                    "{ \"ms\": 812 }"
+              <button class="p-1 text-gray-400 hover:text-gray-600 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11" title="复制日志">
+                <svg size=16 icon="M216,32H88a8,8,0,0,0-8,8">
+          <div class="p-3 hover:bg-gray-50">
+            <div class="flex items-start gap-3">
+              <svg size=20 icon="M173.66,98.34a8,8,0,0,1," class="mt-0.5 flex-shrink-0" style="color: rgb(59, 130, 246);">
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 mb-1 flex-wrap">
+                  <span class="text-xs text-gray-500 font-mono">
+                    "10:00:00"
+                    "."
+                    "116"
+                  <span class="px-2 py-0.5 text-xs rounded flex items-center gap-1" style="background-color: rgba(249, 115, 22, 0.125); color: rgb(249, 115, 22);">
+                    <svg size=12 icon="M247.31,124.76c-.35-.79-">
+                    "DOM状态"
+                  <span class="px-2 py-0.5 text-xs rounded" style="background-color: rgba(59, 130, 246, 0.125); color: rgb(59, 130, 246);">
+                    "INFO"
+                <div class="text-sm text-gray-800 mb-1 font-medium">
+                  "DOM 状态"
+                <details class="text-xs mt-2">
+                  <summary class="cursor-pointer text-orange-600 hover:text-orange-800 [@media(pointer:coarse)]:min-h-11">
+                    "DOM 快照"
+                  <pre class="mt-2 p-2 bg-orange-50 rounded overflow-auto text-xs max-h-48">
+                    "{ \"wrapperExists\": true, \"dataReady\": \"false\", \"milkdownExists\": true, \"proseMirrorExists\": true, \"contentEditable\": \"false\", \"pointerEvents\": \"none\", \"opacity\": \"0.5\", \"wrapperClassName\": \"crepe-editor-wrapper\", \"childCount\": 2 }"
+              <button class="p-1 text-gray-400 hover:text-gray-600 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11" title="复制日志">
+                <svg size=16 icon="M216,32H88a8,8,0,0,0-8,8">
+          <div class="p-3 hover:bg-gray-50">
+            <div class="flex items-start gap-3">
+              <svg size=20 icon="M240,56v48a8,8,0,0,1-8,8" class="mt-0.5 flex-shrink-0" style="color: rgb(107, 114, 128);">
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 mb-1 flex-wrap">
+                  <span class="text-xs text-gray-500 font-mono">
+                    "10:00:00"
+                    "."
+                    "145"
+                  <span class="px-2 py-0.5 text-xs rounded flex items-center gap-1" style="background-color: rgba(59, 130, 246, 0.125); color: rgb(59, 130, 246);">
+                    <svg size=12 icon="M232.4,114.49,88.32,26.3">
+                    "编辑器事件"
+                  <span class="px-2 py-0.5 text-xs rounded" style="background-color: rgba(107, 114, 128, 0.125); color: rgb(107, 114, 128);">
+                    "DEBUG"
+                <div class="text-sm text-gray-800 mb-1 font-medium">
+                  "markdownUpdated"
+                <details class="text-xs mt-2">
+                  <summary class="cursor-pointer text-gray-600 hover:text-gray-800 [@media(pointer:coarse)]:min-h-11">
+                    "查看详细信息 ("
+                    "1"
+                    "项)"
+                  <pre class="mt-2 p-2 bg-gray-100 rounded overflow-auto text-xs max-h-48">
+                    "{ \"length\": 42 }"
+                <details class="text-xs mt-2">
+                  <summary class="cursor-pointer text-blue-600 hover:text-blue-800 [@media(pointer:coarse)]:min-h-11">
+                    "编辑器快照"
+                  <pre class="mt-2 p-2 bg-blue-50 rounded overflow-auto text-xs max-h-48">
+                    "{ \"crepeExists\": true, \"isReady\": false, \"readonly\": false, \"noteId\": \"note_1\", \"subject\": null, \"markdownLength\": 42 }"
+              <button class="p-1 text-gray-400 hover:text-gray-600 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11" title="复制日志">
+                <svg size=16 icon="M216,32H88a8,8,0,0,0-8,8">
+          <div class="p-3 hover:bg-gray-50">
+            <div class="flex items-start gap-3">
+              <svg size=20 icon="M173.66,98.34a8,8,0,0,1," class="mt-0.5 flex-shrink-0" style="color: rgb(59, 130, 246);">
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 mb-1 flex-wrap">
+                  <span class="text-xs text-gray-500 font-mono">
+                    "10:00:00"
+                    "."
+                    "174"
+                  <span class="px-2 py-0.5 text-xs rounded flex items-center gap-1" style="background-color: rgba(6, 182, 212, 0.125); color: rgb(6, 182, 212);">
+                    <svg size=12 icon="M247.31,124.76c-.35-.79-">
+                    "状态快照"
+                  <span class="px-2 py-0.5 text-xs rounded" style="background-color: rgba(59, 130, 246, 0.125); color: rgb(59, 130, 246);">
+                    "INFO"
+                <div class="text-sm text-gray-800 mb-1 font-medium">
+                  "编辑器快照"
+                <details class="text-xs mt-2">
+                  <summary class="cursor-pointer text-blue-600 hover:text-blue-800 [@media(pointer:coarse)]:min-h-11">
+                    "编辑器快照"
+                  <pre class="mt-2 p-2 bg-blue-50 rounded overflow-auto text-xs max-h-48">
+                    "{ \"crepeExists\": false, \"isReady\": false, \"readonly\": true, \"noteId\": null, \"markdownLength\": 0 }"
+              <button class="p-1 text-gray-400 hover:text-gray-600 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11" title="复制日志">
+                <svg size=16 icon="M216,32H88a8,8,0,0,0-8,8">
+          <div class="p-3 hover:bg-gray-50">
+            <div class="flex items-start gap-3">
+              <svg size=20 icon="M165.66,101.66,139.31,12" class="mt-0.5 flex-shrink-0" style="color: rgb(239, 68, 68);">
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 mb-1 flex-wrap">
+                  <span class="text-xs text-gray-500 font-mono">
+                    "10:00:00"
+                    "."
+                    "203"
+                  <span class="px-2 py-0.5 text-xs rounded flex items-center gap-1" style="background-color: rgba(239, 68, 68, 0.125); color: rgb(239, 68, 68);">
+                    <svg size=12 icon="M165.66,101.66,139.31,12">
+                    "错误"
+                  <span class="px-2 py-0.5 text-xs rounded" style="background-color: rgba(239, 68, 68, 0.125); color: rgb(239, 68, 68);">
+                    "ERROR"
+                <div class="text-sm text-gray-800 mb-1 font-medium">
+                  "Crepe.create() 失败"
+                <details class="text-xs mt-2">
+                  <summary class="cursor-pointer text-gray-600 hover:text-gray-800 [@media(pointer:coarse)]:min-h-11">
+                    "查看详细信息 ("
+                    "1"
+                    "项)"
+                  <pre class="mt-2 p-2 bg-gray-100 rounded overflow-auto text-xs max-h-48">
+                    "{ \"error\": \"TypeError: x is undefined\" }"
+              <button class="p-1 text-gray-400 hover:text-gray-600 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11" title="复制日志">
+                <svg size=16 icon="M216,32H88a8,8,0,0,0-8,8">
+          <div class="p-3 hover:bg-gray-50">
+            <div class="flex items-start gap-3">
+              <svg size=20 icon="M165.66,101.66,139.31,12" class="mt-0.5 flex-shrink-0" style="color: rgb(239, 68, 68);">
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 mb-1 flex-wrap">
+                  <span class="text-xs text-gray-500 font-mono">
+                    "10:00:00"
+                    "."
+                    "232"
+                  <span class="px-2 py-0.5 text-xs rounded flex items-center gap-1" style="background-color: rgba(239, 68, 68, 0.125); color: rgb(239, 68, 68);">
+                    <svg size=12 icon="M165.66,101.66,139.31,12">
+                    "错误"
+                  <span class="px-2 py-0.5 text-xs rounded" style="background-color: rgba(239, 68, 68, 0.125); color: rgb(239, 68, 68);">
+                    "ERROR"
+                <div class="text-sm text-gray-800 mb-1 font-medium">
+                  "全局错误捕获: Prism is not defined"
+                <details class="text-xs mt-2">
+                  <summary class="cursor-pointer text-gray-600 hover:text-gray-800 [@media(pointer:coarse)]:min-h-11">
+                    "查看详细信息 ("
+                    "4"
+                    "项)"
+                  <pre class="mt-2 p-2 bg-gray-100 rounded overflow-auto text-xs max-h-48">
+                    "{ \"filename\": \"prism.js\", \"lineno\": 3, \"colno\": 7, \"error\": \"ReferenceError: Prism is not defined\" }"
+              <button class="p-1 text-gray-400 hover:text-gray-600 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11" title="复制日志">
+                <svg size=16 icon="M216,32H88a8,8,0,0,0-8,8">
+          <div class="p-3 hover:bg-gray-50">
+            <div class="flex items-start gap-3">
+              <svg size=20 icon="M165.66,101.66,139.31,12" class="mt-0.5 flex-shrink-0" style="color: rgb(239, 68, 68);">
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 mb-1 flex-wrap">
+                  <span class="text-xs text-gray-500 font-mono">
+                    "10:00:00"
+                    "."
+                    "290"
+                  <span class="px-2 py-0.5 text-xs rounded flex items-center gap-1" style="background-color: rgba(239, 68, 68, 0.125); color: rgb(239, 68, 68);">
+                    <svg size=12 icon="M165.66,101.66,139.31,12">
+                    "错误"
+                  <span class="px-2 py-0.5 text-xs rounded" style="background-color: rgba(239, 68, 68, 0.125); color: rgb(239, 68, 68);">
+                    "ERROR"
+                <div class="text-sm text-gray-800 mb-1 font-medium">
+                  "Promise 拒绝: Error: milkdown plugin failed"
+                <details class="text-xs mt-2">
+                  <summary class="cursor-pointer text-gray-600 hover:text-gray-800 [@media(pointer:coarse)]:min-h-11">
+                    "查看详细信息 ("
+                    "2"
+                    "项)"
+                  <pre class="mt-2 p-2 bg-gray-100 rounded overflow-auto text-xs max-h-48">
+                    "{ \"reason\": \"Error: milkdown plugin failed\", \"stack\": \"Error: milkdown plugin failed\\n at load (milkdown.js:9:1)\" }"
+              <button class="p-1 text-gray-400 hover:text-gray-600 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11" title="复制日志">
+                <svg size=16 icon="M216,32H88a8,8,0,0,0-8,8">
+    <div class="text-xs text-gray-500 p-3 bg-gray-50 rounded-lg">
+      <div class="font-medium mb-1">
+        "调试提示："
+      <ul class="list-disc list-inside space-y-0.5">
+        <li>
+          "打开笔记模块，选择一条笔记，观察编辑器初始化日志"
+        <li>
+          "检查「实时 DOM 快照」中的各项状态是否为绿色"
+        <li>
+          "关注"
+          <code class="bg-gray-200 px-1 rounded">
+            "data-ready"
+          "和"
+          <code class="bg-gray-200 px-1 rounded">
+            "contentEditable"
+          "属性"
+        <li>
+          "错误日志会显示 Prism/Milkdown 相关的加载失败信息"
+        <li>
+          "点击「快照」按钮手动捕获当前 DOM 状态"

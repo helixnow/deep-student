@@ -1,0 +1,30 @@
+import { mkdtemp, readFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { expect, it, vi } from 'vitest';
+import type { AppInfo } from '../../../kernel/api.ts';
+import type { ChatSessionService } from '../../chat/api.ts';
+import type { ChatPipelineService } from '../../chat-pipeline/api.ts';
+import { WorkshopOperations } from '../src/operations.ts';
+import { WorkshopCatalog } from '../src/catalog.ts';
+import { WorkshopToolExecutor } from '../src/tools.ts';
+import { PipelineWorkshopGeneration } from '../src/generation.ts';
+
+it('binds the existing pipeline/skill runtime without filesystem, install or global Agent authority', async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'dstu-generation-'));
+  const ops = new WorkshopOperations({ dataDir, version: '0.20.0', debug: true } as AppInfo);
+  const card = await ops.propose({ sessionId: 'parent', title: 'Test', description: 'Test', template: 'host-tool', changes: [], capabilities: [] });
+  const chat = { createSession: vi.fn(), getMessageBlocks: vi.fn(() => [{ type: 'content', content: '{"files":[{"path":"answer.ts","content":"export const answer = 42;"}]}' }]) } as unknown as ChatSessionService;
+  const execute = vi.fn(async () => 'msg_result');
+  const pipeline = { execute } as unknown as ChatPipelineService;
+  const generation = new PipelineWorkshopGeneration(chat, pipeline, new WorkshopToolExecutor(ops, new WorkshopCatalog(() => [])));
+  const source = join(ops.store.directory(card.id), 'source');
+  const controller = new AbortController();
+  await generation.generate(card, source, controller.signal);
+  const request = execute.mock.calls[0] as unknown as [unknown, { sessionId: string; options: Record<string, unknown> }, AbortSignal, unknown];
+  expect(request[1].sessionId).not.toBe('parent');
+  expect(request[1].options.activeSkillIds).toEqual(['dstu-plugin-development']);
+  expect(request[1].options.executionAllowedTools).toEqual(['dstu_plugin_api_list', 'dstu_plugin_api_read']);
+  expect(request[2]).toBe(controller.signal);
+  expect(await readFile(join(source, 'answer.ts'), 'utf8')).toContain('42');
+});

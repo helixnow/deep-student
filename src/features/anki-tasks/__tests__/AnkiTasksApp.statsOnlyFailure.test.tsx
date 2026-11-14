@@ -193,7 +193,7 @@ describe('AnkiTasksApp stats-only failure (load 拆分)', () => {
     // 且不得出现 stale banner（stale 语义只属于「list 刷新失败但有旧数据」）
     sessionResponses.push([makeSession('fresh doc')]);
     statsResponses.push(new Error('stats refresh exploded'));
-    fireEvent.click(screen.getByRole('button', { name: dashboard.refresh }));
+    fireEvent(document, new Event('visibilitychange'));
 
     const statsBanner = await screen.findByTestId('anki-tasks-stats-error');
     expect(statsBanner).toHaveTextContent('stats refresh exploded');
@@ -212,7 +212,7 @@ describe('AnkiTasksApp stats-only failure (load 拆分)', () => {
 
     sessionResponses.push(new Error('list offline'));
     statsResponses.push(emptyStats);
-    fireEvent.click(screen.getByRole('button', { name: dashboard.refresh }));
+    fireEvent(document, new Event('visibilitychange'));
 
     const banner = await screen.findByTestId('anki-tasks-stale-banner');
     expect(banner).toHaveTextContent(dashboard.refreshFailedStale);

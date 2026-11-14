@@ -10,6 +10,7 @@ import { useStore } from 'zustand';
 import { useTranslation } from 'react-i18next';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
+import { speak, stop } from '@/utils/tts';
 import type { StoreApi } from 'zustand';
 import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
@@ -523,7 +524,18 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
     }
   }, [message, extractMessageContent, t]);
 
-  // 多变体：底部行内操作（与时间同一行）
+  const [reading, setReading] = useState(false);
+  const hasReadableContent = assistantBlocks.some(block => block.type === 'content' && !block.isEmpty);
+  const toggleReading = useCallback(async () => {
+    if (reading) { await stop(); return; }
+    const text = getDisplayBlocks().filter(block => block.type === 'content').map(block => block.content || '').join('\n').trim();
+    if (!text) return;
+    setReading(true);
+    try { await speak(text); }
+    catch (error) { showGlobalNotification('error', t('messageItem.actions.readAloud'), getErrorMessage(error)); }
+    finally { setReading(false); }
+  }, [reading, getDisplayBlocks, t]);
+
   const [multiCopied, setMultiCopied] = useState(false);
   const [isRetryingAllVariants, setIsRetryingAllVariants] = useState(false);
   const [isDeletingMultiMessage, setIsDeletingMultiMessage] = useState(false);
@@ -841,10 +853,19 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
     ]);
     const content = chatCitationsToNoteMarkdown(text, (page) => t('messageItem.actions.notePageRef', { defaultValue: '第 {{page}} 页', page }),
       { buildPdfRefHref, createCitationPattern });
+    const pdfRefs = [...text.matchAll(/\[PDF@([a-zA-Z0-9_-]+):\s*(\d+)(?:[-,]\d+)*\]/gi)];
+    const existingRefs = new Set([...content.matchAll(/pdfref:\/\/[^)]+/g)].map(([href]) => href));
+    const backlinks = [...new Map(pdfRefs.map(([, id, page]) => [`${id}:${page}`, { id: id!, page: Number(page) }])).values()]
+      .filter(({ id, page }) => !existingRefs.has(buildPdfRefHref(id, page)))
+      .map(({ id, page }) => {
+        const link = `[${t('messageItem.actions.notePageRef', { defaultValue: '第 {{page}} 页', page })}](${buildPdfRefHref(id, page)})`;
+        return `> ${t('messageItem.actions.noteSourceBacklink', { defaultValue: '原文溯源：{{link}}', link, interpolation: { escapeValue: false } })}`;
+      });
+    const noteContent = backlinks.length ? `${content.trimEnd()}\n\n${backlinks.join('\n')}` : content;
     const state = store.getState();
     // 来源：这条消息所在的对话——笔记属性面板可一键回到这条消息
     startSaveAsNote({
-      content,
+      content: noteContent,
       title: extractNoteTitle(text),
       origin: { kind: 'chat', sessionId: state.sessionId, messageId, title: state.title || undefined },
     });
@@ -1093,12 +1114,16 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                     let currentStreamingEmptyBlockIds: string[] = [];
 
                     for (const block of blocks) {
-                      // 🔧 paper_save 工具使用专用 PaperSaveBlock 渲染进度条，
-                      // 不进时间线分组，走 BlockRendererWithStore → McpToolBlockComponent → PaperSaveBlock 路径
+                      // 🔧 paper_save 与 dstu_plugin_propose_install 工具使用专用卡片渲染，
+                      // 不进时间线分组，走 BlockRendererWithStore → McpToolBlockComponent 路径
+                      const bareToolName = block.toolName?.replace(/^builtin[-:]/, '').replace(/^mcp_/, '');
                       const isPaperSaveBlock = block.type === 'mcp_tool' && (
                         block.toolName === 'paper_save' ||
                         block.toolName === 'builtin-paper_save' ||
-                        block.toolName?.replace(/^builtin[-:]/, '').replace(/^mcp_/, '') === 'paper_save'
+                        bareToolName === 'paper_save' ||
+                        block.toolName === 'dstu_plugin_propose_install' ||
+                        block.toolName === 'builtin-dstu_plugin_propose_install' ||
+                        bareToolName === 'dstu_plugin_propose_install'
                       );
                       if (isTimelineBlockType(block.type) && !isPaperSaveBlock) {
                         // 时间线类型块，累积
@@ -1381,6 +1406,8 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                         onDelete={handleDelete}
                         onSaveAsNote={!isUser ? handleSaveAsNote : undefined}
                         onExportMarkdown={!isUser ? handleExportMarkdown : undefined}
+                        onToggleReading={hasReadableContent ? toggleReading : undefined}
+                        reading={reading}
                         onBranchSession={isReadOnlySession ? undefined : handleBranch}
                       />
                     )}
@@ -1467,6 +1494,8 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                         onDelete={handleDelete}
                         onSaveAsNote={!isUser ? handleSaveAsNote : undefined}
                         onExportMarkdown={!isUser ? handleExportMarkdown : undefined}
+                        onToggleReading={hasReadableContent ? toggleReading : undefined}
+                        reading={reading}
                         onBranchSession={isReadOnlySession ? undefined : handleBranch}
                         compactMobile
                         tokenUsage={!isUser ? (hasMultipleVariants ? aggregatedUsage : singleVariantUsage) : undefined}

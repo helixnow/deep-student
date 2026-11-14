@@ -915,13 +915,9 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
 
   // 朗读译文
   const handleSpeak = useCallback(async () => {
-    if (!TTS.isTTSSupported()) {
-      showGlobalNotification('error', t('translation:errors.tts_not_supported'));
-      return;
-    }
-
     // 使用 ref 避免 stale closure，防止多次点击重复播放
     if (isSpeakingRef.current) {
+      ++speakIdRef.current;
       TTS.stop();
       isSpeakingRef.current = false;
       setIsSpeaking(false);
@@ -940,7 +936,9 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
       const langCode = TTS.getFullLanguageCode(tgtLang);
       await TTS.speak(translatedText, { lang: langCode });
     } catch (error: unknown) {
-      showGlobalNotification('error', t('translation:errors.tts_failed', { error: getErrorMessage(error) }));
+      if (speakIdRef.current === myId) {
+        showGlobalNotification('error', t('translation:errors.tts_failed', { error: getErrorMessage(error) }));
+      }
     } finally {
       // 只有当前活跃的播放会话才更新状态，防止旧 promise 覆盖新会话
       if (speakIdRef.current === myId) {
@@ -1185,7 +1183,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
 
         {/* 底部状态条：检测语言回显 + 快捷键提示（桌面） */}
         {!isExternalSettingsPageOpen && (
-          <div className="hidden md:flex items-center justify-between gap-3 px-4 py-1 border-t border-border/50 text-xs text-muted-foreground select-none shrink-0">
+          <div className="hidden md:flex items-center justify-between gap-3 px-4 py-1.5 border-t border-border/35 text-xs text-muted-foreground/75 select-none shrink-0">
             <div className="flex items-center gap-1.5 min-w-0">
               {srcLang === 'auto' && detectedLangName && (
                 <span className="flex items-center gap-1.5 truncate">
@@ -1197,7 +1195,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
             <div className="flex items-center gap-3 shrink-0">
               {shortcutHints.filter((hint) => hint.visible).map((hint) => (
                 <span key={hint.combo} className="flex items-center gap-1">
-                  <kbd className="rounded-sm border border-border/60 bg-muted/40 px-1 leading-tight font-sans">
+                  <kbd className="rounded border border-border/35 bg-foreground/[0.03] px-1.5 py-0.5 text-[11px] leading-tight font-mono">
                     {hint.combo}
                   </kbd>
                   {hint.label}

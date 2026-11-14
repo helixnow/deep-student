@@ -26,7 +26,7 @@ import {
   type PluginStatusSnapshot,
 } from '../../api/pluginsApi';
 
-type UnifiedModelInfo = {
+export type UnifiedModelInfo = {
   id: string;
   name: string;
   vendorName?: string;

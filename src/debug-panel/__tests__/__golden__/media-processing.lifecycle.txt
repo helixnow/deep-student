@@ -1,0 +1,12 @@
+inactive: listen 0, unlisten 0, handlers 0, rows 0, empty false
+activated: listen 6, unlisten 0, handlers 6, rows 0, empty false
+channels: media-processing-progress, media-processing-completed, media-processing-error, pdf-processing-progress, pdf-processing-completed, pdf-processing-error
+two events: listen 6, unlisten 0, handlers 6, rows 2, empty false
+hidden: listen 6, unlisten 0, handlers 6, rows 0, empty true
+shown again: listen 6, unlisten 0, handlers 6, rows 3, empty false
+deactivated: listen 6, unlisten 6, handlers 0, rows 3, empty false
+reactivated, listen pending: listen 12, unlisten 6, handlers 0, rows 3, empty false
+deactivated, then listen resolved: listen 12, unlisten 12, handlers 0, rows 3, empty false
+reactivated: listen 18, unlisten 12, handlers 6, rows 3, empty false
+rows: 10:00:00 AM.148pdflegacy已移除att_hidden / 10:00:00 AM.111pdflegacy已移除att_1 / 10:00:00 AM.074pdfunified等待中0%att_1
+unmounted: listen 18, unlisten 18, handlers 0, rows 0, empty true

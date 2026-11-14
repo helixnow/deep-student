@@ -266,6 +266,18 @@ main CI 的 token-budget 用例失败。
 
 **后续建议**：同上——qbank-tools 继续增长时优先拆分工具组，不继续上调阈值。
 
+### 2026-11-07：翻译技能补声明 translation_result_read 后总上限 76600 → 76800
+
+**触发**：Electron 迁移中修复 Rust 版遗留问题 `RF-W09-translation-result-read-undeclared`：
+`translate_text` 的返回提示让模型调用 `builtin-translation_result_read`，执行器也已实现，
+但翻译技能从未声明该工具。补声明后翻译工具组超出 240 tokens。
+
+**处理**：先精简新工具说明（+240 → +193，translation 组 schema 977 → 1126、content 471 → 515），
+其余各组与 Rust 快照 `21c9d808` 逐组一致；实测 schema+content 合计 76793，总上限有意识上调至
+**76800**（+0.26%）。单组 7000 与 schema 总 51500 不变。登记已由主代理批准。
+
+**后续建议**：同上——继续增长优先拆分工具组，不继续上调阈值。
+
 ### 2026-10-23：题目草稿/共享材料工具精简，预算护栏不变
 
 题组、共享材料和已存草稿工具加入后，qbank-tools 共41个工具，schema估算

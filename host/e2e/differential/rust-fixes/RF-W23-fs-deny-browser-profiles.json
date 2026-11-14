@@ -1,0 +1,32 @@
+{
+  "id": "RF-W23-fs-deny-browser-profiles",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main-agent",
+  "approvedAt": "2026-11-07T13:00:00+08:00",
+  "title": "plugin:fs 不能读写内置浏览器的会话目录 $APPDATA/slots/<slot>/browser-profiles（网站登录 cookie）",
+  "rust": {
+    "file": "src-tauri/capabilities/default.json",
+    "line": 40,
+    "behavior": "内置浏览器（browser-content）的 WebView profile 在 {active_slot}/browser-profiles/default/（src-tauri/crates/dstu-browser/src/browser/window.rs:6、:60），active_slot 在 $APPDATA/slots/ 下。default.json 授予主窗口 fs:allow-appdata-read-recursive / write-recursive，覆盖这个目录；本应挡住 WebView 数据的 fs:default deny-default 在 Rust 版没有作用域（见 RF-W23-fs-deny-webview-data-user-data）。主窗口里的页面脚本因此能读出、复制走或删除用户在内置浏览器里登录各网站的 cookie"
+  },
+  "fix": {
+    "files": ["electron/shell/capabilities.ts"],
+    "behavior": "deny-default 的两条 Electron 补充作用域（deny-webview-data-linux / -windows，不限平台）都加上 deny $APPDATA/slots/*/browser-profiles 与 $APPDATA/slots/*/browser-profiles/**：所有槽位的会话目录本身及其下全部内容，对所有 fs 命令拒绝（deny 先于运行时作用域）。槽位目录里的其他文件不受影响"
+  },
+  "evidence": "安全问题，与 deny-default 的说明矛盾（“webview data and configuration values … Allowing access can lead to sensitive information disclosure”）：内置浏览器的会话目录正是 WebView 数据。Electron 版更严重：这里是 Electron session.fromPath 的 Chromium profile，EnableCookieEncryption fuse 未开（SEC-E09），cookie 明文落盘。修改前 macOS/Linux 靠整体 deny $APPLOCALDATA（= $APPDATA）挡住，Windows 一直可读；RF-W23-fs-deny-webview-data-user-data 去掉整体 deny 后 macOS/Linux 也会打开。前端审计：src/** 没有经 plugin:fs 访问 browser-profiles 的代码。复现：host/e2e/security/shell-builtin-acl.test.ts 的本 RF 用例在没有这两条 deny 时失败（已实测）。",
+  "userVisible": "正常使用感知不到；页面脚本经 plugin:fs 访问内置浏览器会话目录时被拒绝（forbidden path）。",
+  "dataCompat": "不改变落库数据、同步载荷与备份格式。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "host/e2e/security/shell-builtin-acl.test.ts",
+      "name": "RF-W23-fs-deny-browser-profiles: main cannot read, copy out or delete the in-app browser session (cookies) in any slot; the rest of the slot stays reachable"
+    },
+    {
+      "file": "electron/tests/webview-data-scope.test.ts",
+      "name": "RF-W23-fs-deny-browser-profiles: every platform denies $APPDATA/slots/*/browser-profiles and everything below it, and only that"
+    }
+  ],
+  "notes": "Rust 侧对应修法：在 default.json 的 fs 权限后加扩展条目 { \"identifier\": \"fs:scope\", \"deny\": [{ \"path\": \"$APPDATA/slots/*/browser-profiles/**\" }] }（单独授予的 scope 权限是全局的，deny 对所有 fs 命令生效）。"
+}

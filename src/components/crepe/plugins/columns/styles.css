@@ -6,7 +6,7 @@
 .ProseMirror .ds-note-columns {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 1rem;
+  gap: 1.75rem;
   width: 100%;
   min-width: 0;
   margin-block: 1rem;
@@ -17,11 +17,31 @@
 }
 
 .ProseMirror .ds-note-column {
+  position: relative;
   min-width: 0;
-  padding: 0.75rem;
-  border: 1px solid var(--border, #ddd);
-  border-radius: 0.5rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  border-radius: 0;
   overflow-wrap: anywhere;
+}
+
+.ProseMirror .ds-note-column + .ds-note-column::before {
+  content: '';
+  position: absolute;
+  top: 0.15rem;
+  bottom: 0.15rem;
+  left: calc(-1.75rem / 2);
+  width: 1px;
+  background: var(--notes-hairline, hsl(var(--foreground) / 0.07));
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--notes-hover-transition, 120ms ease);
+}
+
+.ProseMirror .ds-note-columns:hover .ds-note-column + .ds-note-column::before,
+.ProseMirror .ds-note-columns:focus-within .ds-note-column + .ds-note-column::before {
+  opacity: 1;
 }
 
 /* The table itself owns overflow. Never make the whole page/column scroll. */
@@ -43,6 +63,10 @@
   .ProseMirror .ds-note-columns[data-layout="cornell"] {
     grid-template-columns: minmax(0, 1fr);
   }
+
+  .ProseMirror .ds-note-column + .ds-note-column::before {
+    display: none;
+  }
 }
 
 /* Split panes also need the narrow layout on a desktop sized viewport. */
@@ -50,5 +74,9 @@
   .ProseMirror .ds-note-columns,
   .ProseMirror .ds-note-columns[data-layout="cornell"] {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ProseMirror .ds-note-column + .ds-note-column::before {
+    display: none;
   }
 }

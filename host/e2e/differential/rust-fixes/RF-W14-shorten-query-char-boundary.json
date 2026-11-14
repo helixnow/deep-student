@@ -1,0 +1,32 @@
+{
+  "id": "RF-W14-shorten-query-char-boundary",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T08:52+08:00",
+  "title": "迁移验证失败文案截断烟测查询时，按字节切片会在多字节字符中间 panic",
+  "rust": {
+    "file": "src-tauri/crates/dstu-storage/src/migration/verifier.rs",
+    "line": 86,
+    "behavior": "shorten_query 对超过 96 字节的查询执行 format!(\"{}...\", &query[..MAX_LEN])。若第 96 字节落在多字节 UTF-8 字符（如中文表名、注释、字面量）中间，str 切片会 panic（byte index 96 is not a char boundary），本应返回的 MigrationError::VerificationFailed 变成进程内 panic"
+  },
+  "fix": {
+    "files": ["host/platform/storage/migration/verifier.ts"],
+    "behavior": "shortenQuery 仍按 96 字节截断，但若截断点落在字符中间，就退回前一个字符边界再加 '...'。纯 ASCII 查询的结果与 Rust 逐字节一致"
+  },
+  "evidence": "崩溃类缺陷：Rust 标准库对非字符边界的 str 切片必然 panic。复现：expectedQueries 含一条失败的查询，且第 96 字节落在中文字符中间（例如 \"SELECT * FROM 缺失的表\" 后接 40 个汉字），Rust 在构造错误文案时 panic，而不是报告验证失败。目前的契约查询都是 ASCII，所以这是潜在缺陷，现网不会触发；修复只影响触发条件下的错误文案，不改变任何成功路径。",
+  "g3": {
+    "affects": false,
+    "selectors": []
+  },
+  "tests": [
+    {
+      "file": "host/platform/storage-mobile/tests/portable-migration-core.test.ts",
+      "name": "RF-W14-shorten-query-char-boundary: shortenQuery truncates on a UTF-8 character boundary (Rust panics) without Buffer"
+    },
+    {
+      "file": "host/platform/storage-mobile/tests/portable-migration-core.test.ts",
+      "name": "RF-W14-shorten-query-char-boundary: a failing non-ASCII smoke query yields VerificationFailed instead of crashing"
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "id": "RF-W01-panic-replies-internal-error",
+  "kind": "deliberate",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T09:20+08:00",
+  "title": "命令处理函数抛出未分类异常时回复统一内部错误，而不是像 Tauri panic 那样让前端 Promise 永不 settle",
+  "rust": {
+    "file": "src-tauri/src/crash_logger.rs",
+    "line": 30,
+    "behavior": "异步命令在 tokio 任务中 panic（release panic = \"unwind\"）时任务终止、InvokeResolver 被丢弃且没有 Drop 回调，return_result 只在 task.await 正常返回后调用（Tauri 框架 tauri-2.11.5/src/ipc/mod.rs:371-389，不在本仓库），前端 invoke 的 Promise 永不 settle；只有 panic hook 写崩溃日志（crash_logger.rs）"
+  },
+  "fix": {
+    "files": ["host/kernel/commands.ts", "host/kernel/serve.ts"],
+    "behavior": "处理函数抛出 CommandError / 裸 AppError 以外的任何值时，kernel 带栈记 error 日志（dstu_host::commands），并按命令契约 error 形状回复统一内部错误：AppError → {error_type:'Unknown',message,details:null}，CommandError 信封 → {code:'INTERNAL_ERROR',message}，DstuError → {type:'Internal',message}，string / 非 Result → message（host/kernel/API.md §2.3）"
+  },
+  "evidence": "不是 Rust bug，是产品决策：TS 插件中 throw new Error(...) 远多于 Rust 中真实的 panic 点，沿用“永不 settle”会让每个漏掉的错误映射都表现为前端永久挂起（加载转圈不结束、按钮一直禁用）。统一内部错误的形状与 Rust 自身的兜底一致（AppError::unknown / From<anyhow::Error>、CommandError::internal、DstuError::Internal、Err(String)），前端已有的错误处理路径可以直接显示。",
+  "userVisible": "能：原本会卡住不动的操作（Rust 版中 panic 的命令）现在会结束并显示错误提示，提示内容是异常文本；正常返回 Err 的命令不受影响。",
+  "dataCompat": "不改变落库数据、同步载荷与备份格式，只影响 IPC 错误回复；回复形状都在各命令契约的 error schema 之内。",
+  "notes": "首次实现在 W01 第一轮提交 4bcaec3c（提交信息无登记 id）；撤回需与登记提交一起 revert，并恢复 API.md §2.3 的说明。不为每次异常写崩溃日志（20 份上限会被可恢复的业务失败冲掉），进程级 uncaughtException 仍写崩溃日志。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "host/kernel/tests/rf-w01-panic-replies-internal-error.test.ts",
+      "name": "RF-W01-panic-replies-internal-error: an unclassified throw (Rust: panic, the invoke never settles) replies the contract-shaped internal error"
+    }
+  ]
+}

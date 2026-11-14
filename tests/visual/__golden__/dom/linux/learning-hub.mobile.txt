@@ -1,0 +1,308 @@
+<body .light-theme>
+  <div data-demo-app="learning-hub" id="@1">
+    <div .demo-app-frame data-demo-app-frame="true">
+      <div .wb-files-host data-wb-files-host="true" data-wb-sys-h="tall" data-wb-sys-size="compact">
+        <div .wb-sys-split data-wb-sys-drawer-mode="true" data-wb-sys-sidebar-collapsed="false">
+          <div .wb-sys-aside aria-hidden="true" inert />
+          <div .wb-sys-content>
+            <div .wb-files-viewport data-wb-files-viewport="true">
+              <div .bg-background.flex.h-full.min-h-0.min-w-0.overflow-hidden.relative.w-full tabindex="-1">
+                <div .flex.flex-1.flex-col.min-h-0.min-w-0.relative.unified-drag-drop-zone data-dragging="false" data-processing="false" data-zone-id="learning-hub-finder">
+                  <div .bg-[color:var(--shell-titlebar-surface)].border-[color:var(--shell-chrome-border)].border-b.flex.gap-1.items-center.px-2.py-1.5.shrink-0>
+                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-label="搜索" title="搜索" type="button">
+                      <svg .h-5.w-5 viewBox="0 0 256 256" />
+                    <div .app-menu-root.inline-flex.relative>
+                      <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].app-menu-trigger.bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-expanded="false" aria-haspopup="menu" aria-label="新建" id="@2" title="新建" type="button">
+                        <svg .h-5.w-5 viewBox="0 0 256 256" />
+                    <div .flex-1 />
+                    <span .text-muted-foreground.text-xs>
+                      "9"
+                  <div .bg-background.flex-1.h-full.min-h-0.min-w-0.outline-none.relative aria-multiselectable="true" data-native-scrollbars="false" data-orientation="vertical" data-overlayscrollbars="host" data-overlayscrollbars-initialize data-scroll-axes="vertical" data-slot="scroll-area" role="listbox" tabindex="0">
+                    <div .h-full.max-h-[inherit].min-h-0.min-w-0.w-full data-overlayscrollbars-viewport="scrollbarHidden overflowXHidden overflowYHidden" tabindex="-1">
+                      <div .py-1>
+                        <div>
+                          <div .h-full aria-describedby="@3" aria-disabled="false" aria-roledescription="draggable" aria-selected="false" data-agent-entity="files:fld_demo_mlsys" data-finder-item="true" data-item-id="fld_demo_mlsys" role="option" tabindex="0">
+                            <div .[@media(pointer:coarse)]:active:bg-[var(--interactive-hover)].[@media(pointer:coarse)]:gap-2.5.[@media(pointer:coarse)]:min-h-[64px].[@media(pointer:coarse)]:px-3.5.[@media(pointer:coarse)]:py-2.5.cursor-default.duration-100.ease-out.flex.gap-2.group.h-full.hover:bg-[var(--interactive-hover)]/70.items-center.max-md:gap-2.5.max-md:min-h-[64px].max-md:px-3.5.max-md:py-2.5.min-h-10.px-3.py-1.5.relative.select-none.transition-[background-color,opacity] title="机器学习系统">
+                              <div .shrink-0>
+                                <img .object-contain.pointer-events-none.select-none.shrink-0 alt draggable="false" src="data:image/svg+xml,%3csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20150%20150'%3e%3clinearGradient%20id='fd_back'%20x1='75'%20x2='75'%20y1='26'%20y2='92'%20gradientUnits='userSpaceOnUse'…" />
+                              <div .flex.flex-1.gap-1.5.items-center.min-w-0>
+                                <span .[@media(pointer:coarse)]:!text-lg.[@media(pointer:coarse)]:leading-5.block.font-normal.max-md:!text-lg.max-md:leading-5.text-foreground/90.text-ui.truncate>
+                                  "机器学习系统"
+                              <div .flex.gap-2.5.items-center.shrink-0>
+                                <span .[@media(pointer:coarse)]:text-caption.max-md:text-caption.min-w-12.tabular-nums.text-[11px].text-muted-foreground/50.text-right.whitespace-nowrap>
+                                  "5 项"
+                                <span .[@media(pointer:coarse)]:text-caption.max-md:text-caption.shrink-0.tabular-nums.text-[11px].text-muted-foreground/55>
+                                  "大约 1 小时前"
+                                <button .!h-6.!p-1.!w-6.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.group-focus-within:opacity-100.group-hover:opacity-100.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-[var(--interactive-hover)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.opacity-0.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].transition-opacity.ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-label="更多" type="button">
+                                  <svg .text-muted-foreground/60 viewBox="0 0 256 256" />
+                        <div>
+                          <div .h-full aria-describedby="@3" aria-disabled="false" aria-roledescription="draggable" aria-selected="false" data-agent-entity="files:fld_demo_calc" data-finder-item="true" data-item-id="fld_demo_calc" role="option" tabindex="0">
+                            <div .[@media(pointer:coarse)]:active:bg-[var(--interactive-hover)].[@media(pointer:coarse)]:gap-2.5.[@media(pointer:coarse)]:min-h-[64px].[@media(pointer:coarse)]:px-3.5.[@media(pointer:coarse)]:py-2.5.cursor-default.duration-100.ease-out.flex.gap-2.group.h-full.hover:bg-[var(--interactive-hover)]/70.items-center.max-md:gap-2.5.max-md:min-h-[64px].max-md:px-3.5.max-md:py-2.5.min-h-10.px-3.py-1.5.relative.select-none.transition-[background-color,opacity] title="高等数学">
+                              <div .shrink-0>
+                                <img .object-contain.pointer-events-none.select-none.shrink-0 alt draggable="false" src="data:image/svg+xml,%3csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20150%20150'%3e%3clinearGradient%20id='fd_back'%20x1='75'%20x2='75'%20y1='26'%20y2='92'%20gradientUnits='userSpaceOnUse'…" />
+                              <div .flex.flex-1.gap-1.5.items-center.min-w-0>
+                                <span .[@media(pointer:coarse)]:!text-lg.[@media(pointer:coarse)]:leading-5.block.font-normal.max-md:!text-lg.max-md:leading-5.text-foreground/90.text-ui.truncate>
+                                  "高等数学"
+                              <div .flex.gap-2.5.items-center.shrink-0>
+                                <span .[@media(pointer:coarse)]:text-caption.max-md:text-caption.min-w-12.tabular-nums.text-[11px].text-muted-foreground/50.text-right.whitespace-nowrap>
+                                  "5 项"
+                                <span .[@media(pointer:coarse)]:text-caption.max-md:text-caption.shrink-0.tabular-nums.text-[11px].text-muted-foreground/55>
+                                  "大约 2 小时前"
+                                <button .!h-6.!p-1.!w-6.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.group-focus-within:opacity-100.group-hover:opacity-100.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-[var(--interactive-hover)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.opacity-0.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].transition-opacity.ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-label="更多" type="button">
+                                  <svg .text-muted-foreground/60 viewBox="0 0 256 256" />
+                        <div>
+                          <div .h-full aria-describedby="@3" aria-disabled="false" aria-roledescription="draggable" aria-selected="false" data-agent-entity="files:fld_demo_english" data-finder-item="true" data-item-id="fld_demo_english" role="option" tabindex="0">
+                            <div .[@media(pointer:coarse)]:active:bg-[var(--interactive-hover)].[@media(pointer:coarse)]:gap-2.5.[@media(pointer:coarse)]:min-h-[64px].[@media(pointer:coarse)]:px-3.5.[@media(pointer:coarse)]:py-2.5.cursor-default.duration-100.ease-out.flex.gap-2.group.h-full.hover:bg-[var(--interactive-hover)]/70.items-center.max-md:gap-2.5.max-md:min-h-[64px].max-md:px-3.5.max-md:py-2.5.min-h-10.px-3.py-1.5.relative.select-none.transition-[background-color,opacity] title="考研英语">
+                              <div .shrink-0>
+                                <img .object-contain.pointer-events-none.select-none.shrink-0 alt draggable="false" src="data:image/svg+xml,%3csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20150%20150'%3e%3clinearGradient%20id='fd_back'%20x1='75'%20x2='75'%20y1='26'%20y2='92'%20gradientUnits='userSpaceOnUse'…" />
+                              <div .flex.flex-1.gap-1.5.items-center.min-w-0>
+                                <span .[@media(pointer:coarse)]:!text-lg.[@media(pointer:coarse)]:leading-5.block.font-normal.max-md:!text-lg.max-md:leading-5.text-foreground/90.text-ui.truncate>
+                                  "考研英语"
+                              <div .flex.gap-2.5.items-center.shrink-0>
+                                <span .[@media(pointer:coarse)]:text-caption.max-md:text-caption.min-w-12.tabular-nums.text-[11px].text-muted-foreground/50.text-right.whitespace-nowrap>
+                                  "4 项"
+                                <span .[@media(pointer:coarse)]:text-caption.max-md:text-caption.shrink-0.tabular-nums.text-[11px].text-muted-foreground/55>
+                                  "1 天前"
+                                <button .!h-6.!p-1.!w-6.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.group-focus-within:opacity-100.group-hover:opacity-100.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-[var(--interactive-hover)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.opacity-0.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].transition-opacity.ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-label="更多" type="button">
+                                  <svg .text-muted-foreground/60 viewBox="0 0 256 256" />
+                        <div>
+                          <div .h-full aria-describedby="@3" aria-disabled="false" aria-roledescription="draggable" aria-selected="false" data-agent-entity="files:fld_demo_linalg" data-finder-item="true" data-item-id="fld_demo_linalg" role="option" tabindex="0">
+                            <div .[@media(pointer:coarse)]:active:bg-[var(--interactive-hover)].[@media(pointer:coarse)]:gap-2.5.[@media(pointer:coarse)]:min-h-[64px].[@media(pointer:coarse)]:px-3.5.[@media(pointer:coarse)]:py-2.5.cursor-default.duration-100.ease-out.flex.gap-2.group.h-full.hover:bg-[var(--interactive-hover)]/70.items-center.max-md:gap-2.5.max-md:min-h-[64px].max-md:px-3.5.max-md:py-2.5.min-h-10.px-3.py-1.5.relative.select-none.transition-[background-color,opacity] title="线性代数">
+                              <div .shrink-0>
+                                <img .object-contain.pointer-events-none.select-none.shrink-0 alt draggable="false" src="data:image/svg+xml,%3csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20150%20150'%3e%3clinearGradient%20id='fd_back'%20x1='75'%20x2='75'%20y1='26'%20y2='92'%20gradientUnits='userSpaceOnUse'…" />
+                              <div .flex.flex-1.gap-1.5.items-center.min-w-0>
+                                <span .[@media(pointer:coarse)]:!text-lg.[@media(pointer:coarse)]:leading-5.block.font-normal.max-md:!text-lg.max-md:leading-5.text-foreground/90.text-ui.truncate>
+                                  "线性代数"
+                              <div .flex.gap-2.5.items-center.shrink-0>
+                                <span .[@media(pointer:coarse)]:text-caption.max-md:text-caption.min-w-12.tabular-nums.text-[11px].text-muted-foreground/50.text-right.whitespace-nowrap>
+                                  "4 项"
+                                <span .[@media(pointer:coarse)]:text-caption.max-md:text-caption.shrink-0.tabular-nums.text-[11px].text-muted-foreground/55>
+                                  "2 天前"
+                                <button .!h-6.!p-1.!w-6.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.group-focus-within:opacity-100.group-hover:opacity-100.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-[var(--interactive-hover)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.opacity-0.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].transition-opacity.ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-label="更多" type="button">
+                                  <svg .text-muted-foreground/60 viewBox="0 0 256 256" />
+                        <div>
+                          <div .h-full aria-describedby="@3" aria-disabled="false" aria-roledescription="draggable" aria-selected="false" data-agent-entity="files:fld_demo_chem" data-finder-item="true" data-item-id="fld_demo_chem" role="option" tabindex="0">
+                            <div .[@media(pointer:coarse)]:active:bg-[var(--interactive-hover)].[@media(pointer:coarse)]:gap-2.5.[@media(pointer:coarse)]:min-h-[64px].[@media(pointer:coarse)]:px-3.5.[@media(pointer:coarse)]:py-2.5.cursor-default.duration-100.ease-out.flex.gap-2.group.h-full.hover:bg-[var(--interactive-hover)]/70.items-center.max-md:gap-2.5.max-md:min-h-[64px].max-md:px-3.5.max-md:py-2.5.min-h-10.px-3.py-1.5.relative.select-none.transition-[background-color,opacity] title="有机化学">
+                              <div .shrink-0>
+                                <img .object-contain.pointer-events-none.select-none.shrink-0 alt draggable="false" src="data:image/svg+xml,%3csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20150%20150'%3e%3clinearGradient%20id='fd_back'%20x1='75'%20x2='75'%20y1='26'%20y2='92'%20gradientUnits='userSpaceOnUse'…" />
+                              <div .flex.flex-1.gap-1.5.items-center.min-w-0>
+                                <span .[@media(pointer:coarse)]:!text-lg.[@media(pointer:coarse)]:leading-5.block.font-normal.max-md:!text-lg.max-md:leading-5.text-foreground/90.text-ui.truncate>
+                                  "有机化学"
+                              <div .flex.gap-2.5.items-center.shrink-0>
+                                <span .[@media(pointer:coarse)]:text-caption.max-md:text-caption.min-w-12.tabular-nums.text-[11px].text-muted-foreground/50.text-right.whitespace-nowrap>
+                                  "4 项"
+                                <span .[@media(pointer:coarse)]:text-caption.max-md:text-caption.shrink-0.tabular-nums.text-[11px].text-muted-foreground/55>
+                                  "4 天前"
+                                <button .!h-6.!p-1.!w-6.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.group-focus-within:opacity-100.group-hover:opacity-100.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-[var(--interactive-hover)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.opacity-0.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].transition-opacity.ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-label="更多" type="button">
+                                  <svg .text-muted-foreground/60 viewBox="0 0 256 256" />
+                        <div>
+                          <div .h-full aria-describedby="@3" aria-disabled="false" aria-roledescription="draggable" aria-selected="false" data-agent-entity="files:tr_demo_dp_abstract" data-finder-item="true" data-item-id="tr_demo_dp_abstract" role="option" tabindex="0">
+                            <div .[@media(pointer:coarse)]:active:bg-[var(--interactive-hover)].[@media(pointer:coarse)]:gap-2.5.[@media(pointer:coarse)]:min-h-[64px].[@media(pointer:coarse)]:px-3.5.[@media(pointer:coarse)]:py-2.5.cursor-default.duration-100.ease-out.flex.gap-2.group.h-full.hover:bg-[var(--interactive-hover)]/70.items-center.max-md:gap-2.5.max-md:min-h-[64px].max-md:px-3.5.max-md:py-2.5.min-h-10.px-3.py-1.5.relative.select-none.transition-[background-color,opacity] title="数据并行训练 · 段落精读">
+                              <div .shrink-0>
+                                <span .inline-flex.items-center.justify-center.pointer-events-none.select-none.shrink-0 aria-hidden="true">
+                                  <img .object-contain.pointer-events-none.select-none alt draggable="false" src="data:image/svg+xml,%3csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20150%20150'%3e%3clinearGradient%20id='tr_warm'%20x1='52'%20x2='52'%20y1='18'%20y2='84'%20gradientUnits='userSpaceOnUse'…" />
+                              <div .flex.flex-1.gap-1.5.items-center.min-w-0>
+                                <span .[@media(pointer:coarse)]:!text-lg.[@media(pointer:coarse)]:leading-5.block.font-normal.max-md:!text-lg.max-md:leading-5.text-foreground/90.text-ui.truncate>
+                                  "数据并行训练 · 段落精读"
+                              <div .flex.gap-2.5.items-center.shrink-0>
+                                <span .[@media(pointer:coarse)]:text-caption.max-md:text-caption.min-w-12.tabular-nums.text-[11px].text-muted-foreground/50.text-right.whitespace-nowrap>
+                                  "1.4 KB"
+                                <span .[@media(pointer:coarse)]:text-caption.max-md:text-caption.shrink-0.text-2xs.text-muted-foreground/50>
+                                  "翻译"
+                                <span .[@media(pointer:coarse)]:text-caption.max-md:text-caption.shrink-0.tabular-nums.text-[11px].text-muted-foreground/55>
+                                  "大约 2 小时前"
+                                <button .!h-6.!p-1.!w-6.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.group-focus-within:opacity-100.group-hover:opacity-100.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-[var(--interactive-hover)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.opacity-0.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].transition-opacity.ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-label="更多" type="button">
+                                  <svg .text-muted-foreground/60 viewBox="0 0 256 256" />
+                        <div>
+                          <div .h-full aria-describedby="@3" aria-disabled="false" aria-roledescription="draggable" aria-selected="false" data-agent-entity="files:note_demo_plan" data-finder-item="true" data-item-id="note_demo_plan" role="option" tabindex="0">
+                            <div .[@media(pointer:coarse)]:active:bg-[var(--interactive-hover)].[@media(pointer:coarse)]:gap-2.5.[@media(pointer:coarse)]:min-h-[64px].[@media(pointer:coarse)]:px-3.5.[@media(pointer:coarse)]:py-2.5.cursor-default.duration-100.ease-out.flex.gap-2.group.h-full.hover:bg-[var(--interactive-hover)]/70.items-center.max-md:gap-2.5.max-md:min-h-[64px].max-md:px-3.5.max-md:py-2.5.min-h-10.px-3.py-1.5.relative.select-none.transition-[background-color,opacity] title="2026 秋季学期学习计划">
+                              <div .shrink-0>
+                                <span .inline-flex.items-center.justify-center.pointer-events-none.select-none.shrink-0 aria-hidden="true">
+                                  <img .object-contain.pointer-events-none.select-none alt draggable="false" src="<origin>/assets/notes-C6_ikqPN.svg" />
+                              <div .flex.flex-1.gap-1.5.items-center.min-w-0>
+                                <span .[@media(pointer:coarse)]:!text-lg.[@media(pointer:coarse)]:leading-5.block.font-normal.max-md:!text-lg.max-md:leading-5.text-foreground/90.text-ui.truncate>
+                                  "2026 秋季学期学习计划"
+                                <svg .shrink-0.text-yellow-500 viewBox="0 0 256 256" />
+                              <div .flex.gap-2.5.items-center.shrink-0>
+                                <span .[@media(pointer:coarse)]:text-caption.max-md:text-caption.min-w-12.tabular-nums.text-[11px].text-muted-foreground/50.text-right.whitespace-nowrap>
+                                  "431 B"
+                                <span .[@media(pointer:coarse)]:text-caption.max-md:text-caption.shrink-0.text-2xs.text-muted-foreground/50>
+                                  "笔记"
+                                <span .[@media(pointer:coarse)]:text-caption.max-md:text-caption.shrink-0.tabular-nums.text-[11px].text-muted-foreground/55>
+                                  "大约 7 小时前"
+                                <button .!h-6.!p-1.!w-6.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.group-focus-within:opacity-100.group-hover:opacity-100.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-[var(--interactive-hover)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.opacity-0.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].transition-opacity.ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-label="更多" type="button">
+                                  <svg .text-muted-foreground/60 viewBox="0 0 256 256" />
+                        <div>
+                          <div .h-full aria-describedby="@3" aria-disabled="false" aria-roledescription="draggable" aria-selected="false" data-agent-entity="files:img_demo_board" data-finder-item="true" data-item-id="img_demo_board" role="option" tabindex="0">
+                            <div .[@media(pointer:coarse)]:active:bg-[var(--interactive-hover)].[@media(pointer:coarse)]:gap-2.5.[@media(pointer:coarse)]:min-h-[64px].[@media(pointer:coarse)]:px-3.5.[@media(pointer:coarse)]:py-2.5.cursor-default.duration-100.ease-out.flex.gap-2.group.h-full.hover:bg-[var(--interactive-hover)]/70.items-center.max-md:gap-2.5.max-md:min-h-[64px].max-md:px-3.5.max-md:py-2.5.min-h-10.px-3.py-1.5.relative.select-none.transition-[background-color,opacity] title="板书 · 泰勒展开.jpg">
+                              <div .shrink-0>
+                                <span .inline-flex.items-center.justify-center.pointer-events-none.select-none.shrink-0 aria-hidden="true">
+                                  <img .object-contain.pointer-events-none.select-none alt draggable="false" src="data:image/svg+xml,%3csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20150%20150'%3e%3clinearGradient%20id='im_frame'%20x1='75'%20x2='75'%20y1='26'%20y2='124'%20gradientUnits='userSpaceOnUs…" />
+                              <div .flex.flex-1.gap-1.5.items-center.min-w-0>
+                                <span .[@media(pointer:coarse)]:!text-lg.[@media(pointer:coarse)]:leading-5.block.font-normal.max-md:!text-lg.max-md:leading-5.text-foreground/90.text-ui.truncate>
+                                  "板书 · 泰勒展开.jpg"
+                              <div .flex.gap-2.5.items-center.shrink-0>
+                                <span .[@media(pointer:coarse)]:text-caption.max-md:text-caption.min-w-12.tabular-nums.text-[11px].text-muted-foreground/50.text-right.whitespace-nowrap>
+                                  "668 KB"
+                                <span .[@media(pointer:coarse)]:text-caption.max-md:text-caption.shrink-0.text-2xs.text-muted-foreground/50>
+                                  "图片"
+                                <span .[@media(pointer:coarse)]:text-caption.max-md:text-caption.shrink-0.tabular-nums.text-[11px].text-muted-foreground/55>
+                                  "3 天前"
+                                <button .!h-6.!p-1.!w-6.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.group-focus-within:opacity-100.group-hover:opacity-100.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-[var(--interactive-hover)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.opacity-0.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].transition-opacity.ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-label="更多" type="button">
+                                  <svg .text-muted-foreground/60 viewBox="0 0 256 256" />
+                        <div>
+                          <div .h-full aria-describedby="@3" aria-disabled="false" aria-roledescription="draggable" aria-selected="false" data-agent-entity="files:tb_demo_formula" data-finder-item="true" data-item-id="tb_demo_formula" role="option" tabindex="0">
+                            <div .[@media(pointer:coarse)]:active:bg-[var(--interactive-hover)].[@media(pointer:coarse)]:gap-2.5.[@media(pointer:coarse)]:min-h-[64px].[@media(pointer:coarse)]:px-3.5.[@media(pointer:coarse)]:py-2.5.cursor-default.duration-100.ease-out.flex.gap-2.group.h-full.hover:bg-[var(--interactive-hover)]/70.items-center.max-md:gap-2.5.max-md:min-h-[64px].max-md:px-3.5.max-md:py-2.5.min-h-10.px-3.py-1.5.relative.select-none.transition-[background-color,opacity] title="高等数学公式速查.pdf">
+                              <div .shrink-0>
+                                <span .inline-flex.items-center.justify-center.pointer-events-none.select-none.shrink-0 aria-hidden="true">
+                                  <img .object-contain.pointer-events-none.select-none alt draggable="false" src="data:image/svg+xml,%3csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20150%20150'%3e%3crect%20x='40'%20y='24'%20width='82'%<id>='102'%20rx='8'%20fill='%23DFEFED'%<id>='%23A6C4CB'%<id>-width…" />
+                              <div .flex.flex-1.gap-1.5.items-center.min-w-0>
+                                <span .[@media(pointer:coarse)]:!text-lg.[@media(pointer:coarse)]:leading-5.block.font-normal.max-md:!text-lg.max-md:leading-5.text-foreground/90.text-ui.truncate>
+                                  "高等数学公式速查.pdf"
+                                <svg .shrink-0.text-yellow-500 viewBox="0 0 256 256" />
+                              <div .flex.gap-2.5.items-center.shrink-0>
+                                <span .[@media(pointer:coarse)]:text-caption.max-md:text-caption.min-w-12.tabular-nums.text-[11px].text-muted-foreground/50.text-right.whitespace-nowrap>
+                                  "1.8 MB"
+                                <span .[@media(pointer:coarse)]:text-caption.max-md:text-caption.shrink-0.text-2xs.text-muted-foreground/50>
+                                  "教材"
+                                <span .[@media(pointer:coarse)]:text-caption.max-md:text-caption.shrink-0.tabular-nums.text-[11px].text-muted-foreground/55>
+                                  "6 天前"
+                                <button .!h-6.!p-1.!w-6.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.group-focus-within:opacity-100.group-hover:opacity-100.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-[var(--interactive-hover)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.opacity-0.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].transition-opacity.ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-label="更多" type="button">
+                                  <svg .text-muted-foreground/60 viewBox="0 0 256 256" />
+                    <div .os-scrollbar.os-scrollbar-auto-hide-hidden.os-scrollbar-cornerless.os-scrollbar-handle-interactive.os-scrollbar-horizontal.os-scrollbar-unusable.os-theme-deep-student>
+                      <div .os-scrollbar-track>
+                        <div .os-scrollbar-handle />
+                    <div .os-scrollbar.os-scrollbar-auto-hide-hidden.os-scrollbar-cornerless.os-scrollbar-handle-interactive.os-scrollbar-unusable.os-scrollbar-vertical.os-theme-deep-student>
+                      <div .os-scrollbar-track>
+                        <div .os-scrollbar-handle />
+                  <div id="@3">
+                    "To pick up a draggable item, press the space bar. While dragging, use the arrow keys to move the item. Press space again…"
+                  <div aria-atomic="true" aria-live="assertive" id="@4" role="status" />
+                  <div .-mr-px.[@media(pointer:coarse)]:flex-wrap.[@media(pointer:coarse)]:h-auto.[@media(pointer:coarse)]:min-h-11.[@media(pointer:coarse)]:pb-[var(--mobile-safe-area-bottom,env(safe-area-inset-bottom,0px))].bg-[color:var(--shell-toolbar-surface,var(--background))].border-t.flex.gap-1.5.h-10.items-center.overflow-hidden.px-3.relative.shrink-0.text-sm>
+                    <div .flex.gap-2.items-center.min-w-0.shrink>
+                      <span .min-w-0.rounded-md.text-muted-foreground.text-xs.truncate data-agent-entity="files:results">
+                        "9 个项目"
+                      <div .bg-muted/50.flex.gap-0.5.items-center.p-0.5.rounded.shrink-0>
+                        <button .!h-6.!p-1.!w-6.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-label="网格视图" aria-pressed="false" title="网格视图" type="button">
+                          <svg viewBox="0 0 256 256" />
+                        <button .!h-6.!p-1.!w-6.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].bg-background.border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.rounded-[var(--button-radius)].select-none.shadow-sm.shrink-0.text-foreground.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-label="列表视图" aria-pressed="true" title="列表视图" type="button">
+                          <svg viewBox="0 0 256 256" />
+                      <div .app-menu-root.inline-flex.relative>
+                        <button .!h-6.!p-1.!w-6.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].app-menu-trigger.bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-expanded="false" aria-haspopup="menu" aria-label="排序方式" id="@5" title="排序方式" type="button">
+                          <svg viewBox="0 0 256 256" />
+                    <div .flex.gap-0.5.items-center.ml-auto.shrink-0 />
+          <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-[var(--touch-target-size)].wb-sys-drawer-handle.whitespace-nowrap aria-expanded="false" aria-label="显示导航" data-wb-sys-drawer-handle="true" title="显示导航" type="button">
+            <svg aria-hidden="true" viewBox="0 0 256 256" />
+          <div .wb-sys-scrim aria-hidden="true" data-open="false" />
+          <div .wb-sys-drawer aria-hidden="true" aria-label="资源库" aria-modal="true" data-open="false" data-wb-sys-drawer="true" inert role="dialog" tabindex="-1">
+            <div .wb-sys-drawer-head>
+              <span .wb-sys-drawer-title>
+                "资源库"
+              <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-[var(--touch-target-size)].wb-sys-drawer-close.whitespace-nowrap aria-label="收起导航" title="收起导航" type="button">
+                <svg aria-hidden="true" viewBox="0 0 256 256" />
+            <div .h-full.min-h-0.min-w-0.relative.wb-sys-drawer-body data-native-scrollbars="false" data-orientation="vertical" data-overlayscrollbars="host" data-overlayscrollbars-initialize data-scroll-axes="vertical" data-scroll-track-bottom data-scroll-track-right data-scroll-track-top data-slot="scroll-area">
+              <div .h-full.max-h-[inherit].min-h-0.min-w-0.w-full.wb-sys-drawer-body-viewport data-overlayscrollbars-viewport="scrollbarHidden overflowXHidden overflowYHidden" tabindex="-1">
+                <div .h-full.min-h-0.w-full>
+                  <aside .bg-[color:var(--shell-navigation-surface)].bg-transparent.duration-200.ease-out.flex.flex-col.font-sidebar-study-ui.h-full.min-h-0.min-w-0.overflow-hidden.relative.text-[color:var(--shell-navigation-foreground)].transition-all.w-full aria-label="资源库" data-shell-layer="navigation" data-shell-surface="navigation" data-workbench-sidebar="true" role="navigation">
+                    <div .flex-1.h-full.min-h-0.min-w-0.relative data-native-scrollbars="false" data-orientation="vertical" data-overlayscrollbars="host" data-overlayscrollbars-initialize data-scroll-axes="vertical" data-slot="scroll-area">
+                      <div .h-full.max-h-[inherit].min-h-0.min-w-0.w-full data-overlayscrollbars-viewport="scrollbarHidden overflowXHidden overflowYHidden" tabindex="-1">
+                        <div .px-2.py-1>
+                          <div .px-2.py-1>
+                            <span .desktop-shell-nav-section-label.min-w-0.truncate>
+                              "学习资料"
+                          <div .space-y-0.5>
+                            <button .!justify-start.!px-2.5.!py-1.5.!w-full.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.active:bg-[color:var(--sidebar-quiet-active)].appearance-none.bg-transparent.border-transparent.desktop-shell-nav-row.desktop-shell-sidebar-row.disabled:opacity-50.disabled:pointer-events-none.flex.focus-visible:ring-2.focus-visible:ring-ring.font-normal.gap-2.gap-2.5.hover:bg-[color:var(--sidebar-quiet-hover)].hover:text-[color:var(--shell-navigation-foreground)].inline-flex.items-center.justify-start.leading-none.lg:min-h-9.min-h-[2.75rem].min-w-0.outline-none.overflow-hidden.px-2.5.py-1.5.rounded-2xl.select-none.shrink-0.text-[color:var(--shell-navigation-muted)].text-left.text-sm.text-ui.ui-press-coarse.w-full.whitespace-nowrap data-workbench-sidebar-row="nav" type="button">
+                              <span .flex.flex-1.gap-2.5.items-center.min-w-0>
+                                <span .flex.items-center.justify-center.shrink-0.text-[color:var(--shell-navigation-foreground)].w-4>
+                                  <svg .h-[18px].shrink-0.text-[color:var(--shell-navigation-foreground)].w-[18px] viewBox="0 0 256 256" />
+                                <span .flex-1.min-w-0>
+                                  <span .block.desktop-shell-sidebar-row-title.flex-1.leading-4.min-w-0.truncate>
+                                    "桌面"
+                                <span .flex.gap-0.5.items-center.justify-end.min-w-[24px].shrink-0 />
+                            <button .!justify-start.!px-2.5.!py-1.5.!w-full.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.active:bg-[color:var(--sidebar-quiet-active)].appearance-none.bg-transparent.border-transparent.cursor-default.desktop-shell-nav-row.desktop-shell-nav-row--active.desktop-shell-sidebar-row.disabled:opacity-50.disabled:pointer-events-none.flex.focus-visible:ring-2.focus-visible:ring-ring.font-normal.gap-2.gap-2.5.hover:bg-[color:var(--sidebar-quiet-hover)].hover:text-[color:var(--shell-navigation-foreground)].inline-flex.items-center.justify-start.leading-none.lg:min-h-9.min-h-[2.75rem].min-w-0.outline-none.overflow-hidden.px-2.5.py-1.5.rounded-2xl.select-none.shrink-0.text-[color:var(--shell-navigation-muted)].text-left.text-sm.text-ui.ui-press-coarse.w-full.whitespace-nowrap aria-current="page" data-workbench-sidebar-row="nav" type="button">
+                              <span .flex.flex-1.gap-2.5.items-center.min-w-0>
+                                <span .flex.items-center.justify-center.shrink-0.text-[color:var(--shell-navigation-foreground)].w-4>
+                                  <svg .h-[18px].shrink-0.text-[color:var(--shell-navigation-foreground)].w-[18px] viewBox="0 0 256 256" />
+                                <span .flex-1.min-w-0>
+                                  <span .block.desktop-shell-sidebar-row-title.flex-1.leading-4.min-w-0.truncate>
+                                    "全部文件"
+                                <span .flex.gap-0.5.items-center.justify-end.min-w-[24px].shrink-0 />
+                            <button .!justify-start.!px-2.5.!py-1.5.!w-full.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.active:bg-[color:var(--sidebar-quiet-active)].appearance-none.bg-transparent.border-transparent.desktop-shell-nav-row.desktop-shell-sidebar-row.disabled:opacity-50.disabled:pointer-events-none.flex.focus-visible:ring-2.focus-visible:ring-ring.font-normal.gap-2.gap-2.5.hover:bg-[color:var(--sidebar-quiet-hover)].hover:text-[color:var(--shell-navigation-foreground)].inline-flex.items-center.justify-start.leading-none.lg:min-h-9.min-h-[2.75rem].min-w-0.outline-none.overflow-hidden.px-2.5.py-1.5.rounded-2xl.select-none.shrink-0.text-[color:var(--shell-navigation-muted)].text-left.text-sm.text-ui.ui-press-coarse.w-full.whitespace-nowrap data-workbench-sidebar-row="nav" type="button">
+                              <span .flex.flex-1.gap-2.5.items-center.min-w-0>
+                                <span .flex.items-center.justify-center.shrink-0.text-[color:var(--shell-navigation-foreground)].w-4>
+                                  <svg .h-[18px].shrink-0.text-[color:var(--shell-navigation-foreground)].w-[18px] viewBox="0 0 256 256" />
+                                <span .flex-1.min-w-0>
+                                  <span .block.desktop-shell-sidebar-row-title.flex-1.leading-4.min-w-0.truncate>
+                                    "最近"
+                                <span .flex.gap-0.5.items-center.justify-end.min-w-[24px].shrink-0 />
+                            <button .!justify-start.!px-2.5.!py-1.5.!w-full.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.active:bg-[color:var(--sidebar-quiet-active)].appearance-none.bg-transparent.border-transparent.desktop-shell-nav-row.desktop-shell-sidebar-row.disabled:opacity-50.disabled:pointer-events-none.flex.focus-visible:ring-2.focus-visible:ring-ring.font-normal.gap-2.gap-2.5.hover:bg-[color:var(--sidebar-quiet-hover)].hover:text-[color:var(--shell-navigation-foreground)].inline-flex.items-center.justify-start.leading-none.lg:min-h-9.min-h-[2.75rem].min-w-0.outline-none.overflow-hidden.px-2.5.py-1.5.rounded-2xl.select-none.shrink-0.text-[color:var(--shell-navigation-muted)].text-left.text-sm.text-ui.ui-press-coarse.w-full.whitespace-nowrap data-workbench-sidebar-row="nav" type="button">
+                              <span .flex.flex-1.gap-2.5.items-center.min-w-0>
+                                <span .flex.items-center.justify-center.shrink-0.text-[color:var(--shell-navigation-foreground)].w-4>
+                                  <svg .h-[18px].shrink-0.text-[color:var(--shell-navigation-foreground)].w-[18px] viewBox="0 0 256 256" />
+                                <span .flex-1.min-w-0>
+                                  <span .block.desktop-shell-sidebar-row-title.flex-1.leading-4.min-w-0.truncate>
+                                    "收藏"
+                                <span .flex.gap-0.5.items-center.justify-end.min-w-[24px].shrink-0>
+                                  <span .tabular-nums.text-[color:var(--shell-navigation-muted)].text-xs>
+                                    "3"
+                          <div .px-2.py-1>
+                            <span .desktop-shell-nav-section-label.min-w-0.truncate>
+                              "AI 知识"
+                          <div .space-y-0.5>
+                            <button .!justify-start.!px-2.5.!py-1.5.!w-full.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.active:bg-[color:var(--sidebar-quiet-active)].appearance-none.bg-transparent.border-transparent.desktop-shell-nav-row.desktop-shell-sidebar-row.disabled:opacity-50.disabled:pointer-events-none.flex.focus-visible:ring-2.focus-visible:ring-ring.font-normal.gap-2.gap-2.5.hover:bg-[color:var(--sidebar-quiet-hover)].hover:text-[color:var(--shell-navigation-foreground)].inline-flex.items-center.justify-start.leading-none.lg:min-h-9.min-h-[2.75rem].min-w-0.outline-none.overflow-hidden.px-2.5.py-1.5.rounded-2xl.select-none.shrink-0.text-[color:var(--shell-navigation-muted)].text-left.text-sm.text-ui.ui-press-coarse.w-full.whitespace-nowrap data-workbench-sidebar-row="nav" type="button">
+                              <span .flex.flex-1.gap-2.5.items-center.min-w-0>
+                                <span .flex.items-center.justify-center.shrink-0.text-[color:var(--shell-navigation-foreground)].w-4>
+                                  <svg .h-[18px].shrink-0.text-[color:var(--shell-navigation-foreground)].w-[18px] viewBox="0 0 256 256" />
+                                <span .flex-1.min-w-0>
+                                  <span .block.desktop-shell-sidebar-row-title.flex-1.leading-4.min-w-0.truncate>
+                                    "回收站"
+                                <span .flex.gap-0.5.items-center.justify-end.min-w-[24px].shrink-0 />
+                            <button .!justify-start.!px-2.5.!py-1.5.!w-full.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.active:bg-[color:var(--sidebar-quiet-active)].appearance-none.bg-transparent.border-transparent.desktop-shell-nav-row.desktop-shell-sidebar-row.disabled:opacity-50.disabled:pointer-events-none.flex.focus-visible:ring-2.focus-visible:ring-ring.font-normal.gap-2.gap-2.5.hover:bg-[color:var(--sidebar-quiet-hover)].hover:text-[color:var(--shell-navigation-foreground)].inline-flex.items-center.justify-start.leading-none.lg:min-h-9.min-h-[2.75rem].min-w-0.outline-none.overflow-hidden.px-2.5.py-1.5.rounded-2xl.select-none.shrink-0.text-[color:var(--shell-navigation-muted)].text-left.text-sm.text-ui.ui-press-coarse.w-full.whitespace-nowrap data-workbench-sidebar-row="nav" type="button">
+                              <span .flex.flex-1.gap-2.5.items-center.min-w-0>
+                                <span .flex.items-center.justify-center.shrink-0.text-[color:var(--shell-navigation-foreground)].w-4>
+                                  <svg .h-[18px].shrink-0.text-[color:var(--shell-navigation-foreground)].w-[18px] viewBox="0 0 256 256" />
+                                <span .flex-1.min-w-0>
+                                  <span .flex-1.min-w-0>
+                                    <span .block.desktop-shell-sidebar-row-title.leading-4.min-w-0.truncate>
+                                      "知识库索引"
+                                    <span .block.desktop-shell-sidebar-row-description.leading-4.min-w-0.text-2xs.text-[color:var(--shell-navigation-muted)].truncate>
+                                      "将学习资料转换为可检索内容"
+                                <span .flex.gap-0.5.items-center.justify-end.min-w-[24px].shrink-0 />
+                            <button .!justify-start.!px-2.5.!py-1.5.!w-full.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.active:bg-[color:var(--sidebar-quiet-active)].appearance-none.bg-transparent.border-transparent.desktop-shell-nav-row.desktop-shell-sidebar-row.disabled:opacity-50.disabled:pointer-events-none.flex.focus-visible:ring-2.focus-visible:ring-ring.font-normal.gap-2.gap-2.5.hover:bg-[color:var(--sidebar-quiet-hover)].hover:text-[color:var(--shell-navigation-foreground)].inline-flex.items-center.justify-start.leading-none.lg:min-h-9.min-h-[2.75rem].min-w-0.outline-none.overflow-hidden.px-2.5.py-1.5.rounded-2xl.select-none.shrink-0.text-[color:var(--shell-navigation-muted)].text-left.text-sm.text-ui.ui-press-coarse.w-full.whitespace-nowrap data-workbench-sidebar-row="nav" type="button">
+                              <span .flex.flex-1.gap-2.5.items-center.min-w-0>
+                                <span .flex.items-center.justify-center.shrink-0.text-[color:var(--shell-navigation-foreground)].w-4>
+                                  <svg .h-[18px].shrink-0.text-[color:var(--shell-navigation-foreground)].w-[18px] viewBox="0 0 256 256" />
+                                <span .flex-1.min-w-0>
+                                  <span .flex-1.min-w-0>
+                                    <span .block.desktop-shell-sidebar-row-title.leading-4.min-w-0.truncate>
+                                      "AI 记忆"
+                                    <span .block.desktop-shell-sidebar-row-description.leading-4.min-w-0.text-2xs.text-[color:var(--shell-navigation-muted)].truncate>
+                                      "保存偏好与长期事实"
+                                <span .flex.gap-0.5.items-center.justify-end.min-w-[24px].shrink-0 />
+                      <div .os-scrollbar.os-scrollbar-auto-hide-hidden.os-scrollbar-cornerless.os-scrollbar-handle-interactive.os-scrollbar-horizontal.os-scrollbar-unusable.os-theme-deep-student>
+                        <div .os-scrollbar-track>
+                          <div .os-scrollbar-handle />
+                      <div .os-scrollbar.os-scrollbar-auto-hide-hidden.os-scrollbar-cornerless.os-scrollbar-handle-interactive.os-scrollbar-unusable.os-scrollbar-vertical.os-theme-deep-student>
+                        <div .os-scrollbar-track>
+                          <div .os-scrollbar-handle />
+                    <div .pb-1.px-1.5.shrink-0 role="status">
+                      <button .[@media(pointer:coarse)]:!min-h-11.flex.gap-2.hover:bg-[var(--interactive-hover)].items-center.leading-none.px-2.5.py-1.5.rounded-lg.text-[12px].text-info.transition-colors.w-full aria-label="索引中…" type="button">
+                        <span .shrink-0 aria-hidden="true">
+                          <svg .animate-spin viewBox="0 0 256 256" />
+                        <span .flex-1.min-w-0.text-left.truncate>
+                          "索引中…"
+              <div .os-scrollbar.os-scrollbar-auto-hide-hidden.os-scrollbar-cornerless.os-scrollbar-handle-interactive.os-scrollbar-horizontal.os-scrollbar-unusable.os-theme-deep-student>
+                <div .os-scrollbar-track>
+                  <div .os-scrollbar-handle />
+              <div .os-scrollbar.os-scrollbar-auto-hide-hidden.os-scrollbar-cornerless.os-scrollbar-handle-interactive.os-scrollbar-unusable.os-scrollbar-vertical.os-theme-deep-student>
+                <div .os-scrollbar-track>
+                  <div .os-scrollbar-handle />
+      <div .notification-container aria-label="通知" role="region" />
+  <div id="@6" />
+  <div .wb-files-hover-preview.wb-glass.wb-glass-highlight aria-hidden="true" data-visible="false" data-wb-files-hover-preview role="tooltip">
+    <div .wb-files-hover-preview__type />
+    <div .wb-files-hover-preview__title />
+    <div .wb-files-hover-preview__meta />
+  <div .wb-files-drag-badge.wb-glass.wb-glass-highlight aria-hidden="true" data-visible="false" data-wb-files-drag-badge>
+    <span .wb-files-drag-badge__glyph />
+    <span .wb-files-drag-badge__label />

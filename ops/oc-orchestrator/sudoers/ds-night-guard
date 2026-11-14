@@ -1,0 +1,25 @@
+# /etc/sudoers.d/ds-night-guard — the only privileged operations of ds-night-guard (which runs as dsdev).
+# Install: visudo -cf <file> && install -m 0440 -o root -g root <file> /etc/sudoers.d/ds-night-guard
+#
+# Exact command lines, no wildcards: sudo matches the full argument list, so extra arguments
+# (--now, a different unit, set-property, edit, …) are refused. ds-backup and ds-fulltest are
+# deliberately absent (ds-backup runs as root; fulltest is resumed by dsdev code, not by systemctl).
+#
+# Accepted risk: every process running as dsdev — including lane agents — can issue these commands.
+# The worst outcome is starting or restarting the pipeline's own dsdev services, which agents can already
+# disrupt by other means. If that is not acceptable, run the guard as a dedicated user (e.g. ds-guard,
+# member of group dsdev for read access) and replace "dsdev" below with that user; a polkit rule matching
+# action.id == "org.freedesktop.systemd1.manage-units" with action.lookup("unit") and
+# action.lookup("verb") in the same allow-list is the equivalent without sudo.
+
+Cmnd_Alias DS_NIGHT_GUARD = \
+    /usr/bin/systemctl start ds-migration.service, \
+    /usr/bin/systemctl start ds-jobs.service, \
+    /usr/bin/systemctl start ds-dashboard.service, \
+    /usr/bin/systemctl reset-failed ds-migration.service, \
+    /usr/bin/systemctl reset-failed ds-jobs.service, \
+    /usr/bin/systemctl reset-failed ds-dashboard.service, \
+    /usr/bin/systemctl restart ds-migration.service
+
+Defaults!DS_NIGHT_GUARD !requiretty
+dsdev ALL=(root) NOPASSWD: DS_NIGHT_GUARD

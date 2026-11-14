@@ -173,14 +173,15 @@ export const StatisticsScreen: React.FC = () => {
     return () => window.removeEventListener(FSRS_STATS_REFRESH_EVENT, onRefresh);
   }, [load, reloadActivity]);
 
-  const handleRefresh = useCallback(() => {
-    void load();
-    reloadActivity(true);
-  }, [load, reloadActivity]);
-
   const metrics = stats ? [
     { key: 'reviewsToday', label: t('statistics.reviewsToday'), value: stats.reviewsToday },
-    { key: 'due', label: t('statistics.due'), value: stats.due },
+    ...(stats.dueReview != null && stats.dueLearning != null && stats.dueNew != null
+      ? [
+          { key: 'dueReview', label: t('statistics.dueReview'), value: stats.dueReview },
+          { key: 'dueLearning', label: t('statistics.dueLearning'), value: stats.dueLearning },
+          { key: 'dueNew', label: t('statistics.dueNew'), value: stats.dueNew },
+        ]
+      : [{ key: 'due', label: t('statistics.availableToday'), value: stats.due }]),
     { key: 'new', label: t('statistics.new'), value: stats.newCount },
     { key: 'learning', label: t('statistics.learning'), value: stats.learning },
     { key: 'review', label: t('statistics.review'), value: stats.review },
@@ -217,6 +218,11 @@ export const StatisticsScreen: React.FC = () => {
     return bars;
   }, [activity.dayCounts]);
   const dailyMax = Math.max(1, ...dailyBars.map((bar) => bar.count));
+  const forecast = activity.scheduledForecast;
+  const forecastMax = Math.max(1, ...(forecast ?? []).map(({ count }) => count));
+  const forecastDate = useMemo(() => new Intl.DateTimeFormat(i18n.language, {
+    month: 'numeric', day: 'numeric', timeZone: 'UTC',
+  }), [i18n.language]);
 
   const ratingSegments = useMemo(() => {
     const order: Array<{ rating: FsrsRating; tone: string; labelKey: string }> = [
@@ -262,12 +268,7 @@ export const StatisticsScreen: React.FC = () => {
 
   const mobileChrome = useFlashcardsMobileChrome({
     title: t('statistics.title'),
-    rightActions: (
-      <DsButton variant="ghost" size="icon" className="!min-h-11 !min-w-11" aria-label={t('statistics.refresh')} disabled={loading} onClick={handleRefresh}>
-        <ArrowClockwise size={20} />
-      </DsButton>
-    ),
-  }, [t, loading, handleRefresh]);
+  }, [t]);
 
   return (
     <div className="wb-fc-screen">
@@ -280,17 +281,6 @@ export const StatisticsScreen: React.FC = () => {
               : t('statistics.subtitle')}
           </p>
         </div>
-        <DsButton
-          type="button"
-          variant="ghost"
-          size="sm"
-          disabled={loading}
-          onClick={handleRefresh}
-          className="shrink-0 text-sm [@media(pointer:coarse)]:!min-h-11"
-        >
-          <ArrowClockwise size={15} />
-          {t('statistics.refresh')}
-        </DsButton>
       </header>}
 
       {error ? (
@@ -327,8 +317,6 @@ export const StatisticsScreen: React.FC = () => {
           className="min-h-0 flex-1"
         >
           <div className="wb-fcx-scroll">
-          <MemoryCurvePanel />
-
           <section className="wb-fcx-panel" data-testid="fsrs-statistics">
             <div className="wb-fcx-panel-head">
               <h3 className="wb-fcx-panel-title">
@@ -345,7 +333,7 @@ export const StatisticsScreen: React.FC = () => {
                 </span>
               ) : null}
             </div>
-            <dl className="wb-fcx-metrics mt-3">
+            <dl className="wb-fcx-metrics mt-3" data-split={metrics.length === 10}>
               {metrics.map((metric) => (
                 <div key={metric.key} className="wb-fcx-metric">
                   <dt>{metric.label}</dt>
@@ -354,6 +342,31 @@ export const StatisticsScreen: React.FC = () => {
               ))}
             </dl>
           </section>
+
+          {forecast && (
+            <section className="wb-fcx-panel" data-testid="fsrs-scheduled-forecast">
+              <div className="wb-fcx-panel-head">
+                <h3 className="wb-fcx-panel-title">
+                  <CalendarBlank size={14} weight="duotone" />
+                  {t('statistics.forecastTitle')}
+                </h3>
+                <p className="wb-fcx-panel-sub">{t('statistics.forecastHint')}</p>
+              </div>
+              <ul className="wb-fcx-bars wb-fcx-forecast" aria-label={t('statistics.forecastTitle')}>
+                {forecast.map(({ date, count }) => (
+                  <li key={date} className="wb-fcx-bar">
+                    <span className="wb-fcx-bar-count">{count}</span>
+                    <span className="wb-fcx-bar-track" aria-hidden="true">
+                      <span className="wb-fcx-bar-fill" style={{ height: `${100 * count / forecastMax}%` }} />
+                    </span>
+                    <time className="wb-fcx-bar-label" dateTime={date}>{forecastDate.format(new Date(date))}</time>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          <MemoryCurvePanel />
 
           <div className="wb-fcx-stats-grid">
             <section className="wb-fcx-panel wb-fcx-span-2">

@@ -1,0 +1,295 @@
+{
+  "package": "WP-157",
+  "peer": "host/plugins/anki/tests/anki-connect-peer.ts#startAnkiConnectPeer",
+  "address": "127.0.0.1:8765",
+  "scenarios": {
+    "anki.connect.status-success": {},
+    "anki.connect.status-version-too-old": {
+      "version": 5
+    },
+    "anki.connect.status-version-boundaries": {
+      "faults": {
+        "version": [
+          {
+            "kind": "reply",
+            "body": "{\"result\":6,\"error\":null}"
+          },
+          {
+            "kind": "reply",
+            "body": "{\"result\":\"six\",\"error\":null}"
+          },
+          {
+            "kind": "reply",
+            "body": "{\"result\":5.0,\"error\":null}"
+          },
+          {
+            "kind": "reply",
+            "body": "{\"result\":null,\"error\":null}"
+          },
+          {
+            "kind": "reply",
+            "body": "{\"result\":18446744073709551615,\"error\":null}"
+          },
+          {
+            "kind": "reply",
+            "body": "{\"result\":-1,\"error\":null}"
+          }
+        ]
+      }
+    },
+    "anki.connect.status-remote-and-bad-response": {
+      "faults": {
+        "version": [
+          {
+            "kind": "reply",
+            "body": "{\"result\":null,\"error\":\"boom\"}"
+          },
+          {
+            "kind": "reply",
+            "body": "not json"
+          },
+          {
+            "kind": "reply",
+            "body": "oops",
+            "status": 500
+          },
+          {
+            "kind": "reply",
+            "body": "[]"
+          },
+          {
+            "kind": "reply",
+            "body": "{\"result\":6}"
+          },
+          {
+            "kind": "reply",
+            "body": "{\"result\":6,\"error\":null,\"error\":null}"
+          }
+        ]
+      }
+    },
+    "anki.connect.status-disconnect": {
+      "faults": {
+        "version": [
+          {
+            "kind": "disconnect",
+            "at": "before-headers"
+          },
+          {
+            "kind": "disconnect",
+            "at": "mid-body"
+          }
+        ]
+      }
+    },
+    "anki.connect.lists-success": {
+      "decks": [
+        "Default",
+        "W157::Sub",
+        "数学"
+      ]
+    },
+    "anki.connect.lists-empty": {
+      "decks": [],
+      "models": {}
+    },
+    "anki.connect.deck-names-errors": {
+      "faults": {
+        "deckNames": [
+          {
+            "kind": "reply",
+            "body": "{\"result\":null,\"error\":\"collection is not available\"}"
+          },
+          {
+            "kind": "reply",
+            "body": "{\"result\":null,\"error\":null}"
+          },
+          {
+            "kind": "reply",
+            "body": "{\"result\":[1],\"error\":null}"
+          },
+          {
+            "kind": "reply",
+            "body": "{\"result\":"
+          },
+          {
+            "kind": "reply",
+            "body": "down",
+            "status": 503
+          },
+          {
+            "kind": "disconnect",
+            "at": "before-headers"
+          },
+          {
+            "kind": "disconnect",
+            "at": "mid-body"
+          }
+        ]
+      }
+    },
+    "anki.connect.deck-names-alias-errors": {
+      "faults": {
+        "deckNames": [
+          {
+            "kind": "reply",
+            "body": "{\"result\":null,\"error\":\"boom\"}"
+          },
+          {
+            "kind": "reply",
+            "body": "{\"result\":{},\"error\":null}"
+          }
+        ]
+      }
+    },
+    "anki.connect.model-names-errors": {
+      "faults": {
+        "modelNames": [
+          {
+            "kind": "reply",
+            "body": "{\"result\":null,\"error\":\"boom\"}"
+          },
+          {
+            "kind": "reply",
+            "body": "{\"result\":{},\"error\":null}"
+          },
+          {
+            "kind": "reply",
+            "body": "",
+            "status": 404
+          },
+          {
+            "kind": "reply",
+            "body": "{\"result\":null,\"error\":null}"
+          },
+          {
+            "kind": "disconnect",
+            "at": "before-headers"
+          },
+          {
+            "kind": "disconnect",
+            "at": "mid-body"
+          }
+        ]
+      }
+    },
+    "anki.connect.create-deck-success-and-boundaries": {},
+    "anki.connect.create-deck-errors": {
+      "faults": {
+        "createDeck": [
+          {
+            "kind": "reply",
+            "body": "{\"result\":null,\"error\":\"deck already exists\"}"
+          },
+          {
+            "kind": "reply",
+            "body": "{\"result\":null,\"error\":\"bad name\"}"
+          },
+          {
+            "kind": "reply",
+            "body": "",
+            "status": 500
+          },
+          {
+            "kind": "reply",
+            "body": "not json"
+          },
+          {
+            "kind": "reply",
+            "body": "[]"
+          },
+          {
+            "kind": "disconnect",
+            "at": "before-headers"
+          },
+          {
+            "kind": "disconnect",
+            "at": "mid-body"
+          }
+        ]
+      }
+    },
+    "anki.connect.add-cards-validation-and-serde": {},
+    "anki.connect.add-cards-basic-then-duplicates": {},
+    "anki.connect.add-cards-cloze-and-models": {},
+    "anki.connect.add-cards-availability-failures": {
+      "version": 5
+    },
+    "anki.connect.add-cards-create-deck-failure-logged": {
+      "faults": {
+        "createDeck": {
+          "kind": "reply",
+          "body": "{\"result\":null,\"error\":\"bad\"}"
+        }
+      }
+    },
+    "anki.connect.add-cards-precheck-fallback": {
+      "existingNotes": [
+        "Basic\u0000Qdup"
+      ],
+      "faults": {
+        "canAddNotes": [
+          {
+            "kind": "reply",
+            "body": "{\"result\":null,\"error\":\"nope\"}"
+          },
+          {
+            "kind": "reply",
+            "body": "{\"result\":[true],\"error\":null}"
+          },
+          {
+            "kind": "disconnect",
+            "at": "before-headers"
+          }
+        ]
+      }
+    },
+    "anki.connect.add-cards-push-failures": {
+      "faults": {
+        "addNotes": [
+          {
+            "kind": "reply",
+            "body": "{\"result\":null,\"error\":\"locked\"}"
+          },
+          {
+            "kind": "reply",
+            "body": "",
+            "status": 500
+          },
+          {
+            "kind": "reply",
+            "body": "",
+            "status": 500
+          },
+          {
+            "kind": "reply",
+            "body": "{\"result\":\"x\",\"error\":null}"
+          },
+          {
+            "kind": "disconnect",
+            "at": "before-headers"
+          },
+          {
+            "kind": "disconnect",
+            "at": "before-headers"
+          }
+        ]
+      }
+    },
+    "anki.connect.add-cards-template-missing": {},
+    "anki.connect.offline-all-commands": null,
+    "anki.connect.xseed-receipt-writeback": {},
+    "anki.connect.xseed-custom-template-create-model": {},
+    "anki.connect.xseed-settings-batch-retry": {
+      "faults": {
+        "addNotes": [
+          {
+            "kind": "reply",
+            "body": "",
+            "status": 500
+          }
+        ]
+      }
+    }
+  }
+}

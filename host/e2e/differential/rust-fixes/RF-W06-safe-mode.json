@@ -1,0 +1,39 @@
+{
+  "id": "RF-W06-safe-mode",
+  "kind": "deliberate",
+  "status": "proposed",
+  "title": "新增 --safe-mode：强制官方插件 profile、拒绝社区插件 UI 与安装，并允许启动恢复以该参数重启",
+  "rust": {
+    "file": "src-tauri/src/main.rs",
+    "line": 5,
+    "behavior": "启动只有 Windows shell sandbox helper 一个特殊分支；没有 --safe-mode，也没有强制官方插件 profile 或拒绝社区 UI 的入口。正常启动总是加载用户插件配置"
+  },
+  "fix": {
+    "files": [
+      "electron/shell/safe-mode.ts",
+      "electron/shell/host-profile.ts",
+      "electron/shell/plugin-ui-protocol.ts",
+      "electron/main.ts"
+    ],
+    "behavior": "main 识别 process.argv 中的字面量 --safe-mode：忽略 DS_HOST_PROFILE 与 <appDataDir>/plugins/user.profile.json，握手 profile 固定为 Host 入口旁的 host/profiles/desktop.json；给 Host fork 传 --safe-mode 并设置内部 DS_SAFE_MODE=1（非安全启动删除继承的同名变量，打包版不再接受外部环境变量开启）；PluginUiRegistry 在安全模式下对所有 ds-plugin 请求返回 403，不读锁也不提供社区模块。社区安装/启用/重载的拒绝仍由 W01 依 DS_SAFE_MODE 或 --safe-mode 实施（Electron 不改 Host 既有入口）"
+  },
+  "evidence": "electron/tests/safe-mode-host.test.ts 用真实 Electron + Host 替身断言：带 --safe-mode 时握手 profile 是入口旁的 profiles/desktop.json（即使存在 user.profile.json 且 DS_HOST_PROFILE 指向别的文件），Host 进程收到 --safe-mode 与 DS_SAFE_MODE=1；普通启动拿到 user.profile.json 且 Host 环境里 DS_SAFE_MODE 被删除。electron/tests/safe-mode.test.ts 覆盖字面量判定与重启参数（去重后只留一个 --safe-mode、保留其他参数）；electron/tests/host-profile.test.ts 覆盖安全模式忽略覆盖变量",
+  "userVisible": "只有用户显式以 --safe-mode 启动，或在启动恢复对话框里选择“备份配置并以安全模式重启”后才有区别：社区插件不加载，主窗口只显示官方 UI，插件管理里的社区项不可用；正常双击启动、正常重启与参数都不变",
+  "dataCompat": "不改变落库数据、同步载荷与备份格式。安全模式只读随包官方 profile，不写 user.profile.json；DS_SAFE_MODE 只在该次启动的 Host 子进程环境里存在，非安全启动会删除继承值",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "electron/tests/safe-mode.test.ts",
+      "name": "RF-W06-safe-mode: only the literal --safe-mode argument enables safe mode; relaunch keeps one and preserves other args"
+    },
+    {
+      "file": "electron/tests/safe-mode-host.test.ts",
+      "name": "RF-W06-safe-mode: --safe-mode forces the official profile, ignores DS_HOST_PROFILE, and forwards both the flag and DS_SAFE_MODE"
+    },
+    {
+      "file": "electron/tests/host-profile.test.ts",
+      "name": "RF-W06-safe-mode: 安全模式强制官方 profile，忽略 DS_HOST_PROFILE 与用户 profile"
+    }
+  ],
+  "notes": "安全模式不是物理隔离声明：Host 仍是同一进程树/同一权限，只是换 profile 并拒绝社区 UI/安装；W01 的安装期拒绝在同进程内执行，也不等于进程隔离。第三方隔离（K4/K5）未到准入，本条目不涉及 utilityProcess 或 ds-plugin-sandbox。"
+}

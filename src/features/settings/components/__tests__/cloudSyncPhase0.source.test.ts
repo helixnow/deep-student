@@ -57,8 +57,8 @@ describe("cloud sync Phase 0 frontend guarantees", () => {
     ),
     "utf-8",
   );
-  const tauriLib = readFileSync(
-    resolve(process.cwd(), "src-tauri/src/lib.rs"),
+  const appCommands = readFileSync(
+    resolve(process.cwd(), "resources/app/permissions/application-commands.toml"),
     "utf-8",
   );
 
@@ -238,9 +238,9 @@ describe("cloud sync Phase 0 frontend guarantees", () => {
   });
 
   it("exposes quarantine management through Tauri, API, and settings UI", () => {
-    expect(tauriLib).toContain("data_governance_list_quarantine");
-    expect(tauriLib).toContain("data_governance_retry_quarantine");
-    expect(tauriLib).toContain("data_governance_discard_quarantine");
+    expect(appCommands).toContain("data_governance_list_quarantine");
+    expect(appCommands).toContain("data_governance_retry_quarantine");
+    expect(appCommands).toContain("data_governance_discard_quarantine");
     expect(dataGovernanceApi).toContain("invoke<SyncQuarantineRow[]>");
     expect(dataGovernanceApi).toContain("data_governance_list_quarantine");
     expect(dataGovernanceApi).toContain("data_governance_retry_quarantine");
@@ -252,8 +252,8 @@ describe("cloud sync Phase 0 frontend guarantees", () => {
     // 题库专属 SyncConflictDialog / qbank_*_sync_* 已退役（无生产生产者）。
     expect(examContentView).not.toContain("SyncConflictDialog");
     expect(examContentView).not.toContain("qbank_get_sync_conflicts");
-    expect(tauriLib).not.toContain("qbank_get_sync_conflicts");
-    expect(tauriLib).not.toContain("qbank_resolve_sync_conflict");
+    expect(appCommands).not.toContain("qbank_get_sync_conflicts");
+    expect(appCommands).not.toContain("qbank_resolve_sync_conflict");
     // 真冲突源：记录级 __sync_conflicts
     expect(syncTab).toContain("RecordConflictsPanel");
     expect(dataGovernanceApi).toContain("data_governance_list_record_conflicts");

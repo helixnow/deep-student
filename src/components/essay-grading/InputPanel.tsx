@@ -344,11 +344,11 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
       : 'text-muted-foreground/50';
 
   return (
-    <div className="flex flex-col h-full min-h-0 flex-1 basis-1/2 min-w-0 transition-all duration-200 border-b lg:border-b-0 lg:border-r border-border/40 relative group/source">
+    <div className="flex flex-col h-full min-h-0 flex-1 basis-1/2 min-w-0 transition-all duration-200 border-b lg:border-b-0 lg:border-r border-border/35 bg-background relative group/source">
       {/* Toolbar - 简洁风格简洁布局 */}
       {/* min-h 而非固定高：DsButton 移动端默认 44px，固定 41px 会被撑破溢出 */}
-      <div className="flex min-h-[41px] items-center gap-1 border-b border-border/30 px-2 py-0.5 sm:gap-1.5 sm:px-4">
-        {/* 左侧：模式选择 - 保持固定宽度 */}
+      <div className="flex min-h-[41px] items-center gap-1 border-b border-border/35 px-2 py-0.5 sm:gap-1.5 sm:px-4">
+        {/* 左侧：模式选择 - 轻量胶囊选择器 */}
         {modes.length > 0 && (
           <div className="min-w-0 max-w-[50%] sm:max-w-none sm:shrink-0">
             <AppSelect
@@ -359,7 +359,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
               size="sm"
               disabled={isGrading}
               triggerIcon={<GraduationCap size={14} className="shrink-0 text-muted-foreground" />}
-              className="max-w-full text-sm text-foreground/80 hover:text-foreground hover:bg-[var(--interactive-hover)] transition-colors duration-150"
+              className="max-w-full rounded-full bg-foreground/[0.03] px-2.5 text-sm text-foreground/85 hover:text-foreground hover:bg-foreground/[0.06] transition-colors duration-150"
               placeholder={t('essay_grading:mode.select')}
               options={modes.map((mode) => ({
                 value: mode.id,
@@ -743,92 +743,85 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
           />
         </UnifiedDragDropZone>
 
-        {/* 底部统计行（移动端缩略统计，桌面端完整统计 + 清空钮）：走文档流，不再悬浮压住最后一行正文 */}
-        <div className="shrink-0 flex items-center justify-end px-4 pb-2 pointer-events-none">
-          {/* ★ UX#7：字数统计不再依赖 hover（有内容即常显），渐进警示色 */}
-          <div className={cn(
-            "pointer-events-auto flex min-w-0 items-center gap-2 shrink-0 transition-opacity duration-200 motion-reduce:transition-none",
-            charCount > 0 || hasClearableContent ? "opacity-100" : "opacity-0 group-hover/source:opacity-100"
-          )}>
-            <span className={cn("min-w-0 truncate text-xs tabular-nums transition-colors duration-150", limitTone)}>
-              {t('essay_grading:stats.han_chars')}: {textStats.hanChars.toLocaleString()}
-              {' · '}
-              {t('essay_grading:stats.english_words')}: {textStats.englishWords.toLocaleString()}
-              <span className="hidden sm:inline">
-                {' · '}
-                {t('essay_grading:workbench.stats.paragraphs')}: {textStats.paragraphCount.toLocaleString()}
-                {' · '}
-                {t('essay_grading:stats.punctuation_total')}: {textStats.punctuationTotal.toLocaleString()}
-              </span>
-              {' · '}
-              {charCount.toLocaleString()} / {ESSAY_MAX_CHARS.toLocaleString()}
-              <span className="hidden sm:inline"> {t('essay_grading:stats.characters')}</span>
-            </span>
-            {/* 清空钮仅桌面端悬浮显示（移动端已在顶栏提供） */}
-            {hasClearableContent && !isGrading && (
-              <div className="hidden md:flex items-center">
-                {desktopClearConfirm.armed ? (
-                  <DsButton variant="destructive" size="sm" onClick={desktopClearConfirm.handleClick} className={cn(COARSE_HIT_SM, "!h-6 px-2 text-xs transition-colors duration-150")}>
-                    <Trash size={12} />
-                    {t('essay_grading:confirm.clear')}
-                  </DsButton>
-                ) : (
-                  <CommonTooltip content={t('essay_grading:actions.clear')}>
-                    <DsButton variant="ghost" size="icon" iconOnly onClick={desktopClearConfirm.handleClick} aria-label={t('common:aria.clear_content')} className={cn(COARSE_HIT_SM, "!h-6 !w-6 text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10 transition-colors duration-150")}>
-                      <Trash size={14} />
-                    </DsButton>
-                  </CommonTooltip>
-                )}
+        {/* 统一底部状态与操作区：合并字数统计、模型选择与批改操作，消除多层底栏夹击 */}
+        <div className="shrink-0 flex items-center justify-between gap-3 px-4 py-2 border-t border-border/25 bg-background/80">
+          {/* 左侧：桌面端模型选择 + 字数统计 */}
+          <div className="flex min-w-0 items-center gap-2.5">
+            {models.length > 0 && (
+              <div className="hidden md:block min-w-0 shrink-0">
+                <UnifiedModelSelector
+                  models={models}
+                  value={modelId || defaultModel?.id || ''}
+                  onChange={setModelId}
+                  disabled={isGrading}
+                  triggerIcon={<Robot size={14} className="shrink-0 text-muted-foreground" />}
+                  placeholder={t('essay_grading:model.select')}
+                  side="top"
+                />
               </div>
             )}
+            <div className={cn(
+              "flex min-w-0 items-center gap-2 transition-opacity duration-200 motion-reduce:transition-none",
+              charCount > 0 || hasClearableContent ? "opacity-100" : "opacity-0 group-hover/source:opacity-100"
+            )}>
+              <span className={cn("min-w-0 truncate text-xs tabular-nums transition-colors duration-150", limitTone)}>
+                {t('essay_grading:stats.han_chars')}: {textStats.hanChars.toLocaleString()}
+                {' · '}
+                {t('essay_grading:stats.english_words')}: {textStats.englishWords.toLocaleString()}
+                <span className="hidden xl:inline">
+                  {' · '}
+                  {t('essay_grading:workbench.stats.paragraphs')}: {textStats.paragraphCount.toLocaleString()}
+                  {' · '}
+                  {t('essay_grading:stats.punctuation_total')}: {textStats.punctuationTotal.toLocaleString()}
+                </span>
+                {' · '}
+                {charCount.toLocaleString()} / {ESSAY_MAX_CHARS.toLocaleString()}
+                <span className="hidden sm:inline"> {t('essay_grading:stats.characters')}</span>
+              </span>
+              {hasClearableContent && !isGrading && (
+                <div className="hidden md:flex items-center">
+                  {desktopClearConfirm.armed ? (
+                    <DsButton variant="destructive" size="sm" onClick={desktopClearConfirm.handleClick} className={cn(COARSE_HIT_SM, "!h-6 px-2 text-xs transition-colors duration-150")}>
+                      <Trash size={12} />
+                      {t('essay_grading:confirm.clear')}
+                    </DsButton>
+                  ) : (
+                    <CommonTooltip content={t('essay_grading:actions.clear')}>
+                      <DsButton variant="ghost" size="icon" iconOnly onClick={desktopClearConfirm.handleClick} aria-label={t('common:aria.clear_content')} className={cn(COARSE_HIT_SM, "!h-6 !w-6 text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10 transition-colors duration-150")}>
+                        <Trash size={14} />
+                      </DsButton>
+                    </CommonTooltip>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      </div>
 
-      {/* Action Bar - 桌面端 简洁风格 */}
-      <div className="hidden md:flex px-4 py-2.5 border-t border-border/30 items-center gap-2">
-        {/* 左侧：模型选择 - 向上展开 */}
-        {models.length > 0 && (
-          <div className="min-w-0">
-            <UnifiedModelSelector
-              models={models}
-              value={modelId || defaultModel?.id || ''}
-              onChange={setModelId}
-              disabled={isGrading}
-              triggerIcon={<Robot size={14} className="shrink-0 text-muted-foreground" />}
-              placeholder={t('essay_grading:model.select')}
-              side="top"
-            />
-          </div>
-        )}
-
-        {/* 填充空间 */}
-        <div className="flex-1" />
-
-        {/* 右侧：操作按钮（取消批改为内联二段确认，无模态框） */}
-        <div className="flex items-center gap-2 shrink-0">
-          {isGrading ? (
-            desktopCancelConfirm.armed ? (
-              <DsButton variant="destructive" size="sm" onClick={desktopCancelConfirm.handleClick} className="transition-colors duration-150 [@media(pointer:coarse)]:!min-h-11">
-                {t('essay_grading:confirm.cancel')}
-              </DsButton>
+          {/* 右侧：桌面端批改/取消主动作 */}
+          <div className="hidden md:flex items-center gap-2 shrink-0">
+            {isGrading ? (
+              desktopCancelConfirm.armed ? (
+                <DsButton variant="destructive" size="sm" onClick={desktopCancelConfirm.handleClick} className="transition-colors duration-150 [@media(pointer:coarse)]:!min-h-11">
+                  {t('essay_grading:confirm.cancel')}
+                </DsButton>
+              ) : (
+                <DsButton variant="ghost" size="sm" onClick={desktopCancelConfirm.handleClick} className="text-sm text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)] transition-colors duration-150 [@media(pointer:coarse)]:!min-h-11">
+                  <CircleNotch size={14} className="animate-spin motion-reduce:animate-none" />
+                  {t('common:cancel')}
+                </DsButton>
+              )
             ) : (
-              <DsButton variant="ghost" size="sm" onClick={desktopCancelConfirm.handleClick} className="text-sm text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)] transition-colors duration-150 [@media(pointer:coarse)]:!min-h-11">
-                <CircleNotch size={14} className="animate-spin motion-reduce:animate-none" />
-                {t('common:cancel')}
+              <DsButton
+                variant="primary"
+                size="sm"
+                onClick={onGrade}
+                disabled={!canGrade}
+                className="[@media(pointer:coarse)]:!min-h-11"
+              >
+                {t('essay_grading:actions.grade')}
               </DsButton>
-            )
-          ) : (
-            <DsButton
-              variant="primary"
-              size="lg"
-              onClick={onGrade}
-              disabled={!canGrade}
-              className="[@media(pointer:coarse)]:!min-h-11"
-            >
-              {t('essay_grading:actions.grade')}
-            </DsButton>
-          )}
+            )}
+          </div>
         </div>
       </div>
 

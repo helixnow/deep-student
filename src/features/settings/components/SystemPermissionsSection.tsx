@@ -49,7 +49,7 @@ function mergeQueriedStatus(
   return currentIsDefinitive && queryIsAmbiguous ? current : queried;
 }
 
-type AuthorizationAction = 'open_settings' | 'refresh' | 'request';
+type AuthorizationAction = 'open_settings' | 'request';
 
 function getAuthorizationAction(
   status: SystemAuthorizationStatus,
@@ -59,7 +59,7 @@ function getAuthorizationAction(
   if (status === 'denied') {
     return canOpenPermissionSettings ? 'open_settings' : undefined;
   }
-  if (status === 'unavailable') return 'refresh';
+  if (status === 'unavailable') return undefined;
   return 'request';
 }
 
@@ -153,7 +153,7 @@ export function SystemPermissionsSection() {
   const busyPermissionRef = useRef<'notifications' | 'microphone' | null>(null);
   const [snapshot, setSnapshot] = useState<SystemAuthorizationSnapshot>(INITIAL_SNAPSHOT);
   const [busyPermission, setBusyPermission] = useState<'notifications' | 'microphone' | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
+  const [, setRefreshing] = useState(false);
   const [keystoreStatus, setKeystoreStatus] = useState<KeystoreProtectionStatus | null>(null);
   const [keystoreBusy, setKeystoreBusy] = useState(false);
 
@@ -323,8 +323,6 @@ export function SystemPermissionsSection() {
         onAction={
           notificationAction === 'open_settings'
             ? () => void openSettings('notifications')
-            : notificationAction === 'refresh'
-              ? () => void refresh()
               : notificationAction === 'request'
                 ? () => void requestNotifications()
                 : undefined
@@ -341,8 +339,6 @@ export function SystemPermissionsSection() {
         onAction={
           microphoneAction === 'open_settings'
             ? () => void openSettings('microphone')
-            : microphoneAction === 'refresh'
-              ? () => void refresh()
               : microphoneAction === 'request'
                 ? () => void requestMicrophone()
                 : undefined
@@ -380,23 +376,6 @@ export function SystemPermissionsSection() {
           onCheckedChange={(value) => void toggleKeystoreProtection(value)}
         />
       )}
-      <div className="flex justify-end border-t border-border/30 px-1 pt-2">
-        <DsButton
-          variant="outline"
-          size="sm"
-          disabled={refreshing}
-          aria-busy={refreshing || undefined}
-          onClick={() => void refresh()}
-          className="min-h-11 md:min-h-0 [@media(pointer:coarse)]:!min-h-11"
-        >
-          <ArrowClockwise
-            aria-hidden="true"
-            size={13}
-            className={refreshing ? 'animate-spin' : undefined}
-          />
-          {t('system_authorization.refresh')}
-        </DsButton>
-      </div>
     </SettingsGroup>
   );
 }

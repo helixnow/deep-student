@@ -21,6 +21,7 @@ export interface VoiceInputControllerDeps {
   getProvider?: (providerId: string) => VoiceInputProvider | null;
   createRecorderSession?: (options: {
     onLevel: (level: number) => void;
+    pcmWav?: boolean;
   }) => Promise<VoiceRecorderSession>;
 }
 
@@ -235,9 +236,13 @@ export function createVoiceInputController(deps: VoiceInputControllerDeps = {}) 
 
     startingRecording = true;
     const generation = ++startGeneration;
+    const assignment = config.assignedModel;
+    const deepseekAsr = assignment.status === 'ready' && assignment.providerId === 'deepseek'
+      && assignment.model === 'deepseek-asr';
     try {
       const session = await (deps.createRecorderSession ?? startBrowserVoiceRecording)({
         onLevel: (level) => setState({ level }),
+        ...(deepseekAsr ? { pcmWav: true } : {}),
       });
       if (generation !== startGeneration) {
         // 等待期间用户已取消/松键/失焦：立即释放迟到资源（麦克风/AudioContext），
@@ -260,7 +265,7 @@ export function createVoiceInputController(deps: VoiceInputControllerDeps = {}) 
       timeoutId = window.setTimeout(() => {
         deps.notifications?.show('warning', 'timeout');
         void stopRecording();
-      }, config.maxDurationMs);
+      }, deepseekAsr ? Math.min(config.maxDurationMs, 120_000) : config.maxDurationMs);
     } catch (error) {
       const code = getErrorCode(error);
       notify(code);

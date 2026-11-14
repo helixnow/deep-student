@@ -1,0 +1,356 @@
+{
+  "domain": "storage",
+  "commands": [
+    "get_database_info",
+    "switch_to_test_database",
+    "switch_to_production_database",
+    "reset_test_database",
+    "seed_test_database",
+    "set_test_run_id"
+  ],
+  "scenarios": [
+    {
+      "id": "storage.test_db.info.fresh",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_database_info",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.test_db.switch_roundtrip",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "switch_to_test_database",
+          "args": {}
+        },
+        {
+          "cmd": "get_database_info",
+          "args": {}
+        },
+        {
+          "cmd": "switch_to_test_database",
+          "args": {}
+        },
+        {
+          "cmd": "switch_to_production_database",
+          "args": {}
+        },
+        {
+          "cmd": "get_database_info",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.test_db.switch_production_without_test",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "switch_to_production_database",
+          "args": {}
+        },
+        {
+          "cmd": "get_database_info",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.test_db.reset.while_production",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "reset_test_database",
+          "args": {}
+        },
+        {
+          "cmd": "reset_test_database",
+          "args": {}
+        },
+        {
+          "cmd": "get_database_info",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.test_db.reset.while_test_active",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "switch_to_test_database",
+          "args": {}
+        },
+        {
+          "cmd": "seed_test_database",
+          "args": {
+            "config": null
+          }
+        },
+        {
+          "cmd": "reset_test_database",
+          "args": {}
+        },
+        {
+          "cmd": "get_database_info",
+          "args": {}
+        },
+        {
+          "cmd": "switch_to_production_database",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.test_db.seed.null_config",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "seed_test_database",
+          "args": {
+            "config": null
+          }
+        },
+        {
+          "cmd": "get_database_info",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.test_db.seed.missing_config",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "seed_test_database",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.test_db.seed.partial_config",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "seed_test_database",
+          "args": {
+            "config": {
+              "create_basic_mistakes": true,
+              "create_mistakes_with_chat": false,
+              "create_mistakes_with_attachments": false,
+              "create_diverse_mistakes": false
+            }
+          }
+        },
+        {
+          "cmd": "seed_test_database",
+          "args": {
+            "config": {
+              "create_basic_mistakes": false
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.test_db.seed.non_bool_and_non_object_config",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "seed_test_database",
+          "args": {
+            "config": {
+              "create_basic_mistakes": "false",
+              "create_diverse_mistakes": 0
+            }
+          }
+        },
+        {
+          "cmd": "seed_test_database",
+          "args": {
+            "config": []
+          }
+        },
+        {
+          "cmd": "seed_test_database",
+          "args": {
+            "config": "all"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.test_db.seed.then_switch_and_reset",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "seed_test_database",
+          "args": {
+            "config": null
+          }
+        },
+        {
+          "cmd": "switch_to_test_database",
+          "args": {}
+        },
+        {
+          "cmd": "reset_test_database",
+          "args": {}
+        },
+        {
+          "cmd": "switch_to_production_database",
+          "args": {}
+        },
+        {
+          "cmd": "get_database_info",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.test_db.set_run_id.frontend_shape",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "set_test_run_id",
+          "args": {
+            "test_run_id": "run-wp236-001",
+            "testRunId": "run-wp236-001"
+          }
+        },
+        {
+          "cmd": "set_test_run_id",
+          "args": {
+            "testRunId": ""
+          }
+        },
+        {
+          "cmd": "set_test_run_id",
+          "args": {
+            "testRunId": "运行-✓"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.test_db.set_run_id.arg_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "set_test_run_id",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "set_test_run_id",
+          "args": {
+            "test_run_id": "run-wp236-001"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "set_test_run_id",
+          "args": {
+            "testRunId": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "set_test_run_id",
+          "args": {
+            "testRunId": 1
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

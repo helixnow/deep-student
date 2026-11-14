@@ -19,6 +19,7 @@ import {
   resolveQuickLookVisual,
   type QuickLookVisualResult,
 } from './quickLookPreview';
+import { renderProceduralTextCoverDataUrl } from '../../utils/proceduralTextCover';
 import { cn } from '@/lib/utils';
 import { coarseHitClassFor36 } from '@/components/ui/coarseHit';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
@@ -150,9 +151,24 @@ export function FinderQuickLook({ item, onClose, onOpen }: FinderQuickLookProps)
   const showVisual = Boolean(visualKind) && !visualFailed && (visualLoading || visual !== null);
 
   const contentPreview = useMemo(() => {
-    const raw = item.metadata?.contentPreview;
+    const raw = item.metadata?.contentPreview ?? item.metadata?.snippet;
     return typeof raw === 'string' && raw.trim() ? raw.trim() : null;
   }, [item.metadata]);
+
+  const proceduralCoverUrl = useMemo(() => {
+    if (showVisual || item.type === 'folder') return null;
+    const isTextResource =
+      item.type === 'note' ||
+      item.type === 'essay' ||
+      item.type === 'translation' ||
+      /\.(md|markdown|txt)$/i.test(item.name || '');
+    if (!isTextResource) return null;
+    const cleanTitle = (item.name || item.id || '笔记').replace(/\.(md|markdown|txt)$/i, '');
+    return renderProceduralTextCoverDataUrl({
+      title: cleanTitle,
+      preview: contentPreview ?? '',
+    });
+  }, [showVisual, item.type, item.name, item.id, contentPreview]);
 
   const metaRows: Array<{ label: string; value: string }> = [
     {
@@ -243,6 +259,14 @@ export function FinderQuickLook({ item, onClose, onOpen }: FinderQuickLookProps)
                 )}
               </div>
             )
+          ) : proceduralCoverUrl ? (
+            <img
+              src={proceduralCoverUrl}
+              alt={item.name}
+              data-testid="quick-look-procedural-cover"
+              className="aspect-video w-full max-w-[340px] shrink-0 rounded-lg border border-border/35 object-cover shadow-sm"
+              draggable={false}
+            />
           ) : (
             <Icon size={96} />
           )}

@@ -41,33 +41,18 @@ test('provider contract is a fixed fail-closed CI job', () => {
   assert.match(job, /for service in "\$\{SERVICES\[@\]\}"; do/);
   assert.match(job, /State\.Health\.Status.*healthy/);
 
-  assert.match(job, /needs: \[changes, rust-test-build\]/);
-  assert.match(job, /cargo nextest run --no-fail-fast --archive-file/);
-  assert.match(job, /--run-ignored only --test-threads 1 --no-tests fail/);
-  assert.ok(job.includes('binary(=sync_provider_contract_tests) & test(/^${{ matrix.provider }}_/)'));
-  assert.doesNotMatch(job, /cargo test|cargo nextest archive/);
+  assert.match(job, /needs: \[changes\]/);
+  assert.ok(job.includes('host/plugins/sync-providers/tests/sync_provider_contract.test.ts'));
+  assert.ok(job.includes("-t '${{ matrix.provider }}_'"));
+  // 名称过滤匹配不到用例或整组被跳过时不得算通过
+  assert.match(job, /numPassedTests > 0/);
+  assert.doesNotMatch(job, /cargo|rustc/i);
   assert.match(job, /set -euo pipefail/);
 });
 
-test('shared Rust test archives strip symbols and consumers bound downloads', () => {
-  const jobs = yamlTopLevelSection(read('.github/workflows/ci.yml'), 'jobs', 0);
-  const build = yamlTopLevelSection(jobs, 'rust-test-build');
-  assert.match(build, /CARGO_PROFILE_TEST_STRIP: symbols/);
-  assert.match(build, /cargo nextest archive --locked --archive-file/);
-
-  for (const [name, timeoutMinutes] of [
-    ['rust-tests', 50],
-    ['provider-contract', 45],
-  ]) {
-    const job = yamlTopLevelSection(jobs, name);
-    assert.match(job, new RegExp(`^ {4}timeout-minutes: ${timeoutMinutes}$`, 'm'));
-    assert.match(
-      job,
-      /uses: actions\/download-artifact@[a-f0-9]{40}[ \t]*\n(?:[ \t]*#[^\n]*\n)*[ \t]+timeout-minutes: 20[ \t]*$/m,
-    );
-    assert.doesNotMatch(job, /continue-on-error:/);
-    assert.match(job, /--archive-file "\$RUNNER_TEMP\/nextest-archive\.tar\.zst"/);
-  }
+test('CI has no Rust toolchain steps', () => {
+  const workflow = read('.github/workflows/ci.yml');
+  assert.doesNotMatch(workflow, /cargo|rust-toolchain|setup-linux-rust|src-tauri|sccache/i);
 });
 
 test('provider gate reserves setup time without extending test execution', () => {
@@ -75,10 +60,7 @@ test('provider gate reserves setup time without extending test execution', () =>
   const job = yamlTopLevelSection(jobs, 'provider-contract');
 
   assert.match(job, /^ {4}timeout-minutes: 45$/m);
-  assert.match(
-    job,
-    /name: Execute ignored provider tests from the archive \(no Cargo compilation\)\n {8}timeout-minutes: 15\n/,
-  );
+  assert.match(job, /name: Execute provider contract tests\n {8}timeout-minutes: 15\n/);
 });
 
 test('canonical provider composition pins all services with healthchecks', () => {

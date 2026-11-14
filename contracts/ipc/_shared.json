@@ -1,0 +1,2925 @@
+{
+  "lane": "_shared",
+  "generator": "deep-student/contracts-extract@1.6.0",
+  "commands": [],
+  "events": [],
+  "$defs": {
+    "AnkiCard": {
+      "type": "object",
+      "properties": {
+        "front": {
+          "type": "string"
+        },
+        "back": {
+          "type": "string"
+        },
+        "text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "images": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "id": {
+          "type": "string"
+        },
+        "task_id": {
+          "type": "string"
+        },
+        "is_error_card": {
+          "type": "boolean"
+        },
+        "error_content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "updated_at": {
+          "type": "string"
+        },
+        "extra_fields": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "x-key-order": "unspecified"
+        },
+        "template_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "front",
+        "back",
+        "text",
+        "tags",
+        "images",
+        "id",
+        "task_id",
+        "is_error_card",
+        "error_content",
+        "created_at",
+        "updated_at",
+        "extra_fields",
+        "template_id"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_core::models::AnkiCard"
+    },
+    "AppError": {
+      "type": "object",
+      "properties": {
+        "error_type": {
+          "$ref": "#/$defs/AppErrorType"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "anyOf": [
+            {
+              "x-rust": "serde_json::Value"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "error_type",
+        "message",
+        "details"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_core::models::AppError"
+    },
+    "AppErrorType": {
+      "type": "string",
+      "enum": [
+        "Validation",
+        "Database",
+        "LLM",
+        "FileSystem",
+        "NotFound",
+        "Configuration",
+        "Network",
+        "Conflict",
+        "Unknown"
+      ],
+      "x-rust": "dstu_core::models::AppErrorType"
+    },
+    "BackupJobKind": {
+      "type": "string",
+      "enum": [
+        "export",
+        "import"
+      ],
+      "x-rust": "dstu_sync::backup_job_manager::BackupJobKind"
+    },
+    "BackupJobPhase": {
+      "type": "string",
+      "enum": [
+        "queued",
+        "scan",
+        "checkpoint",
+        "compress",
+        "verify",
+        "extract",
+        "replace",
+        "cleanup",
+        "completed",
+        "failed",
+        "cancelled"
+      ],
+      "x-rust": "dstu_sync::backup_job_manager::BackupJobPhase"
+    },
+    "BackupJobStatus": {
+      "type": "string",
+      "enum": [
+        "queued",
+        "running",
+        "completed",
+        "failed",
+        "cancelled"
+      ],
+      "x-rust": "dstu_sync::backup_job_manager::BackupJobStatus"
+    },
+    "CapabilitySnapshot": {
+      "type": "object",
+      "properties": {
+        "textEmbedding": {
+          "$ref": "#/$defs/CapabilityState"
+        },
+        "multimodalEmbedding": {
+          "$ref": "#/$defs/CapabilityState"
+        },
+        "textModel": {
+          "$ref": "#/$defs/CapabilityState"
+        },
+        "multimodalModel": {
+          "$ref": "#/$defs/CapabilityState"
+        },
+        "ocr": {
+          "$ref": "#/$defs/CapabilityState"
+        }
+      },
+      "required": [
+        "textEmbedding",
+        "multimodalEmbedding",
+        "textModel",
+        "multimodalModel",
+        "ocr"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_vfs::vfs::retrieval_planner::CapabilitySnapshot"
+    },
+    "CapabilityState": {
+      "type": "object",
+      "properties": {
+        "configured": {
+          "type": "boolean"
+        },
+        "healthy": {
+          "type": "boolean"
+        },
+        "circuitOpen": {
+          "type": "boolean"
+        },
+        "protocolCompatible": {
+          "type": "boolean"
+        },
+        "indexCompatible": {
+          "type": "boolean"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        }
+      },
+      "required": [
+        "configured",
+        "healthy",
+        "circuitOpen",
+        "protocolCompatible",
+        "indexCompatible"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_vfs::vfs::retrieval_planner::CapabilityState"
+    },
+    "CloudStorageConfig": {
+      "type": "object",
+      "properties": {
+        "provider": {
+          "$ref": "#/$defs/StorageProvider"
+        },
+        "webdav": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WebDavConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "s3": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/S3Config"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "ftp": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FtpConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "root": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "encryptionPassword": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "x-rust": "dstu_sync::cloud_storage::config::CloudStorageConfig"
+    },
+    "CloudStorageCredentials": {
+      "type": "object",
+      "properties": {
+        "webdavPassword": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "s3SecretAccessKey": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "ftpPassword": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "encryptionPassword": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "x-rust": "dstu_security::secure_store::CloudStorageCredentials"
+    },
+    "CommandError": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "data": {
+          "anyOf": [
+            {
+              "x-rust": "serde_json::Value"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "traceId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_core::error_details::CommandError"
+    },
+    "ContentBlock__De": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "text"
+            },
+            "text": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "text"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "image"
+            },
+            "mediaType": {
+              "type": "string"
+            },
+            "base64": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "mediaType",
+            "base64"
+          ]
+        }
+      ],
+      "x-rust": "dstu_core::resource_types::ContentBlock"
+    },
+    "DerivedEdge": {
+      "type": "object",
+      "properties": {
+        "sourceHandleId": {
+          "type": "string"
+        },
+        "transformId": {
+          "type": "string"
+        },
+        "transformParamsHash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "observedAt": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sourceHandleId",
+        "transformId",
+        "observedAt"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_core::task_objects::DerivedEdge"
+    },
+    "DocumentTask": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "document_id": {
+          "type": "string"
+        },
+        "original_document_name": {
+          "type": "string"
+        },
+        "segment_index": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "content_segment": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/TaskStatus"
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "updated_at": {
+          "type": "string"
+        },
+        "error_message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "anki_generation_options_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "document_id",
+        "original_document_name",
+        "segment_index",
+        "content_segment",
+        "status",
+        "created_at",
+        "updated_at",
+        "error_message",
+        "anki_generation_options_json"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_core::models::DocumentTask"
+    },
+    "DstuNode": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "$ref": "#/$defs/DstuNodeType"
+        },
+        "size": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u64",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "createdAt": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "updatedAt": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "children": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/DstuNode"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "childCount": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "resourceId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "sourceId": {
+          "type": "string"
+        },
+        "resourceHash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "previewType": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "x-rust": "serde_json::Value"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        }
+      },
+      "required": [
+        "id",
+        "path",
+        "name",
+        "type",
+        "createdAt",
+        "updatedAt",
+        "sourceId"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_vfs::dstu::types::DstuNode"
+    },
+    "DstuNodeType": {
+      "type": "string",
+      "enum": [
+        "folder",
+        "note",
+        "textbook",
+        "exam",
+        "translation",
+        "essay",
+        "image",
+        "file",
+        "retrieval",
+        "mindmap"
+      ],
+      "x-rust": "dstu_vfs::dstu::types::DstuNodeType"
+    },
+    "DstuWatchEvent": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "$ref": "#/$defs/DstuWatchEventType"
+        },
+        "path": {
+          "type": "string"
+        },
+        "oldPath": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "node": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DstuNode"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        }
+      },
+      "required": [
+        "type",
+        "path"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_vfs::dstu::types::DstuWatchEvent"
+    },
+    "DstuWatchEventType": {
+      "type": "string",
+      "enum": [
+        "created",
+        "updated",
+        "deleted",
+        "moved",
+        "restored",
+        "purged"
+      ],
+      "x-rust": "dstu_vfs::dstu::types::DstuWatchEventType"
+    },
+    "ExamCardBBox": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "type": "number",
+          "x-float": "f32"
+        },
+        "y": {
+          "type": "number",
+          "x-float": "f32"
+        },
+        "width": {
+          "type": "number",
+          "x-float": "f32"
+        },
+        "height": {
+          "type": "number",
+          "x-float": "f32"
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "width",
+        "height"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_core::models::ExamCardBBox"
+    },
+    "FolderTreeNode": {
+      "type": "object",
+      "properties": {
+        "folder": {
+          "$ref": "#/$defs/VfsFolder"
+        },
+        "children": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/FolderTreeNode"
+          }
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/VfsFolderItem"
+          }
+        }
+      },
+      "required": [
+        "folder",
+        "children",
+        "items"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_vfs::vfs::types::FolderTreeNode"
+    },
+    "FtpConfig": {
+      "type": "object",
+      "properties": {
+        "host": {
+          "type": "string"
+        },
+        "port": {
+          "type": "integer",
+          "x-int": "u16",
+          "minimum": 0,
+          "maximum": 65535
+        },
+        "username": {
+          "type": "string"
+        },
+        "password": {
+          "type": "string"
+        },
+        "useTls": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "host",
+        "username",
+        "password"
+      ],
+      "x-rust": "dstu_sync::cloud_storage::config::FtpConfig"
+    },
+    "ImageInjectMode": {
+      "type": "string",
+      "enum": [
+        "image",
+        "ocr"
+      ],
+      "x-rust": "dstu_vfs::vfs::types::ImageInjectMode"
+    },
+    "ImageInjectMode__De": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "image",
+            "ocr"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "image": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "image"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "ocr": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "ocr"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "x-also-accepts": "externally tagged map form {\"<Variant>\": null}",
+      "x-rust": "dstu_vfs::vfs::types::ImageInjectMode"
+    },
+    "JobCheckpoint": {
+      "type": "object",
+      "properties": {
+        "processed_items": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "partial_output": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "last_updated": {
+          "type": "string",
+          "format": "date-time",
+          "x-rust": "chrono::DateTime<chrono::Utc>",
+          "x-format": "RFC 3339, SecondsFormat::AutoSi, Z for UTC"
+        },
+        "current_index": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "total_items": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "processed_items",
+        "last_updated",
+        "current_index",
+        "total_items"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_sync::backup_job_manager::JobCheckpoint"
+    },
+    "ManagedLocator": {
+      "type": "object",
+      "properties": {
+        "rootId": {
+          "type": "string"
+        },
+        "relativePath": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "rootId",
+        "relativePath"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_core::task_objects::ManagedLocator"
+    },
+    "McpToolSchema__De": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "serverId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "inputSchema": {
+          "anyOf": [
+            {
+              "x-rust": "serde_json::Value"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "x-rust": "dstu_agent::chat_v2::types::McpToolSchema"
+    },
+    "NoteLeaseAuth": {
+      "type": "object",
+      "properties": {
+        "participant_id": {
+          "type": "string"
+        },
+        "token": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "participant_id",
+        "token"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_vfs::vfs::repos::note_lease_repo::NoteLeaseAuth"
+    },
+    "ObjectAcl": {
+      "type": "object",
+      "properties": {
+        "access": {
+          "type": "string"
+        },
+        "ownerId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "principalIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "x-skip-serializing-if": "Vec::is_empty"
+        },
+        "observedAt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        }
+      },
+      "required": [
+        "access"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_core::task_objects::ObjectAcl"
+    },
+    "ObjectCapabilities": {
+      "type": "object",
+      "properties": {
+        "readable": {
+          "type": "boolean"
+        },
+        "materializable": {
+          "type": "boolean"
+        },
+        "writable": {
+          "type": "boolean"
+        },
+        "shareable": {
+          "type": "boolean"
+        },
+        "sendable": {
+          "type": "boolean"
+        },
+        "deletable": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "readable",
+        "materializable",
+        "writable",
+        "shareable",
+        "sendable",
+        "deletable"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_core::task_objects::ObjectCapabilities"
+    },
+    "ObjectProvenance": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "type": "string"
+        },
+        "sourceUri": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "server": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "tool": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "derivedFrom": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DerivedEdge"
+          },
+          "x-skip-serializing-if": "Vec::is_empty"
+        },
+        "observedAt": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "source",
+        "observedAt"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_core::task_objects::ObjectProvenance"
+    },
+    "PdfInjectMode": {
+      "type": "string",
+      "enum": [
+        "text",
+        "ocr",
+        "image"
+      ],
+      "x-rust": "dstu_vfs::vfs::types::PdfInjectMode"
+    },
+    "PdfInjectMode__De": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "text",
+            "ocr",
+            "image"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "text"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "ocr": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "ocr"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "image": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "image"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "x-also-accepts": "externally tagged map form {\"<Variant>\": null}",
+      "x-rust": "dstu_vfs::vfs::types::PdfInjectMode"
+    },
+    "PersistedJob": {
+      "type": "object",
+      "properties": {
+        "job_id": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/BackupJobKind"
+        },
+        "status": {
+          "$ref": "#/$defs/BackupJobStatus"
+        },
+        "phase": {
+          "$ref": "#/$defs/BackupJobPhase"
+        },
+        "progress": {
+          "type": "number",
+          "x-float": "f32"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time",
+          "x-rust": "chrono::DateTime<chrono::Utc>",
+          "x-format": "RFC 3339, SecondsFormat::AutoSi, Z for UTC"
+        },
+        "started_at": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time",
+              "x-rust": "chrono::DateTime<chrono::Utc>",
+              "x-format": "RFC 3339, SecondsFormat::AutoSi, Z for UTC"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "params": {
+          "x-rust": "serde_json::Value"
+        },
+        "checkpoint": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobCheckpoint"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "error_message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        }
+      },
+      "required": [
+        "job_id",
+        "kind",
+        "status",
+        "phase",
+        "progress",
+        "created_at",
+        "params"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_sync::backup_job_manager::PersistedJob"
+    },
+    "ProcessingIssue": {
+      "type": "object",
+      "properties": {
+        "stage": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "retriable": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "stage",
+        "message",
+        "retriable"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_vfs::vfs::pdf_processing_service::ProcessingIssue"
+    },
+    "ProcessingProgress": {
+      "type": "object",
+      "properties": {
+        "stage": {
+          "type": "string"
+        },
+        "currentPage": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "usize",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "totalPages": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "usize",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "percent": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f32"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "readyModes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "mediaType": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "failedStages": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/ProcessingIssue"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        }
+      },
+      "required": [
+        "stage",
+        "percent",
+        "readyModes"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_vfs::vfs::pdf_processing_service::ProcessingProgress"
+    },
+    "ProviderObjectRef": {
+      "type": "object",
+      "properties": {
+        "provider": {
+          "type": "string"
+        },
+        "externalId": {
+          "type": "string"
+        },
+        "containerId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "threadId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "etag": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        }
+      },
+      "required": [
+        "provider",
+        "externalId"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_core::task_objects::ProviderObjectRef"
+    },
+    "ReplayMode": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "original",
+            "current"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "original": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "original"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "current": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "current"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "x-also-accepts": "externally tagged map form {\"<Variant>\": null}",
+      "x-rust": "dstu_agent::chat_v2::types::ReplayMode"
+    },
+    "ResourceInjectModes": {
+      "type": "object",
+      "properties": {
+        "image": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/ImageInjectMode"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "pdf": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/PdfInjectMode"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        }
+      },
+      "additionalProperties": false,
+      "x-rust": "dstu_vfs::vfs::types::ResourceInjectModes"
+    },
+    "ResourceInjectModes__De": {
+      "type": "object",
+      "properties": {
+        "image": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/ImageInjectMode__De"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "pdf": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/PdfInjectMode__De"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "x-rust": "dstu_vfs::vfs::types::ResourceInjectModes"
+    },
+    "S3Config": {
+      "type": "object",
+      "properties": {
+        "endpoint": {
+          "type": "string"
+        },
+        "bucket": {
+          "type": "string"
+        },
+        "accessKeyId": {
+          "type": "string"
+        },
+        "secretAccessKey": {
+          "type": "string"
+        },
+        "region": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "pathStyle": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "endpoint",
+        "bucket",
+        "accessKeyId",
+        "secretAccessKey"
+      ],
+      "x-rust": "dstu_sync::cloud_storage::config::S3Config"
+    },
+    "SafeCloudStorageConfig__De": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "provider": {
+              "const": "webdav"
+            },
+            "webdav": {
+              "$ref": "#/$defs/SafeWebDavConfig"
+            },
+            "root": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "x-option": "null"
+            },
+            "allow_insecure": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "provider",
+            "webdav"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "provider": {
+              "const": "s3"
+            },
+            "s3": {
+              "$ref": "#/$defs/SafeS3Config__De"
+            },
+            "root": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "x-option": "null"
+            },
+            "allow_insecure": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "provider",
+            "s3"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "provider": {
+              "const": "ftp"
+            },
+            "ftp": {
+              "$ref": "#/$defs/SafeFtpConfig__De"
+            },
+            "root": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "x-option": "null"
+            },
+            "allow_insecure": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "provider",
+            "ftp"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "x-rust": "dstu_sync::cloud_config_commands::SafeCloudStorageConfig"
+    },
+    "SafeFtpConfig__De": {
+      "type": "object",
+      "properties": {
+        "host": {
+          "type": "string"
+        },
+        "port": {
+          "type": "integer",
+          "x-int": "u16",
+          "minimum": 0,
+          "maximum": 65535
+        },
+        "username": {
+          "type": "string"
+        },
+        "useTls": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "host",
+        "username"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_sync::cloud_config_commands::SafeFtpConfig"
+    },
+    "SafeS3Config__De": {
+      "type": "object",
+      "properties": {
+        "endpoint": {
+          "type": "string"
+        },
+        "bucket": {
+          "type": "string"
+        },
+        "accessKeyId": {
+          "type": "string"
+        },
+        "region": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "pathStyle": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "endpoint",
+        "bucket",
+        "accessKeyId"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_sync::cloud_config_commands::SafeS3Config"
+    },
+    "SafeWebDavConfig": {
+      "type": "object",
+      "properties": {
+        "endpoint": {
+          "type": "string"
+        },
+        "username": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "endpoint",
+        "username"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_sync::cloud_config_commands::SafeWebDavConfig"
+    },
+    "SendContextRef": {
+      "type": "object",
+      "properties": {
+        "resourceId": {
+          "type": "string"
+        },
+        "hash": {
+          "type": "string"
+        },
+        "typeId": {
+          "type": "string"
+        },
+        "formattedBlocks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ContentBlock__De"
+          }
+        },
+        "displayName": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "injectModes": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ResourceInjectModes__De"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "resourceId",
+        "hash",
+        "typeId",
+        "formattedBlocks"
+      ],
+      "x-rust": "dstu_agent::chat_v2::resource_types::SendContextRef"
+    },
+    "SendOptions": {
+      "type": "object",
+      "properties": {
+        "modelId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "temperature": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f32"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "topP": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f32"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "frequencyPenalty": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f32"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "presencePenalty": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f32"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "contextLimit": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "maxTokens": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "enableThinking": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "reasoningEffort": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "thinkingBudget": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "i32",
+              "minimum": -2147483648,
+              "maximum": 2147483647
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "replayMode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReplayMode"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "skillStateVersion": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u64",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "disableTools": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "model2OverrideId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "groupId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "groupName": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "groupPinnedResourceIds": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "ragEnabled": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "ragLibraryIds": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "ragTopK": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "ragEnableReranking": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "graphRagEnabled": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "graphIds": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "graphTopK": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "memoryEnabled": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "autoMemoryExtraction": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "multimodalRagEnabled": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "multimodalTopK": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "multimodalEnableReranking": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "multimodalLibraryIds": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "mcpTools": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "mcpToolSchemas": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/McpToolSchema__De"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "maxToolRecursion": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "webSearchEnabled": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "searchEngines": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "ankiEnabled": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "ankiTemplateId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "ankiOptions": {
+          "anyOf": [
+            {
+              "x-rust": "serde_json::Value"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "systemPromptOverride": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "systemPromptAppend": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "skipUserMessageSave": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "skipAssistantMessageSave": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "parallelModelIds": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "maxVariantsPerMessage": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "canvasNoteId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "userContextRefs": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/SendContextRef"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "schemaToolIds": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "contextTypeHints": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "activeSkillIds": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "skillContents": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              },
+              "x-key-order": "unspecified"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "replaySkillContents": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              },
+              "x-key-order": "unspecified"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "skillDependencies": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "x-key-order": "unspecified"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "skillEmbeddedTools": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/McpToolSchema__De"
+                }
+              },
+              "x-key-order": "unspecified"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "skillAdmissionErrors": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              },
+              "x-key-order": "unspecified"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "skillPackageRoots": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              },
+              "x-key-order": "unspecified"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "isContinue": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "continueVariantId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "visionQuality": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "x-rust": "dstu_agent::chat_v2::types::SendOptions"
+    },
+    "StorageProvider": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "webdav",
+            "s3",
+            "ftp"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "webdav": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "webdav"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "s3": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "s3"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "ftp": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "ftp"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "x-also-accepts": "externally tagged map form {\"<Variant>\": null}",
+      "x-rust": "dstu_sync::cloud_storage::config::StorageProvider"
+    },
+    "TaskObjectHandle": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "x-int": "u16",
+          "minimum": 0,
+          "maximum": 65535
+        },
+        "handleId": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/TaskObjectKind"
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "mediaType": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "sizeBytes": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u64",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "sha256": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "locator": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ManagedLocator"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "providerRef": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProviderObjectRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "acl": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ObjectAcl"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "capabilities": {
+          "$ref": "#/$defs/ObjectCapabilities"
+        },
+        "expiresAt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "provenance": {
+          "$ref": "#/$defs/ObjectProvenance"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "handleId",
+        "kind",
+        "displayName",
+        "capabilities",
+        "provenance"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_core::task_objects::TaskObjectHandle"
+    },
+    "TaskObjectKind": {
+      "type": "string",
+      "enum": [
+        "file",
+        "folder",
+        "message",
+        "event",
+        "record",
+        "page",
+        "artifact"
+      ],
+      "x-rust": "dstu_core::task_objects::TaskObjectKind"
+    },
+    "TaskStatus": {
+      "type": "string",
+      "enum": [
+        "Pending",
+        "Processing",
+        "Streaming",
+        "Paused",
+        "Completed",
+        "Failed",
+        "Truncated",
+        "Cancelled"
+      ],
+      "x-rust": "dstu_core::models::TaskStatus"
+    },
+    "VfsFolder": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "parentId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "title": {
+          "type": "string"
+        },
+        "icon": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "color": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "isExpanded": {
+          "type": "boolean"
+        },
+        "isFavorite": {
+          "type": "boolean"
+        },
+        "sortOrder": {
+          "type": "integer",
+          "x-int": "i32",
+          "minimum": -2147483648,
+          "maximum": 2147483647
+        },
+        "createdAt": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "updatedAt": {
+          "type": "integer",
+          "x-int": "i64"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "isExpanded",
+        "isFavorite",
+        "sortOrder",
+        "createdAt",
+        "updatedAt"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_vfs::vfs::types::VfsFolder"
+    },
+    "VfsFolderItem": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "folderId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "itemType": {
+          "type": "string"
+        },
+        "itemId": {
+          "type": "string"
+        },
+        "sortOrder": {
+          "type": "integer",
+          "x-int": "i32",
+          "minimum": -2147483648,
+          "maximum": 2147483647
+        },
+        "createdAt": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "cachedPath": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        }
+      },
+      "required": [
+        "id",
+        "itemType",
+        "itemId",
+        "sortOrder",
+        "createdAt"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_vfs::vfs::types::VfsFolderItem"
+    },
+    "VfsNote": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "resourceId": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "isFavorite": {
+          "type": "boolean"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "type": "string"
+        },
+        "deletedAt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "props": {
+          "anyOf": [
+            {
+              "x-rust": "serde_json::Value"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        }
+      },
+      "required": [
+        "id",
+        "resourceId",
+        "title",
+        "tags",
+        "isFavorite",
+        "createdAt",
+        "updatedAt"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_vfs::vfs::types::VfsNote"
+    },
+    "WebDavConfig": {
+      "type": "object",
+      "properties": {
+        "endpoint": {
+          "type": "string"
+        },
+        "username": {
+          "type": "string"
+        },
+        "password": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "endpoint",
+        "username",
+        "password"
+      ],
+      "x-rust": "dstu_sync::cloud_storage::config::WebDavConfig"
+    }
+  }
+}

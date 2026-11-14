@@ -1,0 +1,67 @@
+{
+  "id": "RF-S01-shell-host-plugin-dir-protected",
+  "kind": "deliberate",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T15:02:00+08:00",
+  "title": "沙箱 shell 的可写根与 Host 插件目录的路径相交（包含真实数据目录、真实 plugins 目录或数据目录与 plugins 路径上任一条目所在的真实目录（链接逐跳展开），或位于 plugins 之内）时，在策略阶段拒绝执行。沙箱内命令不能种下、改写 Host 启动时以完整 Node 权限导入的 profile 或模块，也不能改名或替换通往它们的目录",
+  "rust": {
+    "file": "src-tauri/crates/dstu-agent/src/chat_v2/tools/local_shell_execute_executor.rs",
+    "line": 799,
+    "behavior": "build_sandbox_policy 的受保护写根只有各根下的 .git、技能目录与 home 下的凭据路径，不保护应用数据目录的任何部分。Rust 版不从应用数据目录加载代码，所以这只是数据写入"
+  },
+  "fix": {
+    "files": ["host/plugins/agent-workspace/src/tools/shell-execute/context.ts"],
+    "behavior": "buildSandboxPolicy 在确定可写根后调用 protectHostPluginDir。没有可写根时（只读根、forceReadOnly 的 git 读工具）直接返回，不读数据目录。否则取 canonicalDataDir = realpath(dataDir)、plugins = realpath(<canonicalDataDir>/plugins)（不存在时用拼出的路径），以及 pathHolders(<dataDir>/plugins)：按配置写法逐段 lstat，收集每一段所在的真实目录；遇到符号链接或 junction 就按 readlink 的结果（相对链接从链接所在目录解析，.. 按真实目录回退）继续逐段展开，链接目标路径上的链接同样展开，合计最多 40 跳（POSIX SYMLOOP_MAX），超过报 ELOOP；遇到不存在的条目就停，但它所在的目录仍计入（悬空链接的目标由可写根新建同样能改道）。任一可写根满足下列之一就在任何后端运行之前报错拒绝，错误文本固定为 HOST_PLUGIN_DIR_CWD_REFUSAL：(1) 位于 plugins 之内或就是 plugins（cwd: app-data/plugins/<id>）；(2) 等于或包含 canonicalDataDir（cwd 是包含数据目录的工作区根）：数据目录及其祖先可以被改名，plugins 链接可以被替换；(3) 等于或包含 plugins 的真实目标（plugins 是指向别处的链接时）；(4) 等于或包含 pathHolders 中的任一目录（数据目录或 plugins 的路径上有链接时，包含链接所在目录就能替换链接，多跳时包含任一中间链接所在目录也一样）。数据目录内、plugins 之外的可写根（artifacts、temp 等临时根）不相交，照常执行。规范化失败（plugins 的 ENOENT 除外，含 ELOOP）时报错、不执行。与 plugins 不相交时策略与 Rust 完全相同；Full Access 档不经过这里。不再把 plugins 加进 protected_write_roots。覆盖范围：只保护到 <dataDir>/plugins 这一级的路径。plugins 里面用户自建的链接（例如把开发中的插件目录或 user.profile.json 链到工作区）不在覆盖范围：可写根写链接目标就等于改了 Host 导入的文件，这需要用户自己建链接，模型建不出来。路径同一性除了 realpath 字符串，还按 (dev, ino) 比较（任一相同即视为同一，inode 为 0 的文件系统只按路径），所以 realpath 保留不同写法的别名（macOS /System/Volumes/Data 的 firmlink、bind mount、casefold 目录）同样被拒"
+  },
+  "evidence": "Electron 版 Host 启动时读取 <dataDir>/plugins/user.profile.json 并 import() 其中的模块（host/kernel/profile.ts:370-376；data: 模块甚至只需这一个文件，见 .reports/reviews/S01-security-r3.md），加载已安装插件模块时不校验哈希（profile.ts:163）。工作区校验（runtime-paths.ts:145-158）只把 /、home 本身等列为 critical，~/Library、~/Library/Application Support、~/.local/share、C:\\Users\\<u>\\AppData 都可设为读写工作区，它们包含 Host 数据目录。复现 1（可写根包含 plugins）：工作区设为包含 dataDir 的目录，沙箱命令 `mkdir -p app-data/plugins; printf ... > app-data/plugins/user.profile.json` 修复前写入成功，下次启动该 profile 在沙箱外执行。复现 2（可写根在 plugins 之内，A04 复核 S01-9f646f54 第 9 节）：shell 的可写根就是模型传入的 cwd，cwd: app-data/plugins/community.demo 时 `printf 'import(\"node:child_process\")' > index.mjs` 把已安装社区插件的模块改写成功（macOS 实测红：expected 'import(\"node:child_process\")' to be 'export default {}'）。复现 3（改名祖先，A07 复核 S01-71ace0de 第 1.2 节）：第 4 轮对复现 1 的修法是把 plugins 列为受保护写根，但它与可写根之间的数据目录本身不受保护。macOS 上 `mv app-data app-data.old && mkdir -p evil/plugins && printf '{\"plugins\":[]}' > evil/plugins/user.profile.json && ln -s evil app-data`（Seatbelt 按路径匹配，改名后的路径不再命中 deny），Linux 上 `mv app-data app-data.old && mkdir -p app-data/plugins && printf ... > app-data/plugins/user.profile.json`（被挂载的是 plugins，父目录不是挂载点，可以 rename），Host 下次启动顺着原路径读到种下的 profile。经真实 local_shell_execute 链路在 macOS 实测红：expected [ true, true ] to deeply equal [ false, false ]（数据目录被替换、profile 被种下）。plugins 是链接时，包含数据目录就能把链接换成真实目录，包含链接目标的祖先就能改名目标，同属这一类；数据目录路径上有符号链接时，包含链接所在目录就能替换链接，同理。修复后这些情况都在策略阶段被拒，数据目录不变。复现 4（多跳链接，A15 复核 S01-c7d3c08e 第 1.6 节）：数据目录配置为 outer/link1/data，outer/link1 → workspace/link → 工作区外的真实目录，读写工作区 workspace 持有中间那个链接；第 7 轮只把配置路径的逐级祖先取 realpath，workspace 不在其中。沙箱命令先写脚本再执行（`printf 'mv link link.old\\nmkdir -p link/data/plugins\\ntouch link/data/plugins/user.profile.json\\n' > attack.sh && sh attack.sh`，路径操作数校验只看命令行上的操作数，不读脚本），经真实 local_shell_execute 链路在 macOS 实测红：expected [ true, true ] to deeply equal [ false, false ]（链接被替换、profile 被种下）；策略层同样漏掉 plugins 链接目标路径上的链接（d/plugins → holder/hop/plugins-real，holder/hop → store）和悬空的 plugins 链接（目标在工作区里尚不存在）。改为 pathHolders 逐跳收集后都被拒。选择拒绝而不是只读执行：只保护 plugins 本身挡不住改名祖先，要保护整条路径就得把数据目录和所有可写的祖先都设为只读，等于拒绝；拒绝的结果不依赖后端挂载语义，所有平台一致，模型拿到明确原因而不是 EPERM/EROFS 后反复改写命令重试。bwrap 中后来的父目录 --ro-bind 会遮住先前子目录的 --bind，已对照 bubblewrap 上游源码确认（挂载源取自 /oldroot，bind 递归，mount_setattr 作用在重新打开的目标上；.git/hooks 作为 cwd 时靠这一点保持只读），与本条的选择无关。测试分层（A16 复核 S01-76965bac 第 4 节）：W02 的 RF-W02-workspace-contains-data-dir 进 INT 后，Host 会把包含数据目录或持有数据目录路径上链接的已保存读写工作区降为只读，“工作区包含数据目录”三条和“一跳链接”两条端到端用例改由只读根检查拒绝（测试按 Host 实际给出的 access 期望精确文本），走不到本条的策略层；本条由所有平台都跑的策略层用例和 buildSandboxPolicy 接线用例守护（不经过 workspaceRoot，W02 怎么改都不影响），两跳链接的端到端在 W02 a89513a1 下仍由本条拒绝。",
+  "userVisible": "只在读写工作区包含应用数据目录、或持有数据目录与 plugins 路径上的链接时可感知：cwd 包含数据目录（例如默认的工作区根）、包含这样的链接或位于 <数据目录>/plugins 之内时，agent 的 shell 命令整条被拒并说明原因，包括只读命令和走 allowGitMetadataWrite 的 git 写工具（git 读工具走 forceReadOnly，不受影响），模型需要改用不包含数据目录和这些链接的子目录作为 cwd；工作区其余子目录和数据目录里的临时根照常可写",
+  "dataCompat": "不改变落库数据、同步载荷与备份格式",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "host/plugins/agent-workspace/tests/shell-host-plugin-dir.test.ts",
+      "name": "RF-S01-shell-host-plugin-dir-protected: a sandboxed command in a workspace that contains the Host data directory cannot plant the user profile the Host imports at startup"
+    },
+    {
+      "file": "host/plugins/agent-workspace/tests/shell-host-plugin-dir.test.ts",
+      "name": "RF-S01-shell-host-plugin-dir-protected: a sandboxed command whose cwd is inside the Host plugin directory cannot rewrite an installed plugin module or plant the user profile"
+    },
+    {
+      "file": "host/plugins/agent-workspace/tests/shell-host-plugin-dir.test.ts",
+      "name": "RF-S01-shell-host-plugin-dir-protected: a sandboxed command whose cwd contains the Host data directory cannot rename it and plant the user profile at its old path"
+    },
+    {
+      "file": "host/plugins/agent-workspace/tests/shell-host-plugin-dir.test.ts",
+      "name": "RF-S01-shell-host-plugin-dir-protected: the sandbox policy refuses a writable root inside the Host plugin directory, also when the directory is a symlink, and leaves disjoint roots and temp roots inside the data directory alone"
+    },
+    {
+      "file": "host/plugins/agent-workspace/tests/shell-host-plugin-dir.test.ts",
+      "name": "RF-S01-shell-host-plugin-dir-protected: the sandbox policy refuses a writable root that contains the data directory, the real plugin directory or a directory the data directory path goes through, so nothing on the way to plugins can be renamed or replaced"
+    },
+    {
+      "file": "host/plugins/agent-workspace/tests/shell-host-plugin-dir.test.ts",
+      "name": "RF-S01-shell-host-plugin-dir-protected: the sandbox policy refuses a writable root that holds any link the data directory or plugin directory path resolves through, also behind another link, and leaves a sibling of that root alone"
+    },
+    {
+      "file": "host/plugins/agent-workspace/tests/shell-host-plugin-dir.test.ts",
+      "name": "RF-S01-shell-host-plugin-dir-protected: a sandboxed command that renames the link cannot plant the user profile at the data directory path"
+    },
+    {
+      "file": "host/plugins/agent-workspace/tests/shell-host-plugin-dir.test.ts",
+      "name": "RF-S01-shell-host-plugin-dir-protected: a sandboxed command that replaces the link cannot plant the user profile at the data directory path"
+    },
+    {
+      "file": "host/plugins/agent-workspace/tests/shell-host-plugin-dir.test.ts",
+      "name": "RF-S01-shell-host-plugin-dir-protected: a sandboxed command whose cwd is a workspace subdirectory runs as usual when the workspace and the Host data directory do not overlap"
+    },
+    {
+      "file": "host/plugins/agent-workspace/tests/shell-host-plugin-dir.test.ts",
+      "name": "RF-S01-shell-host-plugin-dir-protected: buildSandboxPolicy refuses a read-write cwd that contains the data directory whatever the Host did to the workspace record, and builds the policy for a subdirectory cwd or a read-only root"
+    },
+    {
+      "file": "host/plugins/agent-workspace/tests/shell-host-plugin-dir.test.ts",
+      "name": "RF-S01-shell-host-plugin-dir-protected: the sandbox policy also compares directories by (dev, ino), so a firmlink alias of a writable root that contains the data directory or lies inside plugins is refused"
+    }
+  ]
+}

@@ -1,0 +1,3730 @@
+{
+  "domain": "qbank",
+  "commands": [
+    "qbank_create_question",
+    "qbank_batch_create_questions",
+    "qbank_get_question",
+    "qbank_list_questions",
+    "qbank_update_question",
+    "qbank_batch_update_questions",
+    "qbank_delete_question",
+    "qbank_batch_delete_questions",
+    "qbank_toggle_favorite",
+    "qbank_get_stats",
+    "qbank_refresh_stats",
+    "qbank_get_history"
+  ],
+  "scenarios": [
+    {
+      "id": "qbank.create.editor_full_shape",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "下列哪个是质数？",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "4"
+                },
+                {
+                  "key": "B",
+                  "content": "7"
+                },
+                {
+                  "key": "C",
+                  "content": "9"
+                },
+                {
+                  "key": "D",
+                  "content": "15"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "数论"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_question",
+          "args": {
+            "questionId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "qbank_get_stats",
+          "args": {
+            "examId": "${0.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.create.sparse_defaults",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "把这句话改写为被动语态。",
+              "explanation": "待补充",
+              "tags": [
+                "错题"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_question",
+          "args": {
+            "questionId": "${1.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.create.no_tags_no_type",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "无标签无题型"
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.create.structured_numeric",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "圆周率保留两位小数？",
+              "question_type": "numeric",
+              "options": null,
+              "answer": "3.14",
+              "structured_data": {
+                "answer_value": 3.14,
+                "tolerance": 0.01,
+                "tolerance_mode": "absolute",
+                "unit": ""
+              },
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "数论"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_question",
+          "args": {
+            "questionId": "${1.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.create.empty_content",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": ""
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.create.unicode_long_content",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题题 😀 \u0000 末尾",
+              "tags": [
+                "  ",
+                "空白标签"
+              ]
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.create.err_unknown_exam_fk",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "exam_doesnotexist",
+              "content": "把这句话改写为被动语态。",
+              "explanation": "待补充",
+              "tags": [
+                "错题"
+              ],
+              "source_type": "manual"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "qbank_list_questions",
+          "args": {
+            "request": {
+              "exam_id": "exam_doesnotexist",
+              "filters": {},
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.create.err_missing_content",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.create.err_invalid_question_type",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "x",
+              "question_type": "not_a_type"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.create.err_invalid_difficulty",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "x",
+              "difficulty": "impossible"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.create.err_missing_params_key",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_create_question",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.create.parent_id_unknown_fk",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "变式",
+              "parent_id": "q_missing0000"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.batch_create.essay_mistakes_shape",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "作文错题",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_batch_create_questions",
+          "args": {
+            "paramsList": [
+              {
+                "exam_id": "${0.id}",
+                "content": "病句一",
+                "answer": "改正一",
+                "explanation": null,
+                "tags": [
+                  "语法"
+                ],
+                "source_type": "manual"
+              },
+              {
+                "exam_id": "${0.id}",
+                "content": "病句二",
+                "answer": null,
+                "explanation": "解析二",
+                "tags": [],
+                "source_type": "manual"
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "qbank_list_questions",
+          "args": {
+            "request": {
+              "exam_id": "${0.id}",
+              "filters": {},
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_stats",
+          "args": {
+            "examId": "${0.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.batch_create.empty_list",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_batch_create_questions",
+          "args": {
+            "paramsList": []
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.batch_create.err_fk_rolls_back_whole_batch",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_batch_create_questions",
+          "args": {
+            "paramsList": [
+              {
+                "exam_id": "${0.id}",
+                "content": "把这句话改写为被动语态。",
+                "explanation": "待补充",
+                "tags": [
+                  "错题"
+                ],
+                "source_type": "manual"
+              },
+              {
+                "exam_id": "exam_doesnotexist",
+                "content": "把这句话改写为被动语态。",
+                "explanation": "待补充",
+                "tags": [
+                  "错题"
+                ],
+                "source_type": "manual"
+              }
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "qbank_list_questions",
+          "args": {
+            "request": {
+              "exam_id": "${0.id}",
+              "filters": {},
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.batch_create.two_exams_stats",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "甲",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "乙",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_batch_create_questions",
+          "args": {
+            "paramsList": [
+              {
+                "exam_id": "${0.id}",
+                "content": "把这句话改写为被动语态。",
+                "explanation": "待补充",
+                "tags": [
+                  "错题"
+                ],
+                "source_type": "manual"
+              },
+              {
+                "exam_id": "${1.id}",
+                "content": "把这句话改写为被动语态。",
+                "explanation": "待补充",
+                "tags": [
+                  "错题"
+                ],
+                "source_type": "manual"
+              },
+              {
+                "exam_id": "${1.id}",
+                "content": "第二题",
+                "explanation": "待补充",
+                "tags": [
+                  "错题"
+                ],
+                "source_type": "manual"
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "qbank_get_stats",
+          "args": {
+            "examId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "qbank_get_stats",
+          "args": {
+            "examId": "${1.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.get.missing_returns_null",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_get_question",
+          "args": {
+            "questionId": "q_doesnotexist"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.get.soft_deleted_returns_null",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "把这句话改写为被动语态。",
+              "explanation": "待补充",
+              "tags": [
+                "错题"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_delete_question",
+          "args": {
+            "questionId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "qbank_get_question",
+          "args": {
+            "questionId": "${1.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.get.err_missing_question_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_get_question",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.list.frontend_first_page",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "下列哪个是质数？",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "4"
+                },
+                {
+                  "key": "B",
+                  "content": "7"
+                },
+                {
+                  "key": "C",
+                  "content": "9"
+                },
+                {
+                  "key": "D",
+                  "content": "15"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "数论"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "把这句话改写为被动语态。",
+              "explanation": "待补充",
+              "tags": [
+                "错题"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "第三题",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "4"
+                },
+                {
+                  "key": "B",
+                  "content": "7"
+                },
+                {
+                  "key": "C",
+                  "content": "9"
+                },
+                {
+                  "key": "D",
+                  "content": "15"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "hard",
+              "tags": [
+                "几何"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_list_questions",
+          "args": {
+            "request": {
+              "exam_id": "${0.id}",
+              "filters": {},
+              "page": 1,
+              "page_size": 2
+            }
+          }
+        },
+        {
+          "cmd": "qbank_list_questions",
+          "args": {
+            "request": {
+              "exam_id": "${0.id}",
+              "filters": {},
+              "page": 2,
+              "page_size": 2
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.list.page_and_size_clamp_low",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "把这句话改写为被动语态。",
+              "explanation": "待补充",
+              "tags": [
+                "错题"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "二",
+              "explanation": "待补充",
+              "tags": [
+                "错题"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_list_questions",
+          "args": {
+            "request": {
+              "exam_id": "${0.id}",
+              "filters": {},
+              "page": 0,
+              "page_size": 0
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.list.page_size_clamp_high",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "把这句话改写为被动语态。",
+              "explanation": "待补充",
+              "tags": [
+                "错题"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_list_questions",
+          "args": {
+            "request": {
+              "exam_id": "${0.id}",
+              "filters": {},
+              "page": 1,
+              "page_size": 1000
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.list.defaults_when_omitted",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "把这句话改写为被动语态。",
+              "explanation": "待补充",
+              "tags": [
+                "错题"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_list_questions",
+          "args": {
+            "request": {
+              "exam_id": "${0.id}"
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.list.filters_null",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "把这句话改写为被动语态。",
+              "explanation": "待补充",
+              "tags": [
+                "错题"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_list_questions",
+          "args": {
+            "request": {
+              "exam_id": "${0.id}",
+              "filters": null,
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.list.all_filters",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "下列哪个是质数？",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "4"
+                },
+                {
+                  "key": "B",
+                  "content": "7"
+                },
+                {
+                  "key": "C",
+                  "content": "9"
+                },
+                {
+                  "key": "D",
+                  "content": "15"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "数论"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "把这句话改写为被动语态。",
+              "explanation": "待补充",
+              "tags": [
+                "错题"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_toggle_favorite",
+          "args": {
+            "questionId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "qbank_list_questions",
+          "args": {
+            "request": {
+              "exam_id": "${0.id}",
+              "filters": {
+                "status": [
+                  "new"
+                ],
+                "difficulty": [
+                  "easy"
+                ],
+                "question_type": [
+                  "single_choice"
+                ],
+                "tags": [
+                  "数论"
+                ],
+                "search": "质数",
+                "is_favorite": true,
+                "is_bookmarked": false
+              },
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        },
+        {
+          "cmd": "qbank_list_questions",
+          "args": {
+            "request": {
+              "exam_id": "${0.id}",
+              "filters": {
+                "search": "不存在的关键词"
+              },
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        },
+        {
+          "cmd": "qbank_list_questions",
+          "args": {
+            "request": {
+              "exam_id": "${0.id}",
+              "filters": {
+                "status": [],
+                "tags": []
+              },
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.list.unknown_exam_empty",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_list_questions",
+          "args": {
+            "request": {
+              "exam_id": "exam_doesnotexist",
+              "filters": {},
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.list.err_missing_exam_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_list_questions",
+          "args": {
+            "request": {
+              "filters": {},
+              "page": 1,
+              "page_size": 50
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.list.err_negative_page",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_list_questions",
+          "args": {
+            "request": {
+              "exam_id": "exam_x",
+              "page": -1,
+              "page_size": 50
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.list.err_invalid_status_filter",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_list_questions",
+          "args": {
+            "request": {
+              "exam_id": "exam_x",
+              "filters": {
+                "status": [
+                  "bogus"
+                ]
+              }
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.update.store_record_history",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "下列哪个是质数？",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "4"
+                },
+                {
+                  "key": "B",
+                  "content": "7"
+                },
+                {
+                  "key": "C",
+                  "content": "9"
+                },
+                {
+                  "key": "D",
+                  "content": "15"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "数论"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_update_question",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "params": {
+                "content": "下列哪个数是质数？",
+                "answer": "B",
+                "explanation": "新解析"
+              },
+              "record_history": true
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_history",
+          "args": {
+            "questionId": "${1.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.update.editor_full_payload",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "下列哪个是质数？",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "4"
+                },
+                {
+                  "key": "B",
+                  "content": "7"
+                },
+                {
+                  "key": "C",
+                  "content": "9"
+                },
+                {
+                  "key": "D",
+                  "content": "15"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "数论"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_update_question",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "params": {
+                "content": "改后的题干",
+                "question_type": "single_choice",
+                "options": [
+                  {
+                    "key": "A",
+                    "content": "2"
+                  },
+                  {
+                    "key": "B",
+                    "content": "8"
+                  }
+                ],
+                "answer": "A",
+                "structured_data": null,
+                "explanation": null,
+                "difficulty": null,
+                "tags": null,
+                "user_note": "我的笔记",
+                "images": null
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_history",
+          "args": {
+            "questionId": "${1.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.update.no_history_by_default",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "下列哪个是质数？",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "4"
+                },
+                {
+                  "key": "B",
+                  "content": "7"
+                },
+                {
+                  "key": "C",
+                  "content": "9"
+                },
+                {
+                  "key": "D",
+                  "content": "15"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "数论"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_update_question",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "params": {
+                "content": "无历史"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_history",
+          "args": {
+            "questionId": "${1.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.update.status_change_refreshes_stats",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "把这句话改写为被动语态。",
+              "explanation": "待补充",
+              "tags": [
+                "错题"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_update_question",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "params": {
+                "status": "mastered"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_stats",
+          "args": {
+            "examId": "${0.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.update.occ_match_succeeds",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "把这句话改写为被动语态。",
+              "explanation": "待补充",
+              "tags": [
+                "错题"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_update_question",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "params": {
+                "content": "乐观锁成功",
+                "expected_updated_at": "${1.updated_at}"
+              }
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.update.err_occ_conflict",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "把这句话改写为被动语态。",
+              "explanation": "待补充",
+              "tags": [
+                "错题"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_update_question",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "params": {
+                "content": "乐观锁冲突",
+                "expected_updated_at": "2000-01-01T00:00:00+00:00"
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "qbank_get_question",
+          "args": {
+            "questionId": "${1.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.update.occ_empty_string_ignored",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "把这句话改写为被动语态。",
+              "explanation": "待补充",
+              "tags": [
+                "错题"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_update_question",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "params": {
+                "content": "空基线",
+                "expected_updated_at": ""
+              }
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.update.err_missing_question",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_update_question",
+          "args": {
+            "request": {
+              "question_id": "q_doesnotexist",
+              "params": {
+                "content": "x"
+              }
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.update.err_missing_question_with_history",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_update_question",
+          "args": {
+            "request": {
+              "question_id": "q_doesnotexist",
+              "params": {
+                "content": "x"
+              },
+              "record_history": true
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.update.err_missing_question_with_occ",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_update_question",
+          "args": {
+            "request": {
+              "question_id": "q_doesnotexist",
+              "params": {
+                "content": "x",
+                "expected_updated_at": "2000-01-01T00:00:00+00:00"
+              }
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.update.err_deleted_question",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "把这句话改写为被动语态。",
+              "explanation": "待补充",
+              "tags": [
+                "错题"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_delete_question",
+          "args": {
+            "questionId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "qbank_update_question",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "params": {
+                "content": "x"
+              },
+              "record_history": true
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.update.type_switch_clears_structured_data",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "下列哪个是质数？",
+              "question_type": "ordering",
+              "options": null,
+              "answer": null,
+              "structured_data": {
+                "correct_order": [
+                  "A",
+                  "B",
+                  "C"
+                ]
+              },
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "数论"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_update_question",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "params": {
+                "question_type": "short_answer"
+              },
+              "record_history": true
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_history",
+          "args": {
+            "questionId": "${1.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.update.structured_data_replace_history",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "下列哪个是质数？",
+              "question_type": "numeric",
+              "options": null,
+              "answer": "1",
+              "structured_data": {
+                "answer_value": 1,
+                "tolerance": 0
+              },
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "数论"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_update_question",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "params": {
+                "structured_data": {
+                  "answer_value": 2,
+                  "tolerance": 0.5,
+                  "tolerance_mode": "relative"
+                }
+              },
+              "record_history": true
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_history",
+          "args": {
+            "questionId": "${1.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.update.empty_params",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "把这句话改写为被动语态。",
+              "explanation": "待补充",
+              "tags": [
+                "错题"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_update_question",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "params": {}
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.update.err_missing_params",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_update_question",
+          "args": {
+            "request": {
+              "question_id": "q_x"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.batch_update.store_difficulty",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "把这句话改写为被动语态。",
+              "explanation": "待补充",
+              "tags": [
+                "错题"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "二",
+              "explanation": "待补充",
+              "tags": [
+                "错题"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_batch_update_questions",
+          "args": {
+            "request": {
+              "question_ids": [
+                "${1.id}",
+                "${2.id}"
+              ],
+              "params": {
+                "difficulty": "very_hard"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_list_questions",
+          "args": {
+            "request": {
+              "exam_id": "${0.id}",
+              "filters": {
+                "difficulty": [
+                  "very_hard"
+                ]
+              },
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.batch_update.status_refreshes_stats",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "把这句话改写为被动语态。",
+              "explanation": "待补充",
+              "tags": [
+                "错题"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_batch_update_questions",
+          "args": {
+            "request": {
+              "question_ids": [
+                "${1.id}"
+              ],
+              "params": {
+                "status": "review"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_stats",
+          "args": {
+            "examId": "${0.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.batch_update.empty_ids",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_batch_update_questions",
+          "args": {
+            "request": {
+              "question_ids": [],
+              "params": {
+                "difficulty": "easy"
+              }
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.batch_update.partial_missing_and_duplicate",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "把这句话改写为被动语态。",
+              "explanation": "待补充",
+              "tags": [
+                "错题"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_batch_update_questions",
+          "args": {
+            "request": {
+              "question_ids": [
+                "${1.id}",
+                "q_doesnotexist",
+                "${1.id}"
+              ],
+              "params": {
+                "tags": [
+                  "批量"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_question",
+          "args": {
+            "questionId": "${1.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.batch_update.occ_conflict_per_item",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "把这句话改写为被动语态。",
+              "explanation": "待补充",
+              "tags": [
+                "错题"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "二",
+              "explanation": "待补充",
+              "tags": [
+                "错题"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_batch_update_questions",
+          "args": {
+            "request": {
+              "question_ids": [
+                "${1.id}",
+                "${2.id}"
+              ],
+              "params": {
+                "content": "批量乐观锁",
+                "expected_updated_at": "${1.updated_at}"
+              }
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.batch_update.err_missing_params",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_batch_update_questions",
+          "args": {
+            "request": {
+              "question_ids": [
+                "q_x"
+              ]
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.delete.basic_then_stats",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "把这句话改写为被动语态。",
+              "explanation": "待补充",
+              "tags": [
+                "错题"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "二",
+              "explanation": "待补充",
+              "tags": [
+                "错题"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_delete_question",
+          "args": {
+            "questionId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "qbank_get_stats",
+          "args": {
+            "examId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "qbank_list_questions",
+          "args": {
+            "request": {
+              "exam_id": "${0.id}",
+              "filters": {},
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.delete.err_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_delete_question",
+          "args": {
+            "questionId": "q_doesnotexist"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.delete.err_repeat_delete",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "把这句话改写为被动语态。",
+              "explanation": "待补充",
+              "tags": [
+                "错题"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_delete_question",
+          "args": {
+            "questionId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "qbank_delete_question",
+          "args": {
+            "questionId": "${1.id}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.batch_delete.frontend_ids",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "把这句话改写为被动语态。",
+              "explanation": "待补充",
+              "tags": [
+                "错题"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "二",
+              "explanation": "待补充",
+              "tags": [
+                "错题"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_batch_delete_questions",
+          "args": {
+            "questionIds": [
+              "${1.id}",
+              "${2.id}"
+            ]
+          }
+        },
+        {
+          "cmd": "qbank_get_stats",
+          "args": {
+            "examId": "${0.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.batch_delete.empty_ids",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_batch_delete_questions",
+          "args": {
+            "questionIds": []
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.batch_delete.missing_duplicate_and_deleted",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "把这句话改写为被动语态。",
+              "explanation": "待补充",
+              "tags": [
+                "错题"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "二",
+              "explanation": "待补充",
+              "tags": [
+                "错题"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_delete_question",
+          "args": {
+            "questionId": "${2.id}"
+          }
+        },
+        {
+          "cmd": "qbank_batch_delete_questions",
+          "args": {
+            "questionIds": [
+              "${1.id}",
+              "q_doesnotexist",
+              "${1.id}",
+              "${2.id}"
+            ]
+          }
+        },
+        {
+          "cmd": "qbank_get_stats",
+          "args": {
+            "examId": "${0.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.batch_delete.err_missing_ids",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_batch_delete_questions",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.favorite.toggle_on_off",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "把这句话改写为被动语态。",
+              "explanation": "待补充",
+              "tags": [
+                "错题"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_toggle_favorite",
+          "args": {
+            "questionId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "qbank_list_questions",
+          "args": {
+            "request": {
+              "exam_id": "${0.id}",
+              "filters": {
+                "is_favorite": true
+              },
+              "page": 1,
+              "page_size": 50
+            }
+          }
+        },
+        {
+          "cmd": "qbank_toggle_favorite",
+          "args": {
+            "questionId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "qbank_get_question",
+          "args": {
+            "questionId": "${1.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.favorite.err_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_toggle_favorite",
+          "args": {
+            "questionId": "q_doesnotexist"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.favorite.err_deleted",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "把这句话改写为被动语态。",
+              "explanation": "待补充",
+              "tags": [
+                "错题"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_delete_question",
+          "args": {
+            "questionId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "qbank_toggle_favorite",
+          "args": {
+            "questionId": "${1.id}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.stats.get_unknown_exam_null",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_get_stats",
+          "args": {
+            "examId": "exam_doesnotexist"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.stats.get_fresh_exam",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_stats",
+          "args": {
+            "examId": "${0.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.stats.err_get_missing_exam_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_get_stats",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.stats.refresh_fresh_exam",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_refresh_stats",
+          "args": {
+            "examId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "qbank_get_stats",
+          "args": {
+            "examId": "${0.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.stats.refresh_after_create",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "下列哪个是质数？",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "4"
+                },
+                {
+                  "key": "B",
+                  "content": "7"
+                },
+                {
+                  "key": "C",
+                  "content": "9"
+                },
+                {
+                  "key": "D",
+                  "content": "15"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "数论"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "把这句话改写为被动语态。",
+              "explanation": "待补充",
+              "tags": [
+                "错题"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_refresh_stats",
+          "args": {
+            "examId": "${0.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.stats.err_refresh_unknown_exam_fk",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_refresh_stats",
+          "args": {
+            "examId": "exam_doesnotexist"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "qbank_get_stats",
+          "args": {
+            "examId": "exam_doesnotexist"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.history.limit_and_order",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "下列哪个是质数？",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "4"
+                },
+                {
+                  "key": "B",
+                  "content": "7"
+                },
+                {
+                  "key": "C",
+                  "content": "9"
+                },
+                {
+                  "key": "D",
+                  "content": "15"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "数论"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_update_question",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "params": {
+                "content": "v2"
+              },
+              "record_history": true
+            }
+          }
+        },
+        {
+          "cmd": "qbank_update_question",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "params": {
+                "content": "v3",
+                "answer": "C",
+                "explanation": "e3"
+              },
+              "record_history": true
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_history",
+          "args": {
+            "questionId": "${1.id}",
+            "limit": 2
+          }
+        },
+        {
+          "cmd": "qbank_get_history",
+          "args": {
+            "questionId": "${1.id}",
+            "limit": null
+          }
+        },
+        {
+          "cmd": "qbank_get_history",
+          "args": {
+            "questionId": "${1.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.history.limit_zero",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "下列哪个是质数？",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "4"
+                },
+                {
+                  "key": "B",
+                  "content": "7"
+                },
+                {
+                  "key": "C",
+                  "content": "9"
+                },
+                {
+                  "key": "D",
+                  "content": "15"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "数论"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_update_question",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "params": {
+                "content": "v2"
+              },
+              "record_history": true
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_history",
+          "args": {
+            "questionId": "${1.id}",
+            "limit": 0
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.history.limit_u32_max",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "下列哪个是质数？",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "4"
+                },
+                {
+                  "key": "B",
+                  "content": "7"
+                },
+                {
+                  "key": "C",
+                  "content": "9"
+                },
+                {
+                  "key": "D",
+                  "content": "15"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "数论"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_update_question",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "params": {
+                "content": "v2"
+              },
+              "record_history": true
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_history",
+          "args": {
+            "questionId": "${1.id}",
+            "limit": 4294967295
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.history.missing_question_empty",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_get_history",
+          "args": {
+            "questionId": "q_doesnotexist",
+            "limit": 50
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.history.err_limit_negative",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_get_history",
+          "args": {
+            "questionId": "q_x",
+            "limit": -1
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

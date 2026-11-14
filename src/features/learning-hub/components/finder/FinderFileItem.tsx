@@ -22,6 +22,7 @@ import type { DstuNode, DstuNodeType } from '@/dstu/types';
 import type { ViewMode } from '../../stores/finderStore';
 import { InlineEditText } from '../InlineEditText';
 import { localizeEssayTitle } from '@/essay-grading/modeI18n';
+import { renderProceduralTextCoverDataUrl } from '../../utils/proceduralTextCover';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 
@@ -362,12 +363,25 @@ export const FinderFileItem = React.memo(function FinderFileItem({
         </DsButton>
       )}
       
-      {/* 自定义 SVG 图标：固定盒，防止被网格单元横向拉伸 */}
+      {/* 自定义 SVG 图标或程序化封面：固定盒，防止被网格单元横向拉伸 */}
       <div className={cn(
         'mb-1.5 flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg',
         isActive && !isSelected && 'bg-[var(--interactive-selected)]'
       )}>
-        <CustomIcon size={48} className="h-12 w-12 max-w-full shrink-0" />
+        {item.metadata?.coverMode === 'procedural' && item.type !== 'folder' ? (
+          <img
+            src={renderProceduralTextCoverDataUrl({
+              title: shownName.replace(/\.(md|markdown|txt)$/i, ''),
+              preview: snippet ?? (typeof item.metadata?.contentPreview === 'string' ? item.metadata.contentPreview : ''),
+            })}
+            alt={shownName}
+            data-testid="finder-item-procedural-cover"
+            className="h-full w-full rounded-md object-cover"
+            draggable={false}
+          />
+        ) : (
+          <CustomIcon size={48} className="h-12 w-12 max-w-full shrink-0" />
+        )}
       </div>
       
       {/* 文件名 */}

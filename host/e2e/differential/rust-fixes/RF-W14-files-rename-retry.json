@@ -1,0 +1,42 @@
+{
+  "id": "RF-W14-files-rename-retry",
+  "kind": "deliberate",
+  "status": "proposed",
+  "title": "ctx.files 的 rename、openWrite({mode:'atomic'}) 与插件用的 renameWithRetry(Sync) 在 Windows 上对 EPERM/EACCES/EBUSY 退避重试，复用 RF-W07-windows-rename-retry 的同一份策略",
+  "rust": {
+    "file": "src-tauri/crates/dstu-agent/src/chat_v2/tools/task_audit_executor.rs",
+    "line": 277,
+    "behavior": "插件经 ctx.files 完成的“临时文件 + 改名”在 Rust 里是直接调用 std::fs::rename，不重试（例如任务审计清单 fs::rename(&tmp_path, &final_path)）。Rust 1.98 的 std::fs::rename 在 Windows 上先用 SetFileInformationByHandle(FileRenameInfoEx, REPLACE_IF_EXISTS | POSIX_SEMANTICS)：目标被杀毒、索引、云盘客户端以共享删除方式打开时也能替换"
+  },
+  "fix": {
+    "files": ["host/platform/files/index.ts", "host/platform/util/durable-fs.ts"],
+    "behavior": "util/durable-fs.ts 的 renameWithRetry / renameWithRetrySync 是 fs.rename 套上 paths/rename-retry.ts 的 retryRename(Sync)(platform, …)（platform 取 { platform } 选项，缺省 process.platform），不再自带错误码集合、平台判断或退避表；ctx.files 桌面实现的 rename 与 openWrite({mode:'atomic'}) 的最终改名走它，平台取 createNodeFiles 的 platform（插件传 ctx.app.platform），writeAtomic 经 paths/compat.ts 的 atomicWriteFile 走同一策略。仅 win32、仅 EPERM/EACCES/EBUSY，按 10、20、40…640 ms 退避最多 7 次后抛最后一次的原始错误；其他平台、其他错误码调用一次原样抛出（与 Rust 相同）。依赖 RF-W07-windows-rename-retry：那一条被否决时本条一并否决。撤回：files/index.ts 两处 renameWithRetry 改回 fs.promises.rename（即 069b8927 的 index.ts 部分），删掉两个文件里的本 id 标记与本 json；不要整体 revert 本 id 的提交，那会把 durable-fs 恢复成自带退避表的旧版，又多出一套策略。durable-fs 的包装只是 W07 策略的 node:fs 入口，可留着；fsyncDirectory(Sync)（对齐 Rust 的 #[cfg(unix)] 目录 sync_all）不属于本条，保留"
+  },
+  "evidence": "与 RF-W07-windows-rename-retry 同一根因（V10 P2-4，.reports/reviews/V10-cross-platform.md:190）：libuv 的 uv_fs_rename 在 Windows 上只用 MoveFileExW(MOVEFILE_REPLACE_EXISTING)，目标正被其他句柄打开时返回 EPERM/EACCES/EBUSY，即使对方带 FILE_SHARE_DELETE；Rust 的 POSIX 语义 rename 在同样场景成功。ctx.files 的调用方（agent-orchestration task-audit-executor.ts:257 的审计清单落盘、secrets API.md 推荐的 openWrite atomic 解密输出）因此在 Windows 上会比 Rust 多出一类失败。对占用方不带共享删除、且在 1.3 秒内释放的情形，Rust 立即失败而这里会成功，属于有意的稳健性改进。本机无 Windows：测试给 createNodeFiles / renameWithRetry 注入 platform 'win32' 加注入的 fs 错误验证（writeAtomic 经 W07 的 atomicWriteFile，暂仍改写 process.platform），退避序列与 paths/rename-retry.ts 的 RENAME_RETRY_DELAYS_MS 逐项比对。",
+  "userVisible": "仅 Windows：插件经 ctx.files 改名或原子写出的文件（如任务审计清单、解密后的备份）被杀毒或索引短暂占用时不再报“拒绝访问”，最多多等约 1.3 秒；占用不释放时报错与原来相同",
+  "dataCompat": "不改变任何落盘格式、同步载荷或备份格式；旧 Rust 版与新版互相读取不受影响",
+  "g3": { "affects": false, "selectors": [] },
+  "commits": ["069b8927", "88358ae2"],
+  "tests": [
+    {
+      "file": "host/platform/files/tests/files.test.ts",
+      "name": "RF-W14-files-rename-retry: rename and atomic openWrite retry a transient EBUSY when the service platform is win32; other platforms fail on the first one"
+    },
+    {
+      "file": "host/platform/files/tests/files.test.ts",
+      "name": "RF-W14-files-rename-retry: writeAtomic retries a transient EBUSY on win32 (paths/compat atomicWriteFile reads process.platform)"
+    },
+    {
+      "file": "host/platform/files/tests/files.test.ts",
+      "name": "RF-W14-files-rename-retry: every rename in the desktop files service goes through the shared retry policy"
+    },
+    {
+      "file": "host/platform/util/tests/durable-fs.test.ts",
+      "name": "RF-W14-files-rename-retry: on win32 a holder that never lets go exhausts the paths/rename-retry.ts table and throws the last original error"
+    },
+    {
+      "file": "host/platform/util/tests/durable-fs.test.ts",
+      "name": "RF-W14-files-rename-retry: on win32 retries EPERM, EACCES and EBUSY until the replace succeeds, passing both paths verbatim"
+    }
+  ]
+}

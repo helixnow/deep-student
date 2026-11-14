@@ -1,0 +1,62 @@
+## both charts
+<div .sota-unified-content>
+  <div .sota-charts>
+    <div .sota-chart-card>
+      <h3>
+        <svg viewBox="0 0 256 256" />
+        "数据趋势"
+      <div .recharts-responsive-container>
+        <div />
+    <div .sota-chart-card>
+      <h3>
+        <svg viewBox="0 0 256 256" />
+        "标签 Top 8"
+      <div .recharts-responsive-container>
+        <div />
+
+## trend only
+<div .sota-unified-content>
+  <div .sota-charts>
+    <div .sota-chart-card>
+      <h3>
+        <svg viewBox="0 0 256 256" />
+        "数据趋势"
+      <div .recharts-responsive-container>
+        <div />
+
+## tags only
+<div .sota-unified-content>
+  <div .sota-charts>
+    <div .sota-chart-card>
+      <h3>
+        <svg viewBox="0 0 256 256" />
+        "标签 Top 8"
+      <div .recharts-responsive-container>
+        <div />
+
+## no chart data
+<div .sota-unified-content>
+  <div .sota-charts>
+    <div .sota-chart-card.sota-chart-empty>
+      <svg .sota-chart-empty__icon viewBox="0 0 256 256" />
+      <p .sota-chart-empty__title>
+        "暂无图表数据"
+      <p .sota-chart-empty__hint>
+        "添加学习记录后，这里会展示数据趋势与标签分布。"
+
+## malformed chart data
+<div .sota-unified-content>
+  <div .sota-charts>
+    <div .sota-chart-card.sota-chart-empty>
+      <svg .sota-chart-empty__icon viewBox="0 0 256 256" />
+      <p .sota-chart-empty__title>
+        "暂无图表数据"
+      <p .sota-chart-empty__hint>
+        "添加学习记录后，这里会展示数据趋势与标签分布。"
+
+## statistics without enhanced
+<div .sota-unified-content />
+
+## no statistics
+<div .sota-unified-content />
+

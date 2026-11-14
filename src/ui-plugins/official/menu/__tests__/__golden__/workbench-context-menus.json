@@ -1,0 +1,3470 @@
+{
+  "dock": {
+    "multi-idle-unpinned": {
+      "trigger": "<button type=\"button\" data-testid=\"dock-trigger\" id=\"<menu>-trigger\" aria-haspopup=\"menu\" aria-expanded=\"true\" class=\"app-menu-trigger\">fe-b9-multi</button>",
+      "panel": {
+        "rows": [
+          {
+            "role": "menuitem",
+            "label": "打开"
+          },
+          {
+            "separator": true
+          },
+          {
+            "role": "menuitem",
+            "label": "固定到 Dock"
+          }
+        ],
+        "html": "<div role=\"menu\" data-app-menu-id=\"<menu>\" data-state=\"open\" tabindex=\"-1\" class=\"app-menu-content app-menu-origin-top app-menu-open wb-dockmenu\" style=\"position: fixed; top: 600px; left: 40px; width: 224px; --app-menu-available-height: 752px;\" data-testid=\"wb-dock-context-menu\"><div class=\"app-menu-group\" role=\"group\"><button role=\"menuitem\" tabindex=\"-1\" class=\"app-menu-item\"><span class=\"app-menu-item-icon\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M228,128a12,12,0,0,1-12,12H140v76a12,12,0,0,1-24,0V140H40a12,12,0,0,1,0-24h76V40a12,12,0,0,1,24,0v76h76A12,12,0,0,1,228,128Z\"></path></svg></span><span class=\"app-menu-item-content\">打开</span></button></div><div class=\"app-menu-separator\" role=\"separator\"></div><div class=\"app-menu-group\" role=\"group\"><button role=\"menuitem\" tabindex=\"-1\" class=\"app-menu-item\"><span class=\"app-menu-item-icon\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M235.32,81.37,174.63,20.69a16,16,0,0,0-22.63,0L98.37,74.49c-10.66-3.34-35-7.37-60.4,13.14a16,16,0,0,0-1.29,23.78L85,159.71,42.34,202.34a8,8,0,0,0,11.32,11.32L96.29,171l48.29,48.29A16,16,0,0,0,155.9,224c.38,0,.75,0,1.13,0a15.93,15.93,0,0,0,11.64-6.33c19.64-26.1,17.75-47.32,13.19-60L235.33,104A16,16,0,0,0,235.32,81.37ZM224,92.69h0l-57.27,57.46a8,8,0,0,0-1.49,9.22c9.46,18.93-1.8,38.59-9.34,48.62L48,100.08c12.08-9.74,23.64-12.31,32.48-12.31A40.13,40.13,0,0,1,96.81,91a8,8,0,0,0,9.25-1.51L163.32,32,224,92.68Z\"></path></svg></span><span class=\"app-menu-item-content\">固定到 Dock</span></button></div></div>"
+      },
+      "clicks": {
+        "0:打开": {
+          "effects": [
+            [
+              "workbenchBus.launch",
+              {
+                "typeId": "fe-b9-multi",
+                "reason": "dock"
+              }
+            ]
+          ],
+          "closes": true
+        },
+        "1:固定到 Dock": {
+          "effects": [
+            [
+              "toggleDockPinned",
+              "fe-b9-multi"
+            ]
+          ],
+          "closes": true
+        }
+      },
+      "keyboard": [
+        [
+          "open",
+          "打开"
+        ],
+        [
+          "ArrowDown",
+          "固定到 Dock"
+        ],
+        [
+          "ArrowDown",
+          "打开"
+        ],
+        [
+          "ArrowDown",
+          "固定到 Dock"
+        ],
+        [
+          "ArrowDown",
+          "打开"
+        ],
+        [
+          "Home",
+          "打开"
+        ],
+        [
+          "End",
+          "固定到 Dock"
+        ],
+        [
+          "ArrowUp",
+          "打开"
+        ],
+        [
+          "Escape",
+          "trigger",
+          "false"
+        ]
+      ]
+    },
+    "multi-running-pinned": {
+      "trigger": "<button type=\"button\" data-testid=\"dock-trigger\" id=\"<menu>-trigger\" aria-haspopup=\"menu\" aria-expanded=\"true\" class=\"app-menu-trigger\">fe-b9-multi</button>",
+      "panel": {
+        "rows": [
+          {
+            "role": "menuitem",
+            "label": "新建窗口"
+          },
+          {
+            "separator": true
+          },
+          {
+            "groupLabel": "窗口"
+          },
+          {
+            "role": "menuitem",
+            "label": "Alpha"
+          },
+          {
+            "role": "menuitem",
+            "label": "fe-b9-multi",
+            "suffix": "已最小化"
+          },
+          {
+            "role": "menuitem",
+            "label": "Gamma",
+            "checkedClass": true
+          },
+          {
+            "separator": true
+          },
+          {
+            "role": "menuitem",
+            "label": "从 Dock 移除"
+          },
+          {
+            "role": "menuitem",
+            "label": "关闭全部窗口",
+            "danger": "app-menu-item app-menu-item-destructive wb-dockmenu-destructive"
+          }
+        ],
+        "html": "<div role=\"menu\" data-app-menu-id=\"<menu>\" data-state=\"open\" tabindex=\"-1\" class=\"app-menu-content app-menu-origin-top app-menu-open wb-dockmenu\" style=\"position: fixed; top: 600px; left: 40px; width: 224px; --app-menu-available-height: 752px;\" data-testid=\"wb-dock-context-menu\"><div class=\"app-menu-group\" role=\"group\"><button role=\"menuitem\" tabindex=\"-1\" class=\"app-menu-item\"><span class=\"app-menu-item-icon\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M228,128a12,12,0,0,1-12,12H140v76a12,12,0,0,1-24,0V140H40a12,12,0,0,1,0-24h76V40a12,12,0,0,1,24,0v76h76A12,12,0,0,1,228,128Z\"></path></svg></span><span class=\"app-menu-item-content\">新建窗口</span></button></div><div class=\"app-menu-separator\" role=\"separator\"></div><div class=\"app-menu-group\" role=\"group\"><div class=\"app-menu-group-label\">窗口</div><button role=\"menuitem\" tabindex=\"-1\" class=\"app-menu-item\"><span class=\"app-menu-item-icon\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M104,40H56A16,16,0,0,0,40,56v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V56A16,16,0,0,0,104,40Zm0,64H56V56h48v48Zm96-64H152a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V56A16,16,0,0,0,200,40Zm0,64H152V56h48v48Zm-96,32H56a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V152A16,16,0,0,0,104,136Zm0,64H56V152h48v48Zm96-64H152a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V152A16,16,0,0,0,200,136Zm0,64H152V152h48v48Z\"></path></svg></span><span class=\"app-menu-item-content\"><span class=\"truncate\">Alpha</span></span><span class=\"app-menu-item-check\"></span></button><button role=\"menuitem\" tabindex=\"-1\" class=\"app-menu-item\"><span class=\"app-menu-item-icon\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M104,40H56A16,16,0,0,0,40,56v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V56A16,16,0,0,0,104,40Zm0,64H56V56h48v48Zm96-64H152a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V56A16,16,0,0,0,200,40Zm0,64H152V56h48v48Zm-96,32H56a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V152A16,16,0,0,0,104,136Zm0,64H56V152h48v48Zm96-64H152a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V152A16,16,0,0,0,200,136Zm0,64H152V152h48v48Z\"></path></svg></span><span class=\"app-menu-item-content\"><span class=\"truncate\">fe-b9-multi</span></span><span class=\"app-menu-item-check\"></span><span class=\"app-menu-item-suffix\"><span class=\"wb-dockmenu-min-tag\">已最小化</span></span></button><button role=\"menuitem\" tabindex=\"-1\" class=\"app-menu-item app-menu-item-checked\"><span class=\"app-menu-item-icon\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M104,40H56A16,16,0,0,0,40,56v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V56A16,16,0,0,0,104,40Zm0,64H56V56h48v48Zm96-64H152a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V56A16,16,0,0,0,200,40Zm0,64H152V56h48v48Zm-96,32H56a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V152A16,16,0,0,0,104,136Zm0,64H56V152h48v48Zm96-64H152a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V152A16,16,0,0,0,200,136Zm0,64H152V152h48v48Z\"></path></svg></span><span class=\"app-menu-item-content\"><span class=\"truncate\">Gamma</span></span><span class=\"app-menu-item-check\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M232.49,80.49l-128,128a12,12,0,0,1-17,0l-56-56a12,12,0,1,1,17-17L96,183,215.51,63.51a12,12,0,0,1,17,17Z\"></path></svg></span></button></div><div class=\"app-menu-separator\" role=\"separator\"></div><div class=\"app-menu-group\" role=\"group\"><button role=\"menuitem\" tabindex=\"-1\" class=\"app-menu-item\"><span class=\"app-menu-item-icon\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M53.92,34.62A8,8,0,1,0,42.08,45.38L67.37,73.2A69.82,69.82,0,0,0,38,87.63a16,16,0,0,0-1.29,23.78L85,159.71,42.34,202.34a8,8,0,0,0,11.32,11.32L96.29,171l48.29,48.29A16,16,0,0,0,155.9,224c.38,0,.75,0,1.13,0a15.93,15.93,0,0,0,11.64-6.33,89.75,89.75,0,0,0,11.58-20.27l21.84,24a8,8,0,1,0,11.84-10.76ZM155.9,208,48,100.08C58.23,91.83,69.2,87.72,80.66,87.81l87.16,95.88C165.59,193.56,160.24,202.23,155.9,208Zm79.42-104-44.64,44.79a8,8,0,1,1-11.33-11.3L224,92.7,163.32,32,122.1,73.35a8,8,0,0,1-11.33-11.29L152,20.7a16,16,0,0,1,22.63,0l60.69,60.68A16,16,0,0,1,235.32,104Z\"></path></svg></span><span class=\"app-menu-item-content\">从 Dock 移除</span></button><button role=\"menuitem\" tabindex=\"-1\" class=\"app-menu-item app-menu-item-destructive wb-dockmenu-destructive\"><span class=\"app-menu-item-icon\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M165.66,101.66,139.31,128l26.35,26.34a8,8,0,0,1-11.32,11.32L128,139.31l-26.34,26.35a8,8,0,0,1-11.32-11.32L116.69,128,90.34,101.66a8,8,0,0,1,11.32-11.32L128,116.69l26.34-26.35a8,8,0,0,1,11.32,11.32ZM232,128A104,104,0,1,1,128,24,104.11,104.11,0,0,1,232,128Zm-16,0a88,88,0,1,0-88,88A88.1,88.1,0,0,0,216,128Z\"></path></svg></span><span class=\"app-menu-item-content\">关闭全部窗口</span></button></div></div>"
+      },
+      "clicks": {
+        "0:新建窗口": {
+          "effects": [
+            [
+              "workbenchBus.launch",
+              {
+                "typeId": "fe-b9-multi",
+                "reason": "dock"
+              }
+            ]
+          ],
+          "closes": true
+        },
+        "1:Alpha": {
+          "effects": [
+            [
+              "windowStore.focusWindow",
+              "<win:1>"
+            ]
+          ],
+          "closes": true
+        },
+        "2:fe-b9-multi": {
+          "effects": [
+            [
+              "windowStore.focusWindow",
+              "<win:3>"
+            ]
+          ],
+          "closes": true
+        },
+        "3:Gamma": {
+          "effects": [
+            [
+              "windowStore.focusWindow",
+              "<win:4>"
+            ]
+          ],
+          "closes": true
+        },
+        "4:从 Dock 移除": {
+          "effects": [
+            [
+              "toggleDockPinned",
+              "fe-b9-multi"
+            ]
+          ],
+          "closes": true
+        },
+        "5:关闭全部窗口": {
+          "effects": [
+            [
+              "requestCloseAnimated",
+              "<win:1>"
+            ],
+            [
+              "requestCloseAnimated",
+              "<win:3>"
+            ],
+            [
+              "requestCloseAnimated",
+              "<win:4>"
+            ]
+          ],
+          "closes": true
+        }
+      },
+      "keyboard": [
+        [
+          "open",
+          "Gamma"
+        ],
+        [
+          "ArrowDown",
+          "从 Dock 移除"
+        ],
+        [
+          "ArrowDown",
+          "关闭全部窗口"
+        ],
+        [
+          "ArrowDown",
+          "新建窗口"
+        ],
+        [
+          "ArrowDown",
+          "Alpha"
+        ],
+        [
+          "Home",
+          "新建窗口"
+        ],
+        [
+          "End",
+          "关闭全部窗口"
+        ],
+        [
+          "ArrowUp",
+          "从 Dock 移除"
+        ],
+        [
+          "Escape",
+          "trigger",
+          "false"
+        ]
+      ]
+    },
+    "multi-foreground-minimized": {
+      "trigger": "<button type=\"button\" data-testid=\"dock-trigger\" id=\"<menu>-trigger\" aria-haspopup=\"menu\" aria-expanded=\"true\" class=\"app-menu-trigger\">fe-b9-multi</button>",
+      "panel": {
+        "rows": [
+          {
+            "role": "menuitem",
+            "label": "新建窗口"
+          },
+          {
+            "separator": true
+          },
+          {
+            "groupLabel": "窗口"
+          },
+          {
+            "role": "menuitem",
+            "label": "Alpha",
+            "checkedClass": true
+          },
+          {
+            "role": "menuitem",
+            "label": "Beta",
+            "suffix": "已最小化"
+          },
+          {
+            "separator": true
+          },
+          {
+            "role": "menuitem",
+            "label": "固定到 Dock"
+          },
+          {
+            "role": "menuitem",
+            "label": "关闭全部窗口",
+            "danger": "app-menu-item app-menu-item-destructive wb-dockmenu-destructive"
+          }
+        ],
+        "html": "<div role=\"menu\" data-app-menu-id=\"<menu>\" data-state=\"open\" tabindex=\"-1\" class=\"app-menu-content app-menu-origin-top app-menu-open wb-dockmenu\" style=\"position: fixed; top: 600px; left: 40px; width: 224px; --app-menu-available-height: 752px;\" data-testid=\"wb-dock-context-menu\"><div class=\"app-menu-group\" role=\"group\"><button role=\"menuitem\" tabindex=\"-1\" class=\"app-menu-item\"><span class=\"app-menu-item-icon\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M228,128a12,12,0,0,1-12,12H140v76a12,12,0,0,1-24,0V140H40a12,12,0,0,1,0-24h76V40a12,12,0,0,1,24,0v76h76A12,12,0,0,1,228,128Z\"></path></svg></span><span class=\"app-menu-item-content\">新建窗口</span></button></div><div class=\"app-menu-separator\" role=\"separator\"></div><div class=\"app-menu-group\" role=\"group\"><div class=\"app-menu-group-label\">窗口</div><button role=\"menuitem\" tabindex=\"-1\" class=\"app-menu-item app-menu-item-checked\"><span class=\"app-menu-item-icon\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M104,40H56A16,16,0,0,0,40,56v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V56A16,16,0,0,0,104,40Zm0,64H56V56h48v48Zm96-64H152a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V56A16,16,0,0,0,200,40Zm0,64H152V56h48v48Zm-96,32H56a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V152A16,16,0,0,0,104,136Zm0,64H56V152h48v48Zm96-64H152a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V152A16,16,0,0,0,200,136Zm0,64H152V152h48v48Z\"></path></svg></span><span class=\"app-menu-item-content\"><span class=\"truncate\">Alpha</span></span><span class=\"app-menu-item-check\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M232.49,80.49l-128,128a12,12,0,0,1-17,0l-56-56a12,12,0,1,1,17-17L96,183,215.51,63.51a12,12,0,0,1,17,17Z\"></path></svg></span></button><button role=\"menuitem\" tabindex=\"-1\" class=\"app-menu-item\"><span class=\"app-menu-item-icon\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M104,40H56A16,16,0,0,0,40,56v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V56A16,16,0,0,0,104,40Zm0,64H56V56h48v48Zm96-64H152a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V56A16,16,0,0,0,200,40Zm0,64H152V56h48v48Zm-96,32H56a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V152A16,16,0,0,0,104,136Zm0,64H56V152h48v48Zm96-64H152a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V152A16,16,0,0,0,200,136Zm0,64H152V152h48v48Z\"></path></svg></span><span class=\"app-menu-item-content\"><span class=\"truncate\">Beta</span></span><span class=\"app-menu-item-check\"></span><span class=\"app-menu-item-suffix\"><span class=\"wb-dockmenu-min-tag\">已最小化</span></span></button></div><div class=\"app-menu-separator\" role=\"separator\"></div><div class=\"app-menu-group\" role=\"group\"><button role=\"menuitem\" tabindex=\"-1\" class=\"app-menu-item\"><span class=\"app-menu-item-icon\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M235.32,81.37,174.63,20.69a16,16,0,0,0-22.63,0L98.37,74.49c-10.66-3.34-35-7.37-60.4,13.14a16,16,0,0,0-1.29,23.78L85,159.71,42.34,202.34a8,8,0,0,0,11.32,11.32L96.29,171l48.29,48.29A16,16,0,0,0,155.9,224c.38,0,.75,0,1.13,0a15.93,15.93,0,0,0,11.64-6.33c19.64-26.1,17.75-47.32,13.19-60L235.33,104A16,16,0,0,0,235.32,81.37ZM224,92.69h0l-57.27,57.46a8,8,0,0,0-1.49,9.22c9.46,18.93-1.8,38.59-9.34,48.62L48,100.08c12.08-9.74,23.64-12.31,32.48-12.31A40.13,40.13,0,0,1,96.81,91a8,8,0,0,0,9.25-1.51L163.32,32,224,92.68Z\"></path></svg></span><span class=\"app-menu-item-content\">固定到 Dock</span></button><button role=\"menuitem\" tabindex=\"-1\" class=\"app-menu-item app-menu-item-destructive wb-dockmenu-destructive\"><span class=\"app-menu-item-icon\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M165.66,101.66,139.31,128l26.35,26.34a8,8,0,0,1-11.32,11.32L128,139.31l-26.34,26.35a8,8,0,0,1-11.32-11.32L116.69,128,90.34,101.66a8,8,0,0,1,11.32-11.32L128,116.69l26.34-26.35a8,8,0,0,1,11.32,11.32ZM232,128A104,104,0,1,1,128,24,104.11,104.11,0,0,1,232,128Zm-16,0a88,88,0,1,0-88,88A88.1,88.1,0,0,0,216,128Z\"></path></svg></span><span class=\"app-menu-item-content\">关闭全部窗口</span></button></div></div>"
+      },
+      "clicks": {
+        "0:新建窗口": {
+          "effects": [
+            [
+              "workbenchBus.launch",
+              {
+                "typeId": "fe-b9-multi",
+                "reason": "dock"
+              }
+            ]
+          ],
+          "closes": true
+        },
+        "1:Alpha": {
+          "effects": [
+            [
+              "windowStore.focusWindow",
+              "<win:1>"
+            ]
+          ],
+          "closes": true
+        },
+        "2:Beta": {
+          "effects": [
+            [
+              "windowStore.focusWindow",
+              "<win:2>"
+            ]
+          ],
+          "closes": true
+        },
+        "3:固定到 Dock": {
+          "effects": [
+            [
+              "toggleDockPinned",
+              "fe-b9-multi"
+            ]
+          ],
+          "closes": true
+        },
+        "4:关闭全部窗口": {
+          "effects": [
+            [
+              "requestCloseAnimated",
+              "<win:1>"
+            ],
+            [
+              "requestCloseAnimated",
+              "<win:2>"
+            ]
+          ],
+          "closes": true
+        }
+      },
+      "keyboard": [
+        [
+          "open",
+          "Alpha"
+        ],
+        [
+          "ArrowDown",
+          "Beta"
+        ],
+        [
+          "ArrowDown",
+          "固定到 Dock"
+        ],
+        [
+          "ArrowDown",
+          "关闭全部窗口"
+        ],
+        [
+          "ArrowDown",
+          "新建窗口"
+        ],
+        [
+          "Home",
+          "新建窗口"
+        ],
+        [
+          "End",
+          "关闭全部窗口"
+        ],
+        [
+          "ArrowUp",
+          "固定到 Dock"
+        ],
+        [
+          "Escape",
+          "trigger",
+          "false"
+        ]
+      ]
+    },
+    "single-running": {
+      "trigger": "<button type=\"button\" data-testid=\"dock-trigger\" id=\"<menu>-trigger\" aria-haspopup=\"menu\" aria-expanded=\"true\" class=\"app-menu-trigger\">fe-b9-single</button>",
+      "panel": {
+        "rows": [
+          {
+            "role": "menuitem",
+            "label": "打开",
+            "disabled": true
+          },
+          {
+            "separator": true
+          },
+          {
+            "groupLabel": "窗口"
+          },
+          {
+            "role": "menuitem",
+            "label": "资源库",
+            "checkedClass": true
+          },
+          {
+            "separator": true
+          },
+          {
+            "role": "menuitem",
+            "label": "固定到 Dock"
+          },
+          {
+            "role": "menuitem",
+            "label": "关闭全部窗口",
+            "danger": "app-menu-item app-menu-item-destructive wb-dockmenu-destructive"
+          }
+        ],
+        "html": "<div role=\"menu\" data-app-menu-id=\"<menu>\" data-state=\"open\" tabindex=\"-1\" class=\"app-menu-content app-menu-origin-top app-menu-open wb-dockmenu\" style=\"position: fixed; top: 600px; left: 40px; width: 224px; --app-menu-available-height: 752px;\" data-testid=\"wb-dock-context-menu\"><div class=\"app-menu-group\" role=\"group\"><button role=\"menuitem\" disabled=\"\" tabindex=\"-1\" class=\"app-menu-item app-menu-item-disabled\"><span class=\"app-menu-item-icon\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M228,128a12,12,0,0,1-12,12H140v76a12,12,0,0,1-24,0V140H40a12,12,0,0,1,0-24h76V40a12,12,0,0,1,24,0v76h76A12,12,0,0,1,228,128Z\"></path></svg></span><span class=\"app-menu-item-content\">打开</span></button></div><div class=\"app-menu-separator\" role=\"separator\"></div><div class=\"app-menu-group\" role=\"group\"><div class=\"app-menu-group-label\">窗口</div><button role=\"menuitem\" tabindex=\"-1\" class=\"app-menu-item app-menu-item-checked\"><span class=\"app-menu-item-icon\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M104,40H56A16,16,0,0,0,40,56v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V56A16,16,0,0,0,104,40Zm0,64H56V56h48v48Zm96-64H152a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V56A16,16,0,0,0,200,40Zm0,64H152V56h48v48Zm-96,32H56a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V152A16,16,0,0,0,104,136Zm0,64H56V152h48v48Zm96-64H152a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V152A16,16,0,0,0,200,136Zm0,64H152V152h48v48Z\"></path></svg></span><span class=\"app-menu-item-content\"><span class=\"truncate\">资源库</span></span><span class=\"app-menu-item-check\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M232.49,80.49l-128,128a12,12,0,0,1-17,0l-56-56a12,12,0,1,1,17-17L96,183,215.51,63.51a12,12,0,0,1,17,17Z\"></path></svg></span></button></div><div class=\"app-menu-separator\" role=\"separator\"></div><div class=\"app-menu-group\" role=\"group\"><button role=\"menuitem\" tabindex=\"-1\" class=\"app-menu-item\"><span class=\"app-menu-item-icon\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M235.32,81.37,174.63,20.69a16,16,0,0,0-22.63,0L98.37,74.49c-10.66-3.34-35-7.37-60.4,13.14a16,16,0,0,0-1.29,23.78L85,159.71,42.34,202.34a8,8,0,0,0,11.32,11.32L96.29,171l48.29,48.29A16,16,0,0,0,155.9,224c.38,0,.75,0,1.13,0a15.93,15.93,0,0,0,11.64-6.33c19.64-26.1,17.75-47.32,13.19-60L235.33,104A16,16,0,0,0,235.32,81.37ZM224,92.69h0l-57.27,57.46a8,8,0,0,0-1.49,9.22c9.46,18.93-1.8,38.59-9.34,48.62L48,100.08c12.08-9.74,23.64-12.31,32.48-12.31A40.13,40.13,0,0,1,96.81,91a8,8,0,0,0,9.25-1.51L163.32,32,224,92.68Z\"></path></svg></span><span class=\"app-menu-item-content\">固定到 Dock</span></button><button role=\"menuitem\" tabindex=\"-1\" class=\"app-menu-item app-menu-item-destructive wb-dockmenu-destructive\"><span class=\"app-menu-item-icon\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M165.66,101.66,139.31,128l26.35,26.34a8,8,0,0,1-11.32,11.32L128,139.31l-26.34,26.35a8,8,0,0,1-11.32-11.32L116.69,128,90.34,101.66a8,8,0,0,1,11.32-11.32L128,116.69l26.34-26.35a8,8,0,0,1,11.32,11.32ZM232,128A104,104,0,1,1,128,24,104.11,104.11,0,0,1,232,128Zm-16,0a88,88,0,1,0-88,88A88.1,88.1,0,0,0,216,128Z\"></path></svg></span><span class=\"app-menu-item-content\">关闭全部窗口</span></button></div></div>"
+      },
+      "clicks": {
+        "1:资源库": {
+          "effects": [
+            [
+              "windowStore.focusWindow",
+              "<win:1>"
+            ]
+          ],
+          "closes": true
+        },
+        "2:固定到 Dock": {
+          "effects": [
+            [
+              "toggleDockPinned",
+              "fe-b9-single"
+            ]
+          ],
+          "closes": true
+        },
+        "3:关闭全部窗口": {
+          "effects": [
+            [
+              "requestCloseAnimated",
+              "<win:1>"
+            ]
+          ],
+          "closes": true
+        }
+      },
+      "keyboard": [
+        [
+          "open",
+          "资源库"
+        ],
+        [
+          "ArrowDown",
+          "固定到 Dock"
+        ],
+        [
+          "ArrowDown",
+          "关闭全部窗口"
+        ],
+        [
+          "ArrowDown",
+          "资源库"
+        ],
+        [
+          "ArrowDown",
+          "固定到 Dock"
+        ],
+        [
+          "Home",
+          "资源库"
+        ],
+        [
+          "End",
+          "关闭全部窗口"
+        ],
+        [
+          "ArrowUp",
+          "固定到 Dock"
+        ],
+        [
+          "Escape",
+          "trigger",
+          "false"
+        ]
+      ]
+    },
+    "single-idle-pinned": {
+      "trigger": "<button type=\"button\" data-testid=\"dock-trigger\" id=\"<menu>-trigger\" aria-haspopup=\"menu\" aria-expanded=\"true\" class=\"app-menu-trigger\">fe-b9-single</button>",
+      "panel": {
+        "rows": [
+          {
+            "role": "menuitem",
+            "label": "打开"
+          },
+          {
+            "separator": true
+          },
+          {
+            "role": "menuitem",
+            "label": "从 Dock 移除"
+          }
+        ],
+        "html": "<div role=\"menu\" data-app-menu-id=\"<menu>\" data-state=\"open\" tabindex=\"-1\" class=\"app-menu-content app-menu-origin-top app-menu-open wb-dockmenu\" style=\"position: fixed; top: 600px; left: 40px; width: 224px; --app-menu-available-height: 752px;\" data-testid=\"wb-dock-context-menu\"><div class=\"app-menu-group\" role=\"group\"><button role=\"menuitem\" tabindex=\"-1\" class=\"app-menu-item\"><span class=\"app-menu-item-icon\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M228,128a12,12,0,0,1-12,12H140v76a12,12,0,0,1-24,0V140H40a12,12,0,0,1,0-24h76V40a12,12,0,0,1,24,0v76h76A12,12,0,0,1,228,128Z\"></path></svg></span><span class=\"app-menu-item-content\">打开</span></button></div><div class=\"app-menu-separator\" role=\"separator\"></div><div class=\"app-menu-group\" role=\"group\"><button role=\"menuitem\" tabindex=\"-1\" class=\"app-menu-item\"><span class=\"app-menu-item-icon\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M53.92,34.62A8,8,0,1,0,42.08,45.38L67.37,73.2A69.82,69.82,0,0,0,38,87.63a16,16,0,0,0-1.29,23.78L85,159.71,42.34,202.34a8,8,0,0,0,11.32,11.32L96.29,171l48.29,48.29A16,16,0,0,0,155.9,224c.38,0,.75,0,1.13,0a15.93,15.93,0,0,0,11.64-6.33,89.75,89.75,0,0,0,11.58-20.27l21.84,24a8,8,0,1,0,11.84-10.76ZM155.9,208,48,100.08C58.23,91.83,69.2,87.72,80.66,87.81l87.16,95.88C165.59,193.56,160.24,202.23,155.9,208Zm79.42-104-44.64,44.79a8,8,0,1,1-11.33-11.3L224,92.7,163.32,32,122.1,73.35a8,8,0,0,1-11.33-11.29L152,20.7a16,16,0,0,1,22.63,0l60.69,60.68A16,16,0,0,1,235.32,104Z\"></path></svg></span><span class=\"app-menu-item-content\">从 Dock 移除</span></button></div></div>"
+      },
+      "clicks": {
+        "0:打开": {
+          "effects": [
+            [
+              "workbenchBus.launch",
+              {
+                "typeId": "fe-b9-single",
+                "reason": "dock"
+              }
+            ]
+          ],
+          "closes": true
+        },
+        "1:从 Dock 移除": {
+          "effects": [
+            [
+              "toggleDockPinned",
+              "fe-b9-single"
+            ]
+          ],
+          "closes": true
+        }
+      },
+      "keyboard": [
+        [
+          "open",
+          "打开"
+        ],
+        [
+          "ArrowDown",
+          "从 Dock 移除"
+        ],
+        [
+          "ArrowDown",
+          "打开"
+        ],
+        [
+          "ArrowDown",
+          "从 Dock 移除"
+        ],
+        [
+          "ArrowDown",
+          "打开"
+        ],
+        [
+          "Home",
+          "打开"
+        ],
+        [
+          "End",
+          "从 Dock 移除"
+        ],
+        [
+          "ArrowUp",
+          "打开"
+        ],
+        [
+          "Escape",
+          "trigger",
+          "false"
+        ]
+      ]
+    },
+    "unregistered-running": {
+      "trigger": "<button type=\"button\" data-testid=\"dock-trigger\" id=\"<menu>-trigger\" aria-haspopup=\"menu\" aria-expanded=\"true\" class=\"app-menu-trigger\">fe-b9-ghost</button>",
+      "panel": {
+        "rows": [
+          {
+            "role": "menuitem",
+            "label": "打开",
+            "disabled": true
+          },
+          {
+            "separator": true
+          },
+          {
+            "groupLabel": "窗口"
+          },
+          {
+            "role": "menuitem",
+            "label": "fe-b9-ghost",
+            "checkedClass": true
+          },
+          {
+            "separator": true
+          },
+          {
+            "role": "menuitem",
+            "label": "固定到 Dock"
+          },
+          {
+            "role": "menuitem",
+            "label": "关闭全部窗口",
+            "danger": "app-menu-item app-menu-item-destructive wb-dockmenu-destructive"
+          }
+        ],
+        "html": "<div role=\"menu\" data-app-menu-id=\"<menu>\" data-state=\"open\" tabindex=\"-1\" class=\"app-menu-content app-menu-origin-top app-menu-open wb-dockmenu\" style=\"position: fixed; top: 600px; left: 40px; width: 224px; --app-menu-available-height: 752px;\" data-testid=\"wb-dock-context-menu\"><div class=\"app-menu-group\" role=\"group\"><button role=\"menuitem\" disabled=\"\" tabindex=\"-1\" class=\"app-menu-item app-menu-item-disabled\"><span class=\"app-menu-item-icon\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M228,128a12,12,0,0,1-12,12H140v76a12,12,0,0,1-24,0V140H40a12,12,0,0,1,0-24h76V40a12,12,0,0,1,24,0v76h76A12,12,0,0,1,228,128Z\"></path></svg></span><span class=\"app-menu-item-content\">打开</span></button></div><div class=\"app-menu-separator\" role=\"separator\"></div><div class=\"app-menu-group\" role=\"group\"><div class=\"app-menu-group-label\">窗口</div><button role=\"menuitem\" tabindex=\"-1\" class=\"app-menu-item app-menu-item-checked\"><span class=\"app-menu-item-icon\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M104,40H56A16,16,0,0,0,40,56v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V56A16,16,0,0,0,104,40Zm0,64H56V56h48v48Zm96-64H152a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V56A16,16,0,0,0,200,40Zm0,64H152V56h48v48Zm-96,32H56a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V152A16,16,0,0,0,104,136Zm0,64H56V152h48v48Zm96-64H152a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V152A16,16,0,0,0,200,136Zm0,64H152V152h48v48Z\"></path></svg></span><span class=\"app-menu-item-content\"><span class=\"truncate\">fe-b9-ghost</span></span><span class=\"app-menu-item-check\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M232.49,80.49l-128,128a12,12,0,0,1-17,0l-56-56a12,12,0,1,1,17-17L96,183,215.51,63.51a12,12,0,0,1,17,17Z\"></path></svg></span></button></div><div class=\"app-menu-separator\" role=\"separator\"></div><div class=\"app-menu-group\" role=\"group\"><button role=\"menuitem\" tabindex=\"-1\" class=\"app-menu-item\"><span class=\"app-menu-item-icon\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M235.32,81.37,174.63,20.69a16,16,0,0,0-22.63,0L98.37,74.49c-10.66-3.34-35-7.37-60.4,13.14a16,16,0,0,0-1.29,23.78L85,159.71,42.34,202.34a8,8,0,0,0,11.32,11.32L96.29,171l48.29,48.29A16,16,0,0,0,155.9,224c.38,0,.75,0,1.13,0a15.93,15.93,0,0,0,11.64-6.33c19.64-26.1,17.75-47.32,13.19-60L235.33,104A16,16,0,0,0,235.32,81.37ZM224,92.69h0l-57.27,57.46a8,8,0,0,0-1.49,9.22c9.46,18.93-1.8,38.59-9.34,48.62L48,100.08c12.08-9.74,23.64-12.31,32.48-12.31A40.13,40.13,0,0,1,96.81,91a8,8,0,0,0,9.25-1.51L163.32,32,224,92.68Z\"></path></svg></span><span class=\"app-menu-item-content\">固定到 Dock</span></button><button role=\"menuitem\" tabindex=\"-1\" class=\"app-menu-item app-menu-item-destructive wb-dockmenu-destructive\"><span class=\"app-menu-item-icon\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M165.66,101.66,139.31,128l26.35,26.34a8,8,0,0,1-11.32,11.32L128,139.31l-26.34,26.35a8,8,0,0,1-11.32-11.32L116.69,128,90.34,101.66a8,8,0,0,1,11.32-11.32L128,116.69l26.34-26.35a8,8,0,0,1,11.32,11.32ZM232,128A104,104,0,1,1,128,24,104.11,104.11,0,0,1,232,128Zm-16,0a88,88,0,1,0-88,88A88.1,88.1,0,0,0,216,128Z\"></path></svg></span><span class=\"app-menu-item-content\">关闭全部窗口</span></button></div></div>"
+      },
+      "clicks": {
+        "1:fe-b9-ghost": {
+          "effects": [
+            [
+              "windowStore.focusWindow",
+              "<win:1>"
+            ]
+          ],
+          "closes": true
+        },
+        "2:固定到 Dock": {
+          "effects": [
+            [
+              "toggleDockPinned",
+              "fe-b9-ghost"
+            ]
+          ],
+          "closes": true
+        },
+        "3:关闭全部窗口": {
+          "effects": [
+            [
+              "requestCloseAnimated",
+              "<win:1>"
+            ]
+          ],
+          "closes": true
+        }
+      },
+      "keyboard": [
+        [
+          "open",
+          "fe-b9-ghost"
+        ],
+        [
+          "ArrowDown",
+          "固定到 Dock"
+        ],
+        [
+          "ArrowDown",
+          "关闭全部窗口"
+        ],
+        [
+          "ArrowDown",
+          "fe-b9-ghost"
+        ],
+        [
+          "ArrowDown",
+          "固定到 Dock"
+        ],
+        [
+          "Home",
+          "fe-b9-ghost"
+        ],
+        [
+          "End",
+          "关闭全部窗口"
+        ],
+        [
+          "ArrowUp",
+          "固定到 Dock"
+        ],
+        [
+          "Escape",
+          "trigger",
+          "false"
+        ]
+      ]
+    }
+  },
+  "desktop": {
+    "empty": {
+      "html": "<div class=\"wb-desk-menu-backdrop\" data-wb-desk-menu-backdrop=\"true\" aria-hidden=\"true\"></div><div class=\"wb-desk-menu wb-glass-lens\" data-wb-desk-menu=\"true\" data-phase=\"open\" role=\"menu\" aria-label=\"桌面菜单\" tabindex=\"-1\" style=\"left: 200px; top: 160px;\"><div class=\"wb-glass-replica\" aria-hidden=\"true\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M224,128A96,96,0,0,1,79.93,211.11h0L42.54,223.58a8,8,0,0,1-10.12-10.12l12.47-37.39h0A96,96,0,1,1,224,128Z\" opacity=\"0.2\"></path><path d=\"M128,24A104,104,0,0,0,36.18,176.88L24.83,210.93a16,16,0,0,0,20.24,20.24l34.05-11.35A104,104,0,1,0,128,24Zm0,192a87.87,87.87,0,0,1-44.06-11.81,8,8,0,0,0-4-1.08,7.85,7.85,0,0,0-2.53.42L40,216,52.47,178.6a8,8,0,0,0-.66-6.54A88,88,0,1,1,128,216Zm12-88a12,12,0,1,1-12-12A12,12,0,0,1,140,128Zm-44,0a12,12,0,1,1-12-12A12,12,0,0,1,96,128Zm88,0a12,12,0,1,1-12-12A12,12,0,0,1,184,128Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">新建对话</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M208,88v24H69.77a8,8,0,0,0-7.59,5.47L32,208V64a8,8,0,0,1,8-8H93.33a8,8,0,0,1,4.8,1.6L128,80h72A8,8,0,0,1,208,88Z\" opacity=\"0.2\"></path><path d=\"M245,110.64A16,16,0,0,0,232,104H216V88a16,16,0,0,0-16-16H130.67L102.94,51.2a16.14,16.14,0,0,0-9.6-3.2H40A16,16,0,0,0,24,64V208a8,8,0,0,0,8,8H211.1a8,8,0,0,0,7.59-5.47l28.49-85.47A16.05,16.05,0,0,0,245,110.64ZM93.34,64,123.2,86.4A8,8,0,0,0,128,88h72v16H69.77a16,16,0,0,0-15.18,10.94L40,158.7V64Zm112,136H43.1l26.67-80H232Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">打开资源库</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M112,80A32,32,0,1,1,80,48,32,32,0,0,1,112,80Zm64,32a32,32,0,1,0-32-32A32,32,0,0,0,176,112ZM80,144a32,32,0,1,0,32,32A32,32,0,0,0,80,144Zm96,0a32,32,0,1,0,32,32A32,32,0,0,0,176,144Z\" opacity=\"0.2\"></path><path d=\"M80,40a40,40,0,1,0,40,40A40,40,0,0,0,80,40Zm0,64a24,24,0,1,1,24-24A24,24,0,0,1,80,104Zm96,16a40,40,0,1,0-40-40A40,40,0,0,0,176,120Zm0-64a24,24,0,1,1-24,24A24,24,0,0,1,176,56ZM80,136a40,40,0,1,0,40,40A40,40,0,0,0,80,136Zm0,64a24,24,0,1,1,24-24A24,24,0,0,1,80,200Zm96-64a40,40,0,1,0,40,40A40,40,0,0,0,176,136Zm0,64a24,24,0,1,1,24-24A24,24,0,0,1,176,200Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">全部应用…</span></button><div class=\"wb-desk-menu-sep\" role=\"separator\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" role=\"menuitem\" disabled=\"\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M224,80l-96,56L32,80l96-56Z\" opacity=\"0.2\"></path><path d=\"M230.91,172A8,8,0,0,1,228,182.91l-96,56a8,8,0,0,1-8.06,0l-96-56A8,8,0,0,1,36,169.09l92,53.65,92-53.65A8,8,0,0,1,230.91,172ZM220,121.09l-92,53.65L36,121.09A8,8,0,0,0,28,134.91l96,56a8,8,0,0,0,8.06,0l96-56A8,8,0,1,0,220,121.09ZM24,80a8,8,0,0,1,4-6.91l96-56a8,8,0,0,1,8.06,0l96,56a8,8,0,0,1,0,13.82l-96,56a8,8,0,0,1-8.06,0l-96-56A8,8,0,0,1,24,80Zm23.88,0L128,126.74,208.12,80,128,33.26Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">整理窗口</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" role=\"menuitem\" disabled=\"\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M208,56V200a8,8,0,0,1-8,8H56a8,8,0,0,1-8-8V56a8,8,0,0,1,8-8H200A8,8,0,0,1,208,56Z\" opacity=\"0.2\"></path><path d=\"M200,40H56A16,16,0,0,0,40,56V200a16,16,0,0,0,16,16H200a16,16,0,0,0,16-16V56A16,16,0,0,0,200,40Zm0,80H136V56h64ZM120,56v64H56V56ZM56,136h64v64H56Zm144,64H136V136h64v64Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">平铺全部窗口</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" role=\"menuitem\" disabled=\"\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M224,64v88H32V64A16,16,0,0,1,48,48H208A16,16,0,0,1,224,64Z\" opacity=\"0.2\"></path><path d=\"M208,40H48A24,24,0,0,0,24,64V176a24,24,0,0,0,24,24h72v16H96a8,8,0,0,0,0,16h64a8,8,0,0,0,0-16H136V200h72a24,24,0,0,0,24-24V64A24,24,0,0,0,208,40ZM48,56H208a8,8,0,0,1,8,8v80H40V64A8,8,0,0,1,48,56ZM208,184H48a8,8,0,0,1-8-8V160H216v16A8,8,0,0,1,208,184Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">恢复窗口</span><span class=\"wb-desk-menu-item-shortcut\" aria-hidden=\"true\">Ctrl+Alt+D</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" role=\"menuitem\" disabled=\"\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M112,56v48a8,8,0,0,1-8,8H56a8,8,0,0,1-8-8V56a8,8,0,0,1,8-8h48A8,8,0,0,1,112,56Zm88-8H152a8,8,0,0,0-8,8v48a8,8,0,0,0,8,8h48a8,8,0,0,0,8-8V56A8,8,0,0,0,200,48Zm-96,96H56a8,8,0,0,0-8,8v48a8,8,0,0,0,8,8h48a8,8,0,0,0,8-8V152A8,8,0,0,0,104,144Zm96,0H152a8,8,0,0,0-8,8v48a8,8,0,0,0,8,8h48a8,8,0,0,0,8-8V152A8,8,0,0,0,200,144Z\" opacity=\"0.2\"></path><path d=\"M200,136H152a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V152A16,16,0,0,0,200,136Zm0,64H152V152h48v48ZM104,40H56A16,16,0,0,0,40,56v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V56A16,16,0,0,0,104,40Zm0,64H56V56h48v48Zm96-64H152a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V56A16,16,0,0,0,200,40Zm0,64H152V56h48v48Zm-96,32H56a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V152A16,16,0,0,0,104,136Zm0,64H56V152h48v48Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">窗口俯瞰</span><span class=\"wb-desk-menu-item-shortcut\" aria-hidden=\"true\">Ctrl+Alt+E</span></button><div class=\"wb-desk-menu-sep\" role=\"separator\"></div><div class=\"wb-desk-menu-subwrap\"><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-wb-desk-sub=\"wallpaper\" role=\"menuitem\" aria-haspopup=\"menu\" aria-expanded=\"false\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M224,56V178.06l-39.72-39.72a8,8,0,0,0-11.31,0L147.31,164,97.66,114.34a8,8,0,0,0-11.32,0L32,168.69V56a8,8,0,0,1,8-8H216A8,8,0,0,1,224,56Z\" opacity=\"0.2\"></path><path d=\"M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,16V158.75l-26.07-26.06a16,16,0,0,0-22.63,0l-20,20-44-44a16,16,0,0,0-22.62,0L40,149.37V56ZM40,172l52-52,80,80H40Zm176,28H194.63l-36-36,20-20L216,181.38V200ZM144,100a12,12,0,1,1,12,12A12,12,0,0,1,144,100Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">桌面壁纸</span><span class=\"wb-desk-menu-item-caret\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"12\" height=\"12\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M184.49,136.49l-80,80a12,12,0,0,1-17-17L159,128,87.51,56.49a12,12,0,1,1,17-17l80,80A12,12,0,0,1,184.49,136.49Z\"></path></svg></span></button></div><div class=\"wb-desk-menu-subwrap\"><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-wb-desk-sub=\"tier\" role=\"menuitem\" aria-haspopup=\"menu\" aria-expanded=\"false\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M208,144a80,80,0,0,1-160,0c0-72,80-128,80-128S208,72,208,144Z\" opacity=\"0.2\"></path><path d=\"M174,47.75a254.19,254.19,0,0,0-41.45-38.3,8,8,0,0,0-9.18,0A254.19,254.19,0,0,0,82,47.75C54.51,79.32,40,112.6,40,144a88,88,0,0,0,176,0C216,112.6,201.49,79.32,174,47.75ZM128,216a72.08,72.08,0,0,1-72-72c0-57.23,55.47-105,72-118,16.53,13,72,60.75,72,118A72.08,72.08,0,0,1,128,216Zm55.89-62.66a57.6,57.6,0,0,1-46.56,46.55A8.75,8.75,0,0,1,136,200a8,8,0,0,1-1.32-15.89c16.57-2.79,30.63-16.85,33.44-33.45a8,8,0,0,1,15.78,2.68Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">视觉材质</span><span class=\"wb-desk-menu-item-caret\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"12\" height=\"12\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M184.49,136.49l-80,80a12,12,0,0,1-17-17L159,128,87.51,56.49a12,12,0,1,1,17-17l80,80A12,12,0,0,1,184.49,136.49Z\"></path></svg></span></button></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-desk-menu-widgets\" role=\"menuitemcheckbox\" aria-checked=\"true\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M216,48V88H40V48a8,8,0,0,1,8-8H208A8,8,0,0,1,216,48Z\" opacity=\"0.2\"></path><path d=\"M208,32H184V24a8,8,0,0,0-16,0v8H88V24a8,8,0,0,0-16,0v8H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32ZM72,48v8a8,8,0,0,0,16,0V48h80v8a8,8,0,0,0,16,0V48h24V80H48V48ZM208,208H48V96H208V208Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">显示桌面组件</span><span class=\"wb-desk-menu-item-check\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"13\" height=\"13\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M232.49,80.49l-128,128a12,12,0,0,1-17,0l-56-56a12,12,0,1,1,17-17L96,183,215.51,63.51a12,12,0,0,1,17,17Z\"></path></svg></span></button><div class=\"wb-desk-menu-sep\" role=\"separator\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-desk-menu-shortcuts\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M232,64V192a8,8,0,0,1-8,8H32a8,8,0,0,1-8-8V64a8,8,0,0,1,8-8H224A8,8,0,0,1,232,64Z\" opacity=\"0.2\"></path><path d=\"M224,48H32A16,16,0,0,0,16,64V192a16,16,0,0,0,16,16H224a16,16,0,0,0,16-16V64A16,16,0,0,0,224,48Zm0,144H32V64H224V192Zm-16-64a8,8,0,0,1-8,8H56a8,8,0,0,1,0-16H200A8,8,0,0,1,208,128Zm0-32a8,8,0,0,1-8,8H56a8,8,0,0,1,0-16H200A8,8,0,0,1,208,96ZM72,160a8,8,0,0,1-8,8H56a8,8,0,0,1,0-16h8A8,8,0,0,1,72,160Zm96,0a8,8,0,0,1-8,8H96a8,8,0,0,1,0-16h64A8,8,0,0,1,168,160Zm40,0a8,8,0,0,1-8,8h-8a8,8,0,0,1,0-16h8A8,8,0,0,1,208,160Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">键盘快捷键</span><span class=\"wb-desk-menu-item-shortcut\" aria-hidden=\"true\">?</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-desk-menu-replay-tour\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M128,32a96,96,0,1,0,96,96A96,96,0,0,0,128,32Zm16,112L80,176l32-64,64-32Z\" opacity=\"0.2\"></path><path d=\"M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216ZM172.42,72.84l-64,32a8.05,8.05,0,0,0-3.58,3.58l-32,64A8,8,0,0,0,80,184a8.1,8.1,0,0,0,3.58-.84l64-32a8.05,8.05,0,0,0,3.58-3.58l32-64a8,8,0,0,0-10.74-10.74ZM138,138,97.89,158.11,118,118l40.15-20.07Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">重新查看引导</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M230.1,108.76,198.25,90.62c-.64-1.16-1.31-2.29-2-3.41l-.12-36A104.61,104.61,0,0,0,162,32L130,49.89c-1.34,0-2.69,0-4,0L94,32A104.58,104.58,0,0,0,59.89,51.25l-.16,36c-.7,1.12-1.37,2.26-2,3.41l-31.84,18.1a99.15,99.15,0,0,0,0,38.46l31.85,18.14c.64,1.16,1.31,2.29,2,3.41l.12,36A104.61,104.61,0,0,0,94,224l32-17.87c1.34,0,2.69,0,4,0L162,224a104.58,104.58,0,0,0,34.08-19.25l.16-36c.7-1.12,1.37-2.26,2-3.41l31.84-18.1A99.15,99.15,0,0,0,230.1,108.76ZM128,168a40,40,0,1,1,40-40A40,40,0,0,1,128,168Z\" opacity=\"0.2\"></path><path d=\"M128,80a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Zm109.94-52.79a8,8,0,0,0-3.89-5.4l-29.83-17-.12-33.62a8,8,0,0,0-2.83-6.08,111.91,111.91,0,0,0-36.72-20.67,8,8,0,0,0-6.46.59L128,41.85,97.88,25a8,8,0,0,0-6.47-.6A111.92,111.92,0,0,0,54.73,45.15a8,8,0,0,0-2.83,6.07l-.15,33.65-29.83,17a8,8,0,0,0-3.89,5.4,106.47,106.47,0,0,0,0,41.56,8,8,0,0,0,3.89,5.4l29.83,17,.12,33.63a8,8,0,0,0,2.83,6.08,111.91,111.91,0,0,0,36.72,20.67,8,8,0,0,0,6.46-.59L128,214.15,158.12,231a7.91,7.91,0,0,0,3.9,1,8.09,8.09,0,0,0,2.57-.42,112.1,112.1,0,0,0,36.68-20.73,8,8,0,0,0,2.83-6.07l.15-33.65,29.83-17a8,8,0,0,0,3.89-5.4A106.47,106.47,0,0,0,237.94,107.21Zm-15,34.91-28.57,16.25a8,8,0,0,0-3,3c-.58,1-1.19,2.06-1.81,3.06a7.94,7.94,0,0,0-1.22,4.21l-.15,32.25a95.89,95.89,0,0,1-25.37,14.3L134,199.13a8,8,0,0,0-3.91-1h-.19c-1.21,0-2.43,0-3.64,0a8.1,8.1,0,0,0-4.1,1l-28.84,16.1A96,96,0,0,1,67.88,201l-.11-32.2a8,8,0,0,0-1.22-4.22c-.62-1-1.23-2-1.8-3.06a8.09,8.09,0,0,0-3-3.06l-28.6-16.29a90.49,90.49,0,0,1,0-28.26L61.67,97.63a8,8,0,0,0,3-3c.58-1,1.19-2.06,1.81-3.06a7.94,7.94,0,0,0,1.22-4.21l.15-32.25a95.89,95.89,0,0,1,25.37-14.3L122,56.87a8,8,0,0,0,4.1,1c1.21,0,2.43,0,3.64,0a8,8,0,0,0,4.1-1l28.84-16.1A96,96,0,0,1,188.12,55l.11,32.2a8,8,0,0,0,1.22,4.22c.62,1,1.23,2,1.8,3.06a8.09,8.09,0,0,0,3,3.06l28.6,16.29A90.49,90.49,0,0,1,222.9,142.12Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">桌面设置…</span></button></div>",
+      "rows": [
+        {
+          "role": "menuitem",
+          "label": "新建对话"
+        },
+        {
+          "role": "menuitem",
+          "label": "打开资源库"
+        },
+        {
+          "role": "menuitem",
+          "label": "全部应用…"
+        },
+        {
+          "separator": true
+        },
+        {
+          "role": "menuitem",
+          "label": "整理窗口",
+          "disabled": true
+        },
+        {
+          "role": "menuitem",
+          "label": "平铺全部窗口",
+          "disabled": true
+        },
+        {
+          "role": "menuitem",
+          "label": "恢复窗口",
+          "shortcut": "Ctrl+Alt+D",
+          "disabled": true
+        },
+        {
+          "role": "menuitem",
+          "label": "窗口俯瞰",
+          "shortcut": "Ctrl+Alt+E",
+          "disabled": true
+        },
+        {
+          "separator": true
+        },
+        {
+          "role": "menuitem",
+          "label": "桌面壁纸",
+          "submenu": "wallpaper"
+        },
+        {
+          "role": "menuitem",
+          "label": "视觉材质",
+          "submenu": "tier"
+        },
+        {
+          "role": "menuitemcheckbox",
+          "label": "显示桌面组件",
+          "testId": "wb-desk-menu-widgets",
+          "checked": "true"
+        },
+        {
+          "separator": true
+        },
+        {
+          "role": "menuitem",
+          "label": "键盘快捷键",
+          "testId": "wb-desk-menu-shortcuts",
+          "shortcut": "?"
+        },
+        {
+          "role": "menuitem",
+          "label": "重新查看引导",
+          "testId": "wb-desk-menu-replay-tour"
+        },
+        {
+          "role": "menuitem",
+          "label": "桌面设置…"
+        }
+      ],
+      "submenus": {
+        "wallpaper": {
+          "parent": "<button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-wb-desk-sub=\"wallpaper\" role=\"menuitem\" aria-haspopup=\"menu\" aria-expanded=\"true\" data-wb-desk-active=\"true\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M224,56V178.06l-39.72-39.72a8,8,0,0,0-11.31,0L147.31,164,97.66,114.34a8,8,0,0,0-11.32,0L32,168.69V56a8,8,0,0,1,8-8H216A8,8,0,0,1,224,56Z\" opacity=\"0.2\"></path><path d=\"M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,16V158.75l-26.07-26.06a16,16,0,0,0-22.63,0l-20,20-44-44a16,16,0,0,0-22.62,0L40,149.37V56ZM40,172l52-52,80,80H40Zm176,28H194.63l-36-36,20-20L216,181.38V200ZM144,100a12,12,0,1,1,12,12A12,12,0,0,1,144,100Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">桌面壁纸</span><span class=\"wb-desk-menu-item-caret\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"12\" height=\"12\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M184.49,136.49l-80,80a12,12,0,0,1-17-17L159,128,87.51,56.49a12,12,0,1,1,17-17l80,80A12,12,0,0,1,184.49,136.49Z\"></path></svg></span></button>",
+          "rows": [
+            {
+              "role": "menuitemradio",
+              "label": "薄雾雪山",
+              "checked": "true",
+              "option": "mountain-mist"
+            },
+            {
+              "role": "menuitemradio",
+              "label": "山间雾林",
+              "checked": "false",
+              "option": "forest-mist"
+            },
+            {
+              "role": "menuitemradio",
+              "label": "雪山静水",
+              "checked": "false",
+              "option": "alpine-lake"
+            },
+            {
+              "role": "menuitemradio",
+              "label": "冬日山脊",
+              "checked": "false",
+              "option": "winter-ridge"
+            },
+            {
+              "role": "menuitemradio",
+              "label": "极光",
+              "checked": "false",
+              "option": "aurora"
+            },
+            {
+              "separator": true
+            },
+            {
+              "role": "menuitem",
+              "label": "管理壁纸…",
+              "testId": "wb-desk-menu-manage-wallpaper"
+            }
+          ],
+          "html": "<div class=\"wb-desk-menu wb-glass-lens wb-desk-menu-sub\" role=\"menu\" aria-label=\"桌面壁纸\" style=\"left: 8px; top: 8px; visibility: visible;\"><div class=\"wb-glass-replica\" aria-hidden=\"true\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-wb-desk-option=\"mountain-mist\" role=\"menuitemradio\" aria-checked=\"true\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"13\" height=\"13\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M232.49,80.49l-128,128a12,12,0,0,1-17,0l-56-56a12,12,0,1,1,17-17L96,183,215.51,63.51a12,12,0,0,1,17,17Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">薄雾雪山</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-wb-desk-option=\"forest-mist\" role=\"menuitemradio\" aria-checked=\"false\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"></span><span class=\"wb-desk-menu-item-label\">山间雾林</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-wb-desk-option=\"alpine-lake\" role=\"menuitemradio\" aria-checked=\"false\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"></span><span class=\"wb-desk-menu-item-label\">雪山静水</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-wb-desk-option=\"winter-ridge\" role=\"menuitemradio\" aria-checked=\"false\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"></span><span class=\"wb-desk-menu-item-label\">冬日山脊</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-wb-desk-option=\"aurora\" role=\"menuitemradio\" aria-checked=\"false\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"></span><span class=\"wb-desk-menu-item-label\">极光</span></button><div class=\"wb-desk-menu-sep\" role=\"separator\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-desk-menu-manage-wallpaper\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M224,56V178.06l-39.72-39.72a8,8,0,0,0-11.31,0L147.31,164,97.66,114.34a8,8,0,0,0-11.32,0L32,168.69V56a8,8,0,0,1,8-8H216A8,8,0,0,1,224,56Z\" opacity=\"0.2\"></path><path d=\"M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,16V158.75l-26.07-26.06a16,16,0,0,0-22.63,0l-20,20-44-44a16,16,0,0,0-22.62,0L40,149.37V56ZM40,172l52-52,80,80H40Zm176,28H194.63l-36-36,20-20L216,181.38V200ZM144,100a12,12,0,1,1,12,12A12,12,0,0,1,144,100Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">管理壁纸…</span></button></div>"
+        },
+        "tier": {
+          "parent": "<button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-wb-desk-sub=\"tier\" role=\"menuitem\" aria-haspopup=\"menu\" aria-expanded=\"true\" data-wb-desk-active=\"true\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M208,144a80,80,0,0,1-160,0c0-72,80-128,80-128S208,72,208,144Z\" opacity=\"0.2\"></path><path d=\"M174,47.75a254.19,254.19,0,0,0-41.45-38.3,8,8,0,0,0-9.18,0A254.19,254.19,0,0,0,82,47.75C54.51,79.32,40,112.6,40,144a88,88,0,0,0,176,0C216,112.6,201.49,79.32,174,47.75ZM128,216a72.08,72.08,0,0,1-72-72c0-57.23,55.47-105,72-118,16.53,13,72,60.75,72,118A72.08,72.08,0,0,1,128,216Zm55.89-62.66a57.6,57.6,0,0,1-46.56,46.55A8.75,8.75,0,0,1,136,200a8,8,0,0,1-1.32-15.89c16.57-2.79,30.63-16.85,33.44-33.45a8,8,0,0,1,15.78,2.68Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">视觉材质</span><span class=\"wb-desk-menu-item-caret\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"12\" height=\"12\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M184.49,136.49l-80,80a12,12,0,0,1-17-17L159,128,87.51,56.49a12,12,0,1,1,17-17l80,80A12,12,0,0,1,184.49,136.49Z\"></path></svg></span></button>",
+          "rows": [
+            {
+              "role": "menuitemradio",
+              "label": "跟随平台",
+              "checked": "true",
+              "option": "auto"
+            },
+            {
+              "role": "menuitemradio",
+              "label": "全效果",
+              "checked": "false",
+              "option": "full"
+            },
+            {
+              "role": "menuitemradio",
+              "label": "降透明",
+              "checked": "false",
+              "option": "reduced"
+            },
+            {
+              "role": "menuitemradio",
+              "label": "极简",
+              "checked": "false",
+              "option": "minimal"
+            }
+          ],
+          "html": "<div class=\"wb-desk-menu wb-glass-lens wb-desk-menu-sub\" role=\"menu\" aria-label=\"视觉材质\" style=\"left: 8px; top: 8px; visibility: visible;\"><div class=\"wb-glass-replica\" aria-hidden=\"true\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-wb-desk-option=\"auto\" role=\"menuitemradio\" aria-checked=\"true\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"13\" height=\"13\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M232.49,80.49l-128,128a12,12,0,0,1-17,0l-56-56a12,12,0,1,1,17-17L96,183,215.51,63.51a12,12,0,0,1,17,17Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">跟随平台</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-wb-desk-option=\"full\" role=\"menuitemradio\" aria-checked=\"false\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"></span><span class=\"wb-desk-menu-item-label\">全效果</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-wb-desk-option=\"reduced\" role=\"menuitemradio\" aria-checked=\"false\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"></span><span class=\"wb-desk-menu-item-label\">降透明</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-wb-desk-option=\"minimal\" role=\"menuitemradio\" aria-checked=\"false\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"></span><span class=\"wb-desk-menu-item-label\">极简</span></button></div>"
+        }
+      },
+      "clicks": {
+        "0:新建对话": [
+          [
+            "workbenchBus.launch",
+            {
+              "typeId": "chat",
+              "reason": "command"
+            }
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "1:打开资源库": [
+          [
+            "workbenchBus.launch",
+            {
+              "typeId": "files",
+              "reason": "command"
+            }
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "2:全部应用…": [
+          [
+            "openAppsPanel"
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "9:显示桌面组件": [
+          [
+            "localStorage.setItem",
+            "desktop.workbenchDesktopWidgets",
+            "false"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:settings-changed",
+            {
+              "key": "desktop.workbenchDesktopWidgets",
+              "value": false
+            }
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "10:键盘快捷键": [
+          [
+            "onClose"
+          ],
+          [
+            "openCheatsheet",
+            {
+              "sticky": true
+            }
+          ]
+        ],
+        "11:重新查看引导": [
+          [
+            "onClose"
+          ],
+          [
+            "localStorage.removeItem",
+            "workbench.emptyDesktop.onboardingDismissed"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:empty-tour-replay",
+            null
+          ]
+        ],
+        "12:桌面设置…": [
+          [
+            "workbenchBus.launch",
+            {
+              "typeId": "settings",
+              "reason": "command"
+            }
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "wallpaper/0:薄雾雪山": [
+          [
+            "console.info",
+            "[wallpaper-diag] persist {\"source\":\"context-menu\",\"key\":\"desktop.workbenchWallpaper\",\"value\":{\"kind\":\"theme\",\"value\":\"mountain-mist\"}}"
+          ],
+          [
+            "localStorage.setItem",
+            "desktop.workbenchWallpaper",
+            "{\"kind\":\"theme\",\"value\":\"mountain-mist\"}"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:settings-changed",
+            {
+              "key": "desktop.workbenchWallpaper",
+              "value": {
+                "kind": "theme",
+                "value": "mountain-mist"
+              }
+            }
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "wallpaper/1:山间雾林": [
+          [
+            "console.info",
+            "[wallpaper-diag] persist {\"source\":\"context-menu\",\"key\":\"desktop.workbenchWallpaper\",\"value\":{\"kind\":\"theme\",\"value\":\"forest-mist\"}}"
+          ],
+          [
+            "localStorage.setItem",
+            "desktop.workbenchWallpaper",
+            "{\"kind\":\"theme\",\"value\":\"forest-mist\"}"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:settings-changed",
+            {
+              "key": "desktop.workbenchWallpaper",
+              "value": {
+                "kind": "theme",
+                "value": "forest-mist"
+              }
+            }
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "wallpaper/2:雪山静水": [
+          [
+            "console.info",
+            "[wallpaper-diag] persist {\"source\":\"context-menu\",\"key\":\"desktop.workbenchWallpaper\",\"value\":{\"kind\":\"theme\",\"value\":\"alpine-lake\"}}"
+          ],
+          [
+            "localStorage.setItem",
+            "desktop.workbenchWallpaper",
+            "{\"kind\":\"theme\",\"value\":\"alpine-lake\"}"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:settings-changed",
+            {
+              "key": "desktop.workbenchWallpaper",
+              "value": {
+                "kind": "theme",
+                "value": "alpine-lake"
+              }
+            }
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "wallpaper/3:冬日山脊": [
+          [
+            "console.info",
+            "[wallpaper-diag] persist {\"source\":\"context-menu\",\"key\":\"desktop.workbenchWallpaper\",\"value\":{\"kind\":\"theme\",\"value\":\"winter-ridge\"}}"
+          ],
+          [
+            "localStorage.setItem",
+            "desktop.workbenchWallpaper",
+            "{\"kind\":\"theme\",\"value\":\"winter-ridge\"}"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:settings-changed",
+            {
+              "key": "desktop.workbenchWallpaper",
+              "value": {
+                "kind": "theme",
+                "value": "winter-ridge"
+              }
+            }
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "wallpaper/4:极光": [
+          [
+            "console.info",
+            "[wallpaper-diag] persist {\"source\":\"context-menu\",\"key\":\"desktop.workbenchWallpaper\",\"value\":{\"kind\":\"theme\",\"value\":\"aurora\"}}"
+          ],
+          [
+            "localStorage.setItem",
+            "desktop.workbenchWallpaper",
+            "{\"kind\":\"theme\",\"value\":\"aurora\"}"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:settings-changed",
+            {
+              "key": "desktop.workbenchWallpaper",
+              "value": {
+                "kind": "theme",
+                "value": "aurora"
+              }
+            }
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "wallpaper/5:管理壁纸…": [
+          [
+            "onClose"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:open-wallpaper-manager",
+            null
+          ]
+        ],
+        "tier/0:跟随平台": [
+          [
+            "setMaterialTier",
+            "auto"
+          ],
+          [
+            "localStorage.setItem",
+            "desktop.workbenchMaterialTier",
+            "auto"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:settings-changed",
+            {
+              "key": "desktop.workbenchMaterialTier",
+              "value": "auto"
+            }
+          ],
+          [
+            "localStorage.setItem",
+            "desktop.workbenchPerformanceProfile",
+            "custom"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:settings-changed",
+            {
+              "key": "desktop.workbenchPerformanceProfile",
+              "value": "custom"
+            }
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "tier/1:全效果": [
+          [
+            "setMaterialTier",
+            "full"
+          ],
+          [
+            "localStorage.setItem",
+            "desktop.workbenchMaterialTier",
+            "full"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:settings-changed",
+            {
+              "key": "desktop.workbenchMaterialTier",
+              "value": "full"
+            }
+          ],
+          [
+            "localStorage.setItem",
+            "desktop.workbenchPerformanceProfile",
+            "custom"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:settings-changed",
+            {
+              "key": "desktop.workbenchPerformanceProfile",
+              "value": "custom"
+            }
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "tier/2:降透明": [
+          [
+            "setMaterialTier",
+            "reduced"
+          ],
+          [
+            "localStorage.setItem",
+            "desktop.workbenchMaterialTier",
+            "reduced"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:settings-changed",
+            {
+              "key": "desktop.workbenchMaterialTier",
+              "value": "reduced"
+            }
+          ],
+          [
+            "localStorage.setItem",
+            "desktop.workbenchPerformanceProfile",
+            "custom"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:settings-changed",
+            {
+              "key": "desktop.workbenchPerformanceProfile",
+              "value": "custom"
+            }
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "tier/3:极简": [
+          [
+            "setMaterialTier",
+            "minimal"
+          ],
+          [
+            "localStorage.setItem",
+            "desktop.workbenchMaterialTier",
+            "minimal"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:settings-changed",
+            {
+              "key": "desktop.workbenchMaterialTier",
+              "value": "minimal"
+            }
+          ],
+          [
+            "localStorage.setItem",
+            "desktop.workbenchPerformanceProfile",
+            "custom"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:settings-changed",
+            {
+              "key": "desktop.workbenchPerformanceProfile",
+              "value": "custom"
+            }
+          ],
+          [
+            "onClose"
+          ]
+        ]
+      },
+      "pointer": [
+        [
+          "enter wallpaper",
+          {
+            "label": "桌面壁纸",
+            "className": "wb-desk-menu wb-glass-lens wb-desk-menu-sub"
+          },
+          "true",
+          "false"
+        ],
+        [
+          "enter tier",
+          {
+            "label": "视觉材质",
+            "className": "wb-desk-menu wb-glass-lens wb-desk-menu-sub"
+          },
+          "false",
+          "true"
+        ],
+        [
+          "enter first row",
+          null,
+          "false",
+          "false"
+        ],
+        [
+          "click tier",
+          {
+            "label": "视觉材质",
+            "className": "wb-desk-menu wb-glass-lens wb-desk-menu-sub"
+          },
+          "false",
+          "true"
+        ],
+        [
+          "click tier again",
+          null,
+          "false",
+          "false"
+        ],
+        [
+          "click wallpaper",
+          {
+            "label": "桌面壁纸",
+            "className": "wb-desk-menu wb-glass-lens wb-desk-menu-sub"
+          },
+          "true",
+          "false"
+        ],
+        [
+          "enter widgets row",
+          null,
+          "false",
+          "false"
+        ],
+        [
+          "backdrop pointerdown",
+          [
+            [
+              "onClose"
+            ]
+          ]
+        ],
+        [
+          "backdrop contextmenu",
+          [
+            [
+              "onClose"
+            ]
+          ]
+        ]
+      ],
+      "keyboard": [
+        [
+          "open",
+          "menu:桌面菜单"
+        ],
+        [
+          "ArrowDown",
+          "新建对话",
+          null
+        ],
+        [
+          "ArrowDown",
+          "打开资源库",
+          null
+        ],
+        [
+          "ArrowDown",
+          "全部应用…",
+          null
+        ],
+        [
+          "ArrowDown",
+          "桌面壁纸",
+          null
+        ],
+        [
+          "ArrowDown",
+          "视觉材质",
+          null
+        ],
+        [
+          "ArrowDown",
+          "显示桌面组件",
+          null
+        ],
+        [
+          "ArrowDown",
+          "键盘快捷键",
+          null
+        ],
+        [
+          "ArrowDown",
+          "重新查看引导",
+          null
+        ],
+        [
+          "ArrowDown",
+          "桌面设置…",
+          null
+        ],
+        [
+          "ArrowDown",
+          "新建对话",
+          null
+        ],
+        [
+          "ArrowDown",
+          "打开资源库",
+          null
+        ],
+        [
+          "ArrowDown",
+          "全部应用…",
+          null
+        ],
+        [
+          "ArrowDown",
+          "桌面壁纸",
+          null
+        ],
+        [
+          "ArrowDown",
+          "视觉材质",
+          null
+        ],
+        [
+          "Home",
+          "新建对话",
+          null
+        ],
+        [
+          "End",
+          "桌面设置…",
+          null
+        ],
+        [
+          "ArrowUp",
+          "重新查看引导",
+          null
+        ],
+        [
+          "Home",
+          "新建对话",
+          null
+        ],
+        [
+          "ArrowDown",
+          "打开资源库",
+          null
+        ],
+        [
+          "ArrowDown",
+          "全部应用…",
+          null
+        ],
+        [
+          "ArrowDown",
+          "桌面壁纸",
+          null
+        ],
+        [
+          "ArrowRight",
+          "薄雾雪山",
+          "桌面壁纸"
+        ],
+        [
+          "ArrowDown",
+          "山间雾林",
+          "桌面壁纸"
+        ],
+        [
+          "End",
+          "管理壁纸…",
+          "桌面壁纸"
+        ],
+        [
+          "ArrowLeft",
+          "桌面壁纸",
+          null
+        ],
+        [
+          "ArrowDown",
+          "视觉材质",
+          null
+        ],
+        [
+          "ArrowRight",
+          "跟随平台",
+          "视觉材质"
+        ],
+        [
+          "Escape",
+          "视觉材质",
+          null
+        ],
+        [
+          "ArrowRight",
+          "跟随平台",
+          "视觉材质"
+        ],
+        [
+          "ArrowRight",
+          "跟随平台",
+          "视觉材质"
+        ],
+        [
+          "Escape",
+          "视觉材质",
+          null
+        ],
+        [
+          "Escape",
+          "视觉材质",
+          null,
+          [
+            [
+              "onClose"
+            ]
+          ]
+        ],
+        [
+          "ArrowDown",
+          "新建对话",
+          null
+        ],
+        [
+          "Tab",
+          "新建对话",
+          null,
+          [
+            [
+              "onClose"
+            ]
+          ]
+        ]
+      ]
+    },
+    "windows-custom-settings": {
+      "html": "<div class=\"wb-desk-menu-backdrop\" data-wb-desk-menu-backdrop=\"true\" aria-hidden=\"true\"></div><div class=\"wb-desk-menu wb-glass-lens\" data-wb-desk-menu=\"true\" data-phase=\"open\" role=\"menu\" aria-label=\"桌面菜单\" tabindex=\"-1\" style=\"left: 200px; top: 160px;\"><div class=\"wb-glass-replica\" aria-hidden=\"true\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M224,128A96,96,0,0,1,79.93,211.11h0L42.54,223.58a8,8,0,0,1-10.12-10.12l12.47-37.39h0A96,96,0,1,1,224,128Z\" opacity=\"0.2\"></path><path d=\"M128,24A104,104,0,0,0,36.18,176.88L24.83,210.93a16,16,0,0,0,20.24,20.24l34.05-11.35A104,104,0,1,0,128,24Zm0,192a87.87,87.87,0,0,1-44.06-11.81,8,8,0,0,0-4-1.08,7.85,7.85,0,0,0-2.53.42L40,216,52.47,178.6a8,8,0,0,0-.66-6.54A88,88,0,1,1,128,216Zm12-88a12,12,0,1,1-12-12A12,12,0,0,1,140,128Zm-44,0a12,12,0,1,1-12-12A12,12,0,0,1,96,128Zm88,0a12,12,0,1,1-12-12A12,12,0,0,1,184,128Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">新建对话</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M208,88v24H69.77a8,8,0,0,0-7.59,5.47L32,208V64a8,8,0,0,1,8-8H93.33a8,8,0,0,1,4.8,1.6L128,80h72A8,8,0,0,1,208,88Z\" opacity=\"0.2\"></path><path d=\"M245,110.64A16,16,0,0,0,232,104H216V88a16,16,0,0,0-16-16H130.67L102.94,51.2a16.14,16.14,0,0,0-9.6-3.2H40A16,16,0,0,0,24,64V208a8,8,0,0,0,8,8H211.1a8,8,0,0,0,7.59-5.47l28.49-85.47A16.05,16.05,0,0,0,245,110.64ZM93.34,64,123.2,86.4A8,8,0,0,0,128,88h72v16H69.77a16,16,0,0,0-15.18,10.94L40,158.7V64Zm112,136H43.1l26.67-80H232Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">打开资源库</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M112,80A32,32,0,1,1,80,48,32,32,0,0,1,112,80Zm64,32a32,32,0,1,0-32-32A32,32,0,0,0,176,112ZM80,144a32,32,0,1,0,32,32A32,32,0,0,0,80,144Zm96,0a32,32,0,1,0,32,32A32,32,0,0,0,176,144Z\" opacity=\"0.2\"></path><path d=\"M80,40a40,40,0,1,0,40,40A40,40,0,0,0,80,40Zm0,64a24,24,0,1,1,24-24A24,24,0,0,1,80,104Zm96,16a40,40,0,1,0-40-40A40,40,0,0,0,176,120Zm0-64a24,24,0,1,1-24,24A24,24,0,0,1,176,56ZM80,136a40,40,0,1,0,40,40A40,40,0,0,0,80,136Zm0,64a24,24,0,1,1,24-24A24,24,0,0,1,80,200Zm96-64a40,40,0,1,0,40,40A40,40,0,0,0,176,136Zm0,64a24,24,0,1,1,24-24A24,24,0,0,1,176,200Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">全部应用…</span></button><div class=\"wb-desk-menu-sep\" role=\"separator\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M224,80l-96,56L32,80l96-56Z\" opacity=\"0.2\"></path><path d=\"M230.91,172A8,8,0,0,1,228,182.91l-96,56a8,8,0,0,1-8.06,0l-96-56A8,8,0,0,1,36,169.09l92,53.65,92-53.65A8,8,0,0,1,230.91,172ZM220,121.09l-92,53.65L36,121.09A8,8,0,0,0,28,134.91l96,56a8,8,0,0,0,8.06,0l96-56A8,8,0,1,0,220,121.09ZM24,80a8,8,0,0,1,4-6.91l96-56a8,8,0,0,1,8.06,0l96,56a8,8,0,0,1,0,13.82l-96,56a8,8,0,0,1-8.06,0l-96-56A8,8,0,0,1,24,80Zm23.88,0L128,126.74,208.12,80,128,33.26Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">整理窗口</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M208,56V200a8,8,0,0,1-8,8H56a8,8,0,0,1-8-8V56a8,8,0,0,1,8-8H200A8,8,0,0,1,208,56Z\" opacity=\"0.2\"></path><path d=\"M200,40H56A16,16,0,0,0,40,56V200a16,16,0,0,0,16,16H200a16,16,0,0,0,16-16V56A16,16,0,0,0,200,40Zm0,80H136V56h64ZM120,56v64H56V56ZM56,136h64v64H56Zm144,64H136V136h64v64Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">平铺全部窗口</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M224,64v88H32V64A16,16,0,0,1,48,48H208A16,16,0,0,1,224,64Z\" opacity=\"0.2\"></path><path d=\"M208,40H48A24,24,0,0,0,24,64V176a24,24,0,0,0,24,24h72v16H96a8,8,0,0,0,0,16h64a8,8,0,0,0,0-16H136V200h72a24,24,0,0,0,24-24V64A24,24,0,0,0,208,40ZM48,56H208a8,8,0,0,1,8,8v80H40V64A8,8,0,0,1,48,56ZM208,184H48a8,8,0,0,1-8-8V160H216v16A8,8,0,0,1,208,184Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">显示桌面</span><span class=\"wb-desk-menu-item-shortcut\" aria-hidden=\"true\">Ctrl+Alt+D</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M112,56v48a8,8,0,0,1-8,8H56a8,8,0,0,1-8-8V56a8,8,0,0,1,8-8h48A8,8,0,0,1,112,56Zm88-8H152a8,8,0,0,0-8,8v48a8,8,0,0,0,8,8h48a8,8,0,0,0,8-8V56A8,8,0,0,0,200,48Zm-96,96H56a8,8,0,0,0-8,8v48a8,8,0,0,0,8,8h48a8,8,0,0,0,8-8V152A8,8,0,0,0,104,144Zm96,0H152a8,8,0,0,0-8,8v48a8,8,0,0,0,8,8h48a8,8,0,0,0,8-8V152A8,8,0,0,0,200,144Z\" opacity=\"0.2\"></path><path d=\"M200,136H152a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V152A16,16,0,0,0,200,136Zm0,64H152V152h48v48ZM104,40H56A16,16,0,0,0,40,56v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V56A16,16,0,0,0,104,40Zm0,64H56V56h48v48Zm96-64H152a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V56A16,16,0,0,0,200,40Zm0,64H152V56h48v48Zm-96,32H56a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V152A16,16,0,0,0,104,136Zm0,64H56V152h48v48Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">窗口俯瞰</span><span class=\"wb-desk-menu-item-shortcut\" aria-hidden=\"true\">Ctrl+Alt+E</span></button><div class=\"wb-desk-menu-sep\" role=\"separator\"></div><div class=\"wb-desk-menu-subwrap\"><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-wb-desk-sub=\"wallpaper\" role=\"menuitem\" aria-haspopup=\"menu\" aria-expanded=\"false\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M224,56V178.06l-39.72-39.72a8,8,0,0,0-11.31,0L147.31,164,97.66,114.34a8,8,0,0,0-11.32,0L32,168.69V56a8,8,0,0,1,8-8H216A8,8,0,0,1,224,56Z\" opacity=\"0.2\"></path><path d=\"M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,16V158.75l-26.07-26.06a16,16,0,0,0-22.63,0l-20,20-44-44a16,16,0,0,0-22.62,0L40,149.37V56ZM40,172l52-52,80,80H40Zm176,28H194.63l-36-36,20-20L216,181.38V200ZM144,100a12,12,0,1,1,12,12A12,12,0,0,1,144,100Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">桌面壁纸</span><span class=\"wb-desk-menu-item-caret\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"12\" height=\"12\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M184.49,136.49l-80,80a12,12,0,0,1-17-17L159,128,87.51,56.49a12,12,0,1,1,17-17l80,80A12,12,0,0,1,184.49,136.49Z\"></path></svg></span></button></div><div class=\"wb-desk-menu-subwrap\"><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-wb-desk-sub=\"tier\" role=\"menuitem\" aria-haspopup=\"menu\" aria-expanded=\"false\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M208,144a80,80,0,0,1-160,0c0-72,80-128,80-128S208,72,208,144Z\" opacity=\"0.2\"></path><path d=\"M174,47.75a254.19,254.19,0,0,0-41.45-38.3,8,8,0,0,0-9.18,0A254.19,254.19,0,0,0,82,47.75C54.51,79.32,40,112.6,40,144a88,88,0,0,0,176,0C216,112.6,201.49,79.32,174,47.75ZM128,216a72.08,72.08,0,0,1-72-72c0-57.23,55.47-105,72-118,16.53,13,72,60.75,72,118A72.08,72.08,0,0,1,128,216Zm55.89-62.66a57.6,57.6,0,0,1-46.56,46.55A8.75,8.75,0,0,1,136,200a8,8,0,0,1-1.32-15.89c16.57-2.79,30.63-16.85,33.44-33.45a8,8,0,0,1,15.78,2.68Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">视觉材质</span><span class=\"wb-desk-menu-item-caret\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"12\" height=\"12\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M184.49,136.49l-80,80a12,12,0,0,1-17-17L159,128,87.51,56.49a12,12,0,1,1,17-17l80,80A12,12,0,0,1,184.49,136.49Z\"></path></svg></span></button></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-desk-menu-widgets\" role=\"menuitemcheckbox\" aria-checked=\"false\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M216,48V88H40V48a8,8,0,0,1,8-8H208A8,8,0,0,1,216,48Z\" opacity=\"0.2\"></path><path d=\"M208,32H184V24a8,8,0,0,0-16,0v8H88V24a8,8,0,0,0-16,0v8H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32ZM72,48v8a8,8,0,0,0,16,0V48h80v8a8,8,0,0,0,16,0V48h24V80H48V48ZM208,208H48V96H208V208Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">显示桌面组件</span><span class=\"wb-desk-menu-item-check\" aria-hidden=\"true\"></span></button><div class=\"wb-desk-menu-sep\" role=\"separator\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-desk-menu-shortcuts\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M232,64V192a8,8,0,0,1-8,8H32a8,8,0,0,1-8-8V64a8,8,0,0,1,8-8H224A8,8,0,0,1,232,64Z\" opacity=\"0.2\"></path><path d=\"M224,48H32A16,16,0,0,0,16,64V192a16,16,0,0,0,16,16H224a16,16,0,0,0,16-16V64A16,16,0,0,0,224,48Zm0,144H32V64H224V192Zm-16-64a8,8,0,0,1-8,8H56a8,8,0,0,1,0-16H200A8,8,0,0,1,208,128Zm0-32a8,8,0,0,1-8,8H56a8,8,0,0,1,0-16H200A8,8,0,0,1,208,96ZM72,160a8,8,0,0,1-8,8H56a8,8,0,0,1,0-16h8A8,8,0,0,1,72,160Zm96,0a8,8,0,0,1-8,8H96a8,8,0,0,1,0-16h64A8,8,0,0,1,168,160Zm40,0a8,8,0,0,1-8,8h-8a8,8,0,0,1,0-16h8A8,8,0,0,1,208,160Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">键盘快捷键</span><span class=\"wb-desk-menu-item-shortcut\" aria-hidden=\"true\">?</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-desk-menu-replay-tour\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M128,32a96,96,0,1,0,96,96A96,96,0,0,0,128,32Zm16,112L80,176l32-64,64-32Z\" opacity=\"0.2\"></path><path d=\"M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216ZM172.42,72.84l-64,32a8.05,8.05,0,0,0-3.58,3.58l-32,64A8,8,0,0,0,80,184a8.1,8.1,0,0,0,3.58-.84l64-32a8.05,8.05,0,0,0,3.58-3.58l32-64a8,8,0,0,0-10.74-10.74ZM138,138,97.89,158.11,118,118l40.15-20.07Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">重新查看引导</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M230.1,108.76,198.25,90.62c-.64-1.16-1.31-2.29-2-3.41l-.12-36A104.61,104.61,0,0,0,162,32L130,49.89c-1.34,0-2.69,0-4,0L94,32A104.58,104.58,0,0,0,59.89,51.25l-.16,36c-.7,1.12-1.37,2.26-2,3.41l-31.84,18.1a99.15,99.15,0,0,0,0,38.46l31.85,18.14c.64,1.16,1.31,2.29,2,3.41l.12,36A104.61,104.61,0,0,0,94,224l32-17.87c1.34,0,2.69,0,4,0L162,224a104.58,104.58,0,0,0,34.08-19.25l.16-36c.7-1.12,1.37-2.26,2-3.41l31.84-18.1A99.15,99.15,0,0,0,230.1,108.76ZM128,168a40,40,0,1,1,40-40A40,40,0,0,1,128,168Z\" opacity=\"0.2\"></path><path d=\"M128,80a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Zm109.94-52.79a8,8,0,0,0-3.89-5.4l-29.83-17-.12-33.62a8,8,0,0,0-2.83-6.08,111.91,111.91,0,0,0-36.72-20.67,8,8,0,0,0-6.46.59L128,41.85,97.88,25a8,8,0,0,0-6.47-.6A111.92,111.92,0,0,0,54.73,45.15a8,8,0,0,0-2.83,6.07l-.15,33.65-29.83,17a8,8,0,0,0-3.89,5.4,106.47,106.47,0,0,0,0,41.56,8,8,0,0,0,3.89,5.4l29.83,17,.12,33.63a8,8,0,0,0,2.83,6.08,111.91,111.91,0,0,0,36.72,20.67,8,8,0,0,0,6.46-.59L128,214.15,158.12,231a7.91,7.91,0,0,0,3.9,1,8.09,8.09,0,0,0,2.57-.42,112.1,112.1,0,0,0,36.68-20.73,8,8,0,0,0,2.83-6.07l.15-33.65,29.83-17a8,8,0,0,0,3.89-5.4A106.47,106.47,0,0,0,237.94,107.21Zm-15,34.91-28.57,16.25a8,8,0,0,0-3,3c-.58,1-1.19,2.06-1.81,3.06a7.94,7.94,0,0,0-1.22,4.21l-.15,32.25a95.89,95.89,0,0,1-25.37,14.3L134,199.13a8,8,0,0,0-3.91-1h-.19c-1.21,0-2.43,0-3.64,0a8.1,8.1,0,0,0-4.1,1l-28.84,16.1A96,96,0,0,1,67.88,201l-.11-32.2a8,8,0,0,0-1.22-4.22c-.62-1-1.23-2-1.8-3.06a8.09,8.09,0,0,0-3-3.06l-28.6-16.29a90.49,90.49,0,0,1,0-28.26L61.67,97.63a8,8,0,0,0,3-3c.58-1,1.19-2.06,1.81-3.06a7.94,7.94,0,0,0,1.22-4.21l.15-32.25a95.89,95.89,0,0,1,25.37-14.3L122,56.87a8,8,0,0,0,4.1,1c1.21,0,2.43,0,3.64,0a8,8,0,0,0,4.1-1l28.84-16.1A96,96,0,0,1,188.12,55l.11,32.2a8,8,0,0,0,1.22,4.22c.62,1,1.23,2,1.8,3.06a8.09,8.09,0,0,0,3,3.06l28.6,16.29A90.49,90.49,0,0,1,222.9,142.12Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">桌面设置…</span></button></div>",
+      "rows": [
+        {
+          "role": "menuitem",
+          "label": "新建对话"
+        },
+        {
+          "role": "menuitem",
+          "label": "打开资源库"
+        },
+        {
+          "role": "menuitem",
+          "label": "全部应用…"
+        },
+        {
+          "separator": true
+        },
+        {
+          "role": "menuitem",
+          "label": "整理窗口"
+        },
+        {
+          "role": "menuitem",
+          "label": "平铺全部窗口"
+        },
+        {
+          "role": "menuitem",
+          "label": "显示桌面",
+          "shortcut": "Ctrl+Alt+D"
+        },
+        {
+          "role": "menuitem",
+          "label": "窗口俯瞰",
+          "shortcut": "Ctrl+Alt+E"
+        },
+        {
+          "separator": true
+        },
+        {
+          "role": "menuitem",
+          "label": "桌面壁纸",
+          "submenu": "wallpaper"
+        },
+        {
+          "role": "menuitem",
+          "label": "视觉材质",
+          "submenu": "tier"
+        },
+        {
+          "role": "menuitemcheckbox",
+          "label": "显示桌面组件",
+          "testId": "wb-desk-menu-widgets",
+          "checked": "false"
+        },
+        {
+          "separator": true
+        },
+        {
+          "role": "menuitem",
+          "label": "键盘快捷键",
+          "testId": "wb-desk-menu-shortcuts",
+          "shortcut": "?"
+        },
+        {
+          "role": "menuitem",
+          "label": "重新查看引导",
+          "testId": "wb-desk-menu-replay-tour"
+        },
+        {
+          "role": "menuitem",
+          "label": "桌面设置…"
+        }
+      ],
+      "submenus": {
+        "wallpaper": {
+          "parent": "<button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-wb-desk-sub=\"wallpaper\" role=\"menuitem\" aria-haspopup=\"menu\" aria-expanded=\"true\" data-wb-desk-active=\"true\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M224,56V178.06l-39.72-39.72a8,8,0,0,0-11.31,0L147.31,164,97.66,114.34a8,8,0,0,0-11.32,0L32,168.69V56a8,8,0,0,1,8-8H216A8,8,0,0,1,224,56Z\" opacity=\"0.2\"></path><path d=\"M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,16V158.75l-26.07-26.06a16,16,0,0,0-22.63,0l-20,20-44-44a16,16,0,0,0-22.62,0L40,149.37V56ZM40,172l52-52,80,80H40Zm176,28H194.63l-36-36,20-20L216,181.38V200ZM144,100a12,12,0,1,1,12,12A12,12,0,0,1,144,100Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">桌面壁纸</span><span class=\"wb-desk-menu-item-caret\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"12\" height=\"12\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M184.49,136.49l-80,80a12,12,0,0,1-17-17L159,128,87.51,56.49a12,12,0,1,1,17-17l80,80A12,12,0,0,1,184.49,136.49Z\"></path></svg></span></button>",
+          "rows": [
+            {
+              "role": "menuitemradio",
+              "label": "薄雾雪山",
+              "checked": "false",
+              "option": "mountain-mist"
+            },
+            {
+              "role": "menuitemradio",
+              "label": "山间雾林",
+              "checked": "false",
+              "option": "forest-mist"
+            },
+            {
+              "role": "menuitemradio",
+              "label": "雪山静水",
+              "checked": "false",
+              "option": "alpine-lake"
+            },
+            {
+              "role": "menuitemradio",
+              "label": "冬日山脊",
+              "checked": "false",
+              "option": "winter-ridge"
+            },
+            {
+              "role": "menuitemradio",
+              "label": "极光",
+              "checked": "false",
+              "option": "aurora"
+            },
+            {
+              "role": "menuitemradio",
+              "label": "樱花",
+              "checked": "true",
+              "option": "sakura"
+            },
+            {
+              "separator": true
+            },
+            {
+              "role": "menuitem",
+              "label": "管理壁纸…",
+              "testId": "wb-desk-menu-manage-wallpaper"
+            }
+          ],
+          "html": "<div class=\"wb-desk-menu wb-glass-lens wb-desk-menu-sub\" role=\"menu\" aria-label=\"桌面壁纸\" style=\"left: 8px; top: 8px; visibility: visible;\"><div class=\"wb-glass-replica\" aria-hidden=\"true\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-wb-desk-option=\"mountain-mist\" role=\"menuitemradio\" aria-checked=\"false\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"></span><span class=\"wb-desk-menu-item-label\">薄雾雪山</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-wb-desk-option=\"forest-mist\" role=\"menuitemradio\" aria-checked=\"false\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"></span><span class=\"wb-desk-menu-item-label\">山间雾林</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-wb-desk-option=\"alpine-lake\" role=\"menuitemradio\" aria-checked=\"false\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"></span><span class=\"wb-desk-menu-item-label\">雪山静水</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-wb-desk-option=\"winter-ridge\" role=\"menuitemradio\" aria-checked=\"false\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"></span><span class=\"wb-desk-menu-item-label\">冬日山脊</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-wb-desk-option=\"aurora\" role=\"menuitemradio\" aria-checked=\"false\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"></span><span class=\"wb-desk-menu-item-label\">极光</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-wb-desk-option=\"sakura\" role=\"menuitemradio\" aria-checked=\"true\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"13\" height=\"13\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M232.49,80.49l-128,128a12,12,0,0,1-17,0l-56-56a12,12,0,1,1,17-17L96,183,215.51,63.51a12,12,0,0,1,17,17Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">樱花</span></button><div class=\"wb-desk-menu-sep\" role=\"separator\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-desk-menu-manage-wallpaper\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M224,56V178.06l-39.72-39.72a8,8,0,0,0-11.31,0L147.31,164,97.66,114.34a8,8,0,0,0-11.32,0L32,168.69V56a8,8,0,0,1,8-8H216A8,8,0,0,1,224,56Z\" opacity=\"0.2\"></path><path d=\"M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,16V158.75l-26.07-26.06a16,16,0,0,0-22.63,0l-20,20-44-44a16,16,0,0,0-22.62,0L40,149.37V56ZM40,172l52-52,80,80H40Zm176,28H194.63l-36-36,20-20L216,181.38V200ZM144,100a12,12,0,1,1,12,12A12,12,0,0,1,144,100Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">管理壁纸…</span></button></div>"
+        },
+        "tier": {
+          "parent": "<button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-wb-desk-sub=\"tier\" role=\"menuitem\" aria-haspopup=\"menu\" aria-expanded=\"true\" data-wb-desk-active=\"true\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M208,144a80,80,0,0,1-160,0c0-72,80-128,80-128S208,72,208,144Z\" opacity=\"0.2\"></path><path d=\"M174,47.75a254.19,254.19,0,0,0-41.45-38.3,8,8,0,0,0-9.18,0A254.19,254.19,0,0,0,82,47.75C54.51,79.32,40,112.6,40,144a88,88,0,0,0,176,0C216,112.6,201.49,79.32,174,47.75ZM128,216a72.08,72.08,0,0,1-72-72c0-57.23,55.47-105,72-118,16.53,13,72,60.75,72,118A72.08,72.08,0,0,1,128,216Zm55.89-62.66a57.6,57.6,0,0,1-46.56,46.55A8.75,8.75,0,0,1,136,200a8,8,0,0,1-1.32-15.89c16.57-2.79,30.63-16.85,33.44-33.45a8,8,0,0,1,15.78,2.68Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">视觉材质</span><span class=\"wb-desk-menu-item-caret\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"12\" height=\"12\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M184.49,136.49l-80,80a12,12,0,0,1-17-17L159,128,87.51,56.49a12,12,0,1,1,17-17l80,80A12,12,0,0,1,184.49,136.49Z\"></path></svg></span></button>",
+          "rows": [
+            {
+              "role": "menuitemradio",
+              "label": "跟随平台",
+              "checked": "false",
+              "option": "auto"
+            },
+            {
+              "role": "menuitemradio",
+              "label": "全效果",
+              "checked": "false",
+              "option": "full"
+            },
+            {
+              "role": "menuitemradio",
+              "label": "降透明",
+              "checked": "true",
+              "option": "reduced"
+            },
+            {
+              "role": "menuitemradio",
+              "label": "极简",
+              "checked": "false",
+              "option": "minimal"
+            }
+          ],
+          "html": "<div class=\"wb-desk-menu wb-glass-lens wb-desk-menu-sub\" role=\"menu\" aria-label=\"视觉材质\" style=\"left: 8px; top: 8px; visibility: visible;\"><div class=\"wb-glass-replica\" aria-hidden=\"true\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-wb-desk-option=\"auto\" role=\"menuitemradio\" aria-checked=\"false\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"></span><span class=\"wb-desk-menu-item-label\">跟随平台</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-wb-desk-option=\"full\" role=\"menuitemradio\" aria-checked=\"false\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"></span><span class=\"wb-desk-menu-item-label\">全效果</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-wb-desk-option=\"reduced\" role=\"menuitemradio\" aria-checked=\"true\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"13\" height=\"13\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M232.49,80.49l-128,128a12,12,0,0,1-17,0l-56-56a12,12,0,1,1,17-17L96,183,215.51,63.51a12,12,0,0,1,17,17Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">降透明</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-wb-desk-option=\"minimal\" role=\"menuitemradio\" aria-checked=\"false\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"></span><span class=\"wb-desk-menu-item-label\">极简</span></button></div>"
+        }
+      },
+      "clicks": {
+        "0:新建对话": [
+          [
+            "workbenchBus.launch",
+            {
+              "typeId": "chat",
+              "reason": "command"
+            }
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "1:打开资源库": [
+          [
+            "workbenchBus.launch",
+            {
+              "typeId": "files",
+              "reason": "command"
+            }
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "2:全部应用…": [
+          [
+            "openAppsPanel"
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "3:整理窗口": [
+          [
+            "windowStore.moveWindow",
+            "<win:3>",
+            {
+              "x": 48,
+              "y": 48,
+              "w": 720,
+              "h": 520
+            }
+          ],
+          [
+            "windowStore.moveWindow",
+            "<win:1>",
+            {
+              "x": 76,
+              "y": 76,
+              "w": 640,
+              "h": 480
+            }
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "4:平铺全部窗口": [
+          [
+            "windowStore.batchSetDisplayModes",
+            [
+              {
+                "id": "<win:1>",
+                "mode": "tiled-left"
+              },
+              {
+                "id": "<win:3>",
+                "mode": "tiled-right"
+              }
+            ]
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "5:显示桌面": [
+          [
+            "onShowDesktop"
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "6:窗口俯瞰": [
+          [
+            "toggleExpose"
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "9:显示桌面组件": [
+          [
+            "localStorage.setItem",
+            "desktop.workbenchDesktopWidgets",
+            "true"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:settings-changed",
+            {
+              "key": "desktop.workbenchDesktopWidgets",
+              "value": true
+            }
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "10:键盘快捷键": [
+          [
+            "onClose"
+          ],
+          [
+            "openCheatsheet",
+            {
+              "sticky": true
+            }
+          ]
+        ],
+        "11:重新查看引导": [
+          [
+            "onClose"
+          ],
+          [
+            "localStorage.removeItem",
+            "workbench.emptyDesktop.onboardingDismissed"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:empty-tour-replay",
+            null
+          ]
+        ],
+        "12:桌面设置…": [
+          [
+            "workbenchBus.launch",
+            {
+              "typeId": "settings",
+              "reason": "command"
+            }
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "wallpaper/0:薄雾雪山": [
+          [
+            "console.info",
+            "[wallpaper-diag] persist {\"source\":\"context-menu\",\"key\":\"desktop.workbenchWallpaper\",\"value\":{\"kind\":\"theme\",\"value\":\"mountain-mist\"}}"
+          ],
+          [
+            "localStorage.setItem",
+            "desktop.workbenchWallpaper",
+            "{\"kind\":\"theme\",\"value\":\"mountain-mist\"}"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:settings-changed",
+            {
+              "key": "desktop.workbenchWallpaper",
+              "value": {
+                "kind": "theme",
+                "value": "mountain-mist"
+              }
+            }
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "wallpaper/1:山间雾林": [
+          [
+            "console.info",
+            "[wallpaper-diag] persist {\"source\":\"context-menu\",\"key\":\"desktop.workbenchWallpaper\",\"value\":{\"kind\":\"theme\",\"value\":\"forest-mist\"}}"
+          ],
+          [
+            "localStorage.setItem",
+            "desktop.workbenchWallpaper",
+            "{\"kind\":\"theme\",\"value\":\"forest-mist\"}"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:settings-changed",
+            {
+              "key": "desktop.workbenchWallpaper",
+              "value": {
+                "kind": "theme",
+                "value": "forest-mist"
+              }
+            }
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "wallpaper/2:雪山静水": [
+          [
+            "console.info",
+            "[wallpaper-diag] persist {\"source\":\"context-menu\",\"key\":\"desktop.workbenchWallpaper\",\"value\":{\"kind\":\"theme\",\"value\":\"alpine-lake\"}}"
+          ],
+          [
+            "localStorage.setItem",
+            "desktop.workbenchWallpaper",
+            "{\"kind\":\"theme\",\"value\":\"alpine-lake\"}"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:settings-changed",
+            {
+              "key": "desktop.workbenchWallpaper",
+              "value": {
+                "kind": "theme",
+                "value": "alpine-lake"
+              }
+            }
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "wallpaper/3:冬日山脊": [
+          [
+            "console.info",
+            "[wallpaper-diag] persist {\"source\":\"context-menu\",\"key\":\"desktop.workbenchWallpaper\",\"value\":{\"kind\":\"theme\",\"value\":\"winter-ridge\"}}"
+          ],
+          [
+            "localStorage.setItem",
+            "desktop.workbenchWallpaper",
+            "{\"kind\":\"theme\",\"value\":\"winter-ridge\"}"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:settings-changed",
+            {
+              "key": "desktop.workbenchWallpaper",
+              "value": {
+                "kind": "theme",
+                "value": "winter-ridge"
+              }
+            }
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "wallpaper/4:极光": [
+          [
+            "console.info",
+            "[wallpaper-diag] persist {\"source\":\"context-menu\",\"key\":\"desktop.workbenchWallpaper\",\"value\":{\"kind\":\"theme\",\"value\":\"aurora\"}}"
+          ],
+          [
+            "localStorage.setItem",
+            "desktop.workbenchWallpaper",
+            "{\"kind\":\"theme\",\"value\":\"aurora\"}"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:settings-changed",
+            {
+              "key": "desktop.workbenchWallpaper",
+              "value": {
+                "kind": "theme",
+                "value": "aurora"
+              }
+            }
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "wallpaper/5:樱花": [
+          [
+            "console.info",
+            "[wallpaper-diag] persist {\"source\":\"context-menu\",\"key\":\"desktop.workbenchWallpaper\",\"value\":{\"kind\":\"theme\",\"value\":\"sakura\"}}"
+          ],
+          [
+            "localStorage.setItem",
+            "desktop.workbenchWallpaper",
+            "{\"kind\":\"theme\",\"value\":\"sakura\"}"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:settings-changed",
+            {
+              "key": "desktop.workbenchWallpaper",
+              "value": {
+                "kind": "theme",
+                "value": "sakura"
+              }
+            }
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "wallpaper/6:管理壁纸…": [
+          [
+            "onClose"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:open-wallpaper-manager",
+            null
+          ]
+        ],
+        "tier/0:跟随平台": [
+          [
+            "setMaterialTier",
+            "auto"
+          ],
+          [
+            "localStorage.setItem",
+            "desktop.workbenchMaterialTier",
+            "auto"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:settings-changed",
+            {
+              "key": "desktop.workbenchMaterialTier",
+              "value": "auto"
+            }
+          ],
+          [
+            "localStorage.setItem",
+            "desktop.workbenchPerformanceProfile",
+            "custom"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:settings-changed",
+            {
+              "key": "desktop.workbenchPerformanceProfile",
+              "value": "custom"
+            }
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "tier/1:全效果": [
+          [
+            "setMaterialTier",
+            "full"
+          ],
+          [
+            "localStorage.setItem",
+            "desktop.workbenchMaterialTier",
+            "full"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:settings-changed",
+            {
+              "key": "desktop.workbenchMaterialTier",
+              "value": "full"
+            }
+          ],
+          [
+            "localStorage.setItem",
+            "desktop.workbenchPerformanceProfile",
+            "custom"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:settings-changed",
+            {
+              "key": "desktop.workbenchPerformanceProfile",
+              "value": "custom"
+            }
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "tier/2:降透明": [
+          [
+            "setMaterialTier",
+            "reduced"
+          ],
+          [
+            "localStorage.setItem",
+            "desktop.workbenchMaterialTier",
+            "reduced"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:settings-changed",
+            {
+              "key": "desktop.workbenchMaterialTier",
+              "value": "reduced"
+            }
+          ],
+          [
+            "localStorage.setItem",
+            "desktop.workbenchPerformanceProfile",
+            "custom"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:settings-changed",
+            {
+              "key": "desktop.workbenchPerformanceProfile",
+              "value": "custom"
+            }
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "tier/3:极简": [
+          [
+            "setMaterialTier",
+            "minimal"
+          ],
+          [
+            "localStorage.setItem",
+            "desktop.workbenchMaterialTier",
+            "minimal"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:settings-changed",
+            {
+              "key": "desktop.workbenchMaterialTier",
+              "value": "minimal"
+            }
+          ],
+          [
+            "localStorage.setItem",
+            "desktop.workbenchPerformanceProfile",
+            "custom"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:settings-changed",
+            {
+              "key": "desktop.workbenchPerformanceProfile",
+              "value": "custom"
+            }
+          ],
+          [
+            "onClose"
+          ]
+        ]
+      },
+      "pointer": [
+        [
+          "enter wallpaper",
+          {
+            "label": "桌面壁纸",
+            "className": "wb-desk-menu wb-glass-lens wb-desk-menu-sub"
+          },
+          "true",
+          "false"
+        ],
+        [
+          "enter tier",
+          {
+            "label": "视觉材质",
+            "className": "wb-desk-menu wb-glass-lens wb-desk-menu-sub"
+          },
+          "false",
+          "true"
+        ],
+        [
+          "enter first row",
+          null,
+          "false",
+          "false"
+        ],
+        [
+          "click tier",
+          {
+            "label": "视觉材质",
+            "className": "wb-desk-menu wb-glass-lens wb-desk-menu-sub"
+          },
+          "false",
+          "true"
+        ],
+        [
+          "click tier again",
+          null,
+          "false",
+          "false"
+        ],
+        [
+          "click wallpaper",
+          {
+            "label": "桌面壁纸",
+            "className": "wb-desk-menu wb-glass-lens wb-desk-menu-sub"
+          },
+          "true",
+          "false"
+        ],
+        [
+          "enter widgets row",
+          null,
+          "false",
+          "false"
+        ],
+        [
+          "backdrop pointerdown",
+          [
+            [
+              "onClose"
+            ]
+          ]
+        ],
+        [
+          "backdrop contextmenu",
+          [
+            [
+              "onClose"
+            ]
+          ]
+        ]
+      ],
+      "keyboard": [
+        [
+          "open",
+          "menu:桌面菜单"
+        ],
+        [
+          "ArrowDown",
+          "新建对话",
+          null
+        ],
+        [
+          "ArrowDown",
+          "打开资源库",
+          null
+        ],
+        [
+          "ArrowDown",
+          "全部应用…",
+          null
+        ],
+        [
+          "ArrowDown",
+          "整理窗口",
+          null
+        ],
+        [
+          "ArrowDown",
+          "平铺全部窗口",
+          null
+        ],
+        [
+          "ArrowDown",
+          "显示桌面",
+          null
+        ],
+        [
+          "ArrowDown",
+          "窗口俯瞰",
+          null
+        ],
+        [
+          "ArrowDown",
+          "桌面壁纸",
+          null
+        ],
+        [
+          "ArrowDown",
+          "视觉材质",
+          null
+        ],
+        [
+          "ArrowDown",
+          "显示桌面组件",
+          null
+        ],
+        [
+          "ArrowDown",
+          "键盘快捷键",
+          null
+        ],
+        [
+          "ArrowDown",
+          "重新查看引导",
+          null
+        ],
+        [
+          "ArrowDown",
+          "桌面设置…",
+          null
+        ],
+        [
+          "ArrowDown",
+          "新建对话",
+          null
+        ],
+        [
+          "Home",
+          "新建对话",
+          null
+        ],
+        [
+          "End",
+          "桌面设置…",
+          null
+        ],
+        [
+          "ArrowUp",
+          "重新查看引导",
+          null
+        ],
+        [
+          "Home",
+          "新建对话",
+          null
+        ],
+        [
+          "ArrowDown",
+          "打开资源库",
+          null
+        ],
+        [
+          "ArrowDown",
+          "全部应用…",
+          null
+        ],
+        [
+          "ArrowDown",
+          "整理窗口",
+          null
+        ],
+        [
+          "ArrowDown",
+          "平铺全部窗口",
+          null
+        ],
+        [
+          "ArrowDown",
+          "显示桌面",
+          null
+        ],
+        [
+          "ArrowDown",
+          "窗口俯瞰",
+          null
+        ],
+        [
+          "ArrowDown",
+          "桌面壁纸",
+          null
+        ],
+        [
+          "ArrowRight",
+          "薄雾雪山",
+          "桌面壁纸"
+        ],
+        [
+          "ArrowDown",
+          "山间雾林",
+          "桌面壁纸"
+        ],
+        [
+          "End",
+          "管理壁纸…",
+          "桌面壁纸"
+        ],
+        [
+          "ArrowLeft",
+          "桌面壁纸",
+          null
+        ],
+        [
+          "ArrowDown",
+          "视觉材质",
+          null
+        ],
+        [
+          "ArrowRight",
+          "跟随平台",
+          "视觉材质"
+        ],
+        [
+          "Escape",
+          "视觉材质",
+          null
+        ],
+        [
+          "ArrowRight",
+          "跟随平台",
+          "视觉材质"
+        ],
+        [
+          "ArrowRight",
+          "跟随平台",
+          "视觉材质"
+        ],
+        [
+          "Escape",
+          "视觉材质",
+          null
+        ],
+        [
+          "Escape",
+          "视觉材质",
+          null,
+          [
+            [
+              "onClose"
+            ]
+          ]
+        ],
+        [
+          "ArrowDown",
+          "新建对话",
+          null
+        ],
+        [
+          "Tab",
+          "新建对话",
+          null,
+          [
+            [
+              "onClose"
+            ]
+          ]
+        ]
+      ]
+    },
+    "all-minimized-image": {
+      "html": "<div class=\"wb-desk-menu-backdrop\" data-wb-desk-menu-backdrop=\"true\" aria-hidden=\"true\"></div><div class=\"wb-desk-menu wb-glass-lens\" data-wb-desk-menu=\"true\" data-phase=\"open\" role=\"menu\" aria-label=\"桌面菜单\" tabindex=\"-1\" style=\"left: 200px; top: 160px;\"><div class=\"wb-glass-replica\" aria-hidden=\"true\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M224,128A96,96,0,0,1,79.93,211.11h0L42.54,223.58a8,8,0,0,1-10.12-10.12l12.47-37.39h0A96,96,0,1,1,224,128Z\" opacity=\"0.2\"></path><path d=\"M128,24A104,104,0,0,0,36.18,176.88L24.83,210.93a16,16,0,0,0,20.24,20.24l34.05-11.35A104,104,0,1,0,128,24Zm0,192a87.87,87.87,0,0,1-44.06-11.81,8,8,0,0,0-4-1.08,7.85,7.85,0,0,0-2.53.42L40,216,52.47,178.6a8,8,0,0,0-.66-6.54A88,88,0,1,1,128,216Zm12-88a12,12,0,1,1-12-12A12,12,0,0,1,140,128Zm-44,0a12,12,0,1,1-12-12A12,12,0,0,1,96,128Zm88,0a12,12,0,1,1-12-12A12,12,0,0,1,184,128Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">新建对话</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M208,88v24H69.77a8,8,0,0,0-7.59,5.47L32,208V64a8,8,0,0,1,8-8H93.33a8,8,0,0,1,4.8,1.6L128,80h72A8,8,0,0,1,208,88Z\" opacity=\"0.2\"></path><path d=\"M245,110.64A16,16,0,0,0,232,104H216V88a16,16,0,0,0-16-16H130.67L102.94,51.2a16.14,16.14,0,0,0-9.6-3.2H40A16,16,0,0,0,24,64V208a8,8,0,0,0,8,8H211.1a8,8,0,0,0,7.59-5.47l28.49-85.47A16.05,16.05,0,0,0,245,110.64ZM93.34,64,123.2,86.4A8,8,0,0,0,128,88h72v16H69.77a16,16,0,0,0-15.18,10.94L40,158.7V64Zm112,136H43.1l26.67-80H232Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">打开资源库</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M112,80A32,32,0,1,1,80,48,32,32,0,0,1,112,80Zm64,32a32,32,0,1,0-32-32A32,32,0,0,0,176,112ZM80,144a32,32,0,1,0,32,32A32,32,0,0,0,80,144Zm96,0a32,32,0,1,0,32,32A32,32,0,0,0,176,144Z\" opacity=\"0.2\"></path><path d=\"M80,40a40,40,0,1,0,40,40A40,40,0,0,0,80,40Zm0,64a24,24,0,1,1,24-24A24,24,0,0,1,80,104Zm96,16a40,40,0,1,0-40-40A40,40,0,0,0,176,120Zm0-64a24,24,0,1,1-24,24A24,24,0,0,1,176,56ZM80,136a40,40,0,1,0,40,40A40,40,0,0,0,80,136Zm0,64a24,24,0,1,1,24-24A24,24,0,0,1,80,200Zm96-64a40,40,0,1,0,40,40A40,40,0,0,0,176,136Zm0,64a24,24,0,1,1,24-24A24,24,0,0,1,176,200Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">全部应用…</span></button><div class=\"wb-desk-menu-sep\" role=\"separator\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" role=\"menuitem\" disabled=\"\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M224,80l-96,56L32,80l96-56Z\" opacity=\"0.2\"></path><path d=\"M230.91,172A8,8,0,0,1,228,182.91l-96,56a8,8,0,0,1-8.06,0l-96-56A8,8,0,0,1,36,169.09l92,53.65,92-53.65A8,8,0,0,1,230.91,172ZM220,121.09l-92,53.65L36,121.09A8,8,0,0,0,28,134.91l96,56a8,8,0,0,0,8.06,0l96-56A8,8,0,1,0,220,121.09ZM24,80a8,8,0,0,1,4-6.91l96-56a8,8,0,0,1,8.06,0l96,56a8,8,0,0,1,0,13.82l-96,56a8,8,0,0,1-8.06,0l-96-56A8,8,0,0,1,24,80Zm23.88,0L128,126.74,208.12,80,128,33.26Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">整理窗口</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" role=\"menuitem\" disabled=\"\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M208,56V200a8,8,0,0,1-8,8H56a8,8,0,0,1-8-8V56a8,8,0,0,1,8-8H200A8,8,0,0,1,208,56Z\" opacity=\"0.2\"></path><path d=\"M200,40H56A16,16,0,0,0,40,56V200a16,16,0,0,0,16,16H200a16,16,0,0,0,16-16V56A16,16,0,0,0,200,40Zm0,80H136V56h64ZM120,56v64H56V56ZM56,136h64v64H56Zm144,64H136V136h64v64Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">平铺全部窗口</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M224,64v88H32V64A16,16,0,0,1,48,48H208A16,16,0,0,1,224,64Z\" opacity=\"0.2\"></path><path d=\"M208,40H48A24,24,0,0,0,24,64V176a24,24,0,0,0,24,24h72v16H96a8,8,0,0,0,0,16h64a8,8,0,0,0,0-16H136V200h72a24,24,0,0,0,24-24V64A24,24,0,0,0,208,40ZM48,56H208a8,8,0,0,1,8,8v80H40V64A8,8,0,0,1,48,56ZM208,184H48a8,8,0,0,1-8-8V160H216v16A8,8,0,0,1,208,184Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">恢复窗口</span><span class=\"wb-desk-menu-item-shortcut\" aria-hidden=\"true\">Ctrl+Alt+D</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M112,56v48a8,8,0,0,1-8,8H56a8,8,0,0,1-8-8V56a8,8,0,0,1,8-8h48A8,8,0,0,1,112,56Zm88-8H152a8,8,0,0,0-8,8v48a8,8,0,0,0,8,8h48a8,8,0,0,0,8-8V56A8,8,0,0,0,200,48Zm-96,96H56a8,8,0,0,0-8,8v48a8,8,0,0,0,8,8h48a8,8,0,0,0,8-8V152A8,8,0,0,0,104,144Zm96,0H152a8,8,0,0,0-8,8v48a8,8,0,0,0,8,8h48a8,8,0,0,0,8-8V152A8,8,0,0,0,200,144Z\" opacity=\"0.2\"></path><path d=\"M200,136H152a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V152A16,16,0,0,0,200,136Zm0,64H152V152h48v48ZM104,40H56A16,16,0,0,0,40,56v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V56A16,16,0,0,0,104,40Zm0,64H56V56h48v48Zm96-64H152a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V56A16,16,0,0,0,200,40Zm0,64H152V56h48v48Zm-96,32H56a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V152A16,16,0,0,0,104,136Zm0,64H56V152h48v48Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">窗口俯瞰</span><span class=\"wb-desk-menu-item-shortcut\" aria-hidden=\"true\">Ctrl+Alt+E</span></button><div class=\"wb-desk-menu-sep\" role=\"separator\"></div><div class=\"wb-desk-menu-subwrap\"><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-wb-desk-sub=\"wallpaper\" role=\"menuitem\" aria-haspopup=\"menu\" aria-expanded=\"false\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M224,56V178.06l-39.72-39.72a8,8,0,0,0-11.31,0L147.31,164,97.66,114.34a8,8,0,0,0-11.32,0L32,168.69V56a8,8,0,0,1,8-8H216A8,8,0,0,1,224,56Z\" opacity=\"0.2\"></path><path d=\"M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,16V158.75l-26.07-26.06a16,16,0,0,0-22.63,0l-20,20-44-44a16,16,0,0,0-22.62,0L40,149.37V56ZM40,172l52-52,80,80H40Zm176,28H194.63l-36-36,20-20L216,181.38V200ZM144,100a12,12,0,1,1,12,12A12,12,0,0,1,144,100Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">桌面壁纸</span><span class=\"wb-desk-menu-item-caret\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"12\" height=\"12\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M184.49,136.49l-80,80a12,12,0,0,1-17-17L159,128,87.51,56.49a12,12,0,1,1,17-17l80,80A12,12,0,0,1,184.49,136.49Z\"></path></svg></span></button></div><div class=\"wb-desk-menu-subwrap\"><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-wb-desk-sub=\"tier\" role=\"menuitem\" aria-haspopup=\"menu\" aria-expanded=\"false\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M208,144a80,80,0,0,1-160,0c0-72,80-128,80-128S208,72,208,144Z\" opacity=\"0.2\"></path><path d=\"M174,47.75a254.19,254.19,0,0,0-41.45-38.3,8,8,0,0,0-9.18,0A254.19,254.19,0,0,0,82,47.75C54.51,79.32,40,112.6,40,144a88,88,0,0,0,176,0C216,112.6,201.49,79.32,174,47.75ZM128,216a72.08,72.08,0,0,1-72-72c0-57.23,55.47-105,72-118,16.53,13,72,60.75,72,118A72.08,72.08,0,0,1,128,216Zm55.89-62.66a57.6,57.6,0,0,1-46.56,46.55A8.75,8.75,0,0,1,136,200a8,8,0,0,1-1.32-15.89c16.57-2.79,30.63-16.85,33.44-33.45a8,8,0,0,1,15.78,2.68Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">视觉材质</span><span class=\"wb-desk-menu-item-caret\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"12\" height=\"12\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M184.49,136.49l-80,80a12,12,0,0,1-17-17L159,128,87.51,56.49a12,12,0,1,1,17-17l80,80A12,12,0,0,1,184.49,136.49Z\"></path></svg></span></button></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-desk-menu-widgets\" role=\"menuitemcheckbox\" aria-checked=\"true\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M216,48V88H40V48a8,8,0,0,1,8-8H208A8,8,0,0,1,216,48Z\" opacity=\"0.2\"></path><path d=\"M208,32H184V24a8,8,0,0,0-16,0v8H88V24a8,8,0,0,0-16,0v8H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32ZM72,48v8a8,8,0,0,0,16,0V48h80v8a8,8,0,0,0,16,0V48h24V80H48V48ZM208,208H48V96H208V208Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">显示桌面组件</span><span class=\"wb-desk-menu-item-check\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"13\" height=\"13\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M232.49,80.49l-128,128a12,12,0,0,1-17,0l-56-56a12,12,0,1,1,17-17L96,183,215.51,63.51a12,12,0,0,1,17,17Z\"></path></svg></span></button><div class=\"wb-desk-menu-sep\" role=\"separator\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-desk-menu-shortcuts\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M232,64V192a8,8,0,0,1-8,8H32a8,8,0,0,1-8-8V64a8,8,0,0,1,8-8H224A8,8,0,0,1,232,64Z\" opacity=\"0.2\"></path><path d=\"M224,48H32A16,16,0,0,0,16,64V192a16,16,0,0,0,16,16H224a16,16,0,0,0,16-16V64A16,16,0,0,0,224,48Zm0,144H32V64H224V192Zm-16-64a8,8,0,0,1-8,8H56a8,8,0,0,1,0-16H200A8,8,0,0,1,208,128Zm0-32a8,8,0,0,1-8,8H56a8,8,0,0,1,0-16H200A8,8,0,0,1,208,96ZM72,160a8,8,0,0,1-8,8H56a8,8,0,0,1,0-16h8A8,8,0,0,1,72,160Zm96,0a8,8,0,0,1-8,8H96a8,8,0,0,1,0-16h64A8,8,0,0,1,168,160Zm40,0a8,8,0,0,1-8,8h-8a8,8,0,0,1,0-16h8A8,8,0,0,1,208,160Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">键盘快捷键</span><span class=\"wb-desk-menu-item-shortcut\" aria-hidden=\"true\">?</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-desk-menu-replay-tour\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M128,32a96,96,0,1,0,96,96A96,96,0,0,0,128,32Zm16,112L80,176l32-64,64-32Z\" opacity=\"0.2\"></path><path d=\"M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216ZM172.42,72.84l-64,32a8.05,8.05,0,0,0-3.58,3.58l-32,64A8,8,0,0,0,80,184a8.1,8.1,0,0,0,3.58-.84l64-32a8.05,8.05,0,0,0,3.58-3.58l32-64a8,8,0,0,0-10.74-10.74ZM138,138,97.89,158.11,118,118l40.15-20.07Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">重新查看引导</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M230.1,108.76,198.25,90.62c-.64-1.16-1.31-2.29-2-3.41l-.12-36A104.61,104.61,0,0,0,162,32L130,49.89c-1.34,0-2.69,0-4,0L94,32A104.58,104.58,0,0,0,59.89,51.25l-.16,36c-.7,1.12-1.37,2.26-2,3.41l-31.84,18.1a99.15,99.15,0,0,0,0,38.46l31.85,18.14c.64,1.16,1.31,2.29,2,3.41l.12,36A104.61,104.61,0,0,0,94,224l32-17.87c1.34,0,2.69,0,4,0L162,224a104.58,104.58,0,0,0,34.08-19.25l.16-36c.7-1.12,1.37-2.26,2-3.41l31.84-18.1A99.15,99.15,0,0,0,230.1,108.76ZM128,168a40,40,0,1,1,40-40A40,40,0,0,1,128,168Z\" opacity=\"0.2\"></path><path d=\"M128,80a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Zm109.94-52.79a8,8,0,0,0-3.89-5.4l-29.83-17-.12-33.62a8,8,0,0,0-2.83-6.08,111.91,111.91,0,0,0-36.72-20.67,8,8,0,0,0-6.46.59L128,41.85,97.88,25a8,8,0,0,0-6.47-.6A111.92,111.92,0,0,0,54.73,45.15a8,8,0,0,0-2.83,6.07l-.15,33.65-29.83,17a8,8,0,0,0-3.89,5.4,106.47,106.47,0,0,0,0,41.56,8,8,0,0,0,3.89,5.4l29.83,17,.12,33.63a8,8,0,0,0,2.83,6.08,111.91,111.91,0,0,0,36.72,20.67,8,8,0,0,0,6.46-.59L128,214.15,158.12,231a7.91,7.91,0,0,0,3.9,1,8.09,8.09,0,0,0,2.57-.42,112.1,112.1,0,0,0,36.68-20.73,8,8,0,0,0,2.83-6.07l.15-33.65,29.83-17a8,8,0,0,0,3.89-5.4A106.47,106.47,0,0,0,237.94,107.21Zm-15,34.91-28.57,16.25a8,8,0,0,0-3,3c-.58,1-1.19,2.06-1.81,3.06a7.94,7.94,0,0,0-1.22,4.21l-.15,32.25a95.89,95.89,0,0,1-25.37,14.3L134,199.13a8,8,0,0,0-3.91-1h-.19c-1.21,0-2.43,0-3.64,0a8.1,8.1,0,0,0-4.1,1l-28.84,16.1A96,96,0,0,1,67.88,201l-.11-32.2a8,8,0,0,0-1.22-4.22c-.62-1-1.23-2-1.8-3.06a8.09,8.09,0,0,0-3-3.06l-28.6-16.29a90.49,90.49,0,0,1,0-28.26L61.67,97.63a8,8,0,0,0,3-3c.58-1,1.19-2.06,1.81-3.06a7.94,7.94,0,0,0,1.22-4.21l.15-32.25a95.89,95.89,0,0,1,25.37-14.3L122,56.87a8,8,0,0,0,4.1,1c1.21,0,2.43,0,3.64,0a8,8,0,0,0,4.1-1l28.84-16.1A96,96,0,0,1,188.12,55l.11,32.2a8,8,0,0,0,1.22,4.22c.62,1,1.23,2,1.8,3.06a8.09,8.09,0,0,0,3,3.06l28.6,16.29A90.49,90.49,0,0,1,222.9,142.12Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">桌面设置…</span></button></div>",
+      "rows": [
+        {
+          "role": "menuitem",
+          "label": "新建对话"
+        },
+        {
+          "role": "menuitem",
+          "label": "打开资源库"
+        },
+        {
+          "role": "menuitem",
+          "label": "全部应用…"
+        },
+        {
+          "separator": true
+        },
+        {
+          "role": "menuitem",
+          "label": "整理窗口",
+          "disabled": true
+        },
+        {
+          "role": "menuitem",
+          "label": "平铺全部窗口",
+          "disabled": true
+        },
+        {
+          "role": "menuitem",
+          "label": "恢复窗口",
+          "shortcut": "Ctrl+Alt+D"
+        },
+        {
+          "role": "menuitem",
+          "label": "窗口俯瞰",
+          "shortcut": "Ctrl+Alt+E"
+        },
+        {
+          "separator": true
+        },
+        {
+          "role": "menuitem",
+          "label": "桌面壁纸",
+          "submenu": "wallpaper"
+        },
+        {
+          "role": "menuitem",
+          "label": "视觉材质",
+          "submenu": "tier"
+        },
+        {
+          "role": "menuitemcheckbox",
+          "label": "显示桌面组件",
+          "testId": "wb-desk-menu-widgets",
+          "checked": "true"
+        },
+        {
+          "separator": true
+        },
+        {
+          "role": "menuitem",
+          "label": "键盘快捷键",
+          "testId": "wb-desk-menu-shortcuts",
+          "shortcut": "?"
+        },
+        {
+          "role": "menuitem",
+          "label": "重新查看引导",
+          "testId": "wb-desk-menu-replay-tour"
+        },
+        {
+          "role": "menuitem",
+          "label": "桌面设置…"
+        }
+      ],
+      "submenus": {
+        "wallpaper": {
+          "parent": "<button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-wb-desk-sub=\"wallpaper\" role=\"menuitem\" aria-haspopup=\"menu\" aria-expanded=\"true\" data-wb-desk-active=\"true\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M224,56V178.06l-39.72-39.72a8,8,0,0,0-11.31,0L147.31,164,97.66,114.34a8,8,0,0,0-11.32,0L32,168.69V56a8,8,0,0,1,8-8H216A8,8,0,0,1,224,56Z\" opacity=\"0.2\"></path><path d=\"M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,16V158.75l-26.07-26.06a16,16,0,0,0-22.63,0l-20,20-44-44a16,16,0,0,0-22.62,0L40,149.37V56ZM40,172l52-52,80,80H40Zm176,28H194.63l-36-36,20-20L216,181.38V200ZM144,100a12,12,0,1,1,12,12A12,12,0,0,1,144,100Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">桌面壁纸</span><span class=\"wb-desk-menu-item-caret\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"12\" height=\"12\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M184.49,136.49l-80,80a12,12,0,0,1-17-17L159,128,87.51,56.49a12,12,0,1,1,17-17l80,80A12,12,0,0,1,184.49,136.49Z\"></path></svg></span></button>",
+          "rows": [
+            {
+              "role": "menuitemradio",
+              "label": "自定义图片",
+              "checked": "true",
+              "option": "__custom-image__"
+            },
+            {
+              "role": "menuitemradio",
+              "label": "薄雾雪山",
+              "checked": "false",
+              "option": "mountain-mist"
+            },
+            {
+              "role": "menuitemradio",
+              "label": "山间雾林",
+              "checked": "false",
+              "option": "forest-mist"
+            },
+            {
+              "role": "menuitemradio",
+              "label": "雪山静水",
+              "checked": "false",
+              "option": "alpine-lake"
+            },
+            {
+              "role": "menuitemradio",
+              "label": "冬日山脊",
+              "checked": "false",
+              "option": "winter-ridge"
+            },
+            {
+              "role": "menuitemradio",
+              "label": "极光",
+              "checked": "false",
+              "option": "aurora"
+            },
+            {
+              "separator": true
+            },
+            {
+              "role": "menuitem",
+              "label": "管理壁纸…",
+              "testId": "wb-desk-menu-manage-wallpaper"
+            }
+          ],
+          "html": "<div class=\"wb-desk-menu wb-glass-lens wb-desk-menu-sub\" role=\"menu\" aria-label=\"桌面壁纸\" style=\"left: 8px; top: 8px; visibility: visible;\"><div class=\"wb-glass-replica\" aria-hidden=\"true\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-wb-desk-option=\"__custom-image__\" role=\"menuitemradio\" aria-checked=\"true\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"13\" height=\"13\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M232.49,80.49l-128,128a12,12,0,0,1-17,0l-56-56a12,12,0,1,1,17-17L96,183,215.51,63.51a12,12,0,0,1,17,17Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">自定义图片</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-wb-desk-option=\"mountain-mist\" role=\"menuitemradio\" aria-checked=\"false\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"></span><span class=\"wb-desk-menu-item-label\">薄雾雪山</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-wb-desk-option=\"forest-mist\" role=\"menuitemradio\" aria-checked=\"false\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"></span><span class=\"wb-desk-menu-item-label\">山间雾林</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-wb-desk-option=\"alpine-lake\" role=\"menuitemradio\" aria-checked=\"false\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"></span><span class=\"wb-desk-menu-item-label\">雪山静水</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-wb-desk-option=\"winter-ridge\" role=\"menuitemradio\" aria-checked=\"false\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"></span><span class=\"wb-desk-menu-item-label\">冬日山脊</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-wb-desk-option=\"aurora\" role=\"menuitemradio\" aria-checked=\"false\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"></span><span class=\"wb-desk-menu-item-label\">极光</span></button><div class=\"wb-desk-menu-sep\" role=\"separator\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-desk-menu-manage-wallpaper\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M224,56V178.06l-39.72-39.72a8,8,0,0,0-11.31,0L147.31,164,97.66,114.34a8,8,0,0,0-11.32,0L32,168.69V56a8,8,0,0,1,8-8H216A8,8,0,0,1,224,56Z\" opacity=\"0.2\"></path><path d=\"M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,16V158.75l-26.07-26.06a16,16,0,0,0-22.63,0l-20,20-44-44a16,16,0,0,0-22.62,0L40,149.37V56ZM40,172l52-52,80,80H40Zm176,28H194.63l-36-36,20-20L216,181.38V200ZM144,100a12,12,0,1,1,12,12A12,12,0,0,1,144,100Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">管理壁纸…</span></button></div>"
+        },
+        "tier": {
+          "parent": "<button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-wb-desk-sub=\"tier\" role=\"menuitem\" aria-haspopup=\"menu\" aria-expanded=\"true\" data-wb-desk-active=\"true\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M208,144a80,80,0,0,1-160,0c0-72,80-128,80-128S208,72,208,144Z\" opacity=\"0.2\"></path><path d=\"M174,47.75a254.19,254.19,0,0,0-41.45-38.3,8,8,0,0,0-9.18,0A254.19,254.19,0,0,0,82,47.75C54.51,79.32,40,112.6,40,144a88,88,0,0,0,176,0C216,112.6,201.49,79.32,174,47.75ZM128,216a72.08,72.08,0,0,1-72-72c0-57.23,55.47-105,72-118,16.53,13,72,60.75,72,118A72.08,72.08,0,0,1,128,216Zm55.89-62.66a57.6,57.6,0,0,1-46.56,46.55A8.75,8.75,0,0,1,136,200a8,8,0,0,1-1.32-15.89c16.57-2.79,30.63-16.85,33.44-33.45a8,8,0,0,1,15.78,2.68Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">视觉材质</span><span class=\"wb-desk-menu-item-caret\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"12\" height=\"12\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M184.49,136.49l-80,80a12,12,0,0,1-17-17L159,128,87.51,56.49a12,12,0,1,1,17-17l80,80A12,12,0,0,1,184.49,136.49Z\"></path></svg></span></button>",
+          "rows": [
+            {
+              "role": "menuitemradio",
+              "label": "跟随平台",
+              "checked": "false",
+              "option": "auto"
+            },
+            {
+              "role": "menuitemradio",
+              "label": "全效果",
+              "checked": "true",
+              "option": "full"
+            },
+            {
+              "role": "menuitemradio",
+              "label": "降透明",
+              "checked": "false",
+              "option": "reduced"
+            },
+            {
+              "role": "menuitemradio",
+              "label": "极简",
+              "checked": "false",
+              "option": "minimal"
+            }
+          ],
+          "html": "<div class=\"wb-desk-menu wb-glass-lens wb-desk-menu-sub\" role=\"menu\" aria-label=\"视觉材质\" style=\"left: 8px; top: 8px; visibility: visible;\"><div class=\"wb-glass-replica\" aria-hidden=\"true\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-wb-desk-option=\"auto\" role=\"menuitemradio\" aria-checked=\"false\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"></span><span class=\"wb-desk-menu-item-label\">跟随平台</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-wb-desk-option=\"full\" role=\"menuitemradio\" aria-checked=\"true\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"13\" height=\"13\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M232.49,80.49l-128,128a12,12,0,0,1-17,0l-56-56a12,12,0,1,1,17-17L96,183,215.51,63.51a12,12,0,0,1,17,17Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">全效果</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-wb-desk-option=\"reduced\" role=\"menuitemradio\" aria-checked=\"false\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"></span><span class=\"wb-desk-menu-item-label\">降透明</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-wb-desk-option=\"minimal\" role=\"menuitemradio\" aria-checked=\"false\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"></span><span class=\"wb-desk-menu-item-label\">极简</span></button></div>"
+        }
+      },
+      "clicks": {
+        "0:新建对话": [
+          [
+            "workbenchBus.launch",
+            {
+              "typeId": "chat",
+              "reason": "command"
+            }
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "1:打开资源库": [
+          [
+            "workbenchBus.launch",
+            {
+              "typeId": "files",
+              "reason": "command"
+            }
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "2:全部应用…": [
+          [
+            "openAppsPanel"
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "5:恢复窗口": [
+          [
+            "onShowDesktop"
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "6:窗口俯瞰": [
+          [
+            "toggleExpose"
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "9:显示桌面组件": [
+          [
+            "localStorage.setItem",
+            "desktop.workbenchDesktopWidgets",
+            "false"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:settings-changed",
+            {
+              "key": "desktop.workbenchDesktopWidgets",
+              "value": false
+            }
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "10:键盘快捷键": [
+          [
+            "onClose"
+          ],
+          [
+            "openCheatsheet",
+            {
+              "sticky": true
+            }
+          ]
+        ],
+        "11:重新查看引导": [
+          [
+            "onClose"
+          ],
+          [
+            "localStorage.removeItem",
+            "workbench.emptyDesktop.onboardingDismissed"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:empty-tour-replay",
+            null
+          ]
+        ],
+        "12:桌面设置…": [
+          [
+            "workbenchBus.launch",
+            {
+              "typeId": "settings",
+              "reason": "command"
+            }
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "wallpaper/0:自定义图片": [
+          [
+            "onClose"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:open-wallpaper-manager",
+            null
+          ]
+        ],
+        "wallpaper/1:薄雾雪山": [
+          [
+            "console.info",
+            "[wallpaper-diag] persist {\"source\":\"context-menu\",\"key\":\"desktop.workbenchWallpaper\",\"value\":{\"kind\":\"theme\",\"value\":\"mountain-mist\"}}"
+          ],
+          [
+            "localStorage.setItem",
+            "desktop.workbenchWallpaper",
+            "{\"kind\":\"theme\",\"value\":\"mountain-mist\"}"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:settings-changed",
+            {
+              "key": "desktop.workbenchWallpaper",
+              "value": {
+                "kind": "theme",
+                "value": "mountain-mist"
+              }
+            }
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "wallpaper/2:山间雾林": [
+          [
+            "console.info",
+            "[wallpaper-diag] persist {\"source\":\"context-menu\",\"key\":\"desktop.workbenchWallpaper\",\"value\":{\"kind\":\"theme\",\"value\":\"forest-mist\"}}"
+          ],
+          [
+            "localStorage.setItem",
+            "desktop.workbenchWallpaper",
+            "{\"kind\":\"theme\",\"value\":\"forest-mist\"}"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:settings-changed",
+            {
+              "key": "desktop.workbenchWallpaper",
+              "value": {
+                "kind": "theme",
+                "value": "forest-mist"
+              }
+            }
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "wallpaper/3:雪山静水": [
+          [
+            "console.info",
+            "[wallpaper-diag] persist {\"source\":\"context-menu\",\"key\":\"desktop.workbenchWallpaper\",\"value\":{\"kind\":\"theme\",\"value\":\"alpine-lake\"}}"
+          ],
+          [
+            "localStorage.setItem",
+            "desktop.workbenchWallpaper",
+            "{\"kind\":\"theme\",\"value\":\"alpine-lake\"}"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:settings-changed",
+            {
+              "key": "desktop.workbenchWallpaper",
+              "value": {
+                "kind": "theme",
+                "value": "alpine-lake"
+              }
+            }
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "wallpaper/4:冬日山脊": [
+          [
+            "console.info",
+            "[wallpaper-diag] persist {\"source\":\"context-menu\",\"key\":\"desktop.workbenchWallpaper\",\"value\":{\"kind\":\"theme\",\"value\":\"winter-ridge\"}}"
+          ],
+          [
+            "localStorage.setItem",
+            "desktop.workbenchWallpaper",
+            "{\"kind\":\"theme\",\"value\":\"winter-ridge\"}"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:settings-changed",
+            {
+              "key": "desktop.workbenchWallpaper",
+              "value": {
+                "kind": "theme",
+                "value": "winter-ridge"
+              }
+            }
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "wallpaper/5:极光": [
+          [
+            "console.info",
+            "[wallpaper-diag] persist {\"source\":\"context-menu\",\"key\":\"desktop.workbenchWallpaper\",\"value\":{\"kind\":\"theme\",\"value\":\"aurora\"}}"
+          ],
+          [
+            "localStorage.setItem",
+            "desktop.workbenchWallpaper",
+            "{\"kind\":\"theme\",\"value\":\"aurora\"}"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:settings-changed",
+            {
+              "key": "desktop.workbenchWallpaper",
+              "value": {
+                "kind": "theme",
+                "value": "aurora"
+              }
+            }
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "wallpaper/6:管理壁纸…": [
+          [
+            "onClose"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:open-wallpaper-manager",
+            null
+          ]
+        ],
+        "tier/0:跟随平台": [
+          [
+            "setMaterialTier",
+            "auto"
+          ],
+          [
+            "localStorage.setItem",
+            "desktop.workbenchMaterialTier",
+            "auto"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:settings-changed",
+            {
+              "key": "desktop.workbenchMaterialTier",
+              "value": "auto"
+            }
+          ],
+          [
+            "localStorage.setItem",
+            "desktop.workbenchPerformanceProfile",
+            "custom"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:settings-changed",
+            {
+              "key": "desktop.workbenchPerformanceProfile",
+              "value": "custom"
+            }
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "tier/1:全效果": [
+          [
+            "setMaterialTier",
+            "full"
+          ],
+          [
+            "localStorage.setItem",
+            "desktop.workbenchMaterialTier",
+            "full"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:settings-changed",
+            {
+              "key": "desktop.workbenchMaterialTier",
+              "value": "full"
+            }
+          ],
+          [
+            "localStorage.setItem",
+            "desktop.workbenchPerformanceProfile",
+            "custom"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:settings-changed",
+            {
+              "key": "desktop.workbenchPerformanceProfile",
+              "value": "custom"
+            }
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "tier/2:降透明": [
+          [
+            "setMaterialTier",
+            "reduced"
+          ],
+          [
+            "localStorage.setItem",
+            "desktop.workbenchMaterialTier",
+            "reduced"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:settings-changed",
+            {
+              "key": "desktop.workbenchMaterialTier",
+              "value": "reduced"
+            }
+          ],
+          [
+            "localStorage.setItem",
+            "desktop.workbenchPerformanceProfile",
+            "custom"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:settings-changed",
+            {
+              "key": "desktop.workbenchPerformanceProfile",
+              "value": "custom"
+            }
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "tier/3:极简": [
+          [
+            "setMaterialTier",
+            "minimal"
+          ],
+          [
+            "localStorage.setItem",
+            "desktop.workbenchMaterialTier",
+            "minimal"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:settings-changed",
+            {
+              "key": "desktop.workbenchMaterialTier",
+              "value": "minimal"
+            }
+          ],
+          [
+            "localStorage.setItem",
+            "desktop.workbenchPerformanceProfile",
+            "custom"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:settings-changed",
+            {
+              "key": "desktop.workbenchPerformanceProfile",
+              "value": "custom"
+            }
+          ],
+          [
+            "onClose"
+          ]
+        ]
+      }
+    },
+    "four-windows-unknown-wallpaper": {
+      "html": "<div class=\"wb-desk-menu-backdrop\" data-wb-desk-menu-backdrop=\"true\" aria-hidden=\"true\"></div><div class=\"wb-desk-menu wb-glass-lens\" data-wb-desk-menu=\"true\" data-phase=\"open\" role=\"menu\" aria-label=\"桌面菜单\" tabindex=\"-1\" style=\"left: 200px; top: 160px;\"><div class=\"wb-glass-replica\" aria-hidden=\"true\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M224,128A96,96,0,0,1,79.93,211.11h0L42.54,223.58a8,8,0,0,1-10.12-10.12l12.47-37.39h0A96,96,0,1,1,224,128Z\" opacity=\"0.2\"></path><path d=\"M128,24A104,104,0,0,0,36.18,176.88L24.83,210.93a16,16,0,0,0,20.24,20.24l34.05-11.35A104,104,0,1,0,128,24Zm0,192a87.87,87.87,0,0,1-44.06-11.81,8,8,0,0,0-4-1.08,7.85,7.85,0,0,0-2.53.42L40,216,52.47,178.6a8,8,0,0,0-.66-6.54A88,88,0,1,1,128,216Zm12-88a12,12,0,1,1-12-12A12,12,0,0,1,140,128Zm-44,0a12,12,0,1,1-12-12A12,12,0,0,1,96,128Zm88,0a12,12,0,1,1-12-12A12,12,0,0,1,184,128Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">新建对话</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M208,88v24H69.77a8,8,0,0,0-7.59,5.47L32,208V64a8,8,0,0,1,8-8H93.33a8,8,0,0,1,4.8,1.6L128,80h72A8,8,0,0,1,208,88Z\" opacity=\"0.2\"></path><path d=\"M245,110.64A16,16,0,0,0,232,104H216V88a16,16,0,0,0-16-16H130.67L102.94,51.2a16.14,16.14,0,0,0-9.6-3.2H40A16,16,0,0,0,24,64V208a8,8,0,0,0,8,8H211.1a8,8,0,0,0,7.59-5.47l28.49-85.47A16.05,16.05,0,0,0,245,110.64ZM93.34,64,123.2,86.4A8,8,0,0,0,128,88h72v16H69.77a16,16,0,0,0-15.18,10.94L40,158.7V64Zm112,136H43.1l26.67-80H232Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">打开资源库</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M112,80A32,32,0,1,1,80,48,32,32,0,0,1,112,80Zm64,32a32,32,0,1,0-32-32A32,32,0,0,0,176,112ZM80,144a32,32,0,1,0,32,32A32,32,0,0,0,80,144Zm96,0a32,32,0,1,0,32,32A32,32,0,0,0,176,144Z\" opacity=\"0.2\"></path><path d=\"M80,40a40,40,0,1,0,40,40A40,40,0,0,0,80,40Zm0,64a24,24,0,1,1,24-24A24,24,0,0,1,80,104Zm96,16a40,40,0,1,0-40-40A40,40,0,0,0,176,120Zm0-64a24,24,0,1,1-24,24A24,24,0,0,1,176,56ZM80,136a40,40,0,1,0,40,40A40,40,0,0,0,80,136Zm0,64a24,24,0,1,1,24-24A24,24,0,0,1,80,200Zm96-64a40,40,0,1,0,40,40A40,40,0,0,0,176,136Zm0,64a24,24,0,1,1,24-24A24,24,0,0,1,176,200Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">全部应用…</span></button><div class=\"wb-desk-menu-sep\" role=\"separator\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M224,80l-96,56L32,80l96-56Z\" opacity=\"0.2\"></path><path d=\"M230.91,172A8,8,0,0,1,228,182.91l-96,56a8,8,0,0,1-8.06,0l-96-56A8,8,0,0,1,36,169.09l92,53.65,92-53.65A8,8,0,0,1,230.91,172ZM220,121.09l-92,53.65L36,121.09A8,8,0,0,0,28,134.91l96,56a8,8,0,0,0,8.06,0l96-56A8,8,0,1,0,220,121.09ZM24,80a8,8,0,0,1,4-6.91l96-56a8,8,0,0,1,8.06,0l96,56a8,8,0,0,1,0,13.82l-96,56a8,8,0,0,1-8.06,0l-96-56A8,8,0,0,1,24,80Zm23.88,0L128,126.74,208.12,80,128,33.26Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">整理窗口</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M208,56V200a8,8,0,0,1-8,8H56a8,8,0,0,1-8-8V56a8,8,0,0,1,8-8H200A8,8,0,0,1,208,56Z\" opacity=\"0.2\"></path><path d=\"M200,40H56A16,16,0,0,0,40,56V200a16,16,0,0,0,16,16H200a16,16,0,0,0,16-16V56A16,16,0,0,0,200,40Zm0,80H136V56h64ZM120,56v64H56V56ZM56,136h64v64H56Zm144,64H136V136h64v64Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">平铺全部窗口</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M224,64v88H32V64A16,16,0,0,1,48,48H208A16,16,0,0,1,224,64Z\" opacity=\"0.2\"></path><path d=\"M208,40H48A24,24,0,0,0,24,64V176a24,24,0,0,0,24,24h72v16H96a8,8,0,0,0,0,16h64a8,8,0,0,0,0-16H136V200h72a24,24,0,0,0,24-24V64A24,24,0,0,0,208,40ZM48,56H208a8,8,0,0,1,8,8v80H40V64A8,8,0,0,1,48,56ZM208,184H48a8,8,0,0,1-8-8V160H216v16A8,8,0,0,1,208,184Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">显示桌面</span><span class=\"wb-desk-menu-item-shortcut\" aria-hidden=\"true\">Ctrl+Alt+D</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M112,56v48a8,8,0,0,1-8,8H56a8,8,0,0,1-8-8V56a8,8,0,0,1,8-8h48A8,8,0,0,1,112,56Zm88-8H152a8,8,0,0,0-8,8v48a8,8,0,0,0,8,8h48a8,8,0,0,0,8-8V56A8,8,0,0,0,200,48Zm-96,96H56a8,8,0,0,0-8,8v48a8,8,0,0,0,8,8h48a8,8,0,0,0,8-8V152A8,8,0,0,0,104,144Zm96,0H152a8,8,0,0,0-8,8v48a8,8,0,0,0,8,8h48a8,8,0,0,0,8-8V152A8,8,0,0,0,200,144Z\" opacity=\"0.2\"></path><path d=\"M200,136H152a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V152A16,16,0,0,0,200,136Zm0,64H152V152h48v48ZM104,40H56A16,16,0,0,0,40,56v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V56A16,16,0,0,0,104,40Zm0,64H56V56h48v48Zm96-64H152a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V56A16,16,0,0,0,200,40Zm0,64H152V56h48v48Zm-96,32H56a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V152A16,16,0,0,0,104,136Zm0,64H56V152h48v48Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">窗口俯瞰</span><span class=\"wb-desk-menu-item-shortcut\" aria-hidden=\"true\">Ctrl+Alt+E</span></button><div class=\"wb-desk-menu-sep\" role=\"separator\"></div><div class=\"wb-desk-menu-subwrap\"><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-wb-desk-sub=\"wallpaper\" role=\"menuitem\" aria-haspopup=\"menu\" aria-expanded=\"false\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M224,56V178.06l-39.72-39.72a8,8,0,0,0-11.31,0L147.31,164,97.66,114.34a8,8,0,0,0-11.32,0L32,168.69V56a8,8,0,0,1,8-8H216A8,8,0,0,1,224,56Z\" opacity=\"0.2\"></path><path d=\"M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,16V158.75l-26.07-26.06a16,16,0,0,0-22.63,0l-20,20-44-44a16,16,0,0,0-22.62,0L40,149.37V56ZM40,172l52-52,80,80H40Zm176,28H194.63l-36-36,20-20L216,181.38V200ZM144,100a12,12,0,1,1,12,12A12,12,0,0,1,144,100Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">桌面壁纸</span><span class=\"wb-desk-menu-item-caret\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"12\" height=\"12\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M184.49,136.49l-80,80a12,12,0,0,1-17-17L159,128,87.51,56.49a12,12,0,1,1,17-17l80,80A12,12,0,0,1,184.49,136.49Z\"></path></svg></span></button></div><div class=\"wb-desk-menu-subwrap\"><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-wb-desk-sub=\"tier\" role=\"menuitem\" aria-haspopup=\"menu\" aria-expanded=\"false\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M208,144a80,80,0,0,1-160,0c0-72,80-128,80-128S208,72,208,144Z\" opacity=\"0.2\"></path><path d=\"M174,47.75a254.19,254.19,0,0,0-41.45-38.3,8,8,0,0,0-9.18,0A254.19,254.19,0,0,0,82,47.75C54.51,79.32,40,112.6,40,144a88,88,0,0,0,176,0C216,112.6,201.49,79.32,174,47.75ZM128,216a72.08,72.08,0,0,1-72-72c0-57.23,55.47-105,72-118,16.53,13,72,60.75,72,118A72.08,72.08,0,0,1,128,216Zm55.89-62.66a57.6,57.6,0,0,1-46.56,46.55A8.75,8.75,0,0,1,136,200a8,8,0,0,1-1.32-15.89c16.57-2.79,30.63-16.85,33.44-33.45a8,8,0,0,1,15.78,2.68Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">视觉材质</span><span class=\"wb-desk-menu-item-caret\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"12\" height=\"12\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M184.49,136.49l-80,80a12,12,0,0,1-17-17L159,128,87.51,56.49a12,12,0,1,1,17-17l80,80A12,12,0,0,1,184.49,136.49Z\"></path></svg></span></button></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-desk-menu-widgets\" role=\"menuitemcheckbox\" aria-checked=\"true\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M216,48V88H40V48a8,8,0,0,1,8-8H208A8,8,0,0,1,216,48Z\" opacity=\"0.2\"></path><path d=\"M208,32H184V24a8,8,0,0,0-16,0v8H88V24a8,8,0,0,0-16,0v8H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32ZM72,48v8a8,8,0,0,0,16,0V48h80v8a8,8,0,0,0,16,0V48h24V80H48V48ZM208,208H48V96H208V208Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">显示桌面组件</span><span class=\"wb-desk-menu-item-check\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"13\" height=\"13\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M232.49,80.49l-128,128a12,12,0,0,1-17,0l-56-56a12,12,0,1,1,17-17L96,183,215.51,63.51a12,12,0,0,1,17,17Z\"></path></svg></span></button><div class=\"wb-desk-menu-sep\" role=\"separator\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-desk-menu-shortcuts\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M232,64V192a8,8,0,0,1-8,8H32a8,8,0,0,1-8-8V64a8,8,0,0,1,8-8H224A8,8,0,0,1,232,64Z\" opacity=\"0.2\"></path><path d=\"M224,48H32A16,16,0,0,0,16,64V192a16,16,0,0,0,16,16H224a16,16,0,0,0,16-16V64A16,16,0,0,0,224,48Zm0,144H32V64H224V192Zm-16-64a8,8,0,0,1-8,8H56a8,8,0,0,1,0-16H200A8,8,0,0,1,208,128Zm0-32a8,8,0,0,1-8,8H56a8,8,0,0,1,0-16H200A8,8,0,0,1,208,96ZM72,160a8,8,0,0,1-8,8H56a8,8,0,0,1,0-16h8A8,8,0,0,1,72,160Zm96,0a8,8,0,0,1-8,8H96a8,8,0,0,1,0-16h64A8,8,0,0,1,168,160Zm40,0a8,8,0,0,1-8,8h-8a8,8,0,0,1,0-16h8A8,8,0,0,1,208,160Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">键盘快捷键</span><span class=\"wb-desk-menu-item-shortcut\" aria-hidden=\"true\">?</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-desk-menu-replay-tour\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M128,32a96,96,0,1,0,96,96A96,96,0,0,0,128,32Zm16,112L80,176l32-64,64-32Z\" opacity=\"0.2\"></path><path d=\"M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216ZM172.42,72.84l-64,32a8.05,8.05,0,0,0-3.58,3.58l-32,64A8,8,0,0,0,80,184a8.1,8.1,0,0,0,3.58-.84l64-32a8.05,8.05,0,0,0,3.58-3.58l32-64a8,8,0,0,0-10.74-10.74ZM138,138,97.89,158.11,118,118l40.15-20.07Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">重新查看引导</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M230.1,108.76,198.25,90.62c-.64-1.16-1.31-2.29-2-3.41l-.12-36A104.61,104.61,0,0,0,162,32L130,49.89c-1.34,0-2.69,0-4,0L94,32A104.58,104.58,0,0,0,59.89,51.25l-.16,36c-.7,1.12-1.37,2.26-2,3.41l-31.84,18.1a99.15,99.15,0,0,0,0,38.46l31.85,18.14c.64,1.16,1.31,2.29,2,3.41l.12,36A104.61,104.61,0,0,0,94,224l32-17.87c1.34,0,2.69,0,4,0L162,224a104.58,104.58,0,0,0,34.08-19.25l.16-36c.7-1.12,1.37-2.26,2-3.41l31.84-18.1A99.15,99.15,0,0,0,230.1,108.76ZM128,168a40,40,0,1,1,40-40A40,40,0,0,1,128,168Z\" opacity=\"0.2\"></path><path d=\"M128,80a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Zm109.94-52.79a8,8,0,0,0-3.89-5.4l-29.83-17-.12-33.62a8,8,0,0,0-2.83-6.08,111.91,111.91,0,0,0-36.72-20.67,8,8,0,0,0-6.46.59L128,41.85,97.88,25a8,8,0,0,0-6.47-.6A111.92,111.92,0,0,0,54.73,45.15a8,8,0,0,0-2.83,6.07l-.15,33.65-29.83,17a8,8,0,0,0-3.89,5.4,106.47,106.47,0,0,0,0,41.56,8,8,0,0,0,3.89,5.4l29.83,17,.12,33.63a8,8,0,0,0,2.83,6.08,111.91,111.91,0,0,0,36.72,20.67,8,8,0,0,0,6.46-.59L128,214.15,158.12,231a7.91,7.91,0,0,0,3.9,1,8.09,8.09,0,0,0,2.57-.42,112.1,112.1,0,0,0,36.68-20.73,8,8,0,0,0,2.83-6.07l.15-33.65,29.83-17a8,8,0,0,0,3.89-5.4A106.47,106.47,0,0,0,237.94,107.21Zm-15,34.91-28.57,16.25a8,8,0,0,0-3,3c-.58,1-1.19,2.06-1.81,3.06a7.94,7.94,0,0,0-1.22,4.21l-.15,32.25a95.89,95.89,0,0,1-25.37,14.3L134,199.13a8,8,0,0,0-3.91-1h-.19c-1.21,0-2.43,0-3.64,0a8.1,8.1,0,0,0-4.1,1l-28.84,16.1A96,96,0,0,1,67.88,201l-.11-32.2a8,8,0,0,0-1.22-4.22c-.62-1-1.23-2-1.8-3.06a8.09,8.09,0,0,0-3-3.06l-28.6-16.29a90.49,90.49,0,0,1,0-28.26L61.67,97.63a8,8,0,0,0,3-3c.58-1,1.19-2.06,1.81-3.06a7.94,7.94,0,0,0,1.22-4.21l.15-32.25a95.89,95.89,0,0,1,25.37-14.3L122,56.87a8,8,0,0,0,4.1,1c1.21,0,2.43,0,3.64,0a8,8,0,0,0,4.1-1l28.84-16.1A96,96,0,0,1,188.12,55l.11,32.2a8,8,0,0,0,1.22,4.22c.62,1,1.23,2,1.8,3.06a8.09,8.09,0,0,0,3,3.06l28.6,16.29A90.49,90.49,0,0,1,222.9,142.12Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">桌面设置…</span></button></div>",
+      "rows": [
+        {
+          "role": "menuitem",
+          "label": "新建对话"
+        },
+        {
+          "role": "menuitem",
+          "label": "打开资源库"
+        },
+        {
+          "role": "menuitem",
+          "label": "全部应用…"
+        },
+        {
+          "separator": true
+        },
+        {
+          "role": "menuitem",
+          "label": "整理窗口"
+        },
+        {
+          "role": "menuitem",
+          "label": "平铺全部窗口"
+        },
+        {
+          "role": "menuitem",
+          "label": "显示桌面",
+          "shortcut": "Ctrl+Alt+D"
+        },
+        {
+          "role": "menuitem",
+          "label": "窗口俯瞰",
+          "shortcut": "Ctrl+Alt+E"
+        },
+        {
+          "separator": true
+        },
+        {
+          "role": "menuitem",
+          "label": "桌面壁纸",
+          "submenu": "wallpaper"
+        },
+        {
+          "role": "menuitem",
+          "label": "视觉材质",
+          "submenu": "tier"
+        },
+        {
+          "role": "menuitemcheckbox",
+          "label": "显示桌面组件",
+          "testId": "wb-desk-menu-widgets",
+          "checked": "true"
+        },
+        {
+          "separator": true
+        },
+        {
+          "role": "menuitem",
+          "label": "键盘快捷键",
+          "testId": "wb-desk-menu-shortcuts",
+          "shortcut": "?"
+        },
+        {
+          "role": "menuitem",
+          "label": "重新查看引导",
+          "testId": "wb-desk-menu-replay-tour"
+        },
+        {
+          "role": "menuitem",
+          "label": "桌面设置…"
+        }
+      ],
+      "submenus": {
+        "wallpaper": {
+          "parent": "<button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-wb-desk-sub=\"wallpaper\" role=\"menuitem\" aria-haspopup=\"menu\" aria-expanded=\"true\" data-wb-desk-active=\"true\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M224,56V178.06l-39.72-39.72a8,8,0,0,0-11.31,0L147.31,164,97.66,114.34a8,8,0,0,0-11.32,0L32,168.69V56a8,8,0,0,1,8-8H216A8,8,0,0,1,224,56Z\" opacity=\"0.2\"></path><path d=\"M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,16V158.75l-26.07-26.06a16,16,0,0,0-22.63,0l-20,20-44-44a16,16,0,0,0-22.62,0L40,149.37V56ZM40,172l52-52,80,80H40Zm176,28H194.63l-36-36,20-20L216,181.38V200ZM144,100a12,12,0,1,1,12,12A12,12,0,0,1,144,100Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">桌面壁纸</span><span class=\"wb-desk-menu-item-caret\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"12\" height=\"12\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M184.49,136.49l-80,80a12,12,0,0,1-17-17L159,128,87.51,56.49a12,12,0,1,1,17-17l80,80A12,12,0,0,1,184.49,136.49Z\"></path></svg></span></button>",
+          "rows": [
+            {
+              "role": "menuitemradio",
+              "label": "薄雾雪山",
+              "checked": "false",
+              "option": "mountain-mist"
+            },
+            {
+              "role": "menuitemradio",
+              "label": "山间雾林",
+              "checked": "false",
+              "option": "forest-mist"
+            },
+            {
+              "role": "menuitemradio",
+              "label": "雪山静水",
+              "checked": "false",
+              "option": "alpine-lake"
+            },
+            {
+              "role": "menuitemradio",
+              "label": "冬日山脊",
+              "checked": "false",
+              "option": "winter-ridge"
+            },
+            {
+              "role": "menuitemradio",
+              "label": "极光",
+              "checked": "false",
+              "option": "aurora"
+            },
+            {
+              "separator": true
+            },
+            {
+              "role": "menuitem",
+              "label": "管理壁纸…",
+              "testId": "wb-desk-menu-manage-wallpaper"
+            }
+          ],
+          "html": "<div class=\"wb-desk-menu wb-glass-lens wb-desk-menu-sub\" role=\"menu\" aria-label=\"桌面壁纸\" style=\"left: 8px; top: 8px; visibility: visible;\"><div class=\"wb-glass-replica\" aria-hidden=\"true\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-wb-desk-option=\"mountain-mist\" role=\"menuitemradio\" aria-checked=\"false\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"></span><span class=\"wb-desk-menu-item-label\">薄雾雪山</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-wb-desk-option=\"forest-mist\" role=\"menuitemradio\" aria-checked=\"false\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"></span><span class=\"wb-desk-menu-item-label\">山间雾林</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-wb-desk-option=\"alpine-lake\" role=\"menuitemradio\" aria-checked=\"false\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"></span><span class=\"wb-desk-menu-item-label\">雪山静水</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-wb-desk-option=\"winter-ridge\" role=\"menuitemradio\" aria-checked=\"false\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"></span><span class=\"wb-desk-menu-item-label\">冬日山脊</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-wb-desk-option=\"aurora\" role=\"menuitemradio\" aria-checked=\"false\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"></span><span class=\"wb-desk-menu-item-label\">极光</span></button><div class=\"wb-desk-menu-sep\" role=\"separator\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-testid=\"wb-desk-menu-manage-wallpaper\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M224,56V178.06l-39.72-39.72a8,8,0,0,0-11.31,0L147.31,164,97.66,114.34a8,8,0,0,0-11.32,0L32,168.69V56a8,8,0,0,1,8-8H216A8,8,0,0,1,224,56Z\" opacity=\"0.2\"></path><path d=\"M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,16V158.75l-26.07-26.06a16,16,0,0,0-22.63,0l-20,20-44-44a16,16,0,0,0-22.62,0L40,149.37V56ZM40,172l52-52,80,80H40Zm176,28H194.63l-36-36,20-20L216,181.38V200ZM144,100a12,12,0,1,1,12,12A12,12,0,0,1,144,100Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">管理壁纸…</span></button></div>"
+        },
+        "tier": {
+          "parent": "<button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-wb-desk-sub=\"tier\" role=\"menuitem\" aria-haspopup=\"menu\" aria-expanded=\"true\" data-wb-desk-active=\"true\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M208,144a80,80,0,0,1-160,0c0-72,80-128,80-128S208,72,208,144Z\" opacity=\"0.2\"></path><path d=\"M174,47.75a254.19,254.19,0,0,0-41.45-38.3,8,8,0,0,0-9.18,0A254.19,254.19,0,0,0,82,47.75C54.51,79.32,40,112.6,40,144a88,88,0,0,0,176,0C216,112.6,201.49,79.32,174,47.75ZM128,216a72.08,72.08,0,0,1-72-72c0-57.23,55.47-105,72-118,16.53,13,72,60.75,72,118A72.08,72.08,0,0,1,128,216Zm55.89-62.66a57.6,57.6,0,0,1-46.56,46.55A8.75,8.75,0,0,1,136,200a8,8,0,0,1-1.32-15.89c16.57-2.79,30.63-16.85,33.44-33.45a8,8,0,0,1,15.78,2.68Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">视觉材质</span><span class=\"wb-desk-menu-item-caret\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"12\" height=\"12\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M184.49,136.49l-80,80a12,12,0,0,1-17-17L159,128,87.51,56.49a12,12,0,1,1,17-17l80,80A12,12,0,0,1,184.49,136.49Z\"></path></svg></span></button>",
+          "rows": [
+            {
+              "role": "menuitemradio",
+              "label": "跟随平台",
+              "checked": "true",
+              "option": "auto"
+            },
+            {
+              "role": "menuitemradio",
+              "label": "全效果",
+              "checked": "false",
+              "option": "full"
+            },
+            {
+              "role": "menuitemradio",
+              "label": "降透明",
+              "checked": "false",
+              "option": "reduced"
+            },
+            {
+              "role": "menuitemradio",
+              "label": "极简",
+              "checked": "false",
+              "option": "minimal"
+            }
+          ],
+          "html": "<div class=\"wb-desk-menu wb-glass-lens wb-desk-menu-sub\" role=\"menu\" aria-label=\"视觉材质\" style=\"left: 8px; top: 8px; visibility: visible;\"><div class=\"wb-glass-replica\" aria-hidden=\"true\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-wb-desk-option=\"auto\" role=\"menuitemradio\" aria-checked=\"true\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"13\" height=\"13\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M232.49,80.49l-128,128a12,12,0,0,1-17,0l-56-56a12,12,0,1,1,17-17L96,183,215.51,63.51a12,12,0,0,1,17,17Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">跟随平台</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-wb-desk-option=\"full\" role=\"menuitemradio\" aria-checked=\"false\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"></span><span class=\"wb-desk-menu-item-label\">全效果</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-wb-desk-option=\"reduced\" role=\"menuitemradio\" aria-checked=\"false\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"></span><span class=\"wb-desk-menu-item-label\">降透明</span></button><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" data-wb-desk-option=\"minimal\" role=\"menuitemradio\" aria-checked=\"false\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"></span><span class=\"wb-desk-menu-item-label\">极简</span></button></div>"
+        }
+      },
+      "clicks": {
+        "0:新建对话": [
+          [
+            "workbenchBus.launch",
+            {
+              "typeId": "chat",
+              "reason": "command"
+            }
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "1:打开资源库": [
+          [
+            "workbenchBus.launch",
+            {
+              "typeId": "files",
+              "reason": "command"
+            }
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "2:全部应用…": [
+          [
+            "openAppsPanel"
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "3:整理窗口": [
+          [
+            "windowStore.moveWindow",
+            "<win:1>",
+            {
+              "x": 48,
+              "y": 48,
+              "w": 640,
+              "h": 480
+            }
+          ],
+          [
+            "windowStore.moveWindow",
+            "<win:2>",
+            {
+              "x": 76,
+              "y": 76,
+              "w": 640,
+              "h": 480
+            }
+          ],
+          [
+            "windowStore.moveWindow",
+            "<win:4>",
+            {
+              "x": 104,
+              "y": 104,
+              "w": 720,
+              "h": 520
+            }
+          ],
+          [
+            "windowStore.moveWindow",
+            "<win:3>",
+            {
+              "x": 132,
+              "y": 132,
+              "w": 640,
+              "h": 480
+            }
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "4:平铺全部窗口": [
+          [
+            "windowStore.batchSetDisplayModes",
+            [
+              {
+                "id": "<win:3>",
+                "mode": "tiled-tl"
+              },
+              {
+                "id": "<win:4>",
+                "mode": "tiled-tr"
+              },
+              {
+                "id": "<win:2>",
+                "mode": "tiled-bl"
+              },
+              {
+                "id": "<win:1>",
+                "mode": "tiled-br"
+              }
+            ]
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "5:显示桌面": [
+          [
+            "onShowDesktop"
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "6:窗口俯瞰": [
+          [
+            "toggleExpose"
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "9:显示桌面组件": [
+          [
+            "localStorage.setItem",
+            "desktop.workbenchDesktopWidgets",
+            "false"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:settings-changed",
+            {
+              "key": "desktop.workbenchDesktopWidgets",
+              "value": false
+            }
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "10:键盘快捷键": [
+          [
+            "onClose"
+          ],
+          [
+            "openCheatsheet",
+            {
+              "sticky": true
+            }
+          ]
+        ],
+        "11:重新查看引导": [
+          [
+            "onClose"
+          ],
+          [
+            "localStorage.removeItem",
+            "workbench.emptyDesktop.onboardingDismissed"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:empty-tour-replay",
+            null
+          ]
+        ],
+        "12:桌面设置…": [
+          [
+            "workbenchBus.launch",
+            {
+              "typeId": "settings",
+              "reason": "command"
+            }
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "wallpaper/0:薄雾雪山": [
+          [
+            "console.info",
+            "[wallpaper-diag] persist {\"source\":\"context-menu\",\"key\":\"desktop.workbenchWallpaper\",\"value\":{\"kind\":\"theme\",\"value\":\"mountain-mist\"}}"
+          ],
+          [
+            "localStorage.setItem",
+            "desktop.workbenchWallpaper",
+            "{\"kind\":\"theme\",\"value\":\"mountain-mist\"}"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:settings-changed",
+            {
+              "key": "desktop.workbenchWallpaper",
+              "value": {
+                "kind": "theme",
+                "value": "mountain-mist"
+              }
+            }
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "wallpaper/1:山间雾林": [
+          [
+            "console.info",
+            "[wallpaper-diag] persist {\"source\":\"context-menu\",\"key\":\"desktop.workbenchWallpaper\",\"value\":{\"kind\":\"theme\",\"value\":\"forest-mist\"}}"
+          ],
+          [
+            "localStorage.setItem",
+            "desktop.workbenchWallpaper",
+            "{\"kind\":\"theme\",\"value\":\"forest-mist\"}"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:settings-changed",
+            {
+              "key": "desktop.workbenchWallpaper",
+              "value": {
+                "kind": "theme",
+                "value": "forest-mist"
+              }
+            }
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "wallpaper/2:雪山静水": [
+          [
+            "console.info",
+            "[wallpaper-diag] persist {\"source\":\"context-menu\",\"key\":\"desktop.workbenchWallpaper\",\"value\":{\"kind\":\"theme\",\"value\":\"alpine-lake\"}}"
+          ],
+          [
+            "localStorage.setItem",
+            "desktop.workbenchWallpaper",
+            "{\"kind\":\"theme\",\"value\":\"alpine-lake\"}"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:settings-changed",
+            {
+              "key": "desktop.workbenchWallpaper",
+              "value": {
+                "kind": "theme",
+                "value": "alpine-lake"
+              }
+            }
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "wallpaper/3:冬日山脊": [
+          [
+            "console.info",
+            "[wallpaper-diag] persist {\"source\":\"context-menu\",\"key\":\"desktop.workbenchWallpaper\",\"value\":{\"kind\":\"theme\",\"value\":\"winter-ridge\"}}"
+          ],
+          [
+            "localStorage.setItem",
+            "desktop.workbenchWallpaper",
+            "{\"kind\":\"theme\",\"value\":\"winter-ridge\"}"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:settings-changed",
+            {
+              "key": "desktop.workbenchWallpaper",
+              "value": {
+                "kind": "theme",
+                "value": "winter-ridge"
+              }
+            }
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "wallpaper/4:极光": [
+          [
+            "console.info",
+            "[wallpaper-diag] persist {\"source\":\"context-menu\",\"key\":\"desktop.workbenchWallpaper\",\"value\":{\"kind\":\"theme\",\"value\":\"aurora\"}}"
+          ],
+          [
+            "localStorage.setItem",
+            "desktop.workbenchWallpaper",
+            "{\"kind\":\"theme\",\"value\":\"aurora\"}"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:settings-changed",
+            {
+              "key": "desktop.workbenchWallpaper",
+              "value": {
+                "kind": "theme",
+                "value": "aurora"
+              }
+            }
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "wallpaper/5:管理壁纸…": [
+          [
+            "onClose"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:open-wallpaper-manager",
+            null
+          ]
+        ],
+        "tier/0:跟随平台": [
+          [
+            "setMaterialTier",
+            "auto"
+          ],
+          [
+            "localStorage.setItem",
+            "desktop.workbenchMaterialTier",
+            "auto"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:settings-changed",
+            {
+              "key": "desktop.workbenchMaterialTier",
+              "value": "auto"
+            }
+          ],
+          [
+            "localStorage.setItem",
+            "desktop.workbenchPerformanceProfile",
+            "custom"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:settings-changed",
+            {
+              "key": "desktop.workbenchPerformanceProfile",
+              "value": "custom"
+            }
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "tier/1:全效果": [
+          [
+            "setMaterialTier",
+            "full"
+          ],
+          [
+            "localStorage.setItem",
+            "desktop.workbenchMaterialTier",
+            "full"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:settings-changed",
+            {
+              "key": "desktop.workbenchMaterialTier",
+              "value": "full"
+            }
+          ],
+          [
+            "localStorage.setItem",
+            "desktop.workbenchPerformanceProfile",
+            "custom"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:settings-changed",
+            {
+              "key": "desktop.workbenchPerformanceProfile",
+              "value": "custom"
+            }
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "tier/2:降透明": [
+          [
+            "setMaterialTier",
+            "reduced"
+          ],
+          [
+            "localStorage.setItem",
+            "desktop.workbenchMaterialTier",
+            "reduced"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:settings-changed",
+            {
+              "key": "desktop.workbenchMaterialTier",
+              "value": "reduced"
+            }
+          ],
+          [
+            "localStorage.setItem",
+            "desktop.workbenchPerformanceProfile",
+            "custom"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:settings-changed",
+            {
+              "key": "desktop.workbenchPerformanceProfile",
+              "value": "custom"
+            }
+          ],
+          [
+            "onClose"
+          ]
+        ],
+        "tier/3:极简": [
+          [
+            "setMaterialTier",
+            "minimal"
+          ],
+          [
+            "localStorage.setItem",
+            "desktop.workbenchMaterialTier",
+            "minimal"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:settings-changed",
+            {
+              "key": "desktop.workbenchMaterialTier",
+              "value": "minimal"
+            }
+          ],
+          [
+            "localStorage.setItem",
+            "desktop.workbenchPerformanceProfile",
+            "custom"
+          ],
+          [
+            "window.dispatchEvent",
+            "workbench:settings-changed",
+            {
+              "key": "desktop.workbenchPerformanceProfile",
+              "value": "custom"
+            }
+          ],
+          [
+            "onClose"
+          ]
+        ]
+      }
+    }
+  }
+}

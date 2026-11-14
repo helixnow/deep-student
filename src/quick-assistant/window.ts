@@ -87,7 +87,11 @@ export async function initializeQuickAssistantGlobalShortcut(): Promise<() => vo
   const { register, unregister, isRegistered } = await import('@tauri-apps/plugin-global-shortcut');
 
   const syncRegistration = async () => {
-    const { enabled } = await import('./config').then((module) => module.getQuickAssistantConfig());
+    // RUST-FIX(RF-W09-quick-assistant-build-import): Rust 版同样是链式写法，Tauri 生产包里快捷助手快捷键初始化同样报错
+    // Keep the import and the call separate: Vite's build rewrites `const { x } = await import(...)`
+    // to load only `x`, which dropped getQuickAssistantConfig from the chained `.then`.
+    const config = await import('./config');
+    const { enabled } = await config.getQuickAssistantConfig();
     const registered = await isRegistered(QUICK_ASSISTANT_SHORTCUT);
     if (enabled) {
       // The native registration survives a WebView reload, while its JS callback does not.

@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 
 describe('macOS titlebar overlay contract', () => {
   const config = JSON.parse(
-    readFileSync(resolve(process.cwd(), 'src-tauri/tauri.macos.conf.json'), 'utf-8'),
+    readFileSync(resolve(process.cwd(), 'resources/app/tauri.macos.conf.json'), 'utf-8'),
   );
   const mainWindow = config.app.windows[0];
 

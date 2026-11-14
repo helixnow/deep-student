@@ -1,0 +1,29 @@
+{
+  "id": "RF-W06-agent-dns-rebinding-recheck",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main-agent",
+  "approvedAt": "2026-11-07T09:40:00+08:00",
+  "title": "Agent 私网防护按浏览器实际连接的地址再判一次，堵住 DNS 重绑定绕过",
+  "rust": {
+    "file": "src-tauri/crates/dstu-browser/src/browser/window.rs",
+    "line": 274,
+    "behavior": "validate_agent_target_for_agent 用自己的 BoundedDnsResolver 解析域名，只要这次解析结果全是公网地址就放行；随后 WebView 发起连接时由系统 / 浏览器网络栈独立再解析一次，Rust 不检查实际连接的地址"
+  },
+  "fix": {
+    "files": ["electron/shell/browser-agent-guard.ts"],
+    "behavior": "webRequest.onHeadersReceived（主框架）取 Chromium 实际连接的服务器 IP，用与解析判定相同的 isInternalIp 规则再判一次；命中且该请求是直连（resolveProxy 为 DIRECT）时丢弃响应并回调 navigation-blocked（原因与 Rust 解析命中时同文案）。经代理时连接地址是代理，不判，与 Rust 一样只靠解析判定"
+  },
+  "evidence": "安全问题，与 Rust 自身意图矛盾：这段代码的目的就是 Agent 导航不能到达私网 / 回环 / 链路本地地址（错误文案 “DNS resolved to private/internal address …”）。判定与连接之间是两次独立解析（TOCTOU），攻击者控制的域名以 TTL 0 先答公网地址、再答 127.0.0.1 或 169.254.169.254，就能让 Agent 读到本机服务或云元数据。复现：electron/tests/browser-agent-guard-host.test.ts 的 agentRebinding 场景（解析器答公网、实际连到本机回环服务），Rust 的判定逻辑在这个场景下放行。限制：只能在响应头阶段识别，请求已到达目标，但响应被丢弃、页面拿不到内容。最初实现在 W06 提交 924eb5fb。",
+  "userVisible": "正常浏览感知不到；只有遇到重绑定域名时，Agent 打开的页面被拦并收到与私网拦截相同的提示。",
+  "dataCompat": "不改变落库数据、同步载荷与备份格式。",
+  "commits": ["924eb5fb"],
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "electron/tests/browser-agent-guard.test.ts",
+      "name": "RF-W06-agent-dns-rebinding-recheck: a response from a private address the browser connected to directly is dropped even though DNS looked public"
+    }
+  ],
+  "notes": "真实 Electron 的端到端证据：electron/tests/browser-agent-guard-host.test.ts 的 agentRebinding（outcome ERR_BLOCKED_BY_CLIENT，回环服务只收到一次请求）。"
+}

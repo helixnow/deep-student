@@ -23,6 +23,7 @@ import {
   type EventStartPayload,
 } from '../../registry/eventRegistry';
 import type { ChatStore } from '../../core/types';
+import { resolveBlockWithPreparingCleanup } from './toolCall';
 
 // ============================================================================
 // 检索类型定义
@@ -102,14 +103,23 @@ function createRetrievalHandler(type: RetrievalType): EventHandler {
     onStart: (
       store: ChatStore,
       messageId: string,
-      _payload: EventStartPayload,
+      payload: EventStartPayload,
       backendBlockId?: string
     ): string => {
-      // 如果后端传了 blockId，使用它；否则由前端生成
-      // Store 内部会自动添加到 activeBlockIds
-      const blockId = backendBlockId
-        ? store.createBlockWithId(messageId, type, backendBlockId)
-        : store.createBlock(messageId, type);
+      const rawToolCallId =
+        payload && typeof (payload as { toolCallId?: unknown }).toolCallId === 'string'
+          ? ((payload as { toolCallId: string }).toolCallId || undefined)
+          : undefined;
+      const blockId = resolveBlockWithPreparingCleanup(
+        store,
+        messageId,
+        type,
+        rawToolCallId,
+        backendBlockId,
+      );
+      if (rawToolCallId) {
+        store.updateBlock(blockId, { toolCallId: rawToolCallId });
+      }
 
       // 检索没有流式 chunk（不会经由 updateBlockContent 推进状态），
       // start 事件到达即表示检索已在执行，立即置为 running，

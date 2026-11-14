@@ -1,0 +1,26 @@
+{
+  "id": "RF-W21-windows-pathext-before-shim",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T16:30:00+08:00",
+  "title": "Windows 上无扩展名的 stdio MCP 命令只按 PATHEXT 找可执行文件，不再先命中 npm 留给 Git Bash 的无扩展名 sh 垫片",
+  "rust": {
+    "file": "src-tauri/src/cmd/mcp.rs",
+    "line": 349,
+    "behavior": "executable_candidates 在 Windows 上先放原名 base（无扩展名），再追加 PATHEXT 各扩展名；canonical_executable_candidate 在 Windows 只看 is_file。Node/npm 的 bin 目录里同时有 npx（sh 脚本）、npx.cmd、npx.ps1，配置 \"command\": \"npx\" 时先命中无扩展名的 npx，审批与校验都按它比对，随后 CreateProcessW 报 os error 193（不是有效的 Win32 应用程序），最常见的 npx -y @modelcontextprotocol/server-* 配置在 Windows 上起不来。"
+  },
+  "fix": {
+    "files": ["host/plugins/mcp/src/stdio-validation.ts"],
+    "behavior": "win32 下命令没有扩展名时只试 PATHEXT 候选（PATHEXT 取配置 env → 进程 env → .COM;.EXE;.BAT;.CMD），不试原名本身，与 cmd.exe / where 以及 libuv 的搜索语义一致（它们从不执行无扩展名文件）。命令自带扩展名、或非 Windows 平台时行为不变。审批项与请求两侧走同一个解析函数，白名单比对的安全语义不变。只有无扩展名文件时，校验阶段就以 executable '<cmd>' is not reachable via PATH 拒绝，而不是放行后在 spawn 时报 193。平台改为 validateStdioStart 的可选参数（默认 process.platform），便于在非 Windows 上固定行为。"
+  },
+  "evidence": "V10 跨平台审计 P2-2（.reports/reviews/V10-cross-platform.md:151-169）。本机无 Windows：用临时目录放 npx（sh 垫片）与 npx.cmd，以 platform='win32' 调 validateStdioStart，修复前解析到 <bin>/npx（与 Rust 候选顺序一致），修复后为 <bin>/npx.cmd；只有无扩展名文件时修复前放行。V10-P1-1 修复后 .cmd 已能经 cmd.exe 启动，两项合起来 npx 类配置在 Windows 上可直接使用。",
+  "userVisible": "Windows 上 MCP 服务器配置写 \"command\": \"npx\"（或 pnpm 等 npm 全局命令）时能正常启动，不再报“不是有效的 Win32 应用程序”；只有无扩展名脚本可用时，保存/连接即提示命令在 PATH 中不可达。",
+  "dataCompat": "无：不改已保存的 MCP 配置；审批比对两侧同时改为新解析结果，已审批的 npx 配置继续匹配。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    { "file": "host/plugins/mcp/tests/stdio-pathext.test.ts", "name": "RF-W21-windows-pathext-before-shim: bare \"npx\" on PATH resolves to npx.cmd, not the sh shim next to it" },
+    { "file": "host/plugins/mcp/tests/stdio-pathext.test.ts", "name": "RF-W21-windows-pathext-before-shim: an explicit path without extension also resolves to the .cmd launcher" },
+    { "file": "host/plugins/mcp/tests/stdio-pathext.test.ts", "name": "RF-W21-windows-pathext-before-shim: an extensionless file alone is not a Windows executable and is rejected up front" }
+  ]
+}

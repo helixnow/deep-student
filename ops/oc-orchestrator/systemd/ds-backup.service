@@ -1,0 +1,8 @@
+[Unit]
+Description=迁移工作区备份（仓库全部分支、未提交改动、调度状态、opencode 会话库）
+
+[Service]
+Type=oneshot
+Nice=10
+IOSchedulingClass=idle
+ExecStart=/usr/local/sbin/ds-backup

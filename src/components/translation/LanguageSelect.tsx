@@ -242,8 +242,8 @@ export const LanguageSelect: React.FC<LanguageSelectProps> = ({
           disabled={disabled}
           aria-label={t('translation:language_select.trigger_label')}
           className={cn(
-            '!inline-flex !justify-between !gap-1.5 !rounded-md font-medium',
-            'h-8 px-2.5 text-sm [@media(pointer:coarse)]:!h-11',
+            '!inline-flex !justify-between !gap-1.5 !rounded-full bg-foreground/[0.03] hover:bg-foreground/[0.06] font-medium',
+            'h-8 px-3 text-sm [@media(pointer:coarse)]:!h-11',
             'disabled:pointer-events-none disabled:opacity-50',
             className,
           )}

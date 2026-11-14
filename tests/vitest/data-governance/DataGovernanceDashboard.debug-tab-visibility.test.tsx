@@ -100,7 +100,7 @@ describe('数据治理页签可访问名', () => {
     const nav = getTabsNav();
     for (const name of TAB_NAMES) {
       // 可访问名必须来自 aria-label，而不是只存在于 `hidden sm:inline` 的文字里
-      expect(within(nav).getByRole('button', { name })).toHaveAttribute('aria-label', name);
+      expect(within(nav).getByRole('tab', { name })).toHaveAttribute('aria-label', name);
     }
   });
 
@@ -117,7 +117,7 @@ describe('Debug 页签的 DEV 门槛', () => {
 
     render(<DataGovernanceDashboard embedded />);
 
-    expect(within(getTabsNav()).getByRole('button', { name: DEBUG_TAB_NAME }))
+    expect(within(getTabsNav()).getByRole('tab', { name: DEBUG_TAB_NAME }))
       .toBeInTheDocument();
   });
 
@@ -128,8 +128,8 @@ describe('Debug 页签的 DEV 门槛', () => {
 
     const nav = getTabsNav();
     // 其他页签照常在，只有 Debug 消失
-    expect(within(nav).getByRole('button', { name: '概览' })).toBeInTheDocument();
-    expect(within(nav).queryByRole('button', { name: DEBUG_TAB_NAME })).not.toBeInTheDocument();
+    expect(within(nav).getByRole('tab', { name: '概览' })).toBeInTheDocument();
+    expect(within(nav).queryByRole('tab', { name: DEBUG_TAB_NAME })).not.toBeInTheDocument();
   });
 
   it('非 DEV 时外部深链也切不到 debug 页签', async () => {
@@ -138,9 +138,9 @@ describe('Debug 页签的 DEV 门槛', () => {
     render(<DataGovernanceDashboard embedded tabTarget={{ tab: 'debug', requestId: 1 }} />);
 
     await waitFor(() => {
-      expect(within(getTabsNav()).getByRole('button', { name: '概览' })).toBeInTheDocument();
+      expect(within(getTabsNav()).getByRole('tab', { name: '概览' })).toBeInTheDocument();
     });
-    expect(within(getTabsNav()).queryByRole('button', { name: DEBUG_TAB_NAME }))
+    expect(within(getTabsNav()).queryByRole('tab', { name: DEBUG_TAB_NAME }))
       .not.toBeInTheDocument();
     expect(screen.queryByTestId('slot-c-empty-db-test-button')).not.toBeInTheDocument();
   });

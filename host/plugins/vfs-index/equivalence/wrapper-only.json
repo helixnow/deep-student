@@ -1,0 +1,254 @@
+{
+  "domain": "vfs-index",
+  "commands": ["clear_message_embeddings", "optimize_lance_database", "save_setting", "get_setting"],
+  "scenarios": [
+    {
+      "id": "vfs_index.clear_embeddings.empty_vec_early_ok",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "clear_message_embeddings", "args": { "messageIds": [] } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs_index.clear_embeddings.all_blank_tokens_warn_ok",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "clear_message_embeddings", "args": { "messageIds": ["", "   ", "\t\n", "\u3000", "\u00a0\u0085\u2028"] } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs_index.clear_embeddings.numeric_ids_dedup_sort",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "clear_message_embeddings", "args": { "messageIds": [" 42 ", "+42", "042", "-0", "0", "-9223372036854775808", "9223372036854775807", "\u30007\u3000"] } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs_index.clear_embeddings.numeric_single",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "clear_message_embeddings", "args": { "messageIds": ["1"] } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs_index.clear_embeddings.stable_token_query_error",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "clear_message_embeddings", "args": { "messageIds": ["msg-stable-1"] }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs_index.clear_embeddings.mixed_numeric_and_stable_error",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "clear_message_embeddings", "args": { "messageIds": ["7", " msg-stable-1 ", ""] }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs_index.clear_embeddings.i64_overflow_is_stable_token",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "clear_message_embeddings", "args": { "messageIds": ["9223372036854775808"] }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs_index.clear_embeddings.i64_underflow_is_stable_token",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "clear_message_embeddings", "args": { "messageIds": ["-9223372036854775809"] }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs_index.clear_embeddings.exponent_is_stable_token",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "clear_message_embeddings", "args": { "messageIds": ["1e3"] }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs_index.clear_embeddings.double_sign_is_stable_token",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "clear_message_embeddings", "args": { "messageIds": ["+-1"] }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs_index.clear_embeddings.underscore_digits_is_stable_token",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "clear_message_embeddings", "args": { "messageIds": ["1_000"] }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs_index.clear_embeddings.fullwidth_digits_is_stable_token",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "clear_message_embeddings", "args": { "messageIds": ["\uff11\uff12"] }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs_index.clear_embeddings.bom_not_trimmed_is_stable_token",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "clear_message_embeddings", "args": { "messageIds": ["\ufeff5"] }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs_index.clear_embeddings.zero_width_space_not_trimmed",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "clear_message_embeddings", "args": { "messageIds": ["\u200b"] }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs_index.clear_embeddings.lance_path_relative_fallback",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "save_setting", "args": { "key": "rag.lance.path", "value": "relative/lance-dir" } },
+        { "cmd": "clear_message_embeddings", "args": { "messageIds": ["3"] } },
+        { "cmd": "get_setting", "args": { "key": "rag.lance.path" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs_index.clear_embeddings.historical_large_id",
+      "seed": "historical-wp013-v1",
+      "steps": [
+        { "cmd": "clear_message_embeddings", "args": { "messageIds": ["9007199254740993", "9007199254740992"] } },
+        { "cmd": "clear_message_embeddings", "args": { "messageIds": ["mistake_old"] }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs_index.clear_embeddings.decode_missing_key",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "clear_message_embeddings", "args": {}, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs_index.clear_embeddings.decode_null",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "clear_message_embeddings", "args": { "messageIds": null }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs_index.clear_embeddings.decode_number_item",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "clear_message_embeddings", "args": { "messageIds": [1] }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs_index.clear_embeddings.decode_snake_key",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "clear_message_embeddings", "args": { "message_ids": ["1"] }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs_index.optimize_lance_db.frontend_default",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "optimize_lance_database", "args": { "force": true } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs_index.optimize_lance_db.no_args",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "optimize_lance_database", "args": {} }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs_index.optimize_lance_db.all_null",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "optimize_lance_database", "args": { "parallelism": null, "force": null } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs_index.optimize_lance_db.parallelism_bounds",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "optimize_lance_database", "args": { "parallelism": 0, "force": false } },
+        { "cmd": "optimize_lance_database", "args": { "parallelism": 4, "force": true } },
+        { "cmd": "optimize_lance_database", "args": { "parallelism": 9007199254740991, "force": false } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs_index.optimize_lance_db.decode_parallelism_negative",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "optimize_lance_database", "args": { "parallelism": -1, "force": true }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs_index.optimize_lance_db.decode_parallelism_fraction",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "optimize_lance_database", "args": { "parallelism": 2.5, "force": true }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs_index.optimize_lance_db.decode_force_string",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "optimize_lance_database", "args": { "force": "yes" }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    }
+  ]
+}

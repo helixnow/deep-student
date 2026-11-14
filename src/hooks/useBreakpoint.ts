@@ -92,4 +92,28 @@ export function useIsTablet(): boolean {
   return isAboveMobile && !isDesktopUp;
 }
 
+/**
+ * 手机横屏媒体查询：矮 + 横，排除宽矮桌面窗口（> 960px）与平板横屏（> 500px）
+ */
+export const PHONE_LANDSCAPE_MEDIA_QUERY =
+  '(orientation: landscape) and (max-height: 500px) and (max-width: 960px)';
+
+/**
+ * 纯函数：判定给定视口宽高是否处于手机横屏自适应区间
+ * 与 PHONE_LANDSCAPE_MEDIA_QUERY 严格一致（width > height 且 height <= 500 且 width <= 960）
+ */
+export function isPhoneLandscapeViewport(width: number, height: number): boolean {
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    return false;
+  }
+  return width > height && height <= 500 && width <= 960;
+}
+
+/**
+ * 检测当前视口是否处于手机横屏紧凑模式
+ */
+export function usePhoneLandscape(): boolean {
+  return useMediaQuery(PHONE_LANDSCAPE_MEDIA_QUERY);
+}
+
 export default useBreakpoint;

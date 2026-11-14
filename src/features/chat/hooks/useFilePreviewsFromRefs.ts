@@ -92,12 +92,13 @@ export function useFilePreviewsFromRefs(
   const [filePreviews, setFilePreviews] = useState<FilePreview[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadedRefs, setLoadedRefs] = useState<ContextRef[] | null>(null);
 
   // 提取文件类型的引用
   const fileRefs = useMemo(() => {
     if (!contextSnapshot?.userRefs) return [];
     return contextSnapshot.userRefs.filter(isFileRef);
-  }, [contextSnapshot]);
+  }, [contextSnapshot?.userRefs]);
 
   // 异步加载文件内容
   useEffect(() => {
@@ -105,6 +106,7 @@ export function useFilePreviewsFromRefs(
       setFilePreviews([]);
       setIsLoading(false);
       setError(null);
+      setLoadedRefs(fileRefs);
       return;
     }
 
@@ -215,6 +217,7 @@ export function useFilePreviewsFromRefs(
         setFilePreviews(previews);
         setError(partialError);
         setIsLoading(false);
+        setLoadedRefs(fileRefs);
       }
     };
 
@@ -226,7 +229,12 @@ export function useFilePreviewsFromRefs(
     };
   }, [fileRefs]);
 
-  return { filePreviews, isLoading, error };
+  const isCurrentSnapshot = loadedRefs === fileRefs;
+  return {
+    filePreviews: isCurrentSnapshot ? filePreviews : [],
+    isLoading: fileRefs.length > 0 && (isLoading || !isCurrentSnapshot),
+    error: isCurrentSnapshot ? error : null,
+  };
 }
 
 export default useFilePreviewsFromRefs;

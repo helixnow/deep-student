@@ -7,6 +7,8 @@ import { getErrorMessage } from '@/utils/errorUtils';
 import { getDefaultPermissionPreset } from './permissionPresetDefaults';
 
 interface CreateSessionWithDefaultsOptions {
+  /** Explicit per-session override; never changes the saved global skill defaults. */
+  defaultSkillIds?: readonly string[];
   mode: string;
   title?: string | null;
   metadata?: Record<string, unknown> | null;
@@ -76,7 +78,7 @@ export async function createSessionWithDefaults(options: CreateSessionWithDefaul
   }
 
   const groupDefaults = options.groupId ? groupCache.get(options.groupId)?.defaultSkillIds ?? [] : [];
-  const effectiveDefaults = skillDefaults.getEffective(groupDefaults);
+  const effectiveDefaults = options.defaultSkillIds ?? skillDefaults.getEffective(groupDefaults);
 
   if (effectiveDefaults.length > 0) {
     // 等待 skills 加载完成，避免首次安装时 skills 尚未注册导致激活失败

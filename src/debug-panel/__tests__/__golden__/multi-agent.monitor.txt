@@ -1,0 +1,263 @@
+<div>
+  <div class="flex flex-col h-full p-4 space-y-4 overflow-hidden">
+    <div class="flex items-center justify-between flex-shrink-0">
+      <div class="flex items-center gap-2">
+        <svg size=20 icon="M117.25,157.92a60,60,0,1" class="text-primary">
+        <h3 class="text-lg font-semibold">
+          "多 Agent 调试"
+        <div class="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background bg-transparent text-muted-foreground text-xs">
+          "ws_01234"
+          "..."
+      <div class="flex items-center gap-2">
+        <button class="ui-press-coarse inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-ui font-medium leading-none transition-[background-color,border-color,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit border-[color:var(--button-plain-border)] bg-[var(--button-plain-bg)] text-muted-foreground hover:bg-[var(--button-plain-hover-bg)] hover:text-foreground active:bg-[var(--button-plain-active-bg)] h-[var(--touch-target-size)] px-[var(--button-padding-x-sm)] text-ui lg:h-[var(--button-height-sm)] lg:text-xs max-lg:[&_svg]:h-[18px] max-lg:[&_svg]:w-[18px] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:min-h-11">
+          <svg size=16 icon="M240,56v48a8,8,0,0,1-8,8">
+        <button class="ui-press-coarse inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-ui font-medium leading-none transition-[background-color,border-color,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit border-[color:var(--button-plain-border)] bg-[var(--button-plain-bg)] text-muted-foreground hover:bg-[var(--button-plain-hover-bg)] hover:text-foreground active:bg-[var(--button-plain-active-bg)] h-[var(--touch-target-size)] px-[var(--button-padding-x-sm)] text-ui lg:h-[var(--button-height-sm)] lg:text-xs max-lg:[&_svg]:h-[18px] max-lg:[&_svg]:w-[18px] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:min-h-11">
+          <svg size=16 icon="M216,32H88a8,8,0,0,0-8,8" class="mr-1">
+          "复制日志"
+        <button class="ui-press-coarse inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-ui font-medium leading-none transition-[background-color,border-color,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit border-[color:var(--button-destructive-border)] bg-[var(--button-destructive-bg)] text-destructive-foreground hover:bg-[var(--button-destructive-hover-bg)] active:bg-[var(--button-destructive-active-bg)] h-[var(--touch-target-size)] px-[var(--button-padding-x-sm)] text-ui lg:h-[var(--button-height-sm)] lg:text-xs max-lg:[&_svg]:h-[18px] max-lg:[&_svg]:w-[18px] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:min-h-11">
+          <svg size=16 icon="M216,48H176V40a24,24,0,0">
+    <div class="flex gap-1 flex-shrink-0">
+      <button class="ui-press-coarse inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-ui font-medium leading-none transition-[background-color,border-color,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit border-[color:var(--button-plain-border)] bg-[var(--button-plain-bg)] text-muted-foreground hover:bg-[var(--button-plain-hover-bg)] hover:text-foreground active:bg-[var(--button-plain-active-bg)] h-[var(--touch-target-size)] px-[var(--button-padding-x-sm)] text-ui lg:h-[var(--button-height-sm)] lg:text-xs max-lg:[&_svg]:h-[18px] max-lg:[&_svg]:w-[18px] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:min-h-11">
+        <svg size=16 icon="M216,72H131.31L104,44.69" class="mr-1">
+        "监控"
+      <button class="ui-press-coarse inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-ui font-medium leading-none transition-[background-color,border-color,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit border-[color:var(--button-plain-border)] bg-[var(--button-plain-bg)] text-muted-foreground hover:bg-[var(--button-plain-hover-bg)] hover:text-foreground active:bg-[var(--button-plain-active-bg)] h-[var(--touch-target-size)] px-[var(--button-padding-x-sm)] text-ui lg:h-[var(--button-height-sm)] lg:text-xs max-lg:[&_svg]:h-[18px] max-lg:[&_svg]:w-[18px] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:min-h-11">
+        <svg size=16 icon="M232.4,114.49,88.32,26.3" class="mr-1">
+        "调试"
+      <button class="ui-press-coarse inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-ui font-medium leading-none transition-[background-color,border-color,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit border-[color:var(--button-plain-border)] bg-[var(--button-plain-bg)] text-muted-foreground hover:bg-[var(--button-plain-hover-bg)] hover:text-foreground active:bg-[var(--button-plain-active-bg)] h-[var(--touch-target-size)] px-[var(--button-padding-x-sm)] text-ui lg:h-[var(--button-height-sm)] lg:text-xs max-lg:[&_svg]:h-[18px] max-lg:[&_svg]:w-[18px] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:min-h-11">
+        <svg size=16 icon="M213.66,82.34l-56-56A8,8" class="mr-1">
+        "日志 ("
+        "1"
+        ")"
+    <div class="shrink-0 bg-border/40">
+    <div class="flex-1 overflow-auto space-y-4">
+      <div class="rounded-[var(--radius-card)] border border-border/40 bg-background text-foreground overflow-hidden min-w-0 shadow-none">
+        <div class="flex flex-col space-y-1.5 p-4 py-2">
+          <h3 class="font-semibold leading-none tracking-tight text-sm flex items-center gap-2">
+            <svg size=16 icon="M216,72H131.31L104,44.69">
+            "工作区状态"
+        <div class="p-4 pt-0 py-2">
+          <div class="space-y-2 text-sm">
+            <div class="flex justify-between">
+              <span class="text-muted-foreground">
+                "ID"
+              <code class="text-xs bg-muted px-1 rounded">
+                "ws_0123456789abcdef"
+            <div class="flex justify-between">
+              <span class="text-muted-foreground">
+                "名称"
+              <span>
+                "AI教育研究"
+            <div class="flex justify-between">
+              <span class="text-muted-foreground">
+                "状态"
+              <div class="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background bg-muted/10 text-muted-foreground bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200">
+                "active"
+      <div class="rounded-[var(--radius-card)] border border-border/40 bg-background text-foreground overflow-hidden min-w-0 shadow-none">
+        <div class="flex flex-col space-y-1.5 p-4 py-2">
+          <h3 class="font-semibold leading-none tracking-tight text-sm flex items-center gap-2">
+            <svg size=16 icon="M200,48H136V16a8,8,0,0,0">
+            "Agent 列表 ("
+            "3"
+            ")"
+        <div class="p-4 pt-0 py-2">
+          <div class="space-y-2">
+            <div class="flex items-center justify-between p-2 bg-muted/50 rounded text-sm">
+              <div class="flex items-center gap-2">
+                <svg size=16 icon="M230.92,212c-15.23-26.33" class="text-purple-500">
+                <div>
+                  <div class="font-medium">
+                    "coordinator"
+                  <code class="text-[10px] text-muted-foreground">
+                    "sess_coordinator"
+                    "..."
+              <div class="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background bg-muted/10 text-muted-foreground bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                "running"
+            <div class="flex items-center justify-between p-2 bg-muted/50 rounded text-sm">
+              <div class="flex items-center gap-2">
+                <svg size=16 icon="M200,48H136V16a8,8,0,0,0" class="text-blue-500">
+                <div>
+                  <div class="font-medium">
+                    "research"
+                  <code class="text-[10px] text-muted-foreground">
+                    "sess_worker_rese"
+                    "..."
+              <div class="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background bg-muted/10 text-muted-foreground bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                "idle"
+            <div class="flex items-center justify-between p-2 bg-muted/50 rounded text-sm">
+              <div class="flex items-center gap-2">
+                <svg size=16 icon="M200,48H136V16a8,8,0,0,0" class="text-blue-500">
+                <div>
+                  <div class="font-medium">
+                    "writer"
+                  <code class="text-[10px] text-muted-foreground">
+                    "sess_worker_writ"
+                    "..."
+              <div class="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background bg-muted/10 text-muted-foreground bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">
+                "failed"
+      <div class="rounded-[var(--radius-card)] border border-border/40 bg-background text-foreground overflow-hidden min-w-0 shadow-none">
+        <div class="flex flex-col space-y-1.5 p-4 py-2">
+          <h3 class="font-semibold leading-none tracking-tight text-sm flex items-center gap-2">
+            <svg size=16 icon="M216,48H40A16,16,0,0,0,2">
+            "最近消息 ("
+            "12"
+            ")"
+        <div class="p-4 pt-0 py-2">
+          <div class="relative min-h-0 min-w-0 min-h-0 min-w-0 h-full h-48 pr-1">
+            <div class="os-size-observer">
+              <div class="os-size-observer-listener">
+            <div class="h-full min-h-0 w-full min-w-0 h-full max-h-[inherit] min-h-0 w-full min-w-0 min-h-0 min-w-0 max-h-[420px]" style="margin-right: 0px; margin-bottom: 0px; margin-left: 0px; top: 0px; right: auto; left: 0px; width: calc(100% + 0px); padding: 0px 0px 0px 0px;">
+              <div class="space-y-2">
+                <div class="p-2 bg-muted/50 rounded text-xs">
+                  <div class="flex items-center justify-between mb-1">
+                    <div class="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background bg-transparent text-muted-foreground text-[10px]">
+                      "task"
+                    <span class="text-muted-foreground text-[10px]">
+                      "9:42:00 AM"
+                  <div class="text-muted-foreground">
+                    <span class="font-medium">
+                      "sess_coo"
+                      "..."
+                    <span>
+                      "→"
+                      "sess_wor"
+                      "..."
+                  <p class="mt-1 line-clamp-2">
+                    "第 2 条消息：调研人工智能在教育领域的应用，并整理成结构化的结论与引用。"
+                <div class="p-2 bg-muted/50 rounded text-xs">
+                  <div class="flex items-center justify-between mb-1">
+                    <div class="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background bg-transparent text-muted-foreground text-[10px]">
+                      "task"
+                    <span class="text-muted-foreground text-[10px]">
+                      "9:43:00 AM"
+                  <div class="text-muted-foreground">
+                    <span class="font-medium">
+                      "sess_wor"
+                      "..."
+                  <p class="mt-1 line-clamp-2">
+                    "第 3 条消息：调研人工智能在教育领域的应用，并整理成结构化的结论与引用。"
+                <div class="p-2 bg-muted/50 rounded text-xs">
+                  <div class="flex items-center justify-between mb-1">
+                    <div class="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background bg-transparent text-muted-foreground text-[10px]">
+                      "broadcast"
+                    <span class="text-muted-foreground text-[10px]">
+                      "9:44:00 AM"
+                  <div class="text-muted-foreground">
+                    <span class="font-medium">
+                      "sess_coo"
+                      "..."
+                    <span>
+                      "→"
+                      "sess_wor"
+                      "..."
+                  <p class="mt-1 line-clamp-2">
+                    "第 4 条消息：调研人工智能在教育领域的应用，并整理成结构化的结论与引用。"
+                <div class="p-2 bg-muted/50 rounded text-xs">
+                  <div class="flex items-center justify-between mb-1">
+                    <div class="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background bg-transparent text-muted-foreground text-[10px]">
+                      "task"
+                    <span class="text-muted-foreground text-[10px]">
+                      "9:45:00 AM"
+                  <div class="text-muted-foreground">
+                    <span class="font-medium">
+                      "sess_wor"
+                      "..."
+                    <span>
+                      "→"
+                      "sess_wor"
+                      "..."
+                  <p class="mt-1 line-clamp-2">
+                    "第 5 条消息：调研人工智能在教育领域的应用，并整理成结构化的结论与引用。"
+                <div class="p-2 bg-muted/50 rounded text-xs">
+                  <div class="flex items-center justify-between mb-1">
+                    <div class="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background bg-transparent text-muted-foreground text-[10px]">
+                      "task"
+                    <span class="text-muted-foreground text-[10px]">
+                      "9:46:00 AM"
+                  <div class="text-muted-foreground">
+                    <span class="font-medium">
+                      "sess_coo"
+                      "..."
+                  <p class="mt-1 line-clamp-2">
+                    "第 6 条消息：调研人工智能在教育领域的应用，并整理成结构化的结论与引用。"
+                <div class="p-2 bg-muted/50 rounded text-xs">
+                  <div class="flex items-center justify-between mb-1">
+                    <div class="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background bg-transparent text-muted-foreground text-[10px]">
+                      "task"
+                    <span class="text-muted-foreground text-[10px]">
+                      "9:47:00 AM"
+                  <div class="text-muted-foreground">
+                    <span class="font-medium">
+                      "sess_wor"
+                      "..."
+                    <span>
+                      "→"
+                      "sess_wor"
+                      "..."
+                  <p class="mt-1 line-clamp-2">
+                    "第 7 条消息：调研人工智能在教育领域的应用，并整理成结构化的结论与引用。"
+                <div class="p-2 bg-muted/50 rounded text-xs">
+                  <div class="flex items-center justify-between mb-1">
+                    <div class="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background bg-transparent text-muted-foreground text-[10px]">
+                      "broadcast"
+                    <span class="text-muted-foreground text-[10px]">
+                      "9:48:00 AM"
+                  <div class="text-muted-foreground">
+                    <span class="font-medium">
+                      "sess_coo"
+                      "..."
+                    <span>
+                      "→"
+                      "sess_wor"
+                      "..."
+                  <p class="mt-1 line-clamp-2">
+                    "第 8 条消息：调研人工智能在教育领域的应用，并整理成结构化的结论与引用。"
+                <div class="p-2 bg-muted/50 rounded text-xs">
+                  <div class="flex items-center justify-between mb-1">
+                    <div class="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background bg-transparent text-muted-foreground text-[10px]">
+                      "task"
+                    <span class="text-muted-foreground text-[10px]">
+                      "9:49:00 AM"
+                  <div class="text-muted-foreground">
+                    <span class="font-medium">
+                      "sess_wor"
+                      "..."
+                  <p class="mt-1 line-clamp-2">
+                    "第 9 条消息：调研人工智能在教育领域的应用，并整理成结构化的结论与引用。"
+                <div class="p-2 bg-muted/50 rounded text-xs">
+                  <div class="flex items-center justify-between mb-1">
+                    <div class="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background bg-transparent text-muted-foreground text-[10px]">
+                      "task"
+                    <span class="text-muted-foreground text-[10px]">
+                      "9:50:00 AM"
+                  <div class="text-muted-foreground">
+                    <span class="font-medium">
+                      "sess_coo"
+                      "..."
+                    <span>
+                      "→"
+                      "sess_wor"
+                      "..."
+                  <p class="mt-1 line-clamp-2">
+                    "第 10 条消息：调研人工智能在教育领域的应用，并整理成结构化的结论与引用。"
+                <div class="p-2 bg-muted/50 rounded text-xs">
+                  <div class="flex items-center justify-between mb-1">
+                    <div class="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background bg-transparent text-muted-foreground text-[10px]">
+                      "task"
+                    <span class="text-muted-foreground text-[10px]">
+                      "9:51:00 AM"
+                  <div class="text-muted-foreground">
+                    <span class="font-medium">
+                      "sess_wor"
+                      "..."
+                    <span>
+                      "→"
+                      "sess_wor"
+                      "..."
+                  <p class="mt-1 line-clamp-2">
+                    "第 11 条消息：调研人工智能在教育领域的应用，并整理成结构化的结论与引用。"
+            <div class="os-scrollbar os-scrollbar-horizontal os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable" style="--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;">
+              <div class="os-scrollbar-track">
+                <div class="os-scrollbar-handle">
+            <div class="os-scrollbar os-scrollbar-vertical os-theme-deep-student os-scrollbar-auto-hide-hidden os-scrollbar-handle-interactive os-scrollbar-track-interactive os-scrollbar-cornerless os-scrollbar-unusable" style="--os-scroll-percent: 0; --os-viewport-percent: 0; --os-scroll-direction: 0;">
+              <div class="os-scrollbar-track">
+                <div class="os-scrollbar-handle">

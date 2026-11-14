@@ -29,6 +29,7 @@ import { useDockPinned } from './DockPinnedStore';
 import {
   clearDockGeometry,
   publishDockIconRects,
+  registerDockGeometryMeasurer,
   type DockIconRect,
 } from './dockGeometry';
 import {
@@ -232,11 +233,9 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
 
   // ---- dockGeometry 发布（O9 genie 收敛点；§4 协作接口）----
   const geometryRafRef = React.useRef(0);
-  const publishGeometry = React.useCallback(() => {
-    const dock = dockRef.current;
-    if (!dock) return;
+  const measureGeometry = React.useCallback((): Record<string, DockIconRect> => {
     const map: Record<string, DockIconRect> = {};
-    dock.querySelectorAll<HTMLElement>(`[${MAG_ITEM_ATTR}]`).forEach((el) => {
+    dockRef.current?.querySelectorAll<HTMLElement>(`[${MAG_ITEM_ATTR}]`).forEach((el) => {
       const typeId = el.getAttribute(MAG_ITEM_ATTR);
       const wrap = el.parentElement;
       if (!typeId || !wrap) return;
@@ -244,8 +243,15 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
       const rect = wrap.getBoundingClientRect();
       map[typeId] = { x: rect.left, y: rect.top, w: rect.width, h: rect.height };
     });
-    publishDockIconRects(map);
+    return map;
   }, []);
+  const publishGeometry = React.useCallback(() => {
+    if (!dockRef.current) return;
+    publishDockIconRects(measureGeometry());
+  }, [measureGeometry]);
+
+  // 挂载即登记（早于首个 rAF 发布）：之后任一次提交里开窗，opening 相位取坐标缺项时都能现场补测
+  React.useLayoutEffect(() => registerDockGeometryMeasurer(measureGeometry), [measureGeometry]);
 
   const publishGeometrySoon = React.useCallback(() => {
     if (geometryRafRef.current) return;

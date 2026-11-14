@@ -1,0 +1,36 @@
+{
+  "id": "RF-W23-opener-open-path-executables",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main-agent",
+  "approvedAt": "2026-11-07T03:27:08Z",
+  "title": "plugin:opener|open_path 不再把可执行文件交给系统打开（打开即运行）",
+  "rust": {
+    "file": "src-tauri/capabilities/default.json",
+    "line": 64,
+    "behavior": "default.json 给主 WebView 授予 opener:allow-open-path，作用域含 $APPDATA/$APPCACHE/$APPLOCALDATA/$DOCUMENT/$DOWNLOAD/$TEMP/$PICTURE/$RESOURCE/$DESKTOP 下全部文件。tauri-plugin-opener 2.5.3 open_path 只做作用域与存在性检查，随后 open::that_detached 用系统默认程序打开：.exe/.bat/.lnk、.app/.command、无扩展名的可执行文件、.desktop 等会被直接运行"
+  },
+  "fix": {
+    "files": ["electron/shell/plugins/executable-files.ts", "electron/shell/plugins/system.ts"],
+    "behavior": "open_path 通过作用域检查后再判可执行目标，命中则报 “Not allowed to open path <path>: <原因>”：给定路径或真实路径（跟随符号链接）的扩展名在本平台可执行类型表中（Windows 另加 PATHEXT，并忽略备用数据流后缀与结尾的点/空格）；macOS 上带 Contents/MacOS 的目录；普通文件以 ELF / Mach-O / PE 或 #! 开头；POSIX 上无扩展名且带执行位的普通文件。带执行位但有文档扩展名的文件（FAT/exFAT 拷来的 0777 文件）照常打开；reveal_item_in_dir 不受影响"
+  },
+  "evidence": "安全问题：主窗口同时拥有 $TEMP/$DOCUMENT/$DOWNLOAD 的 plugin:fs 写权限（write_file 可带 mode 设执行位）与上述目录的 open_path，主窗口内任何一处脚本注入（渲染的 Markdown/HTML、第三方内容）都能“写入 dropped.command / x.bat / 无扩展名可执行文件 → open_path”，在 macOS 由 Terminal、Windows 由 cmd 直接运行，即本地代码执行。SEC-E01 修复后远程页面已无法调用 open_path，剩余风险就是这条主窗口链。前端只在 systemFileOpener.openFileExternally 调用 open_path，用于用 “默认应用打开” 学习资料原文件（PDF/Office/EPUB/图片等），不需要运行程序；拒绝后用户仍可 “在文件夹中显示”。",
+  "userVisible": "打开学习资料不受影响；只有资料本身是程序、脚本或安装包时，“用默认应用打开” 会提示不允许，可改用 “在文件夹中显示”。",
+  "dataCompat": "不改变落库数据、同步载荷与备份格式。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "electron/tests/opener-executables.test.ts",
+      "name": "RF-W23-opener-open-path-executables: executable file types are refused per platform, documents are not"
+    },
+    {
+      "file": "electron/tests/opener-executables.test.ts",
+      "name": "RF-W23-opener-open-path-executables: content, permission bits, bundles and symlinks are checked on the real target"
+    },
+    {
+      "file": "electron/tests/opener-executables.test.ts",
+      "name": "RF-W23-opener-open-path-executables: plugin:opener|open_path refuses an in-scope executable before handing it to the OS"
+    }
+  ],
+  "notes": "Rust 侧对应修法：在 open_path 命令外包一层应用命令做同样的判定，或把 opener:allow-open-path 的作用域收窄并补 deny 条目（如 **/*.app、**/*.command、**/*.exe）；后者无法覆盖无扩展名可执行文件。"
+}

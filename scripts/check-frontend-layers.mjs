@@ -33,7 +33,26 @@
 //   - boot：首帧 BootShell，只依赖平台能力，归 platform。
 //   - dev / debug-panel / mcp-debug / demo / button-audit / __tests__：
 //     调试、演示与入口级装配，位于最顶层 app。
-//   - constants：当前不存在，预留在 foundation。
+//
+// 前端插件化（ui-kernel / ui-sdk / ui-plugins）与构建期工具 platform 的归属：
+//   - ui-kernel：Cordis 根、slot 与领域契约、社区加载器。被 components / features / app /
+//     构建脚本广泛引用，属于平台级基础设施，归 platform。它的向上引用只出现在
+//     bootstrap.ts（应用装配：命令注册表、聊天块注册表、工作台应用注册表、插件管理生产
+//     适配器、官方插件安装）与 community.ts（取 SDK 命名空间装 import map），这两处是
+//     插件化装配入口，冻结在基线里。
+//   - ui-sdk：`@deepstudent/ui` 公共 SDK，向上 re-export ui-kernel，并直接引用设计系统
+//     组件（`src/components/ui/Ds*`），归 ui。
+//   - ui-plugins：官方 UI 插件包（views / nav / settings / content / menu / dashboard /
+//     editor …）。它消费 features 的页面与 components 的组件，同时对外提供官方贡献表和
+//     "无 Provider 时的静态兜底表"（轻量窗口直接读，见 docs/plugins/FRONTEND-F1.md §6.1），
+//     因此 `components` / `features` → `ui-plugins` 与 `ui-plugins` → `components` /
+//     `features` 两个方向都存在真实引用：任何层序都会产生同量级的向上引用，故归最顶层 app。
+//     这些互相引用的边随该目录登记一次性冻结在基线里；收紧路径是把官方插件的共享表迁入
+//     `src/ui-kernel/contracts/`，不在本次登记范围。
+//   - platform：构建期工具（Vite 官方插件表 official-plugins.ts、分包策略
+//     chunk-strategy.ts），只在 Node 侧被 vite.config.ts / web/vite.config.ts /
+//     mobile/vite.app.ts 引用，归 platform；与 ui-kernel 同层，读它的 meta 类型不产生违规。
+//   - constants：已随迁移删除，不再登记（曾预留在 foundation）。
 //
 // 用法：
 //   node scripts/check-frontend-layers.mjs            # 与基线比较，有新增违规时退出码 1

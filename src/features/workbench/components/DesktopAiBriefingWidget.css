@@ -35,8 +35,8 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 650;
 }
 
 .wb-ai-briefing-summary {
@@ -49,14 +49,14 @@
 
 .wb-ai-briefing-collapse {
   display: inline-flex;
-  width: 24px;
-  height: 24px;
+  width: 27px;
+  height: 27px;
   flex: none;
   align-items: center;
   justify-content: center;
   margin-right: -4px;
   border: 0;
-  border-radius: 8px;
+  border-radius: 7px;
   background: transparent;
   color: var(--text-secondary, hsl(var(--muted-foreground)));
   cursor: pointer;

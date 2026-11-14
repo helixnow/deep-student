@@ -12,6 +12,7 @@ import {
   type WorkbenchLearningHandlerLabels,
 } from '../handlers/workbenchLearningHandlers';
 import {
+  createCopyReportFallbackActionHandlers,
   createResearchBriefingActionHandlers,
   type ResearchBriefingActionLabels,
 } from '../handlers/researchBriefingActionHandlers';
@@ -220,6 +221,25 @@ export function resolveGenerativeUIChatActionHandlers(
         notes: openNoteTargets,
         pdfPages: openPdfPageTargets,
       }),
+    );
+  }
+
+  if (
+    actionIds.has('copy-report') &&
+    !lookupGenerativeActionHandler(handlers, 'copy-report')
+  ) {
+    Object.assign(
+      handlers,
+      createCopyReportFallbackActionHandlers(
+        input.intent,
+        {
+          copyReport:
+            input.researchLabels?.copyReport ??
+            fallbackLabel('research.actions.copy_report', '复制报告'),
+        },
+        () => extractResearchReportBody(input.intent),
+        intentExportLabels,
+      ),
     );
   }
 

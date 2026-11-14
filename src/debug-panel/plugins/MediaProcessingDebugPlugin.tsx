@@ -25,123 +25,32 @@
  * - format_resource_done（实际注入内容）
  */
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { Badge } from '../../components/ui/shad/Badge';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/shad/Card';
 import { ScrollArea } from '../../components/ui/shad/ScrollArea';
-import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import {
   FileImage,
   FileText,
-  CheckCircle,
-  XCircle,
-  CircleNotch,
   Trash,
   Clock,
   Lightning,
   Eye,
   EyeSlash,
-  Cursor,
-  PaperPlaneRight,
 } from '@phosphor-icons/react';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
-import { usePdfProcessingStore, type PdfProcessingStatus, type MediaType } from '@/features/pdf/stores/pdfProcessingStore';
+import { usePdfProcessingStore, type PdfProcessingStatus } from '@/features/pdf/stores/pdfProcessingStore';
 import { DsButton } from '../../components/ui/DsButton';
 import {
-  CHATV2_LOG_EVENT,
-  type ChatV2LogEntry,
-} from '../../features/chat/debug/chatV2Logger';
-
-// =============================================================================
-// 类型定义
-// =============================================================================
-
-interface MediaProcessingEvent {
-  id: string;
-  timestamp: string;
-  eventType: 'progress' | 'completed' | 'error' | 'mode_change' | 'inject' | 'lifecycle';
-  fileId: string;
-  mediaType: MediaType;
-  stage?: string;
-  percent?: number;
-  readyModes?: string[];
-  error?: string;
-  currentPage?: number;
-  totalPages?: number;
-  source: 'media' | 'pdf' | 'ui' | 'adapter'; // 事件来源
-  // 注入模式变化专用字段
-  modesBefore?: string[];
-  modesAfter?: string[];
-  toggledMode?: string;
-  // 实际注入内容专用字段
-  injectedContent?: {
-    textBlocks: number;
-    imageBlocks: number;
-    totalTextLength: number;
-    hasMultimodal: boolean;
-  };
-  injectModes?: Record<string, string[]>;
-}
-
-// =============================================================================
-// 常量
-// =============================================================================
-
-const STAGE_LABELS: Record<string, string> = {
-  pending: '等待中',
-  text_extraction: '文本提取',
-  page_rendering: '页面渲染',
-  page_compression: '页面压缩',
-  image_compression: '图片压缩',
-  ocr_processing: 'OCR 处理',
-  vector_indexing: '向量索引',
-  completed: '已完成',
-  error: '错误',
-  removed: '已移除',
-  store_cleanup: 'Store 清理',
-};
-
-const STAGE_COLORS: Record<string, string> = {
-  pending: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200',
-  text_extraction: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
-  page_rendering: 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200',
-  page_compression: 'bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-200',
-  image_compression: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200',
-  ocr_processing: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200',
-  vector_indexing: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200',
-  completed: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
-  error: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
-};
-
-const EVENT_TYPE_ICONS: Record<string, React.ReactNode> = {
-  progress: <CircleNotch size={12} className="text-blue-500 animate-spin" />,
-  completed: <CheckCircle size={12} className="text-green-500" />,
-  error: <XCircle size={12} className="text-red-500" />,
-  mode_change: <Cursor size={12} className="text-purple-500" />,
-  inject: <PaperPlaneRight size={12} className="text-teal-500" />,
-  lifecycle: <Trash size={12} className="text-gray-500" />,
-};
-
-const MAX_EVENTS = 200;
-
-// =============================================================================
-// 辅助函数
-// =============================================================================
-
-function formatTimestamp(ts: string): string {
-  const date = new Date(ts);
-  const time = date.toLocaleTimeString(undefined, {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
-  const ms = String(date.getMilliseconds()).padStart(3, '0');
-  return `${time}.${ms}`;
-}
-
-function generateEventId(): string {
-  return `evt_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
-}
+  EVENT_TYPE_ICONS,
+  MAX_EVENTS,
+  STAGE_COLORS,
+  STAGE_LABELS,
+  formatTimestamp,
+  generateEventId,
+  type MediaProcessingEvent,
+} from './mediaProcessing/model';
+import { useMediaProcessingFeed } from './mediaProcessing/useMediaProcessingFeed';
 
 // =============================================================================
 // 事件条目组件
@@ -347,254 +256,7 @@ const MediaProcessingDebugPlugin: React.FC<DebugPanelPluginProps> = ({
   );
 
   // 监听 Tauri 事件
-  useEffect(() => {
-    if (!isActivated) return;
-
-    const unlisteners: UnlistenFn[] = [];
-    // listen() 是异步的：若 effect 在 promise 落定前清理，需立即注销而不是入列后泄漏
-    let cancelled = false;
-    const registerUnlisten = (fn: UnlistenFn) => {
-      if (cancelled) fn();
-      else unlisteners.push(fn);
-    };
-
-    // 统一媒体事件
-    listen<{
-      fileId: string;
-      status: {
-        stage: string;
-        currentPage?: number;
-        totalPages?: number;
-        percent: number;
-        readyModes: string[];
-        mediaType?: MediaType;
-      };
-      mediaType: MediaType;
-    }>('media-processing-progress', (event) => {
-      console.log('[MediaProcessingDebug] media-processing-progress:', event.payload);
-      addEvent({
-        eventType: 'progress',
-        fileId: event.payload.fileId,
-        mediaType: event.payload.mediaType,
-        stage: event.payload.status.stage,
-        percent: event.payload.status.percent,
-        readyModes: event.payload.status.readyModes,
-        currentPage: event.payload.status.currentPage,
-        totalPages: event.payload.status.totalPages,
-        source: 'media',
-      });
-    }).then(registerUnlisten);
-
-    listen<{
-      fileId: string;
-      readyModes: string[];
-      mediaType: MediaType;
-    }>('media-processing-completed', (event) => {
-      console.log('[MediaProcessingDebug] media-processing-completed:', event.payload);
-      addEvent({
-        eventType: 'completed',
-        fileId: event.payload.fileId,
-        mediaType: event.payload.mediaType,
-        stage: 'completed',
-        percent: 100,
-        readyModes: event.payload.readyModes,
-        source: 'media',
-      });
-    }).then(registerUnlisten);
-
-    listen<{
-      fileId: string;
-      error: string;
-      stage: string;
-      mediaType: MediaType;
-    }>('media-processing-error', (event) => {
-      console.log('[MediaProcessingDebug] media-processing-error:', event.payload);
-      addEvent({
-        eventType: 'error',
-        fileId: event.payload.fileId,
-        mediaType: event.payload.mediaType,
-        stage: event.payload.stage,
-        error: event.payload.error,
-        source: 'media',
-      });
-    }).then(registerUnlisten);
-
-    // 旧 PDF 事件（兼容）
-    listen<{
-      fileId: string;
-      status: {
-        stage: string;
-        currentPage?: number;
-        totalPages?: number;
-        percent: number;
-        readyModes: string[];
-      };
-    }>('pdf-processing-progress', (event) => {
-      console.log('[MediaProcessingDebug] pdf-processing-progress (legacy):', event.payload);
-      addEvent({
-        eventType: 'progress',
-        fileId: event.payload.fileId,
-        mediaType: 'pdf',
-        stage: event.payload.status.stage,
-        percent: event.payload.status.percent,
-        readyModes: event.payload.status.readyModes,
-        currentPage: event.payload.status.currentPage,
-        totalPages: event.payload.status.totalPages,
-        source: 'pdf',
-      });
-    }).then(registerUnlisten);
-
-    listen<{
-      fileId: string;
-      readyModes: string[];
-    }>('pdf-processing-completed', (event) => {
-      console.log('[MediaProcessingDebug] pdf-processing-completed (legacy):', event.payload);
-      addEvent({
-        eventType: 'completed',
-        fileId: event.payload.fileId,
-        mediaType: 'pdf',
-        stage: 'completed',
-        percent: 100,
-        readyModes: event.payload.readyModes,
-        source: 'pdf',
-      });
-    }).then(registerUnlisten);
-
-    listen<{
-      fileId: string;
-      error: string;
-      stage: string;
-    }>('pdf-processing-error', (event) => {
-      console.log('[MediaProcessingDebug] pdf-processing-error (legacy):', event.payload);
-      addEvent({
-        eventType: 'error',
-        fileId: event.payload.fileId,
-        mediaType: 'pdf',
-        stage: event.payload.stage,
-        error: event.payload.error,
-        source: 'pdf',
-      });
-    }).then(registerUnlisten);
-
-    // 监听 chatV2Logger 的附件日志（完整生命周期）
-    const handleChatV2Log = (e: CustomEvent<ChatV2LogEntry>) => {
-      const log = e.detail;
-      if (log.category !== 'attachment') return;
-      
-      const data = log.data || {};
-      
-      // 监听注入模式变化
-      if (log.action === 'inject_mode_change') {
-        addEvent({
-          eventType: 'mode_change',
-          fileId: String(data.attachmentId || 'unknown'),
-          mediaType: (data.mediaType as MediaType) || 'pdf',
-          source: 'ui',
-          modesBefore: data.before as string[],
-          modesAfter: data.after as string[],
-          toggledMode: data.toggledMode as string,
-        });
-      }
-      
-      // 监听实际注入内容
-      if (log.action === 'format_resource_done') {
-        const injectedContent = data.injectedContent as {
-          textBlocks: number;
-          imageBlocks: number;
-          totalTextLength: number;
-          hasMultimodal: boolean;
-        } | undefined;
-        
-        if (injectedContent) {
-          addEvent({
-            eventType: 'inject',
-            fileId: String(data.resourceId || 'unknown'),
-            mediaType: (data.typeId as string)?.includes('image') ? 'image' : 'pdf',
-            source: 'adapter',
-            injectedContent,
-            injectModes: data.injectModes as Record<string, string[]>,
-          });
-        }
-      }
-      
-      // 监听 Store 初始化
-      if (log.action === 'processing_store_init') {
-        addEvent({
-          eventType: 'progress',
-          fileId: String(data.sourceId || 'unknown'),
-          mediaType: (data.mediaType as MediaType) || 'pdf',
-          stage: data.stage as string,
-          percent: data.percent as number,
-          readyModes: data.readyModes as string[],
-          source: 'ui',
-        });
-      }
-      
-      // 监听状态同步
-      if (log.action.startsWith('status_sync_')) {
-        const eventType = log.action === 'status_sync_completed' ? 'completed' 
-          : log.action === 'status_sync_error' ? 'error' 
-          : 'progress';
-        addEvent({
-          eventType,
-          fileId: String(data.sourceId || 'unknown'),
-          mediaType: (data.mediaType as MediaType) || 'pdf',
-          stage: data.stage as string || eventType,
-          percent: data.percent as number,
-          readyModes: data.readyModes as string[],
-          error: data.error as string,
-          source: 'ui',
-        });
-      }
-      
-      // 监听移除操作（正常生命周期事件，不是错误）
-      if (log.action === 'attachment_remove' || log.action === 'remove_attachment') {
-        addEvent({
-          eventType: 'lifecycle',
-          fileId: String(data.sourceId || data.attachmentId || 'unknown'),
-          mediaType: 'pdf', // 默认
-          stage: 'removed',
-          source: 'ui',
-        });
-      }
-      
-      // 监听重试操作
-      if (log.action === 'retry_processing_start') {
-        addEvent({
-          eventType: 'progress',
-          fileId: String(data.sourceId || 'unknown'),
-          mediaType: (data.mediaType as MediaType) || 'pdf',
-          stage: 'retry_started',
-          source: 'ui',
-        });
-      }
-      
-      // 监听 Store 清理（正常生命周期事件，不是错误）
-      if (log.action === 'processing_store_cleanup' || log.action === 'processing_store_batch_cleanup') {
-        const sourceIds = data.sourceIds as string[] || (data.sourceId ? [data.sourceId] : []);
-        for (const sourceId of sourceIds) {
-          addEvent({
-            eventType: 'lifecycle',
-            fileId: String(sourceId),
-            mediaType: 'pdf',
-            stage: 'store_cleanup',
-            source: 'ui',
-          });
-        }
-      }
-    };
-    
-    window.addEventListener(CHATV2_LOG_EVENT, handleChatV2Log as EventListener);
-
-    console.log('[MediaProcessingDebug] 已注册事件监听器（Tauri + chatV2Logger）');
-
-    return () => {
-      cancelled = true;
-      unlisteners.forEach((fn) => fn());
-      window.removeEventListener(CHATV2_LOG_EVENT, handleChatV2Log as EventListener);
-      console.log('[MediaProcessingDebug] 已清理事件监听器');
-    };
-  }, [isActivated, addEvent]);
+  useMediaProcessingFeed(isActivated, addEvent);
 
   // 清空事件
   const clearEvents = useCallback(() => {

@@ -24,18 +24,32 @@
  * - 结果卡片（解释 / 翻译）走底部内联面板，不用 Dialog，窄屏不会溢出
  */
 
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { DotsSixVertical } from '@phosphor-icons/react';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
+import { getAppKernel } from '@/ui-kernel/bootstrap';
+import { cn } from '@/utils/cn';
 import { SelectionToolbar, useTextSelection, type TextSelectionState } from '@/shared/selection';
 import type { SelectionSourceKind } from '@/features/chat/context/selectionRef';
 import '../styles/selection-panel.css';
 import { SaveAsNoteFolderPicker, truncateNoteTitle, useSaveAsNoteFlow } from '@/shared/notes';
+import { normalizePdfAcademicText } from '../pdfAcademicText';
 import { buildSelectionNoteContent, type PdfSelectionPayload } from '../pdfSelectionActions';
 import { buildAnnotationSourceLine } from '../pdfAnnotationList';
 // 静态导入安全：selectionStudyActions 只依赖 @/events 与 UnifiedNotification
 // （均在主 chunk），不会把聊天/cardforge 拉进本组件的懒加载 chunk
 import { sendSelectionToChatInput } from '../selectionStudyActions';
+import {
+  buildExcerptDragLabel,
+  buildPdfExcerptPayload,
+  buildPdfSemanticAnchor,
+  computeNormalizedSelectionBounds,
+  pdfAutoExcerptKey,
+  rotateNormalizedRect,
+  setCompactDragImage,
+  sharedPdfExcerptGuard,
+} from '../interop/pdfInteropBridge';
 
 // 解释/翻译结果卡片复用聊天组件，但必须懒加载：静态导入会把整条翻译链路
 // 打进 PDF 侧 chunk，抵消 EnhancedPdfViewer 与 selectionStudyActions 的拆包设计。
@@ -86,7 +100,31 @@ export interface PdfSelectionActionsProps {
   selectionKind?: SelectionSourceKind;
   /** 无 PDF 页码时的定位（如 EPUB 的 `chapter:N`），用于引用到聊天 */
   resolveFallbackLocator?: () => string | undefined;
+  /** 将 AI 翻译 / 精读结果一键钉入当前选区对应的高亮批注笔记 */
+  onPinToAnnotation?: (payload: {
+    sourceText: string;
+    noteText: string;
+    page?: number;
+  }) => void;
+  /**
+   * 跨插件摘录的锚点资源 id（selectionSourceId 或 resourcePath）。
+   * 提供时显示「拖入导图」胶囊，并允许「划选即入图」自动摘录；EPUB 等非 PDF 宿主不传。
+   */
+  interopResourceId?: string;
+  /** 锚点的别名资源 id（VFS resourceId），便于反查 */
+  interopAliasResourceId?: string;
+  /** 「划选即入图」开关：选区稳定后自动送入当前导图 / 笔记 */
+  autoExcerptActive?: boolean;
 }
+
+interface SelectionExcerptSnapshot {
+  text: string;
+  page: number;
+  rect?: { x: number; y: number; w: number; h: number };
+}
+
+/** 拖拽胶囊宽度估计（夹在容器内） */
+const DRAG_CHIP_WIDTH_PX = 96;
 
 export const PdfSelectionActions: React.FC<PdfSelectionActionsProps> = ({
   containerRef,
@@ -98,34 +136,50 @@ export const PdfSelectionActions: React.FC<PdfSelectionActionsProps> = ({
   selectionOverride,
   selectionKind = 'pdf',
   resolveFallbackLocator,
+  onPinToAnnotation,
+  interopResourceId,
+  interopAliasResourceId,
+  autoExcerptActive = false,
 }) => {
   const { t } = useTranslation(['pdf', 'chatV2', 'common']);
   const pageSelection = useTextSelection(containerRef);
   const selection = selectionOverride ?? pageSelection;
   const panelRef = useRef<HTMLDivElement>(null);
 
-  const [explainText, setExplainText] = useState<string | null>(null);
+  const normalizeText = useCallback(
+    (raw: string) => (selectionKind === 'pdf' ? normalizePdfAcademicText(raw) : raw.trim()),
+    [selectionKind],
+  );
+
+  const [explainState, setExplainState] = useState<{
+    text: string;
+    contextBefore: string;
+    contextAfter: string;
+    page?: number;
+  } | null>(null);
   const [translateState, setTranslateState] = useState<{
     text: string;
     contextBefore: string;
     contextAfter: string;
+    page?: number;
   } | null>(null);
 
   const saveAsNoteFlow = useSaveAsNoteFlow({ openSource: 'pdf-selection' });
   const startSaveAsNote = saveAsNoteFlow.start;
 
-  const panelOpen = explainText !== null || translateState !== null;
+  const panelOpen = explainState !== null || translateState !== null;
   // 面板打开后原选区仍在，工具条让位；但读者接着选了另一段时要能直接再解释 / 翻译，
   // 不必先手动关面板（新动作会替换面板内容）
-  const panelSourceText = explainText ?? translateState?.text ?? null;
+  const panelSourceText = explainState?.text ?? translateState?.text ?? null;
+  const normalizedSelectedText = selection.selectedText ? normalizeText(selection.selectedText) : '';
   const toolbarVisible =
-    selection.isVisible && (!panelOpen || selection.selectedText !== panelSourceText);
+    selection.isVisible && (!panelOpen || normalizedSelectedText !== panelSourceText);
   const closePanel = useCallback(() => {
-    setExplainText(null);
+    setExplainState(null);
     setTranslateState(null);
   }, []);
 
-  // 📱 Android 返回键：先关结果面板，不要直接退出阅读器。
+  // Android 返回键：先关结果面板，不要直接退出阅读器。
   // 用共享可见性守卫注册：保活但不可见的 PDF 实例（ViewLayerRenderer
   // keep-alive 隐藏层）若残留打开的面板，不得吞掉活跃页面的返回键。
   React.useEffect(() => {
@@ -135,20 +189,6 @@ export const PdfSelectionActions: React.FC<PdfSelectionActionsProps> = ({
       return true;
     }, BACK_PRIORITY.overlay);
   }, [panelOpen, closePanel, containerRef]);
-
-  const handleExplain = useCallback((text: string) => {
-    setTranslateState(null);
-    setExplainText(text);
-  }, []);
-
-  const handleTranslate = useCallback((text: string) => {
-    setExplainText(null);
-    setTranslateState({
-      text,
-      contextBefore: selection.contextBefore,
-      contextAfter: selection.contextAfter,
-    });
-  }, [selection.contextBefore, selection.contextAfter]);
 
   /**
    * 解析当前选区所在页码（1-based，取自页面包裹层的 data-page-number）。
@@ -169,7 +209,58 @@ export const PdfSelectionActions: React.FC<PdfSelectionActionsProps> = ({
     return Number.isInteger(page) && page > 0 ? page : undefined;
   }, [containerRef]);
 
-  const handleSaveAsNote = useCallback((text: string) => {
+  const handleExplain = useCallback(
+    (rawText: string) => {
+      const clean = normalizeText(rawText);
+      if (!clean) return;
+      const page = resolveSelectionPage();
+      setTranslateState(null);
+      setExplainState({
+        text: clean,
+        contextBefore: selection.contextBefore,
+        contextAfter: selection.contextAfter,
+        page,
+      });
+    },
+    [normalizeText, resolveSelectionPage, selection.contextBefore, selection.contextAfter],
+  );
+
+  const handleTranslate = useCallback(
+    (rawText: string) => {
+      const clean = normalizeText(rawText);
+      if (!clean) return;
+      const page = resolveSelectionPage();
+      setExplainState(null);
+      setTranslateState({
+        text: clean,
+        contextBefore: selection.contextBefore,
+        contextAfter: selection.contextAfter,
+        page,
+      });
+    },
+    [normalizeText, resolveSelectionPage, selection.contextBefore, selection.contextAfter],
+  );
+
+  // 划词单键快捷键桥（阅读器内选中文本后按 T 翻译 / 按 E 解释）
+  React.useEffect(() => {
+    const container = containerRef.current;
+    if (!enabled || !container) return;
+    const onTrigger = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ action?: 'translate' | 'explain'; text?: string }>).detail;
+      const targetText = detail?.text || selection.selectedText;
+      if (!targetText?.trim()) return;
+      if (detail?.action === 'translate') {
+        handleTranslate(targetText);
+      } else if (detail?.action === 'explain') {
+        handleExplain(targetText);
+      }
+    };
+    container.addEventListener('pdf-selection-trigger-action', onTrigger);
+    return () => container.removeEventListener('pdf-selection-trigger-action', onTrigger);
+  }, [enabled, containerRef, selection.selectedText, handleTranslate, handleExplain]);
+
+  const handleSaveAsNote = useCallback((rawText: string) => {
+    const text = normalizeText(rawText);
     // 有 fileName + 页码时与链路 A 摘录笔记同一落地格式：
     // 引用块正文 + 来源行「—— 摘自《fileName》第 N 页」（page locator），
     // 标题取摘录首 30 字。documentTitle 由挂载方保证是 fileName 而非资源 ID。
@@ -181,10 +272,10 @@ export const PdfSelectionActions: React.FC<PdfSelectionActionsProps> = ({
         content: buildSelectionNoteContent({
           text,
           // 与批注导出同一格式：有资源 id 时来源行是 pdfref:// 回链，笔记里点击回到原页
-          sourceLabel: buildAnnotationSourceLine({ label, sourceId: selectionSourceId, page }),
+          sourceLabel: buildAnnotationSourceLine({ label, sourceId: selectionSourceId, page, quote: text }),
         }),
         title: compactTitle || documentTitle,
-        origin: selectionSourceId ? { kind: 'resource', resourceId: selectionSourceId, page, title: documentTitle } : undefined,
+        origin: selectionSourceId ? { kind: 'resource', resourceId: selectionSourceId, page, title: documentTitle, quote: text.slice(0, 120) } : undefined,
       });
       return;
     }
@@ -192,9 +283,10 @@ export const PdfSelectionActions: React.FC<PdfSelectionActionsProps> = ({
     startSaveAsNote({
       content: documentTitle ? `> ${documentTitle}\n\n${text}` : text,
     });
-  }, [startSaveAsNote, documentTitle, resolveSelectionPage, t, selectionSourceId]);
+  }, [normalizeText, startSaveAsNote, documentTitle, resolveSelectionPage, t, selectionSourceId]);
 
-  const handleMakeCards = useCallback((text: string) => {
+  const handleMakeCards = useCallback((rawText: string) => {
+    const text = normalizeText(rawText);
     // 动态 import：selectionCardGeneration 顶层静态依赖 cardforge 的 cardAgent，
     // 只在用户真点「制卡」时才载入，避免 cardforge 打进 PDF 侧 chunk
     const page = resolveSelectionPage();
@@ -203,20 +295,21 @@ export const PdfSelectionActions: React.FC<PdfSelectionActionsProps> = ({
       contextBefore: selection.contextBefore,
       contextAfter: selection.contextAfter,
       sourceRef: selectionSourceId
-        ? { kind: 'resource' as const, id: selectionSourceId, title: documentTitle || undefined, page: typeof page === 'number' ? page : undefined }
+        ? { kind: 'resource' as const, id: selectionSourceId, title: documentTitle || undefined, page: typeof page === 'number' ? page : undefined, quote: text.slice(0, 120) }
         : undefined,
       t,
     };
     void import('@/features/chat/services/selectionCardGeneration').then(
       ({ generateCardsFromSelection }) => generateCardsFromSelection(input)
     );
-  }, [selection.contextBefore, selection.contextAfter, t, resolveSelectionPage, selectionSourceId, documentTitle]);
+  }, [normalizeText, selection.contextBefore, selection.contextAfter, t, resolveSelectionPage, selectionSourceId, documentTitle]);
 
 
   // P0 选区即上下文：选区快照 + page locator → 结构化 contextRef。
   // 动态 import 避免把 chat context 链路静态打进 PDF 侧 chunk（同制卡的纪律）。
-  const handleAddAsContext = useCallback((text: string) => {
+  const handleAddAsContext = useCallback((rawText: string) => {
     if (!selectionSourceId) return;
+    const text = normalizeText(rawText);
     const page = resolveSelectionPage();
     void import('@/features/chat/context/selectionRef').then(({ selectionToChat }) =>
       selectionToChat({
@@ -229,25 +322,168 @@ export const PdfSelectionActions: React.FC<PdfSelectionActionsProps> = ({
         },
       })
     );
-  }, [selectionSourceId, documentTitle, resolveSelectionPage, selectionKind, resolveFallbackLocator]);
+  }, [normalizeText, selectionSourceId, documentTitle, resolveSelectionPage, selectionKind, resolveFallbackLocator]);
 
   // 工具条「添加到聊天」（唯一入口）：有资源 id 时走选区即上下文（选区快照 + page locator，
   // 可点回原页）——旧实现走宿主 onQuoteToChat 的整文档引用，selectedText 只塞进 metadata
   // 而上下文定义不读取，模型拿到的是整本书而非选区；且与「引用到聊天」两个按钮并存易混淆。
   // 无资源 id（未入库的临时文件）时退回 PREFILL 文本注入。
-  const handleAddToChat = useCallback((text: string) => {
+  const handleAddToChat = useCallback((rawText: string) => {
+    const text = normalizeText(rawText);
     if (selectionSourceId) {
       handleAddAsContext(text);
       return;
     }
     sendSelectionToChatInput({ text, sourceName: documentTitle, page: resolveSelectionPage() });
-  }, [selectionSourceId, handleAddAsContext, documentTitle, resolveSelectionPage]);
+  }, [normalizeText, selectionSourceId, handleAddAsContext, documentTitle, resolveSelectionPage]);
 
   // 解释/翻译结果面板的「添加到输入框」：内容是 AI 生成文本而非原文选区，
   // 不适用 locator 引用语义，固定走 PREFILL 文本注入（此时选区已清，无页码）
   const handleAddDerivedTextToChat = useCallback((text: string) => {
     sendSelectionToChatInput({ text, sourceName: documentTitle });
   }, [documentTitle]);
+
+  // ---------------------------------------------------------------- 跨插件摘录（拖拽 / 划选即入图）
+  // 选区稳定时立刻快照（页码 + 归一化包围盒 + 文本）：按下拖拽胶囊时浏览器可能已折叠 DOM 选区，
+  // dragstart 只读快照，不依赖实时选区；也从不拦截文本层的 mousedown，原生划词不受影响。
+  const interopEnabled = enabled && selectionKind === 'pdf' && Boolean(interopResourceId) && !selectionOverride;
+  const snapshotRef = useRef<SelectionExcerptSnapshot | null>(null);
+  const [dragChipPos, setDragChipPos] = useState<{ top: number; left: number } | null>(null);
+
+  const captureSelectionSnapshot = useCallback((): SelectionExcerptSnapshot | null => {
+    const container = containerRef.current;
+    const domSelection = window.getSelection();
+    if (!container || !domSelection || domSelection.rangeCount === 0 || domSelection.isCollapsed) return null;
+    const range = domSelection.getRangeAt(0);
+    const node = range.startContainer;
+    const element = node instanceof Element ? node : node.parentElement;
+    const pageEl = element?.closest('[data-page-number]');
+    if (!pageEl || !container.contains(pageEl)) return null;
+    const page = Number.parseInt(pageEl.getAttribute('data-page-number') ?? '', 10);
+    if (!Number.isInteger(page) || page < 1) return null;
+    const text = normalizeText(domSelection.toString());
+    if (text.length < 2) return null;
+    const displayRect = typeof range.getClientRects === 'function'
+      ? computeNormalizedSelectionBounds(range.getClientRects(), pageEl.getBoundingClientRect())
+      : undefined;
+    const rect = displayRect && rotateNormalizedRect(displayRect, -Number(pageEl.getAttribute('data-page-rotation') ?? 0));
+    return { text, page, ...(rect ? { rect } : {}) };
+  }, [containerRef, normalizeText]);
+
+  const buildSnapshotPayload = useCallback((snapshot: SelectionExcerptSnapshot) => {
+    const anchor = buildPdfSemanticAnchor({
+      resourceId: interopResourceId ?? '',
+      aliasResourceId: interopAliasResourceId,
+      page: snapshot.page,
+      rect: snapshot.rect,
+      quote: snapshot.text,
+      documentTitle,
+    });
+    return buildPdfExcerptPayload({ excerptKind: 'text', text: snapshot.text, anchor, documentTitle });
+  }, [interopResourceId, interopAliasResourceId, documentTitle]);
+
+  useEffect(() => {
+    if (!interopEnabled || !selection.isVisible || !selection.selectedText) {
+      // 拖拽进行中保留快照：dragstart 之后选区折叠也不能丢载荷
+      if (!sharedPdfExcerptGuard.isDragging()) snapshotRef.current = null;
+      setDragChipPos(null);
+      return;
+    }
+    const snapshot = captureSelectionSnapshot();
+    snapshotRef.current = snapshot;
+    const container = containerRef.current;
+    const rect = selection.selectionRect;
+    if (!snapshot || !container || !rect) {
+      setDragChipPos(null);
+      return;
+    }
+    // 胶囊贴在选区右侧（放不下翻到左侧，都放不下才落到右上角）：
+    // 上方是高亮选色菜单，下方是共享划词工具条，两侧不与任何一个重叠
+    const outer = container.getBoundingClientRect();
+    const rightSide = rect.left + rect.width - outer.left + 6;
+    const leftSide = rect.left - outer.left - DRAG_CHIP_WIDTH_PX - 6;
+    const top = Math.max(4, rect.top - outer.top);
+    if (rightSide + DRAG_CHIP_WIDTH_PX <= outer.width - 4) {
+      setDragChipPos({ top, left: rightSide });
+    } else if (leftSide >= 4) {
+      setDragChipPos({ top, left: leftSide });
+    } else {
+      setDragChipPos({
+        top: Math.max(4, rect.top - outer.top - 30),
+        left: Math.max(4, outer.width - DRAG_CHIP_WIDTH_PX - 4),
+      });
+    }
+
+  }, [
+    interopEnabled,
+    selection.isVisible,
+    selection.selectedText,
+    selection.selectionRect,
+    captureSelectionSnapshot,
+    containerRef,
+    autoExcerptActive,
+    interopResourceId,
+    buildSnapshotPayload,
+  ]);
+
+  // 仅完成一次真实的页面划词手势才发送；开关、滚动、清选区与工具条重渲染均不发送旧选区。
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || !interopEnabled || !autoExcerptActive) return;
+    let gesture: { x: number; y: number; text: string } | null = null;
+    const inTextLayer = (target: EventTarget | null) => target instanceof Element
+      && Boolean(target.closest('.textLayer, .react-pdf__Page__textContent'))
+      && !target.closest('button, [data-selection-toolbar], .ds-pdf__margin-backlinks');
+    const onDown = (event: MouseEvent) => {
+      gesture = event.button === 0 && inTextLayer(event.target)
+        ? { x: event.clientX, y: event.clientY, text: window.getSelection()?.toString() ?? '' }
+        : null;
+    };
+    const onUp = (event: MouseEvent) => {
+      const start = gesture;
+      gesture = null;
+      if (!start || event.button !== 0 || !inTextLayer(event.target) || sharedPdfExcerptGuard.isDragging()) return;
+      const snapshot = captureSelectionSnapshot();
+      if (!snapshot?.rect || Array.from(snapshot.text.replace(/\s/g, '')).length < 2) return;
+      if (normalizeText(start.text) === snapshot.text
+        && Math.hypot(event.clientX - start.x, event.clientY - start.y) < 3) return;
+      const key = pdfAutoExcerptKey(interopResourceId ?? '', snapshot.page, snapshot.text);
+      if (!sharedPdfExcerptGuard.shouldEmitAuto(key)) return;
+      getAppKernel().dnd.emitAutoExcerpt(buildSnapshotPayload(snapshot));
+    };
+    container.addEventListener('mousedown', onDown);
+    container.addEventListener('mouseup', onUp);
+    return () => {
+      container.removeEventListener('mousedown', onDown);
+      container.removeEventListener('mouseup', onUp);
+    };
+  }, [containerRef, interopEnabled, autoExcerptActive, captureSelectionSnapshot, normalizeText, interopResourceId, buildSnapshotPayload]);
+
+  const endOwnedDragRef = useRef<(() => void) | null>(null);
+
+  const handleExcerptDragStart = useCallback((event: React.DragEvent<HTMLButtonElement>) => {
+    const snapshot = snapshotRef.current ?? captureSelectionSnapshot();
+    if (!snapshot) {
+      event.preventDefault();
+      return;
+    }
+    endOwnedDragRef.current = sharedPdfExcerptGuard.beginDrag();
+    const payload = getAppKernel().dnd.startExcerptDrag(event.nativeEvent, buildSnapshotPayload(snapshot));
+    if (!payload) {
+      endOwnedDragRef.current?.();
+      endOwnedDragRef.current = null;
+      event.preventDefault();
+      return;
+    }
+    setCompactDragImage(event.dataTransfer, buildExcerptDragLabel(`P.${snapshot.page}`, snapshot.text));
+  }, [captureSelectionSnapshot, buildSnapshotPayload]);
+
+  const handleExcerptDragEnd = useCallback(() => {
+    endOwnedDragRef.current?.();
+    endOwnedDragRef.current = null;
+  }, []);
+
+  useEffect(() => handleExcerptDragEnd, [handleExcerptDragEnd, interopResourceId]);
 
   if (!enabled) return null;
 
@@ -270,25 +506,65 @@ export const PdfSelectionActions: React.FC<PdfSelectionActionsProps> = ({
         viewportBottomInset={isMobileLike ? MOBILE_BOTTOM_INSET_PX : 0}
         dismissOnLeaveView={null}
         ariaLabel={t('chatV2:selectionToolbar.ariaLabel')}
-        className="z-[150]"
+               className="z-30"
       />
+
+      {interopEnabled && toolbarVisible && dragChipPos && (
+        <div
+          // 与共享工具条同一标记：按下胶囊不被 useTextSelection 视为「点空白清选区」
+          data-selection-toolbar=""
+          className="absolute z-30"
+          style={{ top: dragChipPos.top, left: dragChipPos.left }}
+        >
+          <button
+            type="button"
+            draggable
+            onDragStart={handleExcerptDragStart}
+            onDragEnd={handleExcerptDragEnd}
+            data-testid="pdf-excerpt-drag-chip"
+            title={t('pdf:interop.drag_excerpt')}
+            aria-label={t('pdf:interop.drag_excerpt')}
+            className={cn(
+              'inline-flex h-6 select-none items-center gap-1 rounded-full border border-border/35 bg-card/95 px-2',
+              'text-[11px] text-muted-foreground shadow-sm backdrop-blur-sm transition-colors',
+              'cursor-grab hover:text-foreground active:cursor-grabbing',
+            )}
+          >
+            <DotsSixVertical size={14} aria-hidden="true" />
+            <span>{t('pdf:interop.drag_excerpt')}</span>
+          </button>
+        </div>
+      )}
 
       {panelOpen && (
         <div
           ref={panelRef}
-          className="ds-pdf__selection-panel"
+          className="ds-pdf__selection-panel ui-rise-in border-border/35 bg-popover/95 backdrop-blur-md"
           role="region"
           aria-label={t('chatV2:selectionToolbar.ariaLabel')}
         >
           {/* 解释 / 翻译弹层自带关闭钮，面板不再叠第二个 */}
           <CustomScrollArea className="ds-pdf__selection-panel-body" fullHeight>
             <React.Suspense fallback={null}>
-              {explainText !== null && (
+              {explainState !== null && (
                 <ExplainPopover
-                  sourceText={explainText}
+                  sourceText={explainState.text}
                   isVisible
+                  academicMode={selectionKind === 'pdf'}
+                  contextBefore={explainState.contextBefore}
+                  contextAfter={explainState.contextAfter}
                   onClose={closePanel}
                   onAddToInput={handleAddDerivedTextToChat}
+                  onSaveToAnnotation={
+                    onPinToAnnotation
+                      ? (noteText) =>
+                          onPinToAnnotation({
+                            sourceText: explainState.text,
+                            noteText,
+                            page: explainState.page,
+                          })
+                      : undefined
+                  }
                 />
               )}
               {translateState !== null && (
@@ -299,6 +575,16 @@ export const PdfSelectionActions: React.FC<PdfSelectionActionsProps> = ({
                   contextAfter={translateState.contextAfter}
                   onClose={closePanel}
                   onAddToInput={handleAddDerivedTextToChat}
+                  onSaveToAnnotation={
+                    onPinToAnnotation
+                      ? (noteText) =>
+                          onPinToAnnotation({
+                            sourceText: translateState.text,
+                            noteText,
+                            page: translateState.page,
+                          })
+                      : undefined
+                  }
                   showModelName={false}
                 />
               )}

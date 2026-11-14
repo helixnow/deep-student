@@ -3,11 +3,38 @@
  * 支持自定义快捷键、冲突检测
  */
 
-import { commandRegistry } from './commandRegistry';
+import { commandRegistry, commandScopesOverlap } from './commandRegistry';
 import { normalizeShortcut, formatShortcut } from './shortcutUtils';
 import type { Command } from './types';
+import { getSetting, saveSetting } from '@/utils/settingsApi';
+import { isTauriRuntime } from '@/utils/shared';
 
 const STORAGE_KEY = 'dstu-custom-shortcuts';
+
+/**
+ * SQLite `settings` 中的自定义快捷键副本。
+ * localStorage 是运行时权威源；SQLite 副本用于 origin 变更 / WebView 缓存清理后的回填，
+ * 也保证快捷键随 DataGovernance 备份一起恢复。
+ */
+const SETTING_KEY = 'shortcuts.custom';
+
+/** 解析持久化的 [commandId, shortcut] 条目（两种存储共用同一格式） */
+function parseShortcutEntries(raw: string | null): Array<[string, string]> | null {
+  if (!raw) return null;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return null;
+    return parsed.filter(
+      (entry): entry is [string, string] =>
+        Array.isArray(entry) &&
+        entry.length === 2 &&
+        typeof entry[0] === 'string' &&
+        typeof entry[1] === 'string',
+    );
+  } catch {
+    return null;
+  }
+}
 
 export interface ShortcutBinding {
   commandId: string;
@@ -29,6 +56,7 @@ class ShortcutManager {
   
   constructor() {
     this.load();
+    this.hydrateFromSettings();
   }
   
   /**
@@ -37,26 +65,55 @@ class ShortcutManager {
   private load(): void {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const entries = JSON.parse(stored);
+      const entries = parseShortcutEntries(stored);
+      if (entries) {
         this.customShortcuts = new Map(entries);
       }
     } catch (error: unknown) {
       console.warn('[ShortcutManager] 加载自定义快捷键失败:', error);
     }
   }
+
+  /**
+   * 从 SQLite settings 回填自定义快捷键。
+   * localStorage 是权威源：本地已有记录（哪怕是用户清空后的 '[]'）时不覆盖。
+   */
+  private hydrateFromSettings(): void {
+    if (!isTauriRuntime) return;
+    void getSetting(SETTING_KEY)
+      .then((stored) => {
+        const entries = parseShortcutEntries(stored);
+        if (!entries || entries.length === 0) return;
+        try {
+          if (localStorage.getItem(STORAGE_KEY) !== null) return;
+          localStorage.setItem(STORAGE_KEY, stored as string);
+        } catch {
+          // localStorage 不可用时仅更新内存
+        }
+        this.customShortcuts = new Map(entries);
+        this.notifyListeners();
+      })
+      .catch((error: unknown) => {
+        console.warn('[ShortcutManager] 从 settings 回填快捷键失败:', error);
+      });
+  }
   
   /**
    * 保存自定义快捷键
    */
   private save(): void {
+    let serialized: string | null = null;
     try {
-      localStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify([...this.customShortcuts.entries()])
-      );
+      serialized = JSON.stringify([...this.customShortcuts.entries()]);
+      localStorage.setItem(STORAGE_KEY, serialized);
     } catch (error: unknown) {
       console.warn('[ShortcutManager] 保存自定义快捷键失败:', error);
+    }
+    // ★ BUG-5: 镜像到 SQLite settings（localStorage 丢失后仍能恢复用户快捷键）
+    if (serialized !== null) {
+      void saveSetting(SETTING_KEY, serialized).catch((error: unknown) => {
+        console.warn('[ShortcutManager] 镜像快捷键到 settings 失败:', error);
+      });
     }
   }
   
@@ -118,7 +175,7 @@ class ShortcutManager {
   /**
    * 检查快捷键冲突（考虑视图范围）
    *
-   * 两个命令只有在视图范围存在交集时才算冲突。
+   * 两个命令只有在视图范围（工作台内再看聚焦应用）存在交集时才算冲突。
    * 例如 chat.save (chat-v2) 与 notes.save (learning-hub) 即使快捷键相同也不冲突。
    */
   checkConflict(shortcut: string, excludeCommandId?: string): ShortcutConflict | null {
@@ -126,7 +183,6 @@ class ShortcutManager {
     const conflictingCommands: string[] = [];
 
     const excludeCommand = excludeCommandId ? commandRegistry.getById(excludeCommandId) : undefined;
-    const excludeViews = excludeCommand?.visibleInViews;
     
     // 检查所有命令
     const allCommands = commandRegistry.getAll();
@@ -137,8 +193,7 @@ class ShortcutManager {
       
       const effectiveShortcut = this.getShortcut(command.id);
       if (effectiveShortcut && normalizeShortcut(effectiveShortcut) === normalized) {
-        // 视图范围检查：只有视图交集非空才算冲突
-        if (this.haveViewOverlap(excludeViews, command.visibleInViews)) {
+        if (commandScopesOverlap(excludeCommand ?? {}, command)) {
           conflictingCommands.push(command.id);
         }
       }
@@ -154,17 +209,6 @@ class ShortcutManager {
     return null;
   }
 
-  /**
-   * 判断两组视图是否有交集
-   */
-  private haveViewOverlap(aViews?: string[], bViews?: string[]): boolean {
-    // 如果任一方无限制（全局命令），必然有交集
-    if (!aViews || aViews.length === 0 || !bViews || bViews.length === 0) {
-      return true;
-    }
-    return aViews.some((v) => bViews.includes(v));
-  }
-  
   /**
    * 获取所有快捷键绑定
    */

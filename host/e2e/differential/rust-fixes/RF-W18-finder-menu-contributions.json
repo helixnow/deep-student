@@ -1,0 +1,21 @@
+{
+  "id": "RF-W18-finder-menu-contributions",
+  "kind": "deliberate",
+  "status": "proposed",
+  "title": "资源库桌面空白/快捷方式与标签栏菜单消费 app.menu",
+  "rust": { "file": "src/features/learning-hub/components/finder/DesktopView.tsx", "behavior": "迁移前桌面视图和标签栏右键菜单只有固定官方行，不能读取 app.menu 社区贡献。" },
+  "fix": {
+    "files": ["src/features/learning-hub/components/appMenuHost.ts", "src/features/learning-hub/components/finder/DesktopView.tsx", "src/features/learning-hub/components/TabBar.tsx", "src/ui-plugins/official/menu/finderDesktopMenu.tsx", "src/ui-plugins/official/menu/tabBarMenu.tsx"],
+    "behavior": "消费 W17 6ab65894 发布的 finder.desktop/finder.desktopShortcut/finder.tab 上下文，官方行随视图加载宣告，宿主保留外壳、定位、关闭和标记，通过 app.menu 按 order 构建行；无 kernel 使用同一份官方行。"
+  },
+  "userVisible": "安装社区插件后可在资源库桌面/快捷方式和标签栏菜单加入操作，收到对应视图或标签状态而不携带 workbench；错误归属插件，卸载后菜单重算。无社区插件时 DOM 和逐行操作与迁移前 golden 一致。",
+  "dataCompat": "不改变存储、同步和备份格式。",
+  "evidence": "迁移前两个 finderDesktopMenu.golden/tabBarMenu.golden 均通过；应用 handoff 41 补丁 2 后两个用例仍通过且 golden 文件未改。finderMenus.test.tsx 6/6 验证顺序、上下文、执行关闭、禁用、卸载和错误归属。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    { "file": "src/ui-plugins/official/menu/__tests__/finderMenus.test.tsx", "name": "RF-W18-finder-menu-contributions: places community rows by order with the view state on the context (no workbench); rows run, then the menu closes; unload removes them" },
+    { "file": "src/ui-plugins/official/menu/__tests__/finderMenus.test.tsx", "name": "RF-W18-finder-menu-contributions: places community rows by order with the tab on the context (no workbench); rows run, then the menu closes; unload removes them" }
+  ],
+  "commits": ["fad14d2c"],
+  "notes": "待主编排审批。回撤 fad14d2c 和本登记及标记提交，恢复固定行；W17 契约可保留，无须回撤其他 lane 的 kernel/SDK 修改。"
+}

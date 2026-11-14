@@ -32,9 +32,10 @@ export const StatusTag: React.FC<{ group: SessionGroup; paused?: boolean; noCard
   if (group === 'completed' && noCards) {
     return (
       <span
-        className="inline-flex items-center gap-1.5 px-2 py-0.5 text-xs font-medium rounded-sm text-muted-foreground bg-muted"
+        className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground"
         title={t('taskDashboard.statusNoCardsHint', { defaultValue: '处理完成，但没有生成卡片：内容可能过短或缺少可记忆的知识点' })}
       >
+        <span aria-hidden className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-muted-foreground/45" />
         {t('taskDashboard.statusNoCards', { defaultValue: '未出卡' })}
       </span>
     );
@@ -42,15 +43,20 @@ export const StatusTag: React.FC<{ group: SessionGroup; paused?: boolean; noCard
   const config = {
     active: {
       text: paused ? t('taskDashboard.statusPaused') : t('taskDashboard.statusActive'),
-      cls: 'text-info bg-info/10',
+      cls: 'text-info',
+      dot: 'bg-info',
     },
-    attention: { text: t('taskDashboard.statusFailed'), cls: 'text-warning bg-warning/15' },
-    completed: { text: t('taskDashboard.statusDone'), cls: 'text-success bg-success/15' },
+    attention: { text: t('taskDashboard.statusFailed'), cls: 'text-warning', dot: 'bg-warning' },
+    completed: { text: t('taskDashboard.statusDone'), cls: 'text-success', dot: 'bg-success' },
   }[group];
 
   return (
-    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 text-xs font-medium rounded-sm ${config.cls}`}>
-      {group === 'active' && !paused && <span aria-hidden className="wb-at-pulse-dot" />}
+    <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${config.cls}`}>
+      {group === 'active' && !paused ? (
+        <span aria-hidden className="wb-at-pulse-dot" />
+      ) : (
+        <span aria-hidden className={`h-1.5 w-1.5 flex-shrink-0 rounded-full ${config.dot}`} />
+      )}
       {config.text}
     </span>
   );
@@ -78,7 +84,7 @@ export const InlineProgress: React.FC<{
           <div className="h-full bg-warning/60 wb-at-progress-fill" style={{ width: `${pctFail}%` }} />
         )}
       </div>
-      <span className="text-xs text-muted-foreground tabular-nums flex-shrink-0">
+      <span className="font-mono text-xs text-muted-foreground tabular-nums flex-shrink-0">
         {completed}/{total}
       </span>
     </div>

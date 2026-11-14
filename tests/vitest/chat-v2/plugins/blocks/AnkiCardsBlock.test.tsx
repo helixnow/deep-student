@@ -554,8 +554,8 @@ describe('AnkiCardsBlock', () => {
     expect(screen.getByTestId('chatanki-progress-metrics')).toHaveTextContent('10');
     expect(screen.getByTestId('chatanki-progress-message')).toHaveTextContent('Routing...');
     expect(
-      screen.getByRole('button', { name: 'Refresh AnkiConnect status' }),
-    ).toHaveClass('!h-10', '!w-10');
+      screen.queryByRole('button', { name: 'Refresh AnkiConnect status' }),
+    ).not.toBeInTheDocument();
   });
 
   it('only shows importing when the selected route uses an import phase', () => {

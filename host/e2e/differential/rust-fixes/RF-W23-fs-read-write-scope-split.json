@@ -1,0 +1,36 @@
+{
+  "id": "RF-W23-fs-read-write-scope-split",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main-agent",
+  "approvedAt": "2026-11-07T03:27:08Z",
+  "title": "“桌面只读”授权不再允许写桌面：只读权限集里的目录作用域只对它自带的读命令生效",
+  "rust": {
+    "file": "src-tauri/capabilities/default.json",
+    "line": 46,
+    "behavior": "fs:allow-desktop-read-recursive 展开为 read-all（只有命令）+ scope-desktop-recursive（只有作用域）。tauri-utils 2.9.3 acl/resolved.rs 把没有 commands 的权限的 scope 记为插件全局作用域（GlobalScope），对 fs 的所有命令、所有授予了 fs 命令的窗口都生效；default.json 另授予 fs:allow-document-write-recursive 等写命令，于是 write_file / remove / rename / mkdir / 写模式 open 都能作用于 $DESKTOP/**，“只读”名不副实"
+  },
+  "fix": {
+    "files": ["electron/shell/capabilities.ts", "electron/shell/plugins/fs.ts"],
+    "behavior": "BuiltinAcl 解析同一个 capability 条目时，若展开结果里同插件既有带命令的成员又有只有作用域的成员，只有作用域成员的 allow 绑定为这些带命令成员的命令作用域（不进全局作用域）；deny 仍进全局作用域，单独授予的作用域权限（如 fs:scope、扩展条目）仍是全局的。fs 插件另有两条配套规则：写模式 open（write/append/truncate/create/createNew 任一为 true）按 write_file 的作用域判定（Rust 的 open 属于 read-all）；copy_file 的源路径也接受 read_file 的作用域（copy_file 属于 write-all，否则无法从只读目录复制出来）。运行时作用域（对话框、拖放选中的路径）不受影响"
+  },
+  "evidence": "安全问题，与权限本身的意图矛盾：权限名与 tauri-plugin-fs 的说明都是 “allow recursive read access to the $DESKTOP folder”，default.json 也刻意只给桌面读、给文档/下载/图片读写。复现（S01，host/e2e/security/shell-builtin-acl.test.ts 的 SEC-E04 [W06] desktop 用例）：主窗口 plugin:fs|write_file 写 $DESKTOP/dropped.command，Rust 与修复前的外壳都写成功（macOS 上 .command 可被双击执行）。修复后同一调用返回 forbidden path，读桌面、写文档、从桌面复制到文档、对话框选中的桌面路径写入仍成功。前端审计：src/** 没有写 $DESKTOP 的调用（wallpaperLibrary/pdfAssets/fileManager/useAppUpdater 写的是 AppData/AppCache 或对话框选中的路径）。",
+  "userVisible": "正常使用感知不到；只有页面脚本试图不经对话框直接写、删、改名桌面文件时被拒绝（forbidden path）。",
+  "dataCompat": "不改变落库数据、同步载荷与备份格式。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "host/e2e/security/shell-builtin-acl.test.ts",
+      "name": "RF-W23-fs-read-write-scope-split: a read-only grant ($DESKTOP) cannot be turned into a write through open, rename, remove, mkdir or write_text_file (SEC-E04)"
+    },
+    {
+      "file": "host/e2e/security/shell-builtin-acl.test.ts",
+      "name": "RF-W23-fs-read-write-scope-split: copying out of the read-only directory and writing to user-picked paths keep working (SEC-E04)"
+    },
+    {
+      "file": "electron/tests/builtin-acl.test.ts",
+      "name": "RF-W23-fs-read-write-scope-split: scope-only set members bind to the set commands; standalone scope permissions stay global"
+    }
+  ],
+  "notes": "Rust 侧对应修法：default.json 把 \"fs:allow-desktop-read-recursive\" 换成扩展条目 { \"identifier\": \"fs:read-all\", \"allow\": [{ \"path\": \"$DESKTOP\" }, { \"path\": \"$DESKTOP/**\" }] }——扩展条目的 allow 挂在 read-all 的每个命令权限上，成为命令作用域，效果与本修复相同。"
+}

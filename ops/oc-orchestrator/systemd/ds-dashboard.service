@@ -1,0 +1,18 @@
+[Unit]
+Description=Deep Student 迁移监控面板
+After=network-online.target
+
+[Service]
+User=dsdev
+Group=dsdev
+Slice=dsdev.slice
+WorkingDirectory=/home/dsdev/dev/deep-student
+Environment=PATH=/opt/node26/bin:/usr/local/bin:/usr/bin:/bin
+Environment=HOME=/home/dsdev
+Environment=TMPDIR=/tmp
+ExecStart=/opt/node26/bin/node scripts/electron-migration/dashboard/server.mjs --port 8787
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

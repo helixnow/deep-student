@@ -5,5 +5,27 @@
   "ignore": "忽略",
   "wikilink": {
     "create_failed": "创建笔记「{{title}}」失败"
+  },
+  "mindmapGhost": {
+    "aiBadge": "AI 建议",
+    "acceptBranch": "采纳分支",
+    "rejectBranch": "放弃",
+    "acceptAll": "全部采纳",
+    "revertAll": "全部撤回",
+    "removeBadge": "建议移除",
+    "removeSubtreeCount": "含 {{count}} 节点",
+    "moveBadge": "移至「{{target}}」",
+    "toggleBranchList": "分支明细 ({{count}})",
+    "checkpointBanner": "已采纳 {{count}} 项 AI 修改",
+    "checkpointSavedHint": "已存版本快照",
+    "dismissCheckpoint": "关闭提示",
+    "noteModified": "更新备注",
+    "styleModified": "更新样式",
+    "branchAddKind": "新增分支",
+    "branchModifyKind": "修改节点",
+    "branchRemoveKind": "移除节点",
+    "branchMoveKind": "移动分支",
+    "revertedToast": "已撤回 AI 修改并恢复至修改前版本",
+    "revertFailedToast": "撤回失败：{{error}}"
   }
 }

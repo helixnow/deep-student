@@ -1,0 +1,24 @@
+[package]
+name = "dstu-differential"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Standalone workspace: do not edit the frozen app workspace membership.
+[workspace]
+
+[dependencies]
+dstu-core = { path = "../dstu-core", default-features = false }
+dstu-util = { path = "../dstu-util", default-features = false }
+dstu-security = { path = "../dstu-security", default-features = false }
+chrono = { version = "0.4.38", features = ["serde"] }
+tracing = "0.1"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", features = ["preserve_order", "arbitrary_precision"] }
+regex = "=1.12.3"
+hex = "0.4"
+fsrs = "=6.6.2"
+
+[profile.dev]
+debug = 0
+incremental = true

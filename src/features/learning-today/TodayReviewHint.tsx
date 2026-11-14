@@ -6,7 +6,8 @@
  */
 import React, { useEffect, useState, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Books, Cards, Notebook, WarningDiamond, X } from '@phosphor-icons/react';
+import { Books, Cards, Notebook, Play, WarningDiamond, X } from '@phosphor-icons/react';
+import { openDailySprint, useSprintLauncherSnapshot } from '@/components/exam-sprint';
 import { WeakConceptsStrip, useWeakConcepts } from '@/components/dashboard/WeakConceptsStrip';
 import { WeeklyReportActions } from '@/components/dashboard/WeeklyReportActions';
 import { getTodayLearningSnapshot, refreshTodayLearning, subscribeTodayLearning } from './todayLearningStore';
@@ -26,6 +27,7 @@ function readStarterDismissed(): boolean {
 export const TodayReviewHint: React.FC = () => {
   const { t } = useTranslation('data');
   const today = useSyncExternalStore(subscribeTodayLearning, getTodayLearningSnapshot, getTodayLearningSnapshot);
+  const { readiness: sprintReadiness } = useSprintLauncherSnapshot();
   const weak = useWeakConcepts(WEAK_CONCEPTS_ON_HOME);
   const [starterDismissed, setStarterDismissed] = useState(readStarterDismissed);
   useEffect(() => { void refreshTodayLearning(); }, []);
@@ -74,10 +76,30 @@ export const TodayReviewHint: React.FC = () => {
   const hasHistory = (today.cardsTotal ?? 0) > 0 || (today.plansTotal ?? 0) > 0;
   if (items.length === 0 && !hasWeak && !hasHistory) return null;
 
+  const totalDueItems = today.cards + today.mistakes + today.notes;
+  const estimatedSprintMinutes =
+    sprintReadiness && sprintReadiness.estimatedSprintMinutes > 0
+      ? sprintReadiness.estimatedSprintMinutes
+      : Math.max(
+          1,
+          Math.min(15, Math.ceil((today.cards * 15 + today.mistakes * 40 + today.notes * 30) / 60)),
+        );
+
   return (
     <div className="mt-3 flex flex-col items-center gap-1" data-testid="today-review-hint">
       {items.length > 0 && (
         <div className="flex flex-wrap items-center justify-center gap-x-1 gap-y-1 text-xs text-muted-foreground">
+          {totalDueItems > 0 ? (
+            <button
+              type="button"
+              data-testid="today-sprint-cta"
+              onClick={() => openDailySprint({ source: 'today-hint' })}
+              className="mr-1 inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/[0.08] px-2.5 py-0.5 font-mono text-xs font-medium tabular-nums text-primary transition-colors hover:bg-primary/[0.15] active:scale-95 active:opacity-80 [@media(pointer:coarse)]:min-h-[44px]"
+            >
+              <Play size={12} weight="fill" aria-hidden="true" />
+              <span>{t('review:examSprint.hud.startCta', { minutes: estimatedSprintMinutes })}</span>
+            </button>
+          ) : null}
           <span className="mr-1">{t('today_center.hint_title', { defaultValue: '今日待复习' })}</span>
           {items.map((item) => (
             <button

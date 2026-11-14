@@ -1,0 +1,36 @@
+{
+  "id": "RF-W09-cloud-config-allow-insecure-wire-key",
+  "kind": "rust-bug",
+  "status": "proposed",
+  "title": "云同步配置的“允许明文传输”按后端字段名 allow_insecure 发送和读回（审计 V02-03）",
+  "rust": {
+    "file": "src/utils/cloudStorageApi.ts",
+    "line": 293,
+    "behavior": "参照仓 deep-student（快照 21c9d808）的前端 toSafeCloudStorageConfig（cloudStorageApi.ts:293/308/322）在用户确认“允许不安全传输”后发 allowInsecure: true；后端 SafeCloudStorageConfig（src-tauri/crates/dstu-sync/src/cloud_config_commands.rs:88-113）是 deny_unknown_fields 的内部标签枚举，rename_all 只改变体名，线上字段是 allow_insecure，于是 cloud_config_ssot_save / cloud_config_publish / cloud_config_test_connection_draft 都报 unknown field `allowInsecure`；不带标志又被判为 public HTTP WebDAV requires persisted allowInsecure=true。读回方向 fromSafeCloudStorageConfig（:336/350）与 CloudStorageSection.tsx:493 读 allowInsecure，后端给的 allow_insecure 永远读成 false；localStorage 缓存（:429、:583）按界面形状解析后端 DTO，同样丢掉这个标志"
+  },
+  "fix": {
+    "files": [
+      "src/utils/cloudStorageApi.ts",
+      "src/features/settings/components/CloudStorageSection.tsx"
+    ],
+    "behavior": "SafeCloudStorageConfig 的 TS 类型改为 allow_insecure；toSafeCloudStorageConfig 发 allow_insecure: true（未勾选时不写这个键，与 Rust 的 skip_serializing_if = is_false 一致）；fromSafeCloudStorageConfig 与发布成功后的表单状态读 allow_insecure；localStorage 缓存的两种历史形状（旧界面形状的 allowInsecure、发布后写入的后端 DTO 的 allow_insecure）都保留这个标志，迁移到后端时按 allow_insecure 提交。后端（Rust 与 Host）不改"
+  },
+  "evidence": "审计 .reports/reviews/V02-invoke-shapes.md 第 63-96 行：完整 desktop profile 探针 cloud_config_ssot_save {config:{provider:'webdav',webdav:{endpoint:'http://203.0.113.5/dav',username:'u'},root:'ds',allowInsecure:true}} 报 unknown field `allowInsecure`, expected one of `webdav`, `root`, `allow_insecure`，改为 allow_insecure 即成功。后果：局域网 HTTP WebDAV（NAS）、公网 HTTP WebDAV、不带 TLS 的非回环 FTP 在 Tauri 版和迁移版都无法保存。跨层测试 tests/vitest/data-governance/cloudConfigWireShape.crosslayer.test.ts 把前端 toSafeCloudStorageConfig 的输出直接交给真实 Host 命令，修复前 3 条用例以同一错误失败（FTP 草稿试连报 Ajv 首错 must have required property 'webdav'）",
+  "userVisible": "能：局域网或公网 HTTP WebDAV、不带 TLS 的非回环 FTP 在用户确认风险提示后可以保存和试连；保存后设置页显示持久化的明文传输风险提示，重新打开设置页仍记得用户的确认，不再每次都弹警告。未勾选时的行为不变",
+  "dataCompat": "后端 SSOT 的存储格式不变（仍是 Rust 的 SafeCloudStorageConfig 序列化）。前端 localStorage 缓存 cloud_storage_config_v2 写入的是后端 DTO（allow_insecure），Tauri 版发布后本来也写同样形状；读取端兼容旧的 allowInsecure 与新的 allow_insecure 两种写法。旧版前端读新缓存时与它读自己写的缓存一样会丢掉这个标志，但后端 SSOT 优先，不影响已发布的配置",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "src/utils/__tests__/cloudStorageSsot.test.ts",
+      "name": "RF-W09-cloud-config-allow-insecure-wire-key: the wire DTO carries allow_insecure, never allowInsecure"
+    },
+    {
+      "file": "tests/vitest/data-governance/cloudConfigWireShape.crosslayer.test.ts",
+      "name": "RF-W09-cloud-config-allow-insecure-wire-key: cloud_config_ssot_save accepts LAN HTTP WebDAV and plain FTP and reads the opt-in back"
+    },
+    {
+      "file": "src/features/settings/components/__tests__/CloudStorageSection.allowInsecure.test.tsx",
+      "name": "RF-W09-cloud-config-allow-insecure-wire-key: after publish the persisted allow_insecure keeps the risk banner on"
+    }
+  ]
+}

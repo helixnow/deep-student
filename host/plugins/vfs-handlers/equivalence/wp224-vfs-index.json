@@ -1,0 +1,3705 @@
+{
+  "domain": "vfs",
+  "commands": [
+    "vfs_assign_dimension_model",
+    "vfs_create_dimension",
+    "vfs_delete_dimension",
+    "vfs_get_default_embedding_dimension",
+    "vfs_clear_default_embedding_dimension",
+    "vfs_batch_index_pending",
+    "vfs_get_all_index_status",
+    "vfs_debug_index_status",
+    "vfs_diagnose_lance_schema",
+    "vfs_delete_resource_index",
+    "vfs_clear_resource_ocr",
+    "vfs_clear_media_cache",
+    "vfs_cancel_pdf_processing",
+    "vfs_get_batch_pdf_processing_status"
+  ],
+  "scenarios": [
+    {
+      "id": "vfs.vfs_assign_dimension_model.ok_text",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "wp224-emb-text",
+                "name": "WP224 emb text",
+                "model": "wp224-embed-text",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-emb-mm",
+                "name": "WP224 emb mm",
+                "model": "wp224-embed-mm",
+                "isMultimodal": true,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-chat",
+                "name": "WP224 chat",
+                "model": "wp224-chat",
+                "isMultimodal": false,
+                "isEmbedding": false,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-emb-disabled",
+                "name": "WP224 emb disabled",
+                "model": "wp224-embed-off",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": false,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-rerank",
+                "name": "WP224 rerank",
+                "model": "wp224-rerank",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": true,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 768,
+            "modality": "text",
+            "modelConfigId": null,
+            "modelName": null
+          }
+        },
+        {
+          "cmd": "vfs_assign_dimension_model",
+          "args": {
+            "dimension": 768,
+            "modality": "text",
+            "modelConfigId": "wp224-emb-text",
+            "modelName": "wp224-embed-text"
+          }
+        },
+        {
+          "cmd": "vfs_get_default_embedding_dimension",
+          "args": {
+            "modality": "text"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_assign_dimension_model.ok_syncs_default_model",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "wp224-emb-text",
+                "name": "WP224 emb text",
+                "model": "wp224-embed-text",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-emb-mm",
+                "name": "WP224 emb mm",
+                "model": "wp224-embed-mm",
+                "isMultimodal": true,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-chat",
+                "name": "WP224 chat",
+                "model": "wp224-chat",
+                "isMultimodal": false,
+                "isEmbedding": false,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-emb-disabled",
+                "name": "WP224 emb disabled",
+                "model": "wp224-embed-off",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": false,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-rerank",
+                "name": "WP224 rerank",
+                "model": "wp224-rerank",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": true,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 768,
+            "modality": "text",
+            "modelConfigId": null,
+            "modelName": null
+          }
+        },
+        {
+          "cmd": "vfs_set_default_embedding_dimension",
+          "args": {
+            "dimension": 768,
+            "modality": "text"
+          }
+        },
+        {
+          "cmd": "vfs_assign_dimension_model",
+          "args": {
+            "dimension": 768,
+            "modality": "text",
+            "modelConfigId": "wp224-emb-text",
+            "modelName": "client-claimed-name"
+          }
+        },
+        {
+          "cmd": "vfs_get_default_embedding_dimension",
+          "args": {
+            "modality": "text"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_assign_dimension_model.ok_multimodal_adopts_default",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "wp224-emb-text",
+                "name": "WP224 emb text",
+                "model": "wp224-embed-text",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-emb-mm",
+                "name": "WP224 emb mm",
+                "model": "wp224-embed-mm",
+                "isMultimodal": true,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-chat",
+                "name": "WP224 chat",
+                "model": "wp224-chat",
+                "isMultimodal": false,
+                "isEmbedding": false,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-emb-disabled",
+                "name": "WP224 emb disabled",
+                "model": "wp224-embed-off",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": false,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-rerank",
+                "name": "WP224 rerank",
+                "model": "wp224-rerank",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": true,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 1024,
+            "modality": "multimodal",
+            "modelConfigId": null,
+            "modelName": null
+          }
+        },
+        {
+          "cmd": "vfs_assign_dimension_model",
+          "args": {
+            "dimension": 1024,
+            "modality": "multimodal",
+            "modelConfigId": "wp224-emb-mm",
+            "modelName": "wp224-embed-mm"
+          }
+        },
+        {
+          "cmd": "vfs_get_default_embedding_dimension",
+          "args": {
+            "modality": "multimodal"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_assign_dimension_model.err_config_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "wp224-emb-text",
+                "name": "WP224 emb text",
+                "model": "wp224-embed-text",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-emb-mm",
+                "name": "WP224 emb mm",
+                "model": "wp224-embed-mm",
+                "isMultimodal": true,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-chat",
+                "name": "WP224 chat",
+                "model": "wp224-chat",
+                "isMultimodal": false,
+                "isEmbedding": false,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-emb-disabled",
+                "name": "WP224 emb disabled",
+                "model": "wp224-embed-off",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": false,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-rerank",
+                "name": "WP224 rerank",
+                "model": "wp224-rerank",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": true,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 768,
+            "modality": "text",
+            "modelConfigId": null,
+            "modelName": null
+          }
+        },
+        {
+          "cmd": "vfs_assign_dimension_model",
+          "args": {
+            "dimension": 768,
+            "modality": "text",
+            "modelConfigId": "wp224-missing",
+            "modelName": "x"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_assign_dimension_model.err_invalid_modality",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "wp224-emb-text",
+                "name": "WP224 emb text",
+                "model": "wp224-embed-text",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-emb-mm",
+                "name": "WP224 emb mm",
+                "model": "wp224-embed-mm",
+                "isMultimodal": true,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-chat",
+                "name": "WP224 chat",
+                "model": "wp224-chat",
+                "isMultimodal": false,
+                "isEmbedding": false,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-emb-disabled",
+                "name": "WP224 emb disabled",
+                "model": "wp224-embed-off",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": false,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-rerank",
+                "name": "WP224 rerank",
+                "model": "wp224-rerank",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": true,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "vfs_assign_dimension_model",
+          "args": {
+            "dimension": 768,
+            "modality": "audio",
+            "modelConfigId": "wp224-emb-text",
+            "modelName": "wp224-embed-text"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_assign_dimension_model.err_disabled_config",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "wp224-emb-text",
+                "name": "WP224 emb text",
+                "model": "wp224-embed-text",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-emb-mm",
+                "name": "WP224 emb mm",
+                "model": "wp224-embed-mm",
+                "isMultimodal": true,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-chat",
+                "name": "WP224 chat",
+                "model": "wp224-chat",
+                "isMultimodal": false,
+                "isEmbedding": false,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-emb-disabled",
+                "name": "WP224 emb disabled",
+                "model": "wp224-embed-off",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": false,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-rerank",
+                "name": "WP224 rerank",
+                "model": "wp224-rerank",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": true,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 768,
+            "modality": "text",
+            "modelConfigId": null,
+            "modelName": null
+          }
+        },
+        {
+          "cmd": "vfs_assign_dimension_model",
+          "args": {
+            "dimension": 768,
+            "modality": "text",
+            "modelConfigId": "wp224-emb-disabled",
+            "modelName": "wp224-embed-off"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_assign_dimension_model.err_non_embedding_config",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "wp224-emb-text",
+                "name": "WP224 emb text",
+                "model": "wp224-embed-text",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-emb-mm",
+                "name": "WP224 emb mm",
+                "model": "wp224-embed-mm",
+                "isMultimodal": true,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-chat",
+                "name": "WP224 chat",
+                "model": "wp224-chat",
+                "isMultimodal": false,
+                "isEmbedding": false,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-emb-disabled",
+                "name": "WP224 emb disabled",
+                "model": "wp224-embed-off",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": false,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-rerank",
+                "name": "WP224 rerank",
+                "model": "wp224-rerank",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": true,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 768,
+            "modality": "text",
+            "modelConfigId": null,
+            "modelName": null
+          }
+        },
+        {
+          "cmd": "vfs_assign_dimension_model",
+          "args": {
+            "dimension": 768,
+            "modality": "text",
+            "modelConfigId": "wp224-chat",
+            "modelName": "wp224-chat"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_assign_dimension_model.err_reranker_config",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "wp224-emb-text",
+                "name": "WP224 emb text",
+                "model": "wp224-embed-text",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-emb-mm",
+                "name": "WP224 emb mm",
+                "model": "wp224-embed-mm",
+                "isMultimodal": true,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-chat",
+                "name": "WP224 chat",
+                "model": "wp224-chat",
+                "isMultimodal": false,
+                "isEmbedding": false,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-emb-disabled",
+                "name": "WP224 emb disabled",
+                "model": "wp224-embed-off",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": false,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-rerank",
+                "name": "WP224 rerank",
+                "model": "wp224-rerank",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": true,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 768,
+            "modality": "text",
+            "modelConfigId": null,
+            "modelName": null
+          }
+        },
+        {
+          "cmd": "vfs_assign_dimension_model",
+          "args": {
+            "dimension": 768,
+            "modality": "text",
+            "modelConfigId": "wp224-rerank",
+            "modelName": "wp224-rerank"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_assign_dimension_model.err_protocol_mismatch",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "wp224-emb-text",
+                "name": "WP224 emb text",
+                "model": "wp224-embed-text",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-emb-mm",
+                "name": "WP224 emb mm",
+                "model": "wp224-embed-mm",
+                "isMultimodal": true,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-chat",
+                "name": "WP224 chat",
+                "model": "wp224-chat",
+                "isMultimodal": false,
+                "isEmbedding": false,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-emb-disabled",
+                "name": "WP224 emb disabled",
+                "model": "wp224-embed-off",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": false,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-rerank",
+                "name": "WP224 rerank",
+                "model": "wp224-rerank",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": true,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 768,
+            "modality": "text",
+            "modelConfigId": null,
+            "modelName": null
+          }
+        },
+        {
+          "cmd": "vfs_assign_dimension_model",
+          "args": {
+            "dimension": 768,
+            "modality": "text",
+            "modelConfigId": "wp224-emb-mm",
+            "modelName": "wp224-embed-mm"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_assign_dimension_model.err_dimension_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "wp224-emb-text",
+                "name": "WP224 emb text",
+                "model": "wp224-embed-text",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-emb-mm",
+                "name": "WP224 emb mm",
+                "model": "wp224-embed-mm",
+                "isMultimodal": true,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-chat",
+                "name": "WP224 chat",
+                "model": "wp224-chat",
+                "isMultimodal": false,
+                "isEmbedding": false,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-emb-disabled",
+                "name": "WP224 emb disabled",
+                "model": "wp224-embed-off",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": false,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-rerank",
+                "name": "WP224 rerank",
+                "model": "wp224-rerank",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": true,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "vfs_assign_dimension_model",
+          "args": {
+            "dimension": 1536,
+            "modality": "text",
+            "modelConfigId": "wp224-emb-text",
+            "modelName": "wp224-embed-text"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_assign_dimension_model.err_missing_model_name",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "wp224-emb-text",
+                "name": "WP224 emb text",
+                "model": "wp224-embed-text",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-emb-mm",
+                "name": "WP224 emb mm",
+                "model": "wp224-embed-mm",
+                "isMultimodal": true,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-chat",
+                "name": "WP224 chat",
+                "model": "wp224-chat",
+                "isMultimodal": false,
+                "isEmbedding": false,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-emb-disabled",
+                "name": "WP224 emb disabled",
+                "model": "wp224-embed-off",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": false,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-rerank",
+                "name": "WP224 rerank",
+                "model": "wp224-rerank",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": true,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 768,
+            "modality": "text",
+            "modelConfigId": null,
+            "modelName": null
+          }
+        },
+        {
+          "cmd": "vfs_assign_dimension_model",
+          "args": {
+            "dimension": 768,
+            "modality": "text",
+            "modelConfigId": "wp224-emb-text"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_create_dimension.ok_no_model",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 768,
+            "modality": "text",
+            "modelConfigId": null,
+            "modelName": null
+          }
+        },
+        {
+          "cmd": "vfs_get_default_embedding_dimension",
+          "args": {
+            "modality": "text"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_create_dimension.ok_with_text_model",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "wp224-emb-text",
+                "name": "WP224 emb text",
+                "model": "wp224-embed-text",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-emb-mm",
+                "name": "WP224 emb mm",
+                "model": "wp224-embed-mm",
+                "isMultimodal": true,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-chat",
+                "name": "WP224 chat",
+                "model": "wp224-chat",
+                "isMultimodal": false,
+                "isEmbedding": false,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-emb-disabled",
+                "name": "WP224 emb disabled",
+                "model": "wp224-embed-off",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": false,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-rerank",
+                "name": "WP224 rerank",
+                "model": "wp224-rerank",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": true,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 1536,
+            "modality": "text",
+            "modelConfigId": "wp224-emb-text",
+            "modelName": "other-client-name"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_create_dimension.ok_multimodal_adopts_default",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "wp224-emb-text",
+                "name": "WP224 emb text",
+                "model": "wp224-embed-text",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-emb-mm",
+                "name": "WP224 emb mm",
+                "model": "wp224-embed-mm",
+                "isMultimodal": true,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-chat",
+                "name": "WP224 chat",
+                "model": "wp224-chat",
+                "isMultimodal": false,
+                "isEmbedding": false,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-emb-disabled",
+                "name": "WP224 emb disabled",
+                "model": "wp224-embed-off",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": false,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-rerank",
+                "name": "WP224 rerank",
+                "model": "wp224-rerank",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": true,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 1024,
+            "modality": "multimodal",
+            "modelConfigId": "wp224-emb-mm",
+            "modelName": "wp224-embed-mm"
+          }
+        },
+        {
+          "cmd": "vfs_get_default_embedding_dimension",
+          "args": {
+            "modality": "multimodal"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_create_dimension.ok_duplicate",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 768,
+            "modality": "text",
+            "modelConfigId": null,
+            "modelName": null
+          }
+        },
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 768,
+            "modality": "text",
+            "modelConfigId": null,
+            "modelName": null
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_create_dimension.ok_bounds_and_image_alias",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 64,
+            "modality": "text",
+            "modelConfigId": null,
+            "modelName": null
+          }
+        },
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 8192,
+            "modality": "text",
+            "modelConfigId": null,
+            "modelName": null
+          }
+        },
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 512,
+            "modality": "image",
+            "modelConfigId": null,
+            "modelName": null
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_create_dimension.err_below_min",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 63,
+            "modality": "text",
+            "modelConfigId": null,
+            "modelName": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_create_dimension.err_above_max",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 8193,
+            "modality": "text",
+            "modelConfigId": null,
+            "modelName": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_create_dimension.err_invalid_modality_no_model",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 768,
+            "modality": "audio",
+            "modelConfigId": null,
+            "modelName": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_create_dimension.err_model_name_without_config",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 768,
+            "modality": "text",
+            "modelConfigId": null,
+            "modelName": "wp224-embed-text"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_create_dimension.err_config_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "wp224-emb-text",
+                "name": "WP224 emb text",
+                "model": "wp224-embed-text",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-emb-mm",
+                "name": "WP224 emb mm",
+                "model": "wp224-embed-mm",
+                "isMultimodal": true,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-chat",
+                "name": "WP224 chat",
+                "model": "wp224-chat",
+                "isMultimodal": false,
+                "isEmbedding": false,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-emb-disabled",
+                "name": "WP224 emb disabled",
+                "model": "wp224-embed-off",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": false,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-rerank",
+                "name": "WP224 rerank",
+                "model": "wp224-rerank",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": true,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 768,
+            "modality": "text",
+            "modelConfigId": "wp224-missing",
+            "modelName": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_create_dimension.err_non_embedding_config",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "wp224-emb-text",
+                "name": "WP224 emb text",
+                "model": "wp224-embed-text",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-emb-mm",
+                "name": "WP224 emb mm",
+                "model": "wp224-embed-mm",
+                "isMultimodal": true,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-chat",
+                "name": "WP224 chat",
+                "model": "wp224-chat",
+                "isMultimodal": false,
+                "isEmbedding": false,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-emb-disabled",
+                "name": "WP224 emb disabled",
+                "model": "wp224-embed-off",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": false,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-rerank",
+                "name": "WP224 rerank",
+                "model": "wp224-rerank",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": true,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 768,
+            "modality": "text",
+            "modelConfigId": "wp224-chat",
+            "modelName": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_create_dimension.err_protocol_mismatch",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "wp224-emb-text",
+                "name": "WP224 emb text",
+                "model": "wp224-embed-text",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-emb-mm",
+                "name": "WP224 emb mm",
+                "model": "wp224-embed-mm",
+                "isMultimodal": true,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-chat",
+                "name": "WP224 chat",
+                "model": "wp224-chat",
+                "isMultimodal": false,
+                "isEmbedding": false,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-emb-disabled",
+                "name": "WP224 emb disabled",
+                "model": "wp224-embed-off",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": false,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-rerank",
+                "name": "WP224 rerank",
+                "model": "wp224-rerank",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": true,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 768,
+            "modality": "multimodal",
+            "modelConfigId": "wp224-emb-text",
+            "modelName": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_create_dimension.err_image_modality_with_model",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "wp224-emb-text",
+                "name": "WP224 emb text",
+                "model": "wp224-embed-text",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-emb-mm",
+                "name": "WP224 emb mm",
+                "model": "wp224-embed-mm",
+                "isMultimodal": true,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-chat",
+                "name": "WP224 chat",
+                "model": "wp224-chat",
+                "isMultimodal": false,
+                "isEmbedding": false,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-emb-disabled",
+                "name": "WP224 emb disabled",
+                "model": "wp224-embed-off",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": false,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-rerank",
+                "name": "WP224 rerank",
+                "model": "wp224-rerank",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": true,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 768,
+            "modality": "image",
+            "modelConfigId": "wp224-emb-mm",
+            "modelName": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_create_dimension.err_missing_dimension",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "modality": "text",
+            "modelConfigId": null,
+            "modelName": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_delete_dimension.ok_existing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 768,
+            "modality": "text",
+            "modelConfigId": null,
+            "modelName": null
+          }
+        },
+        {
+          "cmd": "vfs_delete_dimension",
+          "args": {
+            "dimension": 768,
+            "modality": "text"
+          }
+        },
+        {
+          "cmd": "vfs_diagnose_lance_schema",
+          "args": {
+            "modality": "text"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_delete_dimension.ok_clears_default",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "wp224-emb-text",
+                "name": "WP224 emb text",
+                "model": "wp224-embed-text",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-emb-mm",
+                "name": "WP224 emb mm",
+                "model": "wp224-embed-mm",
+                "isMultimodal": true,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-chat",
+                "name": "WP224 chat",
+                "model": "wp224-chat",
+                "isMultimodal": false,
+                "isEmbedding": false,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-emb-disabled",
+                "name": "WP224 emb disabled",
+                "model": "wp224-embed-off",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": false,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-rerank",
+                "name": "WP224 rerank",
+                "model": "wp224-rerank",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": true,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 768,
+            "modality": "text",
+            "modelConfigId": "wp224-emb-text",
+            "modelName": "wp224-embed-text"
+          }
+        },
+        {
+          "cmd": "vfs_set_default_embedding_dimension",
+          "args": {
+            "dimension": 768,
+            "modality": "text"
+          }
+        },
+        {
+          "cmd": "vfs_delete_dimension",
+          "args": {
+            "dimension": 768,
+            "modality": "text"
+          }
+        },
+        {
+          "cmd": "vfs_get_default_embedding_dimension",
+          "args": {
+            "modality": "text"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_delete_dimension.ok_missing_and_unknown_modality",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_delete_dimension",
+          "args": {
+            "dimension": 768,
+            "modality": "text"
+          }
+        },
+        {
+          "cmd": "vfs_delete_dimension",
+          "args": {
+            "dimension": 768,
+            "modality": "audio"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_delete_dimension.err_missing_modality",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_delete_dimension",
+          "args": {
+            "dimension": 768
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_get_default_embedding_dimension.ok_unset",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_get_default_embedding_dimension",
+          "args": {
+            "modality": "text"
+          }
+        },
+        {
+          "cmd": "vfs_get_default_embedding_dimension",
+          "args": {
+            "modality": "multimodal"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_get_default_embedding_dimension.ok_set",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "wp224-emb-text",
+                "name": "WP224 emb text",
+                "model": "wp224-embed-text",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-emb-mm",
+                "name": "WP224 emb mm",
+                "model": "wp224-embed-mm",
+                "isMultimodal": true,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-chat",
+                "name": "WP224 chat",
+                "model": "wp224-chat",
+                "isMultimodal": false,
+                "isEmbedding": false,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-emb-disabled",
+                "name": "WP224 emb disabled",
+                "model": "wp224-embed-off",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": false,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-rerank",
+                "name": "WP224 rerank",
+                "model": "wp224-rerank",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": true,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 768,
+            "modality": "text",
+            "modelConfigId": "wp224-emb-text",
+            "modelName": null
+          }
+        },
+        {
+          "cmd": "vfs_set_default_embedding_dimension",
+          "args": {
+            "dimension": 768,
+            "modality": "text"
+          }
+        },
+        {
+          "cmd": "vfs_get_default_embedding_dimension",
+          "args": {
+            "modality": "text"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_get_default_embedding_dimension.ok_stale_setting_auto_cleared",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "embedding.default_text_dimension",
+            "value": "1536"
+          }
+        },
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "embedding.default_text_model_config_id",
+            "value": "wp224-emb-text"
+          }
+        },
+        {
+          "cmd": "vfs_get_default_embedding_dimension",
+          "args": {
+            "modality": "text"
+          }
+        },
+        {
+          "cmd": "vfs_get_default_embedding_dimension",
+          "args": {
+            "modality": "text"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_get_default_embedding_dimension.err_invalid_modality",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_get_default_embedding_dimension",
+          "args": {
+            "modality": "image"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_get_default_embedding_dimension.err_invalid_setting_value",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "embedding.default_text_dimension",
+            "value": "abc"
+          }
+        },
+        {
+          "cmd": "vfs_get_default_embedding_dimension",
+          "args": {
+            "modality": "text"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_get_default_embedding_dimension.err_missing_modality",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_get_default_embedding_dimension",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_clear_default_embedding_dimension.ok_after_set",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "wp224-emb-text",
+                "name": "WP224 emb text",
+                "model": "wp224-embed-text",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-emb-mm",
+                "name": "WP224 emb mm",
+                "model": "wp224-embed-mm",
+                "isMultimodal": true,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-chat",
+                "name": "WP224 chat",
+                "model": "wp224-chat",
+                "isMultimodal": false,
+                "isEmbedding": false,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-emb-disabled",
+                "name": "WP224 emb disabled",
+                "model": "wp224-embed-off",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": false,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              },
+              {
+                "id": "wp224-rerank",
+                "name": "WP224 rerank",
+                "model": "wp224-rerank",
+                "isMultimodal": false,
+                "isEmbedding": true,
+                "enabled": true,
+                "apiKey": "sk-wp224-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "isReasoning": false,
+                "isReranker": true,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 768,
+            "modality": "text",
+            "modelConfigId": "wp224-emb-text",
+            "modelName": null
+          }
+        },
+        {
+          "cmd": "vfs_set_default_embedding_dimension",
+          "args": {
+            "dimension": 768,
+            "modality": "text"
+          }
+        },
+        {
+          "cmd": "vfs_clear_default_embedding_dimension",
+          "args": {
+            "modality": "text"
+          }
+        },
+        {
+          "cmd": "vfs_get_default_embedding_dimension",
+          "args": {
+            "modality": "text"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_clear_default_embedding_dimension.ok_unset",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_clear_default_embedding_dimension",
+          "args": {
+            "modality": "multimodal"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_clear_default_embedding_dimension.err_invalid_modality",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_clear_default_embedding_dimension",
+          "args": {
+            "modality": "image"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_clear_default_embedding_dimension.err_missing_modality",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_clear_default_embedding_dimension",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_batch_index_pending.ok_empty",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_batch_index_pending",
+          "args": {
+            "batchSize": 10
+          }
+        },
+        {
+          "cmd": "vfs_batch_index_pending",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_batch_index_pending.ok_pending_without_embedding_config",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_or_reuse",
+          "args": {
+            "params": {
+              "type": "note",
+              "data": "WP224 资源内容",
+              "sourceId": "note_wp224",
+              "metadata": {
+                "title": "WP224",
+                "mimeType": "text/markdown"
+              },
+              "subject": null
+            }
+          }
+        },
+        {
+          "cmd": "vfs_batch_index_pending",
+          "args": {
+            "batchSize": 10
+          }
+        },
+        {
+          "cmd": "vfs_get_all_index_status",
+          "args": {
+            "folderId": null,
+            "resourceType": null,
+            "stateFilter": null,
+            "limit": 100,
+            "offset": 0
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_batch_index_pending.err_negative_batch_size",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_batch_index_pending",
+          "args": {
+            "batchSize": -1
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_get_all_index_status.ok_empty_frontend_defaults",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_get_all_index_status",
+          "args": {
+            "folderId": null,
+            "resourceType": null,
+            "stateFilter": null,
+            "limit": 100,
+            "offset": 0
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_get_all_index_status.ok_filters",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_or_reuse",
+          "args": {
+            "params": {
+              "type": "note",
+              "data": "WP224 资源一",
+              "sourceId": "note_wp224",
+              "metadata": {
+                "title": "WP224",
+                "mimeType": "text/markdown"
+              },
+              "subject": null
+            }
+          }
+        },
+        {
+          "cmd": "vfs_create_or_reuse",
+          "args": {
+            "params": {
+              "type": "retrieval",
+              "data": "WP224 检索",
+              "subject": null
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_all_index_status",
+          "args": {
+            "folderId": null,
+            "resourceType": null,
+            "stateFilter": null,
+            "limit": 100,
+            "offset": 0
+          }
+        },
+        {
+          "cmd": "vfs_get_all_index_status",
+          "args": {
+            "folderId": null,
+            "resourceType": "note",
+            "stateFilter": null,
+            "limit": 100,
+            "offset": 0
+          }
+        },
+        {
+          "cmd": "vfs_get_all_index_status",
+          "args": {
+            "folderId": null,
+            "resourceType": null,
+            "stateFilter": "pending",
+            "limit": 1,
+            "offset": 1
+          }
+        },
+        {
+          "cmd": "vfs_get_all_index_status",
+          "args": {
+            "folderId": null,
+            "resourceType": null,
+            "stateFilter": "indexed",
+            "limit": 100,
+            "offset": 0
+          }
+        },
+        {
+          "cmd": "vfs_get_all_index_status",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_get_all_index_status.ok_folder_filter",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_attachment_root_folder",
+          "args": {
+            "title": "WP224 附件根"
+          }
+        },
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "wp224-note.txt",
+              "mimeType": "text/plain",
+              "base64Content": "V1AyMjQg6ZmE5Lu25q2j5paHCmxpbmUgMgo="
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_all_index_status",
+          "args": {
+            "folderId": "${0}",
+            "resourceType": null,
+            "stateFilter": null,
+            "limit": 100,
+            "offset": 0
+          }
+        },
+        {
+          "cmd": "vfs_get_all_index_status",
+          "args": {
+            "folderId": "fld_wp224missing",
+            "resourceType": null,
+            "stateFilter": null,
+            "limit": 100,
+            "offset": 0
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_get_all_index_status.err_negative_limit",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_get_all_index_status",
+          "args": {
+            "folderId": null,
+            "resourceType": null,
+            "stateFilter": null,
+            "limit": -1,
+            "offset": 0
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_debug_index_status.ok_global",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_or_reuse",
+          "args": {
+            "params": {
+              "type": "note",
+              "data": "WP224 资源内容",
+              "sourceId": "note_wp224",
+              "metadata": {
+                "title": "WP224",
+                "mimeType": "text/markdown"
+              },
+              "subject": null
+            }
+          }
+        },
+        {
+          "cmd": "vfs_debug_index_status",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_debug_index_status.ok_with_resource",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_or_reuse",
+          "args": {
+            "params": {
+              "type": "note",
+              "data": "WP224 资源内容",
+              "sourceId": "note_wp224",
+              "metadata": {
+                "title": "WP224",
+                "mimeType": "text/markdown"
+              },
+              "subject": null
+            }
+          }
+        },
+        {
+          "cmd": "vfs_debug_index_status",
+          "args": {
+            "resourceId": "${0.resourceId}"
+          }
+        },
+        {
+          "cmd": "vfs_debug_index_status",
+          "args": {
+            "resourceId": "res_wp224missing"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_debug_index_status.err_resource_id_wrong_type",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_debug_index_status",
+          "args": {
+            "resourceId": 1
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_diagnose_lance_schema.ok_modalities",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_diagnose_lance_schema",
+          "args": {
+            "modality": null
+          }
+        },
+        {
+          "cmd": "vfs_diagnose_lance_schema",
+          "args": {
+            "modality": "multimodal"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_diagnose_lance_schema.ok_after_dimension",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 768,
+            "modality": "text",
+            "modelConfigId": null,
+            "modelName": null
+          }
+        },
+        {
+          "cmd": "vfs_diagnose_lance_schema",
+          "args": {
+            "modality": "text"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_diagnose_lance_schema.ok_unknown_modality",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_diagnose_lance_schema",
+          "args": {
+            "modality": "audio"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_diagnose_lance_schema.err_modality_wrong_type",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_diagnose_lance_schema",
+          "args": {
+            "modality": 1
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_delete_resource_index.ok_existing_resource",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_or_reuse",
+          "args": {
+            "params": {
+              "type": "note",
+              "data": "WP224 资源内容",
+              "sourceId": "note_wp224",
+              "metadata": {
+                "title": "WP224",
+                "mimeType": "text/markdown"
+              },
+              "subject": null
+            }
+          }
+        },
+        {
+          "cmd": "vfs_delete_resource_index",
+          "args": {
+            "resourceId": "${0.resourceId}"
+          }
+        },
+        {
+          "cmd": "vfs_debug_index_status",
+          "args": {
+            "resourceId": "${0.resourceId}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_delete_resource_index.ok_missing_resource",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_delete_resource_index",
+          "args": {
+            "resourceId": "res_wp224missing"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_delete_resource_index.err_missing_arg",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_delete_resource_index",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_clear_resource_ocr.ok_resource_and_linked_file",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_or_reuse",
+          "args": {
+            "params": {
+              "type": "note",
+              "data": "WP224 资源内容",
+              "sourceId": "note_wp224",
+              "metadata": {
+                "title": "WP224",
+                "mimeType": "text/markdown"
+              },
+              "subject": null
+            }
+          }
+        },
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "wp224-note.txt",
+              "mimeType": "text/plain",
+              "base64Content": "V1AyMjQg6ZmE5Lu25q2j5paHCmxpbmUgMgo="
+            }
+          }
+        },
+        {
+          "cmd": "vfs_clear_resource_ocr",
+          "args": {
+            "resourceId": "${0.resourceId}"
+          }
+        },
+        {
+          "cmd": "vfs_clear_resource_ocr",
+          "args": {
+            "resourceId": "${1.attachment.resourceId}"
+          }
+        },
+        {
+          "cmd": "vfs_debug_index_status",
+          "args": {
+            "resourceId": "${1.attachment.resourceId}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_clear_resource_ocr.ok_missing_resource",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_clear_resource_ocr",
+          "args": {
+            "resourceId": "res_wp224missing"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_clear_resource_ocr.err_missing_arg",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_clear_resource_ocr",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_clear_media_cache.ok_all_false",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "wp224-pixel.png",
+              "mimeType": "image/png",
+              "base64Content": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR42mP4z8AAAAMBAQD3A0FDAAAAAElFTkSuQmCC"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_clear_media_cache",
+          "args": {
+            "params": {
+              "clearPdfPreview": false,
+              "clearCompressedImages": false,
+              "clearOcrText": false,
+              "clearVectorIndex": false
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_clear_media_cache.ok_all_true_empty",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_clear_media_cache",
+          "args": {
+            "params": {
+              "clearPdfPreview": true,
+              "clearCompressedImages": true,
+              "clearOcrText": true,
+              "clearVectorIndex": true
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_clear_media_cache.ok_all_true_with_files",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "wp224-pixel.png",
+              "mimeType": "image/png",
+              "base64Content": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR42mP4z8AAAAMBAQD3A0FDAAAAAElFTkSuQmCC"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "wp224-note.txt",
+              "mimeType": "text/plain",
+              "base64Content": "V1AyMjQg6ZmE5Lu25q2j5paHCmxpbmUgMgo="
+            }
+          }
+        },
+        {
+          "cmd": "vfs_clear_media_cache",
+          "args": {
+            "params": {
+              "clearPdfPreview": true,
+              "clearCompressedImages": true,
+              "clearOcrText": true,
+              "clearVectorIndex": true
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_attachment_content",
+          "args": {
+            "attachmentId": "${0.file.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_clear_media_cache.err_params_undefined",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_clear_media_cache",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_clear_media_cache.err_partial_params",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_clear_media_cache",
+          "args": {
+            "params": {
+              "clearPdfPreview": true
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_cancel_pdf_processing.ok_not_running",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "wp224-note.txt",
+              "mimeType": "text/plain",
+              "base64Content": "V1AyMjQg6ZmE5Lu25q2j5paHCmxpbmUgMgo="
+            }
+          }
+        },
+        {
+          "cmd": "vfs_cancel_pdf_processing",
+          "args": {
+            "fileId": "${0.sourceId}"
+          }
+        },
+        {
+          "cmd": "vfs_cancel_pdf_processing",
+          "args": {
+            "fileId": "file_wp224missing"
+          }
+        },
+        {
+          "cmd": "vfs_cancel_pdf_processing",
+          "args": {
+            "fileId": "tb_wp224missing"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_cancel_pdf_processing.err_bad_prefix",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_cancel_pdf_processing",
+          "args": {
+            "fileId": "res_wp224"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_cancel_pdf_processing.err_zero_width_unicode",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_cancel_pdf_processing",
+          "args": {
+            "fileId": "file_wp224​"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_cancel_pdf_processing.err_missing_arg",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_cancel_pdf_processing",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_get_batch_pdf_processing_status.ok_empty",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_get_batch_pdf_processing_status",
+          "args": {
+            "fileIds": []
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_get_batch_pdf_processing_status.ok_mixed_ids",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "wp224-note.txt",
+              "mimeType": "text/plain",
+              "base64Content": "V1AyMjQg6ZmE5Lu25q2j5paHCmxpbmUgMgo="
+            }
+          }
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "wp224-pixel.png",
+              "mimeType": "image/png",
+              "base64Content": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR42mP4z8AAAAMBAQD3A0FDAAAAAElFTkSuQmCC"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_batch_pdf_processing_status",
+          "args": {
+            "fileIds": [
+              "${0.sourceId}",
+              "${1.file.id}",
+              "res_wp224_invalid",
+              "file_wp224missing",
+              "file_wp224​"
+            ]
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_get_batch_pdf_processing_status.err_missing_arg",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_get_batch_pdf_processing_status",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

@@ -4,6 +4,9 @@ import { blockIdentityPlugin } from '../index';
 import { togglePlugin } from '../../toggle';
 import { calloutPlugin } from '../../callout';
 
+import { setupMilkdownTimers } from '../../../__tests__/milkdownTimers';
+setupMilkdownTimers();
+
 export async function identityEditor(markdown: string) {
   const root = document.createElement('div'); document.body.append(root);
   const crepe = new Crepe({ root, defaultValue: markdown, features: {

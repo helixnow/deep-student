@@ -15,6 +15,9 @@ import { columnsSchema, columnSchema } from './plugins/columns/schema';
 import { remarkColumnsPlugin } from './plugins/columns/remark';
 import { COLUMNS_TYPE } from './plugins/columns/format';
 import type { OfficialReviewControls, OfficialReviewDecision } from '@/features/notes/officialDiffContract';
+import type { EditorExtensionContribution, SlotEntry } from '@/ui-sdk';
+import { editorEntriesForPurpose, resolveEditorExtensionGroups, type EditorContributionError } from '@/ui-plugins/official/editor/editorSlots';
+import type { CrepePluginsOptions } from './plugins';
 import { assertNoteContentSize } from '@/features/notes/fullDocument';
 
 const localized = (key: string, fallback: string): string => {
@@ -61,12 +64,33 @@ export function renderOfficialDiffTitles(root: HTMLElement) {
  * The official component supplies its merged block range via transaction metadata;
  * no second grouping algorithm or pending filter exists here.
  */
+/**
+ * Options for the review projection's one-shot editor. It has no host callbacks (notes, mentions, layout grants); a
+ * contribution that participates in `'diff'` receives this frozen object and must cope with every feature disabled.
+ */
+const REVIEW_EDITOR_OPTIONS: Readonly<CrepePluginsOptions> = Object.freeze({
+  automd: false,
+  wikilink: false,
+  mention: false,
+  callout: false,
+  toggle: false,
+  pasteLink: false,
+  imageLightbox: false,
+  linkKeymap: false,
+  pdfRefLink: false,
+  mediaRefLink: false,
+});
+
 export async function createOfficialDiffAdapter(options: {
   root: HTMLElement;
   baseline: string;
   target: string;
   onDecision: (decision: OfficialReviewDecision) => Promise<string | void>;
   onError: (error: unknown) => void;
+  /** `editor.extensions` entries; only those listing `'diff'` join the fixed official stack. */
+  extensions?: readonly SlotEntry<EditorExtensionContribution>[];
+  /** Reports a community entry whose factory throws; it drops that entry only. */
+  onContributionError?: EditorContributionError;
 }) {
   assertNoteContentSize(options.target);
   const crepe = new Crepe({ root: options.root, defaultValue: '', features: {
@@ -76,6 +100,14 @@ export async function createOfficialDiffAdapter(options: {
   crepe.editor.use(calloutPlugin()).use(togglePlugin()).use(diff).use(diffComponent);
   crepe.editor.use([remarkWikilinkPlugin, wikilinkSchema, remarkColumnsPlugin, columnsSchema, columnSchema].flat())
     .use(blockIdentityPlugin());
+  // Community schema plugins must be in place before create(); the fixed official stack stays first and unchanged.
+  // RUST-FIX(RF-W18-diff-extension-purpose): explicit opt-in; fixed stack stays first.
+  const diffEntries = editorEntriesForPurpose(options.extensions ?? [], 'diff');
+  if (diffEntries.length) {
+    const context = { options: REVIEW_EDITOR_OPTIONS, purpose: 'diff' as const };
+    const onContributionError: EditorContributionError = options.onContributionError ?? ((entry, error) => options.onError(error));
+    for (const group of resolveEditorExtensionGroups(diffEntries, context, onContributionError)) crepe.editor.use(group);
+  }
   crepe.editor.config(ctx => ctx.update(diffComponentConfig.key, value => ({ ...value,
     customBlockTypes: ['table', 'image-block', 'code_block', 'toggle', 'callout', COLUMNS_TYPE], acceptLabel: localized('notes:aiDiff.accept_group', '接受此组'),
     rejectLabel: localized('notes:aiDiff.reject_group', '拒绝此组'),

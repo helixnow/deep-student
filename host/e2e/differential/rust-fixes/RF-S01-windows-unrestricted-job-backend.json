@@ -1,0 +1,32 @@
+{
+  "id": "RF-S01-windows-unrestricted-job-backend",
+  "kind": "deliberate",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T16:46:00+08:00",
+  "title": "Windows 危险完全访问档（Craft + danger_full_access，执行模式 unrestricted）沿用 helper 的 kill-on-close Job Object 后端，效果报告 backend 为 unsandboxed_job，不移植 Rust 进程内的 DirectHostShellBackend（direct_host_unrestricted）",
+  "rust": {
+    "file": "src-tauri/crates/dstu-agent/src/chat_v2/tools/local_shell_execute_executor.rs",
+    "line": 1958,
+    "behavior": "unrestricted 档在 Windows 上选 DirectHostShellBackend（shell_sandbox/windows.rs:789-951）：主进程直接以 CREATE_SUSPENDED 启动受信任的 PowerShell（-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand），on_child_spawned 把它绑进进程内的匿名 kill-on-close Job 后再恢复主线程，取消和超时用 TerminateJobObject(124)；不经 helper，也不写 payload 文件。可用性只要求受信任的 PowerShell 存在，不可用时报 `Unrestricted host shell backend is unavailable: …`。git 通道用 trait 默认实现，同样是 PowerShell。效果报告 backend = direct_host_unrestricted。full_access 档（Craft + full_access）用的是 helper 的 UnsandboxedShellBackend（backend = unsandboxed_job），这一档 TS 与 Rust 相同"
+  },
+  "fix": {
+    "files": [
+      "host/plugins/agent-workspace/src/tools/shell-sandbox.ts"
+    ],
+    "behavior": "shellBackendForExecutionMode（local_shell_execute 在 shell-execute.ts 里经它选后端）：sandboxed 用平台沙箱；full_access 和 unrestricted 两档都用 UnsandboxedShellBackend。Windows 上它经 helper（HELPER_ARG + payload，profile 前缀 DeepStudent.DangerShell.）运行：helper 以 CREATE_SUSPENDED 创建 PowerShell，先绑定 kill-on-close Job 再恢复（移植自 Rust 的 run_unsandboxed_job_process，windows.rs:1771-1838）。可观察的差异有三处，都只在 Windows 的 unrestricted 档：(1) 工具结果 sandbox.backend 是 unsandboxed_job，不是 direct_host_unrestricted；(2) 装了 Git Bash 时，这一档的 git_* 走 Git Bash，sandbox.shell_kind = git_bash（Rust 是 PowerShell），与 full_access 档在 TS 和 Rust 中的行为相同；(3) 可用性依赖 Windows helper 原生运行时。当前构建里 windowsNativeSandboxAvailable() 恒为 false，这一档会拒绝执行，报 `Full Access shell backend is unavailable: The Windows shell helper (AppContainer and Job Object native runtime) is not available in this build`（fail-closed）；Rust 只要有 PowerShell 就能运行。sandboxed（WindowsPlatformSandboxBackend）和 full_access 两档同样依赖这个 helper，所以当前构建在 Windows 上三档都不可用（缺 helper），不是只有 unrestricted 档；helper 接线后三档一起恢复，剩下的差异只是 unrestricted 档多依赖 helper。Windows 正式发布必须带上 helper，否则 local_shell_execute 和 git_* 在 Windows 上整体不可用；这是 W01 原生层的发布门槛，不靠本条兜底。预检工具 local_shell_preflight 的 sandbox_backend 仍按 Rust 报 direct_host_unrestricted；Rust 在 Unix 上也是预检报这个值、执行报 unsandboxed，属于 Rust 原有的不一致，本条不改。macOS 和 Linux 上两档都是 unsandboxed，与 Rust 相同"
+  },
+  "evidence": "主编排 14:30 裁定（.reports/audit/HANDOVER.md 14:30 条末尾）：Windows 完全访问模式保留现有 Job Object 后端，安全上与 Rust 等价，差异在效果报告的 backend 字段，由 S01 登记 deliberate RF。原始描述见 .reports/reviews/S01-security-r3.md 的 I2。安全上等价的依据：这一档按定义不做文件系统和网络隔离，两边的执行器策略（命令规则、不可变守卫均旁路，环境变量全继承，输出上限）相同；进程树回收两边都靠 kill-on-close Job，并且都是挂起创建、绑定 Job、再恢复，绑定之前子进程不运行任何代码，后代进程逃不出回收范围（Rust DirectHost：windows.rs:850-904；helper 路径：windows.rs:1791-1838）。取消时 helper 返回 124，关闭 Job 时回收整棵进程树。保留的理由：Node 的 child_process 不能挂起创建子进程，也不能在子进程运行前绑定 Job，进程内实现 DirectHost 需要原生层。W01 的 nativeWindowsSandbox.runFullAccessJob（host/platform/native/windows/sandbox-api.ts:34-35）描述的正是“挂起创建、绑定匿名 Job、再恢复”，但尚未接线，本机也无法验证 Windows。helper 后端是 full_access 档和 AppContainer 档已经在用的同一条路径，保留它可以少维护一套 Windows 进程生命周期代码。G3：录制和回放只在 Linux/macOS 上跑，这两个平台上 backend、shell_kind 与 Rust 相同，所以没有可观测差异，affects 为 false",
+  "userVisible": "能感知，但只限 Windows 的 Craft + 危险完全访问档：工具结果和 Shell 输出卡片上的 sandbox 后端显示 unsandboxed_job，而不是 direct_host_unrestricted（前端只把它当文本显示，ShellOutputView.tsx:413、RuntimeSection.tsx:119、BlockingApprovalBar.tsx:490，没有按值分支）；装了 Git Bash 时 git_* 的 shell_kind 显示 git_bash；在没有 Windows helper 原生运行时的构建里，这一档拒绝执行并给出上面的报错，而 Rust 会直接运行。macOS 和 Linux 完全不变",
+  "dataCompat": "只影响 chat_v2_blocks.tool_output_json 里 $.sandbox.backend 和 git 通道 $.sandbox.shell_kind 的字符串取值，表结构、工具块结构、同步载荷、备份格式都不变；旧 Rust 版读新数据、新版读旧数据都只是显示字符串",
+  "g3": {
+    "affects": false,
+    "selectors": []
+  },
+  "tests": [
+    {
+      "file": "host/plugins/agent-workspace/tests/tools-shell-sandbox-windows.test.ts",
+      "name": "RF-S01-windows-unrestricted-job-backend: Windows unrestricted keeps the helper's Job Object backend and reports unsandboxed_job (Rust: direct_host_unrestricted)"
+    }
+  ]
+}

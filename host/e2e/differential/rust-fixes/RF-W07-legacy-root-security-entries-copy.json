@@ -1,0 +1,31 @@
+{
+  "id": "RF-W07-legacy-root-security-entries-copy",
+  "kind": "deliberate",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T14:25:00+08:00",
+  "title": "旧版根目录迁入 slotA 时，.master_key 与 .secure 留在根目录并给 slotA 复制一份",
+  "rust": {
+    "file": "src-tauri/crates/dstu-storage/src/data_space.rs",
+    "line": 1069,
+    "behavior": "ensure_layout 的一次性旧版迁移只跳过 slots、logs、recovery、清理标记，根目录的 .master_key 与 .secure 跟数据库一起 rename 进 slotA"
+  },
+  "fix": {
+    "files": ["host/platform/storage/data-space.ts", "host/platform/storage/locations.ts"],
+    "behavior": "isLegacyRootEntry 不把 .secure、.master_key 等安全工件算作旧版数据（Host 在数据空间预检前就会创建 <base>/.secure）；真正执行旧版迁移时，根目录 .master_key（普通文件）与带 .key_seed 的 .secure 原地保留，再逐字节复制到 slotA（保留权限位）；slotA 已有同名条目且不是本版本的重试时不覆盖；本版本 pending 重试时先清掉上次的半成品再复制；复制失败与其他条目一样计入迁移错误、不写 complete"
+  },
+  "evidence": "无 slots 布局的旧版只有一个 <app_data>/.secure，云存储/MCP/bilibili 凭据与主库敏感设置共用同一个种子。Rust 迁移后主库 SecureStore（Database 用 db_path.parent() = slotA）能读到，但云凭据 SecureStore（cloud_credentials.rs:48-56 get_secure_store 用 app_data_dir）在根目录找不到 .key_seed，新建种子，已保存的云凭据全部无法解密。.master_key 同理：Rust LLMManager 读槽内主密钥，而备份/恢复读根目录（见 RF-W07-crypto-root-adopts-slot-master-key）。TS 的 llm 与云凭据都读根目录、主库敏感设置读槽位，留在根目录再复制一份后三者都能解密。",
+  "userVisible": "从没有槽位布局的旧版直接升级时，云存储凭据、MCP/bilibili 登录态、主库里的敏感设置和 LLM API Key 都能继续使用；Rust 迁移后云凭据会失效需要重新录入。",
+  "dataCompat": "根目录多保留 .master_key 与 .secure（原文件不动），slotA 得到同内容副本；钥匙串账户 key_seed.<指纹> 由种子内容派生，与目录无关，副本可直接用。回退到旧版 Rust：已写 complete 标记，Rust 不再扫描根目录，读 slotA 副本，与 Rust 自己迁移后的布局一致。之后两边各自写入的凭据不再同步（与 Rust 迁移后根目录、槽位两个 SecureStore 分开的现状相同）。",
+  "g3": {
+    "affects": false,
+    "selectors": []
+  },
+  "notes": "G3 覆盖不到本条：G3 只采 SQLite，fs 面只覆盖一侧独有的数据库文件（g3-rust-fixes.mjs 的 rowCovered 按 row.db 匹配），.master_key 与 .secure 都不是数据库文件，原来的两个 fs 选择器永远不会命中，已删除。G3 场景的数据目录都由种子新建成槽位布局，不走无槽位旧版根目录的迁移，种子里也没有 .master_key、.secure。证据是 legacy-root-security-entries.test.ts。",
+  "tests": [
+    {
+      "file": "host/platform/storage/tests/legacy-root-security-entries.test.ts",
+      "name": "RF-W07-legacy-root-security-entries-copy: pre-slot .master_key and .secure stay at the root and get a slotA copy"
+    }
+  ]
+}

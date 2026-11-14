@@ -1,0 +1,3 @@
+{"fn":"text.safe_truncate_chars","args":{"text":"A中🙂B","maxChars":3}}
+{"fn":"serde.EncryptedData","args":{"json":"{\"ciphertext\":\"c\",\"nonce\":\"n\",\"unknown\":true}"}}
+{"fn":"serde.EncryptedData","args":{"json":"{}"}}

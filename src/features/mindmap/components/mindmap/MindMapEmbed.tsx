@@ -202,6 +202,7 @@ const MindMapEmbedInner: React.FC<MindMapEmbedInnerProps> = ({ document, targetN
         calculateBaseNodeHeight(ROOT_NODE_STYLE, 18, '12px 24px')
       ),
       measuredNodeHeights,
+      unnamedNodeLabel: t('node.unnamed'),
     };
 
     const layoutResult = layoutEngine.calculate(document.root, layoutConfig, validDirection);
@@ -247,7 +248,7 @@ const MindMapEmbedInner: React.FC<MindMapEmbedInnerProps> = ({ document, targetN
     });
 
     return layoutResult;
-  }, [document, layoutEngine, layoutDirection, measuredNodeHeights, styleId, targetNodeId]);
+  }, [document, layoutEngine, layoutDirection, measuredNodeHeights, styleId, targetNodeId, t]);
 
   // 初始化时及布局切换后自适应视图
   useEffect(() => {

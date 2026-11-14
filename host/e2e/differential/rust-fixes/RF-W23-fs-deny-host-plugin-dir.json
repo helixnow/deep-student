@@ -1,0 +1,32 @@
+{
+  "id": "RF-W23-fs-deny-host-plugin-dir",
+  "kind": "deliberate",
+  "status": "approved",
+  "approvedBy": "main-agent",
+  "approvedAt": "2026-11-07T13:00:00+08:00",
+  "title": "plugin:fs 一律不能访问 Host 插件目录 $APPDATA/plugins（用户 profile、社区插件模块与插件数据）",
+  "rust": {
+    "file": "src-tauri/capabilities/default.json",
+    "line": 41,
+    "behavior": "default.json 给主窗口 fs:allow-appdata-read-recursive / fs:allow-appdata-write-recursive，$APPDATA/** 可读写。Rust 版不从 AppData 加载代码，所以这只是数据读写；Electron 版的 Host 启动时以完整 Node 权限加载 $APPDATA/plugins/user.profile.json 及其列出的模块（host/kernel/profile.ts loadStartupProfile），插件数据也在 $APPDATA/plugins/<id>（host/kernel/plugin-id.ts）。同样的授权在 Electron 里就成了“页面脚本写两个文件 → 下次启动以 Node 权限执行”（reviews/ELECTRON-SHELL-SECURITY.md SEC-E01 利用路径第 4 步）"
+  },
+  "fix": {
+    "files": ["electron/shell/capabilities.ts"],
+    "behavior": "BuiltinAcl 在任何 capability 之外，给 fs 插件的全局作用域固定加上 deny $APPDATA/plugins 与 $APPDATA/plugins/**：所有平台、所有窗口、所有 fs 命令（读、写、列目录、exists、mkdir、remove、rename、copy_file、写模式 open）都拒绝这个目录本身及其下全部内容，capability 授予或对话框/拖放加入的运行时作用域都不能重新打开它。deriveScopes 的 fsDeny 也含这两条，main 的全局 fs 作用域同样生效。$APPDATA 其余路径不受影响"
+  },
+  "evidence": "安全加固（产品决策，不是 Rust bug）。修改前：Windows 上 $APPDATA/plugins 一直可写；macOS/Linux 上原来靠 deny $APPLOCALDATA/**（= $APPDATA）挡住，RF-W23-fs-deny-webview-data-user-data 按批准的决定去掉这条整体 deny 后，这个持久化入口在 macOS/Linux 上也会打开。browser-content 与远程页面已经没有任何 fs 命令（SEC-E01），剩下的是主窗口里的脚本注入（Markdown/HTML 渲染、模型输出）。前端审计：src/** 没有经 plugin:fs 访问 $APPDATA/plugins 的代码（AppData 下只用 workbench-wallpapers、pdfjs-assets、tmp_apkg_import）；docs/plugins/FRONTEND.md 规划的插件安装是解压到该目录，按 SEC-E06 的修法建议应由 Host 经同意流程完成，不应由页面直接写文件。",
+  "userVisible": "正常使用感知不到；页面脚本经 plugin:fs 读写 $APPDATA/plugins 时被拒绝（forbidden path）。今后的插件管理页需经 Host 安装插件，不能用 plugin:fs 解压到该目录。",
+  "dataCompat": "不改变落库数据、同步载荷与备份格式。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "host/e2e/security/shell-builtin-acl.test.ts",
+      "name": "RF-W23-fs-deny-host-plugin-dir: main cannot plant or read a Host plugin profile or module under $APPDATA/plugins; the rest of AppData stays writable"
+    },
+    {
+      "file": "electron/tests/builtin-acl.test.ts",
+      "name": "RF-W23-fs-deny-host-plugin-dir: the Host plugin directory is denied to every fs command on every platform, whatever the capabilities grant"
+    }
+  ],
+  "notes": "只覆盖“直接投放代码”这一条最短路径。主窗口能写 $APPDATA 仍意味着能改数据库与设置，这一点与 Rust 版相同，需要从 capability（缩小 appdata 授权）或 SEC-E06 的整体方案处理。"
+}

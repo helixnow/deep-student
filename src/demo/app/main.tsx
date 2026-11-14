@@ -84,6 +84,8 @@ async function main() {
     { TextContextMenuProvider },
     { useTheme },
     { createRoot },
+    { createAppUiKernel },
+    { UiKernelProvider },
   ] = await Promise.all([
     pack.load(),
     import('../../components/ErrorBoundary'),
@@ -92,6 +94,8 @@ async function main() {
     import('../../components/context-menu/TextContextMenu'),
     import('../../hooks/useTheme'),
     import('react-dom/client'),
+    import('../../ui-kernel/bootstrap'),
+    import('../../ui-kernel/react'),
   ]);
 
   const ThemeSync: React.FC = () => {
@@ -101,38 +105,43 @@ async function main() {
 
   const rootEl = document.getElementById('root')!;
   rootEl.dataset.demoApp = appId;
+  const kernel = await createAppUiKernel();
+  window.addEventListener('beforeunload', () => { void kernel.dispose(); });
+  if (import.meta.hot) import.meta.hot.dispose(() => { void kernel.dispose(); });
   createRoot(rootEl).render(
-    <ErrorBoundary
-      name="DemoApp"
-      fallback={() => (
-        <p className="demo-app-message" data-demo-error>
-          {tr('演示加载出错，请刷新页面重试。', 'The demo failed to load. Please reload the page.')}
-        </p>
-      )}
-    >
-      <OverlayCoordinatorProvider>
-        <DialogControlProvider>
-          <TextContextMenuProvider>
-            <ThemeSync />
-            <div className="demo-app-frame" data-demo-app-frame>
-              <React.Suspense fallback={null}>
-                <Component
-                  windowId={`demo-${appId}`}
-                  instanceKey={pack.instanceKey ?? null}
-                  launchPayload={pack.launchPayload ?? null}
-                  isActive
-                  isVisible
-                  renderThrottleMs={0}
-                  isSuspended={false}
-                  onTitleChange={() => {}}
-                  requestClose={() => {}}
-                />
-              </React.Suspense>
-            </div>
-          </TextContextMenuProvider>
-        </DialogControlProvider>
-      </OverlayCoordinatorProvider>
-    </ErrorBoundary>,
+    <UiKernelProvider kernel={kernel}>
+      <ErrorBoundary
+        name="DemoApp"
+        fallback={() => (
+          <p className="demo-app-message" data-demo-error>
+            {tr('演示加载出错，请刷新页面重试。', 'The demo failed to load. Please reload the page.')}
+          </p>
+        )}
+      >
+        <OverlayCoordinatorProvider>
+          <DialogControlProvider>
+            <TextContextMenuProvider>
+              <ThemeSync />
+              <div className="demo-app-frame" data-demo-app-frame>
+                <React.Suspense fallback={null}>
+                  <Component
+                    windowId={`demo-${appId}`}
+                    instanceKey={pack.instanceKey ?? null}
+                    launchPayload={pack.launchPayload ?? null}
+                    isActive
+                    isVisible
+                    renderThrottleMs={0}
+                    isSuspended={false}
+                    onTitleChange={() => {}}
+                    requestClose={() => {}}
+                  />
+                </React.Suspense>
+              </div>
+            </TextContextMenuProvider>
+          </DialogControlProvider>
+        </OverlayCoordinatorProvider>
+      </ErrorBoundary>
+    </UiKernelProvider>,
   );
 
   // 就绪：包自己的判断，缺省是界面连续 600ms 没有变化。最多等 12s 照样通知（父页另有兜底）
@@ -170,4 +179,3 @@ void main().catch((error) => {
   showMessage(tr('演示加载出错，请刷新页面重试。', 'The demo failed to load. Please reload the page.'));
   notifyParent('demo-app-error');
 });
-

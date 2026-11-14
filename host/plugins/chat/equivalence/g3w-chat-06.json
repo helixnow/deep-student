@@ -1,0 +1,1864 @@
+{
+  "domain": "chat",
+  "commands": [
+    "workspace_get",
+    "workspace_create",
+    "workspace_list_agents",
+    "workspace_list_messages",
+    "workspace_list_documents",
+    "workspace_get_context",
+    "workspace_get_document",
+    "workspace_cancel_agent",
+    "workspace_manual_wake",
+    "workspace_cancel_sleep",
+    "workspace_restore_executions",
+    "workspace_run_agent",
+    "workspace_create_agent",
+    "workspace_close",
+    "workspace_delete",
+    "workspace_set_context",
+    "workspace_send_message",
+    "workspace_read_agent_profile_file",
+    "workspace_save_agent_profile_file",
+    "workspace_delete_agent_profile_file"
+  ],
+  "scenarios": [
+    {
+      "id": "g3w.chat.workspace_get.invalid_workspace_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_get",
+          "args": {
+            "sessionId": "sess_g3w_creator",
+            "workspaceId": "bad/ws_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_get.workspace_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_get",
+          "args": {
+            "sessionId": "sess_g3w_creator",
+            "workspaceId": "ws_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_get.not_member",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_create",
+          "args": {
+            "sessionId": "sess_g3w_creator",
+            "request": {
+              "name": "g3w错误分支"
+            }
+          }
+        },
+        {
+          "cmd": "workspace_get",
+          "args": {
+            "sessionId": "sess_g3w_outsider",
+            "workspaceId": "${0.workspace_id}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_list_agents.invalid_workspace_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_list_agents",
+          "args": {
+            "sessionId": "sess_g3w_creator",
+            "workspaceId": "bad/ws_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_list_agents.workspace_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_list_agents",
+          "args": {
+            "sessionId": "sess_g3w_creator",
+            "workspaceId": "ws_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_list_agents.not_member",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_create",
+          "args": {
+            "sessionId": "sess_g3w_creator",
+            "request": {
+              "name": "g3w错误分支"
+            }
+          }
+        },
+        {
+          "cmd": "workspace_list_agents",
+          "args": {
+            "sessionId": "sess_g3w_outsider",
+            "workspaceId": "${0.workspace_id}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_list_messages.invalid_workspace_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_list_messages",
+          "args": {
+            "sessionId": "sess_g3w_creator",
+            "workspaceId": "bad/ws_g3w",
+            "limit": 10
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_list_messages.workspace_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_list_messages",
+          "args": {
+            "sessionId": "sess_g3w_creator",
+            "workspaceId": "ws_missing_g3w",
+            "limit": 10
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_list_messages.not_member",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_create",
+          "args": {
+            "sessionId": "sess_g3w_creator",
+            "request": {
+              "name": "g3w错误分支"
+            }
+          }
+        },
+        {
+          "cmd": "workspace_list_messages",
+          "args": {
+            "sessionId": "sess_g3w_outsider",
+            "workspaceId": "${0.workspace_id}",
+            "limit": 10
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_list_documents.invalid_workspace_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_list_documents",
+          "args": {
+            "sessionId": "sess_g3w_creator",
+            "workspaceId": "bad/ws_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_list_documents.workspace_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_list_documents",
+          "args": {
+            "sessionId": "sess_g3w_creator",
+            "workspaceId": "ws_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_list_documents.not_member",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_create",
+          "args": {
+            "sessionId": "sess_g3w_creator",
+            "request": {
+              "name": "g3w错误分支"
+            }
+          }
+        },
+        {
+          "cmd": "workspace_list_documents",
+          "args": {
+            "sessionId": "sess_g3w_outsider",
+            "workspaceId": "${0.workspace_id}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_get_context.invalid_workspace_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_get_context",
+          "args": {
+            "sessionId": "sess_g3w_creator",
+            "workspaceId": "bad/ws_g3w",
+            "key": "g3w_key"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_get_context.workspace_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_get_context",
+          "args": {
+            "sessionId": "sess_g3w_creator",
+            "workspaceId": "ws_missing_g3w",
+            "key": "g3w_key"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_get_context.not_member",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_create",
+          "args": {
+            "sessionId": "sess_g3w_creator",
+            "request": {
+              "name": "g3w错误分支"
+            }
+          }
+        },
+        {
+          "cmd": "workspace_get_context",
+          "args": {
+            "sessionId": "sess_g3w_outsider",
+            "workspaceId": "${0.workspace_id}",
+            "key": "g3w_key"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_get_document.invalid_workspace_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_get_document",
+          "args": {
+            "sessionId": "sess_g3w_creator",
+            "workspaceId": "bad/ws_g3w",
+            "documentId": "doc_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_get_document.workspace_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_get_document",
+          "args": {
+            "sessionId": "sess_g3w_creator",
+            "workspaceId": "ws_missing_g3w",
+            "documentId": "doc_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_get_document.not_member",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_create",
+          "args": {
+            "sessionId": "sess_g3w_creator",
+            "request": {
+              "name": "g3w错误分支"
+            }
+          }
+        },
+        {
+          "cmd": "workspace_get_document",
+          "args": {
+            "sessionId": "sess_g3w_outsider",
+            "workspaceId": "${0.workspace_id}",
+            "documentId": "doc_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_cancel_agent.invalid_workspace_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_cancel_agent",
+          "args": {
+            "sessionId": "sess_g3w_creator",
+            "workspaceId": "bad/ws_g3w",
+            "agentSessionId": "agent_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_cancel_agent.workspace_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_cancel_agent",
+          "args": {
+            "sessionId": "sess_g3w_creator",
+            "workspaceId": "ws_missing_g3w",
+            "agentSessionId": "agent_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_cancel_agent.not_member",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_create",
+          "args": {
+            "sessionId": "sess_g3w_creator",
+            "request": {
+              "name": "g3w错误分支"
+            }
+          }
+        },
+        {
+          "cmd": "workspace_cancel_agent",
+          "args": {
+            "sessionId": "sess_g3w_outsider",
+            "workspaceId": "${0.workspace_id}",
+            "agentSessionId": "agent_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_manual_wake.invalid_workspace_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_manual_wake",
+          "args": {
+            "request": {
+              "workspace_id": "bad/ws_g3w",
+              "requester_session_id": "sess_g3w_creator",
+              "sleep_id": "sleep_missing_g3w",
+              "message": null
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_manual_wake.workspace_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_manual_wake",
+          "args": {
+            "request": {
+              "workspace_id": "ws_missing_g3w",
+              "requester_session_id": "sess_g3w_creator",
+              "sleep_id": "sleep_missing_g3w",
+              "message": null
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_manual_wake.not_member",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_create",
+          "args": {
+            "sessionId": "sess_g3w_creator",
+            "request": {
+              "name": "g3w错误分支"
+            }
+          }
+        },
+        {
+          "cmd": "workspace_manual_wake",
+          "args": {
+            "request": {
+              "workspace_id": "${0.workspace_id}",
+              "requester_session_id": "sess_g3w_outsider",
+              "sleep_id": "sleep_missing_g3w",
+              "message": null
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_cancel_sleep.invalid_workspace_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_cancel_sleep",
+          "args": {
+            "sessionId": "sess_g3w_creator",
+            "workspaceId": "bad/ws_g3w",
+            "sleepId": "sleep_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_cancel_sleep.workspace_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_cancel_sleep",
+          "args": {
+            "sessionId": "sess_g3w_creator",
+            "workspaceId": "ws_missing_g3w",
+            "sleepId": "sleep_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_cancel_sleep.not_member",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_create",
+          "args": {
+            "sessionId": "sess_g3w_creator",
+            "request": {
+              "name": "g3w错误分支"
+            }
+          }
+        },
+        {
+          "cmd": "workspace_cancel_sleep",
+          "args": {
+            "sessionId": "sess_g3w_outsider",
+            "workspaceId": "${0.workspace_id}",
+            "sleepId": "sleep_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_restore_executions.invalid_workspace_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_restore_executions",
+          "args": {
+            "sessionId": "sess_g3w_creator",
+            "workspaceId": "bad/ws_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_restore_executions.workspace_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_restore_executions",
+          "args": {
+            "sessionId": "sess_g3w_creator",
+            "workspaceId": "ws_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_restore_executions.not_member",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_create",
+          "args": {
+            "sessionId": "sess_g3w_creator",
+            "request": {
+              "name": "g3w错误分支"
+            }
+          }
+        },
+        {
+          "cmd": "workspace_restore_executions",
+          "args": {
+            "sessionId": "sess_g3w_outsider",
+            "workspaceId": "${0.workspace_id}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_run_agent.invalid_workspace_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_run_agent",
+          "args": {
+            "request": {
+              "workspace_id": "bad/ws_g3w",
+              "agent_session_id": "agent_missing_g3w",
+              "requester_session_id": "sess_g3w_creator",
+              "reminder": null
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_run_agent.workspace_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_run_agent",
+          "args": {
+            "request": {
+              "workspace_id": "ws_missing_g3w",
+              "agent_session_id": "agent_missing_g3w",
+              "requester_session_id": "sess_g3w_creator",
+              "reminder": null
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_run_agent.not_member",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_create",
+          "args": {
+            "sessionId": "sess_g3w_creator",
+            "request": {
+              "name": "g3w错误分支"
+            }
+          }
+        },
+        {
+          "cmd": "workspace_run_agent",
+          "args": {
+            "request": {
+              "workspace_id": "${0.workspace_id}",
+              "agent_session_id": "agent_missing_g3w",
+              "requester_session_id": "sess_g3w_outsider",
+              "reminder": null
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_run_agent.agent_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_create",
+          "args": {
+            "sessionId": "sess_g3w_creator",
+            "request": {
+              "name": "g3w错误分支"
+            }
+          }
+        },
+        {
+          "cmd": "workspace_run_agent",
+          "args": {
+            "request": {
+              "workspace_id": "${0.workspace_id}",
+              "agent_session_id": "agent_missing_g3w",
+              "requester_session_id": "sess_g3w_creator",
+              "reminder": null
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_run_agent.coordinator_cannot_auto_run",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_create",
+          "args": {
+            "sessionId": "sess_g3w_creator",
+            "request": {
+              "name": "g3w错误分支"
+            }
+          }
+        },
+        {
+          "cmd": "workspace_create_agent",
+          "args": {
+            "request": {
+              "workspace_id": "${0.workspace_id}",
+              "requester_session_id": "sess_g3w_creator",
+              "skill_id": null,
+              "role": "coordinator",
+              "initial_task": null,
+              "system_prompt": null
+            }
+          }
+        },
+        {
+          "cmd": "workspace_run_agent",
+          "args": {
+            "request": {
+              "workspace_id": "${0.workspace_id}",
+              "agent_session_id": "${1.agent_session_id}",
+              "requester_session_id": "sess_g3w_creator",
+              "reminder": null
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_close.workspace_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_close",
+          "args": {
+            "sessionId": "sess_g3w_creator",
+            "workspaceId": "ws_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_close.not_creator",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_create",
+          "args": {
+            "sessionId": "sess_g3w_creator",
+            "request": {
+              "name": "g3w错误分支"
+            }
+          }
+        },
+        {
+          "cmd": "workspace_close",
+          "args": {
+            "sessionId": "sess_g3w_outsider",
+            "workspaceId": "${0.workspace_id}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_delete.workspace_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_delete",
+          "args": {
+            "sessionId": "sess_g3w_creator",
+            "workspaceId": "ws_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_delete.not_creator",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_create",
+          "args": {
+            "sessionId": "sess_g3w_creator",
+            "request": {
+              "name": "g3w错误分支"
+            }
+          }
+        },
+        {
+          "cmd": "workspace_delete",
+          "args": {
+            "sessionId": "sess_g3w_outsider",
+            "workspaceId": "${0.workspace_id}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_set_context.invalid_workspace_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_set_context",
+          "args": {
+            "sessionId": "sess_g3w_creator",
+            "workspaceId": "bad/ws_g3w",
+            "key": "g3w_key",
+            "value": {
+              "note": "上下文"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_set_context.workspace_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_set_context",
+          "args": {
+            "sessionId": "sess_g3w_creator",
+            "workspaceId": "ws_missing_g3w",
+            "key": "g3w_key",
+            "value": {
+              "note": "上下文"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_set_context.worker_not_coordinator",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_create",
+          "args": {
+            "sessionId": "sess_g3w_creator",
+            "request": {
+              "name": "g3w错误分支"
+            }
+          }
+        },
+        {
+          "cmd": "workspace_create_agent",
+          "args": {
+            "request": {
+              "workspace_id": "${0.workspace_id}",
+              "requester_session_id": "sess_g3w_creator",
+              "skill_id": null,
+              "role": "worker",
+              "initial_task": null,
+              "system_prompt": null
+            }
+          }
+        },
+        {
+          "cmd": "workspace_set_context",
+          "args": {
+            "sessionId": "${1.agent_session_id}",
+            "workspaceId": "${0.workspace_id}",
+            "key": "g3w_key",
+            "value": {
+              "note": "上下文"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_send_message.broadcast_with_target",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_send_message",
+          "args": {
+            "sessionId": "sess_g3w_creator",
+            "request": {
+              "workspace_id": "ws_missing_g3w",
+              "content": "g3w消息",
+              "target_session_id": "agent_missing_g3w",
+              "message_type": "broadcast"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_send_message.invalid_workspace_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_send_message",
+          "args": {
+            "sessionId": "sess_g3w_creator",
+            "request": {
+              "workspace_id": "bad/ws_g3w",
+              "content": "g3w消息",
+              "target_session_id": null,
+              "message_type": "task"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_send_message.workspace_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_send_message",
+          "args": {
+            "sessionId": "sess_g3w_creator",
+            "request": {
+              "workspace_id": "ws_missing_g3w",
+              "content": "g3w消息",
+              "target_session_id": null,
+              "message_type": "task"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_send_message.sender_not_member",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_create",
+          "args": {
+            "sessionId": "sess_g3w_creator",
+            "request": {
+              "name": "g3w错误分支"
+            }
+          }
+        },
+        {
+          "cmd": "workspace_send_message",
+          "args": {
+            "sessionId": "sess_g3w_outsider",
+            "request": {
+              "workspace_id": "${0.workspace_id}",
+              "content": "g3w消息",
+              "target_session_id": null,
+              "message_type": "task"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_send_message.target_agent_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_create",
+          "args": {
+            "sessionId": "sess_g3w_creator",
+            "request": {
+              "name": "g3w错误分支"
+            }
+          }
+        },
+        {
+          "cmd": "workspace_send_message",
+          "args": {
+            "sessionId": "sess_g3w_creator",
+            "request": {
+              "workspace_id": "${0.workspace_id}",
+              "content": "g3w消息",
+              "target_session_id": "agent_missing_g3w",
+              "message_type": "task"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_read_agent_profile_file.empty_file_name",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_read_agent_profile_file",
+          "args": {
+            "fileName": "  "
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_read_agent_profile_file.missing_md_suffix",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_read_agent_profile_file",
+          "args": {
+            "fileName": "g3w-persona.txt"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_read_agent_profile_file.empty_stem",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_read_agent_profile_file",
+          "args": {
+            "fileName": ".md"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_read_agent_profile_file.invalid_chars",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_read_agent_profile_file",
+          "args": {
+            "fileName": "G3W_Persona.md"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_read_agent_profile_file.non_portable_name",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_read_agent_profile_file",
+          "args": {
+            "fileName": "con.md"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_save_agent_profile_file.empty_file_name",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_save_agent_profile_file",
+          "args": {
+            "fileName": "  ",
+            "content": "---\nname: g3w-persona\ndescription: g3w 测试档案\n---\n# G3W\n正文",
+            "overwrite": false
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_save_agent_profile_file.missing_md_suffix",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_save_agent_profile_file",
+          "args": {
+            "fileName": "g3w-persona.txt",
+            "content": "---\nname: g3w-persona\ndescription: g3w 测试档案\n---\n# G3W\n正文",
+            "overwrite": false
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_save_agent_profile_file.empty_stem",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_save_agent_profile_file",
+          "args": {
+            "fileName": ".md",
+            "content": "---\nname: g3w-persona\ndescription: g3w 测试档案\n---\n# G3W\n正文",
+            "overwrite": false
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_save_agent_profile_file.invalid_chars",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_save_agent_profile_file",
+          "args": {
+            "fileName": "G3W_Persona.md",
+            "content": "---\nname: g3w-persona\ndescription: g3w 测试档案\n---\n# G3W\n正文",
+            "overwrite": false
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_save_agent_profile_file.non_portable_name",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_save_agent_profile_file",
+          "args": {
+            "fileName": "con.md",
+            "content": "---\nname: g3w-persona\ndescription: g3w 测试档案\n---\n# G3W\n正文",
+            "overwrite": false
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_delete_agent_profile_file.empty_file_name",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_delete_agent_profile_file",
+          "args": {
+            "fileName": "  "
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_delete_agent_profile_file.missing_md_suffix",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_delete_agent_profile_file",
+          "args": {
+            "fileName": "g3w-persona.txt"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_delete_agent_profile_file.empty_stem",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_delete_agent_profile_file",
+          "args": {
+            "fileName": ".md"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_delete_agent_profile_file.invalid_chars",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_delete_agent_profile_file",
+          "args": {
+            "fileName": "G3W_Persona.md"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_delete_agent_profile_file.non_portable_name",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_delete_agent_profile_file",
+          "args": {
+            "fileName": "con.md"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_read_agent_profile_file.not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_read_agent_profile_file",
+          "args": {
+            "fileName": "g3w-missing.md"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_delete_agent_profile_file.not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_delete_agent_profile_file",
+          "args": {
+            "fileName": "g3w-missing.md"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_save_agent_profile_file.empty_content",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_save_agent_profile_file",
+          "args": {
+            "fileName": "g3w-persona.md",
+            "content": "",
+            "overwrite": false
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_save_agent_profile_file.missing_frontmatter_start",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_save_agent_profile_file",
+          "args": {
+            "fileName": "g3w-persona.md",
+            "content": "name: g3w-persona\n正文",
+            "overwrite": false
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_save_agent_profile_file.invalid_reasoning_effort",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_save_agent_profile_file",
+          "args": {
+            "fileName": "g3w-persona.md",
+            "content": "---\nname: g3w-persona\nreasoning_effort: turbo\n---\n正文",
+            "overwrite": false
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_save_agent_profile_file.unsupported_permissions_field",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_save_agent_profile_file",
+          "args": {
+            "fileName": "g3w-persona.md",
+            "content": "---\nname: g3w-persona\npermissions: full\n---\n正文",
+            "overwrite": false
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_save_agent_profile_file.unterminated_frontmatter",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_save_agent_profile_file",
+          "args": {
+            "fileName": "g3w-persona.md",
+            "content": "---\nname: g3w-persona\n正文",
+            "overwrite": false
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_save_agent_profile_file.non_builtin_base",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_save_agent_profile_file",
+          "args": {
+            "fileName": "g3w-persona.md",
+            "content": "---\nname: g3w-persona\nbase: g3w-base\n---\n正文",
+            "overwrite": false
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_save_agent_profile_file.missing_name",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_save_agent_profile_file",
+          "args": {
+            "fileName": "g3w-persona.md",
+            "content": "---\ndescription: 无名\n---\n正文",
+            "overwrite": false
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_save_agent_profile_file.invalid_name",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_save_agent_profile_file",
+          "args": {
+            "fileName": "g3w-persona.md",
+            "content": "---\nname: G3W_Persona\n---\n正文",
+            "overwrite": false
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_save_agent_profile_file.name_conflicts_builtin",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_save_agent_profile_file",
+          "args": {
+            "fileName": "g3w-persona.md",
+            "content": "---\nname: worker\n---\n正文",
+            "overwrite": false
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.workspace_save_agent_profile_file.file_exists_without_overwrite",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_save_agent_profile_file",
+          "args": {
+            "fileName": "g3w-persona.md",
+            "content": "---\nname: g3w-persona\ndescription: g3w 测试档案\n---\n# G3W\n正文",
+            "overwrite": false
+          }
+        },
+        {
+          "cmd": "workspace_save_agent_profile_file",
+          "args": {
+            "fileName": "g3w-persona.md",
+            "content": "---\nname: g3w-persona\ndescription: g3w 测试档案\n---\n# G3W\n正文",
+            "overwrite": false
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+#!/bin/bash
+# ds-opencode 启动前：结束不在 ds-opencode.service 资源组里的游离 opencode serve（以 dsdev 身份手动运行 opencode 时可能被顺带拉起，
+# 它会抢占服务端口，使 systemd 管理的实例启动即退出，lane 的工具执行跑到资源组外）。
+for p in $(pgrep -u dsdev -f "opencode serve --service"); do
+  grep -q "/dsdev.slice/ds-opencode.service" /proc/$p/cgroup 2>/dev/null || { kill "$p" 2>/dev/null && echo "killed stray opencode serve $p"; }
+done
+sleep 1

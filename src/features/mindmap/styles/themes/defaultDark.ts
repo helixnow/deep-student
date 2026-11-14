@@ -2,12 +2,10 @@ import type { IStyleTheme } from '../../registry/types';
 import { DARK_SAFE_PALETTE } from './palettes';
 
 /**
- * 默认主题 - 暗色变体
+ * 默认主打主题：Mineral 青瓷微染 - 暗色变体（玄青夜石）
  *
  * 与 defaultTheme 严格结构镜像：fontSize / padding / borderRadius /
  * fontWeight / 边宽 / 边类型完全一致，只允许颜色不同。
- * 结构色全部走全局 CSS 变量，随 html.dark / 调色板自动适配。
- * palette 与显式 dark 主题共用同一套暗色安全色板（DARK_SAFE_PALETTE）。
  */
 export const defaultDarkTheme: IStyleTheme = {
   id: 'default-dark',
@@ -15,38 +13,42 @@ export const defaultDarkTheme: IStyleTheme = {
   hidden: true,
   node: {
     root: {
-      background: 'var(--mm-bg-elevated)',
-      foreground: 'hsl(var(--foreground) / 0.9)',
-      border: '1px solid var(--mm-border-strong)',
-      borderRadius: 4,
+      background: '#23453E',
+      foreground: '#EAF2EF',
+      border: '1px solid rgba(138, 184, 172, 0.22)',
+      borderRadius: 10,
       fontSize: 18,
       fontWeight: '600',
       padding: '10px 20px',
+      shadow: '0 6px 20px -4px rgba(0, 0, 0, 0.36)',
     },
     branch: {
-      background: 'hsl(var(--secondary))',
-      foreground: 'hsl(var(--foreground) / 0.9)',
-      border: '1px solid hsl(var(--foreground) / 0.12)',
-      borderRadius: 4,
+      background: '#19211F',
+      foreground: '#DCE5E2',
+      border: '1px solid rgba(220, 229, 226, 0.10)',
+      borderRadius: 8,
       fontSize: 15,
-      padding: '6px 12px',
+      fontWeight: '500',
+      padding: '7px 14px',
+      shadow: '0 2px 6px -1px rgba(0, 0, 0, 0.24)',
     },
     leaf: {
       background: 'transparent',
-      foreground: 'hsl(var(--foreground) / 0.85)',
+      foreground: '#9BAFA9',
       border: 'transparent',
-      borderRadius: 4,
+      borderRadius: 6,
       fontSize: 14,
       padding: '4px 8px',
     },
   },
   edge: {
     type: 'bezier',
-    stroke: 'hsl(var(--foreground) / 0.15)',
+    stroke: '#2F3E3A',
+    strokeActive: '#5EA893',
     strokeWidth: 1.5,
   },
   palette: DARK_SAFE_PALETTE,
   canvas: {
-    background: 'var(--mm-bg)',
+    background: '#111615',
   },
 };

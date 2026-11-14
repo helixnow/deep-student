@@ -35,6 +35,9 @@ LOG.old.*
 **/LOG
 **/LOG.*
 **/LOG.old.*
+# 大小写不敏感文件系统上 **/LOG 会误伤 host/platform/log（F4 日志服务源码）
+!host/platform/log/
+!host/platform/log/**
 **/cozo/data/
 MANIFEST-*
 OPTIONS-*
@@ -99,30 +102,13 @@ AndroidSDK/
 android-sdk/
 java/
 gen/
-src-tauri/gen/
 
 # Build outputs
 target/
-src-tauri/target/
 .target-local/
-src-tauri/.target-local/
 **/.target-local/
 *.apk
 *.aab
-
-# Downloaded PDFium runtime binaries (scripts/download-pdfium.sh)
-src-tauri/resources/pdfium/libpdfium.so
-src-tauri/resources/pdfium/libpdfium.dylib
-src-tauri/resources/pdfium/pdfium.dll
-src-tauri/resources/pdfium/libpdfium_android_*.so
-
-# Cargo build logs and outputs (should not be versioned)
-/cargo-full.txt
-/cargo-check.txt
-/cargo-check-output.json
-**/cargo-full.txt
-**/cargo-check.txt
-**/cargo-check-output.json
 
 # Temporary files
 /tmp/
@@ -160,11 +146,6 @@ PWA/
 # Additional frontend dependencies
 **/refactored/
 deepstudent-refactored/
-
-# 忽略 Tauri 构建过程中解压的临时库
-src-tauri/*_temp/
-# Linux PDFium 由 CI/本地下载脚本按需获取，不提交仓库
-src-tauri/resources/pdfium/libpdfium.so
 
 # Additional temporary files
 
@@ -280,6 +261,9 @@ FRONTEND_ANALYSIS.md
 .skills/
 .study-ui/
 
+# Personal IDE / MCP settings (machine-specific paths)
+.kiro/settings/
+
 # Local tooling artifacts (never commit)
 .codex_downgrade/
 .playwright-mcp/
@@ -321,6 +305,9 @@ docs/design-tokens-and-color-semantics.md
 dstu-test/docs/*
 !dstu-test/docs/README.md
 /dist-demo
+/dist-web
+/dist-web.next
+/dist-web.prev
 
 # vite jiti 缓存（tailwind/配置文件加载产物）
 node-jiti/
@@ -332,3 +319,32 @@ node-compile-cache/
 # 大产物（out/ 渲染、node_modules、public/audio 配乐）由 video/.gitignore 与
 # 下面这条整目录忽略共同兜底，避免误入库。
 /video/
+.plugin-build/
+
+# opencode 派发运行记录（oc-dispatch.mjs）
+/.oc-runs/
+/.integration-dist/
+/.integration-dist-demo/
+
+# 迁移源码豁免：上面 LOG.* / MANIFEST-* / OPTIONS-* / CURRENT 等数据库文件规则在大小写不敏感文件系统（macOS）上
+# 会误伤 log.ts、manifest-upload.ts 之类源码，导致 lane 本地能跑但文件从未进提交。源码与测试一律不受其影响。
+!host/**/*.ts
+!host/**/*.tsx
+!electron/**/*.ts
+!web/**/*.ts
+!web/public/**
+!web/index.html
+!src/**/*.ts
+!src/**/*.tsx
+# src/version.ts 由 scripts/generate-version.mjs 生成，保持未跟踪；上面的 !src/**/*.ts 会把它重新放回。
+src/version.ts
+!scripts/**/*.mjs
+# electron-builder 的 NSIS 自定义安装脚本必须入库（`**/build/` 会误伤 electron/build/）。
+!electron/build/
+!electron/build/installer.nsh
+
+# 增量类型检查缓存（作业执行器/集成门禁）
+*.tsbuildinfo
+
+# Stale branch backup bundles (kept out of the repo)
+*-branches-backup-*.bundle

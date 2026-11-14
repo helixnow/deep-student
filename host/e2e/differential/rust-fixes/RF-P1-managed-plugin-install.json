@@ -1,0 +1,11 @@
+{
+  "id": "RF-P1-managed-plugin-install", "kind": "deliberate", "status": "proposed",
+  "title": "工坊托管安装与 UI 版本握手",
+  "rust": { "file": "src-tauri/src/plugins/manager.rs", "line": 269, "behavior": "没有工坊托管安装或两半版本检查" },
+  "fix": { "files": ["host/kernel/plugin-admin.ts", "host/kernel/runtime.ts", "host/kernel/kernel.ts", "host/kernel/community-consent.ts", "host/kernel/plugin-installer.ts", "host/kernel/workshop-paths.ts", "host/kernel/community-context.ts", "host/kernel/plugin-execution.ts", "host/kernel/commands.ts", "host/kernel/events.ts"], "behavior": "社区上下文按 K1 收窄遍历入口；内置工坊按声明作用域独享安装能力，每次调用核对执行期 owner；托管路径跨平台拒绝穿越并转真实 ZIP 复用 W34 事务，保留源码；UI 版本不符按依赖闭包卸载并降级。同进程不是物理隔离。" },
+  "evidence": "真实托管目录/符号链接/ZIP/事务回滚/撤销恢复测试。",
+  "userVisible": "用户确认后可试用工坊插件；撤销不删除文件；两半版本不符可见降级。",
+  "dataCompat": "沿用 W34 锁与 profile；不改业务数据。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [{ "file": "host/kernel/tests/plugin-manager.test.ts", "name": "RF-P1-managed-plugin-install" }, { "file": "host/kernel/tests/workshop-paths.test.ts", "name": "RF-P1-managed-plugin-install" }, { "file": "host/kernel/tests/ui-manifest-v2.test.ts", "name": "RF-P1-managed-plugin-install" }]
+}

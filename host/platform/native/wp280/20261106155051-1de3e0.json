@@ -1,0 +1,1 @@
+{"id":"20261106155051-1de3e0","cwd":"/home/dsdev/dev/ds-mig/F7-native","cmd":["/opt/node26/bin/node","scripts/electron-migration/importable.mjs","host/platform/native/index.ts"],"from":"F7-native","submittedAt":"2026-11-06T15:50:51.918Z","cls":"other","startedAt":"2026-11-06T15:50:54.600Z","endedAt":"2026-11-06T15:50:56.801Z","code":0}

@@ -666,13 +666,20 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
       {mobileChrome && learningWaitMs != null && !editing && (
         <p className="text-xs text-muted-foreground">{t('review.learningStepHint', { time: formatDuration(learningWaitMs) })}</p>
       )}
-      {!mobileChrome && <div className="wb-fc-session-toolbar">
+      {!mobileChrome && <div className="wb-fc-session-toolbar text-muted-foreground/75">
       <div className="wb-fc-session-overview flex items-center justify-between gap-2">
-        <DsButton type="button" variant="ghost" size="sm" onClick={endSession} aria-label={t('session.exit')} className="wb-fc-session-exit gap-1 [@media(pointer:coarse)]:!min-h-11">
+        <DsButton
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={endSession}
+          aria-label={t('session.exit')}
+          className="wb-fc-session-exit gap-1 border-transparent text-muted-foreground/75 hover:bg-foreground/[0.04] hover:text-foreground [@media(pointer:coarse)]:!min-h-11"
+        >
           <ArrowLeft size={14} />
           <span>{t('session.exit')}</span>
         </DsButton>
-        <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5">
+        <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 text-xs tabular-nums">
           {sessionStreak >= STREAK_BADGE_THRESHOLD ? (
             <span key={sessionStreak} className="wb-fc-chip wb-fc-chip--streak" title={t('review.streakTitle')}>
               <Lightning size={11} weight="fill" aria-hidden="true" />
@@ -695,10 +702,16 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
             </>
           ) : null}
           {newCount > 0 ? (
-            <span className="wb-fc-chip wb-fc-chip--new">{t('review.newCount', { count: newCount })}</span>
+            <span className="wb-fc-chip wb-fc-chip--new">
+              <span className="h-1.5 w-1.5 rounded-full bg-primary/80" aria-hidden="true" />
+              {t('review.newCount', { count: newCount })}
+            </span>
           ) : null}
           {learnCount > 0 ? (
-            <span className="wb-fc-chip wb-fc-chip--learn">{t('review.learnCount', { count: learnCount })}</span>
+            <span className="wb-fc-chip wb-fc-chip--learn">
+              <span className="h-1.5 w-1.5 rounded-full bg-amber-500/80" aria-hidden="true" />
+              {t('review.learnCount', { count: learnCount })}
+            </span>
           ) : null}
           <span className="wb-fc-chip wb-fc-chip--due" title={t('review.remainingTitle', { count: remainingCount })}>
             {t('review.ratedCount', { count: sessionRatedCount, defaultValue: '已评 {{count}}' })}
@@ -720,7 +733,7 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
       </div>
 
       {/* DsButton 在 lg 断点后压缩到 30px，宽屏触屏平板会跌破触控基线，coarse 兜底 ≥44px（与 library.css .fc-lib-row-actions 同基线） */}
-      <div className="wb-fc-session-actions flex items-center justify-end gap-1">
+      <div className="wb-fc-session-actions flex items-center justify-end gap-0.5 text-muted-foreground/65">
         <DsButton
           type="button"
           variant="ghost"

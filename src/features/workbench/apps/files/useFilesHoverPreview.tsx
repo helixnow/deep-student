@@ -12,6 +12,7 @@
 import { useEffect, useRef } from 'react';
 import { useFinderStore } from '@/features/learning-hub/stores/finderStore';
 import { useTranslation } from 'react-i18next';
+import { getOfficialResourceTypeUi } from '@/shared/resource-types/lookup';
 
 const SHOW_DELAY_MS = 420;
 const HIDE_DELAY_MS = 80;
@@ -36,32 +37,12 @@ function middleEllipsis(text: string, max = 56): string {
   return `${text.slice(0, head)}…${text.slice(text.length - tail)}`;
 }
 
-function typeLabel(
+export function typeLabel(
   t: (key: string) => string,
   type: string,
 ): string {
-  switch (type) {
-    case 'note':
-      return t('workbench:files.preview.type.note');
-    case 'textbook':
-      return t('workbench:files.preview.type.textbook');
-    case 'exam':
-      return t('workbench:files.preview.type.exam');
-    case 'translation':
-      return t('workbench:files.preview.type.translation');
-    case 'essay':
-      return t('workbench:files.preview.type.essay');
-    case 'image':
-      return t('workbench:files.preview.type.image');
-    case 'file':
-      return t('workbench:files.preview.type.file');
-    case 'mindmap':
-      return t('workbench:files.preview.type.mindmap');
-    case 'folder':
-      return t('workbench:files.preview.type.folder');
-    default:
-      return t('workbench:files.preview.type.generic');
-  }
+  if (type === 'folder') return t('workbench:files.preview.type.folder');
+  return t(getOfficialResourceTypeUi(type)?.previewLabelKey ?? 'workbench:files.preview.type.generic');
 }
 
 export function useFilesHoverPreview(options: UseFilesHoverPreviewOptions): void {

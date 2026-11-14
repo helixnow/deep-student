@@ -1,0 +1,222 @@
+[
+  {
+    "card": "Markdown 流式 Profiler",
+    "id": "markdown-streaming-profiler",
+    "component": "MarkdownStreamingProfilerPlugin"
+  },
+  {
+    "card": "PDF 多模态调试",
+    "id": "pdf-multimodal-debug",
+    "component": "PdfMultimodalDebugPlugin"
+  },
+  {
+    "card": "Thinking 块调试",
+    "id": "thinking-block-debug",
+    "component": "ThinkingBlockDebugPlugin"
+  },
+  {
+    "card": "多 Agent 编排自动测试",
+    "id": "workspace-orchestration-test",
+    "component": "WorkspaceOrchestrationTestPlugin"
+  },
+  {
+    "card": "多 Agent 调试",
+    "id": "multi-agent-debug",
+    "component": "MultiAgentDebugPlugin"
+  },
+  {
+    "card": "多变体并行调试",
+    "id": "multi-variant-debug",
+    "component": "MultiVariantDebugPlugin"
+  },
+  {
+    "card": "多变体自动化测试",
+    "id": "multi-variant-test",
+    "component": "MultiVariantTestPlugin"
+  },
+  {
+    "card": "媒体预处理调试",
+    "id": "media-processing-debug",
+    "component": "MediaProcessingDebugPlugin"
+  },
+  {
+    "card": "子代理消息流调试",
+    "id": "subagent-message-flow-debug",
+    "component": "SubagentMessageFlowDebugPlugin"
+  },
+  {
+    "card": "子代理自动测试",
+    "id": "subagent-test",
+    "component": "SubagentTestPlugin"
+  },
+  {
+    "card": "工具调用生命周期",
+    "id": "tool-call-lifecycle-debug",
+    "component": "ToolCallLifecycleDebugPlugin"
+  },
+  {
+    "card": "引用生成与解引用测试",
+    "id": "citation-test",
+    "component": "CitationTestPlugin"
+  },
+  {
+    "card": "编辑/重试调试",
+    "id": "edit-retry-debug",
+    "component": "EditRetryDebugPlugin"
+  },
+  {
+    "card": "聊天交互自动化测试",
+    "id": "chat-interaction-test",
+    "component": "ChatInteractionTestPlugin"
+  },
+  {
+    "card": "附件/OCR 请求体审计",
+    "id": "attachment-ocr-request-audit",
+    "component": "AttachmentOcrRequestAuditPlugin"
+  },
+  {
+    "card": "附件注入调试",
+    "id": "attachment-injection-debug",
+    "component": "AttachmentInjectionDebugPlugin"
+  },
+  {
+    "card": "附件流水线自动化测试",
+    "id": "attachment-pipeline-test",
+    "component": "AttachmentPipelineTestPlugin"
+  },
+  {
+    "card": "作文批改 Tooltip 调试",
+    "id": "essay-grading-tooltip-debug",
+    "component": "EssayGradingTooltipDebugPlugin"
+  },
+  {
+    "card": "题目导入流程调试",
+    "id": "question-import-debug",
+    "component": "QuestionImportDebugPlugin"
+  },
+  {
+    "card": "题目集识别生命周期",
+    "id": "exam-sheet-processing-debug",
+    "component": "ExamSheetProcessingDebugPlugin"
+  },
+  {
+    "card": "Anki 制卡日志",
+    "id": "anki-generation-debug",
+    "component": "AnkiGenerationDebugPlugin"
+  },
+  {
+    "card": "ChatAnki 全链路调试",
+    "id": "chatanki-workflow-debug",
+    "component": "ChatAnkiWorkflowDebugPlugin"
+  },
+  {
+    "card": "ChatAnki 集成自动测试",
+    "id": "chatanki-integration-test",
+    "component": "ChatAnkiIntegrationTestPlugin"
+  },
+  {
+    "card": "模板设计师全链路调试",
+    "id": "template-designer-workflow-debug",
+    "component": "TemplateDesignerWorkflowDebugPlugin"
+  },
+  {
+    "card": "DeepSeek-OCR 调试",
+    "id": "deepseek-ocr-debug",
+    "component": "DeepSeekOcrDebugPlugin"
+  },
+  {
+    "card": "Finder 拖放调试",
+    "id": "finder-drag-drop",
+    "component": "FinderDragDropDebugPlugin"
+  },
+  {
+    "card": "图片附件检查器",
+    "id": "image-attachment-inspector",
+    "component": "ImageAttachmentInspectorPlugin"
+  },
+  {
+    "card": "图片预览调试",
+    "id": "image-preview-debug",
+    "component": "ImagePreviewDebugPlugin"
+  },
+  {
+    "card": "外部搜索调试",
+    "id": "web-search-debug",
+    "component": "WebSearchDebugPlugin"
+  },
+  {
+    "card": "框选调试",
+    "id": "selection-box-debug",
+    "component": "SelectionBoxDebugPlugin"
+  },
+  {
+    "card": "统一拖拽调试",
+    "id": "unified-drag-drop",
+    "component": "UnifiedDragDropDebugPlugin"
+  },
+  {
+    "card": "Crepe图片上传调试",
+    "id": "crepe-image-upload-debug",
+    "component": "CrepeImageUploadDebugPlugin"
+  },
+  {
+    "card": "Crepe拖放调试",
+    "id": "crepe-drag-drop-debug",
+    "component": "CrepeDragDropDebugPlugin"
+  },
+  {
+    "card": "Crepe编辑器生命周期调试",
+    "id": "crepe-editor-debug",
+    "component": "CrepeEditorDebugPlugin"
+  },
+  {
+    "card": "笔记大纲滚动调试",
+    "id": "notes-outline-debug",
+    "component": "NotesOutlineDebugPlugin"
+  },
+  {
+    "card": "笔记排版样式调试",
+    "id": "notes-typography-debug",
+    "component": "NotesTypographyDebugPlugin"
+  },
+  {
+    "card": "DSTU API 调试",
+    "id": "dstu-debug",
+    "component": "DstuDebugPlugin"
+  },
+  {
+    "card": "MCP 调试",
+    "id": "mcp-debug",
+    "component": "McpDebugPlugin"
+  },
+  {
+    "card": "会话加载性能监控",
+    "id": "session-switch-perf",
+    "component": "SessionSwitchPerfDebugPlugin"
+  },
+  {
+    "card": "会话加载流程",
+    "id": "session-load-flow",
+    "component": "SessionLoadFlowDebugPlugin"
+  },
+  {
+    "card": "外部面板定位调试",
+    "id": "floating-panel-debug",
+    "component": "FloatingPanelDebugPlugin"
+  },
+  {
+    "card": "布局调试器",
+    "id": "layout-debug",
+    "component": "LayoutDebugPlugin"
+  },
+  {
+    "card": "思维导图悬浮模糊监听",
+    "id": "mindmap-blur-hover-debug",
+    "component": "MindMapBlurHoverDebugPlugin"
+  },
+  {
+    "card": "页面生命周期监控",
+    "id": "page-lifecycle-debug",
+    "component": "PageLifecycleDebugPlugin"
+  }
+]

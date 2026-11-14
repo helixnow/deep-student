@@ -2,6 +2,7 @@ import React from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { ComposerPlusMenu } from '../ComposerPlusMenu';
+import { modeRegistry, resolveSessionFeatureFlags } from '../../../registry/modeRegistry';
 
 describe('ComposerPlusMenu', () => {
   it('opens mode flyout with permission presets and no plan/ask switches', async () => {
@@ -141,6 +142,60 @@ describe('ComposerPlusMenu', () => {
     });
   });
 
+  it('toggles RAG and WebSearch capability switches and disables proactive KB when RAG is off', async () => {
+    const onRagEnabledChange = vi.fn();
+    const onWebSearchEnabledChange = vi.fn();
+    const onKnowledgeBaseProactiveChange = vi.fn();
+    const { rerender } = render(
+      <ComposerPlusMenu
+        open
+        onOpenChange={() => undefined}
+        attachmentCount={0}
+        iconButtonClass=""
+        onAddAttachment={() => undefined}
+        onOpenResourceLibrary={() => undefined}
+        knowledgeBaseProactive={false}
+        onKnowledgeBaseProactiveChange={onKnowledgeBaseProactiveChange}
+        ragEnabled
+        onRagEnabledChange={onRagEnabledChange}
+        webSearchEnabled
+        onWebSearchEnabledChange={onWebSearchEnabledChange}
+      />,
+    );
+
+    const webSearchToggle = screen.getByTestId('plus-menu-web-search');
+    expect(webSearchToggle).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(webSearchToggle);
+    expect(onWebSearchEnabledChange).toHaveBeenCalledWith(false);
+
+    fireEvent.click(screen.getByTestId('plus-menu-knowledge-base'));
+    expect(await screen.findByTestId('plus-menu-knowledge-base-panel')).toBeInTheDocument();
+    const ragToggle = screen.getByTestId('plus-menu-rag');
+    expect(ragToggle).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(ragToggle);
+    expect(onRagEnabledChange).toHaveBeenCalledWith(false);
+
+    rerender(
+      <ComposerPlusMenu
+        open
+        onOpenChange={() => undefined}
+        attachmentCount={0}
+        iconButtonClass=""
+        onAddAttachment={() => undefined}
+        onOpenResourceLibrary={() => undefined}
+        knowledgeBaseProactive={false}
+        onKnowledgeBaseProactiveChange={onKnowledgeBaseProactiveChange}
+        ragEnabled={false}
+        onRagEnabledChange={onRagEnabledChange}
+        webSearchEnabled={false}
+        onWebSearchEnabledChange={onWebSearchEnabledChange}
+      />,
+    );
+
+    expect(screen.getByTestId('plus-menu-kb-proactive')).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByTestId('plus-menu-web-search')).toHaveAttribute('aria-checked', 'false');
+  });
+
   it('keeps sibling submenus mutually exclusive when opened by click', async () => {
     render(
       <ComposerPlusMenu
@@ -189,6 +244,31 @@ describe('ComposerPlusMenu', () => {
     fireEvent.click(await screen.findByTestId('plus-menu-open-connectors'));
     expect(onOpenChange).toHaveBeenCalledWith(false);
     expect(onOpenMcpPanel).toHaveBeenCalled();
+  });
+
+  it('toggles Plugin Workshop mode from the plus menu and shows active pill', () => {
+    const onTogglePluginWorkshop = vi.fn();
+    const onOpenChange = vi.fn();
+    render(
+      <ComposerPlusMenu
+        open
+        onOpenChange={onOpenChange}
+        attachmentCount={0}
+        iconButtonClass=""
+        onAddAttachment={() => undefined}
+        onOpenResourceLibrary={() => undefined}
+        pluginWorkshopActive
+        onTogglePluginWorkshop={onTogglePluginWorkshop}
+      />,
+    );
+
+    const activePill = screen.getByTestId('plugin-workshop-active');
+    expect(activePill).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('plus-menu-plugin-workshop'));
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(onTogglePluginWorkshop).toHaveBeenCalledTimes(1);
+    fireEvent.click(activePill);
+    expect(onTogglePluginWorkshop).toHaveBeenCalledTimes(2);
   });
 
   // 📱 移动端根层只放动作；模式/档位/知识库进入二级面板
@@ -283,5 +363,71 @@ describe('ComposerPlusMenu', () => {
       expect(onOpenChange).toHaveBeenCalledWith(false);
       expect(onOpenMcpPanel).toHaveBeenCalled();
     });
+
+    it('exposes rag inside mobile mode pane and webSearch at mobile root', () => {
+      const onRagEnabledChange = vi.fn();
+      const onWebSearchEnabledChange = vi.fn();
+      render(
+        <ComposerPlusMenu
+          open
+          isMobile
+          onOpenChange={() => undefined}
+          attachmentCount={0}
+          iconButtonClass=""
+          onAddAttachment={() => undefined}
+          onOpenResourceLibrary={() => undefined}
+          sessionId="sess_1"
+          permissionPreset="relaxed"
+          onPermissionPresetChange={() => undefined}
+          ragEnabled
+          onRagEnabledChange={onRagEnabledChange}
+          webSearchEnabled={false}
+          onWebSearchEnabledChange={onWebSearchEnabledChange}
+        />,
+      );
+
+      fireEvent.click(screen.getByTestId('plus-menu-web-search'));
+      expect(onWebSearchEnabledChange).toHaveBeenCalledWith(true);
+
+      fireEvent.click(screen.getByTestId('plus-menu-mode'));
+      fireEvent.click(screen.getByTestId('plus-menu-rag'));
+      expect(onRagEnabledChange).toHaveBeenCalledWith(false);
+    });
+  });
+
+  it('resolveSessionFeatureFlags inherits mode defaults and respects explicit session overrides', () => {
+    const spy = vi.spyOn(modeRegistry, 'getResolved').mockReturnValue({
+      name: 'chat',
+      displayName: 'Chat',
+      config: {
+        requiresOcr: false,
+        autoStartFirstMessage: false,
+        enabledTools: ['rag', 'web_search', 'memory'],
+      },
+    } as any);
+    try {
+      expect(resolveSessionFeatureFlags({ mode: 'chat', features: new Map() })).toEqual({
+        ragEnabled: true,
+        memoryEnabled: true,
+        webSearchEnabled: true,
+        ankiEnabled: false,
+      });
+      expect(
+        resolveSessionFeatureFlags({
+          mode: 'chat',
+          features: new Map([
+            ['rag', false],
+            ['webSearch', false],
+          ]),
+        }),
+      ).toEqual({
+        ragEnabled: false,
+        memoryEnabled: true,
+        webSearchEnabled: false,
+        ankiEnabled: false,
+      });
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

@@ -1,0 +1,2335 @@
+{
+  "domain": "vfs",
+  "commands": [
+    "vfs_get_resource",
+    "vfs_resource_exists",
+    "vfs_increment_ref",
+    "vfs_get_resource_path",
+    "vfs_update_path_cache",
+    "vfs_get_resource_refs",
+    "vfs_resolve_resource_refs",
+    "vfs_get_resource_ref_count",
+    "vfs_get_resource_ocr_info",
+    "vfs_get_resource_text_chunks"
+  ],
+  "scenarios": [
+    {
+      "id": "vfs.res.get_resource.created_and_reused",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_or_reuse",
+          "args": {
+            "params": {
+              "type": "note",
+              "data": "# 资源\n\n正文",
+              "sourceId": null,
+              "metadata": null,
+              "subject": null
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_resource",
+          "args": {
+            "resourceId": "${0.resourceId}"
+          }
+        },
+        {
+          "cmd": "vfs_create_or_reuse",
+          "args": {
+            "params": {
+              "type": "note",
+              "data": "# 资源\n\n正文",
+              "sourceId": null,
+              "metadata": null,
+              "subject": null
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_resource",
+          "args": {
+            "resourceId": "${2.resourceId}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.res.get_resource.dstu_note_and_metadata",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "线性代数",
+              "content": "# 矩阵\n\n内容",
+              "metadata": {
+                "tags": []
+              }
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_resource",
+          "args": {
+            "resourceId": "${0.resourceId}"
+          }
+        },
+        {
+          "cmd": "vfs_create_or_reuse",
+          "args": {
+            "params": {
+              "type": "image",
+              "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+              "sourceId": null,
+              "metadata": {
+                "name": "pixel.png",
+                "mimeType": "image/png",
+                "size": 68
+              },
+              "subject": null
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_resource",
+          "args": {
+            "resourceId": "${2.resourceId}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.res.get_resource.missing_returns_null",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_get_resource",
+          "args": {
+            "resourceId": "res_missing0000"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.res.get_resource.invalid_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_get_resource",
+          "args": {
+            "resourceId": "note_abc"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_get_resource",
+          "args": {
+            "resourceId": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_get_resource",
+          "args": {
+            "resourceId": "res_​abc"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_get_resource",
+          "args": {
+            "resourceId": "‮res_abc"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.res.get_resource.args_decode",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_get_resource",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_get_resource",
+          "args": {
+            "resourceId": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_get_resource",
+          "args": {
+            "resourceId": 42
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_get_resource",
+          "args": {
+            "resource_id": "res_missing0000"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.res.exists.created_missing_prefix",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_or_reuse",
+          "args": {
+            "params": {
+              "type": "note",
+              "data": "exists 内容",
+              "sourceId": null,
+              "metadata": null,
+              "subject": null
+            }
+          }
+        },
+        {
+          "cmd": "vfs_resource_exists",
+          "args": {
+            "resourceId": "${0.resourceId}"
+          }
+        },
+        {
+          "cmd": "vfs_resource_exists",
+          "args": {
+            "resourceId": "res_missing0000"
+          }
+        },
+        {
+          "cmd": "vfs_resource_exists",
+          "args": {
+            "resourceId": "note_abc"
+          }
+        },
+        {
+          "cmd": "vfs_resource_exists",
+          "args": {
+            "resourceId": ""
+          }
+        },
+        {
+          "cmd": "vfs_resource_exists",
+          "args": {
+            "resourceId": "res_​abc"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.res.exists.args_decode",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_resource_exists",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_resource_exists",
+          "args": {
+            "resourceId": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.res.increment_ref.twice_then_read",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_or_reuse",
+          "args": {
+            "params": {
+              "type": "note",
+              "data": "ref 计数内容",
+              "sourceId": null,
+              "metadata": null,
+              "subject": null
+            }
+          }
+        },
+        {
+          "cmd": "vfs_increment_ref",
+          "args": {
+            "resourceId": "${0.resourceId}"
+          }
+        },
+        {
+          "cmd": "vfs_increment_ref",
+          "args": {
+            "resourceId": "${0.resourceId}"
+          }
+        },
+        {
+          "cmd": "vfs_get_resource",
+          "args": {
+            "resourceId": "${0.resourceId}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.res.increment_ref.errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_increment_ref",
+          "args": {
+            "resourceId": "res_missing0000"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_increment_ref",
+          "args": {
+            "resourceId": "note_abc"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_increment_ref",
+          "args": {
+            "resourceId": "res_﻿abc"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_increment_ref",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.res.path.root_note_and_cache",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "根笔记",
+              "content": "# 矩阵\n\n内容",
+              "metadata": {
+                "tags": []
+              }
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_resource_path",
+          "args": {
+            "sourceId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "vfs_get_resource_path",
+          "args": {
+            "sourceId": "${0.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.res.path.nested_folder_note",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "高考复习",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "函数",
+            "parentId": "${0.id}",
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "二次函数",
+              "content": "# 矩阵\n\n内容",
+              "metadata": {
+                "tags": []
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_folder_add_item",
+          "args": {
+            "folderId": "${1.id}",
+            "itemType": "note",
+            "itemId": "${2.id}"
+          }
+        },
+        {
+          "cmd": "vfs_get_resource_path",
+          "args": {
+            "sourceId": "${2.id}"
+          }
+        },
+        {
+          "cmd": "vfs_get_resource_path",
+          "args": {
+            "sourceId": "${2.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.res.path.not_in_folder_items",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_get_resource_path",
+          "args": {
+            "sourceId": "note_missing0000"
+          }
+        },
+        {
+          "cmd": "vfs_get_resource_path",
+          "args": {
+            "sourceId": "tb_missing0000"
+          }
+        },
+        {
+          "cmd": "vfs_get_resource_path",
+          "args": {
+            "sourceId": "exam_missing0000"
+          }
+        },
+        {
+          "cmd": "vfs_get_resource_path",
+          "args": {
+            "sourceId": "tr_missing0000"
+          }
+        },
+        {
+          "cmd": "vfs_get_resource_path",
+          "args": {
+            "sourceId": "essay_missing0000"
+          }
+        },
+        {
+          "cmd": "vfs_get_resource_path",
+          "args": {
+            "sourceId": "unknown"
+          }
+        },
+        {
+          "cmd": "vfs_get_resource_path",
+          "args": {
+            "sourceId": ""
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.res.path.args_decode",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_get_resource_path",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.res.path_cache.rename_then_refresh",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "物理",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "力学",
+            "parentId": "${0.id}",
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "牛顿定律",
+              "content": "# 矩阵\n\n内容",
+              "metadata": {
+                "tags": []
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_folder_add_item",
+          "args": {
+            "folderId": "${1.id}",
+            "itemType": "note",
+            "itemId": "${2.id}"
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "动量",
+              "content": "# 矩阵\n\n内容",
+              "metadata": {
+                "tags": []
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_folder_add_item",
+          "args": {
+            "folderId": "${0.id}",
+            "itemType": "note",
+            "itemId": "${4.id}"
+          }
+        },
+        {
+          "cmd": "vfs_get_resource_path",
+          "args": {
+            "sourceId": "${2.id}"
+          }
+        },
+        {
+          "cmd": "dstu_folder_rename",
+          "args": {
+            "folderId": "${0.id}",
+            "title": "物理学"
+          }
+        },
+        {
+          "cmd": "vfs_update_path_cache",
+          "args": {
+            "folderId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "vfs_get_resource_path",
+          "args": {
+            "sourceId": "${2.id}"
+          }
+        },
+        {
+          "cmd": "vfs_get_resource_path",
+          "args": {
+            "sourceId": "${4.id}"
+          }
+        },
+        {
+          "cmd": "vfs_update_path_cache",
+          "args": {
+            "folderId": "${1.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.res.path_cache.empty_and_missing_folder",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "空文件夹",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "vfs_update_path_cache",
+          "args": {
+            "folderId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "vfs_update_path_cache",
+          "args": {
+            "folderId": "fld_missing0000"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.res.path_cache.deleted_folder",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "将删除",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "孤儿笔记",
+              "content": "# 矩阵\n\n内容",
+              "metadata": {
+                "tags": []
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_folder_add_item",
+          "args": {
+            "folderId": "${0.id}",
+            "itemType": "note",
+            "itemId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "dstu_folder_delete",
+          "args": {
+            "folderId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "vfs_update_path_cache",
+          "args": {
+            "folderId": "${0.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.res.path_cache.errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_update_path_cache",
+          "args": {
+            "folderId": "note_abc"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_update_path_cache",
+          "args": {
+            "folderId": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_update_path_cache",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.res.refs.notes_and_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "引用一",
+              "content": "# 矩阵\n\n内容",
+              "metadata": {
+                "tags": []
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "引用二",
+              "content": "# 矩阵\n\n内容",
+              "metadata": {
+                "tags": []
+              }
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_resource_refs",
+          "args": {
+            "params": {
+              "sourceIds": [
+                "${0.id}",
+                "${1.id}",
+                "note_missing0000",
+                "res_missing0000"
+              ],
+              "includeFolderContents": false,
+              "maxItems": 50
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.res.refs.folder_contents_and_truncation",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "引用文件夹",
+            "parentId": null,
+            "icon": null,
+            "color": null
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "夹内一",
+              "content": "# 矩阵\n\n内容",
+              "metadata": {
+                "tags": []
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "夹内二",
+              "content": "# 矩阵\n\n内容",
+              "metadata": {
+                "tags": []
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "夹内三",
+              "content": "# 矩阵\n\n内容",
+              "metadata": {
+                "tags": []
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_folder_add_item",
+          "args": {
+            "folderId": "${0.id}",
+            "itemType": "note",
+            "itemId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "dstu_folder_add_item",
+          "args": {
+            "folderId": "${0.id}",
+            "itemType": "note",
+            "itemId": "${2.id}"
+          }
+        },
+        {
+          "cmd": "dstu_folder_add_item",
+          "args": {
+            "folderId": "${0.id}",
+            "itemType": "note",
+            "itemId": "${3.id}"
+          }
+        },
+        {
+          "cmd": "vfs_get_resource_refs",
+          "args": {
+            "params": {
+              "sourceIds": [
+                "${0.id}"
+              ],
+              "includeFolderContents": true,
+              "maxItems": 50
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_resource_refs",
+          "args": {
+            "params": {
+              "sourceIds": [
+                "${0.id}"
+              ],
+              "includeFolderContents": true,
+              "maxItems": 2
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_resource_refs",
+          "args": {
+            "params": {
+              "sourceIds": [
+                "${0.id}"
+              ],
+              "includeFolderContents": false,
+              "maxItems": 50
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_resource_refs",
+          "args": {
+            "params": {
+              "sourceIds": [
+                "${1.id}",
+                "${2.id}",
+                "${3.id}"
+              ],
+              "includeFolderContents": false,
+              "maxItems": 1
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_resource_refs",
+          "args": {
+            "params": {
+              "sourceIds": [
+                "${1.id}"
+              ],
+              "includeFolderContents": false,
+              "maxItems": 0
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_resource_refs",
+          "args": {
+            "params": {
+              "sourceIds": [
+                "${1.id}"
+              ],
+              "includeFolderContents": false,
+              "maxItems": 999
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_resource_refs",
+          "args": {
+            "params": {
+              "sourceIds": [
+                "${1.id}"
+              ]
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.res.refs.empty_and_missing_folder",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_get_resource_refs",
+          "args": {
+            "params": {
+              "sourceIds": [],
+              "includeFolderContents": false,
+              "maxItems": 50
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_resource_refs",
+          "args": {
+            "params": {
+              "sourceIds": [
+                "fld_missing0000"
+              ],
+              "includeFolderContents": true,
+              "maxItems": 50
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.res.refs.args_decode",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_get_resource_refs",
+          "args": {
+            "params": {}
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_get_resource_refs",
+          "args": {
+            "params": {
+              "sourceIds": [
+                "note_x"
+              ],
+              "maxItems": -1
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_get_resource_refs",
+          "args": {
+            "params": {
+              "sourceIds": "note_x"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_get_resource_refs",
+          "args": {
+            "sourceIds": [
+              "note_x"
+            ]
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.res.resolve.note_ref_from_get_refs",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "可解析笔记",
+              "content": "# 标题\n\n可解析的正文",
+              "metadata": {
+                "tags": []
+              }
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_resource_refs",
+          "args": {
+            "params": {
+              "sourceIds": [
+                "${0.id}"
+              ],
+              "includeFolderContents": false,
+              "maxItems": 50
+            }
+          }
+        },
+        {
+          "cmd": "vfs_resolve_resource_refs",
+          "args": {
+            "refs": "${1.refs}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.res.resolve.by_resource_id_and_fallbacks",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "经资源ID解析",
+              "content": "内容",
+              "metadata": {
+                "tags": []
+              }
+            }
+          }
+        },
+        {
+          "cmd": "vfs_resolve_resource_refs",
+          "args": {
+            "refs": [
+              {
+                "sourceId": "${0.resourceId}",
+                "resourceHash": "h0",
+                "type": "note",
+                "name": "经资源ID解析"
+              },
+              {
+                "sourceId": "unknown_src",
+                "resourceHash": "h1",
+                "type": "note",
+                "name": "未知",
+                "resourceId": "${0.resourceId}"
+              },
+              {
+                "sourceId": "unknown_src",
+                "resourceHash": "h2",
+                "type": "retrieval",
+                "name": "检索结果",
+                "snippet": "  检索片段  "
+              },
+              {
+                "sourceId": "unknown_src",
+                "resourceHash": "h3",
+                "type": "retrieval",
+                "name": "   "
+              },
+              {
+                "sourceId": "unknown_src",
+                "resourceHash": "h4",
+                "type": "note",
+                "name": "未知"
+              },
+              {
+                "sourceId": "note_missing0000",
+                "resourceHash": "h5",
+                "type": "note",
+                "name": "缺失"
+              }
+            ]
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.res.resolve.deleted_note",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "将删除笔记",
+              "content": "# 矩阵\n\n内容",
+              "metadata": {
+                "tags": []
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_delete",
+          "args": {
+            "path": "${0.path}"
+          }
+        },
+        {
+          "cmd": "vfs_resolve_resource_refs",
+          "args": {
+            "refs": [
+              {
+                "sourceId": "${0.id}",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "将删除笔记"
+              }
+            ]
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.res.resolve.empty_list",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_resolve_resource_refs",
+          "args": {
+            "refs": []
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.res.resolve.batch_limit",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_resolve_resource_refs",
+          "args": {
+            "refs": [
+              {
+                "sourceId": "note_missing0000",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n0"
+              },
+              {
+                "sourceId": "note_missing0001",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n1"
+              },
+              {
+                "sourceId": "note_missing0002",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n2"
+              },
+              {
+                "sourceId": "note_missing0003",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n3"
+              },
+              {
+                "sourceId": "note_missing0004",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n4"
+              },
+              {
+                "sourceId": "note_missing0005",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n5"
+              },
+              {
+                "sourceId": "note_missing0006",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n6"
+              },
+              {
+                "sourceId": "note_missing0007",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n7"
+              },
+              {
+                "sourceId": "note_missing0008",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n8"
+              },
+              {
+                "sourceId": "note_missing0009",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n9"
+              },
+              {
+                "sourceId": "note_missing0010",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n10"
+              },
+              {
+                "sourceId": "note_missing0011",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n11"
+              },
+              {
+                "sourceId": "note_missing0012",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n12"
+              },
+              {
+                "sourceId": "note_missing0013",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n13"
+              },
+              {
+                "sourceId": "note_missing0014",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n14"
+              },
+              {
+                "sourceId": "note_missing0015",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n15"
+              },
+              {
+                "sourceId": "note_missing0016",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n16"
+              },
+              {
+                "sourceId": "note_missing0017",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n17"
+              },
+              {
+                "sourceId": "note_missing0018",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n18"
+              },
+              {
+                "sourceId": "note_missing0019",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n19"
+              },
+              {
+                "sourceId": "note_missing0020",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n20"
+              },
+              {
+                "sourceId": "note_missing0021",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n21"
+              },
+              {
+                "sourceId": "note_missing0022",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n22"
+              },
+              {
+                "sourceId": "note_missing0023",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n23"
+              },
+              {
+                "sourceId": "note_missing0024",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n24"
+              },
+              {
+                "sourceId": "note_missing0025",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n25"
+              },
+              {
+                "sourceId": "note_missing0026",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n26"
+              },
+              {
+                "sourceId": "note_missing0027",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n27"
+              },
+              {
+                "sourceId": "note_missing0028",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n28"
+              },
+              {
+                "sourceId": "note_missing0029",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n29"
+              },
+              {
+                "sourceId": "note_missing0030",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n30"
+              },
+              {
+                "sourceId": "note_missing0031",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n31"
+              },
+              {
+                "sourceId": "note_missing0032",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n32"
+              },
+              {
+                "sourceId": "note_missing0033",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n33"
+              },
+              {
+                "sourceId": "note_missing0034",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n34"
+              },
+              {
+                "sourceId": "note_missing0035",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n35"
+              },
+              {
+                "sourceId": "note_missing0036",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n36"
+              },
+              {
+                "sourceId": "note_missing0037",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n37"
+              },
+              {
+                "sourceId": "note_missing0038",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n38"
+              },
+              {
+                "sourceId": "note_missing0039",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n39"
+              },
+              {
+                "sourceId": "note_missing0040",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n40"
+              },
+              {
+                "sourceId": "note_missing0041",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n41"
+              },
+              {
+                "sourceId": "note_missing0042",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n42"
+              },
+              {
+                "sourceId": "note_missing0043",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n43"
+              },
+              {
+                "sourceId": "note_missing0044",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n44"
+              },
+              {
+                "sourceId": "note_missing0045",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n45"
+              },
+              {
+                "sourceId": "note_missing0046",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n46"
+              },
+              {
+                "sourceId": "note_missing0047",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n47"
+              },
+              {
+                "sourceId": "note_missing0048",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n48"
+              },
+              {
+                "sourceId": "note_missing0049",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n49"
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "vfs_resolve_resource_refs",
+          "args": {
+            "refs": [
+              {
+                "sourceId": "note_missing0000",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n0"
+              },
+              {
+                "sourceId": "note_missing0001",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n1"
+              },
+              {
+                "sourceId": "note_missing0002",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n2"
+              },
+              {
+                "sourceId": "note_missing0003",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n3"
+              },
+              {
+                "sourceId": "note_missing0004",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n4"
+              },
+              {
+                "sourceId": "note_missing0005",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n5"
+              },
+              {
+                "sourceId": "note_missing0006",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n6"
+              },
+              {
+                "sourceId": "note_missing0007",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n7"
+              },
+              {
+                "sourceId": "note_missing0008",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n8"
+              },
+              {
+                "sourceId": "note_missing0009",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n9"
+              },
+              {
+                "sourceId": "note_missing0010",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n10"
+              },
+              {
+                "sourceId": "note_missing0011",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n11"
+              },
+              {
+                "sourceId": "note_missing0012",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n12"
+              },
+              {
+                "sourceId": "note_missing0013",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n13"
+              },
+              {
+                "sourceId": "note_missing0014",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n14"
+              },
+              {
+                "sourceId": "note_missing0015",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n15"
+              },
+              {
+                "sourceId": "note_missing0016",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n16"
+              },
+              {
+                "sourceId": "note_missing0017",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n17"
+              },
+              {
+                "sourceId": "note_missing0018",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n18"
+              },
+              {
+                "sourceId": "note_missing0019",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n19"
+              },
+              {
+                "sourceId": "note_missing0020",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n20"
+              },
+              {
+                "sourceId": "note_missing0021",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n21"
+              },
+              {
+                "sourceId": "note_missing0022",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n22"
+              },
+              {
+                "sourceId": "note_missing0023",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n23"
+              },
+              {
+                "sourceId": "note_missing0024",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n24"
+              },
+              {
+                "sourceId": "note_missing0025",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n25"
+              },
+              {
+                "sourceId": "note_missing0026",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n26"
+              },
+              {
+                "sourceId": "note_missing0027",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n27"
+              },
+              {
+                "sourceId": "note_missing0028",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n28"
+              },
+              {
+                "sourceId": "note_missing0029",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n29"
+              },
+              {
+                "sourceId": "note_missing0030",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n30"
+              },
+              {
+                "sourceId": "note_missing0031",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n31"
+              },
+              {
+                "sourceId": "note_missing0032",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n32"
+              },
+              {
+                "sourceId": "note_missing0033",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n33"
+              },
+              {
+                "sourceId": "note_missing0034",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n34"
+              },
+              {
+                "sourceId": "note_missing0035",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n35"
+              },
+              {
+                "sourceId": "note_missing0036",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n36"
+              },
+              {
+                "sourceId": "note_missing0037",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n37"
+              },
+              {
+                "sourceId": "note_missing0038",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n38"
+              },
+              {
+                "sourceId": "note_missing0039",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n39"
+              },
+              {
+                "sourceId": "note_missing0040",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n40"
+              },
+              {
+                "sourceId": "note_missing0041",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n41"
+              },
+              {
+                "sourceId": "note_missing0042",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n42"
+              },
+              {
+                "sourceId": "note_missing0043",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n43"
+              },
+              {
+                "sourceId": "note_missing0044",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n44"
+              },
+              {
+                "sourceId": "note_missing0045",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n45"
+              },
+              {
+                "sourceId": "note_missing0046",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n46"
+              },
+              {
+                "sourceId": "note_missing0047",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n47"
+              },
+              {
+                "sourceId": "note_missing0048",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n48"
+              },
+              {
+                "sourceId": "note_missing0049",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n49"
+              },
+              {
+                "sourceId": "note_missing0050",
+                "resourceHash": "h",
+                "type": "note",
+                "name": "n50"
+              }
+            ]
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.res.resolve.args_decode",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_resolve_resource_refs",
+          "args": {
+            "refs": [
+              {
+                "sourceId": "note_x",
+                "resourceHash": "h",
+                "type": "bogus",
+                "name": "n"
+              }
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_resolve_resource_refs",
+          "args": {
+            "refs": [
+              {
+                "sourceId": "note_x",
+                "type": "note",
+                "name": "n"
+              }
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_resolve_resource_refs",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.res.ref_count.note_after_increment",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "计数笔记",
+              "content": "# 矩阵\n\n内容",
+              "metadata": {
+                "tags": []
+              }
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_resource_ref_count",
+          "args": {
+            "sourceId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "vfs_increment_ref",
+          "args": {
+            "resourceId": "${0.resourceId}"
+          }
+        },
+        {
+          "cmd": "vfs_get_resource_ref_count",
+          "args": {
+            "sourceId": "${0.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.res.ref_count.resource_source_id_path",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_or_reuse",
+          "args": {
+            "params": {
+              "type": "note",
+              "data": "带 sourceId 的资源",
+              "sourceId": "custom_src_001",
+              "metadata": null,
+              "subject": null
+            }
+          }
+        },
+        {
+          "cmd": "vfs_increment_ref",
+          "args": {
+            "resourceId": "${0.resourceId}"
+          }
+        },
+        {
+          "cmd": "vfs_get_resource_ref_count",
+          "args": {
+            "sourceId": "custom_src_001"
+          }
+        },
+        {
+          "cmd": "vfs_get_resource_ref_count",
+          "args": {
+            "sourceId": "custom_missing"
+          }
+        },
+        {
+          "cmd": "vfs_get_resource_ref_count",
+          "args": {
+            "sourceId": "note_missing0000"
+          }
+        },
+        {
+          "cmd": "vfs_get_resource_ref_count",
+          "args": {
+            "sourceId": "essay_session_missing"
+          }
+        },
+        {
+          "cmd": "vfs_get_resource_ref_count",
+          "args": {
+            "sourceId": ""
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.res.ref_count.deleted_note",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "删除后计数",
+              "content": "# 矩阵\n\n内容",
+              "metadata": {
+                "tags": []
+              }
+            }
+          }
+        },
+        {
+          "cmd": "vfs_increment_ref",
+          "args": {
+            "resourceId": "${0.resourceId}"
+          }
+        },
+        {
+          "cmd": "dstu_delete",
+          "args": {
+            "path": "${0.path}"
+          }
+        },
+        {
+          "cmd": "vfs_get_resource_ref_count",
+          "args": {
+            "sourceId": "${0.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.res.ref_count.args_decode",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_get_resource_ref_count",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.res.ocr_info.note_and_image",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "OCR 笔记",
+              "content": "# 矩阵\n\n内容",
+              "metadata": {
+                "tags": []
+              }
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_resource_ocr_info",
+          "args": {
+            "resourceId": "${0.resourceId}"
+          }
+        },
+        {
+          "cmd": "vfs_create_or_reuse",
+          "args": {
+            "params": {
+              "type": "image",
+              "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+              "sourceId": null,
+              "metadata": {
+                "name": "pixel.png",
+                "mimeType": "image/png"
+              },
+              "subject": null
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_resource_ocr_info",
+          "args": {
+            "resourceId": "${2.resourceId}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.res.ocr_info.uploaded_text_attachment",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_upload_attachment",
+          "args": {
+            "params": {
+              "name": "ocr.txt",
+              "mimeType": "text/plain",
+              "base64Content": "5paH5pys5YaF5a65",
+              "attachmentType": "file"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_resource_ocr_info",
+          "args": {
+            "resourceId": "${0.attachment.resourceId}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.res.ocr_info.missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_get_resource_ocr_info",
+          "args": {
+            "resourceId": "res_missing0000"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_get_resource_ocr_info",
+          "args": {
+            "resourceId": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_get_resource_ocr_info",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.res.text_chunks.note_after_sync",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "切块笔记",
+              "content": "# 第一节\n\n第一段内容。\n\n# 第二节\n\n第二段内容。",
+              "metadata": {
+                "tags": []
+              }
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_resource_text_chunks",
+          "args": {
+            "resourceId": "${0.resourceId}"
+          }
+        },
+        {
+          "cmd": "vfs_sync_resource_units",
+          "args": {
+            "resourceId": "${0.resourceId}",
+            "resourceType": "note",
+            "data": "# 第一节\n\n第一段内容。",
+            "ocrText": null,
+            "ocrPagesJson": null,
+            "blobHash": null,
+            "pageCount": null,
+            "extractedText": null,
+            "previewJson": null
+          }
+        },
+        {
+          "cmd": "vfs_get_resource_text_chunks",
+          "args": {
+            "resourceId": "${0.resourceId}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.res.text_chunks.missing_and_empty",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_get_resource_text_chunks",
+          "args": {
+            "resourceId": "res_missing0000"
+          }
+        },
+        {
+          "cmd": "vfs_get_resource_text_chunks",
+          "args": {
+            "resourceId": ""
+          }
+        },
+        {
+          "cmd": "vfs_get_resource_text_chunks",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

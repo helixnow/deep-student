@@ -1,0 +1,11 @@
+{
+  "$comment": "示例用户 profile：放在 <应用数据目录>/plugins/user.profile.json 即可在官方插件之外加载本插件（host/kernel/profile.ts loadStartupProfile）。module 改成本目录 index.ts 的绝对路径；config 按 index.ts 的 Config 校验。",
+  "extends": "official",
+  "plugins": [
+    {
+      "id": "example.web-search",
+      "module": "./index.ts",
+      "config": { "label": "my-search", "site": "https://example.edu/my-search", "maxResults": 2 }
+    }
+  ]
+}

@@ -1,0 +1,1890 @@
+{
+  "domain": "vfs",
+  "commands": [
+    "vfs_unified_index_status",
+    "vfs_get_resource_units",
+    "vfs_reindex_unit",
+    "vfs_unified_batch_index",
+    "vfs_sync_resource_units",
+    "vfs_list_embedding_dims",
+    "vfs_reindex_resource",
+    "vfs_list_dimensions",
+    "vfs_get_preset_dimensions",
+    "vfs_get_dimension_range",
+    "vfs_set_default_embedding_dimension",
+    "vfs_get_embedding_readiness",
+    "vfs_reset_disabled_to_pending",
+    "vfs_reset_indexed_without_embeddings",
+    "vfs_reset_all_index_state"
+  ],
+  "scenarios": [
+    {
+      "id": "vfs.index.status.empty_and_after_sync",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_unified_index_status",
+          "args": {}
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "索引状态笔记",
+              "content": "# 索引笔记\n\n第一段。\n\n第二段。",
+              "metadata": {
+                "tags": []
+              }
+            }
+          }
+        },
+        {
+          "cmd": "vfs_sync_resource_units",
+          "args": {
+            "resourceId": "${1.resourceId}",
+            "resourceType": "note",
+            "data": "# 索引笔记\n\n第一段。\n\n第二段。",
+            "ocrText": null,
+            "ocrPagesJson": null,
+            "blobHash": null,
+            "pageCount": null,
+            "extractedText": null,
+            "previewJson": null
+          }
+        },
+        {
+          "cmd": "vfs_unified_index_status",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.index.units.empty_then_synced",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "单元笔记",
+              "content": "# 索引笔记\n\n第一段。\n\n第二段。",
+              "metadata": {
+                "tags": []
+              }
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_resource_units",
+          "args": {
+            "resourceId": "${0.resourceId}"
+          }
+        },
+        {
+          "cmd": "vfs_sync_resource_units",
+          "args": {
+            "resourceId": "${0.resourceId}",
+            "resourceType": "note",
+            "data": "# 索引笔记\n\n第一段。\n\n第二段。",
+            "ocrText": null,
+            "ocrPagesJson": null,
+            "blobHash": null,
+            "pageCount": null,
+            "extractedText": null,
+            "previewJson": null
+          }
+        },
+        {
+          "cmd": "vfs_get_resource_units",
+          "args": {
+            "resourceId": "${0.resourceId}"
+          }
+        },
+        {
+          "cmd": "vfs_get_resource_units",
+          "args": {
+            "resourceId": "res_missing0000"
+          }
+        },
+        {
+          "cmd": "vfs_get_resource_units",
+          "args": {
+            "resourceId": ""
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.index.units.args_decode",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_get_resource_units",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_get_resource_units",
+          "args": {
+            "resourceId": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.index.sync.note_resync_and_empty",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "同步笔记",
+              "content": "# 索引笔记\n\n第一段。\n\n第二段。",
+              "metadata": {
+                "tags": []
+              }
+            }
+          }
+        },
+        {
+          "cmd": "vfs_sync_resource_units",
+          "args": {
+            "resourceId": "${0.resourceId}",
+            "resourceType": "note",
+            "data": "# 索引笔记\n\n第一段。\n\n第二段。",
+            "ocrText": null,
+            "ocrPagesJson": null,
+            "blobHash": null,
+            "pageCount": null,
+            "extractedText": null,
+            "previewJson": null
+          }
+        },
+        {
+          "cmd": "vfs_sync_resource_units",
+          "args": {
+            "resourceId": "${0.resourceId}",
+            "resourceType": "note",
+            "data": "# 索引笔记\n\n第一段。\n\n第二段。",
+            "ocrText": null,
+            "ocrPagesJson": null,
+            "blobHash": null,
+            "pageCount": null,
+            "extractedText": null,
+            "previewJson": null
+          }
+        },
+        {
+          "cmd": "vfs_sync_resource_units",
+          "args": {
+            "resourceId": "${0.resourceId}",
+            "resourceType": "note",
+            "data": "# 改写后\n\n新内容",
+            "ocrText": null,
+            "ocrPagesJson": null,
+            "blobHash": null,
+            "pageCount": null,
+            "extractedText": null,
+            "previewJson": null
+          }
+        },
+        {
+          "cmd": "vfs_sync_resource_units",
+          "args": {
+            "resourceId": "${0.resourceId}",
+            "resourceType": "note",
+            "data": null,
+            "ocrText": null,
+            "ocrPagesJson": null,
+            "blobHash": null,
+            "pageCount": null,
+            "extractedText": null,
+            "previewJson": null
+          }
+        },
+        {
+          "cmd": "vfs_get_resource_units",
+          "args": {
+            "resourceId": "${0.resourceId}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.index.sync.resource_types",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_or_reuse",
+          "args": {
+            "params": {
+              "type": "image",
+              "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+              "sourceId": null,
+              "metadata": {
+                "name": "pixel.png",
+                "mimeType": "image/png"
+              },
+              "subject": null
+            }
+          }
+        },
+        {
+          "cmd": "vfs_sync_resource_units",
+          "args": {
+            "resourceId": "${0.resourceId}",
+            "resourceType": "image",
+            "data": null,
+            "ocrText": "图片里的文字",
+            "ocrPagesJson": null,
+            "blobHash": "0000000000000000000000000000000000000000000000000000000000000000",
+            "pageCount": null,
+            "extractedText": null,
+            "previewJson": null
+          }
+        },
+        {
+          "cmd": "vfs_create_or_reuse",
+          "args": {
+            "params": {
+              "type": "textbook",
+              "data": "教材",
+              "sourceId": null,
+              "metadata": null,
+              "subject": null
+            }
+          }
+        },
+        {
+          "cmd": "vfs_sync_resource_units",
+          "args": {
+            "resourceId": "${2.resourceId}",
+            "resourceType": "textbook",
+            "data": null,
+            "ocrText": null,
+            "ocrPagesJson": null,
+            "blobHash": null,
+            "pageCount": 1,
+            "extractedText": "教材正文",
+            "previewJson": null
+          }
+        },
+        {
+          "cmd": "vfs_sync_resource_units",
+          "args": {
+            "resourceId": "${2.resourceId}",
+            "resourceType": "textbook",
+            "data": null,
+            "ocrText": null,
+            "ocrPagesJson": "[{\"page_index\":0,\"text\":\"第一页\"},{\"page_index\":1,\"text\":\"第二页\"}]",
+            "blobHash": null,
+            "pageCount": 2,
+            "extractedText": null,
+            "previewJson": null
+          }
+        },
+        {
+          "cmd": "vfs_create_or_reuse",
+          "args": {
+            "params": {
+              "type": "exam",
+              "data": "试卷",
+              "sourceId": null,
+              "metadata": null,
+              "subject": null
+            }
+          }
+        },
+        {
+          "cmd": "vfs_sync_resource_units",
+          "args": {
+            "resourceId": "${5.resourceId}",
+            "resourceType": "exam",
+            "data": null,
+            "ocrText": null,
+            "ocrPagesJson": null,
+            "blobHash": null,
+            "pageCount": null,
+            "extractedText": null,
+            "previewJson": "{\"pages\":[]}"
+          }
+        },
+        {
+          "cmd": "vfs_create_or_reuse",
+          "args": {
+            "params": {
+              "type": "translation",
+              "data": "翻译",
+              "sourceId": null,
+              "metadata": null,
+              "subject": null
+            }
+          }
+        },
+        {
+          "cmd": "vfs_sync_resource_units",
+          "args": {
+            "resourceId": "${7.resourceId}",
+            "resourceType": "translation",
+            "data": "原文\n译文",
+            "ocrText": null,
+            "ocrPagesJson": null,
+            "blobHash": null,
+            "pageCount": null,
+            "extractedText": null,
+            "previewJson": null
+          }
+        },
+        {
+          "cmd": "vfs_create_or_reuse",
+          "args": {
+            "params": {
+              "type": "essay",
+              "data": "作文",
+              "sourceId": null,
+              "metadata": null,
+              "subject": null
+            }
+          }
+        },
+        {
+          "cmd": "vfs_sync_resource_units",
+          "args": {
+            "resourceId": "${9.resourceId}",
+            "resourceType": "essay",
+            "data": "作文正文",
+            "ocrText": null,
+            "ocrPagesJson": null,
+            "blobHash": null,
+            "pageCount": null,
+            "extractedText": null,
+            "previewJson": null
+          }
+        },
+        {
+          "cmd": "vfs_create_or_reuse",
+          "args": {
+            "params": {
+              "type": "mindmap",
+              "data": "{\"root\":{\"text\":\"根\"}}",
+              "sourceId": null,
+              "metadata": null,
+              "subject": null
+            }
+          }
+        },
+        {
+          "cmd": "vfs_sync_resource_units",
+          "args": {
+            "resourceId": "${11.resourceId}",
+            "resourceType": "mindmap",
+            "data": "{\"root\":{\"text\":\"根\"}}",
+            "ocrText": null,
+            "ocrPagesJson": null,
+            "blobHash": null,
+            "pageCount": null,
+            "extractedText": null,
+            "previewJson": null
+          }
+        },
+        {
+          "cmd": "vfs_create_or_reuse",
+          "args": {
+            "params": {
+              "type": "file",
+              "data": "文件",
+              "sourceId": null,
+              "metadata": null,
+              "subject": null
+            }
+          }
+        },
+        {
+          "cmd": "vfs_sync_resource_units",
+          "args": {
+            "resourceId": "${13.resourceId}",
+            "resourceType": "file",
+            "data": null,
+            "ocrText": null,
+            "ocrPagesJson": null,
+            "blobHash": null,
+            "pageCount": null,
+            "extractedText": "文件正文",
+            "previewJson": null
+          }
+        },
+        {
+          "cmd": "vfs_sync_resource_units",
+          "args": {
+            "resourceId": "${13.resourceId}",
+            "resourceType": "attachment",
+            "data": null,
+            "ocrText": null,
+            "ocrPagesJson": null,
+            "blobHash": null,
+            "pageCount": null,
+            "extractedText": "附件正文",
+            "previewJson": null
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.index.sync.unsupported_type",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_sync_resource_units",
+          "args": {
+            "resourceId": "res_missing0000",
+            "resourceType": "unknown_type",
+            "data": "x",
+            "ocrText": null,
+            "ocrPagesJson": null,
+            "blobHash": null,
+            "pageCount": null,
+            "extractedText": null,
+            "previewJson": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_sync_resource_units",
+          "args": {
+            "resourceId": "res_missing0000",
+            "resourceType": "",
+            "data": "x",
+            "ocrText": null,
+            "ocrPagesJson": null,
+            "blobHash": null,
+            "pageCount": null,
+            "extractedText": null,
+            "previewJson": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.index.sync.missing_resource",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_sync_resource_units",
+          "args": {
+            "resourceId": "res_missing0000",
+            "resourceType": "note",
+            "data": "无资源的笔记",
+            "ocrText": null,
+            "ocrPagesJson": null,
+            "blobHash": null,
+            "pageCount": null,
+            "extractedText": null,
+            "previewJson": null
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.index.sync.args_decode",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_sync_resource_units",
+          "args": {
+            "resourceId": "res_x"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_sync_resource_units",
+          "args": {
+            "resourceType": "note"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_sync_resource_units",
+          "args": {
+            "resourceId": "res_x",
+            "resourceType": "note",
+            "pageCount": "1"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.index.reindex_unit.modes",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "重建单元",
+              "content": "# 索引笔记\n\n第一段。\n\n第二段。",
+              "metadata": {
+                "tags": []
+              }
+            }
+          }
+        },
+        {
+          "cmd": "vfs_sync_resource_units",
+          "args": {
+            "resourceId": "${0.resourceId}",
+            "resourceType": "note",
+            "data": "# 索引笔记\n\n第一段。\n\n第二段。",
+            "ocrText": null,
+            "ocrPagesJson": null,
+            "blobHash": null,
+            "pageCount": null,
+            "extractedText": null,
+            "previewJson": null
+          }
+        },
+        {
+          "cmd": "vfs_reindex_unit",
+          "args": {
+            "unitId": "${1.0.unitId}",
+            "mode": "text"
+          }
+        },
+        {
+          "cmd": "vfs_reindex_unit",
+          "args": {
+            "unitId": "${1.0.unitId}",
+            "mode": "mm"
+          }
+        },
+        {
+          "cmd": "vfs_reindex_unit",
+          "args": {
+            "unitId": "${1.0.unitId}",
+            "mode": "both"
+          }
+        },
+        {
+          "cmd": "vfs_get_resource_units",
+          "args": {
+            "resourceId": "${0.resourceId}"
+          }
+        },
+        {
+          "cmd": "vfs_reindex_unit",
+          "args": {
+            "unitId": "${1.0.unitId}",
+            "mode": "TEXT"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_reindex_unit",
+          "args": {
+            "unitId": "${1.0.unitId}",
+            "mode": ""
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.index.reindex_unit.image_unit_mm",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_or_reuse",
+          "args": {
+            "params": {
+              "type": "image",
+              "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+              "sourceId": null,
+              "metadata": {
+                "name": "pixel.png",
+                "mimeType": "image/png"
+              },
+              "subject": null
+            }
+          }
+        },
+        {
+          "cmd": "vfs_sync_resource_units",
+          "args": {
+            "resourceId": "${0.resourceId}",
+            "resourceType": "image",
+            "data": null,
+            "ocrText": null,
+            "ocrPagesJson": null,
+            "blobHash": "1111111111111111111111111111111111111111111111111111111111111111",
+            "pageCount": null,
+            "extractedText": null,
+            "previewJson": null
+          }
+        },
+        {
+          "cmd": "vfs_reindex_unit",
+          "args": {
+            "unitId": "${1.0.unitId}",
+            "mode": "mm"
+          }
+        },
+        {
+          "cmd": "vfs_get_resource_units",
+          "args": {
+            "resourceId": "${0.resourceId}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.index.reindex_unit.errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_reindex_unit",
+          "args": {
+            "unitId": "unit_missing0000",
+            "mode": "text"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_reindex_unit",
+          "args": {
+            "unitId": "",
+            "mode": "text"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_reindex_unit",
+          "args": {
+            "unitId": "unit_missing0000",
+            "mode": "invalid"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_reindex_unit",
+          "args": {
+            "unitId": "unit_missing0000"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_reindex_unit",
+          "args": {
+            "mode": "text"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.index.batch.empty_modes_and_clamp",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_unified_batch_index",
+          "args": {
+            "mode": "text"
+          }
+        },
+        {
+          "cmd": "vfs_unified_batch_index",
+          "args": {
+            "mode": "mm",
+            "batchSize": 0
+          }
+        },
+        {
+          "cmd": "vfs_unified_batch_index",
+          "args": {
+            "mode": "both",
+            "batchSize": 1000
+          }
+        },
+        {
+          "cmd": "vfs_unified_batch_index",
+          "args": {
+            "mode": "text",
+            "batchSize": -5
+          }
+        },
+        {
+          "cmd": "vfs_unified_batch_index",
+          "args": {
+            "mode": "text",
+            "batchSize": null
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.index.batch.pending_without_embedding_model",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "待索引笔记",
+              "content": "# 索引笔记\n\n第一段。\n\n第二段。",
+              "metadata": {
+                "tags": []
+              }
+            }
+          }
+        },
+        {
+          "cmd": "vfs_sync_resource_units",
+          "args": {
+            "resourceId": "${0.resourceId}",
+            "resourceType": "note",
+            "data": "# 索引笔记\n\n第一段。\n\n第二段。",
+            "ocrText": null,
+            "ocrPagesJson": null,
+            "blobHash": null,
+            "pageCount": null,
+            "extractedText": null,
+            "previewJson": null
+          }
+        },
+        {
+          "cmd": "vfs_unified_batch_index",
+          "args": {
+            "mode": "text",
+            "batchSize": 10
+          }
+        },
+        {
+          "cmd": "vfs_get_resource_units",
+          "args": {
+            "resourceId": "${0.resourceId}"
+          }
+        },
+        {
+          "cmd": "vfs_unified_index_status",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.index.batch.pending_with_mock_embedding",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "w0-vfs-embedding",
+                "name": "W0 VFS Embedding",
+                "apiKey": "w0-local-mock-key",
+                "authMode": "none",
+                "baseUrl": "${llm.baseUrl}",
+                "model": "w0-text-embedding",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "enabled": true,
+                "supportsTools": false,
+                "isMultimodal": false,
+                "isReasoning": false,
+                "isEmbedding": true,
+                "isReranker": false,
+                "contextWindow": 8192,
+                "maxOutputTokens": 256
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "save_model_assignments",
+          "args": {
+            "assignments": {
+              "embedding_model_config_id": "w0-vfs-embedding"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 768,
+            "modality": "text",
+            "modelConfigId": "w0-vfs-embedding",
+            "modelName": null
+          }
+        },
+        {
+          "cmd": "vfs_set_default_embedding_dimension",
+          "args": {
+            "dimension": 768,
+            "modality": "text"
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "模拟嵌入笔记",
+              "content": "# 索引笔记\n\n第一段。\n\n第二段。",
+              "metadata": {
+                "tags": []
+              }
+            }
+          }
+        },
+        {
+          "cmd": "vfs_sync_resource_units",
+          "args": {
+            "resourceId": "${4.resourceId}",
+            "resourceType": "note",
+            "data": "# 索引笔记\n\n第一段。\n\n第二段。",
+            "ocrText": null,
+            "ocrPagesJson": null,
+            "blobHash": null,
+            "pageCount": null,
+            "extractedText": null,
+            "previewJson": null
+          }
+        },
+        {
+          "cmd": "vfs_unified_batch_index",
+          "args": {
+            "mode": "text",
+            "batchSize": 10
+          }
+        },
+        {
+          "cmd": "vfs_get_resource_units",
+          "args": {
+            "resourceId": "${4.resourceId}"
+          }
+        },
+        {
+          "cmd": "vfs_unified_index_status",
+          "args": {}
+        },
+        {
+          "cmd": "vfs_list_embedding_dims",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.index.batch.errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_unified_batch_index",
+          "args": {
+            "mode": "invalid"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_unified_batch_index",
+          "args": {
+            "mode": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_unified_batch_index",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_unified_batch_index",
+          "args": {
+            "mode": "text",
+            "batchSize": 2147483648
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.index.dims.empty_and_created",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_list_embedding_dims",
+          "args": {}
+        },
+        {
+          "cmd": "vfs_list_dimensions",
+          "args": {}
+        },
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 768,
+            "modality": "text",
+            "modelConfigId": null,
+            "modelName": null
+          }
+        },
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 1024,
+            "modality": "multimodal",
+            "modelConfigId": null,
+            "modelName": null
+          }
+        },
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 512,
+            "modality": "image",
+            "modelConfigId": null,
+            "modelName": null
+          }
+        },
+        {
+          "cmd": "vfs_list_embedding_dims",
+          "args": {}
+        },
+        {
+          "cmd": "vfs_list_dimensions",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.index.dims.bound_model",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "w0-vfs-embedding",
+                "name": "W0 VFS Embedding",
+                "apiKey": "w0-local-mock-key",
+                "authMode": "none",
+                "baseUrl": "${llm.baseUrl}",
+                "model": "w0-text-embedding",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "enabled": true,
+                "supportsTools": false,
+                "isMultimodal": false,
+                "isReasoning": false,
+                "isEmbedding": true,
+                "isReranker": false,
+                "contextWindow": 8192,
+                "maxOutputTokens": 256
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 1536,
+            "modality": "text",
+            "modelConfigId": "w0-vfs-embedding",
+            "modelName": null
+          }
+        },
+        {
+          "cmd": "vfs_list_embedding_dims",
+          "args": {}
+        },
+        {
+          "cmd": "vfs_list_dimensions",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.index.presets_and_range",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_get_preset_dimensions",
+          "args": {}
+        },
+        {
+          "cmd": "vfs_get_dimension_range",
+          "args": {}
+        },
+        {
+          "cmd": "vfs_get_preset_dimensions",
+          "args": {
+            "unexpected": 1
+          }
+        },
+        {
+          "cmd": "vfs_get_dimension_range",
+          "args": {
+            "unexpected": 1
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.index.set_default.text_and_multimodal_unbound",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 768,
+            "modality": "text",
+            "modelConfigId": null,
+            "modelName": null
+          }
+        },
+        {
+          "cmd": "vfs_set_default_embedding_dimension",
+          "args": {
+            "dimension": 768,
+            "modality": "text"
+          }
+        },
+        {
+          "cmd": "vfs_get_default_embedding_dimension",
+          "args": {
+            "modality": "text"
+          }
+        },
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 1024,
+            "modality": "multimodal",
+            "modelConfigId": null,
+            "modelName": null
+          }
+        },
+        {
+          "cmd": "vfs_set_default_embedding_dimension",
+          "args": {
+            "dimension": 1024,
+            "modality": "multimodal"
+          }
+        },
+        {
+          "cmd": "vfs_get_default_embedding_dimension",
+          "args": {
+            "modality": "multimodal"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.index.set_default.bound_model",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "w0-vfs-embedding",
+                "name": "W0 VFS Embedding",
+                "apiKey": "w0-local-mock-key",
+                "authMode": "none",
+                "baseUrl": "${llm.baseUrl}",
+                "model": "w0-text-embedding",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "enabled": true,
+                "supportsTools": false,
+                "isMultimodal": false,
+                "isReasoning": false,
+                "isEmbedding": true,
+                "isReranker": false,
+                "contextWindow": 8192,
+                "maxOutputTokens": 256
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 1536,
+            "modality": "text",
+            "modelConfigId": "w0-vfs-embedding",
+            "modelName": null
+          }
+        },
+        {
+          "cmd": "vfs_set_default_embedding_dimension",
+          "args": {
+            "dimension": 1536,
+            "modality": "text"
+          }
+        },
+        {
+          "cmd": "vfs_get_default_embedding_dimension",
+          "args": {
+            "modality": "text"
+          }
+        },
+        {
+          "cmd": "vfs_get_embedding_readiness",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.index.set_default.errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_set_default_embedding_dimension",
+          "args": {
+            "dimension": 768,
+            "modality": "text"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_set_default_embedding_dimension",
+          "args": {
+            "dimension": 0,
+            "modality": "text"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_set_default_embedding_dimension",
+          "args": {
+            "dimension": -1,
+            "modality": "multimodal"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 512,
+            "modality": "image",
+            "modelConfigId": null,
+            "modelName": null
+          }
+        },
+        {
+          "cmd": "vfs_set_default_embedding_dimension",
+          "args": {
+            "dimension": 512,
+            "modality": "image"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_set_default_embedding_dimension",
+          "args": {
+            "dimension": 512,
+            "modality": "bogus"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_set_default_embedding_dimension",
+          "args": {
+            "dimension": "768",
+            "modality": "text"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_set_default_embedding_dimension",
+          "args": {
+            "dimension": 768
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_set_default_embedding_dimension",
+          "args": {
+            "modality": "text"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.index.readiness.unconfigured_only",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_get_embedding_readiness",
+          "args": {}
+        },
+        {
+          "cmd": "vfs_get_embedding_readiness",
+          "args": {
+            "unexpected": true
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.index.readiness.unconfigured_and_configured",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_get_embedding_readiness",
+          "args": {}
+        },
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "w0-vfs-embedding",
+                "name": "W0 VFS Embedding",
+                "apiKey": "w0-local-mock-key",
+                "authMode": "none",
+                "baseUrl": "${llm.baseUrl}",
+                "model": "w0-text-embedding",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "enabled": true,
+                "supportsTools": false,
+                "isMultimodal": false,
+                "isReasoning": false,
+                "isEmbedding": true,
+                "isReranker": false,
+                "contextWindow": 8192,
+                "maxOutputTokens": 256
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "vfs_get_embedding_readiness",
+          "args": {}
+        },
+        {
+          "cmd": "save_model_assignments",
+          "args": {
+            "assignments": {
+              "embedding_model_config_id": "w0-vfs-embedding"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_embedding_readiness",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.index.reindex_resource.without_embedding_model",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "重建资源",
+              "content": "# 索引笔记\n\n第一段。\n\n第二段。",
+              "metadata": {
+                "tags": []
+              }
+            }
+          }
+        },
+        {
+          "cmd": "vfs_reindex_resource",
+          "args": {
+            "resourceId": "${0.resourceId}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_get_resource_units",
+          "args": {
+            "resourceId": "${0.resourceId}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.index.reindex_resource.with_mock_embedding",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "w0-vfs-embedding",
+                "name": "W0 VFS Embedding",
+                "apiKey": "w0-local-mock-key",
+                "authMode": "none",
+                "baseUrl": "${llm.baseUrl}",
+                "model": "w0-text-embedding",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "enabled": true,
+                "supportsTools": false,
+                "isMultimodal": false,
+                "isReasoning": false,
+                "isEmbedding": true,
+                "isReranker": false,
+                "contextWindow": 8192,
+                "maxOutputTokens": 256
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "save_model_assignments",
+          "args": {
+            "assignments": {
+              "embedding_model_config_id": "w0-vfs-embedding"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 768,
+            "modality": "text",
+            "modelConfigId": "w0-vfs-embedding",
+            "modelName": null
+          }
+        },
+        {
+          "cmd": "vfs_set_default_embedding_dimension",
+          "args": {
+            "dimension": 768,
+            "modality": "text"
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "模拟嵌入重建",
+              "content": "# 索引笔记\n\n第一段。\n\n第二段。",
+              "metadata": {
+                "tags": []
+              }
+            }
+          }
+        },
+        {
+          "cmd": "vfs_reindex_resource",
+          "args": {
+            "resourceId": "${4.resourceId}"
+          }
+        },
+        {
+          "cmd": "vfs_reindex_resource",
+          "args": {
+            "resourceId": "${4.resourceId}",
+            "embeddingDim": 768
+          }
+        },
+        {
+          "cmd": "vfs_get_resource_units",
+          "args": {
+            "resourceId": "${4.resourceId}"
+          }
+        },
+        {
+          "cmd": "vfs_get_resource_text_chunks",
+          "args": {
+            "resourceId": "${4.resourceId}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.index.reindex_resource.errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_reindex_resource",
+          "args": {
+            "resourceId": "note_abc"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_reindex_resource",
+          "args": {
+            "resourceId": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_reindex_resource",
+          "args": {
+            "resourceId": "res_missing0000"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_reindex_resource",
+          "args": {
+            "resourceId": "res_missing0000",
+            "embeddingDim": "768"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_reindex_resource",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.index.reset.empty_db",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_reset_disabled_to_pending",
+          "args": {}
+        },
+        {
+          "cmd": "vfs_reset_indexed_without_embeddings",
+          "args": {}
+        },
+        {
+          "cmd": "vfs_reset_all_index_state",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.index.reset.populated_after_batch",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 768,
+            "modality": "text",
+            "modelConfigId": null,
+            "modelName": null
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "重置一",
+              "content": "# 索引笔记\n\n第一段。\n\n第二段。",
+              "metadata": {
+                "tags": []
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "重置二",
+              "content": "",
+              "metadata": {
+                "tags": []
+              }
+            }
+          }
+        },
+        {
+          "cmd": "vfs_sync_resource_units",
+          "args": {
+            "resourceId": "${1.resourceId}",
+            "resourceType": "note",
+            "data": "# 索引笔记\n\n第一段。\n\n第二段。",
+            "ocrText": null,
+            "ocrPagesJson": null,
+            "blobHash": null,
+            "pageCount": null,
+            "extractedText": null,
+            "previewJson": null
+          }
+        },
+        {
+          "cmd": "vfs_sync_resource_units",
+          "args": {
+            "resourceId": "${2.resourceId}",
+            "resourceType": "note",
+            "data": "",
+            "ocrText": null,
+            "ocrPagesJson": null,
+            "blobHash": null,
+            "pageCount": null,
+            "extractedText": null,
+            "previewJson": null
+          }
+        },
+        {
+          "cmd": "vfs_unified_batch_index",
+          "args": {
+            "mode": "text",
+            "batchSize": 10
+          }
+        },
+        {
+          "cmd": "vfs_reset_disabled_to_pending",
+          "args": {}
+        },
+        {
+          "cmd": "vfs_reset_indexed_without_embeddings",
+          "args": {}
+        },
+        {
+          "cmd": "vfs_unified_index_status",
+          "args": {}
+        },
+        {
+          "cmd": "vfs_reset_all_index_state",
+          "args": {}
+        },
+        {
+          "cmd": "vfs_get_resource_units",
+          "args": {
+            "resourceId": "${1.resourceId}"
+          }
+        },
+        {
+          "cmd": "vfs_list_embedding_dims",
+          "args": {}
+        },
+        {
+          "cmd": "vfs_unified_index_status",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.index.reset.indexed_with_mock_embedding",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "w0-vfs-embedding",
+                "name": "W0 VFS Embedding",
+                "apiKey": "w0-local-mock-key",
+                "authMode": "none",
+                "baseUrl": "${llm.baseUrl}",
+                "model": "w0-text-embedding",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "enabled": true,
+                "supportsTools": false,
+                "isMultimodal": false,
+                "isReasoning": false,
+                "isEmbedding": true,
+                "isReranker": false,
+                "contextWindow": 8192,
+                "maxOutputTokens": 256
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "save_model_assignments",
+          "args": {
+            "assignments": {
+              "embedding_model_config_id": "w0-vfs-embedding"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 768,
+            "modality": "text",
+            "modelConfigId": "w0-vfs-embedding",
+            "modelName": null
+          }
+        },
+        {
+          "cmd": "vfs_set_default_embedding_dimension",
+          "args": {
+            "dimension": 768,
+            "modality": "text"
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "已索引",
+              "content": "# 索引笔记\n\n第一段。\n\n第二段。",
+              "metadata": {
+                "tags": []
+              }
+            }
+          }
+        },
+        {
+          "cmd": "vfs_reindex_resource",
+          "args": {
+            "resourceId": "${4.resourceId}"
+          }
+        },
+        {
+          "cmd": "vfs_reset_indexed_without_embeddings",
+          "args": {}
+        },
+        {
+          "cmd": "vfs_reset_disabled_to_pending",
+          "args": {}
+        },
+        {
+          "cmd": "vfs_reset_all_index_state",
+          "args": {}
+        },
+        {
+          "cmd": "vfs_get_resource_units",
+          "args": {
+            "resourceId": "${4.resourceId}"
+          }
+        },
+        {
+          "cmd": "vfs_list_embedding_dims",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

@@ -357,6 +357,12 @@ export interface InputBarUIProps {
   /** 知识库主动检索开关（加号菜单 → 知识库） */
   knowledgeBaseProactive?: boolean;
   onKnowledgeBaseProactiveChange?: (enabled: boolean) => void | Promise<void>;
+  /** 知识库检索开关（session features 'rag'，控制 RAG 工具是否可用） */
+  ragEnabled?: boolean;
+  onRagEnabledChange?: (enabled: boolean) => void | Promise<void>;
+  /** 联网搜索开关（session features 'webSearch'，控制 web_search 工具是否可用） */
+  webSearchEnabled?: boolean;
+  onWebSearchEnabledChange?: (enabled: boolean) => void | Promise<void>;
 
   // ========== PDF 页码引用（精准提问） ==========
 

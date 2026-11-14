@@ -19,7 +19,9 @@ import {
   collectNodeAndDescendantIds,
   removeNodesById,
   afterRemoveNodes,
+  deepCloneNode,
 } from '../mindmapStoreHelpers';
+import { syncMindMapAnchorEdges } from '../../utils/excerptIngest';
 import type { MindMapSliceCreator } from '../mindmapStoreRuntime';
 
 export const createClipboardSlice: MindMapSliceCreator<
@@ -41,7 +43,7 @@ export const createClipboardSlice: MindMapSliceCreator<
       for (const nodeId of normalizedIds) {
         const node = nodeById.get(nodeId);
         if (node) {
-          copiedNodes.push(JSON.parse(JSON.stringify(node)));
+          copiedNodes.push(deepCloneNode(node));
         }
       }
 
@@ -67,7 +69,7 @@ export const createClipboardSlice: MindMapSliceCreator<
       for (const nodeId of normalizedIds) {
         const node = treeIndex.nodeById.get(nodeId);
         if (node) {
-          copiedNodes.push(JSON.parse(JSON.stringify(node)));
+          copiedNodes.push(deepCloneNode(node));
         }
       }
 
@@ -92,6 +94,9 @@ export const createClipboardSlice: MindMapSliceCreator<
         removeNodesById(state.document.root, new Set(normalizedIds));
         afterRemoveNodes(state, removedIds, nextFocusedNodeId);
       });
+
+      const after = get();
+      syncMindMapAnchorEdges(after.mindmapId, after.document.root);
     },
 
     pasteNodes: (targetId: string, mode: 'child' | 'sibling-after' = 'child') => {
@@ -132,7 +137,7 @@ export const createClipboardSlice: MindMapSliceCreator<
           children: node.children.map(child => regenerateIds(child)),
         };
       }
-      const sourceForest = JSON.parse(JSON.stringify(clipboard.nodes)) as MindMapNode[];
+      const sourceForest = clipboard.nodes.map(deepCloneNode);
       const forest = sourceForest.map(regenerateIds);
       const clearClipboard = clipboard.sourceOperation === 'cut';
 
@@ -151,6 +156,9 @@ export const createClipboardSlice: MindMapSliceCreator<
         state.focusedNodeId = forest[0].id;
         if (clearClipboard) state.clipboard = null;
       });
+
+      const after = get();
+      syncMindMapAnchorEdges(after.mindmapId, after.document.root);
     },
 
     pasteTextChildren: (targetId: string, lines: string[]) => {

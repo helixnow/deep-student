@@ -1,0 +1,500 @@
+{
+  "lane": "L01-llm-providers",
+  "generator": "deep-student/contracts-extract@1.6.0",
+  "commands": [
+    {
+      "name": "openai_codex_auth_status",
+      "lane": "L01-llm-providers",
+      "rust": {
+        "file": "src/cmd/openai_codex.rs",
+        "line": 12,
+        "fn": "openai_codex_auth_status"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_llm::llm_manager::LLMManager>"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/CodexAuthStatus"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "openai_codex_login_cancel",
+      "lane": "L01-llm-providers",
+      "rust": {
+        "file": "src/cmd/openai_codex.rs",
+        "line": 36,
+        "fn": "openai_codex_login_cancel"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "attemptId",
+          "rustName": "attempt_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_llm::llm_manager::LLMManager>"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "openai_codex_login_start",
+      "lane": "L01-llm-providers",
+      "rust": {
+        "file": "src/cmd/openai_codex.rs",
+        "line": 19,
+        "fn": "openai_codex_login_start"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "flow",
+          "rustName": "flow",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_llm::llm_manager::LLMManager>"
+        }
+      ],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "openai_codex_logout",
+      "lane": "L01-llm-providers",
+      "rust": {
+        "file": "src/cmd/openai_codex.rs",
+        "line": 48,
+        "fn": "openai_codex_logout"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_llm::llm_manager::LLMManager>"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "openai_codex_usage",
+      "lane": "L01-llm-providers",
+      "rust": {
+        "file": "src/cmd/openai_codex.rs",
+        "line": 57,
+        "fn": "openai_codex_usage"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_llm::llm_manager::LLMManager>"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/CodexUsageSnapshot"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "none"
+    }
+  ],
+  "events": [],
+  "$defs": {
+    "CodexAuthErrorDto": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "class": {
+          "$ref": "#/$defs/CodexErrorClass"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "class"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_llm::openai_codex::error::CodexAuthErrorDto"
+    },
+    "CodexAuthPhase": {
+      "type": "string",
+      "enum": [
+        "signed_out",
+        "authorizing",
+        "authenticated",
+        "refreshing",
+        "reauthentication_required",
+        "error"
+      ],
+      "x-rust": "dstu_llm::openai_codex::types::CodexAuthPhase"
+    },
+    "CodexAuthStatus": {
+      "type": "object",
+      "properties": {
+        "phase": {
+          "$ref": "#/$defs/CodexAuthPhase"
+        },
+        "hasUsableSession": {
+          "type": "boolean"
+        },
+        "accountHint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "email": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "planType": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "isFedramp": {
+          "type": "boolean"
+        },
+        "expiresAtUnixMs": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "i64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "generation": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "activeLoginKind": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CodexLoginKind"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "activeAttemptId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "authorizationUrl": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "verificationUrl": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "userCode": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "pollIntervalSeconds": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u64",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "lastError": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CodexAuthErrorDto"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "phase",
+        "hasUsableSession",
+        "accountHint",
+        "email",
+        "planType",
+        "isFedramp",
+        "expiresAtUnixMs",
+        "generation",
+        "activeLoginKind",
+        "activeAttemptId",
+        "authorizationUrl",
+        "verificationUrl",
+        "userCode",
+        "pollIntervalSeconds",
+        "lastError"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_llm::openai_codex::types::CodexAuthStatus"
+    },
+    "CodexErrorClass": {
+      "type": "string",
+      "enum": [
+        "cancelled",
+        "transient",
+        "permanent",
+        "reauthentication_required",
+        "security"
+      ],
+      "x-rust": "dstu_llm::openai_codex::error::CodexErrorClass"
+    },
+    "CodexLoginKind": {
+      "type": "string",
+      "enum": [
+        "browser",
+        "device"
+      ],
+      "x-rust": "dstu_llm::openai_codex::types::CodexLoginKind"
+    },
+    "CodexRateLimitWindow": {
+      "type": "object",
+      "properties": {
+        "usedPercent": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "windowDurationMins": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u64",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "resetsAt": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "i64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        }
+      },
+      "additionalProperties": false,
+      "x-rust": "dstu_llm::openai_codex::types::CodexRateLimitWindow"
+    },
+    "CodexRateLimits": {
+      "type": "object",
+      "properties": {
+        "primary": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CodexRateLimitWindow"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "secondary": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CodexRateLimitWindow"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "limitId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "limitName": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "planType": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        }
+      },
+      "additionalProperties": false,
+      "x-rust": "dstu_llm::openai_codex::types::CodexRateLimits"
+    },
+    "CodexUsageSnapshot": {
+      "type": "object",
+      "properties": {
+        "rateLimits": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CodexRateLimits"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "rateLimitsByLimitId": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/CodexRateLimits"
+          },
+          "x-key-order": "unspecified",
+          "x-skip-serializing-if": "HashMap::is_empty"
+        },
+        "fetchedAt": {
+          "type": "integer",
+          "x-int": "i64"
+        }
+      },
+      "required": [
+        "fetchedAt"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_llm::openai_codex::types::CodexUsageSnapshot"
+    }
+  }
+}

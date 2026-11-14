@@ -1,0 +1,615 @@
+{
+  "schemaVersion": 1,
+  "kind": "targeted-source-review-not-full-rescan",
+  "archivedScanCommit": "e139c97161143638e31aa19adc43d647b6c2a095",
+  "integratedMainCommit": "9c13dfc39f2c29aaffda6c61f7dedee2273197f5",
+  "mergeCommit": "3dd266634",
+  "invokesExecuted": false,
+  "pluginApplyExecuted": false,
+  "recalculateGlobalTotals": false,
+  "reviews": [
+    {
+      "id": "X2-R01",
+      "name": "dstu.shell profile wiring (23 declared commands, 21 used by archived frontend scan)",
+      "owner": [
+        "C2-platform",
+        "F2-shell",
+        "F1-kernel"
+      ],
+      "status": "fixed-in-integrated-main-static-wiring-only",
+      "fixCommits": [
+        "642b3d6c4",
+        "ddd54715a"
+      ],
+      "supersedes": {
+        "code": "frontend-command-not-in-host-meta",
+        "lane": "F2-shell",
+        "detailIncludes": "implementation module electron/index.ts declares it"
+      },
+      "evidence": [
+        "host/profiles/desktop.json:40-42",
+        "host/profiles/generate.ts:20-27",
+        "electron/index.ts:28-33",
+        "host/kernel/connection.ts:110-133"
+      ],
+      "boundary": "No current full dynamic import, plugin apply or invoke success claim. Original runtime-meta snapshot remains archived."
+    },
+    {
+      "id": "X2-R02",
+      "name": "notes_save_asset",
+      "owner": [
+        "L10-notes"
+      ],
+      "status": "confirmed-redundant-alias-not-host-failure",
+      "fixCommits": [],
+      "relatedCommit": "45b49f48e (L10 report, already integrated)",
+      "findings": {
+        "code": "argument-redundant-alias",
+        "name": "notes_save_asset"
+      },
+      "evidence": [
+        "src/components/crepe/features/imageUpload.ts:161-169",
+        "src-tauri/src/cmd/notes.rs:1858-1877",
+        "host/plugins/notes/index.ts:81",
+        "host/plugins/notes/LANE.md:177"
+      ],
+      "boundary": "Correct camelCase keys are present. Tauri ignores redundant snake_case keys. No Host alias compatibility or frontend adaptation requested."
+    },
+    {
+      "id": "X2-R03",
+      "name": "notes_list_deleted.page_size",
+      "owner": [
+        "C1-app",
+        "L10-notes"
+      ],
+      "status": "confirmed-existing-frontend-key-mismatch-not-host-or-contract-defect",
+      "fixCommits": [],
+      "findings": {
+        "code": "argument-case-mismatch",
+        "name": "notes_list_deleted"
+      },
+      "evidence": [
+        "src/utils/notesApi.ts:259-260",
+        "src-tauri/src/cmd/notes.rs:1782-1798",
+        "contracts/ipc/L10-notes.json (notes_list_deleted args[].key=pageSize)",
+        "host/plugins/notes/index.ts:259-260",
+        "host/plugins/notes/SPEC.md:968"
+      ],
+      "boundary": "Optional pageSize is absent on the wire, so Rust and Host use default 20; not necessarily an invoke rejection. Preserve original Host behavior; do not add page_size alias."
+    },
+    {
+      "id": "X2-R04",
+      "name": "canvas:ai-edit-request",
+      "owner": [
+        "X2-frontend-contracts",
+        "F5-contracts",
+        "L10-notes"
+      ],
+      "status": "scanner-direction-fixed-and-legacy-emitter-not-required-by-current-execute",
+      "fixCommits": [
+        "fa0364355"
+      ],
+      "findings": {
+        "name": "canvas:ai-edit-request",
+        "codes": [
+          "event-payload-mismatch",
+          "host-event-emitter-unproven"
+        ]
+      },
+      "evidence": [
+        "src-tauri/src/chat_v2/tools/canvas_executor.rs:65-91",
+        "src-tauri/src/chat_v2/tools/canvas_executor.rs:704-711",
+        "src-tauri/src/chat_v2/tools/canvas_executor.rs:1529-1548",
+        "src-tauri/src/chat_v2/tools/canvas_executor.rs:1644-1745",
+        "contracts/ipc/L10-notes.json:4213-4288",
+        "host/plugins/notes/src/canvas-tool.ts:644-768",
+        "host/plugins/notes/SPEC.md:1505-1509"
+      ],
+      "boundary": "Contract x-option=omit is already correct and also accepts null when deserializing. X2 previously treated that null branch as emitted by Rust. Fix producer comparison only; no F5 contract rewrite. Rust execute no longer calls execute_write_frontend; retained declaration/constructor/listener do not prove a missing Host emitter. Other paths remain unproven, not automatically passed."
+    },
+    {
+      "id": "X2-R05",
+      "name": "convert_heic_to_jpeg",
+      "owner": [
+        "L18-media-docs",
+        "F1-kernel",
+        "F7-native",
+        "F5-contracts"
+      ],
+      "status": "confirmed-unregistered-command-with-raw-wire-and-platform-boundaries",
+      "fixCommits": [],
+      "findings": {
+        "name": "convert_heic_to_jpeg",
+        "codes": [
+          "raw-body-command",
+          "frontend-command-not-in-host-meta"
+        ]
+      },
+      "evidence": [
+        "src/utils/heicConversion.ts:187-203",
+        "src-tauri/src/heic_decoder.rs:53-83",
+        "src-tauri/src/heic_decoder.rs:130-140",
+        "contracts/ipc/L18-media-docs.json:210-235",
+        "host/platform/native/heic/api.ts:1-3",
+        "host/platform/native/heic/index.ts:4-10",
+        "host/plugins/media/LANE.md:196-204",
+        "host/kernel/commands.ts:204-216"
+      ],
+      "boundary": "Rust raw Request input and raw Response ArrayBuffer output are represented correctly in F5 contract (x-binary=true). args=[] does not mean no input. Desktop Rust rejects after raw-body validation; Android codec/success output not validated here. Native rejection helper is not command registration. Keep Host registration/transport gap separate from contract correctness."
+    },
+    {
+      "id": "X2-R06",
+      "name": "dynamic events",
+      "owner": [
+        "F2-shell",
+        "C1-app",
+        "X2-frontend-contracts"
+      ],
+      "status": "menu-manually-enumerated-preview-historical-undefined-command-fails-before-subscription",
+      "fixCommits": [],
+      "evidence": [
+        "src/menu/menuEventBridge.ts:24-86,101-104",
+        "src/menu/menuEvents.ts:15",
+        "electron/shell/menu.ts:8-28",
+        "src/utils/graphApi.ts:808-820",
+        "src/components/NoTagTreeShadPanel.tsx:180-215",
+        "docs/dev/electron-migration/inventory/unassigned.txt:36",
+        "host/plugins/integration/audit/commands.json:4,330-337 (top-level undefinedCommands)",
+        "exact literal search src-tauri/ and contracts/: no unified_generate_tag_hierarchy_preview_stream definition"
+      ],
+      "menuNames": [
+        "menu://preferences",
+        "menu://new-session",
+        "menu://close-window",
+        "menu://command-palette",
+        "menu://toggle-sidebar",
+        "menu://documentation",
+        "menu://report-issue"
+      ],
+      "previewClassification": {
+        "command": "unified_generate_tag_hierarchy_preview_stream",
+        "kind": "historical-undefined-command-not-missing-migration-feature",
+        "currentRustPath": "NoTagTreeShadPanel awaits the invoke at line 180; command not-found rejects, graphApi rethrows, and caller catches at line 210 before line 187 can subscribe to the returned event base.",
+        "successChannelStatus": "unproven; the normal current Rust not-found path never obtains a base or reaches the derived start/end/error subscriptions",
+        "dispatch": "Do not assign L17 a new generator or emitter implementation to turn migration into a new feature. Retain historical classification with C1."
+      },
+      "boundary": "Menu emitter is Electron main, not Host BackendEvents; macOS click delivery is not tested on Linux. Preview successful channels remain unproven, but the current Rust path fails before subscription. Do not infer all events from {} or demand new backend generation/emission. Source and classifications only: no runtime invoke, frontend/contract change or full rerun."
+    },
+    {
+      "id": "X2-R07",
+      "name": "chat_v2_send_message",
+      "owner": [
+        "L04-chat-session",
+        "L03-chat-pipeline"
+      ],
+      "status": "host-gap-known-lane-pending-not-new",
+      "rust": "src-tauri/crates/dstu-agent/src/chat_v2/handlers/send_message.rs:462",
+      "contract": "contracts/ipc/L04-chat-session.json",
+      "frontend": "src/features/chat/adapters/tauri/sendOperations.ts:186,571",
+      "host": "host/plugins/chat/index.ts meta + register.ts: not registered; host/plugins/chat/SPEC.md:14 lists it among L04's 20 own unregistered commands",
+      "main": "real chat apply -> kernel commandNotFound",
+      "candidate": "ds-mig/L04-chat-session has src/send-message.ts but no registration; L03 3 commits ahead without it",
+      "dispatch": "L04 (copy C1); no new task beyond SPEC.md:14"
+    },
+    {
+      "id": "X2-R08",
+      "name": "chat_v2_retry_message",
+      "owner": [
+        "L04-chat-session",
+        "L03-chat-pipeline"
+      ],
+      "status": "host-gap-known-lane-pending-not-new",
+      "rust": "src-tauri/crates/dstu-agent/src/chat_v2/handlers/send_message.rs:919",
+      "contract": "contracts/ipc/L04-chat-session.json",
+      "frontend": "src/features/chat/adapters/tauri/messageOperations.ts:153",
+      "host": "host/plugins/chat/index.ts meta + register.ts: not registered; host/plugins/chat/SPEC.md:14 lists it among L04's 20 own unregistered commands",
+      "main": "real chat apply -> kernel commandNotFound",
+      "candidate": "ds-mig/L04-chat-session has src/send-message.ts but no registration; L03 3 commits ahead without it",
+      "dispatch": "L04 (copy C1); no new task beyond SPEC.md:14"
+    },
+    {
+      "id": "X2-R09",
+      "name": "chat_v2_edit_and_resend",
+      "owner": [
+        "L04-chat-session",
+        "L03-chat-pipeline"
+      ],
+      "status": "host-gap-known-lane-pending-not-new",
+      "rust": "src-tauri/crates/dstu-agent/src/chat_v2/handlers/send_message.rs:1268",
+      "contract": "contracts/ipc/L04-chat-session.json",
+      "frontend": "src/features/chat/adapters/tauri/messageOperations.ts:365",
+      "host": "host/plugins/chat/index.ts meta + register.ts: not registered; host/plugins/chat/SPEC.md:14 lists it among L04's 20 own unregistered commands",
+      "main": "real chat apply -> kernel commandNotFound",
+      "candidate": "ds-mig/L04-chat-session has src/send-message.ts but no registration; L03 3 commits ahead without it",
+      "dispatch": "L04 (copy C1); no new task beyond SPEC.md:14"
+    },
+    {
+      "id": "X2-R10",
+      "name": "chat_v2_continue_message",
+      "owner": [
+        "L04-chat-session",
+        "L03-chat-pipeline"
+      ],
+      "status": "host-gap-known-lane-pending-not-new",
+      "rust": "src-tauri/crates/dstu-agent/src/chat_v2/handlers/send_message.rs:2011",
+      "contract": "contracts/ipc/L04-chat-session.json",
+      "frontend": "src/features/chat/adapters/tauri/messageOperations.ts:439",
+      "host": "host/plugins/chat/index.ts meta + register.ts: not registered; host/plugins/chat/SPEC.md:14 lists it among L04's 20 own unregistered commands",
+      "main": "real chat apply -> kernel commandNotFound",
+      "candidate": "ds-mig/L04-chat-session has src/send-message.ts but no registration; L03 3 commits ahead without it",
+      "dispatch": "L04 (copy C1); no new task beyond SPEC.md:14"
+    },
+    {
+      "id": "X2-R11",
+      "name": "chat_v2_compact_session",
+      "owner": [
+        "L04-chat-session",
+        "L03-chat-pipeline"
+      ],
+      "status": "host-gap-known-lane-pending-not-new",
+      "rust": "src-tauri/crates/dstu-agent/src/chat_v2/handlers/block_actions.rs:57",
+      "contract": "contracts/ipc/L04-chat-session.json",
+      "frontend": "src/features/chat/components/input-bar/InputBarV2.tsx:1022",
+      "host": "host/plugins/chat/index.ts meta + register.ts: not registered; host/plugins/chat/SPEC.md:14 lists it among L04's 20 own unregistered commands",
+      "main": "real chat apply -> kernel commandNotFound",
+      "candidate": "ds-mig/L04-chat-session has src/send-message.ts but no registration; L03 3 commits ahead without it",
+      "dispatch": "L04 (copy C1); no new task beyond SPEC.md:14"
+    },
+    {
+      "id": "X2-R12",
+      "name": "chat_v2_stage_context_attachments",
+      "owner": [
+        "L04-chat-session",
+        "L03-chat-pipeline"
+      ],
+      "status": "host-gap-known-lane-pending-not-new",
+      "rust": "src-tauri/crates/dstu-agent/src/chat_v2/tools/attachment_stage_executor.rs:1849",
+      "contract": "contracts/ipc/L04-chat-session.json",
+      "frontend": "src/features/chat/adapters/attachmentMaterialization.ts:161",
+      "host": "host/plugins/chat/index.ts meta + register.ts: not registered; host/plugins/chat/SPEC.md:14 lists it among L04's 20 own unregistered commands",
+      "main": "real chat apply -> kernel commandNotFound",
+      "candidate": "ds-mig/L04-chat-session has src/send-message.ts but no registration; L03 3 commits ahead without it",
+      "dispatch": "L04 (copy C1); no new task beyond SPEC.md:14"
+    },
+    {
+      "id": "X2-R13",
+      "name": "chat_v2://kill_switch_changed",
+      "owner": [
+        "L04-chat-session"
+      ],
+      "status": "fixed-emitter-proven-by-real-invoke",
+      "rust": "src-tauri/crates/dstu-agent/src/chat_v2/kill_switch.rs:195",
+      "frontend": "src/features/workbench/components/AgentControlCenter.tsx:377",
+      "host": "host/plugins/chat/src/register.ts emitKillSwitch",
+      "main": "emergency_stop/resume_agents each emit one event with the command result payload",
+      "candidate": "n/a",
+      "dispatch": "none; historical emitter-unproven superseded"
+    },
+    {
+      "id": "X2-R14-R17",
+      "name": "quick_assistant_show/hide/apply_enabled + quick-assistant://shown",
+      "owner": [
+        "L17-memory-research"
+      ],
+      "status": "fixed-real-invoke-desktop-path",
+      "rust": "src-tauri/src/quick_assistant.rs:20,257-280",
+      "frontend": "src/quick-assistant/window.ts:8,29,39,103",
+      "host": "host/plugins/memory/index.ts:250-255",
+      "main": "all three resolve null via shell window ports; shown emitted with payload null to WebviewWindow quick-assistant",
+      "candidate": "n/a",
+      "boundary": "window ops are shell ports in test host; no real desktop GUI or Electron transport ran. Rust non-desktop no-op is cfg-only and unreachable in the Electron desktop Host.",
+      "dispatch": "none; historical not-in-meta superseded"
+    },
+    {
+      "id": "X2-R18",
+      "name": "get_image_as_base64",
+      "owner": [
+        "L18-media-docs"
+      ],
+      "status": "pre-existing-frontend-redundant-fallback",
+      "rust": "src-tauri/src/commands.rs:8494",
+      "frontend": "src/utils/configApi.ts:13-18 (camelCase first, snake fallback)",
+      "host": "host/plugins/media/index.ts get_image_as_base64",
+      "main": "relativePath resolves real file to data URL; relative_path rejected by contract (same as Rust missing key)",
+      "candidate": "n/a",
+      "dispatch": "pre-existing frontend list only"
+    },
+    {
+      "id": "X2-R19",
+      "name": "media_transcribe_start",
+      "owner": [
+        "L18-media-docs"
+      ],
+      "status": "fixed-on-main-38c048064-error-envelope-matches",
+      "rust": "src-tauri/src/media/commands.rs:29; dstu-media pipeline.rs:132-135; mod.rs:93-98",
+      "frontend": "src/features/learning-hub/apps/views/media/mediaTranscriptApi.ts:283",
+      "host": "host/plugins/media/index.ts:482-",
+      "main": "registered; missing resource rejects with Rust-identical JSON string {code:not-found,...}",
+      "candidate": "cadffc2e7 now in main",
+      "boundary": "real ASR success path needs L02/F7 nativeAudio; not run",
+      "dispatch": "none"
+    },
+    {
+      "id": "X2-R20",
+      "name": "textbooks_add (+ textbook-import-progress emitter)",
+      "owner": [
+        "L18-media-docs",
+        "F3-storage"
+      ],
+      "status": "registered-on-main-real-invoke-subset-rechecked",
+      "rust": "src-tauri/src/cmd/textbooks.rs:115",
+      "frontend": "src/dstu/adapters/textbookDstuAdapter.ts:178; src/utils/chatApi.ts:354",
+      "host": "host/plugins/media/index.ts:729-743 -> textbooksAdd in src/textbooks-add.ts",
+      "main": "f821b3733: empty sources -> []; missing VFS -> exact Configuration AppError; real text import legacy DTO, files row/blob hash, six progress payloads with null Options and ordered global watch events match Rust",
+      "implementationCommit": "159fbc8ae",
+      "mainMerge": "650ddffbe merge ds-mig/L18-media-docs",
+      "recheckJob": "20261104233857-07c123: X2-R20|X2-R29, 2 passed / exit 0",
+      "boundary": "PDF rendering, other document formats, restore/heal/retry/platform branches are not independently signed here; registration alone is not complete equivalence",
+      "historical": "main 4c6cd1ba8 had no registration; its commandNotFound finding is superseded only for the checked paths",
+      "dispatch": "C1 updated; do not unregister L18 to satisfy the obsolete negative assertion"
+    },
+    {
+      "id": "X2-R21",
+      "name": "textbook-import-progress null Option fields",
+      "owner": [
+        "frontend (pre-existing)"
+      ],
+      "status": "pre-existing-frontend-typing",
+      "rust": "src-tauri/src/cmd/textbooks.rs:26-39 (no skip_serializing_if)",
+      "frontend": "src/features/learning-hub/sidebar/importActions.ts:166",
+      "contract": "L18-media-docs.json textbook-import-progress x-option=null",
+      "main": "contract correct; frontend types current_page/total_pages/error as non-null",
+      "dispatch": "pre-existing frontend list only; R20 now proves real textbook progress with null Option fields on the text import path; do not change Host to fit frontend non-null types"
+    },
+    {
+      "id": "X2-R22",
+      "name": "media_transcribe_cancel upstream failure mapping",
+      "owner": [
+        "L18-media-docs"
+      ],
+      "status": "fixed-on-main-a34d959a6-rechecked",
+      "rust": "src-tauri/crates/dstu-media/src/media/commands.rs:367-380 (cancel_media error -> MediaError::Database payload string)",
+      "frontend": "src/features/learning-hub/apps/views/media/mediaTranscriptApi.ts:287",
+      "host": "host/plugins/media/index.ts:528 pdf?.cancelMedia + mediaFailure rethrows non-MediaError",
+      "main": "plain Error from vfsIndex.pdf.cancelMedia surfaces as HandlerPanic (production: frontend promise never settles) instead of '{\"code\":\"database-failed\",\"message\":...}'",
+      "candidate": "same on ds-mig/L18-media-docs",
+      "reachability": "only when L12 cancelMedia throws (DB failure)",
+      "dispatch": "L18 (copy C1)"
+    },
+    {
+      "id": "X2-R05b",
+      "name": "convert_heic_to_jpeg layered recheck",
+      "owner": [
+        "L18-media-docs",
+        "F1-kernel",
+        "F2-shell",
+        "F7-native",
+        "C2-platform"
+      ],
+      "status": "desktop-rejection-path-proven-binary-and-android-unproven",
+      "layers": {
+        "rustRawValidationAndDesktopReject": "heic_decoder.rs:53-70 extract_raw_body; :134-139 non-Android HEIC_UNSUPPORTED_PLATFORM",
+        "hostCallContextRawInput": "main 38c048064 media/index.ts:270-290 passes call.payload to real F7 heic (native/heic/index.ts:4-10); batch2 X2-R05b: Uint8Array non-empty -> HEIC_UNSUPPORTED_PLATFORM, empty -> HEIC_INVALID_INPUT empty, JSON {} -> expected raw binary; AppError {error_type:Validation,message,details} passes debug checkError",
+        "crossProcessBinary": "F1 commands.ts:73-97,234-246 returns raw bytes for x-binary; on desktop the success branch is unreachable (always rejects), and MessagePort/electron main raw request/response were not run here -> unproven",
+        "targetPlatforms": "Android codec path not run (no Android target in this env); iOS/desktop frontends decode in WebView per heicConversion.ts:12-14"
+      },
+      "dispatch": "C1 copy; F2/F1 for an Electron transport raw-body round-trip test if they want sign-off"
+    },
+    {
+      "id": "X2-R23",
+      "name": "media_checkpoints success DTO",
+      "owner": [
+        "L18-media-docs"
+      ],
+      "status": "fixed-success-dto-matches-rust",
+      "rust": "dstu-media/src/media/ledger.rs:174-233",
+      "frontend": "src/features/learning-hub/apps/views/media/mediaCheckpoints.ts:93",
+      "host": "host/plugins/media/index.ts:533-541",
+      "main": "camelCase DTO identical incl. seconds=65 and isCorrect=null; blank id -> []"
+    },
+    {
+      "id": "X2-R24",
+      "name": "media_checkpoints SQL failure",
+      "owner": [
+        "L18-media-docs"
+      ],
+      "status": "fixed-on-main-00d2606e6-rechecked",
+      "main": "HandlerPanic 'no such table: questions' vs Rust plain string"
+    },
+    {
+      "id": "X2-R25",
+      "name": "media_study_ledger",
+      "owner": [
+        "L18-media-docs"
+      ],
+      "status": "fixed-on-main-00d2606e6-rechecked",
+      "rust": "dstu-media/src/media/ledger.rs:28-47,426-476",
+      "frontend": "src/features/media-studio/api.ts:229",
+      "main": "zero ledger DTO identical, ids normalized; SQL failure HandlerPanic"
+    },
+    {
+      "id": "X2-R26",
+      "name": "textbooks_relink not-found",
+      "owner": [
+        "L18-media-docs"
+      ],
+      "status": "fixed-error-dto-matches-rust",
+      "rust": "src-tauri/src/cmd/textbooks.rs:712-714",
+      "frontend": "src/features/learning-hub/apps/views/TextbookContentView.tsx:580",
+      "main": "{error_type:NotFound,message:'教材不存在: tb_missing',details:null}",
+      "boundary": "hash/relink success path needs F3 file manager; not run"
+    },
+    {
+      "id": "X2-R27",
+      "name": "media_bilibili_playback_error emitter",
+      "owner": [
+        "L18-media-docs"
+      ],
+      "status": "fixed-emitter-proven-by-real-protocol-request",
+      "rust": "dstu-media/src/media/bilibili_stream.rs:820-836",
+      "frontend": "src/features/learning-hub/apps/views/media/useBilibiliQuality.ts:81-86",
+      "host": "host/plugins/media/src/bilibili-protocol.ts:292-305; index.ts:712-714",
+      "main": "bilistream 502 -> one event {fileId,qn,epoch,attempt,message}; historical emitter-unproven superseded",
+      "boundary": "502 came from missing account store, not a real Bilibili upstream"
+    },
+    {
+      "id": "X2-R28",
+      "name": "memory://changed",
+      "owner": [
+        "L17-memory-research"
+      ],
+      "status": "fixed-static-13-of-13-emit-sites-plus-existing-lane-test",
+      "rust": "dstu-memory/src/memory/handlers.rs:82-91 and 13 call sites",
+      "host": "host/plugins/memory/index.ts:115-249 (13 changed() sites, same actions and success conditions)",
+      "evidence": "host/plugins/memory/tests/commands-core.test.ts:275 (L17 lane test; not rerun here)",
+      "frontendNote": "payload 'unknown' at memoryDomainRefresh.ts:10 is a pre-existing frontend typing gap; listener ignores payload"
+    },
+    {
+      "id": "X2-R29",
+      "name": "workspace_agent_completion payload",
+      "owner": [
+        "L04-chat-session"
+      ],
+      "status": "archived-mismatches-false-positive-omit; serializer-and-original-dedup-rechecked; runtime-registration-conditional",
+      "rust": "dstu-agent/src/chat_v2/handlers/workspace_handlers.rs:39-63 (6 skip_serializing_if fields), :1982/:2068; completion_dispatcher.rs:310",
+      "contract": "L04-chat-session.json $defs.AgentCompletionEnvelope x-option=omit, not required",
+      "frontend": "src/features/chat/workspace/events.ts:124-138 (all optional)",
+      "evidence": "review.test.ts X2-R29 preserves all six omit/non-required checks and calls actual agentCompletionEnvelope; exact Rust g03_dedup_hit_converges_to_delivered_without_redelivery maps to host/plugins/chat/tests/completion-dispatcher.test.ts:86-95",
+      "dispatch": "none; do not revert the original G03 test to pending",
+      "implementationCommits": ["cd40ee716", "862095376"],
+      "mainMerge": "bb04a0c0e (joint L03/L04 integration)",
+      "dynamic": "main f821b3733: index.ts:238-258 constructs CompletionDispatcherRuntime; worker commands register only when chatPipeline.execute and workerRuntimeSurfaces are present; workspace_restore_executions starts dispatcher; processOne invokes emitCompletion and worker closure also emits completion",
+      "jobs": ["20261104233857-07c123: two X2 affected cases passed", "20261104233449-ae7301: original G03 dedup test 1 passed / exit 0, delivered state and one inbox result", "20261104233657-aa8f51: original worker success/failure/cancel tests 2 passed / exit 0; actual runtime with supplied external pipeline port"],
+      "boundary": "Original worker tests supply execute and cross-lane seams; no complete real LLM pipeline/desktop GUI/headless wake model run sign-off. Historic main ad11a8394 emitter-unreachable statement is superseded by this conditional production path."
+    },
+    {
+      "id": "X2-R30",
+      "name": "chat_v2_request_audit / workspace_worker_ready emitters",
+      "owner": [
+        "L04-chat-session",
+        "L05-agent-workspace"
+      ],
+      "status": "unproven-unreachable",
+      "rust": "send_message.rs:549,764; workspace_executor.rs:375; subagent_executor.rs:696",
+      "main": "emitters sit inside chat_v2_send_message (R07, unregistered) and workspace/subagent tools run by that pipeline; no Host path reaches them yet",
+      "dispatch": "none; not claimed missing from silence"
+    },
+    {
+      "id": "X2-R31",
+      "name": "hpias_event emitter",
+      "owner": [
+        "L17-memory-research"
+      ],
+      "status": "fixed-static-host-emitter-plus-lane-test",
+      "host": "host/plugins/memory/src/hpias-service.ts:85 emitTo(target,'hpias_event')",
+      "evidence": "host/plugins/memory/tests/hpias.test.ts (L17 lane; not rerun here)",
+      "frontendNote": "payload any at hpiasEventBridge.ts:129 is a pre-existing frontend typing gap"
+    },
+    {
+      "id": "X2-R32",
+      "name": "media_bilibili_stream_quality missing link item",
+      "owner": [
+        "L18-media-docs"
+      ],
+      "status": "fixed-on-main-rechecked (X2-D02 closed)",
+      "frontend": "src/features/learning-hub/apps/views/media/useBilibiliQuality.ts",
+      "fixCommit": "6b1b3fa40",
+      "mainMerge": "a36488382",
+      "recheckMain": "4525e11ac",
+      "recheckJob": "20261104153140-26dd94 (1 passed, 1 deselected by -t, exit 0)"
+    },
+    {
+      "id": "X2-R33",
+      "name": "media_bilibili_probe with browser_bridge mode and no bridge",
+      "owner": [
+        "L18-media-docs"
+      ],
+      "status": "error-dto-matches-rust",
+      "rust": "bilibili.rs:1122-1127; session.rs:124-143,95-101; types.rs:90-117; mod.rs:93-96",
+      "main": "full BiliError JSON string identical (9 keys, retryable=true, route=native)",
+      "boundary": "settings changed through real media_bilibili_transport_configure; no network"
+    },
+    {
+      "id": "X2-R34",
+      "name": "media_bilibili_stream_quality with browser_bridge mode and no bridge",
+      "owner": [
+        "L18-media-docs"
+      ],
+      "status": "error-matches-rust",
+      "rust": "bilibili_stream.rs:466 playback_session -> begin(media=true); :531-540 e.to_string()",
+      "main": "plain '浏览器桥未就绪，请连接浏览器'"
+    }
+  ],
+  "batch2": {
+    "mainCommit": "4c6cd1ba8",
+    "mergeCommit": "1b0f41320",
+    "test": "scripts/electron-migration/frontend-audit/batch2.test.ts",
+    "invokesExecuted": true,
+    "pluginApplyExecuted": true,
+    "note": "Real chat/memory/media plugins applied in createTestHost; only external ports (shell window ops, settings/log, VFS DB/repo, L12 vfsIndex.pdf) supplied. Earlier R01-R06 entries stay static-only."
+  },
+  "batch3": {
+    "mainCommit": "4c6cd1ba8",
+    "test": "scripts/electron-migration/frontend-audit/batch3.test.ts",
+    "job": "20261104115839-9c9945",
+    "result": "5 passed / exit 0"
+  },
+  "defectMatrix": [
+    {
+      "finding": "X2-D01 media mediaFailure rethrows non-MediaError -> HandlerPanic (frontend promise never settles)",
+      "rootCause": "host/plugins/media/index.ts:98-105 mediaFailure; same on ds-mig/L18-media-docs index.ts:100-107",
+      "owner": "L18-media-docs",
+      "cases": [],
+      "pendingMainFix": "none",
+      "reachability": "DB/upstream failure only",
+      "recheckRule": "after L18 fix reaches main, flip the HandlerPanic assertions to the Rust strings above and rerun only these three cases",
+      "closedCases": [
+        {
+          "id": "X2-R22",
+          "command": "media_transcribe_cancel",
+          "fixCommit": "a34d959a6 (L18; adds cancelMedia wrapper -> MediaError('Database') at media/index.ts:110-115)",
+          "mainMerge": "91e853a52 merge ds-mig/L18-media-docs",
+          "recheck": "batch2 X2-R22 job 20261104124203-d9fad9 9 passed"
+        },
+        {
+          "id": "X2-R24",
+          "command": "media_checkpoints",
+          "rust": "dstu-media/src/media/ledger.rs:255-257 -> e.to_string() plain string",
+          "recheck": "batch3 X2-R24/X2-R25 job 20261104140332-fdbc86 7 passed",
+          "fixCommit": "00d2606e6 (L18; ledgerFailure -> CommandError(error.message), media/index.ts:110-112)",
+          "mainMerge": "3bff65125 merge ds-mig/L18-media-docs"
+        },
+        {
+          "id": "X2-R25",
+          "command": "media_study_ledger",
+          "rust": "dstu-media/src/media/ledger.rs:466-476 -> e.to_string() plain string",
+          "recheck": "batch3 X2-R24/X2-R25 job 20261104140332-fdbc86 7 passed",
+          "fixCommit": "00d2606e6 (L18; ledgerFailure -> CommandError(error.message), media/index.ts:110-112)",
+          "mainMerge": "3bff65125 merge ds-mig/L18-media-docs"
+        }
+      ],
+      "openCases": [],
+      "status": "closed on main bec9c35ba"
+    },
+    {
+      "finding": "X2-D02 media_bilibili_stream_quality missing link item: error text differs",
+      "owner": "L18-media-docs",
+      "rust": "bilibili_stream.rs:520-540 -> play_info_for :474 -> bilibili.rs:950-959 read_link_descriptor -> pipeline.rs:160-162 '媒体文件内容缺失: {id}' (plain string)",
+      "host": "host/plugins/media/src/bilibili-link-items.ts:49-50 checks files row first -> '媒体文件不存在: {id}'",
+      "severity": "low: same NotFound class, different text; reachable when the frontend asks for a deleted/unknown file_ id",
+      "pendingMainFix": "none: 6b1b3fa40 entered main through a36488382",
+      "fixCommit": "6b1b3fa40",
+      "mainMerge": "a36488382 merge ds-mig/L18-media-docs",
+      "recheckMain": "4525e11ac (X2 merge a2e216441)",
+      "recheck": "batch4 X2-R32 only: assertEqual('媒体文件内容缺失: file_missing_x2'); job 20261104153140-26dd94",
+      "status": "closed on main 4525e11ac",
+      "result": "20261104153140-26dd94: 1 passed, 1 deselected by -t X2-R32, exit 0"
+    }
+  ],
+  "batch4": {
+    "mainCommit": "ad11a8394",
+    "test": "scripts/electron-migration/frontend-audit/batch4.test.ts",
+    "job": "20261104133911-213c0f",
+    "result": "2 passed / exit 0"
+  }
+}

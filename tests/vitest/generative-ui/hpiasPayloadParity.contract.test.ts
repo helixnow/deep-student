@@ -1,5 +1,5 @@
 /**
- * HPIAS payload 跨语言契约 — Rust payloads.rs ↔ TS Style Lab demo
+ * HPIAS payload 契约 — Host hpias-payloads.ts ↔ TS Style Lab demo
  */
 import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
@@ -12,6 +12,7 @@ import {
 } from '@/features/generative-ui/contracts/hpiasLifecycleContract';
 
 const REPO = process.cwd();
+const readHost = (file: string) => fs.readFileSync(path.join(REPO, 'host/plugins', file), 'utf8');
 
 describe('hpiasPayloadParity contract', () => {
   it('Style Lab demo timeline covers required lifecycle types', () => {
@@ -19,55 +20,30 @@ describe('hpiasPayloadParity contract', () => {
     expect(() => assertHpiasLifecycleCoverage(types)).not.toThrow();
   });
 
-  it('Rust payloads.rs declares all required lifecycle event builders', () => {
-    const payloadsSrc = fs.readFileSync(
-      path.join(REPO, 'src-tauri/crates/dstu-research/src/hpias/payloads.rs'),
-      'utf8',
-    );
+  it('Host hpias-payloads.ts declares all required lifecycle event builders', () => {
+    const payloadsSrc = readHost('memory/src/hpias-payloads.ts');
     for (const eventType of HPIAS_REQUIRED_LIFECYCLE_TYPES) {
-      expect(payloadsSrc).toContain(eventType);
+      expect(payloadsSrc).toContain(`type: '${eventType}'`);
     }
-    expect(payloadsSrc).toContain('build_pipeline_timeline');
+    expect(payloadsSrc).toContain('export function buildPipelineTimeline');
   });
 
-  it('Rust service.rs exposes replaceable backend trait', () => {
-    const serviceSrc = fs.readFileSync(
-      path.join(REPO, 'src-tauri/crates/dstu-research/src/hpias/service.rs'),
-      'utf8',
-    );
-    expect(serviceSrc).toContain('trait HpiasResearchBackend');
-    expect(serviceSrc).toContain('StubHpiasResearchService');
-    expect(serviceSrc).toContain('create_research_backend');
-    expect(serviceSrc).toContain('HpiasBackendKind');
-    expect(serviceSrc).toContain('DEEP_STUDENT_HPIAS_BACKEND');
+  it('Host research module exposes the replaceable backend kinds', () => {
+    const researchSrc = readHost('memory/src/hpias-research.ts');
+    expect(researchSrc).toContain("export type HpiasBackendKind = 'disabled' | 'stub' | 'retrieval';");
+    expect(researchSrc).toContain('export function backendKindFromConfig');
+    expect(researchSrc).toContain('export interface HpiasResearchDeps');
+    expect(researchSrc).toContain('export interface HpiasResearchSessionRequest');
   });
 
-  it('generative_ui executor uses HpiasResearchService not direct orchestrator', () => {
-    const executorSrc = fs.readFileSync(
-      path.join(REPO, 'src-tauri/src/chat_v2/tools/generative_ui_executor.rs'),
-      'utf8',
-    );
-    expect(executorSrc).toContain('create_research_backend');
-    expect(executorSrc).toContain('HpiasResearchSessionRequest');
-    expect(executorSrc).toContain('HpiasResearchDeps');
-    expect(executorSrc).not.toContain('HpiasPipelineOrchestrator::spawn_from_intent');
+  it('generative-ui executor starts research through the research service', () => {
+    const executorSrc = readHost('vfs/src/tools/generative-ui.ts');
+    expect(executorSrc).toContain('this.research().startFromIntent(');
+    expect(readHost('memory/src/hpias-service.ts')).toContain('export function createHpiasResearchService');
   });
 
-  it('retrieval backend module exists with VFS wiring', () => {
-    const retrievalSrc = fs.readFileSync(
-      path.join(REPO, 'src-tauri/crates/dstu-research/src/hpias/retrieval_backend.rs'),
-      'utf8',
-    );
-    expect(retrievalSrc).toContain('RetrievalHpiasResearchService');
-    expect(retrievalSrc).toContain('generate_synthesis_with_llm');
-  });
-
-  it('synthesis module wires LLM markdown generation', () => {
-    const synthesisSrc = fs.readFileSync(
-      path.join(REPO, 'src-tauri/crates/dstu-research/src/hpias/synthesis.rs'),
-      'utf8',
-    );
-    expect(synthesisSrc).toContain('build_synthesis_llm_prompt');
-    expect(synthesisSrc).toContain('generate_synthesis_with_llm');
+  it('retrieval and LLM synthesis modules are wired', () => {
+    expect(readHost('memory/src/hpias-retrieval.ts')).toContain('export interface HpiasRetrievalDeps');
+    expect(readHost('memory/src/hpias-research.ts')).toContain('export function buildSynthesisLlmPrompt');
   });
 });

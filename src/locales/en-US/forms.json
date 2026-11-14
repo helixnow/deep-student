@@ -21,6 +21,23 @@
     "heading_not_found": "Heading \"{{heading}}\" not found",
     "paused_user_editing": "Paused: you are editing this note. Continues once you stop typing."
   },
+  "ai_hunk_review": {
+    "accept_all": "Accept all",
+    "revert_all": "Revert all",
+    "accept_hunk": "Accept",
+    "reject_hunk": "Reject",
+    "tweak_hunk": "Tweak",
+    "confirm_tweak": "Confirm tweak",
+    "cancel_tweak": "Cancel",
+    "mode_hunks": "Hunk tweak",
+    "mode_rich": "Rich blocks",
+    "tweak_placeholder": "Edit this hunk's lines (leave empty to remove)",
+    "tweak_aria": "Tweak hunk {{index}}",
+    "status_pending": "Pending",
+    "status_accepted": "Accepted",
+    "status_rejected": "Rejected",
+    "status_tweaked": "Tweaked"
+  },
   "ocr": {
     "system_engine_description": "Uses the operating system built-in OCR engine"
   }

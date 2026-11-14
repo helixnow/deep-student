@@ -1,0 +1,430 @@
+{
+  "F1-kernel": {
+    "lines": 7185,
+    "files": 37,
+    "tests": 89,
+    "commands": 11,
+    "frontendCommands": 11,
+    "roots": [
+      "crates/dstu-agent-api",
+      "crates/dstu-kernel",
+      "src/agent_wiring",
+      "src/extensions.rs",
+      "src/plugins"
+    ]
+  },
+  "F2-shell": {
+    "lines": 6353,
+    "files": 13,
+    "tests": 18,
+    "commands": 23,
+    "frontendCommands": 18,
+    "roots": [
+      "crates/dstu-platform",
+      "src/apk_installer.rs",
+      "src/cmd",
+      "src/dev_keep_rendering.rs",
+      "src/external_file_opener.rs",
+      "src/lib.rs",
+      "src/main.rs",
+      "src/menu.rs",
+      "src/system_bars.rs",
+      "src/system_permissions.rs"
+    ]
+  },
+  "F3-storage": {
+    "lines": 45986,
+    "files": 41,
+    "tests": 362,
+    "commands": 33,
+    "frontendCommands": 23,
+    "roots": [
+      "crates/dstu-storage",
+      "src/database.debug.rs",
+      "src/test_utils",
+      "tests/migration_fixture_upgrade_gate.rs",
+      "tests/migration_tests.rs"
+    ]
+  },
+  "F4-security": {
+    "lines": 22791,
+    "files": 60,
+    "tests": 300,
+    "commands": 44,
+    "frontendCommands": 21,
+    "roots": [
+      "crates/dstu-core",
+      "crates/dstu-platform",
+      "crates/dstu-security",
+      "crates/dstu-testkit",
+      "crates/dstu-util",
+      "src/backup_config.rs",
+      "src/cloud_config_commands.rs",
+      "src/crash_logger.rs",
+      "src/debug_commands.rs",
+      "src/diagnostics.rs",
+      "src/secure_store.rs",
+      "src/utils",
+      "tests/cloud_half_configured_credentials_tests.rs",
+      "tests/device_identity_tests.rs",
+      "tests/error_details_tests.rs",
+      "tests/secure_store_tests.rs"
+    ]
+  },
+  "L01-llm-providers": {
+    "lines": 20605,
+    "files": 26,
+    "tests": 246,
+    "commands": 5,
+    "frontendCommands": 1,
+    "roots": [
+      "crates/dstu-llm",
+      "src/cmd"
+    ]
+  },
+  "L02-llm-manager": {
+    "lines": 56347,
+    "files": 70,
+    "tests": 709,
+    "commands": 26,
+    "frontendCommands": 13,
+    "roots": [
+      "crates/dstu-llm",
+      "crates/dstu-translation-core",
+      "crates/dstu-tutor",
+      "src/chat_v2",
+      "src/cmd",
+      "src/translation",
+      "tests/c1_cross_lang_consistency.rs",
+      "tests/translation_executor_e2e.rs"
+    ]
+  },
+  "L03-chat-pipeline": {
+    "lines": 47635,
+    "files": 42,
+    "tests": 451,
+    "commands": 0,
+    "frontendCommands": 0,
+    "roots": [
+      "crates/dstu-agent"
+    ]
+  },
+  "L04-chat-session": {
+    "lines": 54531,
+    "files": 62,
+    "tests": 527,
+    "commands": 107,
+    "frontendCommands": 90,
+    "roots": [
+      "crates/dstu-agent",
+      "src/chat_v2"
+    ]
+  },
+  "L05-agent-workspace": {
+    "lines": 41075,
+    "files": 37,
+    "tests": 401,
+    "commands": 12,
+    "frontendCommands": 11,
+    "roots": [
+      "crates/dstu-agent"
+    ]
+  },
+  "L06-agent-orchestration": {
+    "lines": 27432,
+    "files": 23,
+    "tests": 239,
+    "commands": 17,
+    "frontendCommands": 17,
+    "roots": [
+      "crates/dstu-agent"
+    ]
+  },
+  "L07-agent-skills-ptc": {
+    "lines": 32040,
+    "files": 27,
+    "tests": 351,
+    "commands": 22,
+    "frontendCommands": 17,
+    "roots": [
+      "crates/dstu-agent",
+      "src/chat_v2"
+    ]
+  },
+  "L10-notes": {
+    "lines": 23834,
+    "files": 26,
+    "tests": 135,
+    "commands": 81,
+    "frontendCommands": 60,
+    "roots": [
+      "crates/dstu-notes",
+      "crates/dstu-vfs",
+      "src/chat_v2",
+      "src/cmd",
+      "src/notes_app_tests.rs"
+    ]
+  },
+  "L11-vfs-repos": {
+    "lines": 42031,
+    "files": 23,
+    "tests": 158,
+    "commands": 0,
+    "frontendCommands": 0,
+    "roots": [
+      "crates/dstu-vfs"
+    ]
+  },
+  "L12-vfs-index": {
+    "lines": 25671,
+    "files": 9,
+    "tests": 79,
+    "commands": 3,
+    "frontendCommands": 2,
+    "roots": [
+      "crates/dstu-vfs"
+    ]
+  },
+  "L13-vfs-api": {
+    "lines": 56197,
+    "files": 63,
+    "tests": 381,
+    "commands": 214,
+    "frontendCommands": 131,
+    "roots": [
+      "crates/dstu-vfs",
+      "src/chat_v2"
+    ]
+  },
+  "L14-qbank": {
+    "lines": 39369,
+    "files": 47,
+    "tests": 241,
+    "commands": 88,
+    "frontendCommands": 73,
+    "roots": [
+      "crates/dstu-qbank",
+      "src/chat_v2",
+      "src/qbank_generation.rs",
+      "src/qbank_grading",
+      "src/qbank_grading.rs",
+      "src/qbank_practice.rs",
+      "src/qbank_read",
+      "src/question_bank_service",
+      "tests/mastery_qbank_correction.rs",
+      "tests/qbank_executor_e2e.rs",
+      "tests/qbank_verdict_three_paths.rs"
+    ]
+  },
+  "L15-review-analytics": {
+    "lines": 16542,
+    "files": 19,
+    "tests": 128,
+    "commands": 70,
+    "frontendCommands": 53,
+    "roots": [
+      "crates/dstu-anki",
+      "crates/dstu-learning",
+      "crates/dstu-qbank",
+      "src/cmd",
+      "src/essay_grading",
+      "src/fsrs_review_service",
+      "src/insight",
+      "src/mastery",
+      "src/review_plan_service"
+    ]
+  },
+  "L16-anki": {
+    "lines": 40844,
+    "files": 29,
+    "tests": 630,
+    "commands": 61,
+    "frontendCommands": 44,
+    "roots": [
+      "crates/dstu-anki",
+      "src/cmd",
+      "tests/anki_ai_native_integration.rs",
+      "tests/anki_export_integration.rs",
+      "tests/anki_fsrs_feedback.rs",
+      "tests/anki_new_wiring_tests.rs",
+      "tests/anki_nullable_card_reads.rs",
+      "tests/gold_provenance_excludes_critic.rs",
+      "tests/occlusion_export_roundtrip.rs",
+      "tests/qa_pass_critic_combo.rs"
+    ]
+  },
+  "L17-memory-research": {
+    "lines": 27312,
+    "files": 44,
+    "tests": 168,
+    "commands": 34,
+    "frontendCommands": 33,
+    "roots": [
+      "crates/dstu-memory",
+      "crates/dstu-research",
+      "src/chat_v2",
+      "src/quick_assistant.rs"
+    ]
+  },
+  "L18-media-docs": {
+    "lines": 37357,
+    "files": 62,
+    "tests": 243,
+    "commands": 74,
+    "frontendCommands": 50,
+    "roots": [
+      "crates/dstu-docs",
+      "crates/dstu-media",
+      "crates/dstu-vision",
+      "src/chat_v2",
+      "src/cmd",
+      "src/heic_decoder.rs",
+      "src/media",
+      "src/tts.rs",
+      "src/voice_input.rs"
+    ]
+  },
+  "L19-mcp-browser": {
+    "lines": 27060,
+    "files": 43,
+    "tests": 206,
+    "commands": 70,
+    "frontendCommands": 33,
+    "roots": [
+      "crates/dstu-browser",
+      "crates/dstu-mcp",
+      "src/chat_v2",
+      "src/cmd",
+      "tests/bing_rss_search.rs",
+      "tests/browser_capability_contract.rs",
+      "tests/mcpbench_integration.rs"
+    ]
+  },
+  "L20-sync": {
+    "lines": 36174,
+    "files": 15,
+    "tests": 263,
+    "commands": 24,
+    "frontendCommands": 24,
+    "roots": [
+      "crates/dstu-sync",
+      "src/data_governance",
+      "src/sync_app_tests.rs"
+    ]
+  },
+  "L21-backup-governance": {
+    "lines": 37462,
+    "files": 31,
+    "tests": 323,
+    "commands": 33,
+    "frontendCommands": 33,
+    "roots": [
+      "crates/dstu-sync",
+      "src/chat_v2",
+      "src/data_governance",
+      "tests/restore_domain_plan_tests.rs",
+      "tests/zip_export_import_restore_tests.rs"
+    ]
+  },
+  "L22-app-commands": {
+    "lines": 25771,
+    "files": 40,
+    "tests": 243,
+    "commands": 0,
+    "frontendCommands": 0,
+    "roots": [
+      "src/cmd",
+      "src/commands.rs",
+      "tests/app_command_acl.rs",
+      "tests/dstu_canvas_executor_e2e.rs",
+      "tests/generative_ui_executor_e2e.rs",
+      "tests/mod.rs",
+      "tests/phase5_tool_execution_e2e.rs",
+      "tests/phase7_system_executor_e2e.rs",
+      "tests/phase8_9_executor_e2e.rs",
+      "tests/session_executor_e2e.rs",
+      "tests/sync_r10_android.rs",
+      "tests/sync_r10_chaos_clock.rs",
+      "tests/sync_r10_chaos_idempotent.rs",
+      "tests/sync_r10_chaos_lease.rs",
+      "tests/sync_r10_chaos_mixed_e2ee.rs",
+      "tests/sync_r10_chaos_truncation.rs",
+      "tests/sync_r10_download.rs",
+      "tests/sync_r10_protocol_locks.rs",
+      "tests/sync_r10_provider_contract.rs",
+      "tests/sync_r10_verifier.rs",
+      "tests/sync_r11_autosync.rs",
+      "tests/sync_r11_history.rs",
+      "tests/sync_r11_lease.rs",
+      "tests/sync_r11_repo_check.rs",
+      "tests/sync_r12_backup_lease.rs",
+      "tests/sync_r12_conflict_fast_path.rs",
+      "tests/sync_r12_decoded_dead.rs",
+      "tests/sync_r12_delta_format.rs",
+      "tests/sync_r12_delta_gc.rs",
+      "tests/sync_r12_delta_inventory.rs",
+      "tests/sync_r12_delta_restore.rs",
+      "tests/sync_r12_delta_upload.rs",
+      "tests/sync_r12_neutral_names.rs",
+      "tests/sync_r12_record_path_names.rs",
+      "tests/sync_r12_v1_marker_trust.rs",
+      "tests/sync_r13_migration_change_log_propagation.rs",
+      "tests/tool_pack_integration_tests.rs",
+      "tests/tools_integration_tests.rs",
+      "tests/windows_shell_helper_e2e.rs"
+    ]
+  },
+  "L23-sync-providers": {
+    "lines": 53532,
+    "files": 50,
+    "tests": 859,
+    "commands": 14,
+    "frontendCommands": 14,
+    "roots": [
+      "crates/dstu-sync",
+      "tests/e2ee_claim_race_tests.rs",
+      "tests/sync_adversarial_tests.rs",
+      "tests/sync_android_device_switch.rs",
+      "tests/sync_android_restart.rs",
+      "tests/sync_chaos_tests.rs",
+      "tests/sync_comprehensive_tests.rs",
+      "tests/sync_file_level_e2ee.rs",
+      "tests/sync_integration_deep_tests.rs",
+      "tests/sync_pathological_tests.rs",
+      "tests/sync_proptest.rs",
+      "tests/sync_provider_contract_tests.rs",
+      "tests/sync_r02_hardening_tests.rs",
+      "tests/sync_r05_regression_tests.rs",
+      "tests/sync_r06_delete_resolve_tests.rs",
+      "tests/sync_r07_autosync_pending_tests.rs",
+      "tests/sync_r07_cross_platform_names_tests.rs",
+      "tests/sync_r07_delete_resolve_lock_tests.rs",
+      "tests/sync_r07_e2ee_wrong_password_tests.rs",
+      "tests/sync_r07_filename_tests.rs",
+      "tests/sync_r09_download_resume_tests.rs",
+      "tests/sync_r09_file_e2ee.rs",
+      "tests/sync_r09_filenames.rs",
+      "tests/sync_real_business_tables_tests.rs",
+      "tests/sync_real_flow_smoke_tests.rs",
+      "tests/sync_real_schema_tests.rs",
+      "tests/sync_realistic_scenarios.rs",
+      "tests/sync_regression_tests.rs",
+      "tests/sync_scenarios_tests.rs",
+      "tests/sync_schema_coverage_tests.rs",
+      "tests/sync_weird_tests.rs",
+      "tests/webdav_download_resume_tests.rs",
+      "tests/webdav_list_truncation_tests.rs"
+    ]
+  },
+  "L24-chatanki": {
+    "lines": 28468,
+    "files": 6,
+    "tests": 286,
+    "commands": 0,
+    "frontendCommands": 0,
+    "roots": [
+      "src/chat_v2",
+      "tests/chatanki_apkg_executor_e2e.rs"
+    ]
+  }
+}

@@ -1,0 +1,985 @@
+{
+  "shortcuts": {
+    "s_note": {
+      "icon": "<div role=\"button\" tabindex=\"0\" class=\"wb-desk-icon\" data-wb-desk-shortcut=\"s_note\" aria-label=\"线代笔记\" data-menu-open=\"true\"><span class=\"wb-desk-icon__art\" aria-hidden=\"true\"><span aria-hidden=\"true\" class=\"pointer-events-none inline-flex shrink-0 select-none items-center justify-center\" style=\"width: 52px; height: 52px; border-radius: 22.5%; background: linear-gradient(180deg, #ffffff, #eef1f5); box-shadow: inset 0 0 0 0.5px rgba(31, 41, 55, 0.16);\"><img src=\"/src/features/workbench/icons/app-icons/notes.svg\" alt=\"\" draggable=\"false\" class=\"pointer-events-none select-none object-contain\" style=\"width: 78%; height: 78%;\"></span></span><span class=\"wb-desk-icon__label\">线代笔记</span></div>",
+      "menu": {
+        "html": "<div role=\"menu\" class=\"wb-desk-menu wb-glass-lens\" data-phase=\"open\" style=\"position: fixed; left: 120px; top: 140px; z-index: var(--wb-z-desktop-menu, 9650);\"><div class=\"wb-glass-replica\" aria-hidden=\"true\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M184,80V208a8,8,0,0,1-8,8H48a8,8,0,0,1-8-8V80a8,8,0,0,1,8-8H176A8,8,0,0,1,184,80Z\" opacity=\"0.2\"></path><path d=\"M224,104a8,8,0,0,1-16,0V59.32l-66.33,66.34a8,8,0,0,1-11.32-11.32L196.68,48H152a8,8,0,0,1,0-16h64a8,8,0,0,1,8,8Zm-40,24a8,8,0,0,0-8,8v72H48V80h72a8,8,0,0,0,0-16H48A16,16,0,0,0,32,80V208a16,16,0,0,0,16,16H176a16,16,0,0,0,16-16V136A8,8,0,0,0,184,128Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">打开</span></button><div class=\"wb-desk-menu-sep\" role=\"separator\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M221.66,90.34,192,120,136,64l29.66-29.66a8,8,0,0,1,11.31,0L221.66,79A8,8,0,0,1,221.66,90.34Z\" opacity=\"0.2\"></path><path d=\"M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM92.69,208H48V163.31l88-88L180.69,120ZM192,108.68,147.31,64l24-24L216,84.68Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">重命名</span></button><button type=\"button\" class=\"wb-desk-menu-item wb-desk-menu-item--danger\" data-wb-desk-item=\"\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M200,56V208a8,8,0,0,1-8,8H64a8,8,0,0,1-8-8V56Z\" opacity=\"0.2\"></path><path d=\"M216,48H176V40a24,24,0,0,0-24-24H104A24,24,0,0,0,80,40v8H40a8,8,0,0,0,0,16h8V208a16,16,0,0,0,16,16H192a16,16,0,0,0,16-16V64h8a8,8,0,0,0,0-16ZM96,40a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8v8H96Zm96,168H64V64H192ZM112,104v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm48,0v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">从桌面移除</span></button></div>",
+        "rows": [
+          {
+            "role": "menuitem",
+            "label": "打开",
+            "className": "wb-desk-menu-item"
+          },
+          {
+            "separator": true,
+            "className": "wb-desk-menu-sep"
+          },
+          {
+            "role": "menuitem",
+            "label": "重命名",
+            "className": "wb-desk-menu-item"
+          },
+          {
+            "role": "menuitem",
+            "label": "从桌面移除",
+            "className": "wb-desk-menu-item wb-desk-menu-item--danger"
+          }
+        ]
+      },
+      "clicks": {
+        "0:打开": {
+          "effects": [
+            [
+              "launchResourceFromDragData",
+              {
+                "resourceId": "note_1",
+                "resourceType": "note",
+                "title": "线代笔记"
+              }
+            ]
+          ],
+          "syncEffects": 1,
+          "afterClick": {
+            "menu": {
+              "phase": "closing",
+              "style": "position: fixed; left: 120px; top: 140px; z-index: var(--wb-z-desktop-menu, 9650);"
+            },
+            "shortcuts": [
+              "s_note:线代笔记",
+              "s_untyped:无类型资源",
+              "s_folder:资料夹",
+              "s_quick:收藏",
+              "s_exam:题目集",
+              "s_textbook:教材"
+            ],
+            "menuOpenIcons": [],
+            "renaming": null
+          },
+          "afterExit": {
+            "menu": null,
+            "shortcuts": [
+              "s_note:线代笔记",
+              "s_untyped:无类型资源",
+              "s_folder:资料夹",
+              "s_quick:收藏",
+              "s_exam:题目集",
+              "s_textbook:教材"
+            ],
+            "menuOpenIcons": [],
+            "renaming": null
+          }
+        },
+        "1:重命名": {
+          "effects": [],
+          "syncEffects": 0,
+          "afterClick": {
+            "menu": {
+              "phase": "closing",
+              "style": "position: fixed; left: 120px; top: 140px; z-index: var(--wb-z-desktop-menu, 9650);"
+            },
+            "shortcuts": [
+              "s_note:线代笔记",
+              "s_untyped:无类型资源",
+              "s_folder:资料夹",
+              "s_quick:收藏",
+              "s_exam:题目集",
+              "s_textbook:教材"
+            ],
+            "menuOpenIcons": [],
+            "renaming": {
+              "shortcut": "s_note",
+              "value": "线代笔记",
+              "focused": true
+            }
+          },
+          "afterExit": {
+            "menu": null,
+            "shortcuts": [
+              "s_note:线代笔记",
+              "s_untyped:无类型资源",
+              "s_folder:资料夹",
+              "s_quick:收藏",
+              "s_exam:题目集",
+              "s_textbook:教材"
+            ],
+            "menuOpenIcons": [],
+            "renaming": {
+              "shortcut": "s_note",
+              "value": "线代笔记",
+              "focused": true
+            }
+          }
+        },
+        "2:从桌面移除": {
+          "effects": [],
+          "syncEffects": 0,
+          "afterClick": {
+            "menu": {
+              "phase": "closing",
+              "style": "position: fixed; left: 120px; top: 140px; z-index: var(--wb-z-desktop-menu, 9650);"
+            },
+            "shortcuts": [
+              "s_untyped:无类型资源",
+              "s_folder:资料夹",
+              "s_quick:收藏",
+              "s_exam:题目集",
+              "s_textbook:教材"
+            ],
+            "menuOpenIcons": [],
+            "renaming": null
+          },
+          "afterExit": {
+            "menu": null,
+            "shortcuts": [
+              "s_untyped:无类型资源",
+              "s_folder:资料夹",
+              "s_quick:收藏",
+              "s_exam:题目集",
+              "s_textbook:教材"
+            ],
+            "menuOpenIcons": [],
+            "renaming": null
+          }
+        }
+      }
+    },
+    "s_untyped": {
+      "icon": "<div role=\"button\" tabindex=\"0\" class=\"wb-desk-icon\" data-wb-desk-shortcut=\"s_untyped\" aria-label=\"无类型资源\" data-menu-open=\"true\"><span class=\"wb-desk-icon__art\" aria-hidden=\"true\"><span aria-hidden=\"true\" class=\"pointer-events-none inline-flex shrink-0 select-none items-center justify-center\" style=\"width: 52px; height: 52px; border-radius: 22.5%; background: linear-gradient(180deg, #ffffff, #eef1f5); box-shadow: inset 0 0 0 0.5px rgba(31, 41, 55, 0.16);\"><img src=\"data:image/svg+xml,%3csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20150%20150'%3e%3clinearGradient%20id='fl_body'%20x1='72'%20x2='72'%20y1='14'%20y2='136'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%23F8FDFC'%20offset='0'/%3e%3cstop%20stop-color='%23D5EAE8'%20offset='1'/%3e%3c/linearGradient%3e%3cpath%20d='M36%2014h48l34%2034v78a10%2010%200%200%201-10%2010H36a10%2010%200%200%201-10-10V24a10%2010%200%200%201%2010-10z'%20fill='url(%23fl_body)'%20stroke='%23A6C4CB'%20stroke-width='3'/%3e%3clinearGradient%20id='fl_fold'%20x1='101'%20x2='101'%20y1='14'%20y2='48'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%235FD0CB'%20offset='0'/%3e%3cstop%20stop-color='%2314A5A0'%20offset='1'/%3e%3c/linearGradient%3e%3cpath%20d='M84%2014l34%2034H94a10%2010%200%200%201-10-10V14z'%20fill='url(%23fl_fold)'/%3e%3clinearGradient%20id='fl_tag'%20x1='36'%20x2='36'%20y1='60'%20y2='86'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%23F9AC33'%20offset='0'/%3e%3cstop%20stop-color='%23F0603C'%20offset='1'/%3e%3c/linearGradient%3e%3cpath%20d='M26%2060h34a6%206%200%200%201%206%206v14a6%206%200%200%201-6%206H26V60z'%20fill='url(%23fl_tag)'/%3e%3crect%20x='40'%20y='98'%20width='52'%20height='7'%20rx='3.5'%20fill='%2314A5A0'%20opacity='.8'/%3e%3crect%20x='40'%20y='112'%20width='38'%20height='7'%20rx='3.5'%20fill='%239BC3CE'/%3e%3c/svg%3e\" alt=\"\" draggable=\"false\" class=\"pointer-events-none select-none object-contain\" style=\"width: 78%; height: 78%;\"></span></span><span class=\"wb-desk-icon__label\">无类型资源</span></div>",
+      "menu": {
+        "html": "<div role=\"menu\" class=\"wb-desk-menu wb-glass-lens\" data-phase=\"open\" style=\"position: fixed; left: 120px; top: 140px; z-index: var(--wb-z-desktop-menu, 9650);\"><div class=\"wb-glass-replica\" aria-hidden=\"true\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M184,80V208a8,8,0,0,1-8,8H48a8,8,0,0,1-8-8V80a8,8,0,0,1,8-8H176A8,8,0,0,1,184,80Z\" opacity=\"0.2\"></path><path d=\"M224,104a8,8,0,0,1-16,0V59.32l-66.33,66.34a8,8,0,0,1-11.32-11.32L196.68,48H152a8,8,0,0,1,0-16h64a8,8,0,0,1,8,8Zm-40,24a8,8,0,0,0-8,8v72H48V80h72a8,8,0,0,0,0-16H48A16,16,0,0,0,32,80V208a16,16,0,0,0,16,16H176a16,16,0,0,0,16-16V136A8,8,0,0,0,184,128Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">打开</span></button><div class=\"wb-desk-menu-sep\" role=\"separator\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M221.66,90.34,192,120,136,64l29.66-29.66a8,8,0,0,1,11.31,0L221.66,79A8,8,0,0,1,221.66,90.34Z\" opacity=\"0.2\"></path><path d=\"M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM92.69,208H48V163.31l88-88L180.69,120ZM192,108.68,147.31,64l24-24L216,84.68Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">重命名</span></button><button type=\"button\" class=\"wb-desk-menu-item wb-desk-menu-item--danger\" data-wb-desk-item=\"\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M200,56V208a8,8,0,0,1-8,8H64a8,8,0,0,1-8-8V56Z\" opacity=\"0.2\"></path><path d=\"M216,48H176V40a24,24,0,0,0-24-24H104A24,24,0,0,0,80,40v8H40a8,8,0,0,0,0,16h8V208a16,16,0,0,0,16,16H192a16,16,0,0,0,16-16V64h8a8,8,0,0,0,0-16ZM96,40a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8v8H96Zm96,168H64V64H192ZM112,104v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm48,0v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">从桌面移除</span></button></div>",
+        "rows": [
+          {
+            "role": "menuitem",
+            "label": "打开",
+            "className": "wb-desk-menu-item"
+          },
+          {
+            "separator": true,
+            "className": "wb-desk-menu-sep"
+          },
+          {
+            "role": "menuitem",
+            "label": "重命名",
+            "className": "wb-desk-menu-item"
+          },
+          {
+            "role": "menuitem",
+            "label": "从桌面移除",
+            "className": "wb-desk-menu-item wb-desk-menu-item--danger"
+          }
+        ]
+      },
+      "clicks": {
+        "0:打开": {
+          "effects": [],
+          "syncEffects": 0,
+          "afterClick": {
+            "menu": {
+              "phase": "closing",
+              "style": "position: fixed; left: 120px; top: 140px; z-index: var(--wb-z-desktop-menu, 9650);"
+            },
+            "shortcuts": [
+              "s_note:线代笔记",
+              "s_untyped:无类型资源",
+              "s_folder:资料夹",
+              "s_quick:收藏",
+              "s_exam:题目集",
+              "s_textbook:教材"
+            ],
+            "menuOpenIcons": [],
+            "renaming": null
+          },
+          "afterExit": {
+            "menu": null,
+            "shortcuts": [
+              "s_note:线代笔记",
+              "s_untyped:无类型资源",
+              "s_folder:资料夹",
+              "s_quick:收藏",
+              "s_exam:题目集",
+              "s_textbook:教材"
+            ],
+            "menuOpenIcons": [],
+            "renaming": null
+          }
+        },
+        "1:重命名": {
+          "effects": [],
+          "syncEffects": 0,
+          "afterClick": {
+            "menu": {
+              "phase": "closing",
+              "style": "position: fixed; left: 120px; top: 140px; z-index: var(--wb-z-desktop-menu, 9650);"
+            },
+            "shortcuts": [
+              "s_note:线代笔记",
+              "s_untyped:无类型资源",
+              "s_folder:资料夹",
+              "s_quick:收藏",
+              "s_exam:题目集",
+              "s_textbook:教材"
+            ],
+            "menuOpenIcons": [],
+            "renaming": {
+              "shortcut": "s_untyped",
+              "value": "无类型资源",
+              "focused": true
+            }
+          },
+          "afterExit": {
+            "menu": null,
+            "shortcuts": [
+              "s_note:线代笔记",
+              "s_untyped:无类型资源",
+              "s_folder:资料夹",
+              "s_quick:收藏",
+              "s_exam:题目集",
+              "s_textbook:教材"
+            ],
+            "menuOpenIcons": [],
+            "renaming": {
+              "shortcut": "s_untyped",
+              "value": "无类型资源",
+              "focused": true
+            }
+          }
+        },
+        "2:从桌面移除": {
+          "effects": [],
+          "syncEffects": 0,
+          "afterClick": {
+            "menu": {
+              "phase": "closing",
+              "style": "position: fixed; left: 120px; top: 140px; z-index: var(--wb-z-desktop-menu, 9650);"
+            },
+            "shortcuts": [
+              "s_note:线代笔记",
+              "s_folder:资料夹",
+              "s_quick:收藏",
+              "s_exam:题目集",
+              "s_textbook:教材"
+            ],
+            "menuOpenIcons": [],
+            "renaming": null
+          },
+          "afterExit": {
+            "menu": null,
+            "shortcuts": [
+              "s_note:线代笔记",
+              "s_folder:资料夹",
+              "s_quick:收藏",
+              "s_exam:题目集",
+              "s_textbook:教材"
+            ],
+            "menuOpenIcons": [],
+            "renaming": null
+          }
+        }
+      }
+    },
+    "s_folder": {
+      "icon": "<div role=\"button\" tabindex=\"0\" class=\"wb-desk-icon\" data-wb-desk-shortcut=\"s_folder\" aria-label=\"资料夹\" data-menu-open=\"true\"><span class=\"wb-desk-icon__art\" aria-hidden=\"true\"><img src=\"data:image/svg+xml,%3csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20150%20150'%3e%3clinearGradient%20id='fd_back'%20x1='75'%20x2='75'%20y1='26'%20y2='92'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%2314607E'%20offset='0'/%3e%3cstop%20stop-color='%231D3F6E'%20offset='1'/%3e%3c/linearGradient%3e%3cpath%20d='M18%2036a10%2010%200%200%201%2010-10h28l12%2012h46a10%2010%200%200%201%2010%2010v56H18V36z'%20fill='url(%23fd_back)'/%3e%3clinearGradient%20id='fd_front'%20x1='75'%20x2='75'%20y1='52'%20y2='124'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%232BB3A3'%20offset='0'/%3e%3cstop%20stop-color='%23127487'%20offset='1'/%3e%3c/linearGradient%3e%3cpath%20d='M14%2060a8%208%200%200%201%208-8h106a8%208%200%200%201%207.8%209.8l-10.6%2050a10%2010%200%200%201-9.8%208H26.6a10%2010%200%200%201-9.8-8l-10.6-50A8%208%200%200%201%2014%2060z'%20fill='url(%23fd_front)'/%3e%3cpath%20d='M22%2052h106a8%208%200%200%201%207.7%206H14.3a8%208%200%200%201%207.7-6z'%20fill='%23fff'%20opacity='.22'/%3e%3c/svg%3e\" alt=\"\" draggable=\"false\" width=\"52\" height=\"52\" class=\"pointer-events-none shrink-0 select-none object-contain\"></span><span class=\"wb-desk-icon__label\">资料夹</span></div>",
+      "menu": {
+        "html": "<div role=\"menu\" class=\"wb-desk-menu wb-glass-lens\" data-phase=\"open\" style=\"position: fixed; left: 120px; top: 140px; z-index: var(--wb-z-desktop-menu, 9650);\"><div class=\"wb-glass-replica\" aria-hidden=\"true\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M184,80V208a8,8,0,0,1-8,8H48a8,8,0,0,1-8-8V80a8,8,0,0,1,8-8H176A8,8,0,0,1,184,80Z\" opacity=\"0.2\"></path><path d=\"M224,104a8,8,0,0,1-16,0V59.32l-66.33,66.34a8,8,0,0,1-11.32-11.32L196.68,48H152a8,8,0,0,1,0-16h64a8,8,0,0,1,8,8Zm-40,24a8,8,0,0,0-8,8v72H48V80h72a8,8,0,0,0,0-16H48A16,16,0,0,0,32,80V208a16,16,0,0,0,16,16H176a16,16,0,0,0,16-16V136A8,8,0,0,0,184,128Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">打开</span></button><div class=\"wb-desk-menu-sep\" role=\"separator\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M221.66,90.34,192,120,136,64l29.66-29.66a8,8,0,0,1,11.31,0L221.66,79A8,8,0,0,1,221.66,90.34Z\" opacity=\"0.2\"></path><path d=\"M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM92.69,208H48V163.31l88-88L180.69,120ZM192,108.68,147.31,64l24-24L216,84.68Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">重命名</span></button><button type=\"button\" class=\"wb-desk-menu-item wb-desk-menu-item--danger\" data-wb-desk-item=\"\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M200,56V208a8,8,0,0,1-8,8H64a8,8,0,0,1-8-8V56Z\" opacity=\"0.2\"></path><path d=\"M216,48H176V40a24,24,0,0,0-24-24H104A24,24,0,0,0,80,40v8H40a8,8,0,0,0,0,16h8V208a16,16,0,0,0,16,16H192a16,16,0,0,0,16-16V64h8a8,8,0,0,0,0-16ZM96,40a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8v8H96Zm96,168H64V64H192ZM112,104v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm48,0v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">从桌面移除</span></button></div>",
+        "rows": [
+          {
+            "role": "menuitem",
+            "label": "打开",
+            "className": "wb-desk-menu-item"
+          },
+          {
+            "separator": true,
+            "className": "wb-desk-menu-sep"
+          },
+          {
+            "role": "menuitem",
+            "label": "重命名",
+            "className": "wb-desk-menu-item"
+          },
+          {
+            "role": "menuitem",
+            "label": "从桌面移除",
+            "className": "wb-desk-menu-item wb-desk-menu-item--danger"
+          }
+        ]
+      },
+      "clicks": {
+        "0:打开": {
+          "effects": [
+            [
+              "workbenchBus.activate",
+              {
+                "typeId": "files",
+                "instanceKey": "",
+                "action": "openFolder",
+                "payload": {
+                  "folderId": "folder_1"
+                },
+                "fallbackLaunch": {
+                  "typeId": "files",
+                  "reason": "shortcut"
+                }
+              }
+            ]
+          ],
+          "syncEffects": 1,
+          "afterClick": {
+            "menu": {
+              "phase": "closing",
+              "style": "position: fixed; left: 120px; top: 140px; z-index: var(--wb-z-desktop-menu, 9650);"
+            },
+            "shortcuts": [
+              "s_note:线代笔记",
+              "s_untyped:无类型资源",
+              "s_folder:资料夹",
+              "s_quick:收藏",
+              "s_exam:题目集",
+              "s_textbook:教材"
+            ],
+            "menuOpenIcons": [],
+            "renaming": null
+          },
+          "afterExit": {
+            "menu": null,
+            "shortcuts": [
+              "s_note:线代笔记",
+              "s_untyped:无类型资源",
+              "s_folder:资料夹",
+              "s_quick:收藏",
+              "s_exam:题目集",
+              "s_textbook:教材"
+            ],
+            "menuOpenIcons": [],
+            "renaming": null
+          }
+        },
+        "1:重命名": {
+          "effects": [],
+          "syncEffects": 0,
+          "afterClick": {
+            "menu": {
+              "phase": "closing",
+              "style": "position: fixed; left: 120px; top: 140px; z-index: var(--wb-z-desktop-menu, 9650);"
+            },
+            "shortcuts": [
+              "s_note:线代笔记",
+              "s_untyped:无类型资源",
+              "s_folder:资料夹",
+              "s_quick:收藏",
+              "s_exam:题目集",
+              "s_textbook:教材"
+            ],
+            "menuOpenIcons": [],
+            "renaming": {
+              "shortcut": "s_folder",
+              "value": "资料夹",
+              "focused": true
+            }
+          },
+          "afterExit": {
+            "menu": null,
+            "shortcuts": [
+              "s_note:线代笔记",
+              "s_untyped:无类型资源",
+              "s_folder:资料夹",
+              "s_quick:收藏",
+              "s_exam:题目集",
+              "s_textbook:教材"
+            ],
+            "menuOpenIcons": [],
+            "renaming": {
+              "shortcut": "s_folder",
+              "value": "资料夹",
+              "focused": true
+            }
+          }
+        },
+        "2:从桌面移除": {
+          "effects": [],
+          "syncEffects": 0,
+          "afterClick": {
+            "menu": {
+              "phase": "closing",
+              "style": "position: fixed; left: 120px; top: 140px; z-index: var(--wb-z-desktop-menu, 9650);"
+            },
+            "shortcuts": [
+              "s_note:线代笔记",
+              "s_untyped:无类型资源",
+              "s_quick:收藏",
+              "s_exam:题目集",
+              "s_textbook:教材"
+            ],
+            "menuOpenIcons": [],
+            "renaming": null
+          },
+          "afterExit": {
+            "menu": null,
+            "shortcuts": [
+              "s_note:线代笔记",
+              "s_untyped:无类型资源",
+              "s_quick:收藏",
+              "s_exam:题目集",
+              "s_textbook:教材"
+            ],
+            "menuOpenIcons": [],
+            "renaming": null
+          }
+        }
+      }
+    },
+    "s_quick": {
+      "icon": "<div role=\"button\" tabindex=\"0\" class=\"wb-desk-icon\" data-wb-desk-shortcut=\"s_quick\" aria-label=\"收藏\" data-menu-open=\"true\"><span class=\"wb-desk-icon__art\" aria-hidden=\"true\"><svg width=\"52\" height=\"52\" viewBox=\"0 0 24 24\" fill=\"none\" aria-hidden=\"true\"><rect x=\"4\" y=\"2\" width=\"16\" height=\"20\" rx=\"2\" fill=\"var(--resource-icon-yellow-bg, #FBF3DB)\" stroke=\"var(--resource-icon-yellow-border, #F9E2AF)\" stroke-width=\"1.2\"></rect><path d=\"M9 2V7.5L12 5.8L15 7.5V2\" fill=\"var(--resource-icon-yellow-fg, #CF9232)\" fill-opacity=\"0.8\" stroke=\"var(--resource-icon-yellow-fg, #CF9232)\" stroke-width=\"0.5\" stroke-opacity=\"0.3\" stroke-linejoin=\"round\"></path><path d=\"M12 9L13.76 12.53L17.66 13.1L14.83 15.87L15.52 19.76L12 17.9L8.48 19.76L9.17 15.87L6.34 13.1L10.24 12.53Z\" fill=\"var(--resource-icon-yellow-fg, #CF9232)\" fill-opacity=\"0.8\" stroke=\"var(--resource-icon-yellow-fg, #CF9232)\" stroke-width=\"0.5\" stroke-opacity=\"0.4\" stroke-linejoin=\"round\"></path></svg></span><span class=\"wb-desk-icon__label\">收藏</span></div>",
+      "menu": {
+        "html": "<div role=\"menu\" class=\"wb-desk-menu wb-glass-lens\" data-phase=\"open\" style=\"position: fixed; left: 120px; top: 140px; z-index: var(--wb-z-desktop-menu, 9650);\"><div class=\"wb-glass-replica\" aria-hidden=\"true\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M184,80V208a8,8,0,0,1-8,8H48a8,8,0,0,1-8-8V80a8,8,0,0,1,8-8H176A8,8,0,0,1,184,80Z\" opacity=\"0.2\"></path><path d=\"M224,104a8,8,0,0,1-16,0V59.32l-66.33,66.34a8,8,0,0,1-11.32-11.32L196.68,48H152a8,8,0,0,1,0-16h64a8,8,0,0,1,8,8Zm-40,24a8,8,0,0,0-8,8v72H48V80h72a8,8,0,0,0,0-16H48A16,16,0,0,0,32,80V208a16,16,0,0,0,16,16H176a16,16,0,0,0,16-16V136A8,8,0,0,0,184,128Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">打开</span></button><div class=\"wb-desk-menu-sep\" role=\"separator\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M221.66,90.34,192,120,136,64l29.66-29.66a8,8,0,0,1,11.31,0L221.66,79A8,8,0,0,1,221.66,90.34Z\" opacity=\"0.2\"></path><path d=\"M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM92.69,208H48V163.31l88-88L180.69,120ZM192,108.68,147.31,64l24-24L216,84.68Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">重命名</span></button><button type=\"button\" class=\"wb-desk-menu-item wb-desk-menu-item--danger\" data-wb-desk-item=\"\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M200,56V208a8,8,0,0,1-8,8H64a8,8,0,0,1-8-8V56Z\" opacity=\"0.2\"></path><path d=\"M216,48H176V40a24,24,0,0,0-24-24H104A24,24,0,0,0,80,40v8H40a8,8,0,0,0,0,16h8V208a16,16,0,0,0,16,16H192a16,16,0,0,0,16-16V64h8a8,8,0,0,0,0-16ZM96,40a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8v8H96Zm96,168H64V64H192ZM112,104v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm48,0v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">从桌面移除</span></button></div>",
+        "rows": [
+          {
+            "role": "menuitem",
+            "label": "打开",
+            "className": "wb-desk-menu-item"
+          },
+          {
+            "separator": true,
+            "className": "wb-desk-menu-sep"
+          },
+          {
+            "role": "menuitem",
+            "label": "重命名",
+            "className": "wb-desk-menu-item"
+          },
+          {
+            "role": "menuitem",
+            "label": "从桌面移除",
+            "className": "wb-desk-menu-item wb-desk-menu-item--danger"
+          }
+        ]
+      },
+      "clicks": {
+        "0:打开": {
+          "effects": [
+            [
+              "workbenchBus.activate",
+              {
+                "typeId": "files",
+                "instanceKey": "",
+                "action": "openQuickAccess",
+                "payload": {
+                  "type": "favorites"
+                },
+                "fallbackLaunch": {
+                  "typeId": "files",
+                  "reason": "shortcut"
+                }
+              }
+            ]
+          ],
+          "syncEffects": 1,
+          "afterClick": {
+            "menu": {
+              "phase": "closing",
+              "style": "position: fixed; left: 120px; top: 140px; z-index: var(--wb-z-desktop-menu, 9650);"
+            },
+            "shortcuts": [
+              "s_note:线代笔记",
+              "s_untyped:无类型资源",
+              "s_folder:资料夹",
+              "s_quick:收藏",
+              "s_exam:题目集",
+              "s_textbook:教材"
+            ],
+            "menuOpenIcons": [],
+            "renaming": null
+          },
+          "afterExit": {
+            "menu": null,
+            "shortcuts": [
+              "s_note:线代笔记",
+              "s_untyped:无类型资源",
+              "s_folder:资料夹",
+              "s_quick:收藏",
+              "s_exam:题目集",
+              "s_textbook:教材"
+            ],
+            "menuOpenIcons": [],
+            "renaming": null
+          }
+        },
+        "1:重命名": {
+          "effects": [],
+          "syncEffects": 0,
+          "afterClick": {
+            "menu": {
+              "phase": "closing",
+              "style": "position: fixed; left: 120px; top: 140px; z-index: var(--wb-z-desktop-menu, 9650);"
+            },
+            "shortcuts": [
+              "s_note:线代笔记",
+              "s_untyped:无类型资源",
+              "s_folder:资料夹",
+              "s_quick:收藏",
+              "s_exam:题目集",
+              "s_textbook:教材"
+            ],
+            "menuOpenIcons": [],
+            "renaming": {
+              "shortcut": "s_quick",
+              "value": "收藏",
+              "focused": true
+            }
+          },
+          "afterExit": {
+            "menu": null,
+            "shortcuts": [
+              "s_note:线代笔记",
+              "s_untyped:无类型资源",
+              "s_folder:资料夹",
+              "s_quick:收藏",
+              "s_exam:题目集",
+              "s_textbook:教材"
+            ],
+            "menuOpenIcons": [],
+            "renaming": {
+              "shortcut": "s_quick",
+              "value": "收藏",
+              "focused": true
+            }
+          }
+        },
+        "2:从桌面移除": {
+          "effects": [],
+          "syncEffects": 0,
+          "afterClick": {
+            "menu": {
+              "phase": "closing",
+              "style": "position: fixed; left: 120px; top: 140px; z-index: var(--wb-z-desktop-menu, 9650);"
+            },
+            "shortcuts": [
+              "s_note:线代笔记",
+              "s_untyped:无类型资源",
+              "s_folder:资料夹",
+              "s_exam:题目集",
+              "s_textbook:教材"
+            ],
+            "menuOpenIcons": [],
+            "renaming": null
+          },
+          "afterExit": {
+            "menu": null,
+            "shortcuts": [
+              "s_note:线代笔记",
+              "s_untyped:无类型资源",
+              "s_folder:资料夹",
+              "s_exam:题目集",
+              "s_textbook:教材"
+            ],
+            "menuOpenIcons": [],
+            "renaming": null
+          }
+        }
+      }
+    },
+    "s_exam": {
+      "icon": "<div role=\"button\" tabindex=\"0\" class=\"wb-desk-icon\" data-wb-desk-shortcut=\"s_exam\" aria-label=\"题目集\" data-menu-open=\"true\"><span class=\"wb-desk-icon__art\" aria-hidden=\"true\"><span aria-hidden=\"true\" class=\"pointer-events-none inline-flex shrink-0 select-none items-center justify-center\" style=\"width: 52px; height: 52px; border-radius: 22.5%; background: linear-gradient(180deg, #ffffff, #eef1f5); box-shadow: inset 0 0 0 0.5px rgba(31, 41, 55, 0.16);\"><img src=\"/src/features/workbench/icons/app-icons/exam.svg\" alt=\"\" draggable=\"false\" class=\"pointer-events-none select-none object-contain\" style=\"width: 78%; height: 78%;\"></span></span><span class=\"wb-desk-icon__label\">题目集</span></div>",
+      "menu": {
+        "html": "<div role=\"menu\" class=\"wb-desk-menu wb-glass-lens\" data-phase=\"open\" style=\"position: fixed; left: 120px; top: 140px; z-index: var(--wb-z-desktop-menu, 9650);\"><div class=\"wb-glass-replica\" aria-hidden=\"true\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M184,80V208a8,8,0,0,1-8,8H48a8,8,0,0,1-8-8V80a8,8,0,0,1,8-8H176A8,8,0,0,1,184,80Z\" opacity=\"0.2\"></path><path d=\"M224,104a8,8,0,0,1-16,0V59.32l-66.33,66.34a8,8,0,0,1-11.32-11.32L196.68,48H152a8,8,0,0,1,0-16h64a8,8,0,0,1,8,8Zm-40,24a8,8,0,0,0-8,8v72H48V80h72a8,8,0,0,0,0-16H48A16,16,0,0,0,32,80V208a16,16,0,0,0,16,16H176a16,16,0,0,0,16-16V136A8,8,0,0,0,184,128Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">打开</span></button><div class=\"wb-desk-menu-sep\" role=\"separator\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M221.66,90.34,192,120,136,64l29.66-29.66a8,8,0,0,1,11.31,0L221.66,79A8,8,0,0,1,221.66,90.34Z\" opacity=\"0.2\"></path><path d=\"M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM92.69,208H48V163.31l88-88L180.69,120ZM192,108.68,147.31,64l24-24L216,84.68Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">重命名</span></button><button type=\"button\" class=\"wb-desk-menu-item wb-desk-menu-item--danger\" data-wb-desk-item=\"\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M200,56V208a8,8,0,0,1-8,8H64a8,8,0,0,1-8-8V56Z\" opacity=\"0.2\"></path><path d=\"M216,48H176V40a24,24,0,0,0-24-24H104A24,24,0,0,0,80,40v8H40a8,8,0,0,0,0,16h8V208a16,16,0,0,0,16,16H192a16,16,0,0,0,16-16V64h8a8,8,0,0,0,0-16ZM96,40a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8v8H96Zm96,168H64V64H192ZM112,104v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm48,0v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">从桌面移除</span></button></div>",
+        "rows": [
+          {
+            "role": "menuitem",
+            "label": "打开",
+            "className": "wb-desk-menu-item"
+          },
+          {
+            "separator": true,
+            "className": "wb-desk-menu-sep"
+          },
+          {
+            "role": "menuitem",
+            "label": "重命名",
+            "className": "wb-desk-menu-item"
+          },
+          {
+            "role": "menuitem",
+            "label": "从桌面移除",
+            "className": "wb-desk-menu-item wb-desk-menu-item--danger"
+          }
+        ]
+      },
+      "clicks": {
+        "0:打开": {
+          "effects": [
+            [
+              "workbenchBus.launch",
+              {
+                "typeId": "exam",
+                "reason": "shortcut"
+              }
+            ]
+          ],
+          "syncEffects": 1,
+          "afterClick": {
+            "menu": {
+              "phase": "closing",
+              "style": "position: fixed; left: 120px; top: 140px; z-index: var(--wb-z-desktop-menu, 9650);"
+            },
+            "shortcuts": [
+              "s_note:线代笔记",
+              "s_untyped:无类型资源",
+              "s_folder:资料夹",
+              "s_quick:收藏",
+              "s_exam:题目集",
+              "s_textbook:教材"
+            ],
+            "menuOpenIcons": [],
+            "renaming": null
+          },
+          "afterExit": {
+            "menu": null,
+            "shortcuts": [
+              "s_note:线代笔记",
+              "s_untyped:无类型资源",
+              "s_folder:资料夹",
+              "s_quick:收藏",
+              "s_exam:题目集",
+              "s_textbook:教材"
+            ],
+            "menuOpenIcons": [],
+            "renaming": null
+          }
+        },
+        "1:重命名": {
+          "effects": [],
+          "syncEffects": 0,
+          "afterClick": {
+            "menu": {
+              "phase": "closing",
+              "style": "position: fixed; left: 120px; top: 140px; z-index: var(--wb-z-desktop-menu, 9650);"
+            },
+            "shortcuts": [
+              "s_note:线代笔记",
+              "s_untyped:无类型资源",
+              "s_folder:资料夹",
+              "s_quick:收藏",
+              "s_exam:题目集",
+              "s_textbook:教材"
+            ],
+            "menuOpenIcons": [],
+            "renaming": {
+              "shortcut": "s_exam",
+              "value": "题目集",
+              "focused": true
+            }
+          },
+          "afterExit": {
+            "menu": null,
+            "shortcuts": [
+              "s_note:线代笔记",
+              "s_untyped:无类型资源",
+              "s_folder:资料夹",
+              "s_quick:收藏",
+              "s_exam:题目集",
+              "s_textbook:教材"
+            ],
+            "menuOpenIcons": [],
+            "renaming": {
+              "shortcut": "s_exam",
+              "value": "题目集",
+              "focused": true
+            }
+          }
+        },
+        "2:从桌面移除": {
+          "effects": [],
+          "syncEffects": 0,
+          "afterClick": {
+            "menu": {
+              "phase": "closing",
+              "style": "position: fixed; left: 120px; top: 140px; z-index: var(--wb-z-desktop-menu, 9650);"
+            },
+            "shortcuts": [
+              "s_note:线代笔记",
+              "s_untyped:无类型资源",
+              "s_folder:资料夹",
+              "s_quick:收藏",
+              "s_textbook:教材"
+            ],
+            "menuOpenIcons": [],
+            "renaming": null
+          },
+          "afterExit": {
+            "menu": null,
+            "shortcuts": [
+              "s_note:线代笔记",
+              "s_untyped:无类型资源",
+              "s_folder:资料夹",
+              "s_quick:收藏",
+              "s_textbook:教材"
+            ],
+            "menuOpenIcons": [],
+            "renaming": null
+          }
+        }
+      }
+    },
+    "s_textbook": {
+      "icon": "<div role=\"button\" tabindex=\"0\" class=\"wb-desk-icon\" data-wb-desk-shortcut=\"s_textbook\" aria-label=\"教材\" data-menu-open=\"true\"><span class=\"wb-desk-icon__art\" aria-hidden=\"true\"><span aria-hidden=\"true\" class=\"pointer-events-none inline-flex shrink-0 select-none items-center justify-center\" style=\"width: 52px; height: 52px; border-radius: 22.5%; background: linear-gradient(180deg, #ffffff, #eef1f5); box-shadow: inset 0 0 0 0.5px rgba(31, 41, 55, 0.16);\"><img src=\"data:image/svg+xml,%3csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20150%20150'%3e%3crect%20x='40'%20y='24'%20width='82'%20height='102'%20rx='8'%20fill='%23DFEFED'%20stroke='%23A6C4CB'%20stroke-width='3'/%3e%3cpath%20d='M116%2034v86M110%2030v94'%20stroke='%23B9DEDA'%20stroke-width='3'%20stroke-linecap='round'/%3e%3clinearGradient%20id='tb_cover'%20x1='70'%20x2='70'%20y1='16'%20y2='130'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%232BB3A3'%20offset='0'/%3e%3cstop%20stop-color='%2314607E'%20offset='.62'/%3e%3cstop%20stop-color='%231D3F6E'%20offset='1'/%3e%3c/linearGradient%3e%3cpath%20d='M40%2016h62a10%2010%200%200%201%2010%2010v98a10%2010%200%200%201-10%2010H40a12%2012%200%200%201-12-12V28a12%2012%200%200%201%2012-12z'%20fill='url(%23tb_cover)'/%3e%3clinearGradient%20id='tb_spine'%20x1='35'%20x2='35'%20y1='16'%20y2='134'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%231A4A70'%20offset='0'/%3e%3cstop%20stop-color='%2316325A'%20offset='1'/%3e%3c/linearGradient%3e%3cpath%20d='M40%2016h4v118h-4a12%2012%200%200%201-12-12V28a12%2012%200%200%201%2012-12z'%20fill='url(%23tb_spine)'/%3e%3clinearGradient%20id='tb_mark'%20x1='88'%20x2='88'%20y1='16'%20y2='58'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%23F9AC33'%20offset='0'/%3e%3cstop%20stop-color='%23F0603C'%20offset='1'/%3e%3c/linearGradient%3e%3cpath%20d='M78%2016h20v42l-10-10-10%2010V16z'%20fill='url(%23tb_mark)'/%3e%3crect%20x='54'%20y='86'%20width='40'%20height='7'%20rx='3.5'%20fill='%23fff'%20opacity='.9'/%3e%3crect%20x='54'%20y='100'%20width='28'%20height='7'%20rx='3.5'%20fill='%23fff'%20opacity='.55'/%3e%3c/svg%3e\" alt=\"\" draggable=\"false\" class=\"pointer-events-none select-none object-contain\" style=\"width: 78%; height: 78%;\"></span></span><span class=\"wb-desk-icon__label\">教材</span></div>",
+      "menu": {
+        "html": "<div role=\"menu\" class=\"wb-desk-menu wb-glass-lens\" data-phase=\"open\" style=\"position: fixed; left: 120px; top: 140px; z-index: var(--wb-z-desktop-menu, 9650);\"><div class=\"wb-glass-replica\" aria-hidden=\"true\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M184,80V208a8,8,0,0,1-8,8H48a8,8,0,0,1-8-8V80a8,8,0,0,1,8-8H176A8,8,0,0,1,184,80Z\" opacity=\"0.2\"></path><path d=\"M224,104a8,8,0,0,1-16,0V59.32l-66.33,66.34a8,8,0,0,1-11.32-11.32L196.68,48H152a8,8,0,0,1,0-16h64a8,8,0,0,1,8,8Zm-40,24a8,8,0,0,0-8,8v72H48V80h72a8,8,0,0,0,0-16H48A16,16,0,0,0,32,80V208a16,16,0,0,0,16,16H176a16,16,0,0,0,16-16V136A8,8,0,0,0,184,128Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">打开</span></button><div class=\"wb-desk-menu-sep\" role=\"separator\"></div><button type=\"button\" class=\"wb-desk-menu-item\" data-wb-desk-item=\"\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M221.66,90.34,192,120,136,64l29.66-29.66a8,8,0,0,1,11.31,0L221.66,79A8,8,0,0,1,221.66,90.34Z\" opacity=\"0.2\"></path><path d=\"M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM92.69,208H48V163.31l88-88L180.69,120ZM192,108.68,147.31,64l24-24L216,84.68Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">重命名</span></button><button type=\"button\" class=\"wb-desk-menu-item wb-desk-menu-item--danger\" data-wb-desk-item=\"\" role=\"menuitem\"><span class=\"wb-desk-menu-item-icon\" aria-hidden=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M200,56V208a8,8,0,0,1-8,8H64a8,8,0,0,1-8-8V56Z\" opacity=\"0.2\"></path><path d=\"M216,48H176V40a24,24,0,0,0-24-24H104A24,24,0,0,0,80,40v8H40a8,8,0,0,0,0,16h8V208a16,16,0,0,0,16,16H192a16,16,0,0,0,16-16V64h8a8,8,0,0,0,0-16ZM96,40a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8v8H96Zm96,168H64V64H192ZM112,104v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm48,0v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Z\"></path></svg></span><span class=\"wb-desk-menu-item-label\">从桌面移除</span></button></div>",
+        "rows": [
+          {
+            "role": "menuitem",
+            "label": "打开",
+            "className": "wb-desk-menu-item"
+          },
+          {
+            "separator": true,
+            "className": "wb-desk-menu-sep"
+          },
+          {
+            "role": "menuitem",
+            "label": "重命名",
+            "className": "wb-desk-menu-item"
+          },
+          {
+            "role": "menuitem",
+            "label": "从桌面移除",
+            "className": "wb-desk-menu-item wb-desk-menu-item--danger"
+          }
+        ]
+      },
+      "clicks": {
+        "0:打开": {
+          "effects": [
+            [
+              "workbenchBus.activate",
+              {
+                "typeId": "files",
+                "instanceKey": "",
+                "action": "openQuickAccess",
+                "payload": {
+                  "type": "textbooks"
+                },
+                "fallbackLaunch": {
+                  "typeId": "files",
+                  "reason": "shortcut"
+                }
+              }
+            ]
+          ],
+          "syncEffects": 1,
+          "afterClick": {
+            "menu": {
+              "phase": "closing",
+              "style": "position: fixed; left: 120px; top: 140px; z-index: var(--wb-z-desktop-menu, 9650);"
+            },
+            "shortcuts": [
+              "s_note:线代笔记",
+              "s_untyped:无类型资源",
+              "s_folder:资料夹",
+              "s_quick:收藏",
+              "s_exam:题目集",
+              "s_textbook:教材"
+            ],
+            "menuOpenIcons": [],
+            "renaming": null
+          },
+          "afterExit": {
+            "menu": null,
+            "shortcuts": [
+              "s_note:线代笔记",
+              "s_untyped:无类型资源",
+              "s_folder:资料夹",
+              "s_quick:收藏",
+              "s_exam:题目集",
+              "s_textbook:教材"
+            ],
+            "menuOpenIcons": [],
+            "renaming": null
+          }
+        },
+        "1:重命名": {
+          "effects": [],
+          "syncEffects": 0,
+          "afterClick": {
+            "menu": {
+              "phase": "closing",
+              "style": "position: fixed; left: 120px; top: 140px; z-index: var(--wb-z-desktop-menu, 9650);"
+            },
+            "shortcuts": [
+              "s_note:线代笔记",
+              "s_untyped:无类型资源",
+              "s_folder:资料夹",
+              "s_quick:收藏",
+              "s_exam:题目集",
+              "s_textbook:教材"
+            ],
+            "menuOpenIcons": [],
+            "renaming": {
+              "shortcut": "s_textbook",
+              "value": "教材",
+              "focused": true
+            }
+          },
+          "afterExit": {
+            "menu": null,
+            "shortcuts": [
+              "s_note:线代笔记",
+              "s_untyped:无类型资源",
+              "s_folder:资料夹",
+              "s_quick:收藏",
+              "s_exam:题目集",
+              "s_textbook:教材"
+            ],
+            "menuOpenIcons": [],
+            "renaming": {
+              "shortcut": "s_textbook",
+              "value": "教材",
+              "focused": true
+            }
+          }
+        },
+        "2:从桌面移除": {
+          "effects": [],
+          "syncEffects": 0,
+          "afterClick": {
+            "menu": {
+              "phase": "closing",
+              "style": "position: fixed; left: 120px; top: 140px; z-index: var(--wb-z-desktop-menu, 9650);"
+            },
+            "shortcuts": [
+              "s_note:线代笔记",
+              "s_untyped:无类型资源",
+              "s_folder:资料夹",
+              "s_quick:收藏",
+              "s_exam:题目集"
+            ],
+            "menuOpenIcons": [],
+            "renaming": null
+          },
+          "afterExit": {
+            "menu": null,
+            "shortcuts": [
+              "s_note:线代笔记",
+              "s_untyped:无类型资源",
+              "s_folder:资料夹",
+              "s_quick:收藏",
+              "s_exam:题目集"
+            ],
+            "menuOpenIcons": [],
+            "renaming": null
+          }
+        }
+      }
+    }
+  },
+  "notFound": [
+    [
+      "launchResourceFromDragData",
+      {
+        "resourceId": "note_1",
+        "resourceType": "note",
+        "title": "线代笔记"
+      }
+    ],
+    [
+      "showGlobalNotification",
+      "error",
+      "资源不存在或已被删除"
+    ]
+  ],
+  "dismissal": [
+    [
+      "escape before listeners attach",
+      {
+        "phase": "open",
+        "style": "position: fixed; left: 1016px; top: 2000px; z-index: var(--wb-z-desktop-menu, 9650);"
+      },
+      [
+        "s_folder"
+      ]
+    ],
+    [
+      "after flush",
+      {
+        "phase": "open",
+        "style": "position: fixed; left: 1016px; top: 2000px; z-index: var(--wb-z-desktop-menu, 9650);"
+      },
+      [
+        "s_folder"
+      ]
+    ],
+    [
+      "other key",
+      {
+        "phase": "open",
+        "style": "position: fixed; left: 1016px; top: 2000px; z-index: var(--wb-z-desktop-menu, 9650);"
+      },
+      [
+        "s_folder"
+      ]
+    ],
+    [
+      "pointer down inside",
+      {
+        "phase": "open",
+        "style": "position: fixed; left: 1016px; top: 2000px; z-index: var(--wb-z-desktop-menu, 9650);"
+      },
+      [
+        "s_folder"
+      ]
+    ],
+    [
+      "contextmenu on menu",
+      true
+    ],
+    [
+      "right-click another icon",
+      {
+        "phase": "open",
+        "style": "position: fixed; left: 300px; top: 20px; z-index: var(--wb-z-desktop-menu, 9650);"
+      },
+      [
+        "s_exam"
+      ]
+    ],
+    [
+      "escape",
+      {
+        "phase": "closing",
+        "style": "position: fixed; left: 300px; top: 20px; z-index: var(--wb-z-desktop-menu, 9650);"
+      },
+      []
+    ],
+    [
+      "right-click same icon while closing",
+      {
+        "phase": "open",
+        "style": "position: fixed; left: 310px; top: 30px; z-index: var(--wb-z-desktop-menu, 9650);"
+      },
+      [
+        "s_exam"
+      ]
+    ],
+    [
+      "after exit time",
+      {
+        "phase": "open",
+        "style": "position: fixed; left: 310px; top: 30px; z-index: var(--wb-z-desktop-menu, 9650);"
+      },
+      [
+        "s_exam"
+      ]
+    ],
+    [
+      "pointer down outside",
+      {
+        "phase": "closing",
+        "style": "position: fixed; left: 310px; top: 30px; z-index: var(--wb-z-desktop-menu, 9650);"
+      },
+      []
+    ],
+    [
+      "after exit time",
+      null,
+      []
+    ]
+  ]
+}

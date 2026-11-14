@@ -237,6 +237,9 @@ describe('StatusBar 信号项可见性', () => {
   });
 
   it('品牌菜单：全部应用 / 系统设置 / 退出学习桌面', async () => {
+    // 与 App 的 useWorkbenchMode 启动路径一致：设置模块提供真实写通道。
+    // 菜单迁移到 settings/api 后不再自行导入它；只挂 StatusBar 会让退出调用一直等服务。
+    await import('@/features/settings/components/workbenchMode');
     workbenchBus.setEnabled(true);
     render(<StatusBar />);
 

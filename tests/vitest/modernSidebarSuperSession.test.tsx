@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import zhCNSuperAgent from '@/locales/zh-CN/superAgent.json';
 import enUSSuperAgent from '@/locales/en-US/superAgent.json';
@@ -9,6 +9,9 @@ import {
   useSessionSidebarIndicators,
 } from '@/features/chat/hooks/useSessionSidebarIndicators';
 import { useSuperAgentEnabledStore } from '@/stores/superAgentEnabledStore';
+import { officialUiRender } from '@/ui-plugins/testing/render';
+
+const render = officialUiRender();
 
 const { invokeMock, getCurrentSessionIdMock, superEntryMock } = vi.hoisted(() => ({
   invokeMock: vi.fn(),

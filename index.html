@@ -12,27 +12,9 @@
     <link rel="stylesheet" href="/boot.css" />
     <!-- ★ 启动前主题预判：外部文件以兼容 CSP script-src 'self'；为 boot 占位符选择深浅色 logo -->
     <script src="/boot-theme.js"></script>
-    <!-- ★ 2026-02-04: 最早的全局错误过滤器 - 过滤 Tauri HTTP 插件的已知 bug -->
-    <script>
-      (function() {
-        window.addEventListener('unhandledrejection', function(event) {
-          var reason = event.reason;
-          var message = '';
-          if (reason instanceof Error) {
-            message = reason.message || '';
-          } else if (typeof reason === 'string') {
-            message = reason;
-          } else if (reason && typeof reason === 'object' && reason.message) {
-            message = String(reason.message);
-          }
-          // 过滤 Tauri HTTP 插件的 fetch_cancel_body 错误
-          if (message.indexOf('fetch_cancel_body') !== -1 || message.indexOf('http.fetch_cancel_body') !== -1) {
-            event.preventDefault();
-            event.stopImmediatePropagation();
-          }
-        }, true);
-      })();
-    </script>
+    <!-- ★ 2026-02-04: 最早的全局错误过滤器 - 过滤 Tauri HTTP 插件的已知 bug。
+         CSP script-src 只允许 self，内联脚本会被拦截，因此放在 public/error-filter.js。 -->
+    <script src="/error-filter.js"></script>
   </head>
 
   <body>

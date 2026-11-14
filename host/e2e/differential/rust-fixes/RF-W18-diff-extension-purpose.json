@@ -1,0 +1,20 @@
+{
+  "id": "RF-W18-diff-extension-purpose",
+  "kind": "deliberate",
+  "status": "proposed",
+  "title": "审阅投影仅加载显式声明 diff 用途的编辑器插件",
+  "rust": { "file": "src/components/crepe/officialDiffAdapter.ts", "behavior": "迁移前审阅编辑器只加载固定官方栈，社区 schema 无法参与审阅。" },
+  "fix": {
+    "files": ["src/components/crepe/officialDiffAdapter.ts", "src/components/crepe/plugins/index.ts", "src/features/notes/OfficialDiffReview.tsx"],
+    "behavior": "普通实例默认只读 editor 用途，审阅实例在固定官方栈后、create 前追加 purposes 含 diff 的条目；传入 purpose=diff 和冻结的审阅选项；社区插件工厂及运行异常按插件归属报告。"
+  },
+  "userVisible": "显式支持 diff 的社区插件可参与 AI 修改审阅，未声明的插件不影响审阅；官方投影 uses/pending/controls/titles/accept-all 仍与迁移前一致。",
+  "dataCompat": "接线不改变存储/同步格式；社区 schema 的序列化能力由对应插件负责，只有显式 opt-in 才进审阅。",
+  "evidence": "officialDiffPurpose 2/2 验证用途过滤、冻结上下文和工厂错误归属；officialDiffProjection.golden 逐字节未变且通过。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    { "file": "src/components/crepe/__tests__/officialDiffPurpose.test.ts", "name": "RF-W18-diff-extension-purpose: admits only entries listing diff, passing the diff instance, and drops a throwing factory" }
+  ],
+  "commits": ["96ca01fe"],
+  "notes": "待主编排审批。回撤：撤回 96ca01fe 中 officialDiffAdapter/OfficialDiffReview 的 extensions 接线以及 applyCrepePlugins purpose 过滤，恢复固定官方审阅栈；kernel/SDK 的用途类型不需删除。"
+}

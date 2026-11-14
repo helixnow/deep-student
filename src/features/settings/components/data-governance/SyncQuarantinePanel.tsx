@@ -1,9 +1,9 @@
+import { useRefreshOnReturn } from '@/hooks/useRefreshOnReturn';
 import React, { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ArrowClockwise,
   CircleNotch,
-  ShieldWarning,
   Trash,
   CheckCircle,
 } from "@phosphor-icons/react";
@@ -13,13 +13,7 @@ import { DsButton } from "@/components/ui/DsButton";
 import { CustomScrollArea } from "@/components/custom-scroll-area";
 import { DsAlertDialog } from "@/components/ui/DsDialog";
 import { useBreakpoint } from "@/hooks/useBreakpoint";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/shad/Card";
+import { GroupTitle } from "../settingsTabPrimitives";
 import { showGlobalNotification } from "@/components/UnifiedNotification";
 import { getErrorMessage } from "@/utils/errorUtils";
 
@@ -67,6 +61,8 @@ export const SyncQuarantinePanel: React.FC<{
       setLoading(false);
     }
   }, [t]);
+
+  useRefreshOnReturn(refresh);
 
   useEffect(() => {
     void refresh();
@@ -174,92 +170,77 @@ export const SyncQuarantinePanel: React.FC<{
   }, [isBatchRunning, rows.length, refresh, t]);
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-start justify-between gap-2">
-        <div>
-          <CardTitle className="flex items-center gap-2">
-            <ShieldWarning size={16} className="text-warning" />
+    <section className="min-w-0">
+      <GroupTitle
+        title={
+          <span className="tabular-nums">
             {t("data:governance.quarantine_title", { count: rows.length })}
-          </CardTitle>
-          <CardDescription>
-            {t("data:governance.quarantine_description")}
-          </CardDescription>
-        </div>
-        <div className="flex gap-2">
-          {rows.length > 0 && (
-            <>
-              <DsButton
-                variant={isSmallScreen && confirmingBatch === "retryAll" ? "primary" : "outline"}
-                size="sm"
-                onClick={() => {
-                  if (!isSmallScreen) {
-                    setShowRetryAllDialog(true);
-                    return;
-                  }
-                  // 移动端两段式行内确认（P2-12）
-                  if (confirmingBatch === "retryAll") {
-                    setConfirmingBatch(null);
-                    void handleRetryAll();
-                  } else {
-                    setConfirmingBatch("retryAll");
-                  }
-                }}
-                disabled={isBatchRunning || loading}
-                className="h-8 text-xs max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
-              >
-                {isBatchRunning ? (
-                  <CircleNotch size={14} className="mr-1 animate-spin" />
-                ) : (
-                  <ArrowClockwise size={14} className="mr-1" />
-                )}
-                {isSmallScreen && confirmingBatch === "retryAll"
-                  ? t("common:actions.retry")
-                  : t("data:governance.quarantine_retry_all")}
-              </DsButton>
-              <DsButton
-                variant={isSmallScreen && confirmingBatch === "discardAll" ? "danger" : "ghost"}
-                size="sm"
-                onClick={() => {
-                  if (!isSmallScreen) {
-                    setShowDiscardAllDialog(true);
-                    return;
-                  }
-                  if (confirmingBatch === "discardAll") {
-                    setConfirmingBatch(null);
-                    void handleDiscardAll();
-                  } else {
-                    setConfirmingBatch("discardAll");
-                  }
-                }}
-                disabled={isBatchRunning || loading}
-                className={isSmallScreen && confirmingBatch === "discardAll"
-                  ? "h-8 text-xs max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
-                  : "h-8 text-xs max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11 text-destructive hover:text-destructive"}
-              >
-                <Trash size={14} className="mr-1" />
-                {isSmallScreen && confirmingBatch === "discardAll"
-                  ? t("data:governance.quarantine_discard_all_confirm")
-                  : t("data:governance.quarantine_discard_all")}
-              </DsButton>
-            </>
-          )}
-          <DsButton
-            variant="outline"
-            size="sm"
-            onClick={refresh}
-            disabled={loading}
-            className="h-8 max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
-          >
-            {loading ? (
-              <CircleNotch size={14} className="mr-1.5 animate-spin" />
-            ) : (
-              <ArrowClockwise size={14} className="mr-1.5" />
+          </span>
+        }
+        description={t("data:governance.quarantine_description")}
+        actions={
+          <>
+            {rows.length > 0 && (
+              <>
+                <DsButton
+                  variant={isSmallScreen && confirmingBatch === "retryAll" ? "primary" : "outline"}
+                  size="sm"
+                  onClick={() => {
+                    if (!isSmallScreen) {
+                      setShowRetryAllDialog(true);
+                      return;
+                    }
+                    // 移动端两段式行内确认（P2-12）
+                    if (confirmingBatch === "retryAll") {
+                      setConfirmingBatch(null);
+                      void handleRetryAll();
+                    } else {
+                      setConfirmingBatch("retryAll");
+                    }
+                  }}
+                  disabled={isBatchRunning || loading}
+                  className="h-8 text-xs max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
+                >
+                  {isBatchRunning ? (
+                    <CircleNotch size={14} className="mr-1 animate-spin" />
+                  ) : (
+                    <ArrowClockwise size={14} className="mr-1" />
+                  )}
+                  {isSmallScreen && confirmingBatch === "retryAll"
+                    ? t("common:actions.retry")
+                    : t("data:governance.quarantine_retry_all")}
+                </DsButton>
+                <DsButton
+                  variant={isSmallScreen && confirmingBatch === "discardAll" ? "danger" : "ghost"}
+                  size="sm"
+                  onClick={() => {
+                    if (!isSmallScreen) {
+                      setShowDiscardAllDialog(true);
+                      return;
+                    }
+                    if (confirmingBatch === "discardAll") {
+                      setConfirmingBatch(null);
+                      void handleDiscardAll();
+                    } else {
+                      setConfirmingBatch("discardAll");
+                    }
+                  }}
+                  disabled={isBatchRunning || loading}
+                  className={isSmallScreen && confirmingBatch === "discardAll"
+                    ? "h-8 text-xs max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
+                    : "h-8 text-xs max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11 text-destructive hover:text-destructive"}
+                >
+                  <Trash size={14} className="mr-1" />
+                  {isSmallScreen && confirmingBatch === "discardAll"
+                    ? t("data:governance.quarantine_discard_all_confirm")
+                    : t("data:governance.quarantine_discard_all")}
+                </DsButton>
+              </>
             )}
-            {t("common:actions.refresh")}
-          </DsButton>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-3">
+          </>
+        }
+      />
+      <div className="rounded-2xl bg-muted p-4 space-y-3">
         {rows.length === 0 && !loading && (
           <div className="text-sm text-muted-foreground flex items-center gap-2 py-4">
             <CheckCircle size={16} className="text-success" />
@@ -333,7 +314,7 @@ export const SyncQuarantinePanel: React.FC<{
             </div>
           );
         })}
-      </CardContent>
+      </div>
 
       {/* 批量重试确认对话框（仅桌面；移动端用按钮两段式行内确认） */}
       <DsAlertDialog
@@ -362,6 +343,6 @@ export const SyncQuarantinePanel: React.FC<{
         loading={isBatchRunning}
         disabled={isBatchRunning}
       />
-    </Card>
+    </section>
   );
 };

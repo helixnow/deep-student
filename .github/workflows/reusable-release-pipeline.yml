@@ -1,4 +1,4 @@
-name: Resumable desktop release
+name: Resumable desktop and mobile release
 on:
   workflow_call:
     inputs:
@@ -12,7 +12,7 @@ on:
         default: false
         type: boolean
       allow_unsigned_desktop:
-        default: true
+        default: false
         type: boolean
       allow_missing_migration_fixtures:
         default: false
@@ -49,7 +49,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
-          node-version: '22'
+          node-version: '24'
       - id: plan
         env:
           GH_TOKEN: ${{ github.token }}
@@ -122,8 +122,24 @@ jobs:
       tag_name: ${{ inputs.tag_name }}
       reuse_run_id: ${{ needs.plan.outputs.linux }}
     secrets: inherit
+  android:
+    needs: [verify, frontend]
+    uses: ./.github/workflows/reusable-build-android.yml
+    with:
+      source_sha: ${{ needs.verify.outputs.source_sha }}
+      ref: ${{ needs.verify.outputs.source_sha }}
+      version: ${{ needs.verify.outputs.version }}
+      frontend_dist_artifact: frontend-dist
+    secrets: inherit
   publish:
-    needs: [verify, macos-arm, macos-intel, windows, linux]
+    needs: [verify, macos-arm, macos-intel, windows, linux, android]
+    if: >-
+      !cancelled() &&
+      needs.verify.result == 'success' &&
+      needs.macos-arm.result == 'success' &&
+      needs.macos-intel.result == 'success' &&
+      needs.windows.result == 'success' &&
+      needs.linux.result == 'success'
     permissions:
       contents: write
       actions: read
@@ -132,27 +148,5 @@ jobs:
       source_sha: ${{ needs.verify.outputs.source_sha }}
       tag_name: ${{ inputs.tag_name }}
       version: ${{ needs.verify.outputs.version }}
-      android_result: skipped
+      android_result: ${{ needs.android.result }}
     secrets: inherit
-  android:
-    needs: [verify, publish]
-    runs-on: ubuntu-22.04
-    timeout-minutes: 5
-    permissions:
-      contents: read
-      actions: write
-    steps:
-      - name: Dispatch independent Android supplement
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          TAG: ${{ inputs.tag_name }}
-          SOURCE: ${{ needs.verify.outputs.source_sha }}
-          WORKFLOW_REF: ${{ github.ref_name }}
-        run: |
-          APKS=$(gh release view "$TAG" --json assets --jq '.assets[] | select(.size > 0 and (.name | endswith(".apk"))) | .name')
-          if [ -n "$APKS" ]; then
-            echo 'Android supplement already exists; no rebuild dispatched.'
-            exit 0
-          fi
-          gh workflow run rebuild-android.yml --ref "$WORKFLOW_REF" -f tag_name="$TAG" -f source_ref="$SOURCE"

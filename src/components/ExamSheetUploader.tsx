@@ -34,7 +34,7 @@ import { CustomScrollArea } from './custom-scroll-area';
 import { LatexText } from './LatexText';
 import { TauriAPI, type ExamSheetSessionDetail } from '@/utils/tauriApi';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
-import { emitImportDebug } from '@/debug-panel/plugins/QuestionImportDebugPlugin';
+import { emitImportDebug } from '@/shared/debug/channels/questionImport';
 import { UnifiedModelSelector, type UnifiedModelInfo } from '@/components/shared/UnifiedModelSelector';
 import { UnifiedDragDropZone, DEFAULT_MAX_UPLOAD_FILE_SIZE, type FileTypeDefinition } from '@/components/shared/UnifiedDragDropZone';
 import type { ApiConfig } from '@/types';

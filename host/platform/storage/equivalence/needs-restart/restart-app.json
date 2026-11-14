@@ -1,0 +1,51 @@
+{
+  "domain": "storage",
+  "commands": [
+    "restart_app"
+  ],
+  "scenarios": [
+    {
+      "id": "storage.restart_app.after_purge_marker",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "purge_all_database_files",
+          "args": {}
+        },
+        {
+          "cmd": "restart_app",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.restart_app.after_pending_switch_attempt",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "mark_data_space_pending_switch_to_inactive",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "restart_app",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

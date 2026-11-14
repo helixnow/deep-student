@@ -1,0 +1,22 @@
+{
+  "id": "RF-W21-bat-script-metachar",
+  "kind": "rust-bug",
+  "status": "proposed",
+  "title": "Windows 上经 cmd.exe 启动的 .cmd/.bat stdio MCP 脚本路径含 % 或 ^ 时拒绝启动，不再让 cmd.exe 展开路径里的 %VAR%",
+  "rust": {
+    "file": "src-tauri/crates/dstu-mcp/src/mcp/global.rs",
+    "line": 472,
+    "behavior": "Command::new(&command) 后 spawn（:506）；项目锁定的 std 1.98.1（host/platform/native/wasm/toolchain.txt）对 .bat/.cmd 走 make_bat_command_line（library/std/src/sys/args/windows.rs），脚本名只拒绝含 \" 或以 \\ 结尾（文案 Windows file names may not contain `\"` or end with `\\`），% 与 ^ 原样放进 cmd.exe /c \"\"<script>\" args\" 的引号里。cmd.exe 第 1 阶段在引号内照样展开 %VAR%，脚本路径 C:\\a%X%b\\run.cmd 在 X=\"&calc&\" 时变成 \"C:\\a\"&calc&\"b\\run.cmd\"，& 落到引号外，命令注入成立。"
+  },
+  "fix": {
+    "files": ["host/plugins/mcp/src/spawn-plan.ts"],
+    "behavior": "batchCommandLine 先按 1.98.1 检查 \" 与结尾 \\，文案与 1.98.1 一字不差；再按 std master 额外拒绝 ^ 与 %，文案取 master 原文（`Command` rejects batch scripts that contain contain `\"`, `^` or `%` or end with `\\`，含上游笔误），均以 SpawnInputError（Rust io::ErrorKind::InvalidInput）在 spawn 前失败。参数转义（append_bat_arg 的 %%cd:~,% 方案）本来就对 % 安全，不受影响；非 win32 或非批处理命令不走这里。"
+  },
+  "evidence": "A05 复核 .reports/audit/reviews/W21-b63e7ff0.md §1.2 末行、§6：按 1.98.1 规则放行 C:\\a%X%b\\run.cmd，cmd.exe 第 1 阶段 % 展开后引号外出现两处 &，注入成立；Rust 上游 master 已加上对 ^ 与 % 的拒绝，正是修这个问题。stdio 的 command 可能来自大模型的 mcp_server_propose（high sensitivity，需用户批准），用户可能批准一个看似无害的 .cmd 路径。代价：路径含 % 或 ^ 的 .cmd/.bat（例如 C:\\Users\\100%\\x.cmd）在 Rust 版能启动，在 Electron 版报 InvalidInput。",
+  "userVisible": "仅 Windows：MCP 服务器配置的 command 是路径含 % 或 ^ 的 .cmd/.bat 时，测试连接与启动报 InvalidInput（文案见 fix.behavior），Rust 版能启动；其余路径不变。",
+  "dataCompat": "无：不改已保存的 MCP 配置、数据库、同步载荷或备份格式。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    { "file": "host/plugins/mcp/tests/stdio-spawn-plan.test.ts", "name": "RF-W21-bat-script-metachar: scripts containing ^ or % are refused with the std master text" }
+  ]
+}

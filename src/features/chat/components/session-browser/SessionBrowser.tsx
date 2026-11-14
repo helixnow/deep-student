@@ -947,10 +947,10 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
                       <span className="text-sm font-medium text-muted-foreground/80 group-hover/header:text-foreground transition-colors">
                         {timeGroupLabels[timeGroup]}
                       </span>
-                      <span className="text-xs px-1.5 py-0.5 rounded bg-muted/50 text-muted-foreground/60">
+                      <span className="text-xs font-mono tabular-nums px-1.5 py-0.5 rounded bg-muted/50 text-muted-foreground/60">
                         {timeSessions.length}
                       </span>
-                      <div className="flex-1 h-px bg-border/30 group-hover/header:bg-border/60 transition-colors" />
+                      <div className="flex-1 h-px bg-border/35 group-hover/header:bg-border/60 transition-colors" />
                     </div>
 
                     {/* 会话卡片网格 */}
@@ -990,19 +990,22 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
               );
               return (
                 <section key={workspaceKey}>
-                  <div className="mb-4 flex flex-wrap items-center gap-2">
-                    <Folder size={16} className="text-muted-foreground" />
-                    <span className="text-sm font-medium text-foreground">
+                  <div className="mb-4 flex flex-wrap items-center gap-2 group/header">
+                    <Folder size={16} className="text-muted-foreground/60 group-hover/header:text-foreground transition-colors" />
+                    <span className="text-sm font-medium text-muted-foreground/80 group-hover/header:text-foreground transition-colors">
                       {workspaceKey === 'default' ? t('browser.defaultWorkspace') : workspaceKey}
+                    </span>
+                    <span className="text-xs font-mono tabular-nums px-1.5 py-0.5 rounded bg-muted/50 text-muted-foreground/60">
+                      {workspaceSessions.length}
                     </span>
                     {(['running', 'blocked', 'completed'] as const).map(status => (
                       summaryCounts[status] > 0 && (
-                        <span key={status} className="text-[11px] text-muted-foreground">
+                        <span key={status} className="text-[11px] font-mono tabular-nums text-muted-foreground">
                           {t(`browser.taskStatus.${status}`)} {summaryCounts[status]}
                         </span>
                       )
                     ))}
-                    <div className="h-px min-w-8 flex-1 bg-border/40" />
+                    <div className="h-px min-w-8 flex-1 bg-border/35 group-hover/header:bg-border/60 transition-colors" />
                   </div>
                   <div className={sessionGridClass(embeddedMode)}>
                     {workspaceSessions.map((session) => (
@@ -1058,10 +1061,10 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
                     <span className="text-sm font-medium text-muted-foreground/80 group-hover/header:text-foreground transition-colors">
                       {sessionGroup.name}
                     </span>
-                    <span className="text-xs px-1.5 py-0.5 rounded bg-muted/50 text-muted-foreground/60">
+                    <span className="text-xs font-mono tabular-nums px-1.5 py-0.5 rounded bg-muted/50 text-muted-foreground/60">
                       {groupSessions.length}
                     </span>
-                    <div className="flex-1 h-px bg-border/30 group-hover/header:bg-border/60 transition-colors" />
+                    <div className="flex-1 h-px bg-border/35 group-hover/header:bg-border/60 transition-colors" />
                   </div>
 
                   {!isCollapsed && (
@@ -1106,10 +1109,10 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
                     <span className="text-sm font-medium text-muted-foreground/80 group-hover/header:text-foreground transition-colors">
                       {t('browser.ungrouped')}
                     </span>
-                    <span className="text-xs px-1.5 py-0.5 rounded bg-muted/50 text-muted-foreground/60">
+                    <span className="text-xs font-mono tabular-nums px-1.5 py-0.5 rounded bg-muted/50 text-muted-foreground/60">
                       {sessionGroupedByGroup.ungrouped.length}
                     </span>
-                    <div className="flex-1 h-px bg-border/30 group-hover/header:bg-border/60 transition-colors" />
+                    <div className="flex-1 h-px bg-border/35 group-hover/header:bg-border/60 transition-colors" />
                   </div>
 
                   {!isUngroupedCollapsed && (

@@ -1,0 +1,28 @@
+{
+  "id": "RF-W05-system-proxy-bypass-list",
+  "kind": "deliberate",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T09:25+08:00",
+  "title": "系统代理遵守操作系统的代理例外列表（本机、局域网地址不走系统代理）",
+  "rust": {
+    "file": "src-tauri/crates/dstu-llm/src/llm_manager/mod.rs",
+    "line": 5555,
+    "behavior": "LLM 客户端用默认 ClientBuilder::new()，由 reqwest 0.11.27 自动读取系统代理（src/proxy.rs get_sys_proxies / get_from_platform）；reqwest 0.11 只取 HTTP/HTTPS 代理地址，忽略 Windows ProxyOverride 和 macOS ExceptionsList，所以本机和局域网的模型地址（Ollama、LM Studio 等）也被发往系统代理"
+  },
+  "fix": {
+    "files": ["host/platform/http/system-proxy.ts"],
+    "behavior": "读取系统代理时一并读取例外列表（Windows ProxyOverride 含 <local>，macOS ExceptionsList 与 ExcludeSimpleHostnames），目标主机命中例外时直连；代理地址的发现与解析仍与 reqwest 0.11 一致"
+  },
+  "evidence": "操作系统代理设置界面默认把 localhost、127.*、局域网网段放进例外列表，用户的预期是这些地址直连；reqwest 0.12（hyper-util）已改为遵守 Windows ProxyOverride。沿用 0.11 的行为会让开着系统代理的用户连不上本机模型服务。最初实现在 W05 提交 746612f8，后由 W14 移到 platform/http。W05 第二轮报告建议登记，主代理 09:25 补登记并批准。",
+  "userVisible": "能：开着系统代理时，本机和局域网的模型地址不再经过系统代理，直接连接；公网地址照旧走代理。",
+  "dataCompat": "不改变落库数据、同步载荷与备份格式，只影响出站连接走不走代理。",
+  "commits": ["746612f8"],
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "host/plugins/llm/tests/system_proxy.test.ts",
+      "name": "RF-W05-system-proxy-bypass-list: honours the OS bypass list (intentional deviation from reqwest 0.11, as hyper-util does for ProxyOverride)"
+    }
+  ]
+}

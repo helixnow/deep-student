@@ -21,12 +21,14 @@ import { CSS } from '@dnd-kit/utilities';
 import { motion } from 'framer-motion';
 import TextareaAutosize from 'react-textarea-autosize';
 import { DotsSixVertical, MagnifyingGlassPlus, Plus } from '@phosphor-icons/react';
-import { cn } from '@/lib/utils';
+import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
 import { motionSafe } from '@/styles/motion-springs';
 import { useMindMapStore, useMindMapStoreApi } from '../../store';
 import type { MindMapDescriptionPreview, MindMapKeymap } from '../../utils/mindmapPreferences';
 import { NodeRefList } from '../../components/shared/NodeRefCard';
+import { NodeSourcePills } from '../../components/shared/NodeSourcePills';
+import { selectNodeExcerptMeta } from '../../utils/nodeAnchors';
 import { BlankedText } from '../../components/shared/BlankedText';
 import { InlineLatex } from '../../components/shared/InlineLatex';
 import { containsLatex } from '../../utils/renderLatex';
@@ -177,6 +179,12 @@ const SortableOutlineNodeImpl: React.FC<SortableOutlineNodeProps> = ({
   const isFocused = useMindMapStore(state => state.focusedNodeId === node.id);
   const reciteMode = useMindMapStore(state => state.reciteMode);
   const revealedForNode = useMindMapStore(state => state.revealedBlanks[node.id]);
+  const excerpt = useMindMapStore(state => selectNodeExcerptMeta(state.document.root, node.id));
+  const removeNodeAnchor = useMindMapStore(state => state.removeNodeAnchor);
+  const removeNodeExcerptSlot = useMindMapStore(state => state.removeNodeExcerptSlot);
+  const setNodeCardNote = useMindMapStore(state => state.setNodeCardNote);
+  const toggleNodeExpandedCard = useMindMapStore(state => state.toggleNodeExpandedCard);
+  const toggleNodeFlashcard = useMindMapStore(state => state.toggleNodeFlashcard);
 
   const toggleBold = useCallback(() => {
     updateNode(node.id, {
@@ -979,6 +987,7 @@ const SortableOutlineNodeImpl: React.FC<SortableOutlineNodeProps> = ({
       ref={setNodeRef}
       style={style}
       data-node-id={node.id}
+      data-outline-node-id={node.id}
       className={cn(
         "outline-node-row group",
         isFocused && "focused",
@@ -1409,6 +1418,24 @@ const SortableOutlineNodeImpl: React.FC<SortableOutlineNodeProps> = ({
               />
             ))}
           </div>
+        )}
+        {excerpt && (
+          <NodeSourcePills
+            anchors={excerpt.anchors}
+            excerptQuote={excerpt.excerptQuote}
+            excerpts={excerpt.excerpts}
+            cardNote={excerpt.cardNote}
+            isExpandedCard={excerpt.isExpandedCard}
+            isFlashcard={excerpt.isFlashcard}
+            readonly={reciteMode}
+            selected={isFocused}
+            onRemoveAnchor={(anchorUri) => removeNodeAnchor(node.id, anchorUri)}
+            onRemoveExcerptSlot={(slotId) => removeNodeExcerptSlot(node.id, slotId)}
+            onCardNoteChange={(cardNote) => setNodeCardNote(node.id, cardNote)}
+            onToggleExpandedCard={() => toggleNodeExpandedCard(node.id)}
+            onToggleFlashcard={() => toggleNodeFlashcard(node.id)}
+            className="px-[6px] pb-1"
+          />
         )}
         {node.refs && node.refs.length > 0 && (
           <NodeRefList

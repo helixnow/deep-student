@@ -1,0 +1,1192 @@
+{
+  "domain": "anki",
+  "commands": [
+    "get_model_adapter_options",
+    "list_document_sessions",
+    "recover_stuck_document_tasks",
+    "get_document_tasks",
+    "get_document_processing_state",
+    "save_anki_cards",
+    "delete_anki_card",
+    "get_anki_stats",
+    "set_document_session_source",
+    "pause_document_processing",
+    "resume_document_processing",
+    "cancel_document_processing",
+    "get_document_cards",
+    "fsrs_enqueue_cards",
+    "fsrs_rate",
+    "delete_document_session"
+  ],
+  "scenarios": [
+    {
+      "id": "anki.sessions.model-adapter-options",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_model_adapter_options",
+          "args": {}
+        },
+        {
+          "cmd": "get_model_adapter_options",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.sessions.empty-reads-and-serde",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "list_document_sessions",
+          "args": {}
+        },
+        {
+          "cmd": "list_document_sessions",
+          "args": {
+            "limit": null
+          }
+        },
+        {
+          "cmd": "list_document_sessions",
+          "args": {
+            "limit": 0
+          }
+        },
+        {
+          "cmd": "list_document_sessions",
+          "args": {
+            "limit": 4294967295
+          }
+        },
+        {
+          "cmd": "list_document_sessions",
+          "args": {
+            "limit": -1
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "list_document_sessions",
+          "args": {
+            "limit": 4294967296
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "list_document_sessions",
+          "args": {
+            "limit": "5"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "list_document_sessions",
+          "args": {
+            "limit": 1.5
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "recover_stuck_document_tasks",
+          "args": {}
+        },
+        {
+          "cmd": "get_document_tasks",
+          "args": {
+            "documentId": "w141-none"
+          }
+        },
+        {
+          "cmd": "get_document_tasks",
+          "args": {
+            "documentId": ""
+          }
+        },
+        {
+          "cmd": "get_document_tasks",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "get_document_tasks",
+          "args": {
+            "documentId": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "get_document_tasks",
+          "args": {
+            "document_id": "w141-none"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "get_document_processing_state",
+          "args": {
+            "documentId": "w141-none"
+          }
+        },
+        {
+          "cmd": "get_document_processing_state",
+          "args": {
+            "documentId": ""
+          }
+        },
+        {
+          "cmd": "get_document_processing_state",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "get_document_processing_state",
+          "args": {
+            "documentId": 1
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.sessions.list-aggregates-limit-order",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_anki_cards",
+          "args": {
+            "request": {
+              "document_id": "w141-list-a",
+              "business_session_id": null,
+              "message_stable_id": null,
+              "block_id": null,
+              "template_id": null,
+              "cards": [
+                {
+                  "id": "w141-la-1",
+                  "front": "A1",
+                  "back": "a1",
+                  "text": null,
+                  "tags": [],
+                  "images": [],
+                  "fields": {
+                    "Front": "A1",
+                    "Back": "a1"
+                  },
+                  "template_id": null
+                },
+                {
+                  "id": "w141-la-2",
+                  "front": "A2",
+                  "back": "a2",
+                  "text": null,
+                  "tags": [],
+                  "images": [],
+                  "fields": {
+                    "Front": "A2",
+                    "Back": "a2"
+                  },
+                  "template_id": null
+                }
+              ],
+              "options": null
+            }
+          }
+        },
+        {
+          "cmd": "save_anki_cards",
+          "args": {
+            "request": {
+              "document_id": "w141-list-b",
+              "business_session_id": "w141-chat-b",
+              "message_stable_id": null,
+              "block_id": null,
+              "template_id": null,
+              "cards": [
+                {
+                  "id": "w141-lb-1",
+                  "front": "B1",
+                  "back": "b1",
+                  "text": null,
+                  "tags": [],
+                  "images": [],
+                  "fields": {
+                    "Front": "B1",
+                    "Back": "b1"
+                  },
+                  "template_id": null
+                }
+              ],
+              "options": null
+            }
+          }
+        },
+        {
+          "cmd": "save_anki_cards",
+          "args": {
+            "request": {
+              "document_id": "w141-list-a",
+              "business_session_id": null,
+              "message_stable_id": null,
+              "block_id": null,
+              "template_id": null,
+              "cards": [
+                {
+                  "id": "w141-la-3",
+                  "front": "A3",
+                  "back": "a3",
+                  "text": null,
+                  "tags": [],
+                  "images": [],
+                  "fields": {
+                    "Front": "A3",
+                    "Back": "a3"
+                  },
+                  "template_id": null
+                }
+              ],
+              "options": null
+            }
+          }
+        },
+        {
+          "cmd": "list_document_sessions",
+          "args": {}
+        },
+        {
+          "cmd": "list_document_sessions",
+          "args": {
+            "limit": 1
+          }
+        },
+        {
+          "cmd": "list_document_sessions",
+          "args": {
+            "limit": 0
+          }
+        },
+        {
+          "cmd": "get_document_tasks",
+          "args": {
+            "documentId": "w141-list-a"
+          }
+        },
+        {
+          "cmd": "get_document_tasks",
+          "args": {
+            "documentId": "w141-list-b"
+          }
+        },
+        {
+          "cmd": "get_document_tasks",
+          "args": {
+            "documentId": " w141-list-a "
+          }
+        },
+        {
+          "cmd": "delete_anki_card",
+          "args": {
+            "cardId": "w141-la-1"
+          }
+        },
+        {
+          "cmd": "list_document_sessions",
+          "args": {
+            "limit": 50
+          }
+        },
+        {
+          "cmd": "get_anki_stats",
+          "args": {}
+        },
+        {
+          "cmd": "recover_stuck_document_tasks",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.sessions.set-source-validation-and-no-overwrite",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_anki_cards",
+          "args": {
+            "request": {
+              "document_id": "w141-src-a",
+              "business_session_id": null,
+              "message_stable_id": null,
+              "block_id": null,
+              "template_id": null,
+              "cards": [
+                {
+                  "id": "w141-sa-1",
+                  "front": "S1",
+                  "back": "s1",
+                  "text": null,
+                  "tags": [],
+                  "images": [],
+                  "fields": {
+                    "Front": "S1",
+                    "Back": "s1"
+                  },
+                  "template_id": null
+                }
+              ],
+              "options": null
+            }
+          }
+        },
+        {
+          "cmd": "list_document_sessions",
+          "args": {}
+        },
+        {
+          "cmd": "set_document_session_source",
+          "args": {
+            "documentId": "",
+            "sessionId": "w141-chat-x"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "set_document_session_source",
+          "args": {
+            "documentId": "   ",
+            "sessionId": "w141-chat-x"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "set_document_session_source",
+          "args": {
+            "documentId": "w141-src-a",
+            "sessionId": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "set_document_session_source",
+          "args": {
+            "documentId": "w141-src-a",
+            "sessionId": " \t "
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "set_document_session_source",
+          "args": {
+            "documentId": "",
+            "sessionId": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "set_document_session_source",
+          "args": {
+            "documentId": "w141-src-a"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "set_document_session_source",
+          "args": {
+            "sessionId": "w141-chat-x"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "set_document_session_source",
+          "args": {
+            "documentId": "w141-src-a",
+            "sessionId": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "list_document_sessions",
+          "args": {}
+        },
+        {
+          "cmd": "set_document_session_source",
+          "args": {
+            "documentId": "  w141-src-a  ",
+            "sessionId": "  w141-chat-1  "
+          }
+        },
+        {
+          "cmd": "list_document_sessions",
+          "args": {}
+        },
+        {
+          "cmd": "set_document_session_source",
+          "args": {
+            "documentId": "w141-src-a",
+            "sessionId": "w141-chat-2"
+          }
+        },
+        {
+          "cmd": "list_document_sessions",
+          "args": {}
+        },
+        {
+          "cmd": "set_document_session_source",
+          "args": {
+            "documentId": "w141-src-missing",
+            "sessionId": "w141-chat-3"
+          }
+        },
+        {
+          "cmd": "list_document_sessions",
+          "args": {}
+        },
+        {
+          "cmd": "save_anki_cards",
+          "args": {
+            "request": {
+              "document_id": "w141-src-a",
+              "business_session_id": null,
+              "message_stable_id": null,
+              "block_id": null,
+              "template_id": null,
+              "cards": [
+                {
+                  "id": "w141-sa-2",
+                  "front": "S2",
+                  "back": "s2",
+                  "text": null,
+                  "tags": [],
+                  "images": [],
+                  "fields": {
+                    "Front": "S2",
+                    "Back": "s2"
+                  },
+                  "template_id": null
+                }
+              ],
+              "options": null
+            }
+          }
+        },
+        {
+          "cmd": "set_document_session_source",
+          "args": {
+            "documentId": "w141-src-a",
+            "sessionId": "w141-chat-4"
+          }
+        },
+        {
+          "cmd": "list_document_sessions",
+          "args": {}
+        },
+        {
+          "cmd": "save_anki_cards",
+          "args": {
+            "request": {
+              "document_id": "w141-src-b",
+              "business_session_id": "w141-chat-5",
+              "message_stable_id": null,
+              "block_id": null,
+              "template_id": null,
+              "cards": [
+                {
+                  "id": "w141-sb-1",
+                  "front": "SB",
+                  "back": "sb",
+                  "text": null,
+                  "tags": [],
+                  "images": [],
+                  "fields": {
+                    "Front": "SB",
+                    "Back": "sb"
+                  },
+                  "template_id": null
+                }
+              ],
+              "options": null
+            }
+          }
+        },
+        {
+          "cmd": "set_document_session_source",
+          "args": {
+            "documentId": "w141-src-b",
+            "sessionId": "w141-chat-6"
+          }
+        },
+        {
+          "cmd": "list_document_sessions",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.sessions.pause-resume-cancel-on-completed-doc",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_anki_cards",
+          "args": {
+            "request": {
+              "document_id": "w141-ctl-a",
+              "business_session_id": null,
+              "message_stable_id": null,
+              "block_id": null,
+              "template_id": null,
+              "cards": [
+                {
+                  "id": "w141-ca-1",
+                  "front": "C1",
+                  "back": "c1",
+                  "text": null,
+                  "tags": [],
+                  "images": [],
+                  "fields": {
+                    "Front": "C1",
+                    "Back": "c1"
+                  },
+                  "template_id": null
+                }
+              ],
+              "options": null
+            }
+          }
+        },
+        {
+          "cmd": "get_document_processing_state",
+          "args": {
+            "documentId": "w141-ctl-a"
+          }
+        },
+        {
+          "cmd": "pause_document_processing",
+          "args": {
+            "documentId": "w141-ctl-a"
+          }
+        },
+        {
+          "cmd": "get_document_processing_state",
+          "args": {
+            "documentId": "w141-ctl-a"
+          }
+        },
+        {
+          "cmd": "get_document_tasks",
+          "args": {
+            "documentId": "w141-ctl-a"
+          }
+        },
+        {
+          "cmd": "pause_document_processing",
+          "args": {
+            "documentId": "w141-ctl-a"
+          }
+        },
+        {
+          "cmd": "get_document_processing_state",
+          "args": {
+            "documentId": "w141-ctl-a"
+          }
+        },
+        {
+          "cmd": "resume_document_processing",
+          "args": {
+            "documentId": "w141-ctl-a"
+          }
+        },
+        {
+          "cmd": "get_document_processing_state",
+          "args": {
+            "documentId": "w141-ctl-a"
+          }
+        },
+        {
+          "cmd": "resume_document_processing",
+          "args": {
+            "documentId": "w141-ctl-a"
+          }
+        },
+        {
+          "cmd": "pause_document_processing",
+          "args": {
+            "documentId": "w141-ctl-a"
+          }
+        },
+        {
+          "cmd": "cancel_document_processing",
+          "args": {
+            "documentId": "w141-ctl-a"
+          }
+        },
+        {
+          "cmd": "get_document_processing_state",
+          "args": {
+            "documentId": "w141-ctl-a"
+          }
+        },
+        {
+          "cmd": "get_document_tasks",
+          "args": {
+            "documentId": "w141-ctl-a"
+          }
+        },
+        {
+          "cmd": "get_document_cards",
+          "args": {
+            "documentId": "w141-ctl-a"
+          }
+        },
+        {
+          "cmd": "list_document_sessions",
+          "args": {}
+        },
+        {
+          "cmd": "cancel_document_processing",
+          "args": {
+            "documentId": "w141-ctl-a"
+          }
+        },
+        {
+          "cmd": "get_document_processing_state",
+          "args": {
+            "documentId": "w141-ctl-a"
+          }
+        },
+        {
+          "cmd": "recover_stuck_document_tasks",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.sessions.control-unknown-empty-and-serde",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "pause_document_processing",
+          "args": {
+            "documentId": "w141-ctl-missing"
+          }
+        },
+        {
+          "cmd": "get_document_processing_state",
+          "args": {
+            "documentId": "w141-ctl-missing"
+          }
+        },
+        {
+          "cmd": "resume_document_processing",
+          "args": {
+            "documentId": "w141-ctl-missing"
+          }
+        },
+        {
+          "cmd": "get_document_processing_state",
+          "args": {
+            "documentId": "w141-ctl-missing"
+          }
+        },
+        {
+          "cmd": "pause_document_processing",
+          "args": {
+            "documentId": ""
+          }
+        },
+        {
+          "cmd": "get_document_processing_state",
+          "args": {
+            "documentId": ""
+          }
+        },
+        {
+          "cmd": "cancel_document_processing",
+          "args": {
+            "documentId": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "get_document_processing_state",
+          "args": {
+            "documentId": ""
+          }
+        },
+        {
+          "cmd": "resume_document_processing",
+          "args": {
+            "documentId": ""
+          }
+        },
+        {
+          "cmd": "get_document_processing_state",
+          "args": {
+            "documentId": ""
+          }
+        },
+        {
+          "cmd": "pause_document_processing",
+          "args": {
+            "documentId": "  "
+          }
+        },
+        {
+          "cmd": "cancel_document_processing",
+          "args": {
+            "documentId": "  "
+          }
+        },
+        {
+          "cmd": "get_document_processing_state",
+          "args": {
+            "documentId": "  "
+          }
+        },
+        {
+          "cmd": "list_document_sessions",
+          "args": {}
+        },
+        {
+          "cmd": "pause_document_processing",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "resume_document_processing",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "cancel_document_processing",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "pause_document_processing",
+          "args": {
+            "documentId": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "cancel_document_processing",
+          "args": {
+            "documentId": 123
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "resume_document_processing",
+          "args": {
+            "documentId": [
+              "w141-ctl-missing"
+            ]
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.sessions.delete-session-cascade-with-fsrs",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_anki_cards",
+          "args": {
+            "request": {
+              "document_id": "w141-del-a",
+              "business_session_id": "w141-chat-del",
+              "message_stable_id": null,
+              "block_id": null,
+              "template_id": null,
+              "cards": [
+                {
+                  "id": "w141-da-1",
+                  "front": "D1",
+                  "back": "d1",
+                  "text": null,
+                  "tags": [],
+                  "images": [],
+                  "fields": {
+                    "Front": "D1",
+                    "Back": "d1"
+                  },
+                  "template_id": null
+                },
+                {
+                  "id": "w141-da-2",
+                  "front": "D2",
+                  "back": "d2",
+                  "text": null,
+                  "tags": [],
+                  "images": [],
+                  "fields": {
+                    "Front": "D2",
+                    "Back": "d2"
+                  },
+                  "template_id": null
+                }
+              ],
+              "options": null
+            }
+          }
+        },
+        {
+          "cmd": "save_anki_cards",
+          "args": {
+            "request": {
+              "document_id": "w141-del-a",
+              "business_session_id": null,
+              "message_stable_id": null,
+              "block_id": null,
+              "template_id": null,
+              "cards": [
+                {
+                  "id": "w141-da-3",
+                  "front": "D3",
+                  "back": "d3",
+                  "text": null,
+                  "tags": [],
+                  "images": [],
+                  "fields": {
+                    "Front": "D3",
+                    "Back": "d3"
+                  },
+                  "template_id": null
+                }
+              ],
+              "options": null
+            }
+          }
+        },
+        {
+          "cmd": "save_anki_cards",
+          "args": {
+            "request": {
+              "document_id": "w141-del-b",
+              "business_session_id": null,
+              "message_stable_id": null,
+              "block_id": null,
+              "template_id": null,
+              "cards": [
+                {
+                  "id": "w141-db-1",
+                  "front": "E1",
+                  "back": "e1",
+                  "text": null,
+                  "tags": [],
+                  "images": [],
+                  "fields": {
+                    "Front": "E1",
+                    "Back": "e1"
+                  },
+                  "template_id": null
+                }
+              ],
+              "options": null
+            }
+          }
+        },
+        {
+          "cmd": "fsrs_enqueue_cards",
+          "args": {
+            "ankiCardIds": [
+              "w141-da-1",
+              "w141-da-2",
+              "w141-db-1"
+            ]
+          }
+        },
+        {
+          "cmd": "fsrs_rate",
+          "args": {
+            "cardStateId": "${3.enqueuedStateIds.0}",
+            "rating": 3
+          }
+        },
+        {
+          "cmd": "fsrs_rate",
+          "args": {
+            "cardStateId": "${3.enqueuedStateIds.2}",
+            "rating": 3
+          }
+        },
+        {
+          "cmd": "list_document_sessions",
+          "args": {}
+        },
+        {
+          "cmd": "get_anki_stats",
+          "args": {}
+        },
+        {
+          "cmd": "pause_document_processing",
+          "args": {
+            "documentId": "w141-del-a"
+          }
+        },
+        {
+          "cmd": "get_document_processing_state",
+          "args": {
+            "documentId": "w141-del-a"
+          }
+        },
+        {
+          "cmd": "delete_document_session",
+          "args": {
+            "documentId": "w141-del-a"
+          }
+        },
+        {
+          "cmd": "get_document_processing_state",
+          "args": {
+            "documentId": "w141-del-a"
+          }
+        },
+        {
+          "cmd": "get_document_tasks",
+          "args": {
+            "documentId": "w141-del-a"
+          }
+        },
+        {
+          "cmd": "get_document_cards",
+          "args": {
+            "documentId": "w141-del-a"
+          }
+        },
+        {
+          "cmd": "get_document_tasks",
+          "args": {
+            "documentId": "w141-del-b"
+          }
+        },
+        {
+          "cmd": "get_document_cards",
+          "args": {
+            "documentId": "w141-del-b"
+          }
+        },
+        {
+          "cmd": "list_document_sessions",
+          "args": {}
+        },
+        {
+          "cmd": "get_anki_stats",
+          "args": {}
+        },
+        {
+          "cmd": "delete_document_session",
+          "args": {
+            "documentId": "w141-del-a"
+          }
+        },
+        {
+          "cmd": "delete_document_session",
+          "args": {
+            "documentId": "w141-del-missing"
+          }
+        },
+        {
+          "cmd": "save_anki_cards",
+          "args": {
+            "request": {
+              "document_id": "w141-del-a",
+              "business_session_id": null,
+              "message_stable_id": null,
+              "block_id": null,
+              "template_id": null,
+              "cards": [
+                {
+                  "id": "w141-da-1",
+                  "front": "D1 again",
+                  "back": "d1",
+                  "text": null,
+                  "tags": [],
+                  "images": [],
+                  "fields": {
+                    "Front": "D1 again",
+                    "Back": "d1"
+                  },
+                  "template_id": null
+                }
+              ],
+              "options": null
+            }
+          }
+        },
+        {
+          "cmd": "get_document_cards",
+          "args": {
+            "documentId": "w141-del-a"
+          }
+        },
+        {
+          "cmd": "list_document_sessions",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.sessions.delete-session-validation-and-serde",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "delete_document_session",
+          "args": {
+            "documentId": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "delete_document_session",
+          "args": {
+            "documentId": "   "
+          }
+        },
+        {
+          "cmd": "delete_document_session",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "delete_document_session",
+          "args": {
+            "documentId": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "delete_document_session",
+          "args": {
+            "documentId": 7
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "save_anki_cards",
+          "args": {
+            "request": {
+              "document_id": "w141-delv-a",
+              "business_session_id": null,
+              "message_stable_id": null,
+              "block_id": null,
+              "template_id": null,
+              "cards": [
+                {
+                  "id": "w141-dv-1",
+                  "front": "V1",
+                  "back": "v1",
+                  "text": null,
+                  "tags": [],
+                  "images": [],
+                  "fields": {
+                    "Front": "V1",
+                    "Back": "v1"
+                  },
+                  "template_id": null
+                }
+              ],
+              "options": null
+            }
+          }
+        },
+        {
+          "cmd": "delete_document_session",
+          "args": {
+            "documentId": " w141-delv-a "
+          }
+        },
+        {
+          "cmd": "get_document_tasks",
+          "args": {
+            "documentId": "w141-delv-a"
+          }
+        },
+        {
+          "cmd": "list_document_sessions",
+          "args": {}
+        },
+        {
+          "cmd": "pause_document_processing",
+          "args": {
+            "documentId": "w141-delv-b"
+          }
+        },
+        {
+          "cmd": "get_document_processing_state",
+          "args": {
+            "documentId": "w141-delv-b"
+          }
+        },
+        {
+          "cmd": "delete_document_session",
+          "args": {
+            "documentId": "w141-delv-b"
+          }
+        },
+        {
+          "cmd": "get_document_processing_state",
+          "args": {
+            "documentId": "w141-delv-b"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

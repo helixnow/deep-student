@@ -16,10 +16,11 @@
 import React from 'react';
 import { AppIconImage } from '../../icons/appIcons';
 import { usePomodoroStore } from '@/features/pomodoro/stores/usePomodoroStore';
-import { appRegistry } from '../../core/appRegistry';
+import { contributeWorkbenchApp } from '../../core/appContributions';
 import type { ActivationContext } from '../../core/types';
 import { ankiTaskBadgeSource } from './ankiTaskSource';
 import { flashcardsDueBadgeSource } from './flashcardsDueSource';
+import { ANKI_HOST_PLUGIN, hostGatedApp } from './hostGatedApp';
 import { pomodoroBadgeSource, startPomodoroBadgeNotifier } from './pomodoroSource';
 import { handleTodoActivation } from './todoActivation';
 import {
@@ -206,7 +207,7 @@ export function registerSystemApps(): void {
   if (registered) return;
   registered = true;
 
-  appRegistry.register({
+  contributeWorkbenchApp({
     typeId: 'todo',
     nameKey: 'workbench:apps.todo',
     icon: <AppIconImage typeId="todo" className="h-8 w-8" />,
@@ -220,7 +221,7 @@ export function registerSystemApps(): void {
     agentManifest: todoAgentManifest,
   });
 
-  appRegistry.register({
+  contributeWorkbenchApp({
     typeId: 'skills',
     nameKey: 'workbench:apps.skills',
     icon: <AppIconImage typeId="skills" className="h-8 w-8" />,
@@ -232,7 +233,8 @@ export function registerSystemApps(): void {
     agentManifest: skillsAgentManifest,
   });
 
-  appRegistry.register({
+  // RUST-FIX(RF-W09-workbench-cards-host-degraded): Host 卡片插件降级时，卡片中心三个窗口显示降级说明，不再显示“卡片库还是空的”
+  contributeWorkbenchApp({
     typeId: 'templates',
     nameKey: 'workbench:apps.templates',
     icon: <AppIconImage typeId="templates" className="h-8 w-8" />,
@@ -240,11 +242,11 @@ export function registerSystemApps(): void {
     memoryWeight: 2,
     defaultFrame: { w: 980, h: 680 },
     minSize: { w: 640, h: 460 },
-    render: React.lazy(() => import('./TemplatesAppWindow')),
+    render: hostGatedApp(ANKI_HOST_PLUGIN, 'workbench:apps.templates', () => import('./TemplatesAppWindow')),
     agentManifest: templatesAgentManifest,
   });
 
-  appRegistry.register({
+  contributeWorkbenchApp({
     typeId: 'taskDashboard',
     nameKey: 'workbench:apps.taskDashboard',
     icon: <AppIconImage typeId="taskDashboard" className="h-8 w-8" />,
@@ -252,12 +254,12 @@ export function registerSystemApps(): void {
     memoryWeight: 1,
     defaultFrame: { w: 920, h: 660 },
     minSize: { w: 600, h: 440 },
-    render: React.lazy(() => import('./TaskDashboardAppWindow')),
+    render: hostGatedApp(ANKI_HOST_PLUGIN, 'workbench:apps.taskDashboard', () => import('./TaskDashboardAppWindow')),
     badgeSource: ankiTaskBadgeSource,
     agentManifest: taskDashboardAgentManifest,
   });
 
-  appRegistry.register({
+  contributeWorkbenchApp({
     typeId: 'flashcards',
     nameKey: 'workbench:apps.flashcards',
     icon: <AppIconImage typeId="flashcards" className="h-8 w-8" />,
@@ -265,7 +267,7 @@ export function registerSystemApps(): void {
     memoryWeight: 2,
     defaultFrame: { w: 960, h: 680 },
     minSize: { w: 560, h: 440 },
-    render: React.lazy(() => import('./FlashcardsAppWindow')),
+    render: hostGatedApp(ANKI_HOST_PLUGIN, 'workbench:apps.flashcards', () => import('./FlashcardsAppWindow')),
     badgeSource: flashcardsDueBadgeSource,
     // R1-15：startReview → applyLaunchPayload
     onActivation: handleFlashcardsActivation,
@@ -273,7 +275,7 @@ export function registerSystemApps(): void {
   });
 
   // 音视频（资源库音视频的专用视角；与经典壳 'media' 视图同一个 MediaStudioApp）
-  appRegistry.register({
+  contributeWorkbenchApp({
     typeId: 'media',
     nameKey: 'workbench:apps.media',
     icon: <AppIconImage typeId="media" className="h-8 w-8" />,
@@ -284,7 +286,7 @@ export function registerSystemApps(): void {
     render: React.lazy(() => import('./MediaStudioAppWindow')),
   });
 
-  appRegistry.register({
+  contributeWorkbenchApp({
     typeId: 'settings',
     nameKey: 'workbench:apps.settings',
     icon: <AppIconImage typeId="settings" className="h-8 w-8" />,
@@ -296,7 +298,7 @@ export function registerSystemApps(): void {
     agentManifest: settingsAgentManifest,
   });
 
-  appRegistry.register({
+  contributeWorkbenchApp({
     typeId: 'pomodoro',
     nameKey: 'workbench:apps.pomodoro',
     icon: <AppIconImage typeId="pomodoro" className="h-8 w-8" />,

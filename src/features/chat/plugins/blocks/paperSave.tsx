@@ -13,11 +13,11 @@ import React, { useMemo, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
+import { PulseDot } from '@/components/ui/PulseDot';
 import {
   DownloadSimple,
   CheckCircle,
   WarningCircle,
-  CircleNotch,
   MagnifyingGlass,
   HardDrive,
   FileText,
@@ -25,9 +25,13 @@ import {
   Copy,
   ArrowCounterClockwise,
   CaretDown,
+  CaretRight,
 } from '@phosphor-icons/react';
 import { invoke } from '@tauri-apps/api/core';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
+import { TextShimmer } from '../../components/ui/TextShimmer';
+import { ToolActivitySweep } from '../../components/ui/ToolActivitySweep';
+import { formatToolDurationShort } from '@/features/chat/utils/toolDuration';
 
 // ============================================================================
 // 类型
@@ -195,7 +199,7 @@ const PaperRow: React.FC<{ paper: PaperProgressItem }> = ({ paper }) => {
 
           {/* 下载大小 */}
           {isDownloading && paper.dl != null && (
-            <span>
+            <span className="tabular-nums">
               {formatBytes(paper.dl)}
               {paper.total != null && ` / ${formatBytes(paper.total)}`}
             </span>
@@ -240,7 +244,9 @@ const PaperRow: React.FC<{ paper: PaperProgressItem }> = ({ paper }) => {
                 {paper.err || t('blocks.paperSave.stage.error')}
               </span>
               {retryState === 'loading' ? (
-                <CircleNotch size={12} className="animate-spin text-primary" />
+                <span className="inline-flex h-6 items-center gap-1.5 px-2 text-xs text-primary">
+                  <PulseDot className="h-1.5 w-1.5 text-primary" />
+                </span>
               ) : (
                 <div className="relative flex items-center gap-0.5">
                   <DsButton variant="ghost" size="sm" onClick={() => handleRetry()} disabled={sources.length === 0} className="text-primary hover:bg-primary/10 [@media(pointer:coarse)]:!min-h-11" title={t('blocks.paperSave.retryTitle')}>
@@ -358,21 +364,39 @@ const PaperSaveBlock: React.FC<BlockComponentProps> = React.memo(({ block }) => 
   // 完成后显示 toolOutput 中的最终结果
   const isComplete = block.status === 'success';
   const isError = block.status === 'error';
+  const isPreparing = !snapshot && !isComplete && !isError;
+  const isActive = !isComplete && !isError;
+  const [isExpanded, setIsExpanded] = useState(true);
 
-  // 如果既没有进度数据也没有完成，显示占位
-  if (!snapshot && !isComplete && !isError) {
-    return (
-      <div className="flex items-center gap-2 p-3 text-sm text-muted-foreground">
-        <CircleNotch size={16} className="animate-spin text-primary" />
-        <span>{t('blocks.paperSave.preparing')}</span>
-      </div>
-    );
-  }
+  const durationMs =
+    block.startedAt && block.endedAt ? block.endedAt - block.startedAt : undefined;
 
   const papers = snapshot?.papers ?? [];
   const doneCount = toolOutputFallback?.doneCount ?? papers.filter(p => p.s === 'done').length;
   const errorCount = toolOutputFallback?.errorCount ?? papers.filter(p => p.s === 'error').length;
   const totalCount = toolOutputFallback?.totalCount ?? papers.length;
+
+  const summaryText = isPreparing
+    ? t('blocks.paperSave.preparing')
+    : isComplete
+      ? errorCount > 0
+        ? t('blocks.paperSave.summaryWithFailures', {
+            done: doneCount,
+            total: totalCount,
+            count: errorCount,
+          })
+        : t('blocks.paperSave.summaryDone', { done: doneCount, total: totalCount, count: totalCount })
+      : isError
+        ? (totalCount > 0
+          ? t('blocks.paperSave.summaryWithFailures', {
+              done: doneCount,
+              total: totalCount,
+              count: errorCount,
+            })
+          : t('blocks.paperSave.downloadFailed'))
+        : t('blocks.paperSave.downloading', { done: doneCount, total: totalCount });
+
+  const hasBody = !isPreparing && (papers.length > 0 || isError);
 
   return (
     <div
@@ -383,56 +407,83 @@ const PaperSaveBlock: React.FC<BlockComponentProps> = React.memo(({ block }) => 
       )}
     >
       {/* 头部 */}
-      <div className="flex items-center justify-between px-3 py-2.5 border-b border-border/30">
-        <div className="flex items-center gap-2">
-          <div className="p-1.5 rounded-md bg-primary/10 dark:bg-primary/20">
-            <DownloadSimple size={16} className="text-primary" />
-          </div>
-          <div className="flex flex-col">
-            <span className="text-sm font-medium text-foreground">
-              {t('blocks.paperSave.title')}
-            </span>
-            <span className="text-xs text-muted-foreground">
-              {isComplete
-                ? errorCount > 0
-                  ? t('blocks.paperSave.summaryWithFailures', {
-                      done: doneCount,
-                      total: totalCount,
-                      count: errorCount,
-                    })
-                  : t('blocks.paperSave.summaryDone', { done: doneCount, total: totalCount, count: totalCount })
-                : isError
-                  ? (totalCount > 0
-                    ? t('blocks.paperSave.summaryWithFailures', {
-                        done: doneCount,
-                        total: totalCount,
-                        count: errorCount,
-                      })
-                    : t('blocks.paperSave.downloadFailed'))
-                  : t('blocks.paperSave.downloading', { done: doneCount, total: totalCount })}
-            </span>
+      <button
+        type="button"
+        onClick={hasBody ? () => setIsExpanded((prev) => !prev) : undefined}
+        aria-expanded={hasBody ? isExpanded : undefined}
+        className={cn(
+          'flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left',
+          hasBody
+            ? 'transition-colors hover:bg-muted/40 [@media(pointer:coarse)]:!min-h-11'
+            : 'cursor-default',
+          hasBody && isExpanded && 'border-b border-border/40'
+        )}
+      >
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <ToolActivitySweep
+            active={isActive}
+            className="h-7 w-7 shrink-0 justify-center rounded-md bg-muted/70 dark:bg-muted/40"
+          >
+            <DownloadSimple size={16} className="text-muted-foreground" />
+          </ToolActivitySweep>
+          <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
+            <ToolActivitySweep active={isActive} className="min-w-0 max-w-full leading-4">
+              <span className="block truncate text-xs font-medium leading-4 text-muted-foreground">
+                {t('blocks.paperSave.title')}
+              </span>
+            </ToolActivitySweep>
+            {isActive ? (
+              <TextShimmer
+                className="text-xs leading-4 text-muted-foreground tabular-nums"
+                duration={1.5}
+                spread={3}
+              >
+                {summaryText}
+              </TextShimmer>
+            ) : (
+              <span
+                className={cn(
+                  'truncate text-xs leading-4 tabular-nums',
+                  isError ? 'text-destructive' : 'text-muted-foreground/80'
+                )}
+              >
+                {summaryText}
+              </span>
+            )}
           </div>
         </div>
 
-        {/* 全局状态图标 */}
-        <div className="flex items-center gap-1.5">
+        {/* 全局状态图标与折叠箭头 */}
+        <div className="flex shrink-0 items-center gap-2">
+          {!isActive && durationMs !== undefined && durationMs >= 0 && (
+            <span className="text-xs text-muted-foreground tabular-nums">
+              {formatToolDurationShort(durationMs)}
+            </span>
+          )}
           {isComplete && errorCount === 0 && (
-            <CheckCircle className="w-4 h-4 text-success" />
+            <CheckCircle size={14} className="shrink-0 text-success" />
           )}
           {isComplete && errorCount > 0 && (
-            <WarningCircle size={16} className="text-warning" />
+            <WarningCircle size={14} className="shrink-0 text-warning" />
           )}
-          {!isComplete && !isError && (
-            <CircleNotch size={16} className="text-primary animate-spin" />
+          {isActive && (
+            <PulseDot className="h-1.5 w-1.5 text-primary" />
           )}
           {isError && (
-            <WarningCircle size={16} className="text-destructive" />
+            <WarningCircle size={14} className="shrink-0 text-destructive" />
+          )}
+          {hasBody && (
+            isExpanded ? (
+              <CaretDown size={14} className="shrink-0 text-muted-foreground" />
+            ) : (
+              <CaretRight size={14} className="shrink-0 text-muted-foreground" />
+            )
           )}
         </div>
-      </div>
+      </button>
 
       {/* 论文列表 */}
-      {papers.length > 0 && (
+      {hasBody && isExpanded && papers.length > 0 && (
         <div className="px-3 py-2 divide-y divide-border/20">
           {papers.map((paper) => (
             <PaperRow key={paper.i} paper={paper} />
@@ -441,8 +492,8 @@ const PaperSaveBlock: React.FC<BlockComponentProps> = React.memo(({ block }) => 
       )}
 
       {/* 错误信息 */}
-      {isError && !snapshot && (
-        <div className="p-3 text-sm text-destructive">
+      {hasBody && isExpanded && isError && !snapshot && (
+        <div className="p-3 text-xs text-destructive">
           {block.error || t('blocks.paperSave.blockError')}
         </div>
       )}

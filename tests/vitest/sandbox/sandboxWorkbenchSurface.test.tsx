@@ -1,6 +1,6 @@
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 
 import { SandboxWorkbenchSurface } from '@/features/sandbox/components/SandboxWorkbenchSurface';
 import { useSandboxWorkbenchStore } from '@/features/sandbox/store/useSandboxWorkbenchStore';
@@ -10,6 +10,7 @@ vi.mock('@/hooks/useBreakpoint', () => ({
 }));
 
 vi.mock('react-i18next', () => ({
+  initReactI18next: { type: '3rdParty', init: () => undefined },
   useTranslation: () => ({
     t: (key: string) => ({
       'sandbox.open': '打开沙箱工作台',
@@ -68,7 +69,7 @@ describe('SandboxWorkbenchSurface', () => {
 
     const { container } = render(<SandboxWorkbenchSurface embedded />);
 
-    expect(screen.getByText('Open Preview')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Open Preview' })).toBeInTheDocument();
     expect(container.querySelector('iframe')).not.toBeNull();
   });
 
@@ -92,7 +93,7 @@ describe('SandboxWorkbenchSurface', () => {
     const initialIframe = container.querySelector('iframe');
     expect(initialIframe).not.toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: '刷新' }));
+    act(() => useSandboxWorkbenchStore.getState().refreshSession());
 
     const nextIframe = container.querySelector('iframe');
     expect(nextIframe).toBe(initialIframe);

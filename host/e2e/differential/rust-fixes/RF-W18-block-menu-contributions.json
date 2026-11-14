@@ -1,0 +1,23 @@
+{
+  "id": "RF-W18-block-menu-contributions",
+  "kind": "deliberate",
+  "status": "proposed",
+  "title": "块菜单接入社区贡献、官方四段 order 合并及禁用/卸载执行约束",
+  "rust": { "file": "src/components/crepe/blockCommandMenu.ts", "behavior": "迁移前官方块菜单由固定动作表生成，没有社区贡献，也没有段间插入能力。" },
+  "fix": {
+    "files": ["src/components/crepe/CrepeEditor.tsx", "src/components/crepe/blockCommandMenu.ts", "src/components/crepe/blockMenuContributions.ts", "src/ui-plugins/official/editor/editorSlots.ts"],
+    "behavior": "官方 block:insert(10)/turn-into(20)/actions(30)/layout(40) 按实例捕获私有目标，与社区条目按 order 合并；社区行先校验 disabled、当前槽位条目身份、可编辑状态和目标，再关闭、回焦、执行；同步异常与 Promise 拒绝计入贡献插件错误预算。"
+  },
+  "userVisible": "安装社区插件后，桌面句柄、移动插入和移动块菜单可出现社区动作并插入官方段间；禁用行不能键盘执行，已打开菜单中的卸载条目不能继续执行。没有社区贡献时官方 DOM、命令效果和焦点时序保持 golden 相等。",
+  "dataCompat": "不改变落库、同步和备份格式。",
+  "evidence": "editorMenuSlots.host.test.tsx 的 B1、B3（desktop/mobile）、B4（desktop/mobile）在 96ca01fe 实现上红，fe6df51a 上绿；blockMenus.golden 8/8 且 JSON 未改。w18-audit-red.log 记录原实现失败。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    { "file": "src/components/crepe/__tests__/editorMenuSlots.host.test.tsx", "name": "RF-W18-block-menu-contributions B1: End/Enter never executes a disabled community row" },
+    { "file": "src/components/crepe/__tests__/editorMenuSlots.host.test.tsx", "name": "RF-W18-block-menu-contributions B3: an already open %s menu cannot run an unloaded entry" },
+    { "file": "src/components/crepe/__tests__/editorMenuSlots.host.test.tsx", "name": "RF-W18-block-menu-contributions B4: %s merges official segments with community order 15/35" },
+    { "file": "src/components/crepe/__tests__/editorMenuSlots.host.test.tsx", "name": "RF-W18-block-menu-contributions: appends community block-menu rows after the official rows, runs them after refocusing, and ignores stale targets" }
+  ],
+  "commits": ["96ca01fe", "fe6df51a"],
+  "notes": "待主编排审批，不自批。审计 B5 要求登记的 setBlockMenu(null) 顺序问题是 96ca01fe 新增功能开发中的 WIP 缺陷，不伪称 Rust 旧版缺陷：setter 同步清 ref，先清再比较恒为过期；已先验证后关闭，点击回归覆盖实际 run 和焦点。回撤：撤回这两个实现提交的块菜单相关 hunks（不要整批回撤其他能力），同时撤销两个新槽位声明/快照时须协调浮条能力；原官方表和 golden 可恢复。"
+}

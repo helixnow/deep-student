@@ -1,0 +1,32 @@
+{
+  "id": "RF-W07-diagnostic-sandbox-no-fsync",
+  "kind": "deliberate",
+  "status": "proposed",
+  "title": "迁移诊断的 Slot C/D 一次性测试库不 fsync（synchronous=OFF、journal_mode=MEMORY），用户库的连接设置不变",
+  "rust": {
+    "file": "src-tauri/src/data_governance/commands.rs",
+    "line": 237,
+    "behavior": "run_slot_c_empty_db_test（:237）与 run_slot_d_clone_db_test（:338）用 MigrationCoordinator::new(slotC|slotD) 迁移，coordinator 以裸 rusqlite Connection::open 打开各库（synchronous 默认 FULL、回滚日志落盘），每个迁移提交都 fsync；这两个目录诊断前清空、跑完即清空"
+  },
+  "fix": {
+    "files": ["host/platform/storage/profiles.ts"],
+    "behavior": "profiles.ts 新增 diagnosticSandboxProfile(dir)：只对 <数据根>/slots/slotC|slotD 返回 { ...plain, journalMode: 'MEMORY', synchronous: 'OFF' }，其余目录抛错；不进 PROFILES 表。MigrationCoordinator / MigrationWorker 新增 diagnosticSandbox 选项，设为 true 时 coordinator 迁移连接（migrateDatabase、needsMigration、pendingMigrationsCount）改用该设置，目录不是测试槽则构造时抛错。调用方是 backup 插件 governance.runMigrations，只在 appDataDir 为 slotC/slotD 时传 true（交接 W08，补丁 .reports/W07-handoffs/W08-diagnostic-sandbox-profile.patch）；restore 的 inactiveDir（slotA/slotB）和启动迁移不受影响。Rust active_slot() 只会返回 A 或 B（data_space.rs:1650-1660），测试槽不会存放用户数据"
+  },
+  "evidence": "本机（负载 26–43）单文件跑 host/plugins/backup/tests/migration-diagnostic.test.ts 三次：X1 预算耗时改前 4135 / 3277 / 2531 ms（Slot C worker 3605 / 1852 / 2135 ms），改后 2143 / 768 / 816 ms（Slot C 1101 / 723 / 946 ms）；只设 synchronous=OFF 时 1914 / 1614 / 1102 ms（Slot C 1451 / 1588 / 1202 ms）。服务器 B 趟 16 worker 下该用例 8196 ms 超出 5000 ms 预算（H4）。诊断报告的文本与迁移结果不变；MEMORY 日志仍支持 ROLLBACK（journal_mode=OFF 则不支持），迁移失败照常回滚",
+  "userVisible": "否。迁移诊断报告内容不变，只是更快；Slot C/D 里的库在掉电或崩溃时可能损坏，但它们下次诊断前会被清空重建",
+  "dataCompat": "不改变用户库、同步载荷或备份格式。Slot C/D 每次诊断前清空、跑完即清空，旧版 Rust 与新版互不读取其中内容",
+  "g3": {
+    "affects": false,
+    "selectors": []
+  },
+  "tests": [
+    {
+      "file": "host/platform/storage/tests/diagnostic-sandbox-profile.test.ts",
+      "name": "RF-W07-diagnostic-sandbox-no-fsync: a Slot C diagnostic migration opens its databases without fsync and still migrates every database"
+    },
+    {
+      "file": "host/platform/storage/tests/diagnostic-sandbox-profile.test.ts",
+      "name": "RF-W07-diagnostic-sandbox-no-fsync: a user-slot migration still opens every database with synchronous=FULL and a file journal"
+    }
+  ]
+}

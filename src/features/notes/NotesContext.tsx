@@ -11,7 +11,7 @@ import { useTranslation } from "react-i18next";
 import { showGlobalNotification } from "@/components/UnifiedNotification";
 import { useSystemStatusStore } from '@/stores/systemStatusStore';
 import { useFolderStorage, type ReferenceNode } from "./hooks/useFolderStorage";
-import { Result, VfsError, reportError, ok, err } from '@/shared/result';
+import { Result, VfsError, VfsErrorCode, reportError, ok, err } from '@/shared/result';
 import { debugLog } from '../../debug-panel/debugMasterSwitch';
 // Canvas 智能笔记类型（原从 ./canvas/types 导入，白板功能移除后内联定义）
 export type CanvasAIStatus = 'idle' | 'thinking' | 'writing' | 'error';
@@ -1057,12 +1057,15 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
         // 先更新内容
         console.log('[NotesContext] 💾 调用 dstu.update...', { dstuPath });
-        const updateResult = await dstu.update(dstuPath, normalizedContent, 'note');
+        const expectedUpdatedAtMs = new Date(targetNote.updated_at).getTime();
+        const updateResult = await dstu.update(dstuPath, normalizedContent, 'note', {
+            expectedUpdatedAtMs: Number.isFinite(expectedUpdatedAtMs) ? expectedUpdatedAtMs : undefined,
+        });
 
         if (!updateResult.ok) {
             console.error('[NotesContext] ❌ DSTU API 保存失败!', updateResult.error.toUserMessage());
             const msg = updateResult.error.toUserMessage();
-            const isConflict = msg.includes('notes.conflict');
+            const isConflict = updateResult.error.code === VfsErrorCode.CONFLICT || msg.includes('notes.conflict');
             reportError(updateResult.error, t('notes:errors.save_note_content'));
             notify({
                 title: isConflict ? t('notes:actions.conflict') : t('notes:actions.save_failed'),

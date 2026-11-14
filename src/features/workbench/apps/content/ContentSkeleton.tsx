@@ -16,27 +16,14 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
+import { getOfficialResourceTypeUi } from '@/shared/resource-types/lookup';
 import './ContentSkeleton.css';
 
 export type ContentSkeletonVariant = 'pdf' | 'text' | 'image' | 'generic' | 'mindmap';
 
 /** 资源类型 → 骨架变体（未知类型回退 generic） */
 export function skeletonVariantForType(type: string): ContentSkeletonVariant {
-  switch (type) {
-    case 'textbook':
-    case 'exam':
-      return 'pdf';
-    case 'note':
-    case 'translation':
-    case 'essay':
-      return 'text';
-    case 'image':
-      return 'image';
-    case 'mindmap':
-      return 'mindmap';
-    default:
-      return 'generic';
-  }
+  return getOfficialResourceTypeUi(type)?.skeleton ?? 'generic';
 }
 
 export interface ContentSkeletonProps {

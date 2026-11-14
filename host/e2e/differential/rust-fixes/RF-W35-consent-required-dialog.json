@@ -1,0 +1,24 @@
+{
+  "id": "RF-W35-consent-required-dialog",
+  "kind": "deliberate",
+  "status": "proposed",
+  "title": "CONSENT_REQUIRED 权限同意弹窗：展示精确 ID/版本/service:* 列表，显式确认后写账本并重载",
+  "rust": {
+    "file": "src/features/settings/components/plugins/PluginsTab.tsx",
+    "behavior": "Rust 版渠道插件启用只调用 plugin_set_enabled 后启动运行时，没有按插件 ID/版本/权限逐条确认的同意账本，也没有 CONSENT_REQUIRED 状态或确认弹窗"
+  },
+  "fix": {
+    "files": ["src/features/plugin-manager/ConsentDialog.tsx"],
+    "behavior": "启用/安装返回 CONSENT_REQUIRED 时，控制器暂存 Host 给出的 ConsentSubject，弹窗原样展示 ID、版本与每条权限（service:* 单独标记），不自动补权限；只有用户点“同意并重载”才把同一主体交给适配器写账本，成功后整窗重载，失败保留弹窗与错误。取消不产生任何授权"
+  },
+  "evidence": "W32 consent.md：evaluate 不匹配返回 CONSENT_REQUIRED，grant 原子写账本；W01 负责可信来源命令与重载，W35 只展示精确主体并在确认后调用授权回调。测试见 ConsentDialog.test.tsx（5 条）与 PluginManagerPanel 的 CONSENT_REQUIRED 流程；UI 不含账本路径、不读 profile、不推断权限",
+  "userVisible": "第一次启用需要权限的社区插件时弹出同意框，逐条列出该插件申请的 service 权限；不点同意不会启用，确认后应用重载。插件升级或权限变化会再次要求同意",
+  "dataCompat": "同意记录写入 <dataDir>/community-consent.json（W32 账本，位于 plugins 目录之外）；不改 profile、插件包与备份格式，本视图不直接写账本",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "src/features/plugin-manager/__tests__/ConsentDialog.test.tsx",
+      "name": "RF-W35-consent-required-dialog: shows the exact id, version and service permissions Host reported"
+    }
+  ]
+}

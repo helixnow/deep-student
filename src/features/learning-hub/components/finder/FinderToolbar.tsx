@@ -9,7 +9,6 @@ import {
 } from '@/components/ui/app-menu';
 import { DsButton } from '@/components/ui/DsButton';
 import {
-  ArrowClockwise,
   CaretLeft,
   CaretRight,
   Check,
@@ -50,7 +49,6 @@ interface FinderToolbarProps {
   searchPlaceholder?: string;
   searchDisabled?: boolean;
   onNewFolder?: () => void;
-  onRefresh?: () => void;
   /** 「新建」菜单内容（FinderCreateMenuItems）；桌面壳下快捷访问栏不带 + 按钮，入口放顶栏 */
   createMenuItems?: React.ReactNode;
   titlebarMode?: false | 'shell' | 'window';
@@ -258,7 +256,6 @@ export const FinderToolbar = React.memo(function FinderToolbar({
   searchPlaceholder,
   searchDisabled = false,
   onNewFolder,
-  onRefresh,
   createMenuItems,
   titlebarMode = false,
 }: FinderToolbarProps) {
@@ -357,7 +354,7 @@ export const FinderToolbar = React.memo(function FinderToolbar({
   ) : null;
 
   // ★ 窄窗溢出菜单：新建文件夹 / 刷新 / 排序 收进一个 … 菜单
-  const overflowMenu = (onNewFolder || onRefresh || onSortChange) ? (
+  const overflowMenu = (onNewFolder || onSortChange) ? (
     <AppMenu open={overflowMenuOpen} onOpenChange={setOverflowMenuOpen}>
       <AppMenuTrigger asChild>
         <DsButton
@@ -378,12 +375,7 @@ export const FinderToolbar = React.memo(function FinderToolbar({
             {t('finder.toolbar.newFolder')}
           </AppMenuItem>
         )}
-        {onRefresh && (
-          <AppMenuItem icon={<ArrowClockwise size={14} />} onClick={onRefresh}>
-            {t('common:refresh')}
-          </AppMenuItem>
-        )}
-        {sortMenuEntries && (onNewFolder || onRefresh) && <AppMenuSeparator />}
+        {sortMenuEntries && (onNewFolder) && <AppMenuSeparator />}
         {sortMenuEntries}
       </AppMenuContent>
     </AppMenu>
@@ -454,19 +446,6 @@ export const FinderToolbar = React.memo(function FinderToolbar({
         </DsButton>
       )}
 
-      {onRefresh && (
-        <DsButton
-          variant="ghost"
-          size="icon"
-          iconOnly
-          className="pointer-events-auto relative !h-8 !w-8 !p-1.5 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1 [@media(pointer:coarse)]:after:content-[''] rounded-xl text-foreground/65 hover:bg-[color:var(--interactive-hover)]"
-          onClick={onRefresh}
-          title={t('common:refresh')}
-          aria-label={t('common:refresh')}
-        >
-          <ArrowClockwise size={16} />
-        </DsButton>
-      )}
     </>
   );
 

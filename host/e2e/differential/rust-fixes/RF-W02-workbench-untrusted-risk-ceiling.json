@@ -1,0 +1,28 @@
+{
+  "id": "RF-W02-workbench-untrusted-risk-ceiling",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main-agent",
+  "approvedAt": "2026-11-07T02:38:24Z",
+  "title": "没有受信风险上限的 workbench 工具不再把模型提供的 approvalRiskCeiling 转发给前端桥",
+  "rust": {
+    "file": "src-tauri/crates/dstu-agent/src/chat_v2/tools/workbench_executor.rs",
+    "line": 544,
+    "behavior": "trusted_approval_risk_ceiling 只为 workbench_act / act_high / undo 注入并覆盖 approvalRiskCeiling；其他工具（observe、app_command、窗口管理等）原样透传模型参数里的同名字段，前端桥收到的上限可能是模型伪造的值。"
+  },
+  "fix": {
+    "files": ["host/plugins/agent-skills/src/tools/workbench-executor.ts"],
+    "behavior": "受信路径照旧注入；其余工具在转发前删掉 approvalRiskCeiling 与 approval_risk_ceiling。其他参数与 Rust 相同。"
+  },
+  "evidence": "与 Rust 自身意图矛盾：inject_approval_risk_ceiling 的注释与测试（risk_ceiling_is_overwritten_by_trusted_tool_path）表明该字段只能由后端决定、模型值必须丢弃；只覆盖三个工具让其余工具成了绕过口。前端若按该字段放宽审批，模型可自行抬高上限。来源：reviews/AGENT-EXECUTOR-SECURITY.md S5。",
+  "g3": {
+    "affects": false,
+    "selectors": []
+  },
+  "tests": [
+    {
+      "file": "host/plugins/agent-skills/tests/workbench-executor.test.ts",
+      "name": "RF-W02-workbench-untrusted-risk-ceiling: tools without a trusted ceiling never forward the model-supplied one"
+    }
+  ]
+}

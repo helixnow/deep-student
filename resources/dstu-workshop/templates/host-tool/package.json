@@ -1,0 +1,5 @@
+{
+  "name": "dstu-workshop-host-tool", "version": "1.0.0", "type": "module",
+  "engines": { "deepStudent": ">=0.20.0 <1.0.0", "deepStudentPluginApi": "1" },
+  "deepStudent": { "manifestVersion": 1, "id": "__PLUGIN_ID__", "platforms": ["desktop"], "host": "./index.ts" }
+}

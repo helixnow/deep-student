@@ -1,0 +1,37 @@
+{
+  "id": "RF-W02-agent-json-bigint",
+  "kind": "deliberate",
+  "status": "proposed",
+  "title": "工具结果里的 bigint 在注册表统一转成 number：不再让整轮工具调用因序列化失败而中断，超过 2^53 的整数按 IEEE-754 舍入",
+  "rust": {
+    "file": "src-tauri/crates/dstu-agent/src/chat_v2/context.rs",
+    "line": 612,
+    "behavior": "工具输出是 serde_json::Value，i64/u64 照常序列化：预算（budget.rs）、给模型的 tool 消息（serde_json::to_string(&result.output)）、落库的块内容都保留完整数字；前端 JSON.parse 时超过 2^53 的整数才舍入"
+  },
+  "fix": {
+    "files": [
+      "host/kernel/agent-api.ts",
+      "host/plugins/chat/src/executor-registry.ts"
+    ],
+    "behavior": "ToolExecutorRegistry.execute 在做结果预算之前（resultCharBudget 返回 null、即不做预算时也一样）对 output 调一次 toAgentJson：bigint 叶子转成 number（与 toWireJson 的投影相同），rawJSON 原子保持原样，不含 bigint 的 output 原对象返回。之前 serializedCharLen、history.ts 的 JSON.stringify 遇到 bigint 都会抛 `Do not know how to serialize a BigInt`，整轮工具调用失败。各执行器和 vfs-index 自己写的 bigint 转换可以删掉"
+  },
+  "evidence": "审计 V08-06。不转成 rawJSON 原子保留精度的原因：variant-context.ts:103-105 与 citations.ts:38 对工具结果做 structuredClone，原子会抛 DataCloneError。2^53 以内的整数与 Rust 完全相同；超过 2^53 的整数在模型看到的文本和落库的块内容里会舍入（例如 1730000000000123456 变成 1730000000000123500），前端看到的值与 Rust 版前端 JSON.parse 后的值相同。现有执行器（todo-executor、automation-executor、connector-executor 等）原本就是 bigint→Number，本条只把它收口到注册表",
+  "userVisible": "通常不可感知：只有工具输出包含超过 2^53 的整数时，模型看到的数字末几位与 Rust 版不同；以前这种输出会让整轮工具调用报错，现在可以正常完成",
+  "dataCompat": "不改表结构；超过 2^53 的整数以舍入后的数字写进工具块 output，回退到 Rust 版后照常读取",
+  "g3": {
+    "affects": true,
+    "selectors": [
+      { "scenario": "*tool*", "surface": "event", "event": "chat_v2_event_*", "jsonPath": "$.payload.result" }
+    ]
+  },
+  "tests": [
+    {
+      "file": "host/plugins/chat-pipeline/tests/tool-result-agent-json.test.ts",
+      "name": "RF-W02-agent-json-bigint: bigint leaves become numbers under the default budget and with budgeting disabled"
+    },
+    {
+      "file": "host/plugins/chat-pipeline/tests/tool-result-agent-json.test.ts",
+      "name": "RF-W02-agent-json-bigint: integers beyond 2^53 round like the frontend's JSON.parse; raw atoms and bigint-free output are untouched"
+    }
+  ]
+}

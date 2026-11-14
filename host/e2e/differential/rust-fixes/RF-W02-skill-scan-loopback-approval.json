@@ -1,0 +1,37 @@
+{
+  "id": "RF-W02-skill-scan-loopback-approval",
+  "kind": "deliberate",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T14:25:00+08:00",
+  "title": "skill_scan 的 source.url 指向本机时需要审批（High），与 web_fetch 一致",
+  "rust": {
+    "file": "src-tauri/crates/dstu-agent/src/chat_v2/tools/skill_install_executor.rs",
+    "line": 534,
+    "behavior": "skill_scan 固定为 Low，任何预设都不弹审批；download_https_bytes（fetch_executor.rs:653）对 loopback 豁免内网拦截，所以模型可以免审批让 skill_scan 去连 https://127.0.0.1:<port>/、https://localhost:<port>/，用返回的错误文本（连接拒绝 / TLS 失败 / HTTP 状态 / zip 解析失败）探测本机端口和服务"
+  },
+  "fix": {
+    "files": [
+      "host/plugins/agent-skills/src/tools/skill-install-executor.ts",
+      "host/plugins/agent-skills/src/tools/skill-install-chat-executor.ts"
+    ],
+    "behavior": "sensitivityLevelForCall：skill_scan 的 source.url（去掉首尾空白）按 WHATWG 解析后主机是 loopback 字面量（127.0.0.0/8、::1、::ffff:127.x，含 127.1 等写法）或 localhost/*.localhost 时为 High，其余（公网 URL、root_id 来源、缺参数）仍为 Low；skill_install 仍恒为 High。hasDynamicSensitivity 只对 skill_scan 为 true。判定函数与 web_fetch（RF-S01-web-fetch-loopback-approval）共用 namesLoopback"
+  },
+  "evidence": "S01 第七轮交接第 3 项。web_fetch 已按 RF-S01-web-fetch-loopback-approval 对本机 URL 要求审批，skill_scan 走的是同一类 HTTPS 下载（RF-S01-skill-download-resolved-loopback-blocked 只放行 URL 字面写本机的情况），却仍是免审批的 Low，等于给模型留了一条绕开 web_fetch 审批去碰本机服务的路。复现：Rust 中 skill_scan {source:{url:'https://127.0.0.1:11434/x.zip'}} 在 relaxed 预设下直接执行，错误文本区分端口开闭。修复后需要用户审批；解析到 loopback 的域名仍为 Low，但下载层已拒绝连接（RF-S01-skill-download-resolved-loopback-blocked）。",
+  "userVisible": "能感知：模型对 localhost/127.0.0.1/[::1] 的技能包 URL 调用 skill_scan 时会出现审批弹窗（relaxed 预设下原先不弹）；公网 URL 和运行时目录来源不变",
+  "dataCompat": "不改变落库数据、同步载荷或备份格式；工具块结构不变",
+  "g3": {
+    "affects": false,
+    "selectors": []
+  },
+  "tests": [
+    {
+      "file": "host/plugins/agent-skills/tests/skill-install-chat-executor.test.ts",
+      "name": "RF-W02-skill-scan-loopback-approval: a source.url naming this machine makes skill_scan High (Rust: Low, so it probed local ports unapproved)"
+    },
+    {
+      "file": "host/plugins/agent-skills/tests/skill-install-chat-executor.test.ts",
+      "name": "RF-W02-skill-scan-loopback-approval: the chat executor registry reports High risk for a loopback skill_scan to the approval gate"
+    }
+  ]
+}

@@ -1,6 +1,10 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { SettingsSidebar } from './SettingsSidebar';
-import { useSettingsNavigation } from './useSettingsNavigation';
+import { useSlot } from '@/ui-kernel/react';
+import type { SettingsSection } from '@/ui-kernel/contracts/settings';
+import { settingsNavigation } from '@/ui-plugins/official/settings/navigation';
+import { isMobilePlatform } from '@/utils/platform';
 import { useSettingsShellStore } from '@/stores/settingsShellStore';
 
 interface SettingsShellSidebarProps {
@@ -19,7 +23,13 @@ export const SettingsShellSidebar: React.FC<SettingsShellSidebarProps> = ({
   const [sidebarSearchQuery, setSidebarSearchQuery] = useState('');
   const [sidebarSearchFocused, setSidebarSearchFocused] = useState(false);
   const [internalSidebarOpen, setInternalSidebarOpen] = useState(false);
-  const { sidebarNavItems, sidebarCategories, settingsSearchIndex } = useSettingsNavigation();
+  const { t } = useTranslation(['settings', 'common', 'data', 'workbench']);
+  const entries = useSlot<SettingsSection>('settings.sections');
+  const isMobile = isMobilePlatform();
+  const { sidebarNavItems, sidebarCategories, settingsSearchIndex } = useMemo(
+    () => settingsNavigation(entries, t, { isMobile }),
+    [entries, t, isMobile],
+  );
   const activeTab = useSettingsShellStore((state) => state.activeTab);
   const setActiveTab = useSettingsShellStore((state) => state.setActiveTab);
 

@@ -11,6 +11,8 @@ export interface SessionGroup {
   systemPrompt?: string;
   defaultSkillIds: string[];
   pinnedResourceIds: string[];
+  /** Explicit VFS canonical root folder ID for this Study Space (fld_*) */
+  rootFolderId?: string | null;
   workspaceId?: string;
   /** 课题默认 runtime root（workspace / authorized_*）；未绑定为 null */
   defaultRuntimeRootId?: string | null;
@@ -30,6 +32,7 @@ export interface CreateGroupRequest {
   systemPrompt?: string;
   defaultSkillIds?: string[];
   pinnedResourceIds?: string[];
+  rootFolderId?: string | null;
   workspaceId?: string;
   defaultRuntimeRootId?: string | null;
   preferredProjectRootPath?: string | null;
@@ -43,6 +46,7 @@ export interface UpdateGroupRequest {
   systemPrompt?: string;
   defaultSkillIds?: string[];
   pinnedResourceIds?: string[];
+  rootFolderId?: string | null;
   workspaceId?: string;
   /** 传 '' 或 null 表示清除绑定（与 systemPrompt 清空习惯一致） */
   defaultRuntimeRootId?: string | null;

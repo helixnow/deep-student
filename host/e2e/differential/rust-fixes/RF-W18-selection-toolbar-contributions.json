@@ -1,0 +1,21 @@
+{
+  "id": "RF-W18-selection-toolbar-contributions",
+  "kind": "deliberate",
+  "status": "proposed",
+  "title": "选中浮条允许社区按 order 添加按钮，失败构建事务丢弃，按钮回调错误归属插件",
+  "rust": { "file": "src/components/crepe/commandMenus.ts", "behavior": "迁移前浮条只有命令接线和宿主 selectionActions，无社区浮条槽位。" },
+  "fix": {
+    "files": ["src/components/crepe/commandMenus.ts", "src/components/crepe/CrepeEditor.tsx", "src/ui-plugins/official/editor/editorSlots.ts"],
+    "behavior": "按实例合并官方 10/20 与社区条目；社区 build 操作副本，成功才发布新增项和改写，抛错则全部丢弃。社区 onRun 同步异常/异步拒绝与 active 异常带 entry 归属上报，active 失败回 false。"
+  },
+  "userVisible": "新建编辑器可显示已安装插件的选中浮条按钮；插件构建失败不会留下半个分组或改坏官方回调，按钮点击/active 抛错不再打断浮条。浮条仍只构建一次，卸载只影响后续实例；官方无社区场景保持 golden 不变。",
+  "dataCompat": "不涉及落库、同步和备份格式。",
+  "evidence": "B2 partial build 回归在原实现红；B2 successful callbacks 在恢复原 build-only try/catch 时红（w18-toolbar-callback-red.log），修后两个用例绿；selectionToolbar.golden 未改且通过。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    { "file": "src/components/crepe/__tests__/editorMenuSlots.host.test.tsx", "name": "RF-W18-selection-toolbar-contributions B2: toolbar callbacks are attributed and a partial failed build leaves no output or mutation" },
+    { "file": "src/components/crepe/__tests__/editorMenuSlots.host.test.tsx", "name": "RF-W18-selection-toolbar-contributions B2: successful builds isolate click, async rejection and active callbacks with plugin attribution" }
+  ],
+  "commits": ["96ca01fe", "fe6df51a"],
+  "notes": "待主编排审批。回撤：撤回上述提交中 toolbar helpers/consumer/officialSelectionToolbarEntries，恢复 wireCrepeCommandMenu 直接接线；保留其他编辑器能力，协调删除 selectionToolbar 槽位及对应快照键。共享 builder 所有权规则未改 SDK：仅在消费者暂存公开接口支持的修改，成功改写仍保留原契约能力。"
+}

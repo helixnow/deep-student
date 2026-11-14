@@ -1,0 +1,182 @@
+{
+  "domain": "backup",
+  "commands": [
+    "data_governance_list_backup_jobs",
+    "data_governance_get_backup_job",
+    "data_governance_list_resumable_jobs",
+    "data_governance_resume_backup_job",
+    "data_governance_cleanup_persisted_jobs"
+  ],
+  "scenarios": [
+    {
+      "id": "backup.jobs.empty_state",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "data_governance_list_backup_jobs",
+          "args": {}
+        },
+        {
+          "cmd": "data_governance_list_resumable_jobs",
+          "args": {}
+        },
+        {
+          "cmd": "data_governance_cleanup_persisted_jobs",
+          "args": {}
+        },
+        {
+          "cmd": "data_governance_get_backup_job",
+          "args": {
+            "jobId": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "cmd": "data_governance_get_backup_job",
+          "args": {
+            "jobId": ""
+          }
+        },
+        {
+          "cmd": "data_governance_get_backup_job",
+          "args": {
+            "jobId": "../backup_jobs/x"
+          }
+        },
+        {
+          "cmd": "data_governance_cleanup_persisted_jobs",
+          "args": {}
+        },
+        {
+          "cmd": "data_governance_list_backup_jobs",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "backup.jobs.resume.not_found_creates_no_job",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "data_governance_resume_backup_job",
+          "args": {
+            "jobId": "00000000-0000-0000-0000-000000000000"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_resume_backup_job",
+          "args": {
+            "jobId": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_resume_backup_job",
+          "args": {
+            "jobId": "00000000-0000-0000-0000-000000000000",
+            "password": "wp073-pass"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_resume_backup_job",
+          "args": {
+            "jobId": "00000000-0000-0000-0000-000000000000",
+            "password": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_resume_backup_job",
+          "args": {
+            "jobId": "../../etc/passwd"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_list_backup_jobs",
+          "args": {}
+        },
+        {
+          "cmd": "data_governance_list_resumable_jobs",
+          "args": {}
+        },
+        {
+          "cmd": "data_governance_get_backup_job",
+          "args": {
+            "jobId": "00000000-0000-0000-0000-000000000000"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "backup.jobs.ipc_args",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "data_governance_get_backup_job",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_get_backup_job",
+          "args": {
+            "jobId": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_get_backup_job",
+          "args": {
+            "jobId": 1
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_resume_backup_job",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_resume_backup_job",
+          "args": {
+            "jobId": "00000000-0000-0000-0000-000000000000",
+            "password": 1
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_list_resumable_jobs",
+          "args": {
+            "unexpected": true
+          }
+        },
+        {
+          "cmd": "data_governance_list_backup_jobs",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

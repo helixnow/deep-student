@@ -410,5 +410,44 @@
     "diff_title": "Diff vs last snapshot",
     "diff_none": "No changes",
     "diff_summary": "+{{added}} / −{{removed}} / ~{{changed}}"
+  },
+  "canvas": {
+    "back": "Back",
+    "undoEdit": "Undo edit",
+    "localEdit": "Local edit",
+    "source": "Source",
+    "expand": "Expand",
+    "htmlSource": "HTML source",
+    "charCount": "{{count}} chars",
+    "localEditHeader": "Inline local edit (current canvas only)",
+    "editInstructionPlaceholder": "Enter edit instructions, or paste a { search, replace } JSON patch",
+    "editInstructionAria": "Edit instructions",
+    "patchSearchPlaceholder": "Find snippet (search)",
+    "patchSearchAria": "Search snippet",
+    "patchReplacePlaceholder": "Replace with snippet (replace)",
+    "patchReplaceAria": "Replacement snippet",
+    "collapse": "Collapse",
+    "applying": "Applying…",
+    "applyEdit": "Apply edit",
+    "pinToCanvas": "Pin to canvas",
+    "saveToSpace": "Save to space"
+  },
+  "artifact": {
+    "pinToCanvas": "Pin to canvas",
+    "saveToSpace": "Save to space",
+    "pinnedToCanvas": "Pinned to canvas",
+    "savedToSpace": "Saved to study space",
+    "savedAsNote": "Saved as study note",
+    "saveFailed": "Failed to save to space: {{message}}",
+    "defaultHtmlTitle": "Interactive HTML artifact",
+    "defaultOpenuiTitle": "OpenUI artifact",
+    "defaultGenuiTitle": "AI interactive view"
+  },
+  "openuiLang": {
+    "lineChartAria": "Line chart",
+    "generating": "Generating UI…",
+    "empty": "Empty OpenUI block",
+    "notePlaceholder": "Add a note (optional)",
+    "confirm": "Confirm"
   }
 }

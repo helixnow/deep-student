@@ -6,9 +6,15 @@
  * 合法 researchSessionId 才触发 HPIAS 事件桥 + 实时研究面板。
  */
 
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo } from 'react';
+import { FolderSimplePlus, PushPinSimple } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
+import { DsButton } from '@/components/ui/DsButton';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { registerArtifactRenderer } from '@/components/previews/artifactRendererRegistry';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
+import { sessionManager } from '../../core/session/sessionManager';
+import { useSessionListStore } from '../../stores/sessionListStore';
 import { GenerativeUIRenderer } from '@/features/generative-ui/GenerativeUIRenderer';
 import {
   extractGenerativeUIIntent,
@@ -21,7 +27,27 @@ import { useHpiasEventBridge } from '@/features/generative-ui/hooks/useHpiasEven
 import { extractResearchSessionId } from '@/features/generative-ui/utils/extractResearchSessionId';
 import { buildExportMarkdownI18nLabels } from '@/features/generative-ui/utils/buildExportMarkdownI18nLabels';
 import { getCanvasNoteIdFromModeState } from '@/features/chat/adapters/tauri/requestHelpers';
+import {
+  requestPinArtifactToCanvas,
+  usePinnedArtifactStore,
+} from '@/stores/pinnedArtifactStore';
 import { useHpiasStore } from '@/stores/researchStore';
+import { getErrorMessage } from '@/utils/errorUtils';
+
+registerArtifactRenderer('generative-ui', function GenerativeUIPinnedArtifactRenderer({ content }) {
+  let resolvedIntent: Parameters<typeof GenerativeUIRenderer>[0]['intent'] = content;
+  try {
+    const parsed = JSON.parse(content) as unknown;
+    if (parsed && typeof parsed === 'object') {
+      const record = parsed as Record<string, unknown>;
+      const inner = record.intent ?? record.spec ?? parsed;
+      resolvedIntent = inner as Parameters<typeof GenerativeUIRenderer>[0]['intent'];
+    }
+  } catch {
+    resolvedIntent = content;
+  }
+  return <GenerativeUIRenderer intent={resolvedIntent} isStreaming={false} showChrome={false} />;
+});
 
 function readIntentQuestion(intent: unknown): string | undefined {
   if (!intent || typeof intent !== 'object') return undefined;
@@ -33,6 +59,13 @@ function GenerativeUIBlockComponent({ block, isStreaming, store }: BlockComponen
   const { t } = useTranslation('generativeUi');
   const exportMarkdownLabels = useMemo(() => buildExportMarkdownI18nLabels(t), [t]);
   const canvasNoteId = getCanvasNoteIdFromModeState(store?.getState().modeState ?? null);
+  const resolvedSessionId =
+    store?.getState().sessionId || sessionManager.getCurrentSessionId() || undefined;
+  const resolvedGroupId = useSessionListStore((state) =>
+    resolvedSessionId
+      ? state.sessions.find((session) => session.id === resolvedSessionId)?.groupId
+      : undefined,
+  );
 
   const extracted = extractGenerativeUIIntent(
     block.toolOutput,
@@ -123,6 +156,73 @@ function GenerativeUIBlockComponent({ block, isStreaming, store }: BlockComponen
     t,
   ]);
 
+  const serializedArtifactContent = useMemo(() => {
+    if (displayIntent == null) return '';
+    if (typeof displayIntent === 'string') return displayIntent;
+    return JSON.stringify(displayIntent, null, 2);
+  }, [displayIntent]);
+
+  const artifactTitle = useMemo(() => {
+    if (displayIntent && typeof displayIntent === 'object') {
+      const fromMeta = readIntentQuestion(displayIntent)?.trim();
+      if (fromMeta) return fromMeta;
+    }
+    return t('artifact.defaultGenuiTitle');
+  }, [displayIntent, t]);
+
+  const artifactWidgetId = `widget-genui-${block.id}`;
+
+  const handlePinToCanvas = useCallback(() => {
+    if (!serializedArtifactContent) return;
+    requestPinArtifactToCanvas({
+      kind: 'generative-ui',
+      language: 'json',
+      title: artifactTitle,
+      content: serializedArtifactContent,
+      sourceMessageId: block.messageId || block.id,
+      widgetId: artifactWidgetId,
+      sessionId: resolvedSessionId,
+      groupId: resolvedGroupId,
+    });
+  }, [
+    artifactTitle,
+    artifactWidgetId,
+    block.id,
+    block.messageId,
+    resolvedGroupId,
+    resolvedSessionId,
+    serializedArtifactContent,
+  ]);
+
+  const handleSaveToSpace = useCallback(async () => {
+    if (!serializedArtifactContent) return;
+    try {
+      const result = await usePinnedArtifactStore.getState().saveArtifactToStudySpace({
+        title: artifactTitle,
+        kind: 'generative-ui',
+        language: 'json',
+        content: serializedArtifactContent,
+        sessionId: resolvedSessionId,
+        groupId: resolvedGroupId,
+      });
+      try {
+        showGlobalNotification(
+          'success',
+          result.pinnedToGroup ? t('artifact.savedToSpace') : t('artifact.savedAsNote'),
+        );
+      } catch {
+        // ignore notification errors in headless environments
+      }
+    } catch (err: unknown) {
+      const message = getErrorMessage(err);
+      try {
+        showGlobalNotification('error', t('artifact.saveFailed', { message }));
+      } catch {
+        // ignore notification errors in headless environments
+      }
+    }
+  }, [artifactTitle, resolvedGroupId, resolvedSessionId, serializedArtifactContent, t]);
+
   if (!extracted) {
     return (
       <div className="text-sm text-muted-foreground px-1" data-block-type={GENERATIVE_UI_BLOCK_TYPE}>
@@ -130,6 +230,8 @@ function GenerativeUIBlockComponent({ block, isStreaming, store }: BlockComponen
       </div>
     );
   }
+
+  const effectiveStreaming = Boolean(isStreaming ?? extracted.isStreaming);
 
   return (
     <div className="space-y-3" data-block-type={GENERATIVE_UI_BLOCK_TYPE}>
@@ -141,12 +243,41 @@ function GenerativeUIBlockComponent({ block, isStreaming, store }: BlockComponen
         />
       )}
       {displayIntent != null && (
-        <GenerativeUIRenderer
-          intent={displayIntent}
-          isStreaming={isStreaming ?? extracted.isStreaming}
-          showChrome={!isStreaming && !showLiveResearch}
-          actionHandlers={actionHandlers}
-        />
+        <div>
+          <GenerativeUIRenderer
+            intent={displayIntent}
+            isStreaming={effectiveStreaming}
+            showChrome={!isStreaming && !showLiveResearch}
+            actionHandlers={actionHandlers}
+          />
+          {!effectiveStreaming && serializedArtifactContent && (
+            <div
+              className="mt-2 flex items-center justify-end gap-1.5 border-t border-border/35 pt-2"
+              data-testid="generative-ui-artifact-actions"
+            >
+              <DsButton
+                variant="ghost"
+                size="sm"
+                onClick={handlePinToCanvas}
+                data-testid="generative-ui-pin-button"
+                className="[@media(pointer:coarse)]:!min-h-11"
+              >
+                <PushPinSimple size={13} />
+                <span>{t('artifact.pinToCanvas')}</span>
+              </DsButton>
+              <DsButton
+                variant="ghost"
+                size="sm"
+                onClick={() => void handleSaveToSpace()}
+                data-testid="generative-ui-save-space-button"
+                className="[@media(pointer:coarse)]:!min-h-11"
+              >
+                <FolderSimplePlus size={13} />
+                <span>{t('artifact.saveToSpace')}</span>
+              </DsButton>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

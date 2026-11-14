@@ -1,0 +1,70 @@
+{
+  "kind": "static-source-plus-production-recheck-not-C",
+  "rustBaseline": "2ee9a9cbeb2bff3d31748afdc3d951c166228f74",
+  "originalEvidenceRevision": "2a86d348b516db6cbbb52a83ed7a07cb17060861",
+  "tsRevision": "c9a9e1371a6bc4964e8278095500134bb87fe013",
+  "scope": "production decoder direct/internal composition; not IPC bypass or full serde error-wire parity",
+  "results": [
+    {
+      "id": "X7-L16-SERDE-front",
+      "lane": "L16-anki",
+      "source": "dstu-core/src/models.rs:1380-1411",
+      "scope": "production decoder direct call / internal assembly; not an IPC contract bypass",
+      "input": {
+        "id": "fixture",
+        "created_at": "2026-11-04T00:00:00Z",
+        "updated_at": "2026-11-04T00:00:00Z",
+        "front": 3
+      },
+      "expected": "serde rejects a non-string value in String / Vec<String> / HashMap<String,String>",
+      "actual": {
+        "ok": false,
+        "errorType": "AnkiCardDecodeError",
+        "error": "invalid type: number, expected a string"
+      },
+      "status": "matches-static-rejection"
+    },
+    {
+      "id": "X7-L16-SERDE-tags",
+      "lane": "L16-anki",
+      "source": "dstu-core/src/models.rs:1380-1411",
+      "scope": "production decoder direct call / internal assembly; not an IPC contract bypass",
+      "input": {
+        "id": "fixture",
+        "created_at": "2026-11-04T00:00:00Z",
+        "updated_at": "2026-11-04T00:00:00Z",
+        "tags": [
+          3
+        ]
+      },
+      "expected": "serde rejects a non-string value in String / Vec<String> / HashMap<String,String>",
+      "actual": {
+        "ok": false,
+        "errorType": "AnkiCardDecodeError",
+        "error": "invalid type: number, expected a string"
+      },
+      "status": "matches-static-rejection"
+    },
+    {
+      "id": "X7-L16-SERDE-extra_fields",
+      "lane": "L16-anki",
+      "source": "dstu-core/src/models.rs:1380-1411",
+      "scope": "production decoder direct call / internal assembly; not an IPC contract bypass",
+      "input": {
+        "id": "fixture",
+        "created_at": "2026-11-04T00:00:00Z",
+        "updated_at": "2026-11-04T00:00:00Z",
+        "extra_fields": {
+          "key": 3
+        }
+      },
+      "expected": "serde rejects a non-string value in String / Vec<String> / HashMap<String,String>",
+      "actual": {
+        "ok": false,
+        "errorType": "AnkiCardDecodeError",
+        "error": "invalid type: number, expected a string"
+      },
+      "status": "matches-static-rejection"
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "id": "RF-W03-review-conflict-context-chain",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T08:52+08:00",
+  "title": "review_suspend/resume/delete 版本冲突时返回结构化 REVIEW_CONFLICT（Rust 的 with_context 把冲突遮掉，专门写的冲突分支不可达）",
+  "rust": {
+    "file": "src-tauri/src/chat_v2/tools/review_executor.rs",
+    "line": 168,
+    "behavior": "mutation_error 用 error.to_string().contains(\"REVIEW_CONFLICT\") 识别冲突；但 review_plan_service.rs:652/676/695 的 suspend/resume/delete_plan_if_unchanged 用 anyhow with_context 包了一层，anyhow 的 Display 只输出最外层 \"Failed to suspend review plan: <id>\"，于是三个工具在版本过期时只返回通用文本 \"复习计划suspend失败: Failed to suspend review plan: <id>\"，不带 code/current/retryable"
+  },
+  "fix": {
+    "files": [
+      "host/plugins/review/src/review-tool-executor.ts",
+      "host/plugins/review/src/review-plan.ts"
+    ],
+    "behavior": "context 错误把原错误保留在 cause；工具层沿整条 cause 链查找 REVIEW_CONFLICT，命中时返回与 review_submit 相同的结构化冲突（code、action、plan_id、expected_updated_at、current、retryable=false、hint、messageKey）。命令层（review_plan_* IPC）的错误文本不变。"
+  },
+  "evidence": "与 Rust 自身意图矛盾：mutation_error 只被 suspend/resume/delete 三个乐观锁工具调用（review_executor.rs:603/623/648），其 REVIEW_CONFLICT 分支就是为它们写的，但在 Rust 里永远进不去。用户可见后果：模型拿到不可解析的通用失败文本，不知道计划已被别处更新，只能用过期版本盲目重试或放弃；review_submit 路径没有 context 包装，同类冲突能拿到结构化结果，两者不一致。复现：生成复习计划后以 expected_updated_at='stale' 调用 review_suspend。",
+  "g3": {
+    "affects": false,
+    "selectors": []
+  },
+  "userVisible": "仅在 Agent 对已被别处修改的复习计划执行暂停/恢复/删除时，工具结果从通用失败文本变为结构化冲突（附当前计划），模型可据此重新读取后再操作。",
+  "dataCompat": "不改变落库数据、同步载荷或备份格式；只改变工具调用失败时的错误文本。",
+  "tests": [
+    {
+      "file": "host/plugins/review/tests/review-tool-executor.test.ts",
+      "name": "RF-W03-review-conflict-context-chain: stale suspend/resume/delete keep the structured REVIEW_CONFLICT payload"
+    }
+  ]
+}

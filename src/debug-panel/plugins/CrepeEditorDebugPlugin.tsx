@@ -13,159 +13,24 @@
 import React from 'react';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
 import { 
-  Copy, FloppyDisk, Warning, CheckCircle, XCircle, Funnel, 
-  Clipboard, Trash, ArrowClockwise, Eye, Play, Gear, Code 
+  Copy, FloppyDisk, Warning, CheckCircle, Funnel, 
+  Clipboard, Trash, ArrowClockwise, Eye, Code 
 } from '@phosphor-icons/react';
 import { showGlobalNotification } from '../../components/UnifiedNotification';
-import { debugMasterSwitch } from '../debugMasterSwitch';
+import { serveDebugChannel } from '@/shared/debug/bus';
+import { CREPE_EDITOR_DEBUG_CHANNEL } from '@/shared/debug/channels/crepeEditor';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import {
+  CATEGORY_LABELS, LEVEL_COLORS, LEVEL_ICONS,
+  type DOMSnapshot, type DebugLog, type EventCategory, type LogLevel,
+} from './crepeEditor/model';
+import { captureDOMSnapshot, emitCrepeDebug } from './crepeEditor/report';
+import { useCrepeDebugFeed } from './crepeEditor/useCrepeDebugFeed';
+import { diagnose, logStats } from './crepeEditor/diagnosis';
+import { copiedLog, exportData, exportFileName } from './crepeEditor/copy';
 
-// ============ 类型定义 ============
-
-type LogLevel = 'debug' | 'info' | 'warning' | 'error';
-
-type EventCategory = 
-  | 'lifecycle'       // 生命周期：mount/unmount/create/destroy
-  | 'init'            // 初始化：container/Crepe实例/配置
-  | 'dependency'      // 依赖：Prism/插件加载
-  | 'dom'             // DOM状态：data-ready/contentEditable
-  | 'editor'          // 编辑器事件：focus/blur/change
-  | 'error'           // 错误捕获
-  | 'snapshot';       // 状态快照
-
-interface DOMSnapshot {
-  wrapperExists: boolean;
-  dataReady: string | null;
-  milkdownExists: boolean;
-  proseMirrorExists: boolean;
-  contentEditable: string | null;
-  pointerEvents: string | null;
-  opacity: string | null;
-  wrapperClassName: string;
-  childCount: number;
-}
-
-interface EditorSnapshot {
-  crepeExists: boolean;
-  isReady: boolean;
-  readonly: boolean;
-  noteId: string | null;
-  subject?: string | null;
-  markdownLength: number;
-}
-
-interface DebugLog {
-  id: string;
-  ts: number;
-  category: EventCategory;
-  level: LogLevel;
-  message: string;
-  details?: Record<string, any>;
-  domSnapshot?: DOMSnapshot;
-  editorSnapshot?: EditorSnapshot;
-}
-
-// ============ 常量 ============
-
-const LEVEL_COLORS: Record<LogLevel, string> = {
-  debug: '#6b7280',
-  info: '#3b82f6',
-  warning: '#f59e0b',
-  error: '#ef4444',
-};
-
-const LEVEL_ICONS: Record<LogLevel, React.FC<any>> = {
-  debug: ArrowClockwise,
-  info: CheckCircle,
-  warning: Warning,
-  error: XCircle,
-};
-
-const CATEGORY_LABELS: Record<EventCategory, { label: string; icon: React.FC<any>; color: string }> = {
-  lifecycle: { label: '生命周期', icon: ArrowClockwise, color: '#8b5cf6' },
-  init: { label: '初始化', icon: Gear, color: '#6366f1' },
-  dependency: { label: '依赖加载', icon: Code, color: '#10b981' },
-  dom: { label: 'DOM状态', icon: Eye, color: '#f97316' },
-  editor: { label: '编辑器事件', icon: Play, color: '#3b82f6' },
-  error: { label: '错误', icon: XCircle, color: '#ef4444' },
-  snapshot: { label: '状态快照', icon: Eye, color: '#06b6d4' },
-};
-
-// ============ 事件通道 ============
-
-export const CREPE_DEBUG_EVENT = 'crepe-editor-debug';
-
-export interface CrepeDebugEventDetail {
-  category: EventCategory;
-  level: LogLevel;
-  message: string;
-  details?: Record<string, any>;
-  domSnapshot?: DOMSnapshot;
-  editorSnapshot?: EditorSnapshot;
-}
-
-/**
- * 发射 Crepe 调试事件
- */
-export const emitCrepeDebug = (
-  category: EventCategory,
-  level: LogLevel,
-  message: string,
-  details?: Record<string, any>,
-  domSnapshot?: DOMSnapshot,
-  editorSnapshot?: EditorSnapshot
-) => {
-  try {
-    // 默认不派发任何调试事件，避免编辑器输入期间产生额外开销（尤其是 IME 合成态）
-    if (!debugMasterSwitch.isEnabled()) return;
-    const event = new CustomEvent<CrepeDebugEventDetail>(CREPE_DEBUG_EVENT, {
-      detail: { category, level, message, details, domSnapshot, editorSnapshot },
-    });
-    window.dispatchEvent(event);
-  } catch (e) {
-    console.warn('[CrepeDebug] Event emit failed:', e);
-  }
-};
-
-/**
- * 捕获 DOM 快照
- */
-export const captureDOMSnapshot = (container?: HTMLElement | null): DOMSnapshot => {
-  if (!container) {
-    // 尝试从 DOM 中查找
-    container = document.querySelector('.crepe-editor-wrapper') as HTMLElement | null;
-  }
-  
-  if (!container) {
-    return {
-      wrapperExists: false,
-      dataReady: null,
-      milkdownExists: false,
-      proseMirrorExists: false,
-      contentEditable: null,
-      pointerEvents: null,
-      opacity: null,
-      wrapperClassName: '',
-      childCount: 0,
-    };
-  }
-
-  const milkdown = container.querySelector('.milkdown');
-  const proseMirror = container.querySelector('.ProseMirror');
-  const computedStyle = window.getComputedStyle(container);
-
-  return {
-    wrapperExists: true,
-    dataReady: container.getAttribute('data-ready'),
-    milkdownExists: !!milkdown,
-    proseMirrorExists: !!proseMirror,
-    contentEditable: proseMirror?.getAttribute('contenteditable') ?? null,
-    pointerEvents: computedStyle.pointerEvents,
-    opacity: computedStyle.opacity,
-    wrapperClassName: container.className,
-    childCount: container.childElementCount,
-  };
-};
+export type { CrepeDebugEventDetail } from './crepeEditor/model';
+export { captureDOMSnapshot, emitCrepeDebug };
 
 // ============ 插件组件 ============
 
@@ -186,77 +51,7 @@ const CrepeEditorDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAc
     });
   }, []);
 
-  // 监听调试事件
-  React.useEffect(() => {
-    if (!isActivated) return;
-
-    const handleDebugEvent = (event: CustomEvent<CrepeDebugEventDetail>) => {
-      append({
-        ...event.detail,
-        ts: Date.now(),
-      });
-    };
-
-    window.addEventListener(CREPE_DEBUG_EVENT as any, handleDebugEvent);
-
-    // 监听全局错误
-    const handleError = (event: ErrorEvent) => {
-      if (event.message?.includes('Prism') || 
-          event.message?.includes('milkdown') || 
-          event.message?.includes('crepe') ||
-          event.message?.includes('ProseMirror')) {
-        append({
-          ts: Date.now(),
-          category: 'error',
-          level: 'error',
-          message: `全局错误捕获: ${event.message}`,
-          details: {
-            filename: event.filename,
-            lineno: event.lineno,
-            colno: event.colno,
-            error: event.error?.toString(),
-          },
-        });
-      }
-    };
-
-    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
-      const reason = String(event.reason);
-      if (reason.includes('Prism') || 
-          reason.includes('milkdown') || 
-          reason.includes('crepe') ||
-          reason.includes('ProseMirror')) {
-        append({
-          ts: Date.now(),
-          category: 'error',
-          level: 'error',
-          message: `Promise 拒绝: ${reason}`,
-          details: {
-            reason: event.reason?.toString(),
-            stack: event.reason?.stack,
-          },
-        });
-      }
-    };
-
-    window.addEventListener('error', handleError);
-    window.addEventListener('unhandledrejection', handleUnhandledRejection);
-
-    // 初始化日志
-    append({
-      ts: Date.now(),
-      category: 'lifecycle',
-      level: 'info',
-      message: 'Crepe 编辑器调试插件已激活',
-      details: { timestamp: new Date().toISOString() },
-    });
-
-    return () => {
-      window.removeEventListener(CREPE_DEBUG_EVENT as any, handleDebugEvent);
-      window.removeEventListener('error', handleError);
-      window.removeEventListener('unhandledrejection', handleUnhandledRejection);
-    };
-  }, [isActivated, append]);
+  useCrepeDebugFeed(isActivated, append);
 
   // 定时刷新 DOM 快照
   React.useEffect(() => {
@@ -291,15 +86,7 @@ const CrepeEditorDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAc
   }, [logs, errorsOnly, selectedCategory, selectedLevel, keyword]);
 
   const copyLog = React.useCallback((log: DebugLog) => {
-    const text = JSON.stringify({
-      timestamp: new Date(log.ts).toISOString(),
-      category: log.category,
-      level: log.level,
-      message: log.message,
-      details: log.details,
-      domSnapshot: log.domSnapshot,
-      editorSnapshot: log.editorSnapshot,
-    }, null, 2);
+    const text = JSON.stringify(copiedLog(log), null, 2);
     
     copyTextToClipboard(text).then(() => {
       showGlobalNotification('success', '日志已复制到剪贴板');
@@ -307,15 +94,7 @@ const CrepeEditorDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAc
   }, []);
   
   const copyAllLogs = React.useCallback(() => {
-    const text = JSON.stringify(filteredLogs.map(log => ({
-      timestamp: new Date(log.ts).toISOString(),
-      category: log.category,
-      level: log.level,
-      message: log.message,
-      details: log.details,
-      domSnapshot: log.domSnapshot,
-      editorSnapshot: log.editorSnapshot,
-    })), null, 2);
+    const text = JSON.stringify(filteredLogs.map(log => copiedLog(log)), null, 2);
     
     copyTextToClipboard(text).then(() => {
       showGlobalNotification('success', `已复制 ${filteredLogs.length} 条日志到剪贴板`);
@@ -323,20 +102,13 @@ const CrepeEditorDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAc
   }, [filteredLogs]);
 
   const exportLogs = React.useCallback(() => {
-    const data = JSON.stringify({
-      exportTime: new Date().toISOString(),
-      liveSnapshot,
-      logs: logs.map(l => ({
-        ...l,
-        timestamp: new Date(l.ts).toISOString(),
-      })),
-    }, null, 2);
+    const data = exportData(logs, liveSnapshot);
     
     const blob = new Blob([data], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `crepe-editor-debug-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.json`;
+    a.download = exportFileName();
     a.click();
     URL.revokeObjectURL(url);
   }, [logs, liveSnapshot]);
@@ -355,64 +127,9 @@ const CrepeEditorDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAc
   }, [append]);
 
   // 诊断分析
-  const diagnosis = React.useMemo(() => {
-    if (!liveSnapshot) return null;
+  const diagnosis = React.useMemo(() => diagnose(liveSnapshot, logs), [liveSnapshot, logs]);
 
-    const issues: string[] = [];
-    const hints: string[] = [];
-
-    if (!liveSnapshot.wrapperExists) {
-      issues.push('❌ Crepe 编辑器容器不存在');
-      hints.push('检查 NotesCrepeEditor 是否正确渲染');
-    } else {
-      if (liveSnapshot.dataReady === 'false') {
-        issues.push('❌ data-ready="false"，编辑器未就绪');
-        hints.push('检查 Crepe.create() 是否成功完成');
-      }
-      
-      if (!liveSnapshot.milkdownExists) {
-        issues.push('❌ .milkdown 容器不存在');
-        hints.push('Crepe 实例可能未正确创建');
-      }
-      
-      if (!liveSnapshot.proseMirrorExists) {
-        issues.push('❌ ProseMirror 编辑器不存在');
-        hints.push('Milkdown 编辑器可能初始化失败');
-      } else if (liveSnapshot.contentEditable !== 'true') {
-        issues.push(`⚠️ contentEditable="${liveSnapshot.contentEditable}"，应为 "true"`);
-        hints.push('编辑器可能处于只读模式或未正确初始化');
-      }
-
-      if (liveSnapshot.pointerEvents === 'none') {
-        issues.push('❌ pointer-events: none，点击事件被阻止');
-        hints.push('检查 CSS 规则，可能是 data-ready="false" 导致');
-      }
-    }
-
-    // 检查错误日志
-    const errorLogs = logs.filter(l => l.level === 'error');
-    if (errorLogs.length > 0) {
-      issues.push(`⚠️ 存在 ${errorLogs.length} 条错误日志`);
-      const prismErrors = errorLogs.filter(l => l.message.includes('Prism'));
-      if (prismErrors.length > 0) {
-        hints.push('Prism 加载错误可能导致代码高亮失败');
-      }
-    }
-
-    return { issues, hints, isHealthy: issues.length === 0 };
-  }, [liveSnapshot, logs]);
-
-  const stats = React.useMemo(() => {
-    const counts: Record<string, number> = { debug: 0, info: 0, warning: 0, error: 0 };
-    const categoryStats: Record<string, number> = {};
-    
-    logs.forEach(log => {
-      counts[log.level]++;
-      categoryStats[log.category] = (categoryStats[log.category] || 0) + 1;
-    });
-    
-    return { counts, categoryStats };
-  }, [logs]);
+  const stats = React.useMemo(() => logStats(logs), [logs]);
 
   if (!isActivated) return null;
 
@@ -763,5 +480,7 @@ const CrepeEditorDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAc
     </div>
   );
 };
+
+serveDebugChannel(CREPE_EDITOR_DEBUG_CHANNEL, { emitCrepeDebug, captureDOMSnapshot });
 
 export default CrepeEditorDebugPlugin;

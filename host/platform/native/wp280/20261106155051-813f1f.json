@@ -1,0 +1,1 @@
+{"id":"20261106155051-813f1f","cwd":"/home/dsdev/dev/ds-mig/F7-native","cmd":["env","DSTU_BOUNDARY_STRICT=","/opt/node26/bin/node","scripts/electron-migration/boundaries.mjs"],"from":"F7-native","submittedAt":"2026-11-06T15:50:51.782Z","cls":"other","startedAt":"2026-11-06T15:50:59.610Z","endedAt":"2026-11-06T15:52:22.203Z","code":0}

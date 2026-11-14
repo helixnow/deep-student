@@ -1,0 +1,11 @@
+{
+  "id": "RF-P1-plugin-display", "kind": "deliberate", "status": "proposed",
+  "title": "插件管理展示元数据",
+  "rust": { "file": "src-tauri/src/plugins/manager.rs", "line": 269, "behavior": "没有社区包展示清单" },
+  "fix": { "files": ["host/kernel/plugin-admin.ts", "host/kernel/manifest.ts", "host/kernel/core.ts"], "behavior": "校验包展示字段，停用插件无执行地读取；内置名称从 meta/id 派生，不硬编码中文。" },
+  "evidence": "真实 ZIP 安装后 inventory 展示六字段及内置元数据。",
+  "userVisible": "插件管理可展示显示名、图标、作者、简介、分类和主页。",
+  "dataCompat": "新增可选清单字段，旧包不变。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [{ "file": "host/kernel/tests/plugin-manager.test.ts", "name": "RF-P1-plugin-display" }]
+}

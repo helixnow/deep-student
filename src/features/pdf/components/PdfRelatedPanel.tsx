@@ -50,22 +50,36 @@ const PdfRelatedPanel: React.FC<{ sourceId: string }> = ({ sourceId }) => {
         {notes === null ? <p className="ds-pdf-related-empty">{t('related.loading', { defaultValue: '正在查找…' })}</p>
           : notes.length === 0 ? <p className="ds-pdf-related-empty">{t('related.noNotes', { defaultValue: '还没有笔记引用这份资料。划词「保存为笔记」或在笔记属性里关联它。' })}</p>
             : notes.map((note) => (
-              <button key={note.noteId} type="button" className="ds-pdf-related-item" onClick={() => openNote(note.noteId)}>
+              <button
+                key={note.noteId}
+                type="button"
+                className={`ds-pdf-related-item border-l-2 ${note.via === 'origin' ? 'border-l-primary/70' : 'border-l-info/70'} hover:bg-foreground/[0.035] transition-colors`}
+                onClick={() => openNote(note.noteId)}
+              >
                 <NotePencil size={14} aria-hidden="true" />
                 <span className="ds-pdf-related-title">{note.title}</span>
-                <span className="ds-pdf-related-meta">{note.via === 'origin' ? t('related.viaOrigin', { defaultValue: '摘录' }) : t('related.viaRelation', { defaultValue: '关联' })}</span>
+                <span className="ds-pdf-related-meta inline-flex items-center gap-1">
+                  <span className={`h-1.5 w-1.5 rounded-full ${note.via === 'origin' ? 'bg-primary' : 'bg-info'}`} aria-hidden="true" />
+                  {note.via === 'origin' ? t('related.viaOrigin', { defaultValue: '摘录' }) : t('related.viaRelation', { defaultValue: '关联' })}
+                </span>
               </button>
             ))}
       </section>
+      <div className="h-px bg-border/35 mx-1.5" aria-hidden="true" />
       <section className="ds-pdf-related-section">
         <h4>{t('related.sessions', { defaultValue: '相关对话' })}</h4>
         {sessions === null ? <p className="ds-pdf-related-empty">{t('related.loading', { defaultValue: '正在查找…' })}</p>
           : sessions.length === 0 ? <p className="ds-pdf-related-empty">{t('related.noSessions', { defaultValue: '还没有对话讨论过这份资料。' })}</p>
             : sessions.map((session) => (
-              <button key={session.sessionId} type="button" className="ds-pdf-related-item" onClick={() => openSession(session)}>
+              <button
+                key={session.sessionId}
+                type="button"
+                className="ds-pdf-related-item border-l-2 border-l-primary/50 hover:bg-foreground/[0.035] transition-colors"
+                onClick={() => openSession(session)}
+              >
                 <ChatCircleText size={14} aria-hidden="true" />
                 <span className="ds-pdf-related-title">{session.title || t('related.untitledSession', { defaultValue: '未命名对话' })}</span>
-                <span className="ds-pdf-related-meta">{fmt(session.lastReferencedAt)}</span>
+                <span className="ds-pdf-related-meta font-mono tabular-nums">{fmt(session.lastReferencedAt)}</span>
               </button>
             ))}
       </section>

@@ -6,14 +6,15 @@ on:
   push:
     branches: [main]
     paths:
-      - 'src-tauri/migrations/**'
-      - 'src-tauri/crates/dstu-storage/src/migration*'
-      - 'src-tauri/crates/dstu-storage/src/migration/**'
-      - 'src-tauri/tests/migration*'
-      - 'src-tauri/tests/migration-fixtures/**'
+      - 'resources/app/migrations/**'
+      - 'host/platform/storage/migration/**'
+      - 'host/platform/storage/tests/migration*'
+      - 'host/plugins/backup/tests/migration-behavior.test.ts'
+      - 'host/e2e/data-compat/**'
+      - 'tests/fixtures/migration-upgrade/**'
+      - 'tests/fixtures/migrations/**'
+      - 'scripts/check-migrations.mjs'
       - 'scripts/migration-ci/**'
-      - 'scripts/ci/**'
-      - '.github/actions/setup-linux-rust/**'
       - '.github/workflows/migration-nightly.yml'
 permissions:
   contents: read
@@ -21,19 +22,11 @@ concurrency:
   group: migration-nightly-${{ github.ref }}
   cancel-in-progress: false
 env:
-  CARGO_INCREMENTAL: '0'
-  CARGO_BUILD_JOBS: '2'
-  CARGO_PROFILE_DEV_DEBUG: '0'
-  CARGO_PROFILE_TEST_DEBUG: '0'
-  RUSTFLAGS: -C link-arg=-fuse-ld=lld
-  SCCACHE_GHA_ENABLED: 'true'
-  SCCACHE_IDLE_TIMEOUT: '0'
-  SCCACHE_IGNORE_SERVER_IO_ERROR: '1'
   DEEP_STUDENT_BUILD_NUMBER: '14639'
 jobs:
   fixtures:
-    name: Migration fixtures (compile once, upgrade + fault + scale)
-    runs-on: ${{ vars.LINUX_BUILD_RUNNER || 'ubuntu-22.04' }}
+    name: Migration fixtures (Host tests, upgrade + fault + scale)
+    runs-on: ubuntu-22.04
     timeout-minutes: 100
     outputs:
       full: ${{ steps.full.outputs.fixtures_available }}
@@ -42,7 +35,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
-          node-version: '22'
+          node-version: '24'
+          cache: npm
+      - run: npm ci --legacy-peer-deps
       - run: node scripts/check-migrations.mjs
       - name: Fetch full fixture tier
         id: full
@@ -58,31 +53,41 @@ jobs:
           MIGRATION_FIXTURE_SHA256: ${{ secrets.MIGRATION_FIXTURE_SHA256 }}
           MIGRATION_FIXTURE_TOKEN: ${{ secrets.MIGRATION_FIXTURE_TOKEN }}
         run: bash scripts/migration-ci/fetch-fixtures.sh --tier scale --dest "$RUNNER_TEMP/scale" --mode skip
-      - uses: ./.github/actions/setup-linux-rust
-      - name: Production migration tests
-        run: bash scripts/ci/with-resource-monitor.sh bash scripts/migration-ci/run-migration-tests.sh --min-tests 50 --count-out "$RUNNER_TEMP/migration-test-count.json"
-      - name: Compile fixture executable once
-        if: steps.full.outputs.fixtures_available == 'true' || steps.scale.outputs.fixtures_available == 'true'
-        run: bash scripts/ci/with-resource-monitor.sh node scripts/ci/test-binary.mjs migration_fixture_upgrade_gate MIGRATION_GATE_BINARY
-      - name: Upgrade and fault modes (same executable)
-        if: steps.full.outputs.fixtures_available == 'true'
+      - name: Host migration tests
         run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/migration-reports"
+          npx vitest run -c vitest.host.config.ts \
+            host/platform/storage/tests/migration-compat.test.ts \
+            host/platform/storage/tests/migration-integration.test.ts \
+            host/plugins/backup/tests/migration-behavior.test.ts \
+            host/e2e/data-compat/migrations.test.ts \
+            --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/migration-reports/host-migration-tests.json"
+          # A filter that silently matches a handful of tests must not count as coverage.
+          node -e 'const fs = require("fs"); const r = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); if (!(r.numPassedTests >= 50)) { console.error("only " + r.numPassedTests + " migration tests passed"); process.exit(1); } fs.writeFileSync(process.argv[2], JSON.stringify({ migration_test_count: r.numPassedTests }));' \
+            "$RUNNER_TEMP/migration-reports/host-migration-tests.json" "$RUNNER_TEMP/migration-test-count.json"
+      - name: Upgrade and fault modes
+        if: steps.full.outputs.fixtures_available == 'true'
+        env:
+          MIGRATION_FIXTURE_ROOT: ${{ steps.full.outputs.fixture_root }}
+        run: |
+          set -euo pipefail
           for mode in upgrade fault; do
-            bash scripts/migration-ci/run-fixture-upgrades.sh --fixture-root "${{ steps.full.outputs.fixture_root }}" \
-              --mode "$mode" --report "$RUNNER_TEMP/migration-reports/full-$mode.jsonl"
+            MIGRATION_GATE_MODE="$mode" npx vitest run -c vitest.host.config.ts \
+              host/platform/storage/tests/migration-integration.test.ts -t 'MIGRATION_FIXTURE_ROOT'
           done
           node scripts/migration-ci/generate-report.mjs \
             --out "$RUNNER_TEMP/migration-reports/migration-compatibility-report.json" \
             --candidate-commit "$GITHUB_SHA" --platform linux-x86_64 --fixture-tier full \
             --fixture-hash "${{ steps.full.outputs.fixture_hash }}" \
-            --test-count-file "$RUNNER_TEMP/migration-test-count.json" \
-            --harness-report "$RUNNER_TEMP/migration-reports/full-upgrade.jsonl" \
-            --harness-report "$RUNNER_TEMP/migration-reports/full-fault.jsonl" --fail-on-empty
-      - name: Scale mode (same executable)
+            --test-count-file "$RUNNER_TEMP/migration-test-count.json" --fail-on-empty
+      - name: Scale mode
         if: steps.scale.outputs.fixtures_available == 'true'
-        run: |
-          bash scripts/migration-ci/run-fixture-upgrades.sh --fixture-root "${{ steps.scale.outputs.fixture_root }}" \
-            --mode scale --max-seconds 600 --report "$RUNNER_TEMP/migration-reports/scale.jsonl"
+        env:
+          MIGRATION_FIXTURE_ROOT: ${{ steps.scale.outputs.fixture_root }}
+          MIGRATION_GATE_MODE: scale
+          MIGRATION_GATE_MAX_SECONDS: '600'
+        run: npx vitest run -c vitest.host.config.ts host/platform/storage/tests/migration-integration.test.ts -t 'MIGRATION_FIXTURE_ROOT'
       - name: Report fixture coverage
         if: always()
         run: |
@@ -91,9 +96,7 @@ jobs:
         if: always()
         with:
           name: migration-nightly-reports
-          path: |
-            ${{ runner.temp }}/migration-reports/
-            ${{ runner.temp }}/release-resource-metrics.log
+          path: ${{ runner.temp }}/migration-reports/
           retention-days: 30
 
   notify:

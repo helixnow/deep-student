@@ -1,0 +1,117 @@
+import type { ContentMenuContext as C, ContentMenuContribution as Row } from '@/ui-kernel/contracts/content';
+import type { DstuNodeType } from '@/dstu/types';
+
+// Keep the original close/action order. In particular folder delete is synchronous,
+// while resource delete, export and modal-opening actions wait exactly 50ms.
+const afterClose = (action: (c: C) => void) => (c: C) => {
+  c.closeMenu();
+  setTimeout(() => action(c), 50);
+};
+const thenClose = (action: (c: C) => void) => (c: C) => {
+  action(c);
+  c.closeMenu();
+};
+
+function rows(scope: C['scope'], definitions: Omit<Row, 'id' | 'order'>[]): Row[] {
+  return definitions.map((definition, index) => ({
+    ...definition,
+    id: `${scope}:${index + 1}`,
+    order: (index + 1) * 10,
+    visible: (c) => c.scope === scope && definition.visible(c),
+  }));
+}
+const always = () => true;
+const creatable = (c: C) => !!c.canCreate;
+const copy: Omit<Row, 'id' | 'order'> = { labelKey: 'contextMenu.copy', icon: 'Copy', visible: c => !!c.onCopy, run: thenClose(c => c.onCopy!(c.target)) };
+const duplicate: Omit<Row, 'id' | 'order'> = { labelKey: 'contextMenu.duplicate', visible: c => !!c.canCreate && !!c.onDuplicate, run: afterClose(c => c.onDuplicate!(c.target)) };
+const move: Omit<Row, 'id' | 'order'> = { labelKey: 'contextMenu.moveTo', visible: c => !!c.canMove && !!c.onMoveTo, run: afterClose(c => c.onMoveTo!(c.target)) };
+const refresh: Omit<Row, 'id' | 'order'> = { labelKey: 'common.refresh', icon: 'ArrowClockwise', visible: always, run: thenClose(c => c.onRefresh?.()) };
+const separator: Omit<Row, 'id' | 'order'> = { separator: true, visible: always };
+
+export const contentMenuRows: readonly Row[] = [
+  ...rows('trash-empty', [
+    { labelKey: 'finder.trash.emptyAction', icon: 'Warning', danger: true, visible: c => !!c.onEmptyTrash, run: afterClose(c => c.onEmptyTrash!()) },
+    separator,
+    refresh,
+  ]),
+  ...rows('trash-item', [
+    { labelKey: 'finder.contextMenu.restore', icon: 'ArrowCounterClockwise', visible: c => !!c.onRestoreItem, run: afterClose(c => c.onRestoreItem!(c.trashId, c.trashItemType)) },
+    { ...separator, visible: c => !!c.onPermanentDeleteItem },
+    { labelKey: 'finder.contextMenu.permanentDelete', icon: 'Trash', danger: true, visible: c => !!c.onPermanentDeleteItem, run: afterClose(c => c.onPermanentDeleteItem!(c.trashId, c.trashItemType)) },
+  ]),
+  ...rows('empty', [
+    { labelKey: c => (c.pasteCount ?? 0) > 1 ? 'contextMenu.pasteCount' : 'contextMenu.paste', labelParams: c => (c.pasteCount ?? 0) > 1 ? { count: c.pasteCount } : {}, icon: 'Clipboard', visible: c => !!c.canCreate && !!c.onPaste && (c.pasteCount ?? 0) > 0, run: afterClose(c => c.onPaste!()) },
+    { ...separator, visible: c => !!c.canCreate && !!c.onPaste && (c.pasteCount ?? 0) > 0 },
+    { labelKey: 'folder.newFolder', icon: 'FolderPlus', visible: c => !!c.canCreate && c.dataView === 'folder', run: thenClose(c => c.onCreateFolder?.(c.currentFolderId ?? null)) },
+    { ...separator, visible: c => !!c.canCreate && c.dataView === 'folder' },
+    { labelKey: 'contextMenu.newNote', icon: 'FileText', visible: creatable, run: thenClose(c => c.onCreateItem?.('note', c.currentFolderId ?? null)) },
+    { labelKey: 'contextMenu.importMarkdown', visible: creatable, run: thenClose(c => c.onImportMarkdownNote?.(c.currentFolderId ?? null)) },
+    ...(['exam', 'textbook', 'translation', 'essay', 'mindmap'] as const).map((type, i) => ({
+      labelKey: ['contextMenu.newExam', 'contextMenu.newTextbook', 'contextMenu.newTranslation', 'contextMenu.newEssay', 'contextMenu.newMindMap'][i]!,
+      visible: creatable,
+      run: thenClose(c => c.onCreateItem?.(type, c.currentFolderId ?? null)),
+    })),
+    { ...separator, visible: creatable },
+    refresh,
+  ]),
+  ...rows('folder', [
+    { labelKey: 'contextMenu.open', icon: 'FolderOpen', visible: always, run: thenClose(c => c.onOpenFolder?.(c.folderId!)) },
+    separator,
+    { labelKey: 'contextMenu.newSubfolder', icon: 'FolderPlus', visible: creatable, run: thenClose(c => c.onCreateFolder?.(c.folderId!)) },
+    { labelKey: 'contextMenu.newNoteHere', icon: 'FileText', visible: creatable, run: thenClose(c => c.onCreateItem?.('note', c.folderId)) },
+    { labelKey: 'contextMenu.importMarkdownHere', visible: creatable, run: thenClose(c => c.onImportMarkdownNote?.(c.folderId)) },
+    { ...separator, visible: creatable },
+    copy, duplicate, move,
+    { labelKey: 'contextMenu.rename', icon: 'Pencil', visible: always, run: thenClose(c => c.onRenameFolder?.(c.folderId!)) },
+    { labelKey: 'contextMenu.exportFolderZip', visible: c => !!c.onExportFolder, run: afterClose(c => c.onExportFolder!(c.folderId!)) },
+    { labelKey: 'contextMenu.delete', icon: 'Trash', danger: true, visible: c => !!c.canDelete && !!c.onDeleteFolder, run: thenClose(c => c.onDeleteFolder!(c.folderId!)) },
+  ]),
+  ...rows('resource', [
+    { labelKey: 'contextMenu.open', icon: 'ArrowSquareOut', visible: always, run: thenClose(c => c.onOpenResource?.(c.resource!)) },
+    separator,
+    { labelKey: 'contextMenu.referenceToChat', icon: 'Chat', visible: c => !!c.canAddToChat && !!c.onReferenceToChat, run: thenClose(c => c.onReferenceToChat!(c.target)) },
+    { labelKey: 'contextMenu.makeCards', icon: 'Cards', visible: c => !!c.canAddToChat && !!c.onMakeCards && !c.isFolder, run: thenClose(c => c.onMakeCards!(c.target)) },
+    copy, duplicate, move,
+    { ...separator, visible: c => !!c.resourceItem && !!c.onRenameResource },
+    { labelKey: 'contextMenu.rename', icon: 'Pencil', visible: c => !!c.resourceItem && !!c.onRenameResource, run: thenClose(c => c.onRenameResource!(c.resourceItem!)) },
+    { ...separator, visible: c => !!c.resourceItem && !!c.onToggleFavorite },
+    { labelKey: c => c.resourceItem?.isFavorite ? 'contextMenu.unfavorite' : 'contextMenu.favorite', icon: c => c.resourceItem?.isFavorite ? 'StarHalf' : 'Star', visible: c => !!c.resourceItem && !!c.onToggleFavorite, run: thenClose(c => c.onToggleFavorite!(c.resourceItem!)) },
+    { labelKey: c => c.isAddedToDesktop ? 'contextMenu.addedToDesktop' : 'contextMenu.addToDesktop', icon: c => c.isAddedToDesktop ? 'CheckCircle' : undefined,
+      iconClassName: c => c.isAddedToDesktop ? 'text-success' : undefined, disabled: c => c.isAddedToDesktop, visible: c => !!c.resourceItem,
+      run: thenClose(c => {
+        if (!c.isAddedToDesktop) {
+          const item = c.resourceItem!;
+          if (c.isFolder) c.addFolderShortcut(item.id, item.title, item.path);
+          else c.addResourceShortcut(item.id, item.title, item.type as DstuNodeType, item.path);
+        }
+      }) },
+    { ...separator, visible: c => !!c.resourceItem && !!c.onExportResource },
+    { labelKey: 'contextMenu.export', visible: c => !!c.resourceItem && !!c.onExportResource, run: afterClose(c => c.onExportResource!(c.resourceItem!)) },
+    { ...separator, visible: c => !!c.canDelete && !!c.resourceItem && !!c.onDeleteResource },
+    { labelKey: 'contextMenu.delete', icon: 'Trash', danger: true, visible: c => !!c.canDelete && !!c.resourceItem && !!c.onDeleteResource, run: afterClose(c => c.onDeleteResource!(c.resourceItem!)) },
+  ]),
+];
+
+/** Preserve the old target routing and folderItem trash type fallback verbatim. */
+export function menuTargetContext(target: C['target'], isTrashView: boolean) {
+  const resource = target.type === 'resource' ? target.resource : target.type === 'folderItem' ? target.item : undefined;
+  const resourceItem = resource && 'type' in resource && typeof resource.type === 'string' ? resource as C['resourceItem'] : null;
+  let trashId = '';
+  let trashItemType = 'note';
+  if (target.type === 'folder') { trashId = target.folder.folder.id; trashItemType = 'folder'; }
+  if (target.type === 'resource') { trashId = target.resource.id; trashItemType = target.resource.type; }
+  if (target.type === 'folderItem') {
+    trashId = target.item.itemId;
+    switch (target.item.itemType) {
+      case 'note': case 'textbook': case 'exam': case 'translation': case 'essay': case 'image': case 'file': case 'mindmap':
+        trashItemType = target.item.itemType; break;
+      default: trashItemType = 'note';
+    }
+  }
+  const scope: C['scope'] = isTrashView
+    ? target.type === 'folder' || target.type === 'resource' || target.type === 'folderItem' ? 'trash-item' : 'trash-empty'
+    : target.type === 'folder' ? 'folder' : resource ? 'resource' : 'empty';
+  return { scope, resource, resourceItem, trashId, trashItemType,
+    folderId: target.type === 'folder' ? target.folder.folder.id : null,
+    isFolder: (resourceItem?.type as string) === 'folder' };
+}

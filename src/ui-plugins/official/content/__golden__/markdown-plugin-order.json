@@ -1,0 +1,5474 @@
+[
+  {
+    "provider": false,
+    "citations": "default",
+    "query": "",
+    "extra": false,
+    "isStreaming": false,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": false,
+    "citations": "default",
+    "query": "",
+    "extra": false,
+    "isStreaming": true,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": false,
+    "citations": "default",
+    "query": "",
+    "extra": true,
+    "isStreaming": false,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "customRemarkPlugin"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": false,
+    "citations": "default",
+    "query": "",
+    "extra": true,
+    "isStreaming": true,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "customRemarkPlugin"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": false,
+    "citations": "default",
+    "query": "   ",
+    "extra": false,
+    "isStreaming": false,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": false,
+    "citations": "default",
+    "query": "   ",
+    "extra": false,
+    "isStreaming": true,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": false,
+    "citations": "default",
+    "query": "   ",
+    "extra": true,
+    "isStreaming": false,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "customRemarkPlugin"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": false,
+    "citations": "default",
+    "query": "   ",
+    "extra": true,
+    "isStreaming": true,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "customRemarkPlugin"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": false,
+    "citations": "default",
+    "query": "needle",
+    "extra": false,
+    "isStreaming": false,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      },
+      {
+        "plugin": "rehypeSearchHighlights",
+        "options": {
+          "query": "needle"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": false,
+    "citations": "default",
+    "query": "needle",
+    "extra": false,
+    "isStreaming": true,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      },
+      {
+        "plugin": "rehypeSearchHighlights",
+        "options": {
+          "query": "needle"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": false,
+    "citations": "default",
+    "query": "needle",
+    "extra": true,
+    "isStreaming": false,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "customRemarkPlugin"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      },
+      {
+        "plugin": "rehypeSearchHighlights",
+        "options": {
+          "query": "needle"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": false,
+    "citations": "default",
+    "query": "needle",
+    "extra": true,
+    "isStreaming": true,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "customRemarkPlugin"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      },
+      {
+        "plugin": "rehypeSearchHighlights",
+        "options": {
+          "query": "needle"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": false,
+    "citations": "enabled",
+    "query": "",
+    "extra": false,
+    "isStreaming": false,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "attacher"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": false,
+    "citations": "enabled",
+    "query": "",
+    "extra": false,
+    "isStreaming": true,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "attacher"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": false,
+    "citations": "enabled",
+    "query": "",
+    "extra": true,
+    "isStreaming": false,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "attacher"
+      },
+      {
+        "plugin": "customRemarkPlugin"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": false,
+    "citations": "enabled",
+    "query": "",
+    "extra": true,
+    "isStreaming": true,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "attacher"
+      },
+      {
+        "plugin": "customRemarkPlugin"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": false,
+    "citations": "enabled",
+    "query": "   ",
+    "extra": false,
+    "isStreaming": false,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "attacher"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": false,
+    "citations": "enabled",
+    "query": "   ",
+    "extra": false,
+    "isStreaming": true,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "attacher"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": false,
+    "citations": "enabled",
+    "query": "   ",
+    "extra": true,
+    "isStreaming": false,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "attacher"
+      },
+      {
+        "plugin": "customRemarkPlugin"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": false,
+    "citations": "enabled",
+    "query": "   ",
+    "extra": true,
+    "isStreaming": true,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "attacher"
+      },
+      {
+        "plugin": "customRemarkPlugin"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": false,
+    "citations": "enabled",
+    "query": "needle",
+    "extra": false,
+    "isStreaming": false,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "attacher"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      },
+      {
+        "plugin": "rehypeSearchHighlights",
+        "options": {
+          "query": "needle"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": false,
+    "citations": "enabled",
+    "query": "needle",
+    "extra": false,
+    "isStreaming": true,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "attacher"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      },
+      {
+        "plugin": "rehypeSearchHighlights",
+        "options": {
+          "query": "needle"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": false,
+    "citations": "enabled",
+    "query": "needle",
+    "extra": true,
+    "isStreaming": false,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "attacher"
+      },
+      {
+        "plugin": "customRemarkPlugin"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      },
+      {
+        "plugin": "rehypeSearchHighlights",
+        "options": {
+          "query": "needle"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": false,
+    "citations": "enabled",
+    "query": "needle",
+    "extra": true,
+    "isStreaming": true,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "attacher"
+      },
+      {
+        "plugin": "customRemarkPlugin"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      },
+      {
+        "plugin": "rehypeSearchHighlights",
+        "options": {
+          "query": "needle"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": false,
+    "citations": "disabled",
+    "query": "",
+    "extra": false,
+    "isStreaming": false,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": false,
+    "citations": "disabled",
+    "query": "",
+    "extra": false,
+    "isStreaming": true,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": false,
+    "citations": "disabled",
+    "query": "",
+    "extra": true,
+    "isStreaming": false,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "customRemarkPlugin"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": false,
+    "citations": "disabled",
+    "query": "",
+    "extra": true,
+    "isStreaming": true,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "customRemarkPlugin"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": false,
+    "citations": "disabled",
+    "query": "   ",
+    "extra": false,
+    "isStreaming": false,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": false,
+    "citations": "disabled",
+    "query": "   ",
+    "extra": false,
+    "isStreaming": true,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": false,
+    "citations": "disabled",
+    "query": "   ",
+    "extra": true,
+    "isStreaming": false,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "customRemarkPlugin"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": false,
+    "citations": "disabled",
+    "query": "   ",
+    "extra": true,
+    "isStreaming": true,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "customRemarkPlugin"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": false,
+    "citations": "disabled",
+    "query": "needle",
+    "extra": false,
+    "isStreaming": false,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      },
+      {
+        "plugin": "rehypeSearchHighlights",
+        "options": {
+          "query": "needle"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": false,
+    "citations": "disabled",
+    "query": "needle",
+    "extra": false,
+    "isStreaming": true,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      },
+      {
+        "plugin": "rehypeSearchHighlights",
+        "options": {
+          "query": "needle"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": false,
+    "citations": "disabled",
+    "query": "needle",
+    "extra": true,
+    "isStreaming": false,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "customRemarkPlugin"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      },
+      {
+        "plugin": "rehypeSearchHighlights",
+        "options": {
+          "query": "needle"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": false,
+    "citations": "disabled",
+    "query": "needle",
+    "extra": true,
+    "isStreaming": true,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "customRemarkPlugin"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      },
+      {
+        "plugin": "rehypeSearchHighlights",
+        "options": {
+          "query": "needle"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": false,
+    "citations": "implied",
+    "query": "",
+    "extra": false,
+    "isStreaming": false,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "attacher"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": false,
+    "citations": "implied",
+    "query": "",
+    "extra": false,
+    "isStreaming": true,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "attacher"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": false,
+    "citations": "implied",
+    "query": "",
+    "extra": true,
+    "isStreaming": false,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "attacher"
+      },
+      {
+        "plugin": "customRemarkPlugin"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": false,
+    "citations": "implied",
+    "query": "",
+    "extra": true,
+    "isStreaming": true,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "attacher"
+      },
+      {
+        "plugin": "customRemarkPlugin"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": false,
+    "citations": "implied",
+    "query": "   ",
+    "extra": false,
+    "isStreaming": false,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "attacher"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": false,
+    "citations": "implied",
+    "query": "   ",
+    "extra": false,
+    "isStreaming": true,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "attacher"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": false,
+    "citations": "implied",
+    "query": "   ",
+    "extra": true,
+    "isStreaming": false,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "attacher"
+      },
+      {
+        "plugin": "customRemarkPlugin"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": false,
+    "citations": "implied",
+    "query": "   ",
+    "extra": true,
+    "isStreaming": true,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "attacher"
+      },
+      {
+        "plugin": "customRemarkPlugin"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": false,
+    "citations": "implied",
+    "query": "needle",
+    "extra": false,
+    "isStreaming": false,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "attacher"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      },
+      {
+        "plugin": "rehypeSearchHighlights",
+        "options": {
+          "query": "needle"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": false,
+    "citations": "implied",
+    "query": "needle",
+    "extra": false,
+    "isStreaming": true,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "attacher"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      },
+      {
+        "plugin": "rehypeSearchHighlights",
+        "options": {
+          "query": "needle"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": false,
+    "citations": "implied",
+    "query": "needle",
+    "extra": true,
+    "isStreaming": false,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "attacher"
+      },
+      {
+        "plugin": "customRemarkPlugin"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      },
+      {
+        "plugin": "rehypeSearchHighlights",
+        "options": {
+          "query": "needle"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": false,
+    "citations": "implied",
+    "query": "needle",
+    "extra": true,
+    "isStreaming": true,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "attacher"
+      },
+      {
+        "plugin": "customRemarkPlugin"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      },
+      {
+        "plugin": "rehypeSearchHighlights",
+        "options": {
+          "query": "needle"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": true,
+    "citations": "default",
+    "query": "",
+    "extra": false,
+    "isStreaming": false,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": true,
+    "citations": "default",
+    "query": "",
+    "extra": false,
+    "isStreaming": true,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": true,
+    "citations": "default",
+    "query": "",
+    "extra": true,
+    "isStreaming": false,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "customRemarkPlugin"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": true,
+    "citations": "default",
+    "query": "",
+    "extra": true,
+    "isStreaming": true,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "customRemarkPlugin"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": true,
+    "citations": "default",
+    "query": "   ",
+    "extra": false,
+    "isStreaming": false,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": true,
+    "citations": "default",
+    "query": "   ",
+    "extra": false,
+    "isStreaming": true,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": true,
+    "citations": "default",
+    "query": "   ",
+    "extra": true,
+    "isStreaming": false,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "customRemarkPlugin"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": true,
+    "citations": "default",
+    "query": "   ",
+    "extra": true,
+    "isStreaming": true,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "customRemarkPlugin"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": true,
+    "citations": "default",
+    "query": "needle",
+    "extra": false,
+    "isStreaming": false,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      },
+      {
+        "plugin": "rehypeSearchHighlights",
+        "options": {
+          "query": "needle"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": true,
+    "citations": "default",
+    "query": "needle",
+    "extra": false,
+    "isStreaming": true,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      },
+      {
+        "plugin": "rehypeSearchHighlights",
+        "options": {
+          "query": "needle"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": true,
+    "citations": "default",
+    "query": "needle",
+    "extra": true,
+    "isStreaming": false,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "customRemarkPlugin"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      },
+      {
+        "plugin": "rehypeSearchHighlights",
+        "options": {
+          "query": "needle"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": true,
+    "citations": "default",
+    "query": "needle",
+    "extra": true,
+    "isStreaming": true,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "customRemarkPlugin"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      },
+      {
+        "plugin": "rehypeSearchHighlights",
+        "options": {
+          "query": "needle"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": true,
+    "citations": "enabled",
+    "query": "",
+    "extra": false,
+    "isStreaming": false,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "attacher"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": true,
+    "citations": "enabled",
+    "query": "",
+    "extra": false,
+    "isStreaming": true,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "attacher"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": true,
+    "citations": "enabled",
+    "query": "",
+    "extra": true,
+    "isStreaming": false,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "attacher"
+      },
+      {
+        "plugin": "customRemarkPlugin"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": true,
+    "citations": "enabled",
+    "query": "",
+    "extra": true,
+    "isStreaming": true,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "attacher"
+      },
+      {
+        "plugin": "customRemarkPlugin"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": true,
+    "citations": "enabled",
+    "query": "   ",
+    "extra": false,
+    "isStreaming": false,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "attacher"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": true,
+    "citations": "enabled",
+    "query": "   ",
+    "extra": false,
+    "isStreaming": true,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "attacher"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": true,
+    "citations": "enabled",
+    "query": "   ",
+    "extra": true,
+    "isStreaming": false,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "attacher"
+      },
+      {
+        "plugin": "customRemarkPlugin"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": true,
+    "citations": "enabled",
+    "query": "   ",
+    "extra": true,
+    "isStreaming": true,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "attacher"
+      },
+      {
+        "plugin": "customRemarkPlugin"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": true,
+    "citations": "enabled",
+    "query": "needle",
+    "extra": false,
+    "isStreaming": false,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "attacher"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      },
+      {
+        "plugin": "rehypeSearchHighlights",
+        "options": {
+          "query": "needle"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": true,
+    "citations": "enabled",
+    "query": "needle",
+    "extra": false,
+    "isStreaming": true,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "attacher"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      },
+      {
+        "plugin": "rehypeSearchHighlights",
+        "options": {
+          "query": "needle"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": true,
+    "citations": "enabled",
+    "query": "needle",
+    "extra": true,
+    "isStreaming": false,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "attacher"
+      },
+      {
+        "plugin": "customRemarkPlugin"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      },
+      {
+        "plugin": "rehypeSearchHighlights",
+        "options": {
+          "query": "needle"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": true,
+    "citations": "enabled",
+    "query": "needle",
+    "extra": true,
+    "isStreaming": true,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "attacher"
+      },
+      {
+        "plugin": "customRemarkPlugin"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      },
+      {
+        "plugin": "rehypeSearchHighlights",
+        "options": {
+          "query": "needle"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": true,
+    "citations": "disabled",
+    "query": "",
+    "extra": false,
+    "isStreaming": false,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": true,
+    "citations": "disabled",
+    "query": "",
+    "extra": false,
+    "isStreaming": true,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": true,
+    "citations": "disabled",
+    "query": "",
+    "extra": true,
+    "isStreaming": false,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "customRemarkPlugin"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": true,
+    "citations": "disabled",
+    "query": "",
+    "extra": true,
+    "isStreaming": true,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "customRemarkPlugin"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": true,
+    "citations": "disabled",
+    "query": "   ",
+    "extra": false,
+    "isStreaming": false,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": true,
+    "citations": "disabled",
+    "query": "   ",
+    "extra": false,
+    "isStreaming": true,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": true,
+    "citations": "disabled",
+    "query": "   ",
+    "extra": true,
+    "isStreaming": false,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "customRemarkPlugin"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": true,
+    "citations": "disabled",
+    "query": "   ",
+    "extra": true,
+    "isStreaming": true,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "customRemarkPlugin"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": true,
+    "citations": "disabled",
+    "query": "needle",
+    "extra": false,
+    "isStreaming": false,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      },
+      {
+        "plugin": "rehypeSearchHighlights",
+        "options": {
+          "query": "needle"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": true,
+    "citations": "disabled",
+    "query": "needle",
+    "extra": false,
+    "isStreaming": true,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      },
+      {
+        "plugin": "rehypeSearchHighlights",
+        "options": {
+          "query": "needle"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": true,
+    "citations": "disabled",
+    "query": "needle",
+    "extra": true,
+    "isStreaming": false,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "customRemarkPlugin"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      },
+      {
+        "plugin": "rehypeSearchHighlights",
+        "options": {
+          "query": "needle"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": true,
+    "citations": "disabled",
+    "query": "needle",
+    "extra": true,
+    "isStreaming": true,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "customRemarkPlugin"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      },
+      {
+        "plugin": "rehypeSearchHighlights",
+        "options": {
+          "query": "needle"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": true,
+    "citations": "implied",
+    "query": "",
+    "extra": false,
+    "isStreaming": false,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "attacher"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": true,
+    "citations": "implied",
+    "query": "",
+    "extra": false,
+    "isStreaming": true,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "attacher"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": true,
+    "citations": "implied",
+    "query": "",
+    "extra": true,
+    "isStreaming": false,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "attacher"
+      },
+      {
+        "plugin": "customRemarkPlugin"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": true,
+    "citations": "implied",
+    "query": "",
+    "extra": true,
+    "isStreaming": true,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "attacher"
+      },
+      {
+        "plugin": "customRemarkPlugin"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": true,
+    "citations": "implied",
+    "query": "   ",
+    "extra": false,
+    "isStreaming": false,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "attacher"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": true,
+    "citations": "implied",
+    "query": "   ",
+    "extra": false,
+    "isStreaming": true,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "attacher"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": true,
+    "citations": "implied",
+    "query": "   ",
+    "extra": true,
+    "isStreaming": false,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "attacher"
+      },
+      {
+        "plugin": "customRemarkPlugin"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": true,
+    "citations": "implied",
+    "query": "   ",
+    "extra": true,
+    "isStreaming": true,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "attacher"
+      },
+      {
+        "plugin": "customRemarkPlugin"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": true,
+    "citations": "implied",
+    "query": "needle",
+    "extra": false,
+    "isStreaming": false,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "attacher"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      },
+      {
+        "plugin": "rehypeSearchHighlights",
+        "options": {
+          "query": "needle"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": true,
+    "citations": "implied",
+    "query": "needle",
+    "extra": false,
+    "isStreaming": true,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "attacher"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      },
+      {
+        "plugin": "rehypeSearchHighlights",
+        "options": {
+          "query": "needle"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": true,
+    "citations": "implied",
+    "query": "needle",
+    "extra": true,
+    "isStreaming": false,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "attacher"
+      },
+      {
+        "plugin": "customRemarkPlugin"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      },
+      {
+        "plugin": "rehypeSearchHighlights",
+        "options": {
+          "query": "needle"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  },
+  {
+    "provider": true,
+    "citations": "implied",
+    "query": "needle",
+    "extra": true,
+    "isStreaming": true,
+    "remark": [
+      {
+        "plugin": "disableIndentedCodePlugin"
+      },
+      {
+        "plugin": "normalizeFullWidthPunctPlugin"
+      },
+      {
+        "plugin": "convertMathCodeBlocksPlugin"
+      },
+      {
+        "plugin": "remarkMath"
+      },
+      {
+        "plugin": "inlineSmilesRemarkPlugin"
+      },
+      {
+        "plugin": "remarkGfm"
+      },
+      {
+        "plugin": "attacher"
+      },
+      {
+        "plugin": "customRemarkPlugin"
+      }
+    ],
+    "rehype": [
+      {
+        "plugin": "rehypeRaw"
+      },
+      {
+        "plugin": "rehypeSanitize",
+        "options": {
+          "keys": [
+            "ancestors",
+            "attributes",
+            "clobber",
+            "clobberPrefix",
+            "protocols",
+            "required",
+            "strip",
+            "tagNames"
+          ],
+          "sha256": "54c03db784d73c11bcce850dcb0477bf1b268788cfafbe99f6e5a247a224df9a"
+        }
+      },
+      {
+        "plugin": "rehypeSearchHighlights",
+        "options": {
+          "query": "needle"
+        }
+      }
+    ],
+    "stableAcrossRerender": {
+      "remark": true,
+      "rehype": true
+    }
+  }
+]

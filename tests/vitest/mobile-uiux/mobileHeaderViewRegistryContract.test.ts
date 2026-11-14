@@ -54,7 +54,7 @@ const VIEW_REGISTRY_FILES: Record<string, string> = {
   'ui-lab': 'src/components/style-lab/StyleDebugPage.tsx',
   'crepe-demo': 'src/components/dev/CrepeDemoPage.tsx',
   'pdf-reader': 'src/features/pdf/components/PdfReader.tsx',
-  'learning-hub': 'src/features/learning-hub/LearningHubPage.tsx',
+  'learning-hub': 'src/features/learning-hub/useLearningHubPageController.tsx',
   'media': 'src/features/media-studio/MediaStudioApp.tsx',
   'skills-management': 'src/components/skills-management/SkillsManagementPage.tsx',
   'todo': 'src/features/todo/components/TodoContentView.tsx',

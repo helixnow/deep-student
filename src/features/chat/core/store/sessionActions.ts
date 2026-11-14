@@ -152,12 +152,15 @@ export function createSessionActions(
 
         setModeState: (state: Record<string, unknown> | null): void => {
           set({ modeState: state });
+          // OCR 笔记 / 教材页码等模式状态同样需要随会话持久化（否则重开丢失）
+          scheduleAutoSaveIfReady();
         },
 
         updateModeState: (updates: Record<string, unknown>): void => {
           set((s) => ({
             modeState: s.modeState ? { ...s.modeState, ...updates } : updates,
           }));
+          scheduleAutoSaveIfReady();
         },
 
         // ========== 会话元信息 Actions ==========

@@ -1,0 +1,357 @@
+{
+  "domain": "agent-skills",
+  "commands": [
+    "skill_check_updates",
+    "skill_probe_requires",
+    "skill_update_from_source",
+    "skill_tap_catalog",
+    "skill_tap_install",
+    "save_setting"
+  ],
+  "scenarios": [
+    {
+      "id": "skills.check_updates.arg_shape_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "skill_check_updates",
+          "args": {
+            "skillIds": "w0-a"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_check_updates",
+          "args": {
+            "skillIds": [
+              1
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_check_updates",
+          "args": {
+            "skillIds": [
+              null
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_check_updates",
+          "args": {
+            "skillIds": [
+              "w0-a",
+              2
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_check_updates",
+          "args": {
+            "skillIds": {
+              "0": "w0-a"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_check_updates",
+          "args": {
+            "skillIds": true
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_check_updates",
+          "args": {
+            "skill_ids": [
+              "w0-a"
+            ]
+          }
+        },
+        {
+          "cmd": "skill_check_updates",
+          "args": {
+            "skillIds": [
+              "w0-a"
+            ]
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "skills.probe_requires.arg_shape_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "skill_probe_requires",
+          "args": {
+            "bins": "git",
+            "env": null,
+            "pythonPackages": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_probe_requires",
+          "args": {
+            "bins": [
+              1
+            ],
+            "env": null,
+            "pythonPackages": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_probe_requires",
+          "args": {
+            "bins": null,
+            "env": [
+              null
+            ],
+            "pythonPackages": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_probe_requires",
+          "args": {
+            "bins": null,
+            "env": {
+              "HOME": "1"
+            },
+            "pythonPackages": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_probe_requires",
+          "args": {
+            "bins": null,
+            "env": null,
+            "pythonPackages": "numpy"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_probe_requires",
+          "args": {
+            "bins": null,
+            "env": null,
+            "pythonPackages": [
+              true
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_probe_requires",
+          "args": {
+            "bins": null,
+            "env": null,
+            "pythonPackages": null
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": []
+      },
+      "normalize": []
+    },
+    {
+      "id": "skills.update_from_source.arg_shape_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "skill_update_from_source",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_update_from_source",
+          "args": {
+            "skillId": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_update_from_source",
+          "args": {
+            "skillId": 7
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_update_from_source",
+          "args": {
+            "skillId": [
+              "w0-a"
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_update_from_source",
+          "args": {
+            "skill_id": "w0-a"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_check_updates",
+          "args": {
+            "skillIds": null
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "skills.tap.arg_shape_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "skill_tap_catalog",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_tap_catalog",
+          "args": {
+            "repoUrl": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_tap_catalog",
+          "args": {
+            "repoUrl": 1
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_tap_catalog",
+          "args": {
+            "repo_url": "https://github.com/anthropics/skills"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_tap_install",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_tap_install",
+          "args": {
+            "zipUrl": "https://codeload.github.com/a/b/zip/main",
+            "subdir": "x",
+            "dryRun": true
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_tap_install",
+          "args": {
+            "zipUrl": "https://codeload.github.com/a/b/zip/main",
+            "subdir": "x",
+            "overwrite": null,
+            "dryRun": true
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_tap_install",
+          "args": {
+            "zipUrl": "https://codeload.github.com/a/b/zip/main",
+            "subdir": "x",
+            "overwrite": "false",
+            "dryRun": true
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_tap_install",
+          "args": {
+            "zipUrl": "https://codeload.github.com/a/b/zip/main",
+            "overwrite": false,
+            "dryRun": true
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_tap_install",
+          "args": {
+            "zipUrl": "https://codeload.github.com/a/b/zip/main",
+            "subdir": null,
+            "overwrite": false,
+            "dryRun": true
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_tap_install",
+          "args": {
+            "zipUrl": null,
+            "subdir": "x",
+            "overwrite": false,
+            "dryRun": true
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_tap_install",
+          "args": {
+            "zipUrl": "https://codeload.github.com/a/b/zip/main",
+            "subdir": "x",
+            "overwrite": false,
+            "dryRun": "yes"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_tap_install",
+          "args": {
+            "zipUrl": "https://codeload.github.com/a/b/zip/main",
+            "subdir": "x",
+            "overwrite": false,
+            "dryRun": false,
+            "expectedPackageSha256": 5
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_check_updates",
+          "args": {
+            "skillIds": null
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

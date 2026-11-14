@@ -1,0 +1,30 @@
+{
+  "id": "RF-W34-offline-package-transaction",
+  "kind": "deliberate",
+  "status": "proposed",
+  "title": "社区插件以独立 .dsplugin ZIP 离线安装：暂存解压、assertInstallable、逐文件 SHA-256 写入 plugins.lock.json，自增版本目录并在失败时保留前版",
+  "rust": {
+    "file": "src-tauri/src/plugins/manager.rs",
+    "line": 269,
+    "behavior": "Rust 版的插件管理器只管理随应用发布的内置通道插件（set_enabled 仅接受 ilinkbot，把 plugin.ilinkbot.enabled 写进设置后启停），没有社区包安装命令、版本目录、活动版本指针或完整性清单。社区来源的代码是否进入 Host 只由 profile 文件决定（host/kernel/profile.ts 的 loadStartupProfile），没有安装期校验、逐文件摘要与失败回滚"
+  },
+  "fix": {
+    "files": [
+      "host/kernel/plugin-packages/index.ts"
+    ],
+    "behavior": "新增独立的离线安装纯模块 PluginPackages(root: FileScope)：install 接受调用方已打开的 .dsplugin ZIP，先在 <plugins>/.staging/<UUID> 完整校验条目索引（无 .. / 反斜杠 / Windows 设备名 / 大小写重复 / 非普通文件，总量 <= 256 MiB），边解压边计量，再读根 package.json 调 W01 的 assertInstallable（社区安装来源、平台、engines、requires；K7 拒绝原样保留），随后为每个普通文件计算小写 SHA-256，校验 manifest host/ui 入口确实在包内，把暂存目录原子改名为 releases/<id>/<version>-<UUID>，完整复核后以原子写替换 plugins.lock.json 作为唯一活动版本指针。新装默认 disabled，升级保留 enabled；每一步失败都删除本次未发布的暂存/版本目录并保持旧 lock。verify 重新校验锁结构、发布目录祖先不是符号链接、文件集合精确匹配、逐文件摘要和 manifest id/version/入口；resolveFile 只在完整校验通过且启用后返回锁内文件的绝对路径；setEnabled 启用前校验字节；uninstall 只原子移除指针并保留载荷；restore 在当前指针仍等于调用方看到的路径时校验前版载荷后原子回滚。W01 独占 profile/runtime/命令/同意接线，本模块不写同意，也不声称物理隔离或发布者签名"
+  },
+  "evidence": "P1-1（PLUGIN-CLOSEOUT-BRIEF 第 3 条）：W34 负责离线 .dsplugin 事务安装纯模块，W01 负责内核可信命令与 profile，W06 依据 lock 校验 ds-plugin 响应，W35 只消费记录。实现与测试见 host/kernel/plugin-packages/index.ts 与 index.test.ts：9 个用例在真实临时目录上用真实 ZIP（ZipWriter + MemoryZipSink）经 FileScope.openFile 的 RandomAccessFile 安装，覆盖暂存解压/逐文件 SHA-256/锁指针、assertInstallable 拒绝（engines、保留 publisher、入口缺失）后旧 lock 与前版不变、升级切换/回滚冲突、启用前校验与停用不校验、卸载保留载荷/恢复、ZIP slip 与大小写重复、符号链接祖先/叶子拒绝，以及注入的提交失败和改名后校验失败两种事务回滚。测试未使用 mock 文件系统；删除旧 lock 保护、改成非原子提交或跳过哈希会让对应用例变红。尚未接线：W01 的命令授权/profile/同意与 W35 界面不在本提交内，接线前运行时没有差异",
+  "userVisible": "接线后（W01 内核命令 + W35 插件管理界面）用户可离线选择 .dsplugin 安装或升级社区插件：安装完成即可在管理界面看到 id/版本/启用状态，但不会自动启用或运行；升级失败时旧版本继续可用；卸载后包文件仍保留，可回滚恢复。未接线前界面与 Rust 一致，没有新增入口。损坏、被篡改或含路径穿越的包会在安装或启用时被拒绝，并给出以 PLUGIN_PACKAGE_INVALID 开头的错误",
+  "dataCompat": "新增 <dataDir>/plugins/plugins.lock.json（lockVersion 1）与 <dataDir>/plugins/releases/<id>/<version>-<UUID>/ 版本目录，不改变落库数据、同步载荷与备份格式；Rust 版与旧 Electron 不读这些文件。删除 lock 只会让已安装包失去活动指针（载荷仍在），重新安装可恢复；不删除用户数据",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "host/kernel/plugin-packages/index.test.ts",
+      "name": "RF-W34-offline-package-transaction: offline .dsplugin transaction"
+    }
+  ],
+  "commits": [
+    "ccc10943"
+  ]
+}

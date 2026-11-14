@@ -1,0 +1,90 @@
+{
+  "domain": "anki",
+  "commands": [
+    "save_anki_cards",
+    "get_document_cards",
+    "export_cards_as_apkg_with_template",
+    "import_anki_package"
+  ],
+  "scenarios": [
+    {
+      "id": "anki.connect.import-package",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_anki_cards",
+          "args": {
+            "request": {
+              "document_id": "w233-ac-a",
+              "business_session_id": null,
+              "message_stable_id": null,
+              "block_id": null,
+              "template_id": null,
+              "cards": [
+                {
+                  "id": "w233-ac-1",
+                  "front": "什么是 AnkiConnect？",
+                  "back": "Anki 的 HTTP 插件",
+                  "text": null,
+                  "tags": [],
+                  "images": [],
+                  "fields": {
+                    "Front": "什么是 AnkiConnect？",
+                    "Back": "Anki 的 HTTP 插件"
+                  },
+                  "template_id": null
+                }
+              ],
+              "options": {
+                "deck_name": "W233::推送",
+                "note_type": "Basic",
+                "enable_images": false,
+                "max_cards_per_mistake": 5
+              }
+            }
+          }
+        },
+        {
+          "cmd": "get_document_cards",
+          "args": {
+            "documentId": "w233-ac-a"
+          }
+        },
+        {
+          "cmd": "export_cards_as_apkg_with_template",
+          "args": {
+            "selected_cards": "${1}",
+            "selectedCards": "${1}",
+            "deck_name": "W233::推送",
+            "deckName": "W233::推送",
+            "note_type": "Basic",
+            "noteType": "Basic",
+            "template_id": null,
+            "templateId": null
+          }
+        },
+        {
+          "cmd": "import_anki_package",
+          "args": {
+            "path": "${2}",
+            "deleteAfter": false
+          }
+        },
+        {
+          "cmd": "import_anki_package",
+          "args": {
+            "path": "${2}",
+            "deleteAfter": true
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

@@ -16,17 +16,17 @@ import type { TFunction } from 'i18next';
 import { dstu } from '@/dstu';
 import { fileManager } from '@/utils/fileManager';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { isIOS, isWebUiShell } from '@/utils/platform';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 
 /**
- * 仍不支持保存对话框导出的平台：仅 iOS（未接入/未验证系统保存通道）。
+ * 仍不支持保存对话框导出的平台：仅 iOS 原生外壳（未接入/未验证系统保存通道）。
  * Android 已经由 SAF ACTION_CREATE_DOCUMENT + content:// 写入支持，不在此列。
+ * WebUI（含 iOS Safari / Android Chrome）走标准浏览器下载，同样不在此列。
  */
 export function isExportUnsupportedPlatform(): boolean {
-  if (typeof navigator === 'undefined') return false;
-  const ua = navigator.userAgent;
-  if (/android/i.test(ua)) return false;
-  return /iphone|ipad|ipod/i.test(ua);
+  if (isWebUiShell()) return false;
+  return isIOS();
 }
 
 /** Android 保存得到的是 content:// URI，提示里展示建议文件名而非不透明 URI */

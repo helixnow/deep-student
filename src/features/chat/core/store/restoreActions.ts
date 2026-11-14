@@ -3,7 +3,7 @@ import type { Message, ReplaySkillPayloadSnapshot } from '../types/message';
 import type {
   ChatStore,
   LoadSessionResponseType,
-  SessionRestoreBaseline,
+  SessionRestoreBaseline as RestoreIdentityBaseline,
 } from '../types';
 import type { ChatStoreState, SetState, GetState } from './types';
 import { createDefaultChatParams } from './types';
@@ -28,6 +28,10 @@ import {
   browserToolsSkill,
   builtinToolSkills,
 } from '../../skills/builtin-tools';
+
+export type SessionRestoreBaseline = RestoreIdentityBaseline & Partial<
+  Pick<ChatStoreState, 'messageMap' | 'blocks' | 'inputValue'>
+>;
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
@@ -857,10 +861,17 @@ export function createRestoreActions(
 
           // 🔧 安全解析 activeSkillIdsJson（统一为一次解析，防止 JSON 异常中断恢复）
           let restoredActiveSkillIds: string[] = getRestoredActiveSkillIds(state);
-          // 🔧 新会话（无持久化 activeSkillIdsJson）回退到默认技能
-          // 避免 loadSession 竞态覆写 activateSkill 已设置的 activeSkillIds
+          let restoredSkillStateJson: string | null = state?.skillStateJson ?? null;
+          // 🔧 新会话（无持久化 activeSkillIdsJson）优先保留内存里 activateSkill 已设置的技能，否则回退到默认技能
+          // 避免 loadSession 竞态覆写 activateSkill 已设置的 activeSkillIds / skillStateJson
           if (restoredActiveSkillIds.length === 0 && !state?.activeSkillIdsJson && !state?.skillStateJson) {
-            restoredActiveSkillIds = skillDefaults.getAll();
+            const currentInMemory = getState();
+            if ((currentInMemory?.activeSkillIds?.length ?? 0) > 0 || currentInMemory?.skillStateJson) {
+              restoredActiveSkillIds = [...(currentInMemory?.activeSkillIds ?? [])];
+              restoredSkillStateJson = currentInMemory.skillStateJson ?? null;
+            } else {
+              restoredActiveSkillIds = skillDefaults.getAll();
+            }
           }
 
           // 📊 细粒度打点：set 开始
@@ -883,7 +894,10 @@ export function createRestoreActions(
           // already received chunks.
           const liveState = getState();
           const liveStateAdvanced = !!baseline && (
-            liveState.sessionStatus !== baseline.sessionStatus
+            liveState.currentStreamingMessageId !== null
+            || (baseline.messageMap !== undefined && liveState.messageMap !== baseline.messageMap)
+            || (baseline.blocks !== undefined && liveState.blocks !== baseline.blocks)
+            || liveState.sessionStatus !== baseline.sessionStatus
             || liveState.currentStreamingMessageId !== baseline.currentStreamingMessageId
             || hasIdentitySetChanged(liveState.messageMap.keys(), baseline.messageIds)
             || hasIdentitySetChanged(liveState.blocks.keys(), baseline.blockIds)
@@ -973,6 +987,7 @@ export function createRestoreActions(
           // liveState 已前进（例如发送后清空了输入框）时保留当前 composer，
           // 避免后端快照里尚未刷掉的旧草稿把已发送正文写回输入框。
           const resolvedInputValue = liveStateAdvanced
+            || (baseline?.inputValue !== undefined && liveState.inputValue !== baseline.inputValue)
             ? liveState.inputValue
             : inputValue;
 
@@ -1033,7 +1048,7 @@ export function createRestoreActions(
             pendingContextRefsDirty: unsavedLiveRefs.length > 0,
             // 从安全解析的结果恢复（支持多选）
             activeSkillIds: restoredActiveSkillIds,
-            skillStateJson: state?.skillStateJson ?? null,
+            skillStateJson: restoredSkillStateJson,
             ...(shouldResetTransientRuntimes
               ? {
                   pendingBlockingInteraction: null,

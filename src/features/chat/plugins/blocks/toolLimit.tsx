@@ -9,7 +9,6 @@
 import React, { useCallback, useState } from 'react';
 import { Warning, Play, CircleNotch, WarningCircle } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
-import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
 
@@ -61,22 +60,22 @@ const ToolLimitBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStr
   }, [isDisabled, onContinue]);
 
   return (
-    <div
-      className={cn(
-        'rounded-lg border border-warning/30 bg-warning/10 p-4',
-        'shadow-sm'
-      )}
-    >
-      {/* 标题 */}
-      <div className="flex items-center gap-2 mb-3">
-        <Warning size={20} className="text-warning" />
-        <span className="text-sm font-medium text-warning">
-          {t('chatV2:tool_limit.title')}
-        </span>
+    <div className="rounded-lg border border-warning/40 overflow-hidden bg-card dark:bg-card/80">
+      {/* 头部 */}
+      <div className="flex items-center justify-between gap-2 px-3 py-2.5 border-b border-border/30">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-warning/10 text-warning">
+            <Warning size={16} />
+          </span>
+          <span className="truncate text-xs font-medium text-muted-foreground">
+            {t('chatV2:tool_limit.title')}
+          </span>
+        </div>
+        <WarningCircle size={16} className="w-4 h-4 text-warning shrink-0" />
       </div>
 
       {/* 内容 */}
-      <div className="text-sm text-warning/80 space-y-2">
+      <div className="px-3 py-2.5 text-sm text-foreground/85 space-y-2">
         {paragraphs.map((paragraph, index) => {
           // 检查是否是列表项
           if (paragraph.includes('•')) {
@@ -86,7 +85,7 @@ const ToolLimitBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStr
                 {items.map((item, itemIndex) => (
                   <li
                     key={itemIndex}
-                    className="flex items-start gap-2 text-warning/90"
+                    className="flex items-start gap-2 text-foreground/90"
                   >
                     <span className="text-warning mt-0.5">•</span>
                     <span>{item.replace(/^[•\s]+/, '')}</span>
@@ -101,32 +100,32 @@ const ToolLimitBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStr
             </p>
           );
         })}
+
+        {/* 🆕 继续执行失败的内联错误 */}
+        {continueError !== null && (
+          <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs">
+            <WarningCircle size={14} className="mt-0.5 flex-shrink-0 text-destructive" />
+            <span className="min-w-0 flex-1 break-words text-destructive">
+              {t('chatV2:tool_limit.continueFailed')}
+              {continueError && <span className="ml-1 text-destructive/80">{continueError}</span>}
+            </span>
+          </div>
+        )}
       </div>
 
-      {/* 🆕 继续执行失败的内联错误 */}
-      {continueError !== null && (
-        <div className="mt-3 flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs">
-          <WarningCircle size={14} className="mt-0.5 flex-shrink-0 text-destructive" />
-          <span className="min-w-0 flex-1 break-words text-destructive">
-            {t('chatV2:tool_limit.continueFailed')}
-            {continueError && <span className="ml-1 text-destructive/80">{continueError}</span>}
-          </span>
-        </div>
-      )}
-
       {/* 🆕 继续执行按钮 + 快捷操作提示 */}
-      <div className="mt-4 pt-3 border-t border-warning/30 flex items-center justify-between">
-        <p className="text-xs text-warning">
+      <div className="px-3 py-2.5 border-t border-border/30 bg-muted/20 flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs text-muted-foreground">
           {t('chatV2:tool_limit.hint')}
         </p>
-        
+
         {onContinue && (
           <DsButton
             variant="primary"
             size="sm"
             onClick={handleContinue}
             disabled={isDisabled}
-            className="bg-warning hover:bg-warning/90 text-white [@media(pointer:coarse)]:!min-h-11"
+            className="bg-warning hover:bg-warning/90 text-warning-foreground [@media(pointer:coarse)]:!min-h-11"
           >
             {isDisabled ? (
               <>

@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import './ImageAttachmentInspectorPlugin.css';
 import { unifiedAlert, unifiedConfirm } from '@/utils/unifiedDialogs';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import { Switch } from '@/components/ui/shad/Switch';
+import type { DebugPanelPluginProps } from '../DebugPanelHost';
 
 interface ImageSourceInfo {
   messageIndex: number;
@@ -123,15 +124,14 @@ interface RenderLog {
   actualMsgTimestamp?: string;
 }
 
-const ImageAttachmentInspectorPlugin: React.FC = () => {
+const ImageAttachmentInspectorPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isActive }) => {
   const { t } = useTranslation('common');
   const [inspectionData, setInspectionData] = useState<ImageSourceInfo[]>([]);
-  const [autoRefresh, setAutoRefresh] = useState(false);
   const [lastInspectionTime, setLastInspectionTime] = useState<string>('');
   const [renderLogs, setRenderLogs] = useState<RenderLog[]>([]);
   const [captureRenderLogs, setCaptureRenderLogs] = useState(false);
 
-  const performInspection = () => {
+  const performInspection = useCallback(() => {
     try {
       // 从 window.debugChatHistory 读取当前聊天历史
       const chatHistory = (window as any).debugChatHistory;
@@ -275,15 +275,14 @@ const ImageAttachmentInspectorPlugin: React.FC = () => {
       console.error('[ImageInspector] 检查失败:', err);
       setLastInspectionTime('检查失败: ' + String(err));
     }
-  };
+  }, []);
 
   useEffect(() => {
-    if (autoRefresh) {
-      performInspection();
-      const timer = setInterval(performInspection, 2000);
-      return () => clearInterval(timer);
-    }
-  }, [autoRefresh]);
+    if (!visible || !isActive) return;
+    performInspection();
+    const timer = window.setInterval(performInspection, 2000);
+    return () => window.clearInterval(timer);
+  }, [visible, isActive, performInspection]);
 
   // 监听渲染日志
   useEffect(() => {
@@ -409,15 +408,6 @@ const ImageAttachmentInspectorPlugin: React.FC = () => {
     <div className="image-attachment-inspector">
       <div className="inspector-header">
         <h3>{t('debug_panel.plugin_image_inspector', '图片附件检查器')}</h3>
-        <div className="inspector-controls">
-          <button onClick={performInspection} className="btn-inspect [@media(pointer:coarse)]:min-h-11">
-            🔍 立即检查
-          </button>
-          <label className="auto-refresh-toggle">
-            <Switch size="sm" checked={autoRefresh} onCheckedChange={setAutoRefresh} />
-            <span>自动刷新 (2s)</span>
-          </label>
-        </div>
       </div>
 
       <div className="render-log-section">

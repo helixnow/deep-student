@@ -23,6 +23,7 @@ import {
   settingsQuietButtonSelectedRowClassName,
   settingsQuietInteractiveRowClassName,
 } from './SettingsCommon';
+import { GroupTitle } from './settingsTabPrimitives';
 import { TECHNICAL_INPUT_PROPS } from '@/components/ui/shad/technicalInputProps';
 
 const isTauri = typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__;
@@ -43,7 +44,6 @@ export interface WebSearchConfig {
   /** DeepSeek 搜索是否回传网页正文（官方 need_content）；后端设置键 web_search.deepseek.need_content */
   webSearchDeepseekNeedContent?: boolean;
   /** Web Fetch 是否优先使用 DeepSeek Fetch API；后端设置键 web_search.deepseek.fetch_enabled */
-  webSearchDeepseekFetchEnabled?: boolean;
   webSearchTimeoutMs?: number;
 }
 
@@ -90,8 +90,10 @@ const SettingRow = ({
 export const EngineSettingsSection: React.FC<{
   config: WebSearchConfig;
   setConfig: React.Dispatch<React.SetStateAction<WebSearchConfig>>;
-}> = ({ config, setConfig }) => {
+  deepseekProviderConfigured?: boolean;
+}> = ({ config, setConfig, deepseekProviderConfigured }) => {
   const { t } = useTranslation('settings');
+  const deepseekSearchConfigured = Boolean(config.webSearchDeepseekKey || deepseekProviderConfigured);
   const [providerStrategies, setProviderStrategies] = React.useState<ProviderStrategiesMap | null>(null);
   const [engineTesting, setEngineTesting] = React.useState<string | null>(null);
   const [engineResults, setEngineResults] = React.useState<Record<string, { ok: boolean; msg: string; ms?: number }>>({});
@@ -332,7 +334,7 @@ export const EngineSettingsSection: React.FC<{
                   searxng: !!config.webSearchSearxngEndpoint,
                   zhipu: !!config.webSearchZhipuKey,
                   bocha: !!config.webSearchBochaKey,
-                  deepseek: !!config.webSearchDeepseekKey
+                  deepseek: deepseekSearchConfigured
                 };
                 const isActive = activeEngine === id;
                 const isConfigured = isConfiguredMap[id];
@@ -366,14 +368,10 @@ export const EngineSettingsSection: React.FC<{
         <div className="w-full min-w-0">
           {activeEngine === 'bing_rss' && (
             <div className="w-full ui-rise-in">
-              <div className="flex flex-col gap-2 mb-6">
-                <h3 className="text-base font-semibold text-foreground">
-                  {t('settings:external_search.bing_rss_name')}
-                </h3>
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  {t('settings:descriptions.bing_rss_desc')}
-                </p>
-              </div>
+              <GroupTitle
+                title={t('settings:external_search.bing_rss_name')}
+                description={t('settings:descriptions.bing_rss_desc')}
+              />
               <div className="rounded-2xl bg-muted p-3 sm:p-4">
               {renderEngineFooter('bing_rss', true)}
               </div>
@@ -382,28 +380,26 @@ export const EngineSettingsSection: React.FC<{
 
           {activeEngine === 'google_cse' && (
             <div className="w-full ui-rise-in">
-              <div className="flex flex-col gap-2 mb-6">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <h3 className="text-base font-semibold text-foreground truncate">Google CSE</h3>
+              <GroupTitle
+                title={
+                  <span className="inline-flex items-center gap-2 min-w-0">
+                    <span className="truncate">{t('settings:external_search.engine_options.google_cse')}</span>
                     <DsButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" onClick={() => void openUrl("https://cse.google.com/cse/create/new")} title={t('settings:external_search.create_custom_search')}>
                       <ArrowSquareOut size={14} />
                     </DsButton>
-                  </div>
-                </div>
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  {t('settings:descriptions.google_cse_desc')}
-                </p>
-              </div>
+                  </span>
+                }
+                description={t('settings:descriptions.google_cse_desc')}
+              />
               <div className="rounded-2xl bg-muted p-3 sm:p-4">
               <div className="flex flex-col gap-6 text-xs md:grid md:grid-cols-2">
                 <div className="space-y-2">
-                          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.google_api_key_label')}</div>
+                          <div className="text-xs font-medium text-muted-foreground">{t('settings:external_search.google_api_key_label')}</div>
                           <SecurePasswordInput value={config.webSearchGoogleKey} onChange={(v) => setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchGoogleKey: v }))} placeholder="GOOGLE_API_KEY" isSensitive />
                   <p className="text-xs text-muted-foreground/70">{t('settings:external_search.google_api_key_desc')}</p>
                 </div>
                 <div className="space-y-2">
-                          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.google_cse_cx_label')}</div>
+                          <div className="text-xs font-medium text-muted-foreground">{t('settings:external_search.google_cse_cx_label')}</div>
                           <Input
                     type="text"
                     value={config.webSearchGoogleCx}
@@ -421,23 +417,21 @@ export const EngineSettingsSection: React.FC<{
 
           {activeEngine === 'serpapi' && (
             <div className="w-full ui-rise-in">
-              <div className="flex flex-col gap-2 mb-6">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <h3 className="text-base font-semibold text-foreground truncate">SerpAPI</h3>
+              <GroupTitle
+                title={
+                  <span className="inline-flex items-center gap-2 min-w-0">
+                    <span className="truncate">SerpAPI</span>
                     <DsButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" onClick={() => void openUrl("https://serpapi.com/users/sign_up")} title={t('settings:external_search.get_serpapi_key')}>
                       <ArrowSquareOut size={14} />
                     </DsButton>
-                  </div>
-                </div>
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  {t('settings:descriptions.serpapi_desc')}
-                </p>
-              </div>
+                  </span>
+                }
+                description={t('settings:descriptions.serpapi_desc')}
+              />
               <div className="rounded-2xl bg-muted p-3 sm:p-4">
               <div className="flex flex-col gap-6 text-xs md:grid md:grid-cols-2">
                 <div className="space-y-2 md:col-span-2">
-                          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.serpapi_key_label')}</div>
+                          <div className="text-xs font-medium text-muted-foreground">{t('settings:external_search.serpapi_key_label')}</div>
                           <SecurePasswordInput value={config.webSearchSerpApiKey} onChange={(v) => setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchSerpApiKey: v }))} placeholder="SERPAPI_KEY" isSensitive />
                   <p className="text-xs text-muted-foreground/70">{t('settings:external_search.serpapi_key_desc')}</p>
                 </div>
@@ -449,23 +443,21 @@ export const EngineSettingsSection: React.FC<{
 
           {activeEngine === 'tavily' && (
             <div className="w-full ui-rise-in">
-              <div className="flex flex-col gap-2 mb-6">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <h3 className="text-base font-semibold text-foreground truncate">Tavily</h3>
+              <GroupTitle
+                title={
+                  <span className="inline-flex items-center gap-2 min-w-0">
+                    <span className="truncate">{t('settings:external_search.engine_options.tavily')}</span>
                     <DsButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" onClick={() => void openUrl("https://tavily.com")} title={t('settings:external_search.get_tavily_key')}>
                       <ArrowSquareOut size={14} />
                     </DsButton>
-                  </div>
-                </div>
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  {t('settings:descriptions.tavily_desc')}
-                </p>
-              </div>
+                  </span>
+                }
+                description={t('settings:descriptions.tavily_desc')}
+              />
               <div className="rounded-2xl bg-muted p-3 sm:p-4">
               <div className="flex flex-col gap-6 text-xs md:grid md:grid-cols-2">
                 <div className="space-y-2 md:col-span-2">
-                          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.tavily_key_label')}</div>
+                          <div className="text-xs font-medium text-muted-foreground">{t('settings:external_search.tavily_key_label')}</div>
                           <SecurePasswordInput value={config.webSearchTavilyKey} onChange={(v) => setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchTavilyKey: v }))} placeholder="TAVILY_API_KEY" isSensitive />
                   <p className="text-xs text-muted-foreground/70">{t('settings:external_search.tavily_key_desc')}</p>
                 </div>
@@ -477,23 +469,21 @@ export const EngineSettingsSection: React.FC<{
 
           {activeEngine === 'brave' && (
             <div className="w-full ui-rise-in">
-              <div className="flex flex-col gap-2 mb-6">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <h3 className="text-base font-semibold text-foreground truncate">Brave</h3>
+              <GroupTitle
+                title={
+                  <span className="inline-flex items-center gap-2 min-w-0">
+                    <span className="truncate">{t('settings:external_search.engine_options.brave')}</span>
                     <DsButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" onClick={() => void openUrl("https://api.search.brave.com/")} title={t('settings:external_search.get_brave_key')}>
                       <ArrowSquareOut size={14} />
                     </DsButton>
-                  </div>
-                </div>
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  {t('settings:descriptions.brave_desc')}
-                </p>
-              </div>
+                  </span>
+                }
+                description={t('settings:descriptions.brave_desc')}
+              />
               <div className="rounded-2xl bg-muted p-3 sm:p-4">
               <div className="flex flex-col gap-6 text-xs md:grid md:grid-cols-2">
                 <div className="space-y-2 md:col-span-2">
-                          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.brave_key_label')}</div>
+                          <div className="text-xs font-medium text-muted-foreground">{t('settings:external_search.brave_key_label')}</div>
                           <SecurePasswordInput value={config.webSearchBraveKey} onChange={(v) => setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchBraveKey: v }))} placeholder="BRAVE_API_KEY" isSensitive />
                   <p className="text-xs text-muted-foreground/70">{t('settings:external_search.brave_key_desc')}</p>
                 </div>
@@ -505,23 +495,21 @@ export const EngineSettingsSection: React.FC<{
 
           {activeEngine === 'searxng' && (
             <div className="w-full ui-rise-in">
-              <div className="flex flex-col gap-2 mb-6">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <h3 className="text-base font-semibold text-foreground truncate">SearXNG</h3>
+              <GroupTitle
+                title={
+                  <span className="inline-flex items-center gap-2 min-w-0">
+                    <span className="truncate">SearXNG</span>
                     <DsButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" onClick={() => void openUrl("https://docs.searxng.org/")} title={t('settings:external_search.searxng_docs')}>
                       <ArrowSquareOut size={14} />
                     </DsButton>
-                  </div>
-                </div>
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  {t('settings:descriptions.searxng_desc')}
-                </p>
-              </div>
+                  </span>
+                }
+                description={t('settings:descriptions.searxng_desc')}
+              />
               <div className="rounded-2xl bg-muted p-3 sm:p-4">
               <div className="flex flex-col gap-6 text-xs md:grid md:grid-cols-2">
                 <div className="space-y-2">
-                          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.searxng_endpoint_label')}</div>
+                          <div className="text-xs font-medium text-muted-foreground">{t('settings:external_search.searxng_endpoint_label')}</div>
                           <Input
                     type="text"
                     {...TECHNICAL_INPUT_PROPS}
@@ -533,7 +521,7 @@ export const EngineSettingsSection: React.FC<{
                   <p className="text-xs text-muted-foreground/70">{t('settings:external_search.searxng_endpoint_desc')}</p>
                 </div>
                 <div className="space-y-2">
-                          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.searxng_key_label')}</div>
+                          <div className="text-xs font-medium text-muted-foreground">{t('settings:external_search.searxng_key_label')}</div>
                           <SecurePasswordInput value={config.webSearchSearxngKey} onChange={(v) => setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchSearxngKey: v }))} placeholder="SEARXNG_API_KEY" isSensitive />
                   <p className="text-xs text-muted-foreground/70">{t('settings:external_search.searxng_key_desc')}</p>
                 </div>
@@ -545,23 +533,21 @@ export const EngineSettingsSection: React.FC<{
 
           {activeEngine === 'zhipu' && (
             <div className="w-full ui-rise-in">
-              <div className="flex flex-col gap-2 mb-6">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <h3 className="text-base font-semibold text-foreground truncate">{t('settings:external_search.zhipu_name')}</h3>
+              <GroupTitle
+                title={
+                  <span className="inline-flex items-center gap-2 min-w-0">
+                    <span className="truncate">{t('settings:external_search.zhipu_name')}</span>
                     <DsButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" onClick={() => void openUrl("https://open.bigmodel.cn/")} title={t('settings:external_search.zhipu_apply')}>
                       <ArrowSquareOut size={14} />
                     </DsButton>
-                  </div>
-                </div>
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  {t('settings:descriptions.zhipu_desc')}
-                </p>
-              </div>
+                  </span>
+                }
+                description={t('settings:descriptions.zhipu_desc')}
+              />
               <div className="rounded-2xl bg-muted p-3 sm:p-4">
               <div className="flex flex-col gap-6 text-xs md:grid md:grid-cols-2">
                 <div className="space-y-2 md:col-span-2">
-                          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.zhipu_key_label')}</div>
+                          <div className="text-xs font-medium text-muted-foreground">{t('settings:external_search.zhipu_key_label')}</div>
                           <SecurePasswordInput value={config.webSearchZhipuKey} onChange={(v) => setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchZhipuKey: v }))} placeholder="ZHIPU_API_KEY" isSensitive />
                   <p className="text-xs text-muted-foreground/70">{t('settings:external_search.zhipu_key_desc')}</p>
                 </div>
@@ -573,23 +559,21 @@ export const EngineSettingsSection: React.FC<{
 
           {activeEngine === 'bocha' && (
             <div className="w-full ui-rise-in">
-              <div className="flex flex-col gap-2 mb-6">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <h3 className="text-base font-semibold text-foreground truncate">{t('settings:external_search.bocha_name')}</h3>
+              <GroupTitle
+                title={
+                  <span className="inline-flex items-center gap-2 min-w-0">
+                    <span className="truncate">{t('settings:external_search.bocha_name')}</span>
                     <DsButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" onClick={() => void openUrl("https://open.bochaai.com/")} title={t('settings:external_search.bocha_apply')}>
                       <ArrowSquareOut size={14} />
                     </DsButton>
-                  </div>
-                </div>
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  {t('settings:descriptions.bocha_desc')}
-                </p>
-              </div>
+                  </span>
+                }
+                description={t('settings:descriptions.bocha_desc')}
+              />
               <div className="rounded-2xl bg-muted p-3 sm:p-4">
               <div className="flex flex-col gap-6 text-xs md:grid md:grid-cols-2">
                 <div className="space-y-2 md:col-span-2">
-                          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.bocha_key_label')}</div>
+                          <div className="text-xs font-medium text-muted-foreground">{t('settings:external_search.bocha_key_label')}</div>
                           <SecurePasswordInput value={config.webSearchBochaKey} onChange={(v) => setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchBochaKey: v }))} placeholder="BOCHA_API_KEY" isSensitive />
                   <p className="text-xs text-muted-foreground/70">{t('settings:external_search.bocha_key_desc')}</p>
                 </div>
@@ -601,23 +585,21 @@ export const EngineSettingsSection: React.FC<{
 
           {activeEngine === 'deepseek' && (
             <div className="w-full ui-rise-in">
-              <div className="flex flex-col gap-2 mb-6">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <h3 className="text-base font-semibold text-foreground truncate">{t('settings:external_search.deepseek_name')}</h3>
+              <GroupTitle
+                title={
+                  <span className="inline-flex items-center gap-2 min-w-0">
+                    <span className="truncate">{t('settings:external_search.deepseek_name')}</span>
                     <DsButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" onClick={() => void openUrl("https://platform.deepseek.com/api_keys")} title={t('settings:external_search.deepseek_apply')}>
                       <ArrowSquareOut size={14} />
                     </DsButton>
-                  </div>
-                </div>
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  {t('settings:descriptions.deepseek_desc')}
-                </p>
-              </div>
+                  </span>
+                }
+                description={t('settings:descriptions.deepseek_desc')}
+              />
               <div className="rounded-2xl bg-muted p-3 sm:p-4">
               <div className="flex flex-col gap-6 text-xs md:grid md:grid-cols-2">
                 <div className="space-y-2 md:col-span-2">
-                          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.deepseek_key_label')}</div>
+                          <div className="text-xs font-medium text-muted-foreground">{t('settings:external_search.deepseek_key_label')}</div>
                           <SecurePasswordInput value={config.webSearchDeepseekKey} onChange={(v) => setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchDeepseekKey: v }))} placeholder="DEEPSEEK_API_KEY" isSensitive />
                   <p className="text-xs text-muted-foreground/70">{t('settings:external_search.deepseek_key_desc')}</p>
                 </div>
@@ -633,20 +615,9 @@ export const EngineSettingsSection: React.FC<{
                       aria-label={t('settings:external_search.deepseek_need_content_label')}
                     />
                   </div>
-                  <div className="flex items-center justify-between gap-4">
-                    <div className="min-w-0">
-                      <div className="text-xs font-medium text-foreground/90">{t('settings:external_search.deepseek_fetch_label')}</div>
-                      <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground/70">{t('settings:external_search.deepseek_fetch_desc')}</p>
-                    </div>
-                    <Switch
-                      checked={Boolean(config.webSearchDeepseekFetchEnabled)}
-                      onCheckedChange={(v) => setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchDeepseekFetchEnabled: v }))}
-                      aria-label={t('settings:external_search.deepseek_fetch_label')}
-                    />
-                  </div>
                 </div>
               </div>
-              {renderEngineFooter('deepseek', !!config.webSearchDeepseekKey)}
+              {renderEngineFooter('deepseek', deepseekSearchConfigured)}
               </div>
             </div>
           )}
@@ -654,8 +625,8 @@ export const EngineSettingsSection: React.FC<{
         </div>
       </div>
 
-      <div className="pt-8 border-t border-border/40 mt-8">
-        <h3 className="text-base font-semibold text-foreground mb-4">{t('settings:groups.global_search_settings')}</h3>
+      <div className="mt-8">
+        <GroupTitle title={t('settings:groups.global_search_settings')} />
         <div className="rounded-2xl bg-muted px-3 py-3 sm:px-4"><div className="space-y-px">
           <SettingRow
           title={t('settings:field_labels.default_search_engine')}
@@ -684,7 +655,7 @@ export const EngineSettingsSection: React.FC<{
                   { value: 'searxng', label: t('settings:external_search.engine_options.searxng'), disabled: !config.webSearchSearxngEndpoint },
                   { value: 'zhipu', label: t('settings:external_search.engine_options.zhipu'), disabled: !config.webSearchZhipuKey },
                   { value: 'bocha', label: t('settings:external_search.engine_options.bocha'), disabled: !config.webSearchBochaKey },
-                  { value: 'deepseek', label: t('settings:external_search.engine_options.deepseek'), disabled: !config.webSearchDeepseekKey },
+                  { value: 'deepseek', label: t('settings:external_search.engine_options.deepseek'), disabled: !deepseekSearchConfigured },
                 ]}
                 variant="outline"
                 className="bg-transparent hover:bg-[var(--interactive-hover)] transition-colors [@media(pointer:coarse)]:!h-11"

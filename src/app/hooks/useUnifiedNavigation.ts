@@ -6,7 +6,7 @@ import {
   getGlobalLearningHubNavigation,
   subscribeLearningHubNavigation,
 } from '@/features/learning-hub';
-import { useWindowStore } from '@/features/workbench/core/windowStore';
+import { useFocusedWorkbenchAppTypeId } from '@/shared/workbenchHost';
 import type { SetCurrentView } from '../navigation/viewRouting';
 
 /**
@@ -60,11 +60,7 @@ export function useUnifiedNavigation(currentView: CurrentView, setCurrentView: S
   // 统一的导航处理：Learning Hub / workbench files 的 finder 历史优先，否则使用页面级导航
   // 🐛 BUG-1: 通过页面级导航抵达 LH 时，前进优先使用页面级（如有），
   //   避免 LH 残留的内部前进历史遮蔽页面级前进目标。
-  const focusedWbTypeId = useWindowStore((s) => {
-    if (!workbenchActive) return null;
-    const topId = s.focusStack[s.focusStack.length - 1];
-    return topId ? (s.windows[topId]?.typeId ?? null) : null;
-  });
+  const focusedWbTypeId = useFocusedWorkbenchAppTypeId(workbenchActive);
   const isWorkbenchFilesFocused = workbenchActive && focusedWbTypeId === 'files';
   const finderCanBack = Boolean(learningHubNav?.canGoBack);
   const finderCanForward = Boolean(learningHubNav?.canGoForward);

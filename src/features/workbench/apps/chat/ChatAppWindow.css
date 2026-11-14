@@ -1,6 +1,19 @@
-/* 侧栏宽度 / 右缘软分隔线已由 workbench.tokens.css + SystemWindowShared.css
-   的 .wb-sys-aside 统一提供（272px / medium 240px + --wb-sidebar-seam），
-   对话窗口即基准本身，无需覆盖。 */
+/* Extend both surfaces behind the transparent drag area. */
+.wb-chat-app-host .wb-sys-aside {
+  background: var(--shell-navigation-surface);
+}
+
+.wb-chat-app-host :is(.wb-sys-aside, .wb-sys-content) {
+  padding-top: var(--wb-chat-top-inset, 0px);
+}
+
+.wb-chat-app-host .wb-sys-drawer-handle {
+  margin-top: var(--wb-chat-top-inset, 0px);
+}
+
+.wb-chat-app-host .wb-sys-drawer {
+  top: var(--wb-chat-top-inset, 0px);
+}
 
 .wb-chat-app-host .chat-v2 {
   position: absolute;

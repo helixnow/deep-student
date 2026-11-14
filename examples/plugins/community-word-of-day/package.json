@@ -1,0 +1,18 @@
+{
+  "name": "deepstudent-plugin-word-of-day",
+  "version": "1.0.0",
+  "private": true,
+  "description": "示例插件：Host 半提供每日单词服务，UI 半添加侧栏视图与命令（examples/README.md）",
+  "type": "module",
+  "engines": { "deepStudent": "^0.20" },
+  "deepStudent": {
+    "manifestVersion": 1,
+    "id": "example.word-of-day",
+    "platforms": ["desktop"],
+    "host": "./index.ts",
+    "ui": "./dist/ui.js"
+  },
+  "scripts": {
+    "build:ui": "node ../../scripts/build-ui.mjs"
+  }
+}

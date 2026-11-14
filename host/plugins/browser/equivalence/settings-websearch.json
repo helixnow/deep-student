@@ -1,0 +1,225 @@
+{
+  "domain": "browser",
+  "commands": ["save_setting","get_setting","delete_setting","get_settings_by_prefix","is_feature_enabled","get_cn_whitelist_config","get_security_status","get_provider_strategies_config","save_provider_strategies_config","test_web_search_connectivity","test_search_engine"],
+  "scenarios": [
+    {
+      "id": "settings.plain.roundtrip_overwrite_delete",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"get_setting","args":{"key":"wave0.plain.alpha"}},
+        {"cmd":"save_setting","args":{"key":"wave0.plain.alpha","value":"one"}},
+        {"cmd":"get_setting","args":{"key":"wave0.plain.alpha"}},
+        {"cmd":"save_setting","args":{"key":"wave0.plain.alpha","value":"two"}},
+        {"cmd":"save_setting","args":{"key":"wave0.plain.beta","value":""}},
+        {"cmd":"save_setting","args":{"key":"wave0.plain.gamma","value":"中文 \u0000? \"quoted\" \\ back"}},
+        {"cmd":"get_settings_by_prefix","args":{"prefix":"wave0.plain."}},
+        {"cmd":"get_settings_by_prefix","args":{"prefix":"wave0.plain.al"}},
+        {"cmd":"get_settings_by_prefix","args":{"prefix":"wave0.none."}},
+        {"cmd":"get_setting","args":{"key":"wave0.plain.beta"}},
+        {"cmd":"get_setting","args":{"key":"wave0.plain.gamma"}},
+        {"cmd":"delete_setting","args":{"key":"wave0.plain.alpha"}},
+        {"cmd":"delete_setting","args":{"key":"wave0.plain.alpha"}},
+        {"cmd":"delete_setting","args":{"key":"wave0.plain.never"}},
+        {"cmd":"get_setting","args":{"key":"wave0.plain.alpha"}},
+        {"cmd":"get_settings_by_prefix","args":{"prefix":"wave0.plain."}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "settings.prefix.like_wildcards_unescaped",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"save_setting","args":{"key":"wave0_x.one","value":"1"}},
+        {"cmd":"save_setting","args":{"key":"wave0Ax.two","value":"2"}},
+        {"cmd":"save_setting","args":{"key":"wave0%x.three","value":"3"}},
+        {"cmd":"get_settings_by_prefix","args":{"prefix":"wave0_x"}},
+        {"cmd":"get_settings_by_prefix","args":{"prefix":"wave0%"}},
+        {"cmd":"get_settings_by_prefix","args":{"prefix":"%"}},
+        {"cmd":"get_settings_by_prefix","args":{"prefix":"_"}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "settings.sensitive.secure_store_roundtrip",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"save_setting","args":{"key":"web_search.api_key.tavily","value":"wave0-fake-tavily"}},
+        {"cmd":"get_setting","args":{"key":"web_search.api_key.tavily"}},
+        {"cmd":"save_setting","args":{"key":"wave0.service.apiKey","value":"wave0-fake-camel"}},
+        {"cmd":"save_setting","args":{"key":"wave0.service.password","value":"wave0-fake-password"}},
+        {"cmd":"get_settings_by_prefix","args":{"prefix":"web_search.api_key."}},
+        {"cmd":"get_settings_by_prefix","args":{"prefix":"wave0.service."}},
+        {"cmd":"get_setting","args":{"key":"wave0.service.apiKey"}},
+        {"cmd":"delete_setting","args":{"key":"web_search.api_key.tavily"}},
+        {"cmd":"delete_setting","args":{"key":"web_search.api_key.tavily"}},
+        {"cmd":"get_setting","args":{"key":"web_search.api_key.tavily"}},
+        {"cmd":"delete_setting","args":{"key":"wave0.service.password"}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "settings.internal_keys_rejected",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"save_setting","args":{"key":"internal.oauth.wave0.session","value":"x"},"expect":"error"},
+        {"cmd":"get_setting","args":{"key":"internal.oauth.wave0.session"},"expect":"error"},
+        {"cmd":"delete_setting","args":{"key":"internal.oauth.wave0.session"},"expect":"error"},
+        {"cmd":"save_setting","args":{"key":"internal.oauth.","value":"x"},"expect":"error"},
+        {"cmd":"get_settings_by_prefix","args":{"prefix":"internal.oauth."},"expect":"error"},
+        {"cmd":"get_settings_by_prefix","args":{"prefix":"internal."},"expect":"error"},
+        {"cmd":"get_settings_by_prefix","args":{"prefix":"i"},"expect":"error"},
+        {"cmd":"get_settings_by_prefix","args":{"prefix":""},"expect":"error"},
+        {"cmd":"get_settings_by_prefix","args":{"prefix":"internal.oauth.wave0"},"expect":"error"},
+        {"cmd":"save_setting","args":{"key":"internal.other","value":"x"}},
+        {"cmd":"get_setting","args":{"key":"internal.other"}},
+        {"cmd":"delete_setting","args":{"key":"internal.other"}},
+        {"cmd":"save_setting","args":{"key":" internal.oauth.x","value":"x"}},
+        {"cmd":"delete_setting","args":{"key":" internal.oauth.x"}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "settings.feature_flags.defaults_and_states",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"is_feature_enabled","args":{"featureName":"ui.workbench_browser","userId":null}},
+        {"cmd":"is_feature_enabled","args":{"featureName":"wave0.unknown","userId":null}},
+        {"cmd":"save_setting","args":{"key":"feature_flags.config","value":"{\"wave0.enabled\":{\"name\":\"wave0.enabled\",\"description\":\"wave0 wave0.enabled\",\"state\":\"Enabled\",\"category\":\"ui\",\"dependencies\":[],\"min_version\":null,\"max_version\":null,\"rollout_percentage\":null,\"created_at\":\"2026-01-01T00:00:00Z\",\"updated_at\":\"2026-01-01T00:00:00Z\"},\"wave0.disabled\":{\"name\":\"wave0.disabled\",\"description\":\"wave0 wave0.disabled\",\"state\":\"Disabled\",\"category\":\"ui\",\"dependencies\":[],\"min_version\":null,\"max_version\":null,\"rollout_percentage\":null,\"created_at\":\"2026-01-01T00:00:00Z\",\"updated_at\":\"2026-01-01T00:00:00Z\"},\"wave0.users\":{\"name\":\"wave0.users\",\"description\":\"wave0 wave0.users\",\"state\":{\"UserSpecific\":[\"u_alpha\",\"u_beta\"]},\"category\":\"ui\",\"dependencies\":[],\"min_version\":null,\"max_version\":null,\"rollout_percentage\":null,\"created_at\":\"2026-01-01T00:00:00Z\",\"updated_at\":\"2026-01-01T00:00:00Z\"},\"wave0.gradual_zero\":{\"name\":\"wave0.gradual_zero\",\"description\":\"wave0 wave0.gradual_zero\",\"state\":{\"Gradual\":0},\"category\":\"ui\",\"dependencies\":[],\"min_version\":null,\"max_version\":null,\"rollout_percentage\":null,\"created_at\":\"2026-01-01T00:00:00Z\",\"updated_at\":\"2026-01-01T00:00:00Z\"},\"wave0.gradual_full\":{\"name\":\"wave0.gradual_full\",\"description\":\"wave0 wave0.gradual_full\",\"state\":{\"Gradual\":1},\"category\":\"ui\",\"dependencies\":[],\"min_version\":null,\"max_version\":null,\"rollout_percentage\":null,\"created_at\":\"2026-01-01T00:00:00Z\",\"updated_at\":\"2026-01-01T00:00:00Z\"},\"wave0.gradual_half\":{\"name\":\"wave0.gradual_half\",\"description\":\"wave0 wave0.gradual_half\",\"state\":{\"Gradual\":0.5},\"category\":\"ui\",\"dependencies\":[],\"min_version\":null,\"max_version\":null,\"rollout_percentage\":0.5,\"created_at\":\"2026-01-01T00:00:00Z\",\"updated_at\":\"2026-01-01T00:00:00Z\"},\"wave0.dep_ok\":{\"name\":\"wave0.dep_ok\",\"description\":\"wave0 wave0.dep_ok\",\"state\":\"Enabled\",\"category\":\"ui\",\"dependencies\":[\"wave0.enabled\"],\"min_version\":null,\"max_version\":null,\"rollout_percentage\":null,\"created_at\":\"2026-01-01T00:00:00Z\",\"updated_at\":\"2026-01-01T00:00:00Z\"},\"wave0.dep_missing\":{\"name\":\"wave0.dep_missing\",\"description\":\"wave0 wave0.dep_missing\",\"state\":\"Enabled\",\"category\":\"ui\",\"dependencies\":[\"wave0.disabled\"],\"min_version\":null,\"max_version\":null,\"rollout_percentage\":null,\"created_at\":\"2026-01-01T00:00:00Z\",\"updated_at\":\"2026-01-01T00:00:00Z\"},\"wave0.min_version_future\":{\"name\":\"wave0.min_version_future\",\"description\":\"wave0 wave0.min_version_future\",\"state\":\"Enabled\",\"category\":\"ui\",\"dependencies\":[],\"min_version\":\"999.0.0\",\"max_version\":null,\"rollout_percentage\":null,\"created_at\":\"2026-01-01T00:00:00Z\",\"updated_at\":\"2026-01-01T00:00:00Z\"},\"wave0.max_version_past\":{\"name\":\"wave0.max_version_past\",\"description\":\"wave0 wave0.max_version_past\",\"state\":\"Enabled\",\"category\":\"ui\",\"dependencies\":[],\"min_version\":null,\"max_version\":\"0.0.1\",\"rollout_percentage\":null,\"created_at\":\"2026-01-01T00:00:00Z\",\"updated_at\":\"2026-01-01T00:00:00Z\"}}"}},
+        {"cmd":"is_feature_enabled","args":{"featureName":"wave0.enabled","userId":null}},
+        {"cmd":"is_feature_enabled","args":{"featureName":"wave0.disabled","userId":null}},
+        {"cmd":"is_feature_enabled","args":{"featureName":"wave0.users","userId":null}},
+        {"cmd":"is_feature_enabled","args":{"featureName":"wave0.users","userId":"u_alpha"}},
+        {"cmd":"is_feature_enabled","args":{"featureName":"wave0.users","userId":"u_gamma"}},
+        {"cmd":"is_feature_enabled","args":{"featureName":"wave0.gradual_zero","userId":null}},
+        {"cmd":"is_feature_enabled","args":{"featureName":"wave0.gradual_zero","userId":"u_alpha"}},
+        {"cmd":"is_feature_enabled","args":{"featureName":"wave0.gradual_full","userId":"u_alpha"}},
+        {"cmd":"is_feature_enabled","args":{"featureName":"wave0.gradual_half","userId":"u_alpha"}},
+        {"cmd":"is_feature_enabled","args":{"featureName":"wave0.gradual_half","userId":"u_beta"}},
+        {"cmd":"is_feature_enabled","args":{"featureName":"wave0.dep_ok","userId":null}},
+        {"cmd":"is_feature_enabled","args":{"featureName":"wave0.dep_missing","userId":null}},
+        {"cmd":"is_feature_enabled","args":{"featureName":"wave0.min_version_future","userId":null}},
+        {"cmd":"is_feature_enabled","args":{"featureName":"wave0.max_version_past","userId":null}},
+        {"cmd":"is_feature_enabled","args":{"featureName":"ui.workbench_browser","userId":null}},
+        {"cmd":"is_feature_enabled","args":{"featureName":"","userId":""}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "settings.feature_flags.unparseable_config",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"save_setting","args":{"key":"feature_flags.config","value":"[1,2"}},
+        {"cmd":"is_feature_enabled","args":{"featureName":"wave0.enabled","userId":null},"expect":"error"},
+        {"cmd":"save_setting","args":{"key":"feature_flags.config","value":"{\"wave0.bad\":{\"name\":\"wave0.bad\"}}"}},
+        {"cmd":"is_feature_enabled","args":{"featureName":"wave0.bad","userId":"u_alpha"},"expect":"error"}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "websearch.cn_whitelist_and_security_status",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"get_cn_whitelist_config","args":{}},
+        {"cmd":"get_security_status","args":{}},
+        {"cmd":"save_setting","args":{"key":"web_search.cn_whitelist.enabled","value":"true"}},
+        {"cmd":"save_setting","args":{"key":"web_search.cn_whitelist.use_default","value":"false"}},
+        {"cmd":"save_setting","args":{"key":"web_search.cn_whitelist.custom_sites","value":"[\"a.example.cn\",\"b.example.cn\"]"}},
+        {"cmd":"get_cn_whitelist_config","args":{}},
+        {"cmd":"save_setting","args":{"key":"web_search.cn_whitelist.enabled","value":"TRUE"}},
+        {"cmd":"save_setting","args":{"key":"web_search.cn_whitelist.custom_sites","value":" c.example.cn, ,d.example.cn "}},
+        {"cmd":"get_cn_whitelist_config","args":{}},
+        {"cmd":"save_setting","args":{"key":"mcp.tools.namespace_prefix","value":"wave0_"}},
+        {"cmd":"save_setting","args":{"key":"mcp.tools.conflict_resolution","value":"rename"}},
+        {"cmd":"get_cn_whitelist_config","args":{}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "websearch.provider_strategies.roundtrip",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"get_provider_strategies_config","args":{}},
+        {"cmd":"save_provider_strategies_config","args":{"strategies":{"default":{"timeout_ms":8000,"max_retries":1,"initial_retry_delay_ms":100,"max_retry_delay_ms":1000,"backoff_multiplier":1.5,"max_concurrent_requests":2,"rate_limit_per_minute":30,"cache_enabled":true,"cache_ttl_seconds":60,"cache_max_entries":16,"special_handling":null},"bing_rss":null,"google_cse":null,"serpapi":null,"tavily":{"timeout_ms":0,"max_retries":null,"initial_retry_delay_ms":null,"max_retry_delay_ms":null,"backoff_multiplier":null,"max_concurrent_requests":null,"rate_limit_per_minute":null,"cache_enabled":false,"cache_ttl_seconds":null,"cache_max_entries":null,"special_handling":null},"brave":null,"searxng":{"timeout_ms":null,"max_retries":0,"initial_retry_delay_ms":null,"max_retry_delay_ms":null,"backoff_multiplier":0,"max_concurrent_requests":null,"rate_limit_per_minute":null,"cache_enabled":null,"cache_ttl_seconds":null,"cache_max_entries":null,"special_handling":null},"zhipu":null,"bocha":null}}},
+        {"cmd":"get_provider_strategies_config","args":{}},
+        {"cmd":"get_setting","args":{"key":"web_search.provider_strategies"}},
+        {"cmd":"save_provider_strategies_config","args":{"strategies":{"default":{}}}},
+        {"cmd":"get_provider_strategies_config","args":{}},
+        {"cmd":"save_setting","args":{"key":"web_search.provider_strategies","value":"{broken"}},
+        {"cmd":"get_provider_strategies_config","args":{}},
+        {"cmd":"save_setting","args":{"key":"web_search.provider_strategies","value":"{\"bing_rss\":{}}"}},
+        {"cmd":"get_provider_strategies_config","args":{}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "websearch.provider_strategies.invalid_args",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"save_provider_strategies_config","args":{"strategies":{}},"expect":"error"},
+        {"cmd":"save_provider_strategies_config","args":{"strategies":{"default":{"timeout_ms":-1}}},"expect":"error"},
+        {"cmd":"save_provider_strategies_config","args":{"strategies":{"default":{"max_retries":4294967296}}},"expect":"error"},
+        {"cmd":"save_provider_strategies_config","args":{"strategies":{"default":{"cache_enabled":"yes"}}},"expect":"error"},
+        {"cmd":"get_provider_strategies_config","args":{}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "websearch.connectivity.config_errors_offline",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"save_setting","args":{"key":"web_search.engine","value":"searxng"}},
+        {"cmd":"test_web_search_connectivity","args":{"engine":null}},
+        {"cmd":"test_web_search_connectivity","args":{"engine":"wave0_unknown"}},
+        {"cmd":"test_web_search_connectivity","args":{"engine":"tavily"}},
+        {"cmd":"test_web_search_connectivity","args":{"engine":"google_cse"}},
+        {"cmd":"test_web_search_connectivity","args":{"engine":"   "}},
+        {"cmd":"test_search_engine","args":{"engine":"searxng"}},
+        {"cmd":"test_search_engine","args":{"engine":"wave0_unknown"}},
+        {"cmd":"test_search_engine","args":{"engine":"serpapi"}},
+        {"cmd":"test_search_engine","args":{"engine":"brave"}},
+        {"cmd":"test_search_engine","args":{"engine":"zhipu"}},
+        {"cmd":"test_search_engine","args":{"engine":"bocha"}},
+        {"cmd":"test_search_engine","args":{"engine":"deepseek"}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "websearch.connectivity.searxng_local_404",
+      "seed": "empty",
+      "mcp": {"scripts":[]},
+      "steps": [
+        {"cmd":"save_setting","args":{"key":"web_search.engine","value":"searxng"}},
+        {"cmd":"save_setting","args":{"key":"web_search.searxng.endpoint","value":"${mcp.url}/wave0-searxng-404"}},
+        {"cmd":"test_web_search_connectivity","args":{"engine":null}},
+        {"cmd":"test_web_search_connectivity","args":{"engine":"searxng"}},
+        {"cmd":"test_search_engine","args":{"engine":"searxng"}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "websearch.bad_args",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"test_search_engine","args":{},"expect":"error"},
+        {"cmd":"test_search_engine","args":{"engine":null},"expect":"error"},
+        {"cmd":"test_web_search_connectivity","args":{"engine":1},"expect":"error"},
+        {"cmd":"get_setting","args":{},"expect":"error"},
+        {"cmd":"delete_setting","args":{"key":1},"expect":"error"},
+        {"cmd":"get_settings_by_prefix","args":{},"expect":"error"}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    }
+  ]
+}

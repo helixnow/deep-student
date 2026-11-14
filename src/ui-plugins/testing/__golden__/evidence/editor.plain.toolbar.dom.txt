@@ -1,0 +1,20 @@
+<div .milkdown-toolbar data-show="false" data-v-app>
+  <button .toolbar-item aria-keyshortcuts="Control+B" aria-label="Bold" data-toolbar-item="bold" title="Bold (Ctrl+B)" type="button">
+    <span .milkdown-icon>
+      <svg viewBox="0 0 24 24" />
+  <button .toolbar-item aria-keyshortcuts="Control+I" aria-label="Italic" data-toolbar-item="italic" title="Italic (Ctrl+I)" type="button">
+    <span .milkdown-icon>
+      <svg viewBox="0 0 24 24" />
+  <button .toolbar-item aria-keyshortcuts="Control+Alt+X" aria-label="Strikethrough" data-toolbar-item="strikethrough" title="Strikethrough (Ctrl+Alt+X)" type="button">
+    <span .milkdown-icon>
+      <svg viewBox="0 0 24 24" />
+  <div .divider />
+  <button .toolbar-item aria-keyshortcuts="Control+E" aria-label="Inline code" data-toolbar-item="code" title="Inline code (Ctrl+E)" type="button">
+    <span .milkdown-icon>
+      <svg viewBox="0 0 24 24" />
+  <button .toolbar-item aria-label="Inline math" data-toolbar-item="latex" title="Inline math" type="button">
+    <span .milkdown-icon>
+      <svg viewBox="0 0 24 24" />
+  <button .toolbar-item aria-label="Link" data-toolbar-item="link" title="Link" type="button">
+    <span .milkdown-icon>
+      <svg viewBox="0 0 24 24" />

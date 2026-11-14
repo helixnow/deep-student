@@ -1,6 +1,6 @@
 # Deep Student UI Drive（移动 UI 审查工具）
 
-Playwright MCP / browser MCP 风格的本地 UI 驱动，专门给 **Tauri dev 构建 + 手机比例窗口** 用。
+Playwright MCP / browser MCP 风格的本地 UI 驱动，专门给 **Electron 开发版 + 手机比例窗口** 用。
 
 ## 一键启动
 
@@ -14,7 +14,7 @@ npm run ui:lab -- iphone-15-pro
 会做两件事：
 
 1. 启动 `ui-bridge-server`（`127.0.0.1:17423`；并行多实例时用 `DS_UI_BRIDGE_PORT` 换端口，应用侧对应 `VITE_DS_UI_BRIDGE_PORT`，驱动侧 `DS_UI_BRIDGE_URL`）
-2. 以 `config/dev-phone-window.json` 里的手机比例启动 `VITE_DS_UI_BRIDGE=1 npm run dev:tauri`
+2. 以 `config/dev-phone-window.json` 里的手机比例启动 `VITE_DS_UI_BRIDGE=1 npm run dev:electron`
 
 停止：
 

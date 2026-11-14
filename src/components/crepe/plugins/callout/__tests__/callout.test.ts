@@ -3,6 +3,8 @@ import { commonmark } from '@milkdown/preset-commonmark';
 import { gfm } from '@milkdown/preset-gfm';
 import { EditorState } from '@milkdown/prose/state';
 import { describe, expect, it } from 'vitest';
+import { setupMilkdownTimers } from '../../../__tests__/milkdownTimers';
+setupMilkdownTimers();
 
 import {
   applyCalloutInputRule,

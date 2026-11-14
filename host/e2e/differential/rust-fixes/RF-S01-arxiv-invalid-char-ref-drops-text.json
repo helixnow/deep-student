@@ -1,0 +1,28 @@
+{
+  "id": "RF-S01-arxiv-invalid-char-ref-drops-text",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T09:20+08:00",
+  "title": "arXiv Atom 文本里一个非法数字字符引用会清空整段文本（<id> 中则整篇论文被丢弃）",
+  "rust": {
+    "file": "src-tauri/src/chat_v2/tools/academic_search_executor.rs",
+    "line": 439,
+    "behavior": "e.unescape().unwrap_or_default()：quick-xml 0.37 parse_number 对 0、超过 U+10FFFF 或代理区码点返回 Err，整个文本事件变成空串；title/summary/作者名被静默清空，<id> 为空时 `!paper_id.is_empty()` 判断让该条目被丢弃"
+  },
+  "fix": {
+    "files": ["host/plugins/memory/src/academic-search.ts"],
+    "behavior": "decodeXmlText 只把非法引用本身替换为 U+FFFD，其余文本照常解码；TS 移植原先在此抛 RangeError 导致整次 arxiv_search 失败"
+  },
+  "evidence": "后果是用户可见的数据丢失：一个损坏的引用让论文标题/摘要变空或整篇消失，且无任何错误提示。与 Rust 自身意图（逐字段提取 title/summary/id）矛盾。复现：parseArxivAtom 输入 <title>Bad &#x110000; ref</title>，Rust 得到空标题，修复后得到 'Bad \\uFFFD ref'。",
+  "g3": {
+    "affects": false,
+    "selectors": []
+  },
+  "tests": [
+    {
+      "file": "host/plugins/memory/tests/academic-search-entities.test.ts",
+      "name": "RF-S01-arxiv-invalid-char-ref-drops-text: an invalid reference becomes U+FFFD and keeps the rest of the field"
+    }
+  ]
+}

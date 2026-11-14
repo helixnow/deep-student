@@ -57,6 +57,27 @@ type 必须属于 registry（含 markdown、chart、steps、table）；JSON Sche
 - steps：今日学习计划或通用流程（pending/active/done/error/skipped）
 - table：对比表、错题表；必须提供 columns，rows 按 column key 填值
 
+## 块类型字段速查（props 只用下面这些键；标注必填的缺失即校验失败）
+
+- stat-card：title（必填）、value（必填，number|string）、subtitle、trend（up/down/neutral）、trendLabel
+- alert：title（必填）、description、variant（default/info/warning/destructive）
+- list：items（必填，最多 50 项 [{ label（必填）、description、badge }]）、title、emptyLabel
+- progress：current（必填，>=0）、total（必填，>=1）、title、label
+- action-bar：actions（必填，1–6 项 [{ id（必填）、label（必填）、variant（default/primary/destructive）、riskLevel（low/medium/high） }]）
+- text：body（必填，<=4000）、heading、density（compact/normal）
+- key-value-grid：rows（必填，1–20 项 [{ key（必填）、value（必填） }]）、title
+- flashcard-preview：front（必填，<=500）、back（必填，<=1000）、tags（<=8 条）、deckName
+- review-calendar：days（必填，1–14 项 [{ date（必填）、label、dueCount（必填）、completedCount }]）、title
+- mistake-analysis：topic（必填）、errorRate（必填，0–100）、suggestion（必填）、mistakeCount、severity（low/medium/high）
+- mindmap-embed：mindmapId 或 versionId（二选一必填）、title、height（200–600）
+- paper-digest：title（必填）、authors、venue、year、citationLabel、citationCount、keyFindings（<=8 条，每条 <=300）、abstractExcerpt
+- research-plan：title（必填）、steps（必填，1–12 项 [{ label（必填）、status（pending/active/done） }]）、round
+- research-report：body（必填，<=12000）、title、density（compact/normal）
+- markdown：body（必填，<=20000）、title、variant（default/compact）
+- chart：kind（必填，bar/line/pie）、categories（必填，<=24）、series（[{ name、values }]，values 长度必须等于 categories 长度）、title、unit
+- steps：steps（必填，1–20 项 [{ label（必填）、description、status（pending/active/done/error/skipped）、durationLabel }]）、title
+- table：columns（必填，1–12 项 [{ key（必填）、label（必填）、align（left/center/right） }]）、rows（每行按列 key 填 string|number）、title、caption、emptyLabel
+
 ## 规则
 
 1. 只能使用上述 type；props 必须符合各组件 schema，禁止发明字段。

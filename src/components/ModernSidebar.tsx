@@ -39,7 +39,11 @@ import {
   X,
 } from '@phosphor-icons/react';
 import type { Icon } from '@phosphor-icons/react';
-import { createNavItems } from '../config/navigation';
+import { useSlot } from '@/ui-kernel/react';
+import type { ShellNavItem } from '@/ui-kernel/contracts/shell';
+import { renderNavigationIcon } from '@/ui-plugins/official/shell/renderNavigationIcon';
+import { shellNavigationItems } from '@/ui-plugins/official/shell/navigation';
+import type { SlotEntry } from '@/ui-kernel/slots';
 import { isNavEntryActive, resolveNavEntryClick } from '@/app/navigation/cardsHub';
 import { useIsUILabEnabled } from '../utils/uiLabToggle';
 import { cn } from '@/lib/utils';
@@ -62,7 +66,7 @@ import type { AppUpdaterController } from '@/hooks/useAppUpdater';
 import type { CurrentView } from '@/types/navigation';
 import { useCommandPalette } from '@/command-palette/CommandPaletteProvider';
 import { pageLifecycleTracker } from '@/debug-panel/services/pageLifecycleTracker';
-import { StudyComposeIcon, StudySettingsIcon } from './icons/StudySidebarIcons';
+import { StudyComposeIcon } from './icons/StudySidebarIcons';
 import {
   persistWorkbenchModeEnabled,
   readWorkbenchModeEnabled,
@@ -268,7 +272,7 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
   sidebarCollapsed = false,
   updater,
 }) => {
-  const { t } = useTranslation(['sidebar', 'common', 'chatV2', 'command_palette']);
+  const { t, i18n } = useTranslation(['sidebar', 'common', 'chatV2', 'command_palette']);
   const { openSessionSearch } = useCommandPalette();
   // 统一数据源：与 ChatV2 移动侧栏相同的「分组全量 + 未分组分页」策略（替代旧 limit:8 孤立拉取）
   const {
@@ -336,21 +340,22 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
   const unreadSessionIdSet = useMemo(() => new Set(unreadSessionIds), [unreadSessionIds]);
 
   const uiLabEnabled = useIsUILabEnabled();
+  const navEntries = useSlot<ShellNavItem>('nav');
   const navItems = useMemo(
-    () => createNavItems(t, uiLabEnabled),
-    [t, uiLabEnabled],
+    () => shellNavigationItems(navEntries, { dev: import.meta.env.DEV, uiLabEnabled }, 'desktop'),
+    [navEntries, uiLabEnabled],
   );
   const primaryItems = useMemo(
     () => navItems.filter((item) => {
       if (navigationScope === 'chat') {
-        return item.view === 'chat-v2';
+        return item.desktop?.chatScope;
       }
-      // 闪卡中心（复习 / 制卡 / 模板）只占一个入口：flashcards 代表整个分区组
-      return ['chat-v2', 'learning-hub', 'media', 'todo', 'skills-management', 'flashcards', 'ui-lab'].includes(item.view);
+      return item.desktop?.placement === 'primary';
     }),
     [navItems, navigationScope]
   );
-  const chatNavLabel = t('sidebar:navigation.chat_v2');
+  const settingsNavItem = navItems.find(item => item.desktop?.placement === 'settings');
+  const SettingsNavIcon = settingsNavItem?.icon;
   const shouldShowMacDesktopNewSessionShortcut = useMemo(
     () => isMacOS() && !isMobilePlatform() && isFinePointerDesktopSurface(),
     []
@@ -857,13 +862,21 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
     await moveRecentSessionToGroup(draggingSessionId, null);
   }, [clearRecentGroupDragState, moveRecentSessionToGroup]);
 
-  const renderNavRow = useCallback((view: CurrentView, label: string, Icon: React.ComponentType<any>) => {
-    const isNewSessionAction = view === 'chat-v2';
+  const renderNavRow = useCallback((item: ShellNavItem & Pick<SlotEntry<ShellNavItem>, 'owner' | 'origin'>) => {
+    const view = item.viewId as CurrentView;
+    const resolvedLabelKey = item.owner && !item.labelKey.includes(':') && typeof i18n?.exists === 'function'
+      ? (i18n.exists(`${item.owner}:${item.labelKey}`)
+          ? `${item.owner}:${item.labelKey}`
+          : (i18n.exists(`${item.owner}:title`) ? `${item.owner}:title` : item.labelKey))
+      : item.labelKey;
+    const label = item.desktop?.omitFallback || item.fallback === undefined ? t(resolvedLabelKey) : t(resolvedLabelKey, item.fallback);
+    const Icon = item.icon;
+    const isNewSessionAction = item.desktop?.action === 'new-session';
     const isActive = !isNewSessionAction && isNavEntryActive(view, currentView);
     const handleClick = () => {
-      if (view === 'chat-v2') {
-        if (currentView !== 'chat-v2') {
-          handleViewChange('chat-v2');
+      if (isNewSessionAction) {
+        if (currentView !== view) {
+          handleViewChange(view);
           requestAnimationFrame(() => {
             window.dispatchEvent(new CustomEvent(COMMAND_EVENTS.CHAT_NEW_SESSION));
           });
@@ -880,7 +893,7 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
 
     return (
       <SidebarRow
-        key={view}
+        key={`${item.owner}/${item.id}`}
         rowType="nav"
         onClick={handleClick}
         aria-label={label}
@@ -888,7 +901,7 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
         isActive={isActive}
         className={isNewSessionAction ? 'group/new-session-action' : undefined}
         data-tour-id={`nav-${view}`}
-        leftSlot={<Icon className="size-[18px]" strokeWidth={2} />}
+        leftSlot={renderNavigationIcon(item.origin, item.owner, item.id, Icon, { className: 'size-[18px]', strokeWidth: 2 })}
         rightSlot={isNewSessionAction && shouldShowMacDesktopNewSessionShortcut ? (
           <NewSessionShortcutHint shortcut={newSessionShortcutLabel} />
         ) : undefined}
@@ -896,7 +909,7 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
         <SidebarRowLabel>{label}</SidebarRowLabel>
       </SidebarRow>
     );
-  }, [currentView, handleViewChange, newSessionShortcutLabel, shouldShowMacDesktopNewSessionShortcut]);
+  }, [currentView, handleViewChange, newSessionShortcutLabel, shouldShowMacDesktopNewSessionShortcut, t]);
 
   const [nowMinute, setNowMinute] = useState(() => Math.floor(Date.now() / 60_000));
 
@@ -1300,13 +1313,7 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
       >
         <nav aria-label={t('sidebar:aria.workspace_primary_entry')}>
           <div className="space-y-0.5" role="list">
-            {primaryItems.map((item) =>
-              renderNavRow(
-                item.view as CurrentView,
-                item.view === 'chat-v2' ? chatNavLabel : item.name,
-                item.icon
-              )
-            )}
+            {primaryItems.map(renderNavRow)}
           </div>
         </nav>
       </WorkbenchSidebarFixed>
@@ -1433,29 +1440,29 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
           </div>
       </WorkbenchSidebarScroll>
 
-      {navigationScope === 'full' ? (
+      {navigationScope === 'full' && settingsNavItem ? (
       <div className="mt-auto shrink-0 px-2 pb-3 pt-1" data-no-drag>
         <div className="relative flex justify-start">
           <AppMenu className="flex w-full">
             <AppMenuTrigger asChild>
               <SidebarRow
                 rowType="nav"
-                aria-label={t('sidebar:navigation.settings')}
-                aria-current={currentView === 'settings' ? 'page' : undefined}
-                isActive={currentView === 'settings'}
-                data-tour-id="nav-settings"
-                leftSlot={<StudySettingsIcon className="size-[18px]" strokeWidth={2} />}
+                aria-label={t(settingsNavItem.labelKey)}
+                aria-current={currentView === settingsNavItem.viewId ? 'page' : undefined}
+                isActive={currentView === settingsNavItem.viewId}
+                data-tour-id={`nav-${settingsNavItem.viewId}`}
+                leftSlot={renderNavigationIcon(settingsNavItem.origin, settingsNavItem.owner, settingsNavItem.id, SettingsNavIcon, { className: 'size-[18px]', strokeWidth: 2 })}
               >
-                <SidebarRowLabel>{t('sidebar:navigation.settings')}</SidebarRowLabel>
+                <SidebarRowLabel>{t(settingsNavItem.labelKey)}</SidebarRowLabel>
               </SidebarRow>
             </AppMenuTrigger>
             <AppMenuContent align="start" width={224}>
               <AppMenuGroup>
                 <AppMenuItem
-                  icon={<StudySettingsIcon className="size-4" strokeWidth={2} />}
-                  onClick={() => handleViewChange('settings')}
+                  icon={renderNavigationIcon(settingsNavItem.origin, settingsNavItem.owner, settingsNavItem.id, SettingsNavIcon, { className: 'size-4', strokeWidth: 2 })}
+                  onClick={() => handleViewChange(settingsNavItem.viewId as CurrentView)}
                 >
-                  {t('sidebar:navigation.settings')}
+                  {t(settingsNavItem.labelKey)}
                 </AppMenuItem>
                 <AppMenuItem
                   icon={<Desktop size={16} />}

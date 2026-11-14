@@ -2,7 +2,7 @@
  * 内置模板完整性测试
  *
  * 守护三件事：
- * 1. 前端副本（src/data/anki）与后端权威副本（src-tauri/src/data）内容一致；
+ * 1. 前端副本（src/data/anki）与 Host 权威副本（host/plugins/anki/data）内容一致；
  * 2. 每个内置模板的结构、字段、预览数据合法，front/back 用预览数据渲染时零问题；
  * 3. 渲染结果经预览净化（DOMPurify template-safe）后核心内容仍然可见，
  *    即模板不依赖 <script>/onclick 才能展示题面与答案；
@@ -16,7 +16,7 @@ import { renderAnkiTemplate } from '@/services/ankiTemplateEngine';
 import { sanitizeHtmlForPreview } from '@/components/previews/htmlSandboxPolicy';
 
 const REPO_ROOT = path.resolve(__dirname, '../../..');
-const BACKEND_PATH = path.join(REPO_ROOT, 'src-tauri/src/data/builtin-templates.json');
+const BACKEND_PATH = path.join(REPO_ROOT, 'host/plugins/anki/data/builtin-templates.json');
 const FRONTEND_PATH = path.join(REPO_ROOT, 'src/data/anki/builtin-templates.json');
 
 interface RawBuiltinTemplate {

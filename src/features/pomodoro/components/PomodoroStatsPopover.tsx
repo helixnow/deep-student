@@ -268,11 +268,18 @@ export const PomodoroStatsContent: React.FC<{ showTitle?: boolean }> = ({ showTi
         />
       </div>
 
-      {/* 今日快照：今日专注时长 + 连续达标 streak（有数据才显示，避免空态噪音） */}
-      {(Boolean(todayStat && todayStat.focusSeconds > 0) || streakDays > 0) && (
-        <div className="mb-2 flex flex-wrap items-center gap-1.5">
+      {/* 顶栏减层：今日快照（时长/连击）与范围汇总（番茄数/总时长/日均）合并为单行等宽微指标条 */}
+      {stats === null ? (
+        <div className="mb-2 flex items-center gap-3" role="status" aria-label={t('pomodoro.statsPopover.loading')}>
+          <Skeleton className="h-3.5 w-16" />
+          <Skeleton className="h-3.5 w-20" />
+          <Skeleton className="h-3.5 w-16" />
+        </div>
+      ) : (
+        <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
           {todayStat && todayStat.focusSeconds > 0 && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium tabular-nums text-primary">
+            <span className="inline-flex items-center gap-1 font-mono font-medium tabular-nums text-primary">
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" aria-hidden="true" />
               {t('pomodoro.statsPopover.today', { defaultValue: '今日' })}{' '}
               {formatFocus(Math.round(todayStat.focusSeconds / 60))}
               {todayStat.completedCount > 0 && (
@@ -283,37 +290,25 @@ export const PomodoroStatsContent: React.FC<{ showTitle?: boolean }> = ({ showTi
             </span>
           )}
           {streakDays > 0 && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-[color:hsl(var(--warning))]/10 px-2 py-0.5 text-xs font-medium tabular-nums text-[color:hsl(var(--warning))]">
+            <span className="inline-flex items-center gap-1 font-mono font-medium tabular-nums text-[color:hsl(var(--warning))]">
               <Flame size={12} weight="fill" aria-hidden="true" />
               {t('pomodoro.stats.streak', { count: streakDays })}
             </span>
           )}
-        </div>
-      )}
-
-      {/* 汇总（本范围）：番茄数 / 专注总时长 / 日均 */}
-      {stats === null ? (
-        <div className="mb-2 flex items-center gap-3" role="status" aria-label={t('pomodoro.statsPopover.loading')}>
-          <Skeleton className="h-3.5 w-16" />
-          <Skeleton className="h-3.5 w-20" />
-          <Skeleton className="h-3.5 w-16" />
-        </div>
-      ) : (
-        <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
           <span>
             {t('pomodoro.statsPopover.totalPomodoros')}{' '}
-            <strong className="font-semibold tabular-nums text-foreground">{summary.pomodoros}</strong>
+            <strong className="font-mono font-semibold tabular-nums text-foreground">{summary.pomodoros}</strong>
           </span>
           <span>
             {t('pomodoro.stats.focusLabel')}{' '}
-            <strong className="font-semibold tabular-nums text-foreground">
+            <strong className="font-mono font-semibold tabular-nums text-foreground">
               {formatFocus(summary.focusMinutes)}
             </strong>
           </span>
           {summary.activeDays > 0 && (
             <span>
               {t('pomodoro.statsPopover.dailyAvg')}{' '}
-              <strong className="font-semibold tabular-nums text-foreground">
+              <strong className="font-mono font-semibold tabular-nums text-foreground">
                 {formatFocus(summary.avgMinutes)}
               </strong>
             </span>
@@ -452,7 +447,7 @@ export const PomodoroStatsContent: React.FC<{ showTitle?: boolean }> = ({ showTi
       {stats && selectedDate && (() => {
         const selected = stats.find((d) => d.date === selectedDate);
         return selected ? (
-          <div className="mt-1.5 rounded-md bg-[color:var(--interactive-hover)] px-2 py-1 text-xs tabular-nums text-foreground">
+          <div className="mt-1.5 rounded-md bg-[color:var(--interactive-hover)] px-2 py-1 font-mono text-xs tabular-nums text-foreground">
             {dayDetail(selected)}
           </div>
         ) : null;
@@ -460,7 +455,7 @@ export const PomodoroStatsContent: React.FC<{ showTitle?: boolean }> = ({ showTi
 
       {/* 横轴首尾标签 */}
       {stats && stats.length > 0 && summary.focusMinutes > 0 && (
-        <div className="mt-1 flex justify-between text-2xs text-muted-foreground/50">
+        <div className="mt-1 flex justify-between font-mono text-2xs tabular-nums text-muted-foreground/50">
           <span>{dayLabel(stats[0].date)}</span>
           <span>{dayLabel(stats[stats.length - 1].date)}</span>
         </div>
@@ -471,7 +466,7 @@ export const PomodoroStatsContent: React.FC<{ showTitle?: boolean }> = ({ showTi
         <div className="mt-2 border-t border-[color:var(--shell-workspace-border)] pt-2">
           <div className="mb-1 flex items-center justify-between text-2xs text-muted-foreground/70">
             <span>{t('pomodoro.statsPopover.hourDist', { defaultValue: '时段分布' })}</span>
-            <span className="tabular-nums">
+            <span className="font-mono tabular-nums">
               {t('pomodoro.statsPopover.peakHour', {
                 hour: String(hourSummary.peakHour).padStart(2, '0'),
                 defaultValue: '高峰 {{hour}}:00',
@@ -511,7 +506,7 @@ export const PomodoroStatsContent: React.FC<{ showTitle?: boolean }> = ({ showTi
               );
             })}
           </svg>
-          <div className="flex justify-between text-2xs text-muted-foreground/50 tabular-nums">
+          <div className="flex justify-between font-mono text-2xs text-muted-foreground/50 tabular-nums">
             <span>0:00</span>
             <span>12:00</span>
             <span>24:00</span>
@@ -524,13 +519,13 @@ export const PomodoroStatsContent: React.FC<{ showTitle?: boolean }> = ({ showTi
         <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-[color:var(--shell-workspace-border)] pt-2 text-xs text-muted-foreground">
           <span>
             {t('pomodoro.statsPopover.thisWeek')}{' '}
-            <strong className="font-semibold tabular-nums text-foreground">
+            <strong className="font-mono font-semibold tabular-nums text-foreground">
               {formatFocus(Math.round(weekCompare.thisWeekSeconds / 60))}
             </strong>
           </span>
           <span>
             {t('pomodoro.statsPopover.dailyAvg')}{' '}
-            <strong className="font-semibold tabular-nums text-foreground">
+            <strong className="font-mono font-semibold tabular-nums text-foreground">
               {formatFocus(Math.round(weekCompare.thisWeekSeconds / 60 / weekCompare.elapsedDays))}
             </strong>
           </span>
@@ -550,7 +545,7 @@ export const PomodoroStatsContent: React.FC<{ showTitle?: boolean }> = ({ showTi
               return (
                 <span
                   className={cn(
-                    'inline-flex items-center gap-1 font-medium tabular-nums',
+                    'inline-flex items-center gap-1 font-mono font-medium tabular-nums',
                     delta > 0
                       ? 'text-[color:hsl(var(--success))]'
                       : 'text-[color:hsl(var(--destructive))]',

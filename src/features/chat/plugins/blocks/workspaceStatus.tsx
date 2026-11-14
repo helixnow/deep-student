@@ -19,20 +19,23 @@ import {
   User,
   Robot,
   CaretDown,
-  CaretUp,
+  CaretRight,
   Chat,
   CheckCircle,
   Circle,
-  CircleNotch,
   XCircle,
   Clock,
   Warning,
 } from '@phosphor-icons/react';
 import { cn } from '@/utils/cn';
+import { PulseDot } from '@/components/ui/PulseDot';
+import { TextShimmer } from '../../components/ui/TextShimmer';
+import { ToolActivitySweep } from '../../components/ui/ToolActivitySweep';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
 import { useDisclosureMotion } from '../../hooks/useDisclosureMotion';
 import { useWorkspaceStore } from '../../workspace/workspaceStore';
 import { WorkspaceLogInline } from '../../workspace/components/WorkspaceLogInline';
+import { WORKSPACE_MESSAGE_TYPE_CLASSES } from './workspaceInjection';
 import type {
   WorkspaceAgent,
   WorkspaceMessage,
@@ -103,7 +106,7 @@ interface AgentStatusIconProps {
 const AgentStatusIcon: React.FC<AgentStatusIconProps> = ({ status }) => {
   switch (status) {
     case 'running':
-      return <CircleNotch size={14} className="text-primary animate-spin" />;
+      return <PulseDot className="w-2 h-2 text-primary" />;
     case 'completed':
       return <CheckCircle size={14} className="text-success" />;
     case 'failed':
@@ -121,18 +124,9 @@ interface MessageTypeBadgeProps {
   type: MessageType;
 }
 
-const messageTypeClassNames: Record<MessageType, string> = {
-  task: 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300',
-  progress: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-300',
-  result: 'bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300',
-  query: 'bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300',
-  correction: 'bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300',
-  broadcast: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
-};
-
 const MessageTypeBadge: React.FC<MessageTypeBadgeProps> = ({ type }) => {
   const { t } = useTranslation('chatV2');
-  const className = messageTypeClassNames[type];
+  const className = WORKSPACE_MESSAGE_TYPE_CLASSES[type];
   return (
     <span className={cn('px-1.5 py-0.5 text-2xs font-medium rounded', className)}>
       {t(`workspace.messageType.${type}`)}
@@ -233,9 +227,9 @@ const MessageItem: React.FC<MessageItemProps> = ({ message }) => {
     : message.content;
 
   return (
-    <div className="flex flex-col gap-0.5 py-1 border-b border-border/50 last:border-0">
+    <div className="flex flex-col gap-0.5 py-1 border-b border-border/30 last:border-0">
       <div className="flex items-center gap-1.5">
-        <span className="text-2xs text-muted-foreground">{time}</span>
+        <span className="text-2xs text-muted-foreground tabular-nums">{time}</span>
         <MessageTypeBadge type={message.messageType} />
         <span className="text-2xs text-muted-foreground">
           {shortSenderId}
@@ -245,6 +239,85 @@ const MessageItem: React.FC<MessageItemProps> = ({ message }) => {
       <div className="text-xs text-foreground/80 pl-1 truncate">
         {truncatedContent}
       </div>
+    </div>
+  );
+};
+
+// ============================================================================
+// 共享头部组件（对齐 mcpTool / subagentEmbed / sleepBlock 中性卡片规范）
+// ============================================================================
+
+interface WorkspaceStatusHeaderProps {
+  title: string;
+  subtitle?: React.ReactNode;
+  isRunning?: boolean;
+  isExpanded?: boolean;
+  hasBody?: boolean;
+  onToggle?: () => void;
+  rightMeta?: React.ReactNode;
+}
+
+const WorkspaceStatusHeader: React.FC<WorkspaceStatusHeaderProps> = ({
+  title,
+  subtitle,
+  isRunning = false,
+  isExpanded = false,
+  hasBody = false,
+  onToggle,
+  rightMeta,
+}) => {
+  const interactive = Boolean(onToggle);
+  return (
+    <div
+      role={interactive ? 'button' : undefined}
+      tabIndex={interactive ? 0 : undefined}
+      aria-expanded={interactive ? isExpanded : undefined}
+      className={cn(
+        'flex items-center justify-between gap-2 px-3 py-2.5',
+        interactive && 'cursor-pointer transition-colors hover:bg-muted/20 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring [@media(pointer:coarse)]:min-h-11',
+        interactive && isExpanded && hasBody && 'border-b border-border/30'
+      )}
+      onClick={onToggle}
+      onKeyDown={
+        onToggle
+          ? (e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onToggle();
+              }
+            }
+          : undefined
+      }
+    >
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        <ToolActivitySweep
+          active={isRunning}
+          className="h-7 w-7 shrink-0 justify-center rounded-md bg-muted/70 dark:bg-muted/40"
+        >
+          <Buildings size={16} className="text-muted-foreground" />
+        </ToolActivitySweep>
+        <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
+          <ToolActivitySweep active={isRunning} className="max-w-full leading-4">
+            <span className="block truncate text-xs font-medium leading-4 text-muted-foreground">
+              {title}
+            </span>
+          </ToolActivitySweep>
+          {subtitle}
+        </div>
+      </div>
+
+      {(rightMeta || interactive) && (
+        <div className="flex shrink-0 items-center gap-2">
+          {rightMeta}
+          {interactive && (
+            isExpanded ? (
+              <CaretDown size={14} className="text-muted-foreground shrink-0" />
+            ) : (
+              <CaretRight size={14} className="text-muted-foreground shrink-0" />
+            )
+          )}
+        </div>
+      )}
     </div>
   );
 };
@@ -260,7 +333,7 @@ const WorkspaceStatusBlockComponent: React.FC<BlockComponentProps> = React.memo(
   const status = block.status;
   const { t, i18n } = useTranslation('chatV2');
   const locale = i18n.resolvedLanguage ?? i18n.language;
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(false);
   const [showMessages, setShowMessages] = useState(false);
   const disclosureMotion = useDisclosureMotion();
   const prefersReduced = useReducedMotion();
@@ -355,150 +428,164 @@ const WorkspaceStatusBlockComponent: React.FC<BlockComponentProps> = React.memo(
     return input?.workspaceName || workspace?.name || t('workspace.defaultName');
   }, [block.toolInput, isWorkspaceMismatch, isHistoricalMode, snapshotName, workspace?.name, t]);
 
+  const toggleExpanded = () => setIsExpanded((prev) => !prev);
+  const progressMeta = agents.length > 0 ? (
+    <span className="text-xs text-muted-foreground tabular-nums">
+      {progress.completed}/{progress.total} {t('workspace.status.agentsDone')}
+    </span>
+  ) : undefined;
+
   // 如果没有工作区数据，显示简化状态
   if (!workspaceId && status !== 'running') {
     return (
-      <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/30 border border-border/50">
-        <Buildings size={16} className="text-muted-foreground" />
-        <span className="text-sm text-muted-foreground">
-          {t('workspace.status.noWorkspace')}
-        </span>
+      <div className="rounded-lg border border-border/50 overflow-hidden bg-card dark:bg-card/80">
+        <WorkspaceStatusHeader title={t('workspace.status.noWorkspace')} />
       </div>
     );
   }
 
-  // 🆕 历史模式：显示历史快照提示
+  // 🆕 历史模式：显示历史快照提示（中性头部 + 默认折叠详情）
   if (isHistoricalMode) {
     return (
-      <div className="rounded-lg border border-border/50 bg-card overflow-hidden">
-        <div className="flex items-center gap-2 p-3 bg-info/10 border-b border-info/30">
-          <Clock size={16} className="text-info" />
-          <span className="text-sm text-info">
-            {t('workspace.status.historicalWorkspace')}
-          </span>
-        </div>
-        <div className="p-3">
-          <div className="flex items-center gap-2 mb-2">
-            <Buildings size={16} className="text-primary" />
-            <span className="text-sm font-medium">{workspaceName}</span>
-          </div>
-          {/* Agent 列表 */}
-          {agents.length > 0 && (
-            <div className="mt-2">
-              <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1">
-                {t('workspace.status.agentsCount', { count: agents.length })}
-              </div>
-              <div className="space-y-0.5">
-                {agents.map((agent) => (
-                  <AgentItem
-                    key={agent.sessionId}
-                    agent={agent}
-                    isCurrentUser={false}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-          {snapshotCreatedAt && (
-            <div className="flex items-center gap-1 mt-2 text-2xs text-muted-foreground">
-              <Clock size={12} />
-              <span>
-                {t('workspace.status.createdAt')}: {new Date(snapshotCreatedAt).toLocaleString(locale)}
-              </span>
-            </div>
-          )}
-          <p className="text-2xs text-muted-foreground mt-2">
-            ID: {blockWorkspaceId?.slice(-12)}
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  // 🔧 修复：如果工作区不匹配，显示历史快照提示
-  if (isWorkspaceMismatch) {
-    return (
-      <div className="rounded-lg border border-border/50 bg-card overflow-hidden">
-        <div className="flex items-center gap-2 p-3 bg-warning/10 border-b border-warning/30">
-          <Warning size={16} className="text-warning" />
-          <span className="text-sm text-warning">
-            {t('workspace.status.workspaceSwitched')}
-          </span>
-        </div>
-        <div className="p-3">
-          <div className="flex items-center gap-2 mb-2">
-            <Buildings size={16} className="text-muted-foreground" />
-            <span className="text-sm font-medium text-muted-foreground">{workspaceName}</span>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            {t('workspace.status.historicalSnapshot')}
-          </p>
-          <p className="text-2xs text-muted-foreground mt-1">
-            ID: {blockWorkspaceId?.slice(-12)}
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="rounded-lg border border-border/50 bg-card overflow-hidden">
-      {/* 头部 */}
-      <div
-        role="button"
-        tabIndex={0}
-        aria-expanded={isExpanded}
-        className="flex items-center justify-between p-3 cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring [@media(pointer:coarse)]:min-h-11"
-        onClick={() => setIsExpanded(!isExpanded)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            setIsExpanded(!isExpanded);
-          }
-        }}
-      >
-        <div className="flex items-center gap-2">
-          <Buildings size={16} className="text-primary" />
-          <span className="text-sm font-medium">{workspaceName}</span>
-          {status === 'running' && (
-            <CircleNotch size={14} className="text-info animate-spin" />
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          {/* 进度指示 */}
-          {agents.length > 0 && (
-            <span className="text-xs text-muted-foreground">
-              {progress.completed}/{progress.total} {t('workspace.status.agentsDone')}
+      <div className="rounded-lg border border-border/50 overflow-hidden bg-card dark:bg-card/80">
+        <WorkspaceStatusHeader
+          title={workspaceName}
+          subtitle={(
+            <span className="inline-flex items-center gap-1 text-xs leading-4 text-info">
+              <Clock size={12} className="shrink-0" />
+              <span>{t('workspace.status.historicalWorkspace')}</span>
             </span>
           )}
-          {isExpanded ? (
-            <CaretUp size={16} className="text-muted-foreground" />
-          ) : (
-            <CaretDown size={16} className="text-muted-foreground" />
+          isExpanded={isExpanded}
+          hasBody
+          onToggle={toggleExpanded}
+          rightMeta={progressMeta}
+        />
+        <AnimatePresence>
+          {isExpanded && (
+            <motion.div {...disclosureMotion} className="p-3 space-y-2">
+              {agents.length > 0 && (
+                <div>
+                  <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1">
+                    {t('workspace.status.agentsCount', { count: agents.length })}
+                  </div>
+                  <div className="space-y-0.5">
+                    {agents.map((agent) => (
+                      <AgentItem
+                        key={agent.sessionId}
+                        agent={agent}
+                        isCurrentUser={false}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+              {snapshotCreatedAt && (
+                <div className="flex items-center gap-1 text-2xs text-muted-foreground tabular-nums">
+                  <Clock size={12} />
+                  <span>
+                    {t('workspace.status.createdAt')}: {new Date(snapshotCreatedAt).toLocaleString(locale)}
+                  </span>
+                </div>
+              )}
+              <p className="text-2xs text-muted-foreground font-mono">
+                ID: {blockWorkspaceId?.slice(-12)}
+              </p>
+            </motion.div>
           )}
-        </div>
+        </AnimatePresence>
       </div>
+    );
+  }
 
-      {/* 进度条 */}
-      {agents.length > 0 && (
-        <div className="px-3 pb-2">
-          <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-            <motion.div
-              className="h-full bg-primary rounded-full"
-              initial={{ width: 0 }}
-              animate={{ width: `${progress.percent}%` }}
-              transition={{ duration: prefersReduced ? 0 : 0.3 }}
-            />
-          </div>
-        </div>
+  // 🔧 修复：如果工作区不匹配，显示历史快照提示（中性头部 + 默认折叠详情）
+  if (isWorkspaceMismatch) {
+    return (
+      <div className="rounded-lg border border-border/50 overflow-hidden bg-card dark:bg-card/80">
+        <WorkspaceStatusHeader
+          title={workspaceName}
+          subtitle={(
+            <span className="inline-flex items-center gap-1 text-xs leading-4 text-warning">
+              <Warning size={12} className="shrink-0" />
+              <span>{t('workspace.status.workspaceSwitched')}</span>
+            </span>
+          )}
+          isExpanded={isExpanded}
+          hasBody
+          onToggle={toggleExpanded}
+        />
+        <AnimatePresence>
+          {isExpanded && (
+            <motion.div {...disclosureMotion} className="p-3 space-y-1">
+              <p className="text-xs text-muted-foreground">
+                {t('workspace.status.historicalSnapshot')}
+              </p>
+              <p className="text-2xs text-muted-foreground font-mono">
+                ID: {blockWorkspaceId?.slice(-12)}
+              </p>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    );
+  }
+
+  const isRunning = status === 'running';
+  const statusSubtitle = isRunning ? (
+    <TextShimmer
+      className="text-xs leading-4 text-muted-foreground"
+      duration={1.5}
+      spread={3}
+    >
+      {t('workspace.status.running')}
+    </TextShimmer>
+  ) : status === 'error' ? (
+    <span className="text-xs leading-4 text-destructive">
+      {t('workspace.status.failed')}
+    </span>
+  ) : (
+    <span className="text-xs leading-4 text-muted-foreground">
+      {t('workspace.status.completed')}
+    </span>
+  );
+
+  return (
+    <div
+      className={cn(
+        'rounded-lg border overflow-hidden bg-card dark:bg-card/80',
+        status === 'error' ? 'border-destructive/30' : 'border-border/50'
       )}
+    >
+      <WorkspaceStatusHeader
+        title={workspaceName}
+        subtitle={statusSubtitle}
+        isRunning={isRunning}
+        isExpanded={isExpanded}
+        hasBody
+        onToggle={toggleExpanded}
+        rightMeta={progressMeta}
+      />
 
       {/* 展开内容 */}
       <AnimatePresence>
         {isExpanded && (
           <motion.div {...disclosureMotion}>
+            {/* 进度条 */}
+            {agents.length > 0 && (
+              <div className="px-3 pt-2.5 pb-1">
+                <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                  <motion.div
+                    className="h-full bg-primary rounded-full"
+                    initial={{ width: 0 }}
+                    animate={{ width: `${progress.percent}%` }}
+                    transition={{ duration: prefersReduced ? 0 : 0.3 }}
+                  />
+                </div>
+              </div>
+            )}
+
             {/* Agent 列表 */}
-            <div className="px-3 pb-2">
+            <div className="px-3 py-2">
               <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1">
                 {t('workspace.status.agentsCount', { count: agents.length })}
               </div>
@@ -521,12 +608,12 @@ const WorkspaceStatusBlockComponent: React.FC<BlockComponentProps> = React.memo(
 
             {/* 最近消息（可折叠） */}
             {recentMessages.length > 0 && (
-              <div className="border-t border-border/50">
+              <div className="border-t border-border/30">
                 <div
                   role="button"
                   tabIndex={0}
                   aria-expanded={showMessages}
-                  className="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring [@media(pointer:coarse)]:min-h-11"
+                  className="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-muted/20 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring [@media(pointer:coarse)]:min-h-11"
                   onClick={(e) => {
                     e.stopPropagation();
                     setShowMessages(!showMessages);
@@ -548,9 +635,9 @@ const WorkspaceStatusBlockComponent: React.FC<BlockComponentProps> = React.memo(
                     </span>
                   </div>
                   {showMessages ? (
-                    <CaretUp size={14} className="text-muted-foreground" />
+                    <CaretDown size={14} className="text-muted-foreground shrink-0" />
                   ) : (
-                    <CaretDown size={14} className="text-muted-foreground" />
+                    <CaretRight size={14} className="text-muted-foreground shrink-0" />
                   )}
                 </div>
 
@@ -571,19 +658,23 @@ const WorkspaceStatusBlockComponent: React.FC<BlockComponentProps> = React.memo(
 
             {/* 时间戳 */}
             {workspace?.createdAt && (
-              <div className="flex items-center gap-1 px-3 py-1.5 border-t border-border/50 text-2xs text-muted-foreground">
+              <div className="flex items-center gap-1 px-3 py-1.5 border-t border-border/30 text-2xs text-muted-foreground tabular-nums">
                 <Clock size={12} />
                 <span>
                   {t('workspace.status.createdAt')}: {new Date(workspace.createdAt).toLocaleString(locale)}
                 </span>
               </div>
             )}
+
+            {/* 工作区日志内联组件 */}
+            <WorkspaceLogInline
+              className="mt-0 rounded-none border-x-0 border-b-0 border-t border-border/30"
+              defaultExpanded={false}
+              store={store}
+            />
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* 🆕 2026-01-21: 工作区日志内联组件 - 附着在消息底部 */}
-      <WorkspaceLogInline className="mx-0" defaultExpanded={false} store={store} />
     </div>
   );
 });

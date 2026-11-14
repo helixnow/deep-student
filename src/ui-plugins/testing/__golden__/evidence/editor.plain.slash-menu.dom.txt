@@ -1,0 +1,151 @@
+<div .milkdown-slash-menu data-show="false" data-v-app>
+  <div>
+    <nav .tab-group>
+      <ul>
+        <li .selected>
+          "文本"
+        <li>
+          "列表"
+        <li>
+          "高级"
+        <li>
+          "页面布局"
+    <div .ds-slash-scroll-viewport.menu-groups data-ds-scroll-enhanced="true">
+      <div .menu-group>
+        <h6>
+          "文本"
+        <ul>
+          <li .hover data-index="0">
+            <span .milkdown-icon>
+              <svg viewBox="0 0 24 24" />
+            <span>
+              "普通文本"
+          <li data-index="1">
+            <span .milkdown-icon>
+              <svg viewBox="0 0 24 24" />
+            <span>
+              "一级标题"
+          <li data-index="2">
+            <span .milkdown-icon>
+              <svg viewBox="0 0 24 24" />
+            <span>
+              "二级标题"
+          <li data-index="3">
+            <span .milkdown-icon>
+              <svg viewBox="0 0 24 24" />
+            <span>
+              "三级标题"
+          <li data-index="4">
+            <span .milkdown-icon>
+              <svg viewBox="0 0 24 24" />
+            <span>
+              "四级标题"
+          <li data-index="5">
+            <span .milkdown-icon>
+              <svg viewBox="0 0 24 24" />
+            <span>
+              "五级标题"
+          <li data-index="6">
+            <span .milkdown-icon>
+              <svg viewBox="0 0 24 24" />
+            <span>
+              "六级标题"
+          <li data-index="7">
+            <span .milkdown-icon>
+              <svg viewBox="0 0 24 24" />
+            <span>
+              "引用"
+          <li data-index="8">
+            <span .milkdown-icon>
+              <svg viewBox="0 0 24 24" />
+            <span>
+              "分隔线"
+      <div .menu-group>
+        <h6>
+          "列表"
+        <ul>
+          <li data-index="9">
+            <span .milkdown-icon>
+              <svg viewBox="0 0 24 24" />
+            <span>
+              "无序列表"
+          <li data-index="10">
+            <span .milkdown-icon>
+              <svg viewBox="0 0 24 24" />
+            <span>
+              "有序列表"
+          <li data-index="11">
+            <span .milkdown-icon>
+              <svg viewBox="0 0 24 24" />
+            <span>
+              "任务列表"
+      <div .menu-group>
+        <h6>
+          "高级"
+        <ul>
+          <li data-index="12">
+            <span .milkdown-icon>
+              <svg viewBox="0 0 24 24" />
+            <span>
+              "图片"
+          <li data-index="13">
+            <span .milkdown-icon>
+              <svg viewBox="0 0 24 24" />
+            <span>
+              "代码块"
+          <li data-index="14">
+            <span .milkdown-icon>
+              <svg viewBox="0 0 24 24" />
+            <span>
+              "表格"
+          <li data-index="15">
+            <span .milkdown-icon>
+              <svg viewBox="0 0 24 24" />
+            <span>
+              "数学公式"
+          <li data-index="16">
+            <span .milkdown-icon>
+              <svg viewBox="0 0 256 256" />
+            <span>
+              "高亮块"
+          <li data-index="17">
+            <span .milkdown-icon>
+              <svg viewBox="0 0 256 256" />
+            <span>
+              "折叠块"
+      <div .menu-group>
+        <h6>
+          "页面布局"
+        <ul>
+          <li data-index="18">
+            <span .milkdown-icon>
+              <svg viewBox="0 0 256 256" />
+            <span>
+              "插入双列"
+          <li data-index="19">
+            <span .milkdown-icon>
+              <svg viewBox="0 0 256 256" />
+            <span>
+              "插入康奈尔布局"
+          <li data-index="20">
+            <span .milkdown-icon>
+              <svg viewBox="0 0 256 256" />
+            <span>
+              "转为双列"
+          <li data-index="21">
+            <span .milkdown-icon>
+              <svg viewBox="0 0 256 256" />
+            <span>
+              "转为康奈尔布局"
+          <li data-index="22">
+            <span .milkdown-icon>
+              <svg viewBox="0 0 256 256" />
+            <span>
+              "转换康奈尔模板"
+          <li data-index="23">
+            <span .milkdown-icon>
+              <svg viewBox="0 0 256 256" />
+            <span>
+              "展开为普通块"
+  <div .ds-slash-scroll-track data-enabled="false" data-visible="false">
+    <div .ds-slash-scroll-thumb />

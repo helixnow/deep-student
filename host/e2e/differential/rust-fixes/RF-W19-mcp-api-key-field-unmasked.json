@@ -1,0 +1,25 @@
+{
+  "id": "RF-W19-mcp-api-key-field-unmasked",
+  "kind": "rust-bug",
+  "status": "proposed",
+  "title": "MCP 调试面板按键名遮住 apiKey 字段（原来键名规则对它永远不生效）",
+  "rust": {
+    "file": "src/debug-panel/plugins/McpDebugPlugin.tsx",
+    "line": 130,
+    "behavior": "Tauri 快照 21c9d808 的 McpDebugPlugin.tsx：敏感键表里写的是驼峰 'apiKey'（110），比较时却拿小写后的键名去 includes 它（128-130），'apikey' 不含 'apiKey'，这一条永远不中。apiKey 字段只有在值本身像密钥（21 位以上纯字母、数字、_、-）时才被值规则遮成“前 6 位***后 4 位”；更短或带其他字符的值（如 sk-short）在详情区、复制单条/全部、导出 JSON 里原样出现"
+  },
+  "fix": {
+    "files": ["src/debug-panel/plugins/mcp/sanitize.ts"],
+    "behavior": "敏感键表也转成小写再比较：apiKey / ApiKey / APIKEY 等字段按键名规则遮成“***后 4 位 [已脱敏]”。其余键与值规则不变"
+  },
+  "evidence": "与代码自身意图矛盾：敏感键表明确列出 apiKey，注释写“敏感字段，脱敏处理”，而这条在任何键名上都不会命中。拆分前的证据 golden（mcpPanel.evidence 的 mcp.round.txt、mcp.copied.json，第 5 轮录制）里 apiKey 是按值规则遮的“abcdef***0123”，不是键名规则的“***0123”。复现：src/debug-panel/__tests__/mcpDetails.test.tsx 修复前 RF 测试失败（sk-short 原样出现在复制文本里），对照测试通过。",
+  "userVisible": "只在开发构建可见：调试面板只在 import.meta.env.DEV 下装配。MCP 调试面板里 apiKey 字段一律显示为“***后 4 位 [已脱敏]”，原来是“前 6 位***后 4 位 [已脱敏]”或明文。",
+  "dataCompat": "只改开发构建里调试面板的显示和复制文本；不改 IPC 载荷、落库数据、同步载荷与备份格式。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "src/debug-panel/__tests__/mcpDetails.test.tsx",
+      "name": "RF-W19-mcp-api-key-field-unmasked: masks an apiKey field whatever its value looks like"
+    }
+  ]
+}

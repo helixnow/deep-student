@@ -1,0 +1,33 @@
+{
+  "id": "RF-W03-review-plan-batch-skip-by-input-text",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main-agent",
+  "approvedAt": "2026-11-07T09:50:00+08:00",
+  "title": "review_plan_batch_create 把错误文本里含 already exists/AlreadyExists 的任何失败都算成 skipped，调用方传入的题目 ID 或 examId 本身就能把真实失败伪装成已存在",
+  "rust": {
+    "file": "src-tauri/crates/dstu-qbank/src/review_plan_service.rs",
+    "line": 518,
+    "behavior": "batch_create_from_questions 在 create_review_plan 的整条 anyhow 错误链上做 contains(\"already exists\") || contains(\"AlreadyExists\")；链上还包含 \"Question not found: <question_id>\"、\"Question <id> belongs to exam_id=<x>, but got exam_id=<exam_id>\" 等回显调用方输入的错误，所以 questionIds=[\"already exists\"] 或 examId=\"AlreadyExists\" 时，不存在的题目/考试不匹配被计为 skipped 而不是 failed"
+  },
+  "fix": {
+    "files": [
+      "host/plugins/review/src/review-plan.ts"
+    ],
+    "behavior": "只对 createPlan（落库）这一步的失败做“已存在”识别；题目查找失败、考试不匹配一律计 failed。真正已存在的计划仍计 skipped，created/skipped/failed 的其余口径不变。"
+  },
+  "evidence": "Rust 注释（review_plan_service.rs:508-513）说明字符串匹配只是为了穿透 with_context 识别 VfsError::AlreadyExists 的兜底，本意是“已存在的计划不算失败”；按输入文本命中是兜底写得过宽的副作用。G3 场景 review.plan.batch-create-partial-skip-fail-and-string-match 第 11、12 步：A 侧 failed=0（skipped 计入），B 侧 failed=1。",
+  "g3": {
+    "affects": true,
+    "selectors": [
+      { "scenario": "review.plan.batch-create-partial-skip-fail-and-string-match", "surface": "ipc", "command": "review_plan_batch_create", "jsonPath": "$.failed" },
+      { "scenario": "review.plan.batch-create-partial-skip-fail-and-string-match", "surface": "ipc", "command": "review_plan_batch_create", "jsonPath": "$.skipped" }
+    ]
+  },
+  "tests": [
+    {
+      "file": "host/plugins/review/tests/review-plan.test.ts",
+      "name": "RF-W03-review-plan-batch-skip-by-input-text: only an existing plan counts as skipped, never caller text that spells AlreadyExists"
+    }
+  ]
+}

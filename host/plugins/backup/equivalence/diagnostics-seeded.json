@@ -1,0 +1,42 @@
+{
+  "domain": "backup",
+  "commands": [
+    "data_governance_get_migration_status",
+    "data_governance_run_health_check",
+    "data_governance_get_database_status",
+    "data_governance_get_migration_diagnostic_report"
+  ],
+  "scenarios": [
+    {
+      "id": "backup.diagnostics.seeded.fk_violation_and_pending",
+      "seed": "l21-live-integrity-issues",
+      "steps": [
+        {
+          "cmd": "data_governance_run_health_check",
+          "args": {}
+        },
+        {
+          "cmd": "data_governance_get_migration_status",
+          "args": {}
+        },
+        {
+          "cmd": "data_governance_get_database_status",
+          "args": {
+            "databaseId": "vfs"
+          }
+        },
+        {
+          "cmd": "data_governance_get_migration_diagnostic_report",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

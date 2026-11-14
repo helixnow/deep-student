@@ -20,11 +20,13 @@ export {
   type SettingsTabId,
   type SettingsNavigateTabDetail,
   type KnowledgeNavigateDetail,
+  type LearningHubNotesLearningViewDetail,
   type PrefillChatInputDetail,
   type ChatV2SetInputDetail,
   type NavigateToSessionDetail,
   type MobileAppNavigateDetail,
   type WbPreviewQuickLookDetail,
+  type WidgetStateSyncDetail,
 } from './app';
 
 export { useAppEvent } from './useAppEvent';

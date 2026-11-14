@@ -1,0 +1,64 @@
+{
+  "id": "RF-W02-workspace-contains-data-dir",
+  "kind": "deliberate",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T16:46:00+08:00",
+  "title": "读写工作区不能与应用数据目录重叠（是它、它的上级或它里面的目录）：设置时拒绝，已保存的记录降级只读",
+  "rust": {
+    "file": "src-tauri/crates/dstu-agent/src/chat_v2/runtime_roots.rs",
+    "line": 696,
+    "behavior": "validate_workspace_access 只拒绝 critical 路径（/、~、/Users/<name> 一类）的读写工作区；~/Library、~/.local/share、%APPDATA% 的上级这类包含 app_data_dir 的目录按 safe 放行。工作区读写后，Agent 的文件工具和沙箱 shell 能改写 <dataDir>/slots/** 里的数据库（含 MCP stdio 配置）和 <dataDir>/plugins/user.profile.json（Host 下次启动在沙箱外 import 它）"
+  },
+  "fix": {
+    "files": [
+      "host/plugins/agent-workspace/src/runtime-roots.ts",
+      "host/plugins/agent-workspace/index.ts"
+    ],
+    "behavior": "validateWorkspaceAccess 多收一个 dataDir：access 为 read_write 且工作区规范路径（去掉 Windows \\\\?\\ 前缀）与 realpath(ctx.app.dataDir) 按路径组件重叠（相等、工作区是上级、工作区在数据目录里面）时，或者 path.resolve(dataDir) 上任何一级目录项（位置取 realpath(上级目录) + 本级名字，覆盖数据目录本身或它的某个上级是工作区里的符号链接、目标在工作区外的情况）落在工作区里面时，chat_v2_set_workspace_root 报错 `A read-write agent workspace cannot contain or be inside the application data directory`，不写设置。darwin/win32 比较前转小写（卷默认大小写不敏感）。已保存的读写记录在 workspaceRoot（列表、runtimeRoots.rootById、文件工具与沙箱 shell 取根、chat_v2_revert_workspace_change）里按只读返回，并记 error 日志；设置里的原记录不改，用户换一个目录即可。只读工作区和与数据目录不重叠的目录不受影响。critical 路径的拒绝与日志文本保持 Rust 原样"
+  },
+  "evidence": "S01 第三轮审查 L1/L2（M3 的根因）：工作区设为 ~/Library 这类包含应用数据目录的位置并开读写后，workspace-fs 写工具能写 <dataDir>/plugins（L1），也能改写槽位数据库里的 MCP stdio 配置（L2，与 Rust 相同）；M3（沙箱 shell 写 plugins）由 RF-S01-shell-host-plugin-dir-protected 在 shell 侧兜住，本条之后它成为纵深防御。数据目录里面的子目录（slots/**、.secure、plugins）同样敏感，所以连“在里面”一起拒绝，而不只是 S01 交接写的“包含”。复现：macOS 上 chat_v2_set_workspace_root {path: ~/Library, access: read_write} 在 Rust 与修复前的 Node 版都成功，之后 root_id=workspace 的写入路径 Application Support/<app>/plugins/user.profile.json 落在工作区内。符号链接缺口（台账跟进 F-02，R01/R02）：Electron 的 paths.appDataDir() 和 Host 握手的 appDataDir 都不做 realpath，host-profile.ts 用 join(appDataDir, 'plugins', 'user.profile.json') 读用户 profile；只比较 realpath(dataDir) 时，数据目录或它的某一级上级是可写工作区里指向外部的符号链接就会被放行，之后工作区写入可以删掉链接、在原路径建真目录并放入 plugins/user.profile.json，Host 下次启动在沙箱外加载。所以也按 Host 实际经过的每一级目录项判断；上级目录项只判断“在工作区里面”这一个方向，反方向会把家目录下的所有工作区都拒绝。",
+  "userVisible": "能感知：在设置 > 工具权限或任务工作区里把与应用数据目录重叠的目录（例如 macOS 的 ~/Library、Linux 的 ~/.local/share、Windows 的 %APPDATA% 及其上级，或数据目录里面的子目录）设为可写工作区时会报错；以前保存过这类读写工作区的用户，工作区显示和生效为只读，需要换一个目录才能让 Agent 写文件。其他目录与只读工作区不变",
+  "dataCompat": "不改设置键 chat_v2.runtime.workspace_root 的格式，也不改写已保存的记录（只在读取时按只读生效），回退到 Rust 版后原记录照旧是读写；不改数据库、同步载荷或备份格式",
+  "g3": {
+    "affects": true,
+    "selectors": [
+      {
+        "scenario": "agent_workspace.runtime.*",
+        "surface": "ipc",
+        "command": "chat_v2_set_workspace_root"
+      },
+      {
+        "scenario": "agent_workspace.runtime.*",
+        "surface": "ipc",
+        "command": "chat_v2_list_runtime_roots"
+      }
+    ]
+  },
+  "tests": [
+    {
+      "file": "host/plugins/agent-workspace/tests/workspace-root-data-dir.test.ts",
+      "name": "RF-W02-workspace-contains-data-dir: chat_v2_set_workspace_root refuses read-write on the data directory, an ancestor or a directory inside it; read-only and a sibling are unchanged"
+    },
+    {
+      "file": "host/plugins/agent-workspace/tests/workspace-root-data-dir.test.ts",
+      "name": "RF-W02-workspace-contains-data-dir: on a case-insensitive volume a differently cased ancestor is refused too"
+    },
+    {
+      "file": "host/plugins/agent-workspace/tests/workspace-root-data-dir.test.ts",
+      "name": "RF-W02-workspace-contains-data-dir: the overlap check folds case on darwin and win32 only (paths that do not exist, so neither side is realpath'd)"
+    },
+    {
+      "file": "host/plugins/agent-workspace/tests/workspace-root-data-dir.test.ts",
+      "name": "RF-W02-workspace-contains-data-dir: a persisted read-write workspace containing the data directory is downgraded to read-only for listing, tools and revert"
+    },
+    {
+      "file": "host/plugins/agent-workspace/tests/workspace-root-data-dir.test.ts",
+      "name": "RF-W02-workspace-contains-data-dir: a data directory reached through a link inside the workspace (the link itself or an ancestor) is refused; an unrelated directory is not"
+    },
+    {
+      "file": "host/plugins/agent-workspace/tests/workspace-root-data-dir.test.ts",
+      "name": "RF-W02-workspace-contains-data-dir: a persisted read-write workspace holding a link on the data directory path is downgraded to read-only"
+    }
+  ]
+}

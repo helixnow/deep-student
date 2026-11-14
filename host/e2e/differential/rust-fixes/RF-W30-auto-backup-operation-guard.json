@@ -1,0 +1,24 @@
+{
+  "id": "RF-W30-auto-backup-operation-guard",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T15:30:00+08:00",
+  "title": "自动备份取完整数据治理租约（kind=auto_backup，登记当前操作并持有跨进程锁），不再只拿进程内信号量许可",
+  "rust": {
+    "file": "src-tauri/src/backup_config.rs",
+    "line": 399,
+    "behavior": "perform_auto_backup 只调用 BACKUP_GLOBAL_LIMITER.acquire_owned() 拿进程内许可，没有走 DataGovernanceOperationGuard：CURRENT_DATA_GOVERNANCE_OPERATION 保持 None，跨进程 advisory lock（recovery/.data-governance-operation.lock）也不加。DataGovernanceOperationKind 里定义了 AutoBackup 却没有任何调用点使用它"
+  },
+  "fix": {
+    "files": ["host/plugins/backup/src/auto-backup-scheduler.ts"],
+    "behavior": "调度器用 Operations.acquireForJob('auto_backup', job_id, aborted) 排队取完整租约：同进程仍按全局队列串行，同时登记当前操作（operation_id = 自动备份任务 id）并持有跨进程锁，释放时一并撤销；应用退出时排队等待直接取消"
+  },
+  "evidence": "backup_common.rs:110-111 的注释写明跨进程锁“负责阻止两个进程同时写不同 active slot 或远端根”，手动备份、校验、恢复、同步都经由 DataGovernanceOperationGuard 拿锁，只有自动备份绕过。后果：第二个应用实例（或 CLI 工具）在自动备份读取活动槽期间可以拿到跨进程锁并执行恢复/切槽；同进程内其他命令 try_acquire 失败时提示只有“已有数据治理操作正在运行”，看不出是自动备份占用；data_governance_get_maintenance_status 的 current_operation 在自动备份期间为 null。TS Operations 没有“只拿许可”的原语，保持 Rust 行为需要新增一条绕过跨进程锁的路径，属于有意复刻缺陷。",
+  "userVisible": "自动备份运行期间，其他数据治理操作的忙碌提示带上“（当前 AutoBackup，operation_id=<任务 id>）”；data_governance_get_maintenance_status.current_operation 返回 {kind:'auto_backup', operation_id:<任务 id>, …}（前端当前未读取该字段）；同一数据目录的第二个实例在此期间拿不到跨进程锁",
+  "dataCompat": "无持久化格式变化；锁文件只在运行期间存在，释放时删除",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    { "file": "host/plugins/backup/tests/auto-backup-scheduler.test.ts", "name": "RF-W30-auto-backup-operation-guard: the attempt holds the full data-governance guard (current operation + cross-process lock)" }
+  ]
+}

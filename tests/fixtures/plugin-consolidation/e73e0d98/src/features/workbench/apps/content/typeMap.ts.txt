@@ -1,0 +1,80 @@
+/**
+ * 资源类型 → workbench 应用 typeId 映射（P8）
+ *
+ * learning-hub 的 ResourceType 与 workbench typeId 目前同名（设计文档 §9.1），
+ * 但两个体系各自演化，这里维护显式映射表而不是隐式同名假设：
+ * - files 窗口双击资源时用它决定 launch 哪个应用；
+ * - resourceSync 用 RESOURCE_APP_TYPE_IDS 判断哪些窗口是"资源窗口"。
+ */
+import type { ResourceType } from '@/features/learning-hub/types';
+
+/** 六类内容应用的 typeId（apps/content/register.ts 注册） */
+export const CONTENT_APP_TYPE_IDS = [
+  'textbook',
+  'exam',
+  'translation',
+  'essay',
+  'image',
+  'file',
+] as const;
+
+export type ContentAppTypeId = (typeof CONTENT_APP_TYPE_IDS)[number];
+
+/** 思维导图应用 typeId（apps/mindmap/register.ts 注册） */
+export const MINDMAP_APP_TYPE_ID = 'mindmap' as const;
+
+/** note / mindmap 共用的单例知识工作区应用。 */
+export const NOTES_APP_TYPE_ID = 'notes' as const;
+
+/** OS mode uses one application identity for every previewable file resource. */
+export const FILE_PREVIEW_APP_TYPE_ID = 'file-preview' as const;
+
+export type NotesWorkspaceResourceType = 'note' | 'mindmap';
+
+export function isNotesWorkspaceResourceType(
+  type: ResourceType | string,
+): type is NotesWorkspaceResourceType {
+  return type === 'note' || type === 'mindmap';
+}
+
+/**
+ * instanceKey=resourceId 的全部资源应用 typeId。
+ * 资源删除联动（resourceSync）按此集合关窗。
+ */
+export const RESOURCE_APP_TYPE_IDS: ReadonlySet<string> = new Set([
+  ...CONTENT_APP_TYPE_IDS,
+  FILE_PREVIEW_APP_TYPE_ID,
+]);
+
+const RESOURCE_TYPE_TO_APP_TYPE_ID = Object.freeze(
+  Object.assign(Object.create(null) as Record<string, string>, {
+    note: NOTES_APP_TYPE_ID,
+    textbook: FILE_PREVIEW_APP_TYPE_ID,
+    exam: 'exam',
+    translation: 'translation',
+    essay: 'essay',
+    image: FILE_PREVIEW_APP_TYPE_ID,
+    file: FILE_PREVIEW_APP_TYPE_ID,
+    mindmap: NOTES_APP_TYPE_ID,
+  } satisfies Partial<Record<ResourceType, string>>),
+);
+
+/**
+ * learning-hub ResourceType → workbench typeId。
+ * 不可开窗的类型（'all' 等聚合视图）返回 null。
+ */
+export function resourceTypeToAppTypeId(type: ResourceType | string): string | null {
+  if (typeof type !== 'string' || !type) return null;
+  return RESOURCE_TYPE_TO_APP_TYPE_ID[type] ?? null;
+}
+
+/**
+ * Alias / resource typeId → registered workbench app typeId.
+ * Mirrors launch remapping for the notes workspace (`note`/`mindmap` → `notes`).
+ * Unknown typeIds pass through unchanged (unlike resourceTypeToAppTypeId which returns null).
+ */
+export function resolveWorkbenchAppTypeId(typeId: string): string {
+  if (typeof typeId !== 'string' || !typeId) return typeId;
+  if (isNotesWorkspaceResourceType(typeId)) return NOTES_APP_TYPE_ID;
+  return typeId;
+}

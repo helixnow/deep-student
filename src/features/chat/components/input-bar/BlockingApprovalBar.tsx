@@ -152,6 +152,8 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
     ? `bind:${shellScope.rootBinding.slice(0, HASH_PREVIEW_LENGTH)}`
     : null;
   const isExternalMcpExecution = shellScope?.executionLocation?.startsWith('external') ?? false;
+  // RUST-FIX(RF-W09-external-mcp-approval-warning-localized): Rust 把外部 MCP 执行的风险徽标写死为英文，中文界面看不懂这条警示
+  const externalMcpWarning = t('approval.scope.externalMcpUnenforced', 'external MCP / local sandbox not enforced');
   // 📱 coarse 折叠态只保留一行核心摘要（rootId + 命令 + 风险 flags），
   // 其余 scope 徽章由「详情」按钮展开；fine 指针（桌面）恒为 true，布局零影响
   // 技术细节（执行位置/root 路径/env 清单/绑定指纹/编码等审计信息）统一默认
@@ -414,7 +416,7 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
         <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
           {isExternalMcpExecution ? (
             <span className="rounded bg-destructive/10 px-1.5 py-0.5 font-mono text-destructive">
-              external MCP / local sandbox not enforced
+              {externalMcpWarning}
             </span>
           ) : (
             <>

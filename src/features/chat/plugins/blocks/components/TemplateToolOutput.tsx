@@ -209,7 +209,7 @@ const CardSide: React.FC<CardSideProps> = ({ label, htmlContent, cssContent }) =
       <div
         className={cn(
           'rounded-lg border border-border/40 overflow-hidden',
-          'bg-white dark:bg-zinc-900'
+          'bg-background'
         )}
       >
         <ShadowDomPreview htmlContent={htmlContent} cssContent={cssContent} compact fidelity="anki" />
@@ -272,7 +272,7 @@ const DiffView: React.FC<DiffViewProps> = ({ before, after, sampleData }) => {
           <div
             className={cn(
               'rounded-lg border border-danger/50 overflow-hidden',
-              'bg-white dark:bg-zinc-900'
+              'bg-background'
             )}
           >
             <ShadowDomPreview
@@ -292,7 +292,7 @@ const DiffView: React.FC<DiffViewProps> = ({ before, after, sampleData }) => {
           <div
             className={cn(
               'rounded-lg border border-success/50 overflow-hidden',
-              'bg-white dark:bg-zinc-900'
+              'bg-background'
             )}
           >
             <ShadowDomPreview

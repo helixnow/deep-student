@@ -1,0 +1,51 @@
+{
+  "id": "RF-W06-plugin-lock-integrity",
+  "kind": "deliberate",
+  "status": "proposed",
+  "title": "ds-plugin 只提供 plugins.lock.json 登记、已启用且实际字节 sha256 匹配的社区插件文件；未登记/禁用/篡改即拒，不回退旧目录",
+  "rust": {
+    "file": "src-tauri/src/plugins/mod.rs",
+    "line": 1,
+    "behavior": "Rust 插件是编译期注册表（ilink_bot 等），没有运行期插件安装包、plugins.lock.json 或文件哈希校验，也不通过 ds-plugin 协议向页面提供插件 UI；不存在被篡改文件仍被提供的行为"
+  },
+  "fix": {
+    "files": [
+      "electron/shell/plugin-lock.ts",
+      "electron/shell/plugin-ui-protocol.ts",
+      "electron/shell/protocols.ts",
+      "electron/main.ts"
+    ],
+    "behavior": "main 以 <appDataDir>/plugins 为根创建 PluginFileResolver；ds-plugin://<id>/<相对路径> 先过清单（插件 id 存在）与扩展名/MIME 检查，再按 plugins.lock.json v1：id 必须已安装且 enabled，相对路径必须是规范化 POSIX 且登记在 files，发行路径 releases/<id>/<version>-<UUID> 不得逃逸 plugins 根；解析出的文件经 realpath 越界检查后读取，核对实际返回字节的 sha256（HEAD 同样读取并核对，只返回空体）；不匹配 403，未安装/未登记 404，禁用 403；锁缺失时也不回退到清单里的目录。安全模式在接触锁之前直接 403。锁只做完整性证据，不是签名/发布者认证"
+  },
+  "evidence": "electron/tests/plugin-lock.test.ts 覆盖：v1 结构校验（lockVersion/id/path/enabled/files 哈希格式与路径规范化）、缺失锁/坏 JSON、解析已启用文件到发行目录与哈希、未安装/禁用/未登记/../ 逃逸拒绝、缺少锁不回退、正常与 HEAD 供给、篡改后 200→403（HEAD 也 403）、禁用与未登记不供给、安全模式 403。electron/tests/plugin-ui-host.test.ts 用真实 Electron 从锁供给模块并在清单事件时切换锁指针，旧的 old.js 随后 404；未改动协议路径/ESM MIME/CSP 既有断言。electron/tests/plugin-ui-protocol.test.ts 的既有请求（不传 resolver）保持原行为，证明注入之外没有改变单元协议边界",
+  "userVisible": "只在社区插件文件与 plugins.lock.json 不一致时才有区别：页面加载该模块失败（403/404，风险/网络错误），而不是静默执行磁盘上被改写过的内容；正常由 W34 安装并在锁里登记的插件用户无感。无社区插件或未安装时行为同以前（无 ds-plugin 可供给项）",
+  "dataCompat": "只读 <appDataDir>/plugins/plugins.lock.json 与锁指向的发行目录，不写任何数据；不改变数据库、同步载荷与备份格式。Rust 版没有该锁文件，忽略它；Electron 版不读旧式 <id>/<version> 目录作为回退",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "electron/tests/plugin-lock.test.ts",
+      "name": "RF-W06-plugin-lock-integrity: accepts the v1 record and rejects wrong versions, ids, paths, hashes and flags"
+    },
+    {
+      "file": "electron/tests/plugin-lock.test.ts",
+      "name": "RF-W06-plugin-lock-integrity: serves a locked file and its HEAD with Content-Length"
+    },
+    {
+      "file": "electron/tests/plugin-lock.test.ts",
+      "name": "RF-W06-plugin-lock-integrity: rejects tampered bytes even though the file path is listed in the lock"
+    },
+    {
+      "file": "electron/tests/plugin-lock.test.ts",
+      "name": "RF-W06-plugin-lock-integrity: rejects a file that is not listed in the lock, a disabled plugin and traversal"
+    },
+    {
+      "file": "electron/tests/plugin-lock.test.ts",
+      "name": "RF-W06-plugin-lock-integrity: safe mode denies every ds-plugin request before touching the lock"
+    },
+    {
+      "file": "electron/tests/plugin-ui-host.test.ts",
+      "name": "RF-W06-plugin-lock-integrity: serves the UI manifest module from the lock, rejects traversal and drops old paths after the lock switch"
+    }
+  ],
+  "notes": "锁 schema 与路径/哈希口径按 W34 interfaces/plugin-packages.md 的 v1（files 覆盖包括 package.json 的每个负载文件，lowercase SHA256）。并发原生改写与读取之间仍有 TOCTOU 窗口，且能同时改写负载与锁的攻击者不受保护；本条目只是完整性证据。W01 的 resolveFile/verify 与安装事务不在 W06 改动范围。"
+}

@@ -1,6 +1,6 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { ArrowsClockwise, DownloadSimple } from '@phosphor-icons/react';
+import { DownloadSimple } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 
 /** Generic icon component type compatible with both Phosphor and Lucide icons */
@@ -22,9 +22,7 @@ interface HeaderTemplateProps {
   subtitle?: string;
   isRefreshing?: boolean;
   refreshingText?: string;
-  onRefresh?: () => void;
   onExport?: () => void;
-  showRefreshButton?: boolean;
   showExportButton?: boolean;
   customActions?: HeaderAction[];
   customRightContent?: React.ReactNode;
@@ -40,9 +38,7 @@ export const HeaderTemplate: React.FC<HeaderTemplateProps> = ({
   subtitle,
   isRefreshing = false,
   refreshingText,
-  onRefresh,
   onExport,
-  showRefreshButton = true,
   showExportButton = true,
   customActions = [],
   customRightContent,
@@ -80,17 +76,6 @@ export const HeaderTemplate: React.FC<HeaderTemplateProps> = ({
         <div className="flex items-center gap-2">
           {customRightContent && <div className="mr-2">{customRightContent}</div>}
 
-          {showRefreshButton && onRefresh && (
-            <DsButton
-              variant="outline"
-              size="sm"
-              onClick={onRefresh}
-              disabled={isRefreshing}
-            >
-              <ArrowsClockwise size={16} className={isRefreshing ? 'animate-spin' : ''} />
-              {t('header.refresh')}
-            </DsButton>
-          )}
 
           {showExportButton && onExport && (
             <DsButton variant="ghost" size="sm" onClick={onExport}>

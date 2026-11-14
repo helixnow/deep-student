@@ -57,6 +57,8 @@ export interface SelectionToChatParams {
   /** 选区文本 */
   text: string;
   source: SelectionRefData['source'];
+  /** 静默挂载（如发送消息时将「选择此页」自动注入上下文，不额外弹通知） */
+  silent?: boolean;
 }
 
 export interface SelectionToChatResult {
@@ -210,7 +212,9 @@ export async function selectionToChat(
     };
 
     store.getState().addContextRef(contextRef);
-    notifyAddedToChat(activeSessionId, buildSelectionDisplayName(source));
+    if (!params.silent) {
+      notifyAddedToChat(activeSessionId, buildSelectionDisplayName(source));
+    }
 
     console.log(LOG_PREFIX, 'selection added:', { kind: source.kind, locator: source.locator });
     return { success: true, contextRef };

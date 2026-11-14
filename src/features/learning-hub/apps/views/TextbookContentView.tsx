@@ -65,7 +65,7 @@ const LoadingSpinner: React.FC = () => {
   const { t } = useTranslation('common');
   return (
     <div className="flex items-center justify-center h-full" role="status" aria-label={t('loading')}>
-      <CircleNotch className="h-8 w-8 animate-spin text-primary" aria-hidden="true" />
+      <CircleNotch className="h-6 w-6 animate-spin text-muted-foreground" aria-hidden="true" />
     </div>
   );
 };
@@ -77,6 +77,7 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
   node,
   isActive,
   focusScopeId,
+  pdfToolbarVariant,
 }) => {
   const { t } = useTranslation(['textbook', 'common', 'learningHub', 'pdf']);
   const {
@@ -141,30 +142,32 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
   // 从 node.metadata 提取书签列表（声明提前到渲染期重置块之前）
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
 
+  const effectiveSourceId = node.sourceId || node.id;
+
   // 处理页面选择变化 + 广播给 Chat InputBar
   const handlePageSelectionChange = useCallback((pages: Set<number>) => {
     setSelectedPages(pages);
     // 广播选中页码到 Chat InputBar（通过自定义 DOM 事件）
     document.dispatchEvent(new CustomEvent('pdf-page-refs:update', {
       detail: {
-        sourceId: node.sourceId,
+        sourceId: effectiveSourceId,
         sourceName: node.name,
         pages: Array.from(pages).sort((a, b) => a - b),
       },
     }));
-  }, [node.sourceId, node.name]);
+  }, [effectiveSourceId, node.name]);
 
   // 监听 Chat 侧发来的清除/移除选择事件
   // ★ 标签页：通过 sourceId 过滤，避免多个 PDF tab 互相干扰
   useEffect(() => {
     const handleClear = (event: Event) => {
       const detail = (event as CustomEvent<{ sourceId?: string }>).detail;
-      if (detail?.sourceId && detail.sourceId !== node.sourceId) return;
+      if (detail?.sourceId && detail.sourceId !== effectiveSourceId) return;
       setSelectedPages(new Set());
     };
     const handleRemove = (event: Event) => {
       const detail = (event as CustomEvent<{ page: number; sourceId?: string }>).detail;
-      if (detail?.sourceId && detail.sourceId !== node.sourceId) return;
+      if (detail?.sourceId && detail.sourceId !== effectiveSourceId) return;
       setSelectedPages((prev) => {
         const next = new Set(prev);
         next.delete(detail.page);
@@ -178,10 +181,10 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
       document.removeEventListener('pdf-page-refs:remove', handleRemove);
       // ★ 卸载（关闭 tab）时广播空选择，避免聊天 chips 残留指向已关闭的 PDF
       document.dispatchEvent(new CustomEvent('pdf-page-refs:update', {
-        detail: { sourceId: node.sourceId, sourceName: '', pages: [] },
+        detail: { sourceId: effectiveSourceId, sourceName: '', pages: [] },
       }));
     };
-  }, [node.sourceId]);
+  }, [effectiveSourceId]);
 
   // 处理导出选中页面（已废弃，保留空回调以兼容 TextbookPdfViewer 接口）
   const handleExportSelectedPages = useCallback(() => {}, []);
@@ -829,28 +832,27 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
     );
   }
 
-  // PDF 预览
+  // PDF 预览：直接渲染 TextbookPdfViewer（内部已自带全高 flex 容器，避免双层套娃包装）
   // 优先使用 filePath（本地文件），否则使用从数据库加载的 pdfFile
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
-      <TextbookPdfViewer
-        file={pdfFile}
-        filePath={effectiveFilePath || ''}
-        fileName={node.name}
-        selectedPages={selectedPages}
-        onPageSelectionChange={handlePageSelectionChange}
-        onExportSelectedPages={handleExportSelectedPages}
-        focusRequest={focusRequest}
-        onFocusHandled={handleFocusHandled}
-        readingProgress={readingProgress}
-        onProgressChange={handleProgressChange}
-        resourcePath={node.path}
-        bookmarks={bookmarks}
-        onBookmarksChange={handleBookmarksChange}
-        onQuoteToChat={handleQuoteToChat}
-        selectionSourceId={node.sourceId || node.id}
-      />
-    </div>
+    <TextbookPdfViewer
+      file={pdfFile}
+      filePath={effectiveFilePath || ''}
+      fileName={node.name}
+      selectedPages={selectedPages}
+      onPageSelectionChange={handlePageSelectionChange}
+      onExportSelectedPages={handleExportSelectedPages}
+      focusRequest={focusRequest}
+      onFocusHandled={handleFocusHandled}
+      readingProgress={readingProgress}
+      onProgressChange={handleProgressChange}
+      resourcePath={node.path}
+      bookmarks={bookmarks}
+      onBookmarksChange={handleBookmarksChange}
+      onQuoteToChat={handleQuoteToChat}
+      selectionSourceId={node.sourceId || node.id}
+      toolbarVariant={pdfToolbarVariant}
+    />
   );
 };
 

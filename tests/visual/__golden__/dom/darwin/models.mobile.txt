@@ -1,0 +1,362 @@
+<body .light-theme>
+  <div data-demo-app="models" id="@1">
+    <div .demo-app-frame data-demo-app-frame="true">
+      <div .bg-background.h-full.min-h-0.min-w-0.overflow-hidden.w-full data-wb-settings-host="true" data-wb-sys-app="settings" data-wb-sys-h="tall" data-wb-sys-size="compact">
+        <div data-wb-settings-layer="true">
+          <div .wb-sys-fade>
+            <div .wb-sys-split data-wb-sys-drawer-mode="true" data-wb-sys-sidebar-collapsed="false">
+              <div .wb-sys-aside aria-hidden="true" inert />
+              <div .wb-sys-content>
+                <div .h-full.min-h-0.min-w-0.relative>
+                  <div .bg-[color:var(--shell-workspace-panel)].flex.flex-col.h-full.min-h-0.overflow-hidden.relative.settings.w-full data-settings-mobile-sheet-level="content" data-wb-settings-active-tab="apis" data-wb-settings-content-ready="true">
+                    <div .flex.flex-1.flex-col.h-full.min-h-0>
+                      <div .flex-1.h-full.min-h-0.overflow-clip.relative>
+                        <div .flex.h-full>
+                          <div .bg-background.flex.flex-col.flex-shrink-0.font-sidebar-study-ui.h-full.min-h-0.relative.z-[2] aria-hidden="true" inert>
+                            <div .flex-1.min-h-0.overflow-hidden>
+                              <div .h-0 aria-hidden="true" />
+                          <div .bg-[color:var(--shell-workspace-panel)].flex.flex-col.flex-shrink-0.h-full.overflow-x-hidden.relative.settings-mobile-sheet-layout-content.z-[1]>
+                            <button .absolute.appearance-none.bg-[color:var(--overlay)].border-0.duration-[var(--panel-close-dur,350ms)].ease-[var(--panel-ease,cubic-bezier(0.22,1,0.36,1))].inset-0.motion-reduce:transition-none.p-0.transition-opacity aria-hidden="true" aria-label="关闭侧边栏" data-mobile-sidebar-mask="true" tabindex="-1" type="button" />
+                            <div .flex.flex-1.flex-col.min-h-0.overflow-hidden>
+                              <div .flex-1.min-h-0.overflow-hidden>
+                                <div .flex.flex-col.h-full.min-h-0.overflow-hidden.text-foreground data-settings-mobile-level="content">
+                                  <div .bg-[color:var(--shell-workspace-panel)].flex.flex-1.flex-col.h-full.max-w-full.min-w-0.overflow-hidden.relative.settings-mobile-sheet-body.text-foreground data-slot="mobile-settings-page-content" id="@2">
+                                    <div .lg:px-8.pt-4.px-5.shrink-0>
+                                      <div .max-w-[72rem].mx-auto.w-full>
+                                        <header .mb-4.min-w-0>
+                                          <div .w-full>
+                                            <div .[@media(pointer:coarse)]:min-h-11.bg-transparent.border-[color:var(--shell-workspace-border)].border-b.gap-1.h-10.h-auto.inline-flex.items-center.justify-start.max-w-full.min-h-10.overflow-x-auto.overflow-y-hidden.pb-2.text-[color:var(--text-secondary)].w-full aria-label="模型与 AI" aria-orientation="horizontal" role="tablist">
+                                              <button .[@media(pointer:coarse)]:min-h-11.border.border-transparent.data-[state=active]:bg-[color:var(--surface-panel-strong)].data-[state=active]:border-[color:var(--button-utility-border)].data-[state=active]:shadow-[var(--shadow-shell-soft)].data-[state=active]:text-[color:var(--text-primary)].disabled:opacity-50.disabled:pointer-events-none.focus-visible:outline-none.focus-visible:ring-1.focus-visible:ring-[color:var(--input-shell-focus)].font-medium.hover:bg-[color:var(--sidebar-quiet-hover)].hover:text-[color:var(--text-primary)].inline-flex.items-center.justify-center.min-h-8.px-3.py-1.5.ring-offset-background.rounded-[var(--radius-shell-control)].shrink-0.text-[color:var(--text-secondary)].text-sm.ui-state-colors.whitespace-nowrap aria-controls="@3" aria-selected="true" data-state="active" data-tour-id="settings-tab-apis" id="@4" role="tab" tabindex="0" type="button">
+                                                "模型服务"
+                                              <button .[@media(pointer:coarse)]:min-h-11.border.border-transparent.data-[state=active]:bg-[color:var(--surface-panel-strong)].data-[state=active]:border-[color:var(--button-utility-border)].data-[state=active]:shadow-[var(--shadow-shell-soft)].data-[state=active]:text-[color:var(--text-primary)].disabled:opacity-50.disabled:pointer-events-none.focus-visible:outline-none.focus-visible:ring-1.focus-visible:ring-[color:var(--input-shell-focus)].font-medium.hover:bg-[color:var(--sidebar-quiet-hover)].hover:text-[color:var(--text-primary)].inline-flex.items-center.justify-center.min-h-8.px-3.py-1.5.ring-offset-background.rounded-[var(--radius-shell-control)].shrink-0.text-[color:var(--text-secondary)].text-sm.ui-state-colors.whitespace-nowrap aria-controls="@3" aria-selected="false" data-state="inactive" data-tour-id="settings-tab-models" id="@5" role="tab" tabindex="-1" type="button">
+                                                "模型分配"
+                                              <button .[@media(pointer:coarse)]:min-h-11.border.border-transparent.data-[state=active]:bg-[color:var(--surface-panel-strong)].data-[state=active]:border-[color:var(--button-utility-border)].data-[state=active]:shadow-[var(--shadow-shell-soft)].data-[state=active]:text-[color:var(--text-primary)].disabled:opacity-50.disabled:pointer-events-none.focus-visible:outline-none.focus-visible:ring-1.focus-visible:ring-[color:var(--input-shell-focus)].font-medium.hover:bg-[color:var(--sidebar-quiet-hover)].hover:text-[color:var(--text-primary)].inline-flex.items-center.justify-center.min-h-8.px-3.py-1.5.ring-offset-background.rounded-[var(--radius-shell-control)].shrink-0.text-[color:var(--text-secondary)].text-sm.ui-state-colors.whitespace-nowrap aria-controls="@3" aria-selected="false" data-state="inactive" id="@6" role="tab" tabindex="-1" type="button">
+                                                "参数调整"
+                                    <div .flex-1.h-full.max-w-full.min-h-0.min-w-0.relative.scrollbar-none.w-full data-native-scrollbars="false" data-orientation="vertical" data-overlayscrollbars="host" data-overlayscrollbars-initialize data-scroll-axes="vertical" data-scroll-track-bottom data-scroll-track-right data-scroll-track-top data-slot="scroll-area">
+                                      <div .h-full.max-h-[inherit].min-h-0.min-w-0.settings-mobile-sheet-scroll-viewport.w-full data-overlayscrollbars-viewport="scrollbarHidden overflowXHidden overflowYHidden" tabindex="-1">
+                                        <div .pb-[calc(1.25rem+var(--mobile-safe-area-bottom,0px))].pt-4.px-5>
+                                          <div .h-full.max-w-[72rem].min-h-0.mx-auto.w-full>
+                                            <div .space-y-6 aria-labelledby="@4" id="@3" role="tabpanel" tabindex="0">
+                                              <div .space-y-4>
+                                                <div .first:pt-0.py-0.py-6.w-full data-tour-id="settings-api">
+                                                  <div .space-y-4.space-y-6.w-full>
+                                                    <p .text-muted-foreground.text-sm>
+                                                      "管理可用模型服务及其密钥、能力标记"
+                                                    <div .h-full.min-h-0>
+                                                      <div .min-w-0.w-full>
+                                                        <div .md:border-border/40.md:border-r.md:pr-6.md:self-start.md:sticky.md:top-4.min-w-0.pr-0.space-y-3.w-full>
+                                                          <div .w-full>
+                                                            <div .bg-muted.flex.flex-col.gap-0.5.p-1.5.rounded-2xl>
+                                                              <div .bg-[color:var(--sidebar-quiet-active)].cursor-pointer.duration-150.ease-out.flex.font-medium.gap-2.group.items-center.min-h-11.motion-reduce:transition-none.px-3.py-2.rounded-[var(--button-radius)].rounded-[var(--shell-nav-row-radius,14px)].text-base.text-foreground.text-left.transition-[background-color].w-full role="button" tabindex="0">
+                                                                <span .duration-150.inline-flex.items-center.justify-center.shrink-0.transition-[filter,opacity,color,background-color,border-color] data-icon-chrome="badge" data-icon-tone="color" data-testid="vendor-icon-builtin-siliconflow">
+                                                                  <div>
+                                                                    <svg aria-hidden="true" viewBox="0 0 24 24" />
+                                                                <div .flex-1.min-w-0.text-left>
+                                                                  <div .flex.flex-wrap.gap-1.5.items-center.justify-between>
+                                                                    <div .flex.flex-1.gap-1.5.items-center.min-w-0>
+                                                                      <span .truncate>
+                                                                        "硅基流动"
+                                                                    <div .flex.gap-1.5.items-center>
+                                                                      <span .bg-muted/50.px-1.5.py-0.5.rounded-full.text-2xs.text-muted-foreground/60>
+                                                                        "10"
+                                                                <span .shrink-0.text-muted-foreground/40 aria-hidden="true">
+                                                                  <svg viewBox="0 0 256 256" />
+                                                              <div .cursor-pointer.duration-150.ease-out.flex.gap-2.group.items-center.min-h-11.motion-reduce:transition-none.px-3.py-2.rounded-[var(--button-radius)].rounded-[var(--shell-nav-row-radius,14px)].text-base.text-left.text-muted-foreground.transition-[background-color].w-full role="button" tabindex="0">
+                                                                <span .duration-150.inline-flex.items-center.justify-center.shrink-0.transition-[filter,opacity,color,background-color,border-color] data-icon-chrome="badge" data-icon-tone="color" data-testid="vendor-icon-builtin-deepseek">
+                                                                  <div>
+                                                                    <svg aria-hidden="true" viewBox="0 0 24 24" />
+                                                                <div .flex-1.min-w-0.text-left>
+                                                                  <div .flex.flex-wrap.gap-1.5.items-center.justify-between>
+                                                                    <div .flex.flex-1.gap-1.5.items-center.min-w-0>
+                                                                      <span .truncate>
+                                                                        "DeepSeek"
+                                                                    <div .flex.gap-1.5.items-center>
+                                                                      <span .bg-muted/50.px-1.5.py-0.5.rounded-full.text-2xs.text-muted-foreground/60>
+                                                                        "3"
+                                                                <span .shrink-0.text-muted-foreground/40 aria-hidden="true">
+                                                                  <svg viewBox="0 0 256 256" />
+                                                              <div .cursor-pointer.duration-150.ease-out.flex.gap-2.group.items-center.min-h-11.motion-reduce:transition-none.px-3.py-2.rounded-[var(--button-radius)].rounded-[var(--shell-nav-row-radius,14px)].text-base.text-left.text-muted-foreground.transition-[background-color].w-full role="button" tabindex="0">
+                                                                <span .duration-150.inline-flex.items-center.justify-center.shrink-0.transition-[filter,opacity,color,background-color,border-color] data-icon-chrome="badge" data-icon-tone="muted" data-testid="vendor-icon-builtin-qwen">
+                                                                  <div>
+                                                                    <svg aria-hidden="true" viewBox="0 0 24 24" />
+                                                                <div .flex-1.min-w-0.text-left>
+                                                                  <div .flex.flex-wrap.gap-1.5.items-center.justify-between>
+                                                                    <div .flex.flex-1.gap-1.5.items-center.min-w-0>
+                                                                      <span .truncate>
+                                                                        "通义千问"
+                                                                    <div .flex.gap-1.5.items-center>
+                                                                      <span .bg-muted/50.px-1.5.py-0.5.rounded-full.text-2xs.text-muted-foreground/60>
+                                                                        "3"
+                                                                <span .shrink-0.text-muted-foreground/40 aria-hidden="true">
+                                                                  <svg viewBox="0 0 256 256" />
+                                                              <div .cursor-pointer.duration-150.ease-out.flex.gap-2.group.items-center.min-h-11.motion-reduce:transition-none.px-3.py-2.rounded-[var(--button-radius)].rounded-[var(--shell-nav-row-radius,14px)].text-base.text-left.text-muted-foreground.transition-[background-color].w-full role="button" tabindex="0">
+                                                                <span .duration-150.inline-flex.items-center.justify-center.shrink-0.transition-[filter,opacity,color,background-color,border-color] data-icon-chrome="badge" data-icon-tone="muted" data-testid="vendor-icon-builtin-zhipu">
+                                                                  <div>
+                                                                    <svg viewBox="0 0 24 24" />
+                                                                <div .flex-1.min-w-0.text-left>
+                                                                  <div .flex.flex-wrap.gap-1.5.items-center.justify-between>
+                                                                    <div .flex.flex-1.gap-1.5.items-center.min-w-0>
+                                                                      <span .truncate>
+                                                                        "智谱AI"
+                                                                    <div .flex.gap-1.5.items-center>
+                                                                      <span .bg-muted/50.px-1.5.py-0.5.rounded-full.text-2xs.text-muted-foreground/60>
+                                                                        "2"
+                                                                <span .shrink-0.text-muted-foreground/40 aria-hidden="true">
+                                                                  <svg viewBox="0 0 256 256" />
+                                                              <div .cursor-pointer.duration-150.ease-out.flex.gap-2.group.items-center.min-h-11.motion-reduce:transition-none.px-3.py-2.rounded-[var(--button-radius)].rounded-[var(--shell-nav-row-radius,14px)].text-base.text-left.text-muted-foreground.transition-[background-color].w-full role="button" tabindex="0">
+                                                                <span .duration-150.inline-flex.items-center.justify-center.shrink-0.transition-[filter,opacity,color,background-color,border-color] data-icon-chrome="badge" data-icon-tone="muted" data-testid="vendor-icon-builtin-doubao">
+                                                                  <div>
+                                                                    <svg aria-hidden="true" viewBox="0 0 24 24" />
+                                                                <div .flex-1.min-w-0.text-left>
+                                                                  <div .flex.flex-wrap.gap-1.5.items-center.justify-between>
+                                                                    <div .flex.flex-1.gap-1.5.items-center.min-w-0>
+                                                                      <span .truncate>
+                                                                        "字节豆包"
+                                                                    <div .flex.gap-1.5.items-center>
+                                                                      <span .bg-muted/50.px-1.5.py-0.5.rounded-full.text-2xs.text-muted-foreground/60>
+                                                                        "1"
+                                                                <span .shrink-0.text-muted-foreground/40 aria-hidden="true">
+                                                                  <svg viewBox="0 0 256 256" />
+                                                              <div .cursor-pointer.duration-150.ease-out.flex.gap-2.group.items-center.min-h-11.motion-reduce:transition-none.px-3.py-2.rounded-[var(--button-radius)].rounded-[var(--shell-nav-row-radius,14px)].text-base.text-left.text-muted-foreground.transition-[background-color].w-full role="button" tabindex="0">
+                                                                <span .duration-150.inline-flex.items-center.justify-center.shrink-0.transition-[filter,opacity,color,background-color,border-color] data-icon-chrome="badge" data-icon-tone="muted" data-testid="vendor-icon-builtin-minimax">
+                                                                  <div>
+                                                                    <svg aria-hidden="true" viewBox="0 0 24 24" />
+                                                                <div .flex-1.min-w-0.text-left>
+                                                                  <div .flex.flex-wrap.gap-1.5.items-center.justify-between>
+                                                                    <div .flex.flex-1.gap-1.5.items-center.min-w-0>
+                                                                      <span .truncate>
+                                                                        "MiniMax"
+                                                                    <div .flex.gap-1.5.items-center>
+                                                                      <span .bg-muted/50.px-1.5.py-0.5.rounded-full.text-2xs.text-muted-foreground/60>
+                                                                        "1"
+                                                                <span .shrink-0.text-muted-foreground/40 aria-hidden="true">
+                                                                  <svg viewBox="0 0 256 256" />
+                                                              <div .cursor-pointer.duration-150.ease-out.flex.gap-2.group.items-center.min-h-11.motion-reduce:transition-none.px-3.py-2.rounded-[var(--button-radius)].rounded-[var(--shell-nav-row-radius,14px)].text-base.text-left.text-muted-foreground.transition-[background-color].w-full role="button" tabindex="0">
+                                                                <span .duration-150.inline-flex.items-center.justify-center.shrink-0.transition-[filter,opacity,color,background-color,border-color] data-icon-chrome="badge" data-icon-tone="color" data-testid="vendor-icon-builtin-moonshot">
+                                                                  <div>
+                                                                    <svg aria-hidden="true" viewBox="0 0 24 24" />
+                                                                <div .flex-1.min-w-0.text-left>
+                                                                  <div .flex.flex-wrap.gap-1.5.items-center.justify-between>
+                                                                    <div .flex.flex-1.gap-1.5.items-center.min-w-0>
+                                                                      <span .truncate>
+                                                                        "月之暗面"
+                                                                    <div .flex.gap-1.5.items-center>
+                                                                      <span .bg-muted/50.px-1.5.py-0.5.rounded-full.text-2xs.text-muted-foreground/60>
+                                                                        "2"
+                                                                <span .shrink-0.text-muted-foreground/40 aria-hidden="true">
+                                                                  <svg viewBox="0 0 256 256" />
+                                                              <div .cursor-pointer.duration-150.ease-out.flex.gap-2.group.items-center.min-h-11.motion-reduce:transition-none.px-3.py-2.rounded-[var(--button-radius)].rounded-[var(--shell-nav-row-radius,14px)].text-base.text-left.text-muted-foreground.transition-[background-color].w-full role="button" tabindex="0">
+                                                                <span .duration-150.inline-flex.items-center.justify-center.shrink-0.transition-[filter,opacity,color,background-color,border-color] data-icon-chrome="badge" data-icon-tone="muted" data-testid="vendor-icon-builtin-openai">
+                                                                  <div>
+                                                                    <svg viewBox="0 0 24 24" />
+                                                                <div .flex-1.min-w-0.text-left>
+                                                                  <div .flex.flex-wrap.gap-1.5.items-center.justify-between>
+                                                                    <div .flex.flex-1.gap-1.5.items-center.min-w-0>
+                                                                      <span .truncate>
+                                                                        "OpenAI"
+                                                                    <div .flex.gap-1.5.items-center>
+                                                                      <span .bg-muted/50.px-1.5.py-0.5.rounded-full.text-2xs.text-muted-foreground/60>
+                                                                        "1"
+                                                                <span .shrink-0.text-muted-foreground/40 aria-hidden="true">
+                                                                  <svg viewBox="0 0 256 256" />
+                                                              <div .cursor-pointer.duration-150.ease-out.flex.gap-2.group.items-center.min-h-11.motion-reduce:transition-none.px-3.py-2.rounded-[var(--button-radius)].rounded-[var(--shell-nav-row-radius,14px)].text-base.text-left.text-muted-foreground.transition-[background-color].w-full role="button" tabindex="0">
+                                                                <span .duration-150.inline-flex.items-center.justify-center.shrink-0.transition-[filter,opacity,color,background-color,border-color] data-icon-chrome="badge" data-icon-tone="muted" data-testid="vendor-icon-builtin-openai-codex">
+                                                                  <div>
+                                                                    <svg viewBox="0 0 24 24" />
+                                                                <div .flex-1.min-w-0.text-left>
+                                                                  <div .flex.flex-wrap.gap-1.5.items-center.justify-between>
+                                                                    <div .flex.flex-1.gap-1.5.items-center.min-w-0>
+                                                                      <span .truncate>
+                                                                        "Codex"
+                                                                    <div .flex.gap-1.5.items-center>
+                                                                      <span .bg-muted/50.px-1.5.py-0.5.rounded-full.text-2xs.text-muted-foreground/60>
+                                                                        "1"
+                                                                <span .shrink-0.text-muted-foreground/40 aria-hidden="true">
+                                                                  <svg viewBox="0 0 256 256" />
+                                                              <div .cursor-pointer.duration-150.ease-out.flex.gap-2.group.items-center.min-h-11.motion-reduce:transition-none.px-3.py-2.rounded-[var(--button-radius)].rounded-[var(--shell-nav-row-radius,14px)].text-base.text-left.text-muted-foreground.transition-[background-color].w-full role="button" tabindex="0">
+                                                                <span .duration-150.inline-flex.items-center.justify-center.shrink-0.transition-[filter,opacity,color,background-color,border-color] data-icon-chrome="badge" data-icon-tone="muted" data-testid="vendor-icon-builtin-anthropic">
+                                                                  <div>
+                                                                    <svg viewBox="0 0 24 24" />
+                                                                <div .flex-1.min-w-0.text-left>
+                                                                  <div .flex.flex-wrap.gap-1.5.items-center.justify-between>
+                                                                    <div .flex.flex-1.gap-1.5.items-center.min-w-0>
+                                                                      <span .truncate>
+                                                                        "Anthropic"
+                                                                    <div .flex.gap-1.5.items-center>
+                                                                      <span .bg-muted/50.px-1.5.py-0.5.rounded-full.text-2xs.text-muted-foreground/60>
+                                                                        "1"
+                                                                <span .shrink-0.text-muted-foreground/40 aria-hidden="true">
+                                                                  <svg viewBox="0 0 256 256" />
+                                                              <div .cursor-pointer.duration-150.ease-out.flex.gap-2.group.items-center.min-h-11.motion-reduce:transition-none.px-3.py-2.rounded-[var(--button-radius)].rounded-[var(--shell-nav-row-radius,14px)].text-base.text-left.text-muted-foreground.transition-[background-color].w-full role="button" tabindex="0">
+                                                                <span .duration-150.inline-flex.items-center.justify-center.shrink-0.transition-[filter,opacity,color,background-color,border-color] data-icon-chrome="badge" data-icon-tone="muted" data-testid="vendor-icon-builtin-nvidia">
+                                                                  <div>
+                                                                    <svg aria-hidden="true" viewBox="0 0 24 24" />
+                                                                <div .flex-1.min-w-0.text-left>
+                                                                  <div .flex.flex-wrap.gap-1.5.items-center.justify-between>
+                                                                    <div .flex.flex-1.gap-1.5.items-center.min-w-0>
+                                                                      <span .truncate>
+                                                                        "NVIDIA"
+                                                                    <div .flex.gap-1.5.items-center>
+                                                                      <span .bg-muted/50.px-1.5.py-0.5.rounded-full.text-2xs.text-muted-foreground/60>
+                                                                        "1"
+                                                                <span .shrink-0.text-muted-foreground/40 aria-hidden="true">
+                                                                  <svg viewBox="0 0 256 256" />
+                                                              <div .cursor-pointer.duration-150.ease-out.flex.gap-2.group.items-center.min-h-11.motion-reduce:transition-none.px-3.py-2.rounded-[var(--button-radius)].rounded-[var(--shell-nav-row-radius,14px)].text-base.text-left.text-muted-foreground.transition-[background-color].w-full role="button" tabindex="0">
+                                                                <span .duration-150.inline-flex.items-center.justify-center.shrink-0.transition-[filter,opacity,color,background-color,border-color] data-icon-chrome="badge" data-icon-tone="muted" data-testid="vendor-icon-builtin-mimo">
+                                                                  <div>
+                                                                    <svg viewBox="0 0 24 24" />
+                                                                <div .flex-1.min-w-0.text-left>
+                                                                  <div .flex.flex-wrap.gap-1.5.items-center.justify-between>
+                                                                    <div .flex.flex-1.gap-1.5.items-center.min-w-0>
+                                                                      <span .truncate>
+                                                                        "Xiaomi MiMo"
+                                                                    <div .flex.gap-1.5.items-center>
+                                                                      <span .bg-muted/50.px-1.5.py-0.5.rounded-full.text-2xs.text-muted-foreground/60>
+                                                                        "1"
+                                                                <span .shrink-0.text-muted-foreground/40 aria-hidden="true">
+                                                                  <svg viewBox="0 0 256 256" />
+                                                              <div .cursor-pointer.duration-150.ease-out.flex.gap-2.group.items-center.min-h-11.motion-reduce:transition-none.px-3.py-2.rounded-[var(--button-radius)].rounded-[var(--shell-nav-row-radius,14px)].text-base.text-left.text-muted-foreground.transition-[background-color].w-full role="button" tabindex="0">
+                                                                <span .duration-150.inline-flex.items-center.justify-center.shrink-0.transition-[filter,opacity,color,background-color,border-color] data-icon-chrome="badge" data-icon-tone="muted" data-testid="vendor-icon-builtin-gemini">
+                                                                  <div>
+                                                                    <svg aria-hidden="true" viewBox="0 0 24 24" />
+                                                                <div .flex-1.min-w-0.text-left>
+                                                                  <div .flex.flex-wrap.gap-1.5.items-center.justify-between>
+                                                                    <div .flex.flex-1.gap-1.5.items-center.min-w-0>
+                                                                      <span .truncate>
+                                                                        "Google Gemini"
+                                                                    <div .flex.gap-1.5.items-center>
+                                                                      <span .bg-muted/50.px-1.5.py-0.5.rounded-full.text-2xs.text-muted-foreground/60>
+                                                                        "2"
+                                                                <span .shrink-0.text-muted-foreground/40 aria-hidden="true">
+                                                                  <svg viewBox="0 0 256 256" />
+                                                              <div .cursor-pointer.duration-150.ease-out.flex.gap-2.group.items-center.min-h-11.motion-reduce:transition-none.px-3.py-2.rounded-[var(--button-radius)].rounded-[var(--shell-nav-row-radius,14px)].text-base.text-left.text-muted-foreground.transition-[background-color].w-full role="button" tabindex="0">
+                                                                <span .duration-150.inline-flex.items-center.justify-center.shrink-0.transition-[filter,opacity,color,background-color,border-color] data-icon-chrome="badge" data-icon-tone="color" data-testid="vendor-icon-demo-ollama">
+                                                                  <div>
+                                                                    <svg viewBox="0 0 24 24" />
+                                                                <div .flex-1.min-w-0.text-left>
+                                                                  <div .flex.flex-wrap.gap-1.5.items-center.justify-between>
+                                                                    <div .flex.flex-1.gap-1.5.items-center.min-w-0>
+                                                                      <span .truncate>
+                                                                        "本机 Ollama"
+                                                                    <div .flex.gap-1.5.items-center>
+                                                                      <span .bg-muted/50.px-1.5.py-0.5.rounded-full.text-2xs.text-muted-foreground/60>
+                                                                        "1"
+                                                                <span .shrink-0.text-muted-foreground/40 aria-hidden="true">
+                                                                  <svg viewBox="0 0 256 256" />
+                                                            <div id="@7">
+                                                              "To pick up a draggable item, press the space bar. While dragging, use the arrow keys to move the item. Press space again…"
+                                                            <div aria-atomic="true" aria-live="assertive" id="@8" role="status" />
+                                      <div .os-scrollbar.os-scrollbar-auto-hide-hidden.os-scrollbar-cornerless.os-scrollbar-handle-interactive.os-scrollbar-horizontal.os-scrollbar-unusable.os-theme-deep-student>
+                                        <div .os-scrollbar-track>
+                                          <div .os-scrollbar-handle />
+                                      <div .os-scrollbar.os-scrollbar-auto-hide-hidden.os-scrollbar-cornerless.os-scrollbar-handle-interactive.os-scrollbar-unusable.os-scrollbar-vertical.os-theme-deep-student>
+                                        <div .os-scrollbar-track>
+                                          <div .os-scrollbar-handle />
+                          <div .bg-background.flex.flex-col aria-hidden="true" inert>
+                            <div .flex-1.min-h-0.overflow-hidden>
+                              <div .flex.h-full.items-center.justify-center.text-muted-foreground>
+                                <p .text-sm>
+                                  "选择要编辑的模型"
+              <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-[var(--touch-target-size)].wb-sys-drawer-handle.whitespace-nowrap aria-expanded="false" aria-label="显示导航" data-wb-sys-drawer-handle="true" title="显示导航" type="button">
+                <svg aria-hidden="true" viewBox="0 0 256 256" />
+              <div .wb-sys-scrim aria-hidden="true" data-open="false" />
+              <div .wb-sys-drawer aria-hidden="true" aria-label="设置导航" aria-modal="true" data-open="false" data-wb-sys-drawer="true" inert role="dialog" tabindex="-1">
+                <div .wb-sys-drawer-head>
+                  <span .wb-sys-drawer-title>
+                    "设置导航"
+                  <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-[var(--touch-target-size)].wb-sys-drawer-close.whitespace-nowrap aria-label="收起导航" title="收起导航" type="button">
+                    <svg aria-hidden="true" viewBox="0 0 256 256" />
+                <div .h-full.min-h-0.min-w-0.relative.wb-sys-drawer-body data-native-scrollbars="false" data-orientation="vertical" data-overlayscrollbars="host" data-overlayscrollbars-initialize data-scroll-axes="vertical" data-scroll-track-bottom data-scroll-track-right data-scroll-track-top data-slot="scroll-area">
+                  <div .h-full.max-h-[inherit].min-h-0.min-w-0.w-full.wb-sys-drawer-body-viewport data-overlayscrollbars-viewport="scrollbarHidden overflowXHidden overflowYHidden" tabindex="-1">
+                    <aside .bg-[color:var(--shell-navigation-panel)].bg-[color:var(--shell-navigation-surface)].border-[color:var(--shell-navigation-border)].border-r.flex.flex-col.font-sidebar-study-ui.h-full.min-h-0.min-w-0.overflow-hidden.relative.study-shell-sidebar-frame.text-[color:var(--shell-navigation-foreground)].w-full aria-label="设置导航" data-settings-sidebar="true" data-shell-layer="navigation" data-shell-surface="navigation" data-workbench-sidebar="true" role="navigation">
+                      <div .px-2.py-1.shrink-0.space-y-0.5 />
+                      <div .pb-1.px-2.shrink-0>
+                        <div .relative>
+                          <svg .-translate-y-1/2.absolute.left-2.5.opacity-60.pointer-events-none.text-[color:var(--sidebar-muted,var(--muted-foreground))].top-1/2 viewBox="0 0 256 256" />
+                          <input .[&::-webkit-search-cancel-button]:hidden.[@media(pointer:coarse)]:h-11.[@media(pointer:coarse)]:text-[16px].appearance-none.bg-[color:var(--interactive-hover)]/60.border.border-transparent.focus-visible:bg-background.focus-visible:border-[color:var(--border)].focus-visible:outline-none.focus-visible:ring-0.focus:bg-background.focus:border-[color:var(--border)].h-8.outline-none.pl-8.placeholder:opacity-70.placeholder:text-[color:var(--sidebar-muted,var(--muted-foreground))].pr-2.5.rounded-lg.text-[color:var(--sidebar-foreground)].text-ui.transition-colors.w-full aria-autocomplete="list" aria-controls="@9" aria-expanded="false" aria-label="搜索设置..." data-settings-search="true" placeholder="搜索设置..." role="combobox" type="search" value />
+                      <div .flex-1.h-full.min-h-0.min-w-0.relative aria-label="设置导航" data-native-scrollbars="false" data-orientation="vertical" data-overlayscrollbars="host" data-overlayscrollbars-initialize data-scroll-axes="vertical" data-scroll-track-bottom data-scroll-track-top data-slot="scroll-area" role="navigation">
+                        <div .h-full.max-h-[inherit].min-h-0.min-w-0.w-full data-overlayscrollbars-viewport="scrollbarHidden overflowXHidden overflowYHidden" tabindex="-1">
+                          <div .px-2.py-1>
+                            <ul .space-y-0.5 data-settings-category-list>
+                              <li>
+                                <button .!justify-start.!px-2.5.!py-1.5.!w-full.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.active:bg-[color:var(--sidebar-quiet-active)].appearance-none.bg-transparent.border-transparent.cursor-default.desktop-shell-nav-row.desktop-shell-nav-row--active.desktop-shell-sidebar-row.disabled:opacity-50.disabled:pointer-events-none.flex.focus-visible:ring-2.focus-visible:ring-ring.font-normal.gap-2.gap-2.5.hover:bg-[color:var(--sidebar-quiet-hover)].hover:text-[color:var(--shell-navigation-foreground)].inline-flex.items-center.justify-start.leading-none.lg:min-h-9.min-h-[2.75rem].min-w-0.outline-none.overflow-hidden.px-2.5.py-1.5.rounded-2xl.select-none.shrink-0.text-[color:var(--shell-navigation-muted)].text-left.text-sm.text-ui.ui-press-coarse.w-full.whitespace-nowrap aria-current="page" aria-label="模型与 AI" data-workbench-sidebar-row="nav" type="button">
+                                  <span .flex.flex-1.gap-2.5.items-center.min-w-0>
+                                    <span .flex.items-center.justify-center.shrink-0.text-[color:var(--shell-navigation-foreground)].w-4>
+                                      <svg .flex-shrink-0.h-[18px].w-[18px] viewBox="0 0 256 256" />
+                                    <span .flex-1.min-w-0>
+                                      <span .block.desktop-shell-sidebar-row-title.flex-1.leading-4.min-w-0.truncate>
+                                        <span .settings-nav-item-label>
+                                          "模型与 AI"
+                                    <span .flex.gap-0.5.items-center.justify-end.min-w-[24px].shrink-0 />
+                              <li>
+                                <button .!justify-start.!px-2.5.!py-1.5.!w-full.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.active:bg-[color:var(--sidebar-quiet-active)].appearance-none.bg-transparent.border-transparent.desktop-shell-nav-row.desktop-shell-sidebar-row.disabled:opacity-50.disabled:pointer-events-none.flex.focus-visible:ring-2.focus-visible:ring-ring.font-normal.gap-2.gap-2.5.hover:bg-[color:var(--sidebar-quiet-hover)].hover:text-[color:var(--shell-navigation-foreground)].inline-flex.items-center.justify-start.leading-none.lg:min-h-9.min-h-[2.75rem].min-w-0.outline-none.overflow-hidden.px-2.5.py-1.5.rounded-2xl.select-none.shrink-0.text-[color:var(--shell-navigation-muted)].text-left.text-sm.text-ui.ui-press-coarse.w-full.whitespace-nowrap aria-label="应用体验" data-workbench-sidebar-row="nav" type="button">
+                                  <span .flex.flex-1.gap-2.5.items-center.min-w-0>
+                                    <span .flex.items-center.justify-center.shrink-0.text-[color:var(--shell-navigation-foreground)].w-4>
+                                      <svg .flex-shrink-0.h-[18px].w-[18px] viewBox="0 0 256 256" />
+                                    <span .flex-1.min-w-0>
+                                      <span .block.desktop-shell-sidebar-row-title.flex-1.leading-4.min-w-0.truncate>
+                                        <span .settings-nav-item-label>
+                                          "应用体验"
+                                    <span .flex.gap-0.5.items-center.justify-end.min-w-[24px].shrink-0 />
+                              <li>
+                                <button .!justify-start.!px-2.5.!py-1.5.!w-full.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.active:bg-[color:var(--sidebar-quiet-active)].appearance-none.bg-transparent.border-transparent.desktop-shell-nav-row.desktop-shell-sidebar-row.disabled:opacity-50.disabled:pointer-events-none.flex.focus-visible:ring-2.focus-visible:ring-ring.font-normal.gap-2.gap-2.5.hover:bg-[color:var(--sidebar-quiet-hover)].hover:text-[color:var(--shell-navigation-foreground)].inline-flex.items-center.justify-start.leading-none.lg:min-h-9.min-h-[2.75rem].min-w-0.outline-none.overflow-hidden.px-2.5.py-1.5.rounded-2xl.select-none.shrink-0.text-[color:var(--shell-navigation-muted)].text-left.text-sm.text-ui.ui-press-coarse.w-full.whitespace-nowrap aria-label="输入与个性化" data-workbench-sidebar-row="nav" type="button">
+                                  <span .flex.flex-1.gap-2.5.items-center.min-w-0>
+                                    <span .flex.items-center.justify-center.shrink-0.text-[color:var(--shell-navigation-foreground)].w-4>
+                                      <svg .flex-shrink-0.h-[18px].w-[18px] viewBox="0 0 256 256" />
+                                    <span .flex-1.min-w-0>
+                                      <span .block.desktop-shell-sidebar-row-title.flex-1.leading-4.min-w-0.truncate>
+                                        <span .settings-nav-item-label>
+                                          "输入与个性化"
+                                    <span .flex.gap-0.5.items-center.justify-end.min-w-[24px].shrink-0 />
+                              <li>
+                                <button .!justify-start.!px-2.5.!py-1.5.!w-full.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.active:bg-[color:var(--sidebar-quiet-active)].appearance-none.bg-transparent.border-transparent.desktop-shell-nav-row.desktop-shell-sidebar-row.disabled:opacity-50.disabled:pointer-events-none.flex.focus-visible:ring-2.focus-visible:ring-ring.font-normal.gap-2.gap-2.5.hover:bg-[color:var(--sidebar-quiet-hover)].hover:text-[color:var(--shell-navigation-foreground)].inline-flex.items-center.justify-start.leading-none.lg:min-h-9.min-h-[2.75rem].min-w-0.outline-none.overflow-hidden.px-2.5.py-1.5.rounded-2xl.select-none.shrink-0.text-[color:var(--shell-navigation-muted)].text-left.text-sm.text-ui.ui-press-coarse.w-full.whitespace-nowrap aria-label="工具与扩展" data-workbench-sidebar-row="nav" type="button">
+                                  <span .flex.flex-1.gap-2.5.items-center.min-w-0>
+                                    <span .flex.items-center.justify-center.shrink-0.text-[color:var(--shell-navigation-foreground)].w-4>
+                                      <svg .flex-shrink-0.h-[18px].w-[18px] viewBox="0 0 256 256" />
+                                    <span .flex-1.min-w-0>
+                                      <span .block.desktop-shell-sidebar-row-title.flex-1.leading-4.min-w-0.truncate>
+                                        <span .settings-nav-item-label>
+                                          "工具与扩展"
+                                    <span .flex.gap-0.5.items-center.justify-end.min-w-[24px].shrink-0 />
+                              <li>
+                                <button .!justify-start.!px-2.5.!py-1.5.!w-full.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.active:bg-[color:var(--sidebar-quiet-active)].appearance-none.bg-transparent.border-transparent.desktop-shell-nav-row.desktop-shell-sidebar-row.disabled:opacity-50.disabled:pointer-events-none.flex.focus-visible:ring-2.focus-visible:ring-ring.font-normal.gap-2.gap-2.5.hover:bg-[color:var(--sidebar-quiet-hover)].hover:text-[color:var(--shell-navigation-foreground)].inline-flex.items-center.justify-start.leading-none.lg:min-h-9.min-h-[2.75rem].min-w-0.outline-none.overflow-hidden.px-2.5.py-1.5.rounded-2xl.select-none.shrink-0.text-[color:var(--shell-navigation-muted)].text-left.text-sm.text-ui.ui-press-coarse.w-full.whitespace-nowrap aria-label="工作流与文档" data-workbench-sidebar-row="nav" type="button">
+                                  <span .flex.flex-1.gap-2.5.items-center.min-w-0>
+                                    <span .flex.items-center.justify-center.shrink-0.text-[color:var(--shell-navigation-foreground)].w-4>
+                                      <svg .flex-shrink-0.h-[18px].w-[18px] viewBox="0 0 256 256" />
+                                    <span .flex-1.min-w-0>
+                                      <span .block.desktop-shell-sidebar-row-title.flex-1.leading-4.min-w-0.truncate>
+                                        <span .settings-nav-item-label>
+                                          "工作流与文档"
+                                    <span .flex.gap-0.5.items-center.justify-end.min-w-[24px].shrink-0 />
+                              <li>
+                                <button .!justify-start.!px-2.5.!py-1.5.!w-full.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.active:bg-[color:var(--sidebar-quiet-active)].appearance-none.bg-transparent.border-transparent.desktop-shell-nav-row.desktop-shell-sidebar-row.disabled:opacity-50.disabled:pointer-events-none.flex.focus-visible:ring-2.focus-visible:ring-ring.font-normal.gap-2.gap-2.5.hover:bg-[color:var(--sidebar-quiet-hover)].hover:text-[color:var(--shell-navigation-foreground)].inline-flex.items-center.justify-start.leading-none.lg:min-h-9.min-h-[2.75rem].min-w-0.outline-none.overflow-hidden.px-2.5.py-1.5.rounded-2xl.select-none.shrink-0.text-[color:var(--shell-navigation-muted)].text-left.text-sm.text-ui.ui-press-coarse.w-full.whitespace-nowrap aria-label="数据与系统" data-workbench-sidebar-row="nav" type="button">
+                                  <span .flex.flex-1.gap-2.5.items-center.min-w-0>
+                                    <span .flex.items-center.justify-center.shrink-0.text-[color:var(--shell-navigation-foreground)].w-4>
+                                      <svg .flex-shrink-0.h-[18px].w-[18px] viewBox="0 0 256 256" />
+                                    <span .flex-1.min-w-0>
+                                      <span .block.desktop-shell-sidebar-row-title.flex-1.leading-4.min-w-0.truncate>
+                                        <span .settings-nav-item-label>
+                                          "数据与系统"
+                                    <span .flex.gap-0.5.items-center.justify-end.min-w-[24px].shrink-0 />
+                        <div .os-scrollbar.os-scrollbar-auto-hide-hidden.os-scrollbar-cornerless.os-scrollbar-handle-interactive.os-scrollbar-horizontal.os-scrollbar-unusable.os-theme-deep-student>
+                          <div .os-scrollbar-track>
+                            <div .os-scrollbar-handle />
+                        <div .os-scrollbar.os-scrollbar-auto-hide-hidden.os-scrollbar-cornerless.os-scrollbar-handle-interactive.os-scrollbar-unusable.os-scrollbar-vertical.os-theme-deep-student>
+                          <div .os-scrollbar-track>
+                            <div .os-scrollbar-handle />
+                      <div .border-[color:var(--shell-navigation-border)].border-t.px-2.py-3.shrink-0 data-settings-about-footer="true">
+                        <button .!justify-start.!px-2.5.!w-full.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="关于" type="button">
+                          <svg .h-[18px].shrink-0.w-[18px] aria-hidden="true" viewBox="0 0 256 256" />
+                          <span>
+                            "关于"
+                          <span .ml-auto.tabular-nums.text-xs>
+                            "v"
+                            "0.0.0-visual"
+                  <div .os-scrollbar.os-scrollbar-auto-hide-hidden.os-scrollbar-cornerless.os-scrollbar-handle-interactive.os-scrollbar-horizontal.os-scrollbar-unusable.os-theme-deep-student>
+                    <div .os-scrollbar-track>
+                      <div .os-scrollbar-handle />
+                  <div .os-scrollbar.os-scrollbar-auto-hide-hidden.os-scrollbar-cornerless.os-scrollbar-handle-interactive.os-scrollbar-unusable.os-scrollbar-vertical.os-theme-deep-student>
+                    <div .os-scrollbar-track>
+                      <div .os-scrollbar-handle />
+      <div .notification-container aria-label="通知" role="region" />
+  <div id="@10" />

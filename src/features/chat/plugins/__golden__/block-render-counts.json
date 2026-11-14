@@ -1,0 +1,47 @@
+{
+ "mount": {
+  "probe": 1,
+  "mcp": 2,
+  "plain": 1
+ },
+ "update-unrelated-block": {
+  "probe": 1,
+  "mcp": 2,
+  "plain": 1
+ },
+ "update-probe-block": {
+  "probe": 2,
+  "mcp": 2,
+  "plain": 1
+ },
+ "update-mcp-block": {
+  "probe": 2,
+  "mcp": 4,
+  "plain": 1
+ },
+ "probe-stops-streaming": {
+  "probe": 3,
+  "mcp": 4,
+  "plain": 1
+ },
+ "register-unrelated-type": {
+  "probe": 3,
+  "mcp": 4,
+  "plain": 1
+ },
+ "unregister-unrelated-type": {
+  "probe": 3,
+  "mcp": 4,
+  "plain": 1
+ },
+ "parent-rerender-same-props": {
+  "probe": 3,
+  "mcp": 5,
+  "plain": 1
+ },
+ "plain-block-new-reference": {
+  "probe": 3,
+  "mcp": 6,
+  "plain": 2
+ }
+}

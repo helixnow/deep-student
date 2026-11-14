@@ -1,0 +1,33 @@
+{
+  "id": "RF-W19-crepe-drag-block-handle-retry-leak",
+  "kind": "rust-bug",
+  "status": "proposed",
+  "title": "Crepe 拖放调试面板关闭后不再每秒重找 block handle，重试后挂上的调试监听器随面板一起移除",
+  "rust": {
+    "file": "src/debug-panel/plugins/CrepeDragDropDebugPlugin.tsx",
+    "line": 450,
+    "behavior": "Rust 快照 21c9d808 的 CrepeDragDropDebugPlugin.tsx：激活时找不到 .milkdown-block-handle 就 setTimeout(setupBlockHandleDebug, 1000) 重试（450），effect 只保存第一次调用返回的清理函数（455）。第一次重试一旦触发，之后每次重试的定时器和找到 block handle 后挂上的 mousedown/dragstart 调试监听器都没人清理：面板停用、调试总开关关闭或面板卸载后，没打开编辑器时控制台每秒一条“Block handle not found, retrying in 1s...”，打开编辑器后每次按下/拖动 block handle 都继续打印“(direct)”日志，直到刷新页面"
+  },
+  "fix": {
+    "files": ["src/debug-panel/plugins/CrepeDragDropDebugPlugin.tsx"],
+    "behavior": "effect 记住最近一次尝试的清理函数（重试回调把新返回的清理函数写回），停用/卸载时清掉当时挂着的那个定时器或那组监听器；面板激活期间的重试节奏与日志不变"
+  },
+  "evidence": "与调试宿主自身的承诺矛盾：DebugPanelHost 总开关关闭时“不渲染任何面板，不会后台监听/刷日志”，而这个面板卸载后仍在后台计时并刷控制台。复现（src/debug-panel/__tests__/crepeDragDropBlockHandle.test.tsx，修复前 3 条失败）：没有编辑器时激活面板 2.5 s 后停用，再过 10 s 重试日志从 3 条涨到 13 条；卸载后同样从 2 条涨到 12 条；激活后 0.5 s 再出现 block handle，停用后在 handle 上按下/拖动仍各打印一条 (direct) 日志。",
+  "userVisible": "只在开发构建可见：调试面板只在 import.meta.env.DEV 下装配。关闭拖放调试面板（或调试总开关）后，开发者控制台不再每秒出现重试日志，也不再打印 block handle 的 (direct) 日志；面板打开期间的表现不变。",
+  "dataCompat": "只改开发构建里调试面板的监听生命周期；不改 IPC 载荷、落库数据、同步载荷与备份格式。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "src/debug-panel/__tests__/crepeDragDropBlockHandle.test.tsx",
+      "name": "RF-W19-crepe-drag-block-handle-retry-leak: stops looking for the block handle once deactivated"
+    },
+    {
+      "file": "src/debug-panel/__tests__/crepeDragDropBlockHandle.test.tsx",
+      "name": "RF-W19-crepe-drag-block-handle-retry-leak: stops looking for the block handle once closed"
+    },
+    {
+      "file": "src/debug-panel/__tests__/crepeDragDropBlockHandle.test.tsx",
+      "name": "RF-W19-crepe-drag-block-handle-retry-leak: removes the block handle loggers attached by a later retry"
+    }
+  ]
+}

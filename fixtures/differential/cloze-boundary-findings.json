@@ -1,0 +1,32 @@
+{
+  "kind": "static-source-vs-ts-production-not-C",
+  "rustBaseline": "2ee9a9cbeb2bff3d31748afdc3d951c166228f74",
+  "tsRevision": "fe0ec5137fed580524c2d2bb7ccc258789bc48a7",
+  "tsJob": "20261104140407-948382",
+  "vectors": "fixtures/differential/boundary-vectors.json",
+  "scope": "production validateSpec/buildCardFields helpers; no IPC bypass asserted; no Rust execution",
+  "findings": [
+    {
+      "id": "X7-L16-OCCLUSION-IMAGE-TRIM",
+      "lane": "L16-anki",
+      "vectorId": "boundary:cloze:1",
+      "rust": "src-tauri/crates/dstu-anki/src/anki_image_occlusion.rs:219-223",
+      "ts": "host/plugins/anki/src/image-occlusion.ts:41,67",
+      "inputDetail": "imageRef is U+0085, with one otherwise valid box",
+      "expected": { "ok": false, "issueCode": "empty_image_ref" },
+      "actual": { "ok": true, "imageRef": "\u0085" },
+      "reason": "Rust str::trim removes U+0085; JavaScript String.trim does not"
+    },
+    {
+      "id": "X7-L16-OCCLUSION-LABEL-TRIM",
+      "lane": "L16-anki",
+      "vectorId": "boundary:cloze:18",
+      "rust": "src-tauri/crates/dstu-anki/src/anki_image_occlusion.rs:332-336,439-465",
+      "ts": "host/plugins/anki/src/image-occlusion.ts:69-70,109-110",
+      "inputDetail": "label is U+0085, with a valid imageRef and one valid box",
+      "expected": { "text": "{{c1::区域 1}}" },
+      "actual": { "text": "{{c1::\u0085}}" },
+      "reason": "Rust fills the whitespace-only label with 区域 1; JavaScript trim retains U+0085"
+    }
+  ]
+}

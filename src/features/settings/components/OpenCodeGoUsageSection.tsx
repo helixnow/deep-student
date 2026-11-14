@@ -1,12 +1,13 @@
 /**
  * OpenCodeGoUsageSection - OpenCode Go 订阅用量（5 小时 / 周 / 月窗口）
  * 仅对 OpenCode Go 供应商渲染（调用方用 isOpenCodeGoVendor 判断）。
- * 连接区展开时自动查询一次；后续仅手动刷新。另外常驻说明「仅用于 Agent 对话」。
+ * 连接区展开时和回到应用时自动查询。另外常驻说明「仅用于 Agent 对话」。
  */
 
+import { useRefreshOnReturn } from '@/hooks/useRefreshOnReturn';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ArrowClockwise, Info, MagicWand, Spinner, WarningCircle } from '@phosphor-icons/react';
+import { Info, MagicWand, Spinner, WarningCircle } from '@phosphor-icons/react';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import type { VendorConfig } from '@/types';
 import { DsButton } from '@/components/ui/DsButton';
@@ -86,6 +87,8 @@ export const OpenCodeGoUsageSection: React.FC<OpenCodeGoUsageSectionProps> = ({
     void query();
   }, [active, query, state.status]);
 
+  useRefreshOnReturn(query, active && state.status !== 'loading');
+
   const assign = useCallback(async () => {
     setAssigning(true);
     try {
@@ -150,18 +153,6 @@ export const OpenCodeGoUsageSection: React.FC<OpenCodeGoUsageSectionProps> = ({
               <span className="truncate">{state.detail || t('settings:vendor_panel.opencode_go.usage_failed')}</span>
             </span>
           )}
-          <DsButton
-            size="sm"
-            variant="ghost"
-            iconOnly
-            className="h-5 w-5 shrink-0"
-            onClick={() => void query()}
-            disabled={state.status === 'loading'}
-            title={t('settings:vendor_panel.opencode_go.usage_refresh')}
-            aria-label={t('settings:vendor_panel.opencode_go.usage_refresh')}
-          >
-            <ArrowClockwise className={state.status === 'loading' ? 'h-3 w-3 animate-spin' : 'h-3 w-3'} />
-          </DsButton>
         </div>
       )}
     </div>

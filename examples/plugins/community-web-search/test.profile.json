@@ -1,0 +1,4 @@
+{
+  "$comment": "测试用：只加载本插件，不给 config（取 Config 的默认值）。",
+  "plugins": [{ "id": "example.web-search", "module": "./index.ts" }]
+}

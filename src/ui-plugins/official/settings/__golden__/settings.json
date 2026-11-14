@@ -1,0 +1,3164 @@
+{
+  "tabs": [
+    "apis",
+    "search",
+    "models",
+    "plugins",
+    "mcp",
+    "statistics",
+    "automation",
+    "data-governance",
+    "general",
+    "appearance",
+    "params",
+    "voice-input",
+    "memory",
+    "workbench",
+    "document-processing",
+    "shortcuts",
+    "about"
+  ],
+  "lazy": [
+    {
+      "name": "ApisTab",
+      "module": "src/features/settings/components/ApisTab",
+      "export": "ApisTab"
+    },
+    {
+      "name": "ExternalSearchTab",
+      "module": "src/features/settings/components/ExternalSearchTab",
+      "export": "ExternalSearchTab"
+    },
+    {
+      "name": "ModelsTab",
+      "module": "src/features/settings/components/ModelsTab",
+      "export": "ModelsTab"
+    },
+    {
+      "name": "PluginsTab",
+      "module": "src/features/settings/components/plugins/PluginsTab",
+      "export": "PluginsTab"
+    },
+    {
+      "name": "McpToolsSection",
+      "module": "src/features/settings/components/McpToolsSection",
+      "export": "McpToolsSection"
+    },
+    {
+      "name": "AutomationSettingsSection",
+      "module": "src/features/settings/components/AutomationSettingsSection",
+      "export": "AutomationSettingsSection"
+    },
+    {
+      "name": "SuperAgentSettingsSection",
+      "module": "src/features/settings/components/SuperAgentSettingsSection",
+      "export": "SuperAgentSettingsSection"
+    },
+    {
+      "name": "SubagentProfilesSection",
+      "module": "src/features/settings/components/SubagentProfilesSection",
+      "export": "SubagentProfilesSection"
+    },
+    {
+      "name": "DataGovernanceDashboard",
+      "module": "src/features/settings/components/DataGovernanceDashboard",
+      "export": "DataGovernanceDashboard"
+    },
+    {
+      "name": "GeneralTab",
+      "module": "src/features/settings/components/GeneralTab",
+      "export": "GeneralTab"
+    },
+    {
+      "name": "AppearanceTab",
+      "module": "src/features/settings/components/AppearanceTab",
+      "export": "AppearanceTab"
+    },
+    {
+      "name": "ParamsTab",
+      "module": "src/features/settings/components/ParamsTab",
+      "export": "ParamsTab"
+    },
+    {
+      "name": "ShortcutSettings",
+      "module": "src/command-palette/components/ShortcutSettings",
+      "export": "ShortcutSettings"
+    },
+    {
+      "name": "DataImportExport",
+      "module": "src/components/DataImportExport",
+      "export": "DataImportExport"
+    },
+    {
+      "name": "AboutTab",
+      "module": "src/features/settings/components/AboutTab",
+      "export": "AboutTab"
+    },
+    {
+      "name": "VoiceInputTab",
+      "module": "src/features/settings/components/VoiceInputTab",
+      "export": "VoiceInputTab"
+    },
+    {
+      "name": "WorkbenchTab",
+      "module": "src/features/settings/components/WorkbenchTab",
+      "export": "WorkbenchTab"
+    },
+    {
+      "name": "MemoryTab",
+      "module": "src/features/settings/components/MemoryTab",
+      "export": "MemoryTab"
+    },
+    {
+      "name": "DocumentProcessingTab",
+      "module": "src/features/settings/components/DocumentProcessingTab",
+      "export": "DocumentProcessingTab"
+    }
+  ],
+  "content": [
+    {
+      "tab": "apis",
+      "condition": "activeTab === 'apis'",
+      "jsx": "<ApisTab\n            vendors={vendors}\n            sortedVendors={sortedVendors}\n            selectedVendor={selectedVendor}\n            selectedVendorId={selectedVendorId}\n            setSelectedVendorId={setSelectedVendorId}\n            selectedVendorModels={selectedVendorModels}\n            selectedVendorIsSiliconflow={selectedVendorIsSiliconflow}\n            openAICodexAuthenticated={openAICodexAuthenticated}\n            profileCountByVendor={profileCountByVendor}\n            vendorBusy={vendorBusy}\n            vendorSaving={vendorSaving}\n            isEditingVendor={isEditingVendor}\n            vendorFormData={vendorFormData}\n            setVendorFormData={setVendorFormData}\n            testingApi={testingApi}\n            handleOpenVendorModal={handleOpenVendorModal}\n            handleStartEditVendor={handleStartEditVendor}\n            handleCancelEditVendor={handleCancelEditVendor}\n            handleSaveEditVendor={handleSaveEditVendor}\n            handleDeleteVendor={handleDeleteVendor}\n            handleSaveVendorBaseUrl={handleSaveVendorBaseUrl}\n            handleSaveVendorApiKey={handleSaveVendorApiKey}\n            handleClearVendorApiKey={handleClearVendorApiKey}\n            handleOpenModelEditor={handleOpenModelEditor}\n            inlineEditState={inlineEditState}\n            setInlineEditState={setInlineEditState}\n            handleSaveInlineEdit={handleSaveInlineEdit}\n            isAddingNewModel={isAddingNewModel}\n            handleAddModelInline={handleAddModelInline}\n            handleCancelAddModel={() => { setInlineEditState(null); setIsAddingNewModel(false); }}\n            convertProfileToApiConfig={(profile, vendor) => convertProfileToApiConfig(profile, vendor)}\n            handleToggleModelProfile={handleToggleModelProfile}\n            handleDeleteModelProfile={handleDeleteModelProfile}\n            handleToggleFavorite={handleToggleFavorite}\n            testApiConnection={testApiConnection}\n            handleSiliconFlowConfig={handleSiliconFlowConfig}\n            handleBatchCreateConfigs={handleBatchCreateConfigs}\n            handleBatchConfigsCreated={handleBatchConfigsCreated}\n            onReorderVendors={handleReorderVendors}\n            onAddVendorModels={handleAddVendorModels}\n            triggerPostSaveAutoFlow={triggerPostSaveAutoFlow}\n            isSmallScreen={effectiveMobilePanelMode}\n            mobileVendorDetailOpen={mobileVendorDetailOpen}\n            onMobileVendorDetailOpenChange={setMobileVendorDetailOpen}\n            scrollElement={settingsScrollElement}\n          />"
+    },
+    {
+      "tab": "search",
+      "condition": "activeTab === 'search'",
+      "jsx": "<ExternalSearchTab config={config} setConfig={setConfig} />"
+    },
+    {
+      "tab": "models",
+      "condition": "activeTab === 'models'",
+      "jsx": "<ModelsTab\n            config={config}\n            setConfig={setConfig}\n            apiConfigs={config.apiConfigs}\n            toUnifiedModelInfo={toUnifiedModelInfo}\n            getAllEnabledApis={getAllEnabledApis}\n            getEmbeddingApis={getEmbeddingApis}\n            getRerankerApis={getRerankerApis}\n            getAsrApis={getAsrApis}\n            getImageGenerationApis={getImageGenerationApis}\n            saveSingleAssignmentField={saveSingleAssignmentField}\n          />"
+    },
+    {
+      "tab": "plugins",
+      "condition": "activeTab === 'plugins' && !isMobilePlatform()",
+      "jsx": "<PluginsTab models={toUnifiedModelInfo(getAllEnabledApis())} />"
+    },
+    {
+      "tab": "plugins",
+      "condition": "activeTab === 'plugins' && isMobilePlatform()",
+      "jsx": "<div className=\"py-10 text-sm text-muted-foreground\">{t('settings:plugins.mobile_hidden')}</div>"
+    },
+    {
+      "tab": "mcp",
+      "condition": "activeTab === 'mcp'",
+      "jsx": "<McpToolsSection\n            servers={mcpServers}\n            serverStatusMap={serverStatusMap}\n            toolsByServer={{\n              // 为内置服务器添加工具列表\n              [BUILTIN_SERVER_ID]: {\n                items: getBuiltinServer().tools.map(t => ({ name: t.name, description: t.description })),\n                at: Date.now()\n              },\n              ...mcpCachedDetails.toolsByServer\n            }}\n            prompts={mcpCachedDetails.prompts}\n            resources={mcpCachedDetails.resources}\n            lastCacheUpdatedAt={lastCacheUpdatedAt}\n            cacheCapacity={cacheCapacity}\n            isLoading={isMcpLoading}\n            lastError={lastError}\n            onAddServer={handleAddMcpTool}\n            onSaveServer={handleSaveMcpServer}\n            onDeleteServer={handleDeleteMcpTool}\n            onTestServer={handleTestServer}\n            testStep={mcpTestStep}\n            onReconnect={handleReconnectClient}\n            onRefreshRegistry={handleRefreshRegistry}\n            onHealthCheck={handleRunHealthCheck}\n            onClearCache={handleClearCaches}\n            onOpenPolicy={handleOpenMcpPolicy}\n            onCreateServer={handleCreateMcpTool}\n            onEditServer={isSmallScreen ? (server) => handleEditMcpTool(server as McpToolConfig, mcpServers.findIndex((s) => s.id === server.id)) : undefined}\n            scrollElement={settingsScrollElement}\n          />"
+    },
+    {
+      "tab": "statistics",
+      "condition": "activeTab === 'statistics'",
+      "jsx": "<DataImportExport embedded={true} mode=\"stats\" />"
+    },
+    {
+      "tab": "automation",
+      "condition": "activeTab === 'automation'",
+      "jsx": "<div className=\"space-y-6\">\n            <AutomationSettingsSection\n              invoke={invoke}\n              listen={isTauri ? tauriListen as unknown as AutomationListen : null}\n            />\n            <SubagentProfilesSection />\n            <SuperAgentSettingsSection />\n          </div>"
+    },
+    {
+      "tab": "data-governance",
+      "condition": "activeTab === 'data-governance'",
+      "jsx": "<div className=\"space-y-6\">\n            <DataGovernanceDashboard tabTarget={dataGovernanceTabTarget} />\n          </div>"
+    },
+    {
+      "tab": "general",
+      "condition": "activeTab === 'general'",
+      "jsx": "<GeneralTab\n            topbarTopMargin={topbarTopMargin}\n            topbarTopMarginLoaded={topbarTopMarginLoaded}\n            setTopbarTopMargin={setTopbarTopMargin}\n            logTypeForOpen={logTypeForOpen}\n            setLogTypeForOpen={setLogTypeForOpen}\n            showRawRequest={showRawRequest ?? false}\n            showRawRequestLoaded={showRawRequest !== null}\n            setShowRawRequest={setShowRawRequest}\n            invoke={invoke}\n          />"
+    },
+    {
+      "tab": "appearance",
+      "condition": "activeTab === 'appearance'",
+      "jsx": "<AppearanceTab\n            uiZoom={uiZoom}\n            zoomLoading={zoomLoading}\n            zoomSaving={zoomSaving}\n            zoomStatus={zoomStatus}\n            handleZoomChange={handleZoomChange}\n            handleZoomReset={handleZoomReset}\n            uiFont={uiFont}\n            fontLoading={fontLoading}\n            fontSaving={fontSaving}\n            handleFontChange={handleFontChange}\n            handleFontReset={handleFontReset}\n            uiFontSize={uiFontSize}\n            fontSizeLoading={fontSizeLoading}\n            fontSizeSaving={fontSizeSaving}\n            handleFontSizeChange={handleFontSizeChange}\n            handleFontSizeReset={handleFontSizeReset}\n            themeMode={themeMode}\n            isSystemDark={isSystemDark}\n            setThemeMode={setThemeMode}\n            themePalette={themePalette}\n            setThemePalette={setThemePalette}\n            customColor={customColor}\n            setCustomColor={setCustomColor}\n            isTauriEnvironment={isTauriEnvironment}\n            invoke={invoke}\n          />"
+    },
+    {
+      "tab": "params",
+      "condition": "activeTab === 'params'",
+      "jsx": "<ParamsTab\n            extra={extra}\n            setExtra={setExtra}\n            invoke={invoke}\n            handleSaveChatStreamTimeout={handleSaveChatStreamTimeout}\n            handleToggleChatStreamAutoCancel={handleToggleChatStreamAutoCancel}\n          />"
+    },
+    {
+      "tab": "voice-input",
+      "condition": "activeTab === 'voice-input'",
+      "jsx": "<VoiceInputTab voiceInputAssignedModel={voiceInputAssignedModel} />"
+    },
+    {
+      "tab": "memory",
+      "condition": "activeTab === 'memory'",
+      "jsx": "<MemoryTab />"
+    },
+    {
+      "tab": "workbench",
+      "condition": "activeTab === 'workbench' && !isMobilePlatform()",
+      "jsx": "<WorkbenchTab />"
+    },
+    {
+      "tab": "document-processing",
+      "condition": "activeTab === 'document-processing'",
+      "jsx": "<DocumentProcessingTab />"
+    },
+    {
+      "tab": "shortcuts",
+      "condition": "activeTab === 'shortcuts'",
+      "jsx": "<ShortcutSettings className=\"min-h-[500px]\" scrollElement={settingsScrollElement} />"
+    },
+    {
+      "tab": "about",
+      "condition": "activeTab === 'about'",
+      "jsx": "<AboutTab />"
+    }
+  ],
+  "navigation": {
+    "desktop": {
+      "sidebarNavGroups": [
+        [
+          {
+            "value": "apis",
+            "icon": "Robot",
+            "label": "settings:tabs.api_config",
+            "tourId": "settings-tab-apis",
+            "mobileDescription": "settings:mobile_descriptions.apis",
+            "mobileAccent": "var(--settings-nav-accent-amber)"
+          },
+          {
+            "value": "models",
+            "icon": "Flask",
+            "label": "settings:tabs.model_assignment",
+            "tourId": "settings-tab-models",
+            "mobileDescription": "settings:mobile_descriptions.models",
+            "mobileAccent": "var(--settings-nav-accent-blue)"
+          }
+        ],
+        [
+          {
+            "value": "general",
+            "icon": "SlidersHorizontal",
+            "label": "settings:tabs.general",
+            "mobileDescription": "settings:mobile_descriptions.general",
+            "mobileAccent": "var(--settings-nav-accent-slate)"
+          },
+          {
+            "value": "voice-input",
+            "icon": "Microphone",
+            "label": "settings:tabs.voice_input",
+            "mobileDescription": "settings:mobile_descriptions.voice_input",
+            "mobileAccent": "var(--settings-nav-accent-coral)"
+          },
+          {
+            "value": "memory",
+            "icon": "Brain",
+            "label": "settings:tabs.memory",
+            "mobileDescription": "settings:mobile_descriptions.memory",
+            "mobileAccent": "var(--settings-nav-accent-teal)"
+          },
+          {
+            "value": "workbench",
+            "icon": "SquaresFour",
+            "label": "settings:tabs.workbench",
+            "mobileDescription": "settings:mobile_descriptions.workbench",
+            "mobileAccent": "var(--settings-nav-accent-indigo)"
+          },
+          {
+            "value": "appearance",
+            "icon": "Palette",
+            "label": "settings:tabs.appearance",
+            "mobileDescription": "settings:mobile_descriptions.appearance",
+            "mobileAccent": "var(--settings-nav-accent-purple)"
+          },
+          {
+            "value": "automation",
+            "icon": "ClockCountdown",
+            "label": "settings:tabs.automation",
+            "mobileDescription": "settings:mobile_descriptions.automation",
+            "mobileAccent": "var(--settings-nav-accent-orange)"
+          }
+        ],
+        [
+          {
+            "value": "mcp",
+            "icon": "Plug",
+            "label": "settings:tabs.mcp_tools",
+            "mobileDescription": "settings:mobile_descriptions.mcp",
+            "mobileAccent": "var(--settings-nav-accent-green)"
+          },
+          {
+            "value": "search",
+            "icon": "Globe",
+            "label": "settings:tabs.external_search",
+            "mobileDescription": "settings:mobile_descriptions.search",
+            "mobileAccent": "var(--settings-nav-accent-sky)"
+          },
+          {
+            "value": "plugins",
+            "icon": "PuzzlePiece",
+            "label": "settings:tabs.plugins",
+            "mobileDescription": "settings:mobile_descriptions.plugins",
+            "mobileAccent": "var(--settings-nav-accent-purple)"
+          }
+        ],
+        [
+          {
+            "value": "statistics",
+            "icon": "ChartBar",
+            "label": "settings:tabs.statistics",
+            "mobileDescription": "settings:mobile_descriptions.statistics",
+            "mobileAccent": "var(--settings-nav-accent-sky)"
+          },
+          {
+            "value": "data-governance",
+            "icon": "Shield",
+            "label": "settings:tabs.data_governance",
+            "mobileDescription": "settings:mobile_descriptions.data_governance",
+            "mobileAccent": "var(--settings-nav-accent-sky)"
+          }
+        ],
+        [
+          {
+            "value": "params",
+            "icon": "Wrench",
+            "label": "settings:tabs.params",
+            "mobileDescription": "settings:mobile_descriptions.params",
+            "mobileAccent": "var(--settings-nav-accent-amber)"
+          },
+          {
+            "value": "document-processing",
+            "icon": "FileText",
+            "label": "settings:tabs.document_processing",
+            "mobileDescription": "settings:mobile_descriptions.document_processing",
+            "mobileAccent": "var(--settings-nav-accent-violet)"
+          },
+          {
+            "value": "shortcuts",
+            "icon": "Keyboard",
+            "label": "settings:tabs.shortcuts",
+            "mobileDescription": "settings:mobile_descriptions.shortcuts",
+            "mobileAccent": "var(--settings-nav-accent-slate)"
+          },
+          {
+            "value": "about",
+            "icon": "BookOpen",
+            "label": "settings:tabs.about",
+            "mobileDescription": "settings:mobile_descriptions.about",
+            "mobileAccent": "var(--settings-nav-accent-pink)"
+          }
+        ]
+      ],
+      "sidebarNavItems": [
+        {
+          "value": "apis",
+          "icon": "Robot",
+          "label": "settings:tabs.api_config",
+          "tourId": "settings-tab-apis",
+          "mobileDescription": "settings:mobile_descriptions.apis",
+          "mobileAccent": "var(--settings-nav-accent-amber)"
+        },
+        {
+          "value": "models",
+          "icon": "Flask",
+          "label": "settings:tabs.model_assignment",
+          "tourId": "settings-tab-models",
+          "mobileDescription": "settings:mobile_descriptions.models",
+          "mobileAccent": "var(--settings-nav-accent-blue)"
+        },
+        {
+          "value": "general",
+          "icon": "SlidersHorizontal",
+          "label": "settings:tabs.general",
+          "mobileDescription": "settings:mobile_descriptions.general",
+          "mobileAccent": "var(--settings-nav-accent-slate)"
+        },
+        {
+          "value": "voice-input",
+          "icon": "Microphone",
+          "label": "settings:tabs.voice_input",
+          "mobileDescription": "settings:mobile_descriptions.voice_input",
+          "mobileAccent": "var(--settings-nav-accent-coral)"
+        },
+        {
+          "value": "memory",
+          "icon": "Brain",
+          "label": "settings:tabs.memory",
+          "mobileDescription": "settings:mobile_descriptions.memory",
+          "mobileAccent": "var(--settings-nav-accent-teal)"
+        },
+        {
+          "value": "workbench",
+          "icon": "SquaresFour",
+          "label": "settings:tabs.workbench",
+          "mobileDescription": "settings:mobile_descriptions.workbench",
+          "mobileAccent": "var(--settings-nav-accent-indigo)"
+        },
+        {
+          "value": "appearance",
+          "icon": "Palette",
+          "label": "settings:tabs.appearance",
+          "mobileDescription": "settings:mobile_descriptions.appearance",
+          "mobileAccent": "var(--settings-nav-accent-purple)"
+        },
+        {
+          "value": "automation",
+          "icon": "ClockCountdown",
+          "label": "settings:tabs.automation",
+          "mobileDescription": "settings:mobile_descriptions.automation",
+          "mobileAccent": "var(--settings-nav-accent-orange)"
+        },
+        {
+          "value": "mcp",
+          "icon": "Plug",
+          "label": "settings:tabs.mcp_tools",
+          "mobileDescription": "settings:mobile_descriptions.mcp",
+          "mobileAccent": "var(--settings-nav-accent-green)"
+        },
+        {
+          "value": "search",
+          "icon": "Globe",
+          "label": "settings:tabs.external_search",
+          "mobileDescription": "settings:mobile_descriptions.search",
+          "mobileAccent": "var(--settings-nav-accent-sky)"
+        },
+        {
+          "value": "plugins",
+          "icon": "PuzzlePiece",
+          "label": "settings:tabs.plugins",
+          "mobileDescription": "settings:mobile_descriptions.plugins",
+          "mobileAccent": "var(--settings-nav-accent-purple)"
+        },
+        {
+          "value": "statistics",
+          "icon": "ChartBar",
+          "label": "settings:tabs.statistics",
+          "mobileDescription": "settings:mobile_descriptions.statistics",
+          "mobileAccent": "var(--settings-nav-accent-sky)"
+        },
+        {
+          "value": "data-governance",
+          "icon": "Shield",
+          "label": "settings:tabs.data_governance",
+          "mobileDescription": "settings:mobile_descriptions.data_governance",
+          "mobileAccent": "var(--settings-nav-accent-sky)"
+        },
+        {
+          "value": "params",
+          "icon": "Wrench",
+          "label": "settings:tabs.params",
+          "mobileDescription": "settings:mobile_descriptions.params",
+          "mobileAccent": "var(--settings-nav-accent-amber)"
+        },
+        {
+          "value": "document-processing",
+          "icon": "FileText",
+          "label": "settings:tabs.document_processing",
+          "mobileDescription": "settings:mobile_descriptions.document_processing",
+          "mobileAccent": "var(--settings-nav-accent-violet)"
+        },
+        {
+          "value": "shortcuts",
+          "icon": "Keyboard",
+          "label": "settings:tabs.shortcuts",
+          "mobileDescription": "settings:mobile_descriptions.shortcuts",
+          "mobileAccent": "var(--settings-nav-accent-slate)"
+        },
+        {
+          "value": "about",
+          "icon": "BookOpen",
+          "label": "settings:tabs.about",
+          "mobileDescription": "settings:mobile_descriptions.about",
+          "mobileAccent": "var(--settings-nav-accent-pink)"
+        }
+      ],
+      "sidebarCategories": [
+        {
+          "value": "ai",
+          "label": "settings:categories.ai",
+          "icon": "Robot",
+          "items": [
+            {
+              "value": "apis",
+              "icon": "Robot",
+              "label": "settings:tabs.api_config",
+              "tourId": "settings-tab-apis",
+              "mobileDescription": "settings:mobile_descriptions.apis",
+              "mobileAccent": "var(--settings-nav-accent-amber)"
+            },
+            {
+              "value": "models",
+              "icon": "Flask",
+              "label": "settings:tabs.model_assignment",
+              "tourId": "settings-tab-models",
+              "mobileDescription": "settings:mobile_descriptions.models",
+              "mobileAccent": "var(--settings-nav-accent-blue)"
+            },
+            {
+              "value": "params",
+              "icon": "Wrench",
+              "label": "settings:tabs.params",
+              "mobileDescription": "settings:mobile_descriptions.params",
+              "mobileAccent": "var(--settings-nav-accent-amber)"
+            }
+          ]
+        },
+        {
+          "value": "experience",
+          "label": "settings:categories.experience",
+          "icon": "SlidersHorizontal",
+          "items": [
+            {
+              "value": "general",
+              "icon": "SlidersHorizontal",
+              "label": "settings:tabs.general",
+              "mobileDescription": "settings:mobile_descriptions.general",
+              "mobileAccent": "var(--settings-nav-accent-slate)"
+            },
+            {
+              "value": "appearance",
+              "icon": "Palette",
+              "label": "settings:tabs.appearance",
+              "mobileDescription": "settings:mobile_descriptions.appearance",
+              "mobileAccent": "var(--settings-nav-accent-purple)"
+            },
+            {
+              "value": "workbench",
+              "icon": "SquaresFour",
+              "label": "settings:tabs.workbench",
+              "mobileDescription": "settings:mobile_descriptions.workbench",
+              "mobileAccent": "var(--settings-nav-accent-indigo)"
+            },
+            {
+              "value": "shortcuts",
+              "icon": "Keyboard",
+              "label": "settings:tabs.shortcuts",
+              "mobileDescription": "settings:mobile_descriptions.shortcuts",
+              "mobileAccent": "var(--settings-nav-accent-slate)"
+            }
+          ]
+        },
+        {
+          "value": "personalization",
+          "label": "settings:categories.personalization",
+          "icon": "Brain",
+          "items": [
+            {
+              "value": "voice-input",
+              "icon": "Microphone",
+              "label": "settings:tabs.voice_input",
+              "mobileDescription": "settings:mobile_descriptions.voice_input",
+              "mobileAccent": "var(--settings-nav-accent-coral)"
+            },
+            {
+              "value": "memory",
+              "icon": "Brain",
+              "label": "settings:tabs.memory",
+              "mobileDescription": "settings:mobile_descriptions.memory",
+              "mobileAccent": "var(--settings-nav-accent-teal)"
+            }
+          ]
+        },
+        {
+          "value": "integrations",
+          "label": "settings:categories.integrations",
+          "icon": "Plug",
+          "items": [
+            {
+              "value": "mcp",
+              "icon": "Plug",
+              "label": "settings:tabs.mcp_tools",
+              "mobileDescription": "settings:mobile_descriptions.mcp",
+              "mobileAccent": "var(--settings-nav-accent-green)"
+            },
+            {
+              "value": "search",
+              "icon": "Globe",
+              "label": "settings:tabs.external_search",
+              "mobileDescription": "settings:mobile_descriptions.search",
+              "mobileAccent": "var(--settings-nav-accent-sky)"
+            },
+            {
+              "value": "plugins",
+              "icon": "PuzzlePiece",
+              "label": "settings:tabs.plugins",
+              "mobileDescription": "settings:mobile_descriptions.plugins",
+              "mobileAccent": "var(--settings-nav-accent-purple)"
+            }
+          ]
+        },
+        {
+          "value": "workflow",
+          "label": "settings:categories.workflow",
+          "icon": "ClockCountdown",
+          "items": [
+            {
+              "value": "automation",
+              "icon": "ClockCountdown",
+              "label": "settings:tabs.automation",
+              "mobileDescription": "settings:mobile_descriptions.automation",
+              "mobileAccent": "var(--settings-nav-accent-orange)"
+            },
+            {
+              "value": "document-processing",
+              "icon": "FileText",
+              "label": "settings:tabs.document_processing",
+              "mobileDescription": "settings:mobile_descriptions.document_processing",
+              "mobileAccent": "var(--settings-nav-accent-violet)"
+            }
+          ]
+        },
+        {
+          "value": "data",
+          "label": "settings:categories.data",
+          "icon": "Shield",
+          "items": [
+            {
+              "value": "statistics",
+              "icon": "ChartBar",
+              "label": "settings:tabs.statistics",
+              "mobileDescription": "settings:mobile_descriptions.statistics",
+              "mobileAccent": "var(--settings-nav-accent-sky)"
+            },
+            {
+              "value": "data-governance",
+              "icon": "Shield",
+              "label": "settings:tabs.data_governance",
+              "mobileDescription": "settings:mobile_descriptions.data_governance",
+              "mobileAccent": "var(--settings-nav-accent-sky)"
+            }
+          ]
+        }
+      ],
+      "settingsSearchIndex": [
+        {"tab":"apis","label":"settings:tabs.api_config","keywords":["apis","settings:categories.ai"]},
+        {"tab":"models","label":"settings:tabs.model_assignment","keywords":["models","settings:categories.ai"]},
+        {"tab":"general","label":"settings:tabs.general","keywords":["general","settings:categories.experience"]},
+        {"tab":"voice-input","label":"settings:tabs.voice_input","keywords":["voice-input","settings:categories.personalization"]},
+        {"tab":"memory","label":"settings:tabs.memory","keywords":["memory","settings:categories.personalization"]},
+        {"tab":"workbench","label":"settings:tabs.workbench","keywords":["workbench","settings:categories.experience"]},
+        {"tab":"appearance","label":"settings:tabs.appearance","keywords":["appearance","settings:categories.experience"]},
+        {"tab":"automation","label":"settings:tabs.automation","keywords":["automation","settings:categories.workflow"]},
+        {"tab":"mcp","label":"settings:tabs.mcp_tools","keywords":["mcp","settings:categories.integrations"]},
+        {"tab":"search","label":"settings:tabs.external_search","keywords":["search","settings:categories.integrations"]},
+        {"tab":"plugins","label":"settings:tabs.plugins","keywords":["plugins","settings:categories.integrations","plugin","ilink","wechat","微信","clawbot","集成"]},
+        {"tab":"statistics","label":"settings:tabs.statistics","keywords":["statistics","settings:categories.data"]},
+        {"tab":"data-governance","label":"settings:tabs.data_governance","keywords":["data-governance","settings:categories.data"]},
+        {"tab":"params","label":"settings:tabs.params","keywords":["params","settings:categories.ai"]},
+        {"tab":"document-processing","label":"settings:tabs.document_processing","keywords":["document-processing","settings:categories.workflow"]},
+        {"tab":"shortcuts","label":"settings:tabs.shortcuts","keywords":["shortcuts","settings:categories.experience","keyboard","hotkey"]},
+        {"tab":"about","label":"settings:tabs.about","keywords":["about","","version","acknowledgements"]},
+        {"tab":"appearance","label":"settings:appearance.theme.title","keywords":["theme","dark","light","appearance"]},
+        {"tab":"appearance","label":"settings:appearance.font.title","keywords":["font","typeface"]},
+        {"tab":"appearance","label":"settings:appearance.font.size_label","keywords":["font size"]},
+        {"tab":"appearance","label":"settings:appearance.font.heading_label","keywords":["heading font"]},
+        {"tab":"appearance","label":"settings:appearance.font.body_label","keywords":["body font"]},
+        {"tab":"appearance","label":"settings:appearance.sidebar.title","keywords":["sidebar","navigation"]},
+        {"tab":"appearance","label":"settings:appearance.sidebar.position","keywords":["sidebar position"]},
+        {"tab":"general","label":"settings:language.title","keywords":["language"]},
+        {"tab":"general","label":"settings:system_authorization.title","keywords":["permission","authorization","notification","microphone","file access","权限","授权","通知","麦克风","文件访问"]},
+        {"tab":"voice-input","label":"settings:voice_input.title","keywords":["voice input","dictation","asr","microphone","speech to text","听写","语音输入"]},
+        {"tab":"automation","label":"settings:automation.title","keywords":["automation","schedule","reminder","agent","自动化","定时","调度"]},
+        {"tab":"automation","label":"settings:subagentProfiles.title","keywords":["subagent","profile","persona","agent","子代理","档案","智能体"]},
+        {"tab":"voice-input","label":"settings:voice_input.shortcut_title","keywords":["hotkey","shortcut","keyboard","press to talk","toggle dictation","快捷键"]},
+        {"tab":"voice-input","label":"settings:voice_input.dictionary_title","keywords":["dictionary","vocabulary","pronunciation hints","词典","短语"]},
+        {"tab":"voice-input","label":"settings:voice_input.history_title","keywords":["history","recent dictation","transcript recovery","历史记录","转写记录"]},
+        {"tab":"memory","label":"settings:memory.title","keywords":["memory","记忆","本地记忆"]},
+        {"tab":"workbench","label":"workbench:settings.sectionTitle","keywords":["workbench","工作台","工作区","workspace"]},
+        {"tab":"document-processing","label":"settings:pdf.title","keywords":["pdf","PDF"]},
+        {"tab":"document-processing","label":"settings:ocr.title","keywords":["ocr","OCR","文字识别"]},
+        {"tab":"apis","label":"settings:api.add_api_config","keywords":["API","add","config"]},
+        {"tab":"apis","label":"settings:api.modal.basic_info","keywords":["basic","API name","endpoint"]},
+        {"tab":"apis","label":"settings:api.modal.fields.api_key","keywords":["apikey","api key","key"]},
+        {"tab":"apis","label":"settings:api.modal.model_adapter","keywords":["adapter","openai","azure","gemini","claude"]},
+        {"tab":"models","label":"settings:api.model2_title","keywords":["chat model","conversation","reasoning"]},
+        {"tab":"models","label":"settings:api.embedding_title","keywords":["embedding","RAG","vector"]},
+        {"tab":"models","label":"settings:api.reranker_title","keywords":["reranker","RAG"]},
+        {"tab":"models","label":"settings:api.anki_card_title","keywords":["anki","card"]},
+        {"tab":"mcp","label":"settings:mcp.server","keywords":["mcp","server","tool"]},
+        {"tab":"mcp","label":"settings:mcp.add_server","keywords":["add server","mcp"]},
+        {"tab":"plugins","label":"settings:plugins.scan_qr","keywords":["qr","扫码","绑定"]},
+        {"tab":"search","label":"settings:search_engine.title","keywords":["search engine","google","bing","tavily","searxng","deepseek"]},
+        {"tab":"search","label":"SearXNG","keywords":["searxng","search"]},
+        {"tab":"search","label":"Tavily","keywords":["tavily","search","api"]},
+        {"tab":"search","label":"Exa","keywords":["exa","search"]},
+        {"tab":"statistics","label":"settings:statistics.learning_time","keywords":["learning time","statistics"]},
+        {"tab":"statistics","label":"settings:statistics.chat_stats","keywords":["chat stats","session"]},
+        {"tab":"statistics","label":"settings:statistics.heatmap","keywords":["heatmap","activity"]},
+        {"tab":"data-governance","label":"data:governance.title","keywords":["data governance","import","export"]},
+        {"tab":"data-governance","label":"data:governance.backup","keywords":["backup","export"]},
+        {"tab":"data-governance","label":"data:governance.restore","keywords":["restore","import"]},
+        {"tab":"params","label":"common:settings.chat_stream.card_title","keywords":["timeout","stream","超时","流式"]},
+        {"tab":"params","label":"settings:cards.search_settings_title","keywords":["fts","semantic","search","语义搜索"]}
+      ]
+    },
+    "mobile": {
+      "sidebarNavGroups": [
+        [
+          {
+            "value": "apis",
+            "icon": "Robot",
+            "label": "settings:tabs.api_config",
+            "tourId": "settings-tab-apis",
+            "mobileDescription": "settings:mobile_descriptions.apis",
+            "mobileAccent": "var(--settings-nav-accent-amber)"
+          },
+          {
+            "value": "models",
+            "icon": "Flask",
+            "label": "settings:tabs.model_assignment",
+            "tourId": "settings-tab-models",
+            "mobileDescription": "settings:mobile_descriptions.models",
+            "mobileAccent": "var(--settings-nav-accent-blue)"
+          }
+        ],
+        [
+          {
+            "value": "general",
+            "icon": "SlidersHorizontal",
+            "label": "settings:tabs.general",
+            "mobileDescription": "settings:mobile_descriptions.general",
+            "mobileAccent": "var(--settings-nav-accent-slate)"
+          },
+          {
+            "value": "voice-input",
+            "icon": "Microphone",
+            "label": "settings:tabs.voice_input",
+            "mobileDescription": "settings:mobile_descriptions.voice_input",
+            "mobileAccent": "var(--settings-nav-accent-coral)"
+          },
+          {
+            "value": "memory",
+            "icon": "Brain",
+            "label": "settings:tabs.memory",
+            "mobileDescription": "settings:mobile_descriptions.memory",
+            "mobileAccent": "var(--settings-nav-accent-teal)"
+          },
+          {
+            "value": "appearance",
+            "icon": "Palette",
+            "label": "settings:tabs.appearance",
+            "mobileDescription": "settings:mobile_descriptions.appearance",
+            "mobileAccent": "var(--settings-nav-accent-purple)"
+          },
+          {
+            "value": "automation",
+            "icon": "ClockCountdown",
+            "label": "settings:tabs.automation",
+            "mobileDescription": "settings:mobile_descriptions.automation",
+            "mobileAccent": "var(--settings-nav-accent-orange)"
+          }
+        ],
+        [
+          {
+            "value": "mcp",
+            "icon": "Plug",
+            "label": "settings:tabs.mcp_tools",
+            "mobileDescription": "settings:mobile_descriptions.mcp",
+            "mobileAccent": "var(--settings-nav-accent-green)"
+          },
+          {
+            "value": "search",
+            "icon": "Globe",
+            "label": "settings:tabs.external_search",
+            "mobileDescription": "settings:mobile_descriptions.search",
+            "mobileAccent": "var(--settings-nav-accent-sky)"
+          }
+        ],
+        [
+          {
+            "value": "statistics",
+            "icon": "ChartBar",
+            "label": "settings:tabs.statistics",
+            "mobileDescription": "settings:mobile_descriptions.statistics",
+            "mobileAccent": "var(--settings-nav-accent-sky)"
+          },
+          {
+            "value": "data-governance",
+            "icon": "Shield",
+            "label": "settings:tabs.data_governance",
+            "mobileDescription": "settings:mobile_descriptions.data_governance",
+            "mobileAccent": "var(--settings-nav-accent-sky)"
+          }
+        ],
+        [
+          {
+            "value": "params",
+            "icon": "Wrench",
+            "label": "settings:tabs.params",
+            "mobileDescription": "settings:mobile_descriptions.params",
+            "mobileAccent": "var(--settings-nav-accent-amber)"
+          },
+          {
+            "value": "document-processing",
+            "icon": "FileText",
+            "label": "settings:tabs.document_processing",
+            "mobileDescription": "settings:mobile_descriptions.document_processing",
+            "mobileAccent": "var(--settings-nav-accent-violet)"
+          },
+          {
+            "value": "about",
+            "icon": "BookOpen",
+            "label": "settings:tabs.about",
+            "mobileDescription": "settings:mobile_descriptions.about",
+            "mobileAccent": "var(--settings-nav-accent-pink)"
+          }
+        ]
+      ],
+      "sidebarNavItems": [
+        {
+          "value": "apis",
+          "icon": "Robot",
+          "label": "settings:tabs.api_config",
+          "tourId": "settings-tab-apis",
+          "mobileDescription": "settings:mobile_descriptions.apis",
+          "mobileAccent": "var(--settings-nav-accent-amber)"
+        },
+        {
+          "value": "models",
+          "icon": "Flask",
+          "label": "settings:tabs.model_assignment",
+          "tourId": "settings-tab-models",
+          "mobileDescription": "settings:mobile_descriptions.models",
+          "mobileAccent": "var(--settings-nav-accent-blue)"
+        },
+        {
+          "value": "general",
+          "icon": "SlidersHorizontal",
+          "label": "settings:tabs.general",
+          "mobileDescription": "settings:mobile_descriptions.general",
+          "mobileAccent": "var(--settings-nav-accent-slate)"
+        },
+        {
+          "value": "voice-input",
+          "icon": "Microphone",
+          "label": "settings:tabs.voice_input",
+          "mobileDescription": "settings:mobile_descriptions.voice_input",
+          "mobileAccent": "var(--settings-nav-accent-coral)"
+        },
+        {
+          "value": "memory",
+          "icon": "Brain",
+          "label": "settings:tabs.memory",
+          "mobileDescription": "settings:mobile_descriptions.memory",
+          "mobileAccent": "var(--settings-nav-accent-teal)"
+        },
+        {
+          "value": "appearance",
+          "icon": "Palette",
+          "label": "settings:tabs.appearance",
+          "mobileDescription": "settings:mobile_descriptions.appearance",
+          "mobileAccent": "var(--settings-nav-accent-purple)"
+        },
+        {
+          "value": "automation",
+          "icon": "ClockCountdown",
+          "label": "settings:tabs.automation",
+          "mobileDescription": "settings:mobile_descriptions.automation",
+          "mobileAccent": "var(--settings-nav-accent-orange)"
+        },
+        {
+          "value": "mcp",
+          "icon": "Plug",
+          "label": "settings:tabs.mcp_tools",
+          "mobileDescription": "settings:mobile_descriptions.mcp",
+          "mobileAccent": "var(--settings-nav-accent-green)"
+        },
+        {
+          "value": "search",
+          "icon": "Globe",
+          "label": "settings:tabs.external_search",
+          "mobileDescription": "settings:mobile_descriptions.search",
+          "mobileAccent": "var(--settings-nav-accent-sky)"
+        },
+        {
+          "value": "statistics",
+          "icon": "ChartBar",
+          "label": "settings:tabs.statistics",
+          "mobileDescription": "settings:mobile_descriptions.statistics",
+          "mobileAccent": "var(--settings-nav-accent-sky)"
+        },
+        {
+          "value": "data-governance",
+          "icon": "Shield",
+          "label": "settings:tabs.data_governance",
+          "mobileDescription": "settings:mobile_descriptions.data_governance",
+          "mobileAccent": "var(--settings-nav-accent-sky)"
+        },
+        {
+          "value": "params",
+          "icon": "Wrench",
+          "label": "settings:tabs.params",
+          "mobileDescription": "settings:mobile_descriptions.params",
+          "mobileAccent": "var(--settings-nav-accent-amber)"
+        },
+        {
+          "value": "document-processing",
+          "icon": "FileText",
+          "label": "settings:tabs.document_processing",
+          "mobileDescription": "settings:mobile_descriptions.document_processing",
+          "mobileAccent": "var(--settings-nav-accent-violet)"
+        },
+        {
+          "value": "about",
+          "icon": "BookOpen",
+          "label": "settings:tabs.about",
+          "mobileDescription": "settings:mobile_descriptions.about",
+          "mobileAccent": "var(--settings-nav-accent-pink)"
+        }
+      ],
+      "sidebarCategories": [
+        {
+          "value": "ai",
+          "label": "settings:categories.ai",
+          "icon": "Robot",
+          "items": [
+            {
+              "value": "apis",
+              "icon": "Robot",
+              "label": "settings:tabs.api_config",
+              "tourId": "settings-tab-apis",
+              "mobileDescription": "settings:mobile_descriptions.apis",
+              "mobileAccent": "var(--settings-nav-accent-amber)"
+            },
+            {
+              "value": "models",
+              "icon": "Flask",
+              "label": "settings:tabs.model_assignment",
+              "tourId": "settings-tab-models",
+              "mobileDescription": "settings:mobile_descriptions.models",
+              "mobileAccent": "var(--settings-nav-accent-blue)"
+            },
+            {
+              "value": "params",
+              "icon": "Wrench",
+              "label": "settings:tabs.params",
+              "mobileDescription": "settings:mobile_descriptions.params",
+              "mobileAccent": "var(--settings-nav-accent-amber)"
+            }
+          ]
+        },
+        {
+          "value": "experience",
+          "label": "settings:categories.experience",
+          "icon": "SlidersHorizontal",
+          "items": [
+            {
+              "value": "general",
+              "icon": "SlidersHorizontal",
+              "label": "settings:tabs.general",
+              "mobileDescription": "settings:mobile_descriptions.general",
+              "mobileAccent": "var(--settings-nav-accent-slate)"
+            },
+            {
+              "value": "appearance",
+              "icon": "Palette",
+              "label": "settings:tabs.appearance",
+              "mobileDescription": "settings:mobile_descriptions.appearance",
+              "mobileAccent": "var(--settings-nav-accent-purple)"
+            }
+          ]
+        },
+        {
+          "value": "personalization",
+          "label": "settings:categories.personalization",
+          "icon": "Brain",
+          "items": [
+            {
+              "value": "voice-input",
+              "icon": "Microphone",
+              "label": "settings:tabs.voice_input",
+              "mobileDescription": "settings:mobile_descriptions.voice_input",
+              "mobileAccent": "var(--settings-nav-accent-coral)"
+            },
+            {
+              "value": "memory",
+              "icon": "Brain",
+              "label": "settings:tabs.memory",
+              "mobileDescription": "settings:mobile_descriptions.memory",
+              "mobileAccent": "var(--settings-nav-accent-teal)"
+            }
+          ]
+        },
+        {
+          "value": "integrations",
+          "label": "settings:categories.integrations",
+          "icon": "Plug",
+          "items": [
+            {
+              "value": "mcp",
+              "icon": "Plug",
+              "label": "settings:tabs.mcp_tools",
+              "mobileDescription": "settings:mobile_descriptions.mcp",
+              "mobileAccent": "var(--settings-nav-accent-green)"
+            },
+            {
+              "value": "search",
+              "icon": "Globe",
+              "label": "settings:tabs.external_search",
+              "mobileDescription": "settings:mobile_descriptions.search",
+              "mobileAccent": "var(--settings-nav-accent-sky)"
+            }
+          ]
+        },
+        {
+          "value": "workflow",
+          "label": "settings:categories.workflow",
+          "icon": "ClockCountdown",
+          "items": [
+            {
+              "value": "automation",
+              "icon": "ClockCountdown",
+              "label": "settings:tabs.automation",
+              "mobileDescription": "settings:mobile_descriptions.automation",
+              "mobileAccent": "var(--settings-nav-accent-orange)"
+            },
+            {
+              "value": "document-processing",
+              "icon": "FileText",
+              "label": "settings:tabs.document_processing",
+              "mobileDescription": "settings:mobile_descriptions.document_processing",
+              "mobileAccent": "var(--settings-nav-accent-violet)"
+            }
+          ]
+        },
+        {
+          "value": "data",
+          "label": "settings:categories.data",
+          "icon": "Shield",
+          "items": [
+            {
+              "value": "statistics",
+              "icon": "ChartBar",
+              "label": "settings:tabs.statistics",
+              "mobileDescription": "settings:mobile_descriptions.statistics",
+              "mobileAccent": "var(--settings-nav-accent-sky)"
+            },
+            {
+              "value": "data-governance",
+              "icon": "Shield",
+              "label": "settings:tabs.data_governance",
+              "mobileDescription": "settings:mobile_descriptions.data_governance",
+              "mobileAccent": "var(--settings-nav-accent-sky)"
+            }
+          ]
+        }
+      ],
+      "settingsSearchIndex": [
+        {"tab":"apis","label":"settings:tabs.api_config","keywords":["apis","settings:categories.ai"]},
+        {"tab":"models","label":"settings:tabs.model_assignment","keywords":["models","settings:categories.ai"]},
+        {"tab":"general","label":"settings:tabs.general","keywords":["general","settings:categories.experience"]},
+        {"tab":"voice-input","label":"settings:tabs.voice_input","keywords":["voice-input","settings:categories.personalization"]},
+        {"tab":"memory","label":"settings:tabs.memory","keywords":["memory","settings:categories.personalization"]},
+        {"tab":"appearance","label":"settings:tabs.appearance","keywords":["appearance","settings:categories.experience"]},
+        {"tab":"automation","label":"settings:tabs.automation","keywords":["automation","settings:categories.workflow"]},
+        {"tab":"mcp","label":"settings:tabs.mcp_tools","keywords":["mcp","settings:categories.integrations"]},
+        {"tab":"search","label":"settings:tabs.external_search","keywords":["search","settings:categories.integrations"]},
+        {"tab":"statistics","label":"settings:tabs.statistics","keywords":["statistics","settings:categories.data"]},
+        {"tab":"data-governance","label":"settings:tabs.data_governance","keywords":["data-governance","settings:categories.data"]},
+        {"tab":"params","label":"settings:tabs.params","keywords":["params","settings:categories.ai"]},
+        {"tab":"document-processing","label":"settings:tabs.document_processing","keywords":["document-processing","settings:categories.workflow"]},
+        {"tab":"about","label":"settings:tabs.about","keywords":["about","","version","acknowledgements"]},
+        {"tab":"appearance","label":"settings:appearance.theme.title","keywords":["theme","dark","light","appearance"]},
+        {"tab":"appearance","label":"settings:appearance.font.title","keywords":["font","typeface"]},
+        {"tab":"appearance","label":"settings:appearance.font.size_label","keywords":["font size"]},
+        {"tab":"appearance","label":"settings:appearance.font.heading_label","keywords":["heading font"]},
+        {"tab":"appearance","label":"settings:appearance.font.body_label","keywords":["body font"]},
+        {"tab":"appearance","label":"settings:appearance.sidebar.title","keywords":["sidebar","navigation"]},
+        {"tab":"appearance","label":"settings:appearance.sidebar.position","keywords":["sidebar position"]},
+        {"tab":"general","label":"settings:language.title","keywords":["language"]},
+        {"tab":"general","label":"settings:system_authorization.title","keywords":["permission","authorization","notification","microphone","file access","权限","授权","通知","麦克风","文件访问"]},
+        {"tab":"voice-input","label":"settings:voice_input.title","keywords":["voice input","dictation","asr","microphone","speech to text","听写","语音输入"]},
+        {"tab":"automation","label":"settings:automation.title","keywords":["automation","schedule","reminder","agent","自动化","定时","调度"]},
+        {"tab":"automation","label":"settings:subagentProfiles.title","keywords":["subagent","profile","persona","agent","子代理","档案","智能体"]},
+        {"tab":"voice-input","label":"settings:voice_input.shortcut_title","keywords":["hotkey","shortcut","keyboard","press to talk","toggle dictation","快捷键"]},
+        {"tab":"voice-input","label":"settings:voice_input.dictionary_title","keywords":["dictionary","vocabulary","pronunciation hints","词典","短语"]},
+        {"tab":"voice-input","label":"settings:voice_input.history_title","keywords":["history","recent dictation","transcript recovery","历史记录","转写记录"]},
+        {"tab":"memory","label":"settings:memory.title","keywords":["memory","记忆","本地记忆"]},
+        {"tab":"document-processing","label":"settings:pdf.title","keywords":["pdf","PDF"]},
+        {"tab":"document-processing","label":"settings:ocr.title","keywords":["ocr","OCR","文字识别"]},
+        {"tab":"apis","label":"settings:api.add_api_config","keywords":["API","add","config"]},
+        {"tab":"apis","label":"settings:api.modal.basic_info","keywords":["basic","API name","endpoint"]},
+        {"tab":"apis","label":"settings:api.modal.fields.api_key","keywords":["apikey","api key","key"]},
+        {"tab":"apis","label":"settings:api.modal.model_adapter","keywords":["adapter","openai","azure","gemini","claude"]},
+        {"tab":"models","label":"settings:api.model2_title","keywords":["chat model","conversation","reasoning"]},
+        {"tab":"models","label":"settings:api.embedding_title","keywords":["embedding","RAG","vector"]},
+        {"tab":"models","label":"settings:api.reranker_title","keywords":["reranker","RAG"]},
+        {"tab":"models","label":"settings:api.anki_card_title","keywords":["anki","card"]},
+        {"tab":"mcp","label":"settings:mcp.server","keywords":["mcp","server","tool"]},
+        {"tab":"mcp","label":"settings:mcp.add_server","keywords":["add server","mcp"]},
+        {"tab":"search","label":"settings:search_engine.title","keywords":["search engine","google","bing","tavily","searxng","deepseek"]},
+        {"tab":"search","label":"SearXNG","keywords":["searxng","search"]},
+        {"tab":"search","label":"Tavily","keywords":["tavily","search","api"]},
+        {"tab":"search","label":"Exa","keywords":["exa","search"]},
+        {"tab":"statistics","label":"settings:statistics.learning_time","keywords":["learning time","statistics"]},
+        {"tab":"statistics","label":"settings:statistics.chat_stats","keywords":["chat stats","session"]},
+        {"tab":"statistics","label":"settings:statistics.heatmap","keywords":["heatmap","activity"]},
+        {"tab":"data-governance","label":"data:governance.title","keywords":["data governance","import","export"]},
+        {"tab":"data-governance","label":"data:governance.backup","keywords":["backup","export"]},
+        {"tab":"data-governance","label":"data:governance.restore","keywords":["restore","import"]},
+        {"tab":"params","label":"common:settings.chat_stream.card_title","keywords":["timeout","stream","超时","流式"]},
+        {"tab":"params","label":"settings:cards.search_settings_title","keywords":["fts","semantic","search","语义搜索"]}
+      ]
+    }
+  },
+  "cases": [
+    {
+      "input": {
+        "isMobile": false,
+        "isSmallScreen": false,
+        "demo": false,
+        "theme": "light"
+      },
+      "navigation": "desktop",
+      "content": [
+        {
+          "tab": "apis",
+          "branches": [
+            0
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "search",
+          "branches": [
+            1
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "models",
+          "branches": [
+            2
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "plugins",
+          "branches": [
+            3
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "mcp",
+          "branches": [
+            5
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "statistics",
+          "branches": [
+            6
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "automation",
+          "branches": [
+            7
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "data-governance",
+          "branches": [
+            8
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "general",
+          "branches": [
+            9
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "appearance",
+          "branches": [
+            10
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "params",
+          "branches": [
+            11
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "voice-input",
+          "branches": [
+            12
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "memory",
+          "branches": [
+            13
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "workbench",
+          "branches": [
+            14
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "document-processing",
+          "branches": [
+            15
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "shortcuts",
+          "branches": [
+            16
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "about",
+          "branches": [
+            17
+          ],
+          "redirect": null
+        }
+      ]
+    },
+    {
+      "input": {
+        "isMobile": false,
+        "isSmallScreen": false,
+        "demo": false,
+        "theme": "dark"
+      },
+      "navigation": "desktop",
+      "content": [
+        {
+          "tab": "apis",
+          "branches": [
+            0
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "search",
+          "branches": [
+            1
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "models",
+          "branches": [
+            2
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "plugins",
+          "branches": [
+            3
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "mcp",
+          "branches": [
+            5
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "statistics",
+          "branches": [
+            6
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "automation",
+          "branches": [
+            7
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "data-governance",
+          "branches": [
+            8
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "general",
+          "branches": [
+            9
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "appearance",
+          "branches": [
+            10
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "params",
+          "branches": [
+            11
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "voice-input",
+          "branches": [
+            12
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "memory",
+          "branches": [
+            13
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "workbench",
+          "branches": [
+            14
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "document-processing",
+          "branches": [
+            15
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "shortcuts",
+          "branches": [
+            16
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "about",
+          "branches": [
+            17
+          ],
+          "redirect": null
+        }
+      ]
+    },
+    {
+      "input": {
+        "isMobile": false,
+        "isSmallScreen": false,
+        "demo": true,
+        "theme": "light"
+      },
+      "navigation": "desktop",
+      "content": [
+        {
+          "tab": "apis",
+          "branches": [
+            0
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "search",
+          "branches": [
+            1
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "models",
+          "branches": [
+            2
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "plugins",
+          "branches": [
+            3
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "mcp",
+          "branches": [
+            5
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "statistics",
+          "branches": [
+            6
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "automation",
+          "branches": [
+            7
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "data-governance",
+          "branches": [
+            8
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "general",
+          "branches": [
+            9
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "appearance",
+          "branches": [
+            10
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "params",
+          "branches": [
+            11
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "voice-input",
+          "branches": [
+            12
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "memory",
+          "branches": [
+            13
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "workbench",
+          "branches": [
+            14
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "document-processing",
+          "branches": [
+            15
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "shortcuts",
+          "branches": [
+            16
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "about",
+          "branches": [
+            17
+          ],
+          "redirect": null
+        }
+      ]
+    },
+    {
+      "input": {
+        "isMobile": false,
+        "isSmallScreen": false,
+        "demo": true,
+        "theme": "dark"
+      },
+      "navigation": "desktop",
+      "content": [
+        {
+          "tab": "apis",
+          "branches": [
+            0
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "search",
+          "branches": [
+            1
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "models",
+          "branches": [
+            2
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "plugins",
+          "branches": [
+            3
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "mcp",
+          "branches": [
+            5
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "statistics",
+          "branches": [
+            6
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "automation",
+          "branches": [
+            7
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "data-governance",
+          "branches": [
+            8
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "general",
+          "branches": [
+            9
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "appearance",
+          "branches": [
+            10
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "params",
+          "branches": [
+            11
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "voice-input",
+          "branches": [
+            12
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "memory",
+          "branches": [
+            13
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "workbench",
+          "branches": [
+            14
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "document-processing",
+          "branches": [
+            15
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "shortcuts",
+          "branches": [
+            16
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "about",
+          "branches": [
+            17
+          ],
+          "redirect": null
+        }
+      ]
+    },
+    {
+      "input": {
+        "isMobile": false,
+        "isSmallScreen": true,
+        "demo": false,
+        "theme": "light"
+      },
+      "navigation": "desktop",
+      "content": [
+        {
+          "tab": "apis",
+          "branches": [
+            0
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "search",
+          "branches": [
+            1
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "models",
+          "branches": [
+            2
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "plugins",
+          "branches": [
+            3
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "mcp",
+          "branches": [
+            5
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "statistics",
+          "branches": [
+            6
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "automation",
+          "branches": [
+            7
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "data-governance",
+          "branches": [
+            8
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "general",
+          "branches": [
+            9
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "appearance",
+          "branches": [
+            10
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "params",
+          "branches": [
+            11
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "voice-input",
+          "branches": [
+            12
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "memory",
+          "branches": [
+            13
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "workbench",
+          "branches": [
+            14
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "document-processing",
+          "branches": [
+            15
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "shortcuts",
+          "branches": [
+            16
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "about",
+          "branches": [
+            17
+          ],
+          "redirect": null
+        }
+      ]
+    },
+    {
+      "input": {
+        "isMobile": false,
+        "isSmallScreen": true,
+        "demo": false,
+        "theme": "dark"
+      },
+      "navigation": "desktop",
+      "content": [
+        {
+          "tab": "apis",
+          "branches": [
+            0
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "search",
+          "branches": [
+            1
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "models",
+          "branches": [
+            2
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "plugins",
+          "branches": [
+            3
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "mcp",
+          "branches": [
+            5
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "statistics",
+          "branches": [
+            6
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "automation",
+          "branches": [
+            7
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "data-governance",
+          "branches": [
+            8
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "general",
+          "branches": [
+            9
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "appearance",
+          "branches": [
+            10
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "params",
+          "branches": [
+            11
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "voice-input",
+          "branches": [
+            12
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "memory",
+          "branches": [
+            13
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "workbench",
+          "branches": [
+            14
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "document-processing",
+          "branches": [
+            15
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "shortcuts",
+          "branches": [
+            16
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "about",
+          "branches": [
+            17
+          ],
+          "redirect": null
+        }
+      ]
+    },
+    {
+      "input": {
+        "isMobile": false,
+        "isSmallScreen": true,
+        "demo": true,
+        "theme": "light"
+      },
+      "navigation": "desktop",
+      "content": [
+        {
+          "tab": "apis",
+          "branches": [
+            0
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "search",
+          "branches": [
+            1
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "models",
+          "branches": [
+            2
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "plugins",
+          "branches": [
+            3
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "mcp",
+          "branches": [
+            5
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "statistics",
+          "branches": [
+            6
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "automation",
+          "branches": [
+            7
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "data-governance",
+          "branches": [
+            8
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "general",
+          "branches": [
+            9
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "appearance",
+          "branches": [
+            10
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "params",
+          "branches": [
+            11
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "voice-input",
+          "branches": [
+            12
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "memory",
+          "branches": [
+            13
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "workbench",
+          "branches": [
+            14
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "document-processing",
+          "branches": [
+            15
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "shortcuts",
+          "branches": [
+            16
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "about",
+          "branches": [
+            17
+          ],
+          "redirect": null
+        }
+      ]
+    },
+    {
+      "input": {
+        "isMobile": false,
+        "isSmallScreen": true,
+        "demo": true,
+        "theme": "dark"
+      },
+      "navigation": "desktop",
+      "content": [
+        {
+          "tab": "apis",
+          "branches": [
+            0
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "search",
+          "branches": [
+            1
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "models",
+          "branches": [
+            2
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "plugins",
+          "branches": [
+            3
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "mcp",
+          "branches": [
+            5
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "statistics",
+          "branches": [
+            6
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "automation",
+          "branches": [
+            7
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "data-governance",
+          "branches": [
+            8
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "general",
+          "branches": [
+            9
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "appearance",
+          "branches": [
+            10
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "params",
+          "branches": [
+            11
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "voice-input",
+          "branches": [
+            12
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "memory",
+          "branches": [
+            13
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "workbench",
+          "branches": [
+            14
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "document-processing",
+          "branches": [
+            15
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "shortcuts",
+          "branches": [
+            16
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "about",
+          "branches": [
+            17
+          ],
+          "redirect": null
+        }
+      ]
+    },
+    {
+      "input": {
+        "isMobile": true,
+        "isSmallScreen": false,
+        "demo": false,
+        "theme": "light"
+      },
+      "navigation": "mobile",
+      "content": [
+        {
+          "tab": "apis",
+          "branches": [
+            0
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "search",
+          "branches": [
+            1
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "models",
+          "branches": [
+            2
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "plugins",
+          "branches": [
+            4
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "mcp",
+          "branches": [
+            5
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "statistics",
+          "branches": [
+            6
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "automation",
+          "branches": [
+            7
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "data-governance",
+          "branches": [
+            8
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "general",
+          "branches": [
+            9
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "appearance",
+          "branches": [
+            10
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "params",
+          "branches": [
+            11
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "voice-input",
+          "branches": [
+            12
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "memory",
+          "branches": [
+            13
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "workbench",
+          "branches": [],
+          "redirect": "apis"
+        },
+        {
+          "tab": "document-processing",
+          "branches": [
+            15
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "shortcuts",
+          "branches": [
+            16
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "about",
+          "branches": [
+            17
+          ],
+          "redirect": null
+        }
+      ]
+    },
+    {
+      "input": {
+        "isMobile": true,
+        "isSmallScreen": false,
+        "demo": false,
+        "theme": "dark"
+      },
+      "navigation": "mobile",
+      "content": [
+        {
+          "tab": "apis",
+          "branches": [
+            0
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "search",
+          "branches": [
+            1
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "models",
+          "branches": [
+            2
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "plugins",
+          "branches": [
+            4
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "mcp",
+          "branches": [
+            5
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "statistics",
+          "branches": [
+            6
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "automation",
+          "branches": [
+            7
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "data-governance",
+          "branches": [
+            8
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "general",
+          "branches": [
+            9
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "appearance",
+          "branches": [
+            10
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "params",
+          "branches": [
+            11
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "voice-input",
+          "branches": [
+            12
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "memory",
+          "branches": [
+            13
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "workbench",
+          "branches": [],
+          "redirect": "apis"
+        },
+        {
+          "tab": "document-processing",
+          "branches": [
+            15
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "shortcuts",
+          "branches": [
+            16
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "about",
+          "branches": [
+            17
+          ],
+          "redirect": null
+        }
+      ]
+    },
+    {
+      "input": {
+        "isMobile": true,
+        "isSmallScreen": false,
+        "demo": true,
+        "theme": "light"
+      },
+      "navigation": "mobile",
+      "content": [
+        {
+          "tab": "apis",
+          "branches": [
+            0
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "search",
+          "branches": [
+            1
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "models",
+          "branches": [
+            2
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "plugins",
+          "branches": [
+            4
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "mcp",
+          "branches": [
+            5
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "statistics",
+          "branches": [
+            6
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "automation",
+          "branches": [
+            7
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "data-governance",
+          "branches": [
+            8
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "general",
+          "branches": [
+            9
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "appearance",
+          "branches": [
+            10
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "params",
+          "branches": [
+            11
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "voice-input",
+          "branches": [
+            12
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "memory",
+          "branches": [
+            13
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "workbench",
+          "branches": [],
+          "redirect": "apis"
+        },
+        {
+          "tab": "document-processing",
+          "branches": [
+            15
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "shortcuts",
+          "branches": [
+            16
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "about",
+          "branches": [
+            17
+          ],
+          "redirect": null
+        }
+      ]
+    },
+    {
+      "input": {
+        "isMobile": true,
+        "isSmallScreen": false,
+        "demo": true,
+        "theme": "dark"
+      },
+      "navigation": "mobile",
+      "content": [
+        {
+          "tab": "apis",
+          "branches": [
+            0
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "search",
+          "branches": [
+            1
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "models",
+          "branches": [
+            2
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "plugins",
+          "branches": [
+            4
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "mcp",
+          "branches": [
+            5
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "statistics",
+          "branches": [
+            6
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "automation",
+          "branches": [
+            7
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "data-governance",
+          "branches": [
+            8
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "general",
+          "branches": [
+            9
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "appearance",
+          "branches": [
+            10
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "params",
+          "branches": [
+            11
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "voice-input",
+          "branches": [
+            12
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "memory",
+          "branches": [
+            13
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "workbench",
+          "branches": [],
+          "redirect": "apis"
+        },
+        {
+          "tab": "document-processing",
+          "branches": [
+            15
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "shortcuts",
+          "branches": [
+            16
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "about",
+          "branches": [
+            17
+          ],
+          "redirect": null
+        }
+      ]
+    },
+    {
+      "input": {
+        "isMobile": true,
+        "isSmallScreen": true,
+        "demo": false,
+        "theme": "light"
+      },
+      "navigation": "mobile",
+      "content": [
+        {
+          "tab": "apis",
+          "branches": [
+            0
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "search",
+          "branches": [
+            1
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "models",
+          "branches": [
+            2
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "plugins",
+          "branches": [
+            4
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "mcp",
+          "branches": [
+            5
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "statistics",
+          "branches": [
+            6
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "automation",
+          "branches": [
+            7
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "data-governance",
+          "branches": [
+            8
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "general",
+          "branches": [
+            9
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "appearance",
+          "branches": [
+            10
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "params",
+          "branches": [
+            11
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "voice-input",
+          "branches": [
+            12
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "memory",
+          "branches": [
+            13
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "workbench",
+          "branches": [],
+          "redirect": "apis"
+        },
+        {
+          "tab": "document-processing",
+          "branches": [
+            15
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "shortcuts",
+          "branches": [
+            16
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "about",
+          "branches": [
+            17
+          ],
+          "redirect": null
+        }
+      ]
+    },
+    {
+      "input": {
+        "isMobile": true,
+        "isSmallScreen": true,
+        "demo": false,
+        "theme": "dark"
+      },
+      "navigation": "mobile",
+      "content": [
+        {
+          "tab": "apis",
+          "branches": [
+            0
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "search",
+          "branches": [
+            1
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "models",
+          "branches": [
+            2
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "plugins",
+          "branches": [
+            4
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "mcp",
+          "branches": [
+            5
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "statistics",
+          "branches": [
+            6
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "automation",
+          "branches": [
+            7
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "data-governance",
+          "branches": [
+            8
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "general",
+          "branches": [
+            9
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "appearance",
+          "branches": [
+            10
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "params",
+          "branches": [
+            11
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "voice-input",
+          "branches": [
+            12
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "memory",
+          "branches": [
+            13
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "workbench",
+          "branches": [],
+          "redirect": "apis"
+        },
+        {
+          "tab": "document-processing",
+          "branches": [
+            15
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "shortcuts",
+          "branches": [
+            16
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "about",
+          "branches": [
+            17
+          ],
+          "redirect": null
+        }
+      ]
+    },
+    {
+      "input": {
+        "isMobile": true,
+        "isSmallScreen": true,
+        "demo": true,
+        "theme": "light"
+      },
+      "navigation": "mobile",
+      "content": [
+        {
+          "tab": "apis",
+          "branches": [
+            0
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "search",
+          "branches": [
+            1
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "models",
+          "branches": [
+            2
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "plugins",
+          "branches": [
+            4
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "mcp",
+          "branches": [
+            5
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "statistics",
+          "branches": [
+            6
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "automation",
+          "branches": [
+            7
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "data-governance",
+          "branches": [
+            8
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "general",
+          "branches": [
+            9
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "appearance",
+          "branches": [
+            10
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "params",
+          "branches": [
+            11
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "voice-input",
+          "branches": [
+            12
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "memory",
+          "branches": [
+            13
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "workbench",
+          "branches": [],
+          "redirect": "apis"
+        },
+        {
+          "tab": "document-processing",
+          "branches": [
+            15
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "shortcuts",
+          "branches": [
+            16
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "about",
+          "branches": [
+            17
+          ],
+          "redirect": null
+        }
+      ]
+    },
+    {
+      "input": {
+        "isMobile": true,
+        "isSmallScreen": true,
+        "demo": true,
+        "theme": "dark"
+      },
+      "navigation": "mobile",
+      "content": [
+        {
+          "tab": "apis",
+          "branches": [
+            0
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "search",
+          "branches": [
+            1
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "models",
+          "branches": [
+            2
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "plugins",
+          "branches": [
+            4
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "mcp",
+          "branches": [
+            5
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "statistics",
+          "branches": [
+            6
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "automation",
+          "branches": [
+            7
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "data-governance",
+          "branches": [
+            8
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "general",
+          "branches": [
+            9
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "appearance",
+          "branches": [
+            10
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "params",
+          "branches": [
+            11
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "voice-input",
+          "branches": [
+            12
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "memory",
+          "branches": [
+            13
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "workbench",
+          "branches": [],
+          "redirect": "apis"
+        },
+        {
+          "tab": "document-processing",
+          "branches": [
+            15
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "shortcuts",
+          "branches": [
+            16
+          ],
+          "redirect": null
+        },
+        {
+          "tab": "about",
+          "branches": [
+            17
+          ],
+          "redirect": null
+        }
+      ]
+    }
+  ]
+}

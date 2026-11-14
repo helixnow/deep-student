@@ -1,87 +1,57 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo, useId } from 'react';
+import { useRefreshOnReturn } from '@/hooks/useRefreshOnReturn';
+import React, { useState, useEffect, useRef, useMemo, useId, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import '../styles/settings.css';
 import '../styles/api-config-section.css';
-import { showGlobalNotification } from '@/components/UnifiedNotification';
-import { getErrorMessage } from '@/utils/errorUtils';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
-import { AppSelect } from '@/components/ui/app-menu';
-import { CustomScrollArea } from '@/components/custom-scroll-area';
-import UnifiedModal from '@/components/UnifiedModal';
-import { DsDialog, DsDialogHeader, DsDialogTitle, DsDialogDescription, DsDialogBody, DsDialogFooter, DsAlertDialog } from '@/components/ui/DsDialog';
-import { ShadApiEditModal, GENERAL_DEFAULT_MIN_P, GENERAL_DEFAULT_TOP_K } from './ShadApiEditModal';
-import { VendorConfigModal, type VendorConfigModalRef } from './VendorConfigModal';
-import { Input } from '@/components/ui/shad/Input';
-import { DsButton } from '@/components/ui/DsButton';
-import { TauriAPI } from '@/utils/tauriApi';
-import { ModelAssignments, VendorConfig, ModelProfile, ApiConfig } from '@/types';
-import type { McpToolConfig } from './hookDepsTypes';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/shad/Alert';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/shad/Popover';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/shad/Tabs';
-import { Checkbox } from '@/components/ui/shad/Checkbox';
-import { Switch } from '@/components/ui/shad/Switch';
-import { cn } from '@/lib/utils';
-import { UnifiedCodeEditor } from '@/components/shared/UnifiedCodeEditor';
-import { saveSetting } from '@/utils/settingsApi';
-
-import { isTauriStdioSupported } from '@/mcp/tauriStdioTransport';
+import { DsDialog, DsDialogHeader, DsDialogTitle, DsDialogDescription, DsDialogBody } from '@/components/ui/DsDialog';
+import UnifiedErrorHandler from '@/components/UnifiedErrorHandler';
+import { AppMenuDemo } from '@/components/ui/app-menu';
+import { Stack } from '@phosphor-icons/react';
 import { MacTopSafeDragZone } from '@/components/layout/MacTopSafeDragZone';
-import { registerBackHandler, BACK_PRIORITY, hasOpenRadixOverlayBesides } from '@/app/navigation/androidBackCoordinator';
-import { useMobileHeader, MobileSlidingLayout, type ScreenPosition } from '@/components/layout';
+import { useMobileHeader, MobileSlidingLayout } from '@/components/layout';
 import { ShellViewSwitch } from '@/components/ui/ShellViewSwitch';
-import { UnifiedSidebar, UnifiedSidebarHeader, UnifiedSidebarContent, UnifiedSidebarItem } from '@/components/ui/unified-sidebar/UnifiedSidebar';
-import useTheme, { type ThemeMode, type ThemePalette } from '@/hooks/useTheme';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useViewVisibility } from '@/hooks/useViewVisibility';
 import { useVendorModels } from '@/hooks/useVendorModels';
 import { consumePendingSettingsRoute } from '@/utils/pendingSettingsTab';
-import { openUrl } from '@/utils/urlOpener';
-import { getProviderWebsiteUrl } from './VendorDetailPanel';
 import { isMobilePlatform } from '@/utils/platform';
 import '@/command-palette/styles/shortcut-settings.css';
-import { AppMenuDemo } from '@/components/ui/app-menu';
 import type { AutomationListen } from './automationSettingsApi';
-import { useSettingsNavigation } from './useSettingsNavigation';
-import { SettingsCategoryHeader } from './SettingsCategoryHeader';
+import { useSlot } from '@/ui-kernel/react';
+import type { SettingsSection, SettingsSectionPropsFactories } from '@/ui-kernel/contracts/settings';
+import { settingsNavigation } from '@/ui-plugins/official/settings/navigation';
 import { SettingsMobileNavigation } from './SettingsMobileNavigation';
-import { type UnifiedModelInfo } from '@/components/shared/UnifiedModelSelector';
 import { useSettingsShellStore } from '@/stores/settingsShellStore';
 import { APP_EVENTS, useAppEvent } from '@/events';
-import {
-  UI_FONT_STORAGE_KEY,
-  DEFAULT_UI_FONT,
-  applyFontToDocument,
-  UI_FONT_SIZE_STORAGE_KEY,
-  DEFAULT_UI_FONT_SIZE,
-  applyFontSizeToDocument,
-  clampFontSize,
-} from '@/config/fontConfig';
-import { normalizeMcpToolList } from './mcpUtils';
-import { inferCapabilities, getModelDefaultParameters, applyProviderSpecificAdjustments } from '@/utils/modelCapabilities';
-import { inferApiCapabilities } from '@/utils/apiCapabilityEngine';
-import {
-  DEFAULT_STDIO_ARGS_STORAGE,
-  UI_ZOOM_STORAGE_KEY,
-  DEFAULT_UI_ZOOM,
-  clampZoom,
-  formatZoomLabel,
-  type ZoomStatusState,
-} from './constants';
-import {
-  convertProfileToApiConfig,
-  convertApiConfigToProfile,
-  normalizeBaseUrl,
-  providerTypeFromConfig,
-} from './modelConverters';
+import { convertProfileToApiConfig } from './modelConverters';
 import type { SystemConfig, SettingsProps } from './types';
-import type { SettingsExtra } from './hookDepsTypes';
-
+import type { SettingsExtra, McpToolConfig } from './hookDepsTypes';
+import type { McpStatusInfo } from '@/mcp/mcpService';
+import type { VendorConfigModalRef } from './VendorConfigModal';
+import { getBuiltinServer, BUILTIN_SERVER_ID } from '@/mcp/builtinMcpServer';
 import { useSettingsVendorState } from './useSettingsVendorState';
-import { useSettingsZoomFont } from './useSettingsZoomFont';
 import { useMcpEditorSection } from './McpEditorSection';
 import { useSettingsConfig } from './useSettingsConfig';
+import { createDefaultSystemConfig } from './settingsConfigDefaults';
+import { useSettingsAppearanceSection } from './useSettingsAppearanceSection';
+import { useSettingsGeneralSection } from './useSettingsGeneralSection';
+import { useSettingsParamsSection } from './useSettingsParamsSection';
+import { useSettingsConfigSources } from './useSettingsConfigSources';
+import { useSettingsMcpBootstrap } from './useSettingsMcpBootstrap';
+import { useSettingsMcpPreviewPanel } from './useSettingsMcpPreviewPanel';
+import { useSettingsMobileShell } from './useSettingsMobileShell';
+import { useSettingsMobileHeaderContent } from './useSettingsMobileHeaderContent';
+import { useSettingsPanelDismiss } from './useSettingsPanelDismiss';
+import { useSettingsTabIndicator } from './useSettingsTabIndicator';
+import { SettingsMainContent } from './SettingsMainContent';
+import { SettingsMobileRightPanel } from './SettingsMobileRightPanel';
+import { SettingsDesktopDialogs } from './SettingsDesktopDialogs';
+import { SettingsMobileLoadingSkeleton } from './SettingsMobileLoadingSkeleton';
 import { resolveVoiceInputModelAssignment } from '@/voice-input/modelSelection';
+// Tauri 2.x API导入
+import { invoke as tauriInvoke } from '@tauri-apps/api/core';
+import { listen as tauriListen } from '@tauri-apps/api/event';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
@@ -89,51 +59,6 @@ const SETTINGS_TOP_SAFE_DRAG_ZONE_STYLE: React.CSSProperties = {
   background: 'var(--shell-workspace-panel)',
   borderBottom: 0,
 };
-
-// P2-13：防抖工具提到组件外，避免每次渲染重建
-function debounce(func: (...args: unknown[]) => void, wait: number) {
-  let timeout: ReturnType<typeof setTimeout>;
-  return function (...args: unknown[]) {
-    clearTimeout(timeout);
-    timeout = setTimeout(() => func(...args), wait);
-  };
-}
-
-const normalizeThemeMode = (value: unknown): ThemeMode => {
-  if (value === 'dark' || value === 'auto') return value;
-  return 'light';
-};
-
-const normalizeThemePalette = (value: unknown): ThemePalette => {
-  // 迁移旧值：colorsafe -> muted（柔和色调，对色弱友好）
-  if (value === 'colorsafe' || value === 'accessible') return 'muted';
-  // 检查是否是有效的调色板值
-  const validPalettes: ThemePalette[] = ['default', 'purple', 'green', 'orange', 'pink', 'teal', 'muted', 'paper', 'custom'];
-  if (validPalettes.includes(value as ThemePalette)) return value as ThemePalette;
-  return 'default';
-};
-
-import {
-  Plus,
-  Trash,
-  Check,
-  ArrowCounterClockwise,
-  ArrowSquareOut,
-  X,
-  Info as InfoIcon,
-  Stack,
-} from '@phosphor-icons/react';
-import type { SettingsRightPanelType } from './hookDepsTypes';
-import { type McpStatusInfo } from '@/mcp/mcpService';
-import { testMcpSseFrontend, testMcpHttpFrontend, testMcpWebsocketFrontend } from '@/mcp/mcpFrontendTester';
-import { getBuiltinServer, BUILTIN_SERVER_ID } from '@/mcp/builtinMcpServer';
-import UnifiedErrorHandler, { useUnifiedErrorHandler } from '@/components/UnifiedErrorHandler';
-// Tauri 2.x API导入
-import { invoke as tauriInvoke } from '@tauri-apps/api/core';
-import { listen as tauriListen } from '@tauri-apps/api/event';
-import { getCurrentWebview } from '@tauri-apps/api/webview';
-// ★ 2025-01-03: userPreferenceProfile 已删除，由新的 User Memory 系统替代
-// ★ 2026-01-15: 导师模式已迁移到 Skills 系统，不再需要自定义 prompt
 
 // Tauri类型声明
 declare global {
@@ -146,65 +71,15 @@ declare global {
 const isTauri = typeof window !== 'undefined' && window.__TAURI_INTERNALS__;
 const invoke = isTauri ? tauriInvoke : null;
 
-const ApisTab = React.lazy(() => import('./ApisTab').then((module) => ({ default: module.ApisTab })));
-const ExternalSearchTab = React.lazy(() => import('./ExternalSearchTab').then((module) => ({ default: module.ExternalSearchTab })));
-const ModelsTab = React.lazy(() => import('./ModelsTab').then((module) => ({ default: module.ModelsTab })));
-const PluginsTab = React.lazy(() => import('./plugins/PluginsTab').then((module) => ({ default: module.PluginsTab })));
-const McpToolsSection = React.lazy(() => import('./McpToolsSection').then((module) => ({ default: module.McpToolsSection })));
-const AutomationSettingsSection = React.lazy(() => import('./AutomationSettingsSection').then((module) => ({ default: module.AutomationSettingsSection })));
-const SuperAgentSettingsSection = React.lazy(() => import('./SuperAgentSettingsSection').then((module) => ({ default: module.SuperAgentSettingsSection })));
-const SubagentProfilesSection = React.lazy(() => import('./SubagentProfilesSection').then((module) => ({ default: module.SubagentProfilesSection })));
-const DataGovernanceDashboard = React.lazy(() => import('./DataGovernanceDashboard').then((module) => ({ default: module.DataGovernanceDashboard })));
-const GeneralTab = React.lazy(() => import('./GeneralTab').then((module) => ({ default: module.GeneralTab })));
-const AppearanceTab = React.lazy(() => import('./AppearanceTab').then((module) => ({ default: module.AppearanceTab })));
-const ParamsTab = React.lazy(() => import('./ParamsTab').then((module) => ({ default: module.ParamsTab })));
-const ShortcutSettings = React.lazy(() => import('@/command-palette/components/ShortcutSettings').then((module) => ({ default: module.ShortcutSettings })));
-const DataImportExport = React.lazy(() => import('@/components/DataImportExport').then((module) => ({ default: module.DataImportExport })));
-const AboutTab = React.lazy(() => import('./AboutTab').then((module) => ({ default: module.AboutTab })));
-const VoiceInputTab = React.lazy(() => import('./VoiceInputTab').then((module) => ({ default: module.VoiceInputTab })));
-const WorkbenchTab = React.lazy(() => import('./WorkbenchTab').then((module) => ({ default: module.WorkbenchTab })));
-const MemoryTab = React.lazy(() => import('./MemoryTab').then((module) => ({ default: module.MemoryTab })));
-const DocumentProcessingTab = React.lazy(() => import('./DocumentProcessingTab').then((module) => ({ default: module.DocumentProcessingTab })));
-
-const SettingsTabFallback = () => {
-  const { t } = useTranslation(['settings']);
-  return (
-    <div
-      className="wb-sys-skeleton min-h-[360px] w-full rounded-xl bg-muted/20"
-      role="status"
-      aria-label={t('settings:loading', { defaultValue: 'Loading settings' })}
-    />
-  );
-};
-
 export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) => {
-  const { t, i18n } = useTranslation(['settings', 'common']);
+  const { t } = useTranslation(['settings', 'common']);
+  const { t: navigationT } = useTranslation(['settings', 'common', 'data', 'workbench']);
+  const sectionEntries = useSlot<SettingsSection>('settings.sections');
+  const isMobile = isMobilePlatform();
   const { isSmallScreen } = useBreakpoint();
   // 移动端设置以全屏 sheet 承载；桌面端继续使用独立工作区页面。
   const effectiveMobilePanelMode = isSmallScreen;
-  const {
-    mode: themeMode,
-    isDarkMode,
-    isSystemDark,
-    palette: themePalette,
-    customColor,
-    setThemeMode,
-    setThemePalette,
-    setCustomColor,
-  } = useTheme();
-
-  // 移动端三屏布局状态（需要在 useMobileHeader 之前定义）
-  const [screenPosition, setScreenPosition] = useState<ScreenPosition>('center');
-  // 右侧面板类型：用于统一管理移动端右侧滑动面板内容
-  const [rightPanelType, setRightPanelType] = useState<SettingsRightPanelType>('none');
-  // 供应商配置 Modal ref（用于移动端顶栏保存按钮调用）
-  const vendorConfigModalRef = useRef<VendorConfigModalRef>(null);
-
-  // P0-1 移动端两级导航：分区列表态（iOS 式分组列表 + 搜索） / 分区内容态
-  const [mobileNavView, setMobileNavView] = useState<'sections' | 'content'>('sections');
-  const [mobileSearchQuery, setMobileSearchQuery] = useState('');
-  // P1-6 移动端 API 配置页两级导航：供应商列表 → 供应商详情
-  const [mobileVendorDetailOpen, setMobileVendorDetailOpen] = useState(false);
+  const isTauriEnvironment = typeof window !== 'undefined' && Boolean((window as any).__TAURI_INTERNALS__);
 
   // 移动端 Sheet header 标题（面包屑）所需状态
   // 获取当前标签页的显示名称（需要在 useMobileHeader 之前定义）
@@ -213,81 +88,47 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
   const dataGovernanceTabTarget = useSettingsShellStore((state) => state.dataGovernanceTabTarget);
   const applySettingsRoute = useSettingsShellStore((state) => state.applySettingsRoute);
   const [settingsScrollElement, setSettingsScrollElement] = useState<HTMLDivElement | null>(null);
-  
-  // Sheet header 标题在 vendorState / mcpSection 就绪后统一计算（见下方 settingsBreadcrumbText）
 
-  const isTauriEnvironment = typeof window !== 'undefined' && Boolean((window as any).__TAURI_INTERNALS__);
-  const [uiZoom, setUiZoom] = useState<number>(DEFAULT_UI_ZOOM);
-  const [zoomLoading, setZoomLoading] = useState<boolean>(isTauriEnvironment);
-  const [zoomSaving, setZoomSaving] = useState(false);
-  const [zoomStatus, setZoomStatus] = useState<ZoomStatusState>({ type: 'idle' });
-  const [uiFont, setUiFont] = useState<string>(DEFAULT_UI_FONT);
-  const [fontLoading, setFontLoading] = useState<boolean>(isTauriEnvironment);
-  const [fontSaving, setFontSaving] = useState(false);
-  const [uiFontSize, setUiFontSize] = useState<number>(DEFAULT_UI_FONT_SIZE);
-  const [fontSizeLoading, setFontSizeLoading] = useState<boolean>(isTauriEnvironment);
-  const [fontSizeSaving, setFontSizeSaving] = useState(false);
-  const [logTypeForOpen, setLogTypeForOpen] = useState<string>('backend');
-  const [config, setConfig] = useState<SystemConfig>({
-    apiConfigs: [],
-    model2ConfigId: '',
-    ankiCardModelConfigId: '',
-    qbank_ai_grading_model_config_id: '',
-    qbank_ai_generation_model_config_id: '',
-    // 嵌入模型通过维度管理设置
-    rerankerModelConfigId: '',
-    autoSave: true,
-    theme: 'light',
-    themePalette: 'default',
-    debugMode: false,
-    ragEnabled: false,
-    ragTopK: 5,
-    ankiConnectEnabled: false,
-    exam_sheet_ocr_model_config_id: '', // 新增：题目集识别OCR专用模型配置ID
-    translation_model_config_id: '', // 新增：翻译专用模型配置ID
-    chat_title_model_config_id: '', // 新增：聊天标题生成模型配置ID
-    // 多模态知识库模型配置（嵌入模型通过维度管理设置）
-    vl_reranker_model_config_id: '', // 多模态重排序模型
-    memory_decision_model_config_id: '', // 记忆决策模型
-    voice_input_asr_model_config_id: '', // 语音输入 ASR 模型
-    image_generation_model_config_id: '', // 生图模型
-    compaction_model_config_id: '', // 上下文压缩专用模型（未设置回退对话模型）
-    translation_display_mode: 'aligned', // 聊天翻译显示模式：'aligned' 短语对照（默认）/ 'streaming' 流式纯译文
+  const [config, setConfig] = useState<SystemConfig>(createDefaultSystemConfig);
+  const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
+  // 🔧 修复：防止 loadConfig 失败时 auto-save 用空默认值覆写后端已有配置
+  const configLoadedRef = useRef(false);
+  const [extra, setExtra] = useState<SettingsExtra>({});
+  const [showAppMenuDemo, setShowAppMenuDemo] = useState(false);
+  // 供应商配置 Modal ref（用于移动端顶栏保存按钮调用）
+  const vendorConfigModalRef = useRef<VendorConfigModalRef>(null);
+  // MCP 连接状态快照（useMcpEditorSection 只读，订阅在 useSettingsMcpBootstrap）
+  const [mcpStatusInfo, setMcpStatusInfo] = useState<McpStatusInfo | null>(null);
+  const isMcpLoading = activeTab === 'mcp' && loading;
 
-    // MCP 工具协议设置（默认保持可配置；启用与否由消息级选择决定）
-    mcpCommand: 'npx',
-    mcpArgs: DEFAULT_STDIO_ARGS_STORAGE,
-    mcpTransportType: 'stdio',
-    mcpUrl: 'ws://localhost:8000',
-    mcpAdvertiseAll: false,
-    mcpWhitelist: 'read_file, write_file, list_directory',
-    mcpBlacklist: 'delete_file, execute_command, rm, sudo',
-    mcpTimeoutMs: 15000,
-    mcpRateLimit: 10,
-    mcpCacheMax: 500,
-    mcpCacheTtlMs: 300000,
-    mcpTools: [],
+  const { sidebarCategories, sidebarNavItems, settingsSearchIndex } = useMemo(
+    () => settingsNavigation(sectionEntries, navigationT, { isMobile }),
+    [sectionEntries, navigationT, isMobile],
+  );
+  const activeSectionEntry = sectionEntries.find((entry) => entry.key === activeTab);
+  // Keep legacy section IDs as the single navigation source of truth.
+  const activeCategory = sidebarCategories.find((category) => category.items.some((item) => item.value === activeTab));
+  const settingsNavigationId = useId();
+  // 当前分区的导航项（分区内容态顶栏标题用）
+  const activeNavItem = useMemo(
+    () => sidebarNavItems.find((item) => item.value === activeTab) ?? null,
+    [sidebarNavItems, activeTab]
+  );
 
-    // 外部搜索设置（启用与否由消息级选择决定）
-    webSearchEngine: 'bing_rss',
-    webSearchTimeoutMs: 15000,
-    webSearchGoogleKey: '',
-    webSearchGoogleCx: '',
-    webSearchSerpApiKey: '',
-    webSearchTavilyKey: '',
-    webSearchBraveKey: '',
-    webSearchSearxngEndpoint: '',
-    webSearchSearxngKey: '',
-    webSearchZhipuKey: '',
-    webSearchBochaKey: '',
-    webSearchDeepseekKey: '',
-    webSearchDeepseekNeedContent: false,
-    webSearchDeepseekFetchEnabled: false,
-    webSearchWhitelist: '',
-    webSearchBlacklist: '',
-    webSearchInjectSnippetMax: 180,
-    webSearchInjectTotalMax: 1900,
-  });
+  // ========== 分区自包含状态（各 hook 只服务一个分区/一件事） ==========
+  const {
+    uiZoom, zoomLoading, zoomSaving, zoomStatus, handleZoomChange, handleZoomReset,
+    uiFont, fontLoading, fontSaving, handleFontChange, handleFontReset,
+    uiFontSize, fontSizeLoading, fontSizeSaving, handleFontSizeChange, handleFontSizeReset,
+    themeMode, isSystemDark, setThemeMode, themePalette, setThemePalette, customColor, setCustomColor,
+    normalizedMcpServers,
+  } = useSettingsAppearanceSection({ t, config, isTauriEnvironment });
+  const {
+    topbarTopMargin, topbarTopMarginLoaded, setTopbarTopMargin,
+    logTypeForOpen, setLogTypeForOpen, showRawRequest, setShowRawRequest,
+  } = useSettingsGeneralSection({ invoke });
+
   const {
     vendors,
     modelProfiles,
@@ -304,198 +145,26 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
     persistModelProfiles,
     persistVendors,
   } = useVendorModels();
-  // 注意：模型分配页面使用 config.apiConfigs（从后端 get_api_configurations 获取，enabled 状态正确）
-  // resolvedApiConfigs 仅用于 API 配置页面的编辑功能
-  // 当供应商/模型配置变更时，从后端刷新 ApiConfig 列表（作为“单一事实来源”）
-  const refreshApiConfigsFromBackend = useCallback(async () => {
-    try {
-      if (!invoke) return;
-      const apiConfigs = (await invoke('get_api_configurations').catch(() => [])) as ApiConfig[];
-      const mappedApiConfigs = (apiConfigs || []).map((c: ApiConfig) => ({
-        ...c,
-        maxOutputTokens: c.maxOutputTokens,
-        temperature: c.temperature,
-      }));
-      setConfig((prev) => {
-        if (prev.apiConfigs.length === mappedApiConfigs.length &&
-            prev.apiConfigs.every((c, i) => c.id === mappedApiConfigs[i]?.id && c.enabled === mappedApiConfigs[i]?.enabled)) {
-          return prev;
-        }
-        return { ...prev, apiConfigs: mappedApiConfigs };
-      });
-    } catch (e) {
-      // 静默失败：不阻塞设置页、避免控制台警告噪音
-    }
-  }, [invoke, setConfig]);
 
-  useEffect(() => {
-    const onChanged = () => {
-      void refreshApiConfigsFromBackend();
-    };
-    try {
-      window.addEventListener('api_configurations_changed', onChanged);
-    } catch {
-      // Best-effort listener registration only.
-    }
-    return () => {
-      try {
-        window.removeEventListener('api_configurations_changed', onChanged);
-      } catch {
-        // Best-effort listener cleanup only.
-      }
-    };
-  }, [refreshApiConfigsFromBackend]);
+  // 供应商/模型配置变更时从后端刷新 ApiConfig 列表（单一事实来源），
+  // 并同步模型分配/主题/MCP 工具列表到 config。
+  const refreshApiConfigsFromBackend = useSettingsConfigSources({ config, setConfig, modelAssignments, themeMode, themePalette });
 
-  useEffect(() => {
-    setConfig(prev => ({
-      ...prev,
-      model2ConfigId: modelAssignments.model2_config_id || '',
-      ankiCardModelConfigId: modelAssignments.anki_card_model_config_id || '',
-      qbank_ai_grading_model_config_id: modelAssignments.qbank_ai_grading_model_config_id || '',
-      qbank_ai_generation_model_config_id:
-        modelAssignments.qbank_ai_generation_model_config_id || '',
-      rerankerModelConfigId: modelAssignments.reranker_model_config_id || '',
-      exam_sheet_ocr_model_config_id: modelAssignments.exam_sheet_ocr_model_config_id || '',
-      translation_model_config_id: modelAssignments.translation_model_config_id || '',
-      chat_title_model_config_id: modelAssignments.chat_title_model_config_id || '',
-      // 多模态知识库模型（嵌入模型通过维度管理设置）
-      vl_reranker_model_config_id: modelAssignments.vl_reranker_model_config_id || '',
-      memory_decision_model_config_id: modelAssignments.memory_decision_model_config_id || '',
-      voice_input_asr_model_config_id: modelAssignments.voice_input_asr_model_config_id || '',
-      image_generation_model_config_id: modelAssignments.image_generation_model_config_id || '',
-      compaction_model_config_id: modelAssignments.compaction_model_config_id || '',
-      translation_display_mode: (modelAssignments.translation_display_mode === 'streaming' ? 'streaming' : 'aligned'),
-    }));
-  }, [modelAssignments]);
+  const updateIndicatorRaf = useSettingsTabIndicator({ loading, activeTab });
 
-  useEffect(() => {
-    setConfig(prev => {
-      if (prev.theme === themeMode && prev.themePalette === themePalette) {
-        return prev;
-      }
-      return {
-        ...prev,
-        theme: themeMode,
-        themePalette,
-      };
-    });
-  }, [themeMode, themePalette]);
+  const { loadConfig, handleSave, saveSingleAssignmentField } = useSettingsConfig({ setLoading, configLoadedRef, setExtra, setActiveTab, activeTab, modelAssignments, vendors, modelProfiles, resolvedApiConfigs, refreshVendors: undefined, refreshProfiles: undefined, refreshApiConfigsFromBackend, persistAssignments, saving, setSaving, t, config, setConfig, loading, updateIndicatorRaf });
 
-  useEffect(() => {
-    if (!Array.isArray(config.mcpTools)) {
-      const normalized = normalizeMcpToolList(config.mcpTools);
-      setConfig(prev => ({ ...prev, mcpTools: normalized }));
-    }
-  }, [config.mcpTools]);
+  const { handleSaveChatStreamTimeout, handleToggleChatStreamAutoCancel } = useSettingsParamsSection({ extra, setExtra, invoke, t });
 
-  const [saving, setSaving] = useState(false);
-  const [loading, setLoading] = useState(true);
-  // 🔧 修复：防止 loadConfig 失败时 auto-save 用空默认值覆写后端已有配置
-  const configLoadedRef = useRef(false);
-  const [extra, setExtra] = useState<SettingsExtra>({});
-  const [showAppMenuDemo, setShowAppMenuDemo] = useState(false);
-  const isMcpLoading = activeTab === 'mcp' && loading;
-  const { sidebarCategories, sidebarNavItems, settingsSearchIndex } = useSettingsNavigation();
-  // Keep legacy section IDs as the single navigation source of truth.
-  const activeCategory = sidebarCategories.find((category) => category.items.some((item) => item.value === activeTab));
-  const settingsNavigationId = useId();
+  const shell = useSettingsMobileShell({ isSmallScreen, isActive, activeTab, handleSave, loading, configLoadedRef, onBack });
+  const {
+    screenPosition, rightPanelType, setRightPanelType,
+    mobileNavView, setMobileNavView, mobileSearchQuery, setMobileSearchQuery,
+    mobileVendorDetailOpen, setMobileVendorDetailOpen,
+    closeRightPanel, handleMobileHeaderBack,
+  } = shell;
 
-  // 顶部栏顶部边距高度设置（用于安卓状态栏等场景）
-  const [topbarTopMargin, setTopbarTopMargin] = useState<string>('');
-  const [topbarTopMarginLoaded, setTopbarTopMarginLoaded] = useState(false);
-  useEffect(() => {
-    if (!invoke) return;
-    (async () => {
-      try {
-        const v = await (invoke as typeof tauriInvoke)('get_setting', { key: 'topbar.top_margin' });
-        const value = String(v ?? '').trim();
-        if (value) {
-          setTopbarTopMargin(value);
-        } else {
-          // 未设置时显示 0（与 App.tsx 实际生效值一致）。Android 状态栏避让由
-          // 原生安全区自动处理（#472），这里只是额外留白。
-          setTopbarTopMargin('0');
-        }
-      } catch {
-        setTopbarTopMargin('0');
-      } finally {
-        setTopbarTopMarginLoaded(true);
-      }
-    })();
-  }, []);
-
-  // 开发者选项：显示消息请求体
-  const [showRawRequest, setShowRawRequest] = useState<boolean | null>(null);
-  useEffect(() => {
-    if (!invoke) return;
-    (async () => {
-      try {
-        const v = await (invoke as typeof tauriInvoke)('get_setting', { key: 'dev.show_raw_request' });
-        const value = String(v ?? '').trim().toLowerCase();
-        setShowRawRequest(value === 'true' || value === '1');
-      } catch {
-        setShowRawRequest(false);
-      }
-    })();
-  }, []);
-
-  // 从 API 配置页切换到其他页时，触发一次自动分配模型
-  const prevActiveTabRef = useRef<string | null>(null);
-  useEffect(() => {
-    const prevTab = prevActiveTabRef.current;
-    prevActiveTabRef.current = activeTab;
-
-    if (prevTab === 'apis' && activeTab !== 'apis') {
-      (async () => {
-        try {
-          const { autoAssignAllModels } = await import('@/features/chat/readiness/autoAssignModel');
-          const result = await autoAssignAllModels();
-          if (result.assigned) {
-            console.log(`[Settings] Auto-assigned ${result.assignedCount} model(s): ${result.assignedModelNames.join(', ')}`);
-          } else {
-            console.log(`[Settings] Auto-assign skipped: ${result.reason ?? 'no changes'}`);
-          }
-        } catch (err) {
-          console.error('[Settings] Auto-assign failed:', err);
-        }
-      })();
-    }
-  }, [activeTab]);
-
-  // 🆕 学习桌面（Workbench）为桌面端专属：移动端隐藏设置入口后，
-  // 把持久化/历史遗留指向 workbench 的 activeTab 重定向回默认页，避免空 Tab。
-  useEffect(() => {
-    if (activeTab === 'workbench' && isMobilePlatform()) {
-      setActiveTab('apis');
-    }
-  }, [activeTab, setActiveTab]);
-
-  // 标签页指示器状态
-  const [indicatorStyle, setIndicatorStyle] = useState({ transform: 'translateX(0)', width: 0 });
-  const tabsRef = useRef<Map<string, HTMLButtonElement>>(new Map());
-  const tabButtonsContainerRef = useRef<HTMLDivElement | null>(null);
-
-  // P0-1：移动端分区导航改为分组列表（chip rail 已移除）。
-  // 切换分区时收起 API 配置页的供应商详情，保证再次进入时回到列表态。
-  useEffect(() => {
-    setMobileVendorDetailOpen(false);
-  }, [activeTab]);
-
-  // MCP 状态
-  const [mcpStatusInfo, setMcpStatusInfo] = useState<McpStatusInfo | null>(null);
-
-  const closeRightPanel = useCallback(() => {
-    setRightPanelType('none');
-    setScreenPosition('center');
-  }, []);
-
-  // ========== Hook 调用 ==========
-  const { handleZoomChange, handleZoomReset, handleFontChange, handleFontReset, handleFontSizeChange, handleFontSizeReset, normalizedMcpServers } = useSettingsZoomFont({ isTauriEnvironment, setZoomLoading, setUiZoom, setZoomSaving, setZoomStatus, t, setFontLoading, setUiFont, setFontSaving, setFontSizeLoading, setUiFontSize, setFontSizeSaving, config });
-
-  const updateIndicatorRafRef = useRef<((tabId: string) => void) | null>(null);
-  const { loadConfig, handleSave, saveSingleAssignmentField, handleTabChange } = useSettingsConfig({ setLoading, configLoadedRef, setExtra, setActiveTab, activeTab, modelAssignments, vendors, modelProfiles, resolvedApiConfigs, refreshVendors: undefined, refreshProfiles: undefined, refreshApiConfigsFromBackend, persistAssignments, saving, setSaving, t, config, setConfig, loading, updateIndicatorRaf: (tabId: string) => updateIndicatorRafRef.current?.(tabId) });
-
-  const vendorState = useSettingsVendorState({ resolvedApiConfigs, vendorLoading, vendorSaving, vendors, modelProfiles, modelAssignments, config, t, loading, upsertVendor, upsertModelProfile, deleteModelProfile, persistAssignments, persistModelProfiles, persistVendors, closeRightPanel, refreshVendors: undefined, refreshProfiles: undefined, refreshApiConfigsFromBackend, isSmallScreen: effectiveMobilePanelMode, setScreenPosition, setRightPanelType, activeTab, deleteVendorById: deleteVendor });
+  const vendorState = useSettingsVendorState({ resolvedApiConfigs, vendorLoading, vendorSaving, vendors, modelProfiles, modelAssignments, config, t, loading, upsertVendor, upsertModelProfile, deleteModelProfile, persistAssignments, persistModelProfiles, persistVendors, closeRightPanel, refreshVendors: undefined, refreshProfiles: undefined, refreshApiConfigsFromBackend, isSmallScreen: effectiveMobilePanelMode, setScreenPosition: shell.setScreenPosition, setRightPanelType, activeTab, deleteVendorById: deleteVendor });
   const { selectedVendorId, setSelectedVendorId, vendorModalOpen, setVendorModalOpen, editingVendor, setEditingVendor, isEditingVendor, vendorFormData, setVendorFormData, modelEditor, setModelEditor, inlineEditState, setInlineEditState, isAddingNewModel, setIsAddingNewModel, modelDeleteDialog, setModelDeleteDialog, vendorDeleteDialog, setVendorDeleteDialog, testingApi, vendorBusy, sortedVendors, selectedVendor, selectedVendorModels, profileCountByVendor, selectedVendorIsSiliconflow, testApiConnection, handleOpenVendorModal, handleStartEditVendor, handleCancelEditVendor, handleSaveEditVendor, handleSaveVendorModal, handleDeleteVendor, handleSaveVendorApiKey, handleSaveVendorBaseUrl, handleReorderVendors, confirmDeleteVendor, handleOpenModelEditor, handleSaveModelProfile, handleSaveInlineEdit, handleAddModelInline, handleCloseModelEditor, handleSaveModelProfileAndClose, handleDeleteModelProfile, confirmDeleteModelProfile, handleToggleModelProfile, handleToggleFavorite, handleSiliconFlowConfig, handleAddVendorModels, getAllEnabledApis, getEmbeddingApis, getRerankerApis, getAsrApis, getImageGenerationApis, toUnifiedModelInfo, handleBatchCreateConfigs, handleApplyPreset, handleBatchConfigsCreated, handleClearVendorApiKey, triggerPostSaveAutoFlow, isSensitiveKey, maskApiKey, apiConfigsForApisTab } = vendorState;
 
   const voiceInputAssignedModel = useMemo(
@@ -509,424 +178,40 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
     [config.apiConfigs, config.voice_input_asr_model_config_id]
   );
 
-  const mcpSection = useMcpEditorSection({ config, setConfig, isSmallScreen: effectiveMobilePanelMode, activeTab, setActiveTab, setScreenPosition, setRightPanelType, t, extra, setExtra, handleSave, normalizedMcpServers, setMcpStatusInfo, mcpStatusInfo });
-  const { mcpToolModal, setMcpToolModal, mcpPolicyModal, setMcpPolicyModal, mcpToolSubmitRef, mcpPolicySaveRef, mcpPreview, mcpTestStep, stripMcpPrefix, refreshSnapshots, handleDeleteMcpTool, handleSaveMcpServer, handleTestServer, handleReconnectClient, handleAddMcpTool, handleCreateMcpTool, handleEditMcpTool, handleOpenMcpPolicy, handleClosePreview, renderMcpToolEditor, renderMcpToolEditorEmbedded, renderMcpPolicyEditorEmbedded, mcpCachedDetails, mcpServers, serverStatusMap, lastError, cacheCapacity, lastCacheUpdatedAt, lastCacheUpdatedText, connectedServers, totalServers, totalCachedTools, promptsCount, resourcesCount, cacheUsagePercent, latestPrompts, latestResources, mcpErrors, clearMcpErrors, dismissMcpError, handleRunHealthCheck, handleClearCaches, handleRefreshRegistry } = mcpSection;
-
-  // 按 rightPanelType 关闭当前右滑面板并清理对应状态
-  //（返回键与手势滑回共用，避免手势 dismiss 后 mcpPreview/modelEditor 等状态残留）
-  const dismissRightPanel = useCallback(() => {
-    switch (rightPanelType) {
-      case 'modelEditor':
-        handleCloseModelEditor();
-        break;
-      case 'vendorConfig':
-        setVendorModalOpen(false);
-        setEditingVendor(null);
-        closeRightPanel();
-        break;
-      case 'mcpTool':
-        setMcpToolModal(prev => ({ ...prev, open: false, error: null }));
-        closeRightPanel();
-        break;
-      case 'mcpPolicy':
-        setMcpPolicyModal(prev => ({ ...prev, open: false }));
-        closeRightPanel();
-        break;
-      case 'mcpPreview':
-        handleClosePreview();
-        closeRightPanel();
-        break;
-      default:
-        closeRightPanel();
-    }
-  }, [
-    rightPanelType,
-    handleCloseModelEditor,
-    setVendorModalOpen,
-    setEditingVendor,
-    closeRightPanel,
-    setMcpToolModal,
-    setMcpPolicyModal,
-    handleClosePreview,
-  ]);
-
-  // 手势滑动切屏：从右滑面板滑回时执行与返回键一致的清理，
-  // 否则 mcpPreview.open 残留为 true，再次点击「预览」时 effect 不重跑、面板无法滑出
-  const handleScreenPositionChange = useCallback((next: ScreenPosition) => {
-    if (screenPosition === 'right' && next !== 'right') {
-      dismissRightPanel();
-      return;
-    }
-    setScreenPosition(next);
-  }, [screenPosition, dismissRightPanel]);
-
-  const handleMobileSettingsBack = useCallback(() => {
-    if (screenPosition !== 'right') {
-      // 左抽屉展开时先收起
-      if (screenPosition === 'left') {
-        setScreenPosition('center');
-        return;
-      }
-      // P0-1 / P1-6 两级导航返回链：
-      // 供应商详情 → 供应商列表 → 分区内容 → 分区列表 →（菜单键）应用导航抽屉
-      if (mobileNavView === 'content') {
-        if (activeTab === 'apis' && mobileVendorDetailOpen) {
-          setMobileVendorDetailOpen(false);
-          return;
-        }
-        setMobileNavView('sections');
-        return;
-      }
-      setScreenPosition('left');
-      return;
-    }
-    dismissRightPanel();
-  }, [
-    screenPosition,
-    mobileNavView,
-    activeTab,
-    mobileVendorDetailOpen,
-    dismissRightPanel,
-  ]);
-
-  // 处理返回按钮，确保在返回前保存配置
-  // 🔧 修复：仅在 config 成功加载后才保存，防止 loadConfig 失败时覆写后端真实配置
-  const handleBack = useCallback(async () => {
-    if (!loading && configLoadedRef.current) {
-      await handleSave(true); // 静默保存
-    }
-    onBack();
-  }, [handleSave, loading, onBack]);
-
-  const handleMobileHeaderBack = useCallback(() => {
-    if (screenPosition === 'center' && mobileNavView === 'sections') {
-      // 分区列表态退出设置：走 handleBack 先静默保存再返回（与历史 Sheet 关闭路径一致）。
-      void handleBack();
-      return;
-    }
-    handleMobileSettingsBack();
-  }, [screenPosition, mobileNavView, handleBack, handleMobileSettingsBack]);
-
-  // Android 返回键：设置两级导航逐级回退（供应商详情 → 供应商列表 → 分区内容 → 分区列表）。
-  //
-  // 必须注册在 overlay 档而非 view 档：移动端 Settings 整页是 Radix Sheet
-  // （role="dialog" data-state="open"），协调器的 Radix Escape 兜底探测跑在
-  // view 档之前且常驻命中本 Sheet——view 档 handler 永远轮不到，逐级回退失效。
-  // overlay 档显式 handler 先于兜底探测执行（见 androidBackCoordinator 文件头），
-  // 且同优先级后注册先执行：打开更晚的 DsDialog / 浮动编辑器等仍最先消费；
-  // MobileSlidingLayout 的抽屉/右滑面板 handler 靠本 handler 在非中屏时返回
-  // false 让行。上方叠着未显式注册的 Radix 浮层（shad/Select 下拉等）时同样
-  // 让行，交给兜底探测先关浮层。分区列表态返回 false → 兜底探测派发 Escape
-  // → Sheet onOpenChange → handleSheetBack 关闭整个 Sheet（回退链的最后一级）。
-  // Settings 是 LRU 保活视图：必须 gate isActive，非活跃时注销 handler，否则会吞掉其他页面的返回键。
-  const sheetContentRef = useRef<HTMLDivElement | null>(null);
-  const settingsBackStateRef = useRef({ screenPosition, mobileNavView, activeTab, mobileVendorDetailOpen });
-  settingsBackStateRef.current = { screenPosition, mobileNavView, activeTab, mobileVendorDetailOpen };
-  useEffect(() => {
-    if (!isSmallScreen || !isActive) return;
-    return registerBackHandler(() => {
-      if (hasOpenRadixOverlayBesides(sheetContentRef.current)) return false;
-      const s = settingsBackStateRef.current;
-      if (s.screenPosition !== 'center' || s.mobileNavView !== 'content') return false;
-      if (s.activeTab === 'apis' && s.mobileVendorDetailOpen) {
-        setMobileVendorDetailOpen(false);
-      } else {
-        setMobileNavView('sections');
-      }
-      return true;
-    }, BACK_PRIORITY.overlay);
-  }, [isSmallScreen, isActive]);
+  const mcpSection = useMcpEditorSection({ config, setConfig, isSmallScreen: effectiveMobilePanelMode, activeTab, setActiveTab, setScreenPosition: shell.setScreenPosition, setRightPanelType, t, extra, setExtra, handleSave, normalizedMcpServers, setMcpStatusInfo, mcpStatusInfo });
+  const { mcpToolModal, setMcpToolModal, mcpPolicyModal, setMcpPolicyModal, mcpToolSubmitRef, mcpPolicySaveRef, mcpPreview, mcpTestStep, stripMcpPrefix, refreshSnapshots, handleDeleteMcpTool, handleSaveMcpServer, handleTestServer, handleReconnectClient, handleAddMcpTool, handleCreateMcpTool, handleEditMcpTool, handleOpenMcpPolicy, handleClosePreview, renderMcpToolEditor, renderMcpToolEditorEmbedded, renderMcpPolicyEditorEmbedded, mcpCachedDetails, mcpServers, serverStatusMap, lastError, cacheCapacity, lastCacheUpdatedAt, connectedServers, totalServers, totalCachedTools, promptsCount, resourcesCount, cacheUsagePercent, latestPrompts, latestResources, mcpErrors, clearMcpErrors, dismissMcpError, handleRunHealthCheck, handleClearCaches } = mcpSection;
+  useRefreshOnReturn(() => refreshSnapshots({ reload: true }), isActive && activeTab === 'mcp');
 
   // P0-4：移动端 MCP 工具/资源预览改走三屏右滑面板（替代 DsDialog）
-  useEffect(() => {
-    if (!isSmallScreen) return;
-    if (mcpPreview.open) {
-      setRightPanelType('mcpPreview');
-      setScreenPosition('right');
-    } else if (rightPanelType === 'mcpPreview') {
-      closeRightPanel();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSmallScreen, mcpPreview.open]);
+  useSettingsMcpPreviewPanel({ isSmallScreen, mcpPreviewOpen: mcpPreview.open, rightPanelType, setRightPanelType, setScreenPosition: shell.setScreenPosition, closeRightPanel });
 
-  // 当前分区的导航项（分区内容态顶栏标题用）
-  const activeNavItem = useMemo(
-    () => sidebarNavItems.find((item) => item.value === activeTab) ?? null,
-    [sidebarNavItems, activeTab]
-  );
+  // MCP 分区数据引导（仅在 activeTab === 'mcp' 时工作）
+  useSettingsMcpBootstrap({ activeTab, mcpTools: config.mcpTools, refreshSnapshots, setMcpStatusInfo });
 
-  // 顶栏标题：分区列表态显示「系统设置」；分区内容态显示分区名；
-  // API 详情态显示供应商名；右滑面板显示编辑/预览标题
-  const settingsBreadcrumbText = useMemo(() => {
-    let text = t('settings:title');
-    if (screenPosition === 'right') {
-      switch (rightPanelType) {
-        case 'mcpPreview':
-          text = mcpPreview.serverName || t('settings:mcp.preview.default_title');
-          break;
-        case 'mcpTool':
-          text = mcpToolModal.draft.name?.trim()
-            || (mcpToolModal.index == null
-              ? t('settings:mcp_descriptions.add_tool_title')
-              : t('settings:mcp_descriptions.edit_tool_title'));
-          break;
-        case 'mcpPolicy':
-          text = t('settings:mcp.security_policy');
-          break;
-        case 'modelEditor':
-          text = modelEditor?.api?.name || t('settings:title_edit');
-          break;
-        case 'vendorConfig':
-          text = editingVendor?.name || t('settings:title_edit');
-          break;
-        default:
-          text = t('settings:title_edit');
-      }
-    } else if (mobileNavView === 'content') {
-      if (activeTab === 'apis' && mobileVendorDetailOpen && selectedVendor) {
-        text = selectedVendor.name || activeNavItem?.label || t('settings:title');
-      } else if (activeTab === 'apis') {
-        // 列表态以分类名为标题；具体分区由下方二级 Tab 标明。
-        text = activeCategory?.label ?? t('settings:vendor_panel.list_title');
-      } else {
-        text = activeCategory?.label ?? activeNavItem?.label ?? t('settings:title');
-      }
-    }
-    return text;
-  }, [
-    screenPosition,
-    rightPanelType,
-    mcpPreview.serverName,
-    mcpToolModal.draft.name,
-    mcpToolModal.index,
-    modelEditor,
-    editingVendor,
-    mobileNavView,
-    activeTab,
-    mobileVendorDetailOpen,
-    selectedVendor,
-    activeNavItem,
-    activeCategory,
-    t,
-  ]);
+  // 按 rightPanelType 关闭当前右滑面板并清理对应状态
+  const { dismissRightPanel, handleScreenPositionChange } = useSettingsPanelDismiss({
+    rightPanelType, screenPosition, setScreenPosition: shell.setScreenPosition, closeRightPanel,
+    handleCloseModelEditor, setVendorModalOpen, setEditingVendor, setMcpToolModal, setMcpPolicyModal, handleClosePreview,
+  });
+  // 顶栏返回与手势共用分区清理，不能仅收起屏幕而残留 preview/editor.open。
+  const handleHeaderBack = useCallback(() => handleMobileHeaderBack(dismissRightPanel), [handleMobileHeaderBack, dismissRightPanel]);
 
-  const SettingsBreadcrumb = useMemo(() => (
-    <h1 className="truncate text-lg font-semibold">
-      {settingsBreadcrumbText}
-    </h1>
-  ), [settingsBreadcrumbText]);
-
-  const settingsHeaderRightActions = useMemo(() => {
-    // 供应商详情态：官网入口收进顶栏右侧（页内名称行已随标题上收而移除）
-    if (
-      isSmallScreen
-      && screenPosition !== 'right'
-      && mobileNavView === 'content'
-      && activeTab === 'apis'
-      && mobileVendorDetailOpen
-      && selectedVendor
-    ) {
-      const websiteUrl = selectedVendor.websiteUrl || getProviderWebsiteUrl(selectedVendor.providerType);
-      if (websiteUrl) {
-        return (
-          <DsButton variant="ghost" size="icon" iconOnly onClick={() => void openUrl(websiteUrl)} title={t('settings:vendor_panel.open_website')} aria-label={t('settings:vendor_panel.open_website')} className="!h-11 !w-11 text-primary">
-            <ArrowSquareOut size={20} />
-          </DsButton>
-        );
-      }
-    }
-    // 供应商列表态：新建供应商入口收进顶栏（页内标题行随之移除）
-    if (
-      isSmallScreen
-      && screenPosition !== 'right'
-      && mobileNavView === 'content'
-      && activeTab === 'apis'
-      && !mobileVendorDetailOpen
-    ) {
-      return (
-        <DsButton variant="ghost" size="icon" iconOnly onClick={() => handleOpenVendorModal(null)} title={t('settings:vendor_panel.add_vendor_button')} aria-label={t('settings:vendor_panel.add_vendor_button')} className="!h-11 !w-11 text-primary">
-          <Plus size={20} />
-        </DsButton>
-      );
-    }
-    // MCP 分区态：新增服务器入口收进顶栏（打开右滑面板编辑器，与编辑同一表单）
-    if (
-      isSmallScreen
-      && screenPosition !== 'right'
-      && mobileNavView === 'content'
-      && activeTab === 'mcp'
-    ) {
-      return (
-        <DsButton variant="ghost" size="icon" iconOnly onClick={handleCreateMcpTool} title={t('settings:mcp.add_server')} aria-label={t('settings:mcp.add_server')} className="!h-11 !w-11 text-primary">
-          <Plus size={20} />
-        </DsButton>
-      );
-    }
-    if (screenPosition !== 'right') return undefined;
-    if (rightPanelType === 'vendorConfig') {
-      return (
-        <DsButton variant="ghost" size="icon" iconOnly onClick={() => vendorConfigModalRef.current?.save()} title={t('common:actions.save')} aria-label={t('settings:a11y.save')} className="text-primary">
-          <Check size={20} />
-        </DsButton>
-      );
-    }
-    if (rightPanelType === 'modelEditor') {
-      return (
-        <DsButton
-          variant="ghost"
-          size="icon"
-          iconOnly
-          onClick={() => {
-            const form = document.getElementById('settings-model-editor-form');
-            if (form instanceof HTMLFormElement) form.requestSubmit();
-          }}
-          title={t('common:actions.save')}
-          aria-label={t('settings:a11y.save')}
-          className="text-primary"
-        >
-          <Check size={20} />
-        </DsButton>
-      );
-    }
-    // MCP 工具/策略编辑器：保存出口同样收进顶栏（P1-7 统一；移动端底栏已移除，
-    // 提交闭包由嵌入式编辑器每次渲染写入 ref）
-    if (rightPanelType === 'mcpTool' || rightPanelType === 'mcpPolicy') {
-      const submitRef = rightPanelType === 'mcpTool' ? mcpToolSubmitRef : mcpPolicySaveRef;
-      return (
-        <DsButton
-          variant="ghost"
-          size="icon"
-          iconOnly
-          onClick={() => { void submitRef.current?.(); }}
-          title={t('common:actions.save')}
-          aria-label={t('settings:a11y.save')}
-          className="!h-11 !w-11 text-primary"
-        >
-          <Check size={20} />
-        </DsButton>
-      );
-    }
-    return undefined;
-  }, [screenPosition, rightPanelType, t, isSmallScreen, mobileNavView, activeTab, mobileVendorDetailOpen, handleOpenVendorModal, selectedVendor, mcpToolSubmitRef, mcpPolicySaveRef, handleCreateMcpTool]);
-
-  // 移动端设置统一显示返回箭头：首页返回主页，内容态逐级回退。
-  const showSettingsBackArrow = true;
+  // 顶栏标题与右侧动作（面包屑依赖供应商/MCP 编辑目标）
+  const { titleNode: settingsTitleNode, rightActions: settingsHeaderRightActions, onMenuClick: settingsHeaderBack } = useSettingsMobileHeaderContent({
+    t, activeTab, activeNavItem, activeCategory, screenPosition, mobileNavView, mobileVendorDetailOpen,
+    isSmallScreen, rightPanelType, mcpPreview, mcpToolModal, modelEditor, editingVendor, selectedVendor,
+    vendorConfigModalRef, mcpToolSubmitRef, mcpPolicySaveRef, handleOpenVendorModal, handleCreateMcpTool,
+    onMenuClick: handleHeaderBack,
+  });
 
   useMobileHeader('settings', {
     // 移动端设置按普通页面承载，统一顶栏即页面顶栏（标题面包屑 + 返回 + 右侧动作）。
     hidden: !isActive,
-    titleNode: SettingsBreadcrumb,
-    onMenuClick: handleMobileHeaderBack,
-    showBackArrow: showSettingsBackArrow,
+    titleNode: settingsTitleNode,
+    onMenuClick: settingsHeaderBack,
+    showBackArrow: true,
     rightActions: settingsHeaderRightActions,
-  }, [SettingsBreadcrumb, settingsHeaderRightActions, handleMobileHeaderBack, isActive]);
-
-  const handleSaveChatStreamTimeout = useCallback(async () => {
-    const raw = String(extra?.chatStreamTimeoutSeconds ?? '').trim();
-    if (!invoke) {
-      showGlobalNotification('error', t('common:settings.chat_stream.save_error_timeout', { error: 'invoke unavailable' }));
-      return;
-    }
-    let payloadValue = '';
-    let timeoutMs: number | null = null;
-    if (raw) {
-      const numericSeconds = Number(raw);
-      if (!Number.isFinite(numericSeconds) || numericSeconds < 0) {
-        showGlobalNotification('error', t('common:settings.chat_stream.invalid_timeout'));
-        return;
-      }
-      const roundedSeconds = Math.round(numericSeconds);
-      timeoutMs = roundedSeconds * 1000;
-      payloadValue = String(timeoutMs);
-    }
-    try {
-      await saveSetting('chat.stream.timeout_ms', payloadValue);
-      showGlobalNotification('success', t('common:settings.chat_stream.save_success_timeout'));
-      const savedValue = raw ? String(Math.round(Number(raw))) : '';
-      setExtra(prev => ({
-        ...prev,
-        chatStreamTimeoutSeconds: savedValue,
-        _lastSavedTimeoutSeconds: savedValue,
-      }));
-    } catch (error) {
-      const errorMessage = getErrorMessage(error);
-      console.error('[Settings] 保存聊天流式超时失败:', error);
-      showGlobalNotification('error', t('common:settings.chat_stream.save_error_timeout', { error: errorMessage }));
-      setExtra(prev => ({
-        ...prev,
-        chatStreamTimeoutSeconds: prev._lastSavedTimeoutSeconds ?? '',
-      }));
-    }
-  }, [extra, invoke, showGlobalNotification, t]);
-
-  const handleToggleChatStreamAutoCancel = useCallback(async (checked: boolean) => {
-    setExtra(prev => ({ ...prev, chatStreamAutoCancel: checked }));
-    if (!invoke) {
-      showGlobalNotification('error', t('common:settings.chat_stream.save_error_auto_cancel', { error: 'invoke unavailable' }));
-      return;
-    }
-    try {
-      await saveSetting('chat.stream.auto_cancel_on_timeout', checked ? '1' : '0');
-      showGlobalNotification('success', t('common:settings.chat_stream.save_success_auto_cancel'));
-    } catch (error) {
-      const errorMessage = getErrorMessage(error);
-      console.error('[Settings] 保存聊天流式自动取消失败:', error);
-      showGlobalNotification('error', t('common:settings.chat_stream.save_error_auto_cancel', { error: errorMessage }));
-      setExtra(prev => ({ ...prev, chatStreamAutoCancel: !checked }));
-    }
-  }, [invoke, showGlobalNotification, t]);
-
-  // 🔧 R2-9: 合并为单一 useEffect，避免竞态写入
-  useEffect(() => {
-    if (!invoke) return;
-    (async () => {
-      try {
-        // 并行加载所有参数调整相关设置
-        // FTS 预筛：后端消费的 key 是 rag.hybrid.fts_prefilter.enabled；
-        // 旧 key search.chat.semantic.fts_prefilter.enabled 仅作读取回退（历史用户已保存值）
-        const [ftsVal, ftsLegacyVal, rawTimeout, rawAutoCancel] = await Promise.all([
-          invoke<string | null>('get_setting', { key: 'rag.hybrid.fts_prefilter.enabled' }).catch(() => null),
-          invoke<string | null>('get_setting', { key: 'search.chat.semantic.fts_prefilter.enabled' }).catch(() => null),
-          invoke<string | null>('get_setting', { key: 'chat.stream.timeout_ms' }).catch(() => null),
-          invoke<string | null>('get_setting', { key: 'chat.stream.auto_cancel_on_timeout' }).catch(() => null),
-        ]);
-
-        const ftsRaw = ftsVal ?? ftsLegacyVal;
-        const ftsEnabled = ftsRaw ? (ftsRaw === '1' || ftsRaw.toLowerCase() === 'true') : true;
-
-        const timeoutMs = (() => {
-          if (!rawTimeout) return null;
-          const trimmed = String(rawTimeout).trim();
-          if (!trimmed) return null;
-          const parsed = Number(trimmed);
-          return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
-        })();
-        const secondsString = timeoutMs != null ? String(Math.round(timeoutMs / 1000)) : '';
-
-        const autoCancel = (() => {
-          if (!rawAutoCancel) return true;
-          const lowered = String(rawAutoCancel).trim().toLowerCase();
-          if (!lowered) return true;
-          return !(lowered === '0' || lowered === 'false');
-        })();
-
-        // 一次性更新全部，避免竞态
-        setExtra(prev => ({
-          ...prev,
-          paramsLoaded: true,
-          chatSemanticFtsPrefilter: ftsEnabled,
-          chatStreamTimeoutSeconds: secondsString,
-          chatStreamAutoCancel: autoCancel,
-          _lastSavedTimeoutSeconds: secondsString,
-        }));
-      } catch (error) {
-        console.warn('[Settings] 加载参数调整设置失败:', error);
-        setExtra(prev => ({ ...prev, paramsLoaded: true }));
-      }
-    })();
-  }, [invoke]);
-
-  // （handleBack 已上移至 handleMobileHeaderBack 之前，供顶栏返回链复用）
+  }, [settingsTitleNode, settingsHeaderRightActions, settingsHeaderBack, isActive]);
 
   // 挂载时、以及（经典壳保活）设置视图重新成为当前视图时消费 pending settings route。
   // 很多入口只写 pending route 再切视图、不派发 SETTINGS_NAVIGATE_TAB（迁移横幅、
@@ -961,189 +246,51 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
     [applySettingsRoute],
   );
 
-  // 当进入 MCP 标签或配置变化时刷新缓存快照
+  // Preserve section-specific redirects (workbench -> apis on mobile platforms).
   useEffect(() => {
-    if (activeTab !== 'mcp') return;
-    let disposed = false;
-    (async () => {
-      try {
-        await refreshSnapshots();
-      } catch (e) {
-        console.warn('[Settings] MCP 快照刷新失败:', e);
-      }
-      if (disposed) return;
-    })();
-    return () => {
-      disposed = true;
-    };
-  }, [activeTab, config.mcpTools, refreshSnapshots]);
+    const redirect = activeSectionEntry?.value.redirect?.({ isMobile });
+    if (redirect) {
+      setActiveTab(redirect);
+    }
+  }, [activeTab, activeSectionEntry, isMobile, setActiveTab]);
 
-  // 订阅 MCP 状态信息
+  // 「插件管理」挂载后并入旧「插件」页签（微信渠道插件已内置进管理页）：
+  // 历史入口、命令面板或搜索直达 'plugins' 时统一落到 'plugin-manager'，避免出现第二个插件页。
+  const hasPluginManager = useMemo(
+    () => sectionEntries.some((entry) => entry.key === 'plugin-manager'),
+    [sectionEntries],
+  );
   useEffect(() => {
-    if (activeTab !== 'mcp') return;
-    let unsub: (() => void) | undefined;
-    let cancelled = false;
-    (async () => {
-      try {
-        const { McpService } = await import('@/mcp/mcpService');
-        const status = await McpService.status().catch(() => null);
-        if (!cancelled && status) setMcpStatusInfo(status);
-        unsub = McpService.onStatus((s) => setMcpStatusInfo(s));
-      } catch (e) {
-        console.warn('[Settings] MCP 状态订阅初始化失败:', e);
-      }
-    })();
-    return () => {
-      cancelled = true;
-      if (unsub) unsub();
-    };
+    if (hasPluginManager && activeTab === 'plugins') {
+      setActiveTab('plugin-manager');
+    }
+  }, [activeTab, hasPluginManager, setActiveTab]);
+
+  // 从 API 配置页切换到其他页时，触发一次自动分配模型
+  const prevActiveTabRef = useRef<string | null>(null);
+  useEffect(() => {
+    const prevTab = prevActiveTabRef.current;
+    prevActiveTabRef.current = activeTab;
+
+    if (prevTab === 'apis' && activeTab !== 'apis') {
+      (async () => {
+        try {
+          const { autoAssignAllModels } = await import('@/features/chat/readiness/autoAssignModel');
+          const result = await autoAssignAllModels();
+          if (result.assigned) {
+            console.log(`[Settings] Auto-assigned ${result.assignedCount} model(s): ${result.assignedModelNames.join(', ')}`);
+          } else {
+            console.log(`[Settings] Auto-assign skipped: ${result.reason ?? 'no changes'}`);
+          }
+        } catch (err) {
+          console.error('[Settings] Auto-assign failed:', err);
+        }
+      })();
+    }
   }, [activeTab]);
-
-  const renderVendorConfigEmbedded = () => {
-    if (!vendorModalOpen) {
-      return (
-        <div className="h-full flex items-center justify-center text-muted-foreground">
-          <p className="text-sm">{t('settings:vendor_panel.select_vendor_to_edit')}</p>
-        </div>
-      );
-    }
-
-    const handleClose = () => {
-      setVendorModalOpen(false);
-      setEditingVendor(null);
-      closeRightPanel();
-    };
-
-    return (
-      <div
-        className="flex h-full min-h-0 flex-col bg-background"
-        style={{
-          paddingBottom: 'var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px))',
-        }}
-      >
-        <VendorConfigModal
-          ref={vendorConfigModalRef}
-          open={vendorModalOpen}
-          vendor={editingVendor}
-          onClose={handleClose}
-          onSave={handleSaveVendorModal}
-          embeddedMode={true}
-        />
-      </div>
-    );
-  };
-
-  // 指示器位置更新（rAF 节流，避免同步强制回流）
-  const indicatorRafId = useRef<number | null>(null);
-  const updateIndicatorRaf = useCallback((tabId: string) => {
-    if (indicatorRafId.current != null) return;
-    // OS 模式拖/缩/settle：禁止读 layout（offsetLeft）抢跟手帧
-    if (
-      typeof document !== 'undefined' &&
-      (document.documentElement.hasAttribute('data-wb-dragging') ||
-        document.documentElement.hasAttribute('data-wb-settling'))
-    ) {
-      return;
-    }
-    indicatorRafId.current = requestAnimationFrame(() => {
-      indicatorRafId.current = null;
-      try {
-        if (
-          document.documentElement.hasAttribute('data-wb-dragging') ||
-          document.documentElement.hasAttribute('data-wb-settling')
-        ) {
-          return;
-        }
-        const tabElement = tabsRef.current.get(tabId);
-        const buttonsEl = tabButtonsContainerRef.current;
-        if (tabElement && buttonsEl) {
-          const left = Math.max(0, tabElement.offsetLeft + buttonsEl.offsetLeft - buttonsEl.scrollLeft);
-          setIndicatorStyle({
-            transform: `translateX(${left}px)`,
-            width: tabElement.offsetWidth,
-          });
-        }
-      } catch (e) {
-        console.warn('[Settings] updateIndicator skipped:', e);
-      }
-    });
-  }, []);
-  updateIndicatorRafRef.current = updateIndicatorRaf;
-  
-  // 初始化和窗口大小变化时更新指示器（使用 rAF 代替 setTimeout 延迟）
-  useEffect(() => {
-    if (!loading && activeTab) {
-      // 使用双 rAF，等待布局稳定（下一帧之后再计算）
-      let raf1 = 0, raf2 = 0;
-      raf1 = requestAnimationFrame(() => {
-        raf2 = requestAnimationFrame(() => updateIndicatorRaf(activeTab));
-      });
-
-      const handleResize = debounce(() => updateIndicatorRaf(activeTab), 100);
-      window.addEventListener('resize', handleResize);
-
-      // 横向滚动时保持指示器与选中标签对齐
-      const buttonsEl = tabButtonsContainerRef.current;
-      const handleScroll = () => updateIndicatorRaf(activeTab);
-      if (buttonsEl) buttonsEl.addEventListener('scroll', handleScroll, { passive: true });
-
-      return () => {
-        window.removeEventListener('resize', handleResize);
-        if (buttonsEl) buttonsEl.removeEventListener('scroll', handleScroll);
-        if (raf1) cancelAnimationFrame(raf1);
-        if (raf2) cancelAnimationFrame(raf2);
-      };
-    }
-  }, [loading, activeTab, updateIndicatorRaf]);
 
   useEffect(() => {
     loadConfig();
-  }, []);
-
-  // 监听模型分配变更事件（Chat V2 修改默认模型后广播）
-  useEffect(() => {
-    const reloadAssignments = async () => {
-      try {
-        const modelAssignments = await invoke<{
-          model2_config_id: string | null;
-          anki_card_model_config_id: string | null;
-          qbank_ai_grading_model_config_id: string | null;
-          qbank_ai_generation_model_config_id: string | null;
-          reranker_model_config_id: string | null;
-          exam_sheet_ocr_model_config_id: string | null;
-          translation_model_config_id: string | null;
-          chat_title_model_config_id: string | null;
-          vl_reranker_model_config_id: string | null;
-          memory_decision_model_config_id: string | null;
-          voice_input_asr_model_config_id: string | null;
-          image_generation_model_config_id: string | null;
-          compaction_model_config_id: string | null;
-          translation_display_mode: string | null;
-        }>('get_model_assignments');
-        setConfig(prev => ({
-          ...prev,
-          model2ConfigId: modelAssignments?.model2_config_id || '',
-          ankiCardModelConfigId: modelAssignments?.anki_card_model_config_id || '',
-          qbank_ai_grading_model_config_id: modelAssignments?.qbank_ai_grading_model_config_id || '',
-          qbank_ai_generation_model_config_id:
-            modelAssignments?.qbank_ai_generation_model_config_id || '',
-          rerankerModelConfigId: modelAssignments?.reranker_model_config_id || '',
-          chat_title_model_config_id: modelAssignments?.chat_title_model_config_id || '',
-          exam_sheet_ocr_model_config_id: modelAssignments?.exam_sheet_ocr_model_config_id || '',
-          translation_model_config_id: modelAssignments?.translation_model_config_id || '',
-          vl_reranker_model_config_id: modelAssignments?.vl_reranker_model_config_id || '',
-          memory_decision_model_config_id: modelAssignments?.memory_decision_model_config_id || '',
-          voice_input_asr_model_config_id: modelAssignments?.voice_input_asr_model_config_id || '',
-          image_generation_model_config_id: modelAssignments?.image_generation_model_config_id || '',
-          compaction_model_config_id: modelAssignments?.compaction_model_config_id || '',
-          translation_display_mode: (modelAssignments?.translation_display_mode === 'streaming' ? 'streaming' : 'aligned'),
-        }));
-      } catch {
-        // Ignore malformed cached assignments and keep current settings state.
-      }
-    };
-    window.addEventListener('model_assignments_changed', reloadAssignments);
-    return () => window.removeEventListener('model_assignments_changed', reloadAssignments);
   }, []);
 
   // 自动保存配置（当配置发生变化时）
@@ -1167,7 +314,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
     config.webSearchGoogleKey, config.webSearchSerpApiKey, config.webSearchTavilyKey,
     config.webSearchBraveKey, config.webSearchSearxngKey, config.webSearchZhipuKey,
     config.webSearchBochaKey, config.webSearchDeepseekKey, config.webSearchSearxngEndpoint, config.webSearchGoogleCx,
-    config.webSearchDeepseekNeedContent, config.webSearchDeepseekFetchEnabled,
+    config.webSearchDeepseekNeedContent,
   ]);
 
   if (loading && !isSmallScreen) {
@@ -1198,637 +345,161 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
     />
   );
 
-  // P0-4：MCP 工具/资源预览正文（桌面 DsDialog 与移动右滑面板共用）
-  const renderMcpPreviewBody = () => {
-    if (mcpPreview.loading) {
-      return <div className="py-12 text-center text-sm text-muted-foreground">{t('settings:mcp.preview.loading')}</div>;
-    }
-    if (mcpPreview.error) {
-      return (
-        <div className="rounded-md border px-3 py-2 text-sm" style={{ background: 'hsl(var(--danger-bg))', color: 'hsl(var(--danger))', borderColor: 'hsl(var(--danger) / 0.3)' }}>
-          {mcpPreview.error}
-        </div>
-      );
-    }
-    return (
-      <div className="grid gap-4">
-        <div className="flex flex-col rounded-lg border bg-muted p-3">
-          <div className="text-sm font-semibold text-foreground">{t('settings:mcp_descriptions.tools_count', { count: mcpPreview.tools.length })}</div>
-          {mcpPreview.tools.length === 0 ? (
-            <div className="mt-3 rounded-md border border-dashed bg-background/70 px-3 py-6 text-center text-xs text-muted-foreground">
-              {t('settings:common_labels.no_data')}
-            </div>
-          ) : (
-            <div className="mt-3 space-y-2 text-xs text-muted-foreground">
-              {mcpPreview.tools.map((tool, index) => {
-                const formattedName = stripMcpPrefix(tool?.name);
-                return (
-                  <div
-                    key={`${tool?.name || 'tool'}-${index}`}
-                    className="rounded border bg-card px-2 py-2 shadow-sm"
-                  >
-                    <div
-                      className="font-medium text-foreground break-all"
-                      title={tool?.name || t('settings:status_labels.unnamed_tool')}
-                    >
-                      {formattedName || t('settings:status_labels.unnamed_tool')}
-                    </div>
-                    {tool?.description && (
-                      <div className="mt-1 text-muted-foreground leading-5 break-words">
-                        {tool.description}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-        <div className="flex flex-col rounded-lg border bg-muted p-3">
-          <div className="text-sm font-semibold text-foreground">{t('settings:mcp_descriptions.prompts_count', { count: mcpPreview.prompts.length })}</div>
-          {mcpPreview.prompts.length === 0 ? (
-            <div className="mt-3 rounded-md border border-dashed bg-background/70 px-3 py-6 text-center text-xs text-muted-foreground">
-              {t('settings:common_labels.no_data')}
-            </div>
-          ) : (
-            <div className="mt-3 space-y-2 text-xs text-muted-foreground">
-              {mcpPreview.prompts.map((prompt, index) => (
-                <div
-                  key={`${prompt?.name || 'prompt'}-${index}`}
-                  className="rounded border bg-card px-2 py-2 shadow-sm"
-                >
-                  <div
-                    className="font-medium text-foreground break-all"
-                    title={prompt?.name || t('settings:status_labels.unnamed_prompt')}
-                  >
-                    {prompt?.name || t('settings:status_labels.unnamed_prompt')}
-                  </div>
-                  {prompt?.description && (
-                    <div className="mt-1 text-muted-foreground leading-5 break-words">
-                      {prompt.description}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-        <div className="flex flex-col rounded-lg border bg-muted p-3">
-          <div className="text-sm font-semibold text-foreground">{t('settings:mcp_descriptions.resources_count', { count: mcpPreview.resources.length })}</div>
-          {mcpPreview.resources.length === 0 ? (
-            <div className="mt-3 rounded-md border border-dashed bg-background/70 px-3 py-6 text-center text-xs text-muted-foreground">
-              {t('settings:common_labels.no_data')}
-            </div>
-          ) : (
-            <div className="mt-3 space-y-2 text-xs text-muted-foreground">
-              {mcpPreview.resources.map((res, index) => (
-                <div
-                  key={`${res?.uri || res?.name || 'resource'}-${index}`}
-                  className="rounded border bg-card px-2 py-2 shadow-sm"
-                >
-                  <div
-                    className="font-medium text-foreground break-all"
-                    title={res?.name || res?.uri || t('settings:status_labels.unnamed_resource')}
-                  >
-                    {res?.name || stripMcpPrefix(res?.uri) || t('settings:status_labels.unnamed_resource')}
-                  </div>
-                  {res?.description && (
-                    <div className="mt-1 text-muted-foreground leading-5 break-words">
-                      {res.description}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    );
+  // Props stay in the shell, and are evaluated only for the active section.
+  const sectionProps: SettingsSectionPropsFactories = {
+    apis: () => ({
+      vendors, sortedVendors, selectedVendor, selectedVendorId, setSelectedVendorId,
+      selectedVendorModels, selectedVendorIsSiliconflow, openAICodexAuthenticated,
+      profileCountByVendor, vendorBusy, vendorSaving, isEditingVendor, vendorFormData,
+      setVendorFormData, testingApi, handleOpenVendorModal, handleStartEditVendor,
+      handleCancelEditVendor, handleSaveEditVendor, handleDeleteVendor, handleSaveVendorBaseUrl,
+      handleSaveVendorApiKey, handleClearVendorApiKey, handleOpenModelEditor, inlineEditState,
+      setInlineEditState, handleSaveInlineEdit, isAddingNewModel, handleAddModelInline,
+      handleCancelAddModel: () => { setInlineEditState(null); setIsAddingNewModel(false); },
+      convertProfileToApiConfig: (profile, vendor) => convertProfileToApiConfig(profile, vendor),
+      handleToggleModelProfile, handleDeleteModelProfile, handleToggleFavorite, testApiConnection,
+      handleSiliconFlowConfig, handleBatchCreateConfigs, handleBatchConfigsCreated,
+      onReorderVendors: handleReorderVendors,
+      onAddVendorModels: handleAddVendorModels,
+      triggerPostSaveAutoFlow,
+      isSmallScreen: effectiveMobilePanelMode,
+      mobileVendorDetailOpen,
+      onMobileVendorDetailOpenChange: setMobileVendorDetailOpen,
+      scrollElement: settingsScrollElement,
+      deepseekCapabilities: {
+        config,
+        changeConfig: updates => setConfig(prev => ({ ...prev, ...updates })),
+        assignAsr: async id => {
+          await saveSingleAssignmentField('voice_input_asr_model_config_id', id);
+          setConfig(prev => ({ ...prev, voice_input_asr_model_config_id: id ?? '' }));
+        },
+        enableModel: async profile => { await upsertModelProfile({ ...profile, enabled: true, status: 'enabled' }); },
+      },
+    }),
+    search: () => ({ config, setConfig, deepseekProviderConfigured: vendors.some(vendor =>
+      vendor.id === 'builtin-deepseek' && Boolean(vendor.apiKey?.trim())) }),
+    models: () => ({
+      config, setConfig, apiConfigs: config.apiConfigs, toUnifiedModelInfo,
+      getAllEnabledApis, getEmbeddingApis, getRerankerApis, getAsrApis,
+      getImageGenerationApis, saveSingleAssignmentField,
+    }),
+    plugins: () => ({ models: toUnifiedModelInfo(getAllEnabledApis()) }),
+    mcp: () => ({
+      servers: mcpServers,
+      serverStatusMap,
+      toolsByServer: {
+        // 为内置服务器添加工具列表
+        [BUILTIN_SERVER_ID]: {
+          items: getBuiltinServer().tools.map(t => ({ name: t.name, description: t.description })),
+          at: Date.now()
+        },
+        ...mcpCachedDetails.toolsByServer
+      },
+      prompts: mcpCachedDetails.prompts,
+      resources: mcpCachedDetails.resources,
+      lastCacheUpdatedAt, cacheCapacity, isLoading: isMcpLoading, lastError,
+      onAddServer: handleAddMcpTool,
+      onSaveServer: handleSaveMcpServer,
+      onDeleteServer: handleDeleteMcpTool,
+      onTestServer: handleTestServer,
+      testStep: mcpTestStep,
+      onReconnect: handleReconnectClient,
+      onHealthCheck: handleRunHealthCheck,
+      onClearCache: handleClearCaches,
+      onOpenPolicy: handleOpenMcpPolicy,
+      onCreateServer: handleCreateMcpTool,
+      onEditServer: isSmallScreen ? (server) => handleEditMcpTool(server as McpToolConfig, mcpServers.findIndex((s) => s.id === server.id)) : undefined,
+      scrollElement: settingsScrollElement,
+    }),
+    statistics: () => ({ embedded: true, mode: 'stats' }),
+    automation: () => ({ invoke, listen: isTauri ? tauriListen as unknown as AutomationListen : null }),
+    'data-governance': () => ({ tabTarget: dataGovernanceTabTarget }),
+    general: () => ({
+      topbarTopMargin, topbarTopMarginLoaded, setTopbarTopMargin, logTypeForOpen, setLogTypeForOpen,
+      showRawRequest: showRawRequest ?? false,
+      showRawRequestLoaded: showRawRequest !== null,
+      setShowRawRequest, invoke,
+    }),
+    appearance: () => ({
+      uiZoom, zoomLoading, zoomSaving, zoomStatus, handleZoomChange, handleZoomReset,
+      uiFont, fontLoading, fontSaving, handleFontChange, handleFontReset,
+      uiFontSize, fontSizeLoading, fontSizeSaving, handleFontSizeChange, handleFontSizeReset,
+      themeMode, isSystemDark, setThemeMode, themePalette, setThemePalette,
+      customColor, setCustomColor, isTauriEnvironment, invoke,
+    }),
+    params: () => ({ extra, setExtra, invoke, handleSaveChatStreamTimeout, handleToggleChatStreamAutoCancel }),
+    'voice-input': () => ({ voiceInputAssignedModel }),
+    memory: () => ({}),
+    workbench: () => ({}),
+    'document-processing': () => ({}),
+    shortcuts: () => ({ className: 'min-h-[500px]', scrollElement: settingsScrollElement }),
+    about: () => ({}),
   };
 
   // 渲染主内容区域（mobilePageMode：移动端 sheet 内的二级内容页）
   const renderSettingsMainContent = ({ mobilePageMode = false }: { mobilePageMode?: boolean } = {}) => (
-    <div
-      id="settings-main-content"
-      className={cn(
-        'flex-1 min-w-0 h-full flex flex-col overflow-hidden max-w-full relative bg-[color:var(--shell-workspace-panel)]',
-        mobilePageMode && 'settings-mobile-sheet-body text-foreground'
-      )}
-      data-slot={mobilePageMode ? 'mobile-settings-page-content' : undefined}
-    >
-        {activeCategory && !(mobilePageMode && mobileVendorDetailOpen) && (
-          <div className="shrink-0 px-5 pt-4 lg:px-8">
-            <div className="mx-auto w-full max-w-[72rem]">
-              <SettingsCategoryHeader
-                category={activeCategory}
-                activeTab={activeTab}
-                onTabChange={setActiveTab}
-                idPrefix={settingsNavigationId}
-                compact={mobilePageMode}
-              />
-            </div>
-          </div>
-        )}
-        {activeTab === 'about' && !mobilePageMode && (
-          <div className="shrink-0 px-5 pt-5 lg:px-8">
-            <h1 className="mx-auto w-full max-w-[72rem] text-xl font-semibold">{t('settings:tabs.about')}</h1>
-          </div>
-        )}
-        <CustomScrollArea
-          className={cn('min-h-0 flex-1 w-full max-w-full', mobilePageMode && 'scrollbar-none')}
-          // OverlayScrollbars 会把 viewport 的 padding 强制写成 0，水平内边距必须放在内层。
-          // viewportRef：虚拟化列表（SettingsVirtualList / ShortcutSettings）需要真实滚动元素。
-          viewportRef={setSettingsScrollElement}
-          trackOffsetTop={16}
-          trackOffsetBottom={16}
-          trackOffsetRight={0}
-          viewportClassName={mobilePageMode ? 'settings-mobile-sheet-scroll-viewport' : undefined}
-          style={{ textAlign: 'left' }}
-        >
-          <div
-            className={cn(
-              mobilePageMode
-                ? 'px-5 pb-[calc(1.25rem+var(--mobile-safe-area-bottom,0px))] pt-4'
-                : 'px-5 pb-6 pt-4 md:px-5 md:pb-7 md:pt-5 lg:px-8',
-              effectiveMobilePanelMode && !mobilePageMode && 'px-4 py-3 pb-[calc(1rem+var(--mobile-safe-area-bottom,env(safe-area-inset-bottom,0px)))]',
-            )}
-          >
-          {/* 分区切换：左右对称进出，替代原先只有入场的整树重挂载 */}
-          <ShellViewSwitch viewKey={activeTab} className="mx-auto w-full max-w-[72rem]">
-            <React.Suspense fallback={<SettingsTabFallback />}>
-            <div
-              className="space-y-6"
-              id={`${settingsNavigationId}-panel`}
-              role={activeCategory && !(mobilePageMode && mobileVendorDetailOpen) ? 'tabpanel' : undefined}
-              aria-labelledby={activeCategory && !(mobilePageMode && mobileVendorDetailOpen) ? `${settingsNavigationId}-tab-${activeTab}` : undefined}
-              tabIndex={0}
-            >
-        {/* API配置管理 */}
-        {/* API配置管理 */}
-        {activeTab === 'apis' && (
-          <ApisTab
-            vendors={vendors}
-            sortedVendors={sortedVendors}
-            selectedVendor={selectedVendor}
-            selectedVendorId={selectedVendorId}
-            setSelectedVendorId={setSelectedVendorId}
-            selectedVendorModels={selectedVendorModels}
-            selectedVendorIsSiliconflow={selectedVendorIsSiliconflow}
-            openAICodexAuthenticated={openAICodexAuthenticated}
-            profileCountByVendor={profileCountByVendor}
-            vendorBusy={vendorBusy}
-            vendorSaving={vendorSaving}
-            isEditingVendor={isEditingVendor}
-            vendorFormData={vendorFormData}
-            setVendorFormData={setVendorFormData}
-            testingApi={testingApi}
-            handleOpenVendorModal={handleOpenVendorModal}
-            handleStartEditVendor={handleStartEditVendor}
-            handleCancelEditVendor={handleCancelEditVendor}
-            handleSaveEditVendor={handleSaveEditVendor}
-            handleDeleteVendor={handleDeleteVendor}
-            handleSaveVendorBaseUrl={handleSaveVendorBaseUrl}
-            handleSaveVendorApiKey={handleSaveVendorApiKey}
-            handleClearVendorApiKey={handleClearVendorApiKey}
-            handleOpenModelEditor={handleOpenModelEditor}
-            inlineEditState={inlineEditState}
-            setInlineEditState={setInlineEditState}
-            handleSaveInlineEdit={handleSaveInlineEdit}
-            isAddingNewModel={isAddingNewModel}
-            handleAddModelInline={handleAddModelInline}
-            handleCancelAddModel={() => { setInlineEditState(null); setIsAddingNewModel(false); }}
-            convertProfileToApiConfig={(profile, vendor) => convertProfileToApiConfig(profile, vendor)}
-            handleToggleModelProfile={handleToggleModelProfile}
-            handleDeleteModelProfile={handleDeleteModelProfile}
-            handleToggleFavorite={handleToggleFavorite}
-            testApiConnection={testApiConnection}
-            handleSiliconFlowConfig={handleSiliconFlowConfig}
-            handleBatchCreateConfigs={handleBatchCreateConfigs}
-            handleBatchConfigsCreated={handleBatchConfigsCreated}
-            onReorderVendors={handleReorderVendors}
-            onAddVendorModels={handleAddVendorModels}
-            triggerPostSaveAutoFlow={triggerPostSaveAutoFlow}
-            isSmallScreen={effectiveMobilePanelMode}
-            mobileVendorDetailOpen={mobileVendorDetailOpen}
-            onMobileVendorDetailOpenChange={setMobileVendorDetailOpen}
-            scrollElement={settingsScrollElement}
-          />
-        )}
-
-        {/* MCP 预览：桌面用 DsDialog；移动端由三屏右滑面板承载（见 renderRightPanel） */}
-        {!isSmallScreen && (
-          <DsDialog open={mcpPreview.open} onOpenChange={(open) => { if (!open) handleClosePreview(); }} maxWidth="max-w-3xl">
-            <DsDialogHeader>
-              <DsDialogTitle>{mcpPreview.serverName || t('settings:mcp.preview.default_title')}</DsDialogTitle>
-              <DsDialogDescription>{t('settings:mcp.preview.description')}</DsDialogDescription>
-              {mcpPreview.serverId && (
-                <div className="mt-1 text-xs text-muted-foreground break-all">{t('settings:mcp.preview.id_label')}：{mcpPreview.serverId}</div>
-              )}
-            </DsDialogHeader>
-            <DsDialogBody overlayScroll className="py-6" onWheel={(event) => event.stopPropagation()}>
-              {renderMcpPreviewBody()}
-            </DsDialogBody>
-            <DsDialogFooter>
-              <DsButton variant="outline" size="sm" onClick={handleClosePreview} className="[@media(pointer:coarse)]:!min-h-11">{t('common:close')}</DsButton>
-            </DsDialogFooter>
-          </DsDialog>
-        )}
-        {/* 外部搜索设置 */}
-        {activeTab === 'search' && (
-          <ExternalSearchTab config={config} setConfig={setConfig} />
-        )}
-        {/* 模型分配 */}
-        {/* 模型分配 */}
-        {activeTab === 'models' && (
-          <ModelsTab
-            config={config}
-            setConfig={setConfig}
-            apiConfigs={config.apiConfigs}
-            toUnifiedModelInfo={toUnifiedModelInfo}
-            getAllEnabledApis={getAllEnabledApis}
-            getEmbeddingApis={getEmbeddingApis}
-            getRerankerApis={getRerankerApis}
-            getAsrApis={getAsrApis}
-            getImageGenerationApis={getImageGenerationApis}
-            saveSingleAssignmentField={saveSingleAssignmentField}
-          />
-        )}
-        {activeTab === 'plugins' && !isMobilePlatform() && (
-          <PluginsTab models={toUnifiedModelInfo(getAllEnabledApis())} />
-        )}
-        {activeTab === 'plugins' && isMobilePlatform() && (
-          <div className="py-10 text-sm text-muted-foreground">{t('settings:plugins.mobile_hidden')}</div>
-        )}
-        {activeTab === 'mcp' && (
-          <McpToolsSection
-            servers={mcpServers}
-            serverStatusMap={serverStatusMap}
-            toolsByServer={{
-              // 为内置服务器添加工具列表
-              [BUILTIN_SERVER_ID]: {
-                items: getBuiltinServer().tools.map(t => ({ name: t.name, description: t.description })),
-                at: Date.now()
-              },
-              ...mcpCachedDetails.toolsByServer
-            }}
-            prompts={mcpCachedDetails.prompts}
-            resources={mcpCachedDetails.resources}
-            lastCacheUpdatedAt={lastCacheUpdatedAt}
-            cacheCapacity={cacheCapacity}
-            isLoading={isMcpLoading}
-            lastError={lastError}
-            onAddServer={handleAddMcpTool}
-            onSaveServer={handleSaveMcpServer}
-            onDeleteServer={handleDeleteMcpTool}
-            onTestServer={handleTestServer}
-            testStep={mcpTestStep}
-            onReconnect={handleReconnectClient}
-            onRefreshRegistry={handleRefreshRegistry}
-            onHealthCheck={handleRunHealthCheck}
-            onClearCache={handleClearCaches}
-            onOpenPolicy={handleOpenMcpPolicy}
-            onCreateServer={handleCreateMcpTool}
-            onEditServer={isSmallScreen ? (server) => handleEditMcpTool(server as McpToolConfig, mcpServers.findIndex((s) => s.id === server.id)) : undefined}
-            scrollElement={settingsScrollElement}
-          />
-        )}
-        {/* 数据统计 */}
-        {activeTab === 'statistics' && (
-          <DataImportExport embedded={true} mode="stats" />
-        )}
-        {activeTab === 'automation' && (
-          <div className="space-y-6">
-            <AutomationSettingsSection
-              invoke={invoke}
-              listen={isTauri ? tauriListen as unknown as AutomationListen : null}
-            />
-            <SubagentProfilesSection />
-            <SuperAgentSettingsSection />
-          </div>
-        )}
-        {/* 数据治理 */}
-        {activeTab === 'data-governance' && (
-          <div className="space-y-6">
-            <DataGovernanceDashboard tabTarget={dataGovernanceTabTarget} />
-          </div>
-        )}
-        {activeTab === 'general' && (
-          <GeneralTab
-            topbarTopMargin={topbarTopMargin}
-            topbarTopMarginLoaded={topbarTopMarginLoaded}
-            setTopbarTopMargin={setTopbarTopMargin}
-            logTypeForOpen={logTypeForOpen}
-            setLogTypeForOpen={setLogTypeForOpen}
-            showRawRequest={showRawRequest ?? false}
-            showRawRequestLoaded={showRawRequest !== null}
-            setShowRawRequest={setShowRawRequest}
-            invoke={invoke}
-          />
-        )}
-        {activeTab === 'appearance' && (
-          <AppearanceTab
-            uiZoom={uiZoom}
-            zoomLoading={zoomLoading}
-            zoomSaving={zoomSaving}
-            zoomStatus={zoomStatus}
-            handleZoomChange={handleZoomChange}
-            handleZoomReset={handleZoomReset}
-            uiFont={uiFont}
-            fontLoading={fontLoading}
-            fontSaving={fontSaving}
-            handleFontChange={handleFontChange}
-            handleFontReset={handleFontReset}
-            uiFontSize={uiFontSize}
-            fontSizeLoading={fontSizeLoading}
-            fontSizeSaving={fontSizeSaving}
-            handleFontSizeChange={handleFontSizeChange}
-            handleFontSizeReset={handleFontSizeReset}
-            themeMode={themeMode}
-            isSystemDark={isSystemDark}
-            setThemeMode={setThemeMode}
-            themePalette={themePalette}
-            setThemePalette={setThemePalette}
-            customColor={customColor}
-            setCustomColor={setCustomColor}
-            isTauriEnvironment={isTauriEnvironment}
-            invoke={invoke}
-          />
-        )}
-        {/* 参数调整 */}
-        {activeTab === 'params' && (
-          <ParamsTab
-            extra={extra}
-            setExtra={setExtra}
-            invoke={invoke}
-            handleSaveChatStreamTimeout={handleSaveChatStreamTimeout}
-            handleToggleChatStreamAutoCancel={handleToggleChatStreamAutoCancel}
-          />
-        )}
-        {/* 语音听写 / 记忆 / 工作台 / 文档处理（2026-09 自常规/参数页拆出的独立分区） */}
-        {activeTab === 'voice-input' && (
-          <VoiceInputTab voiceInputAssignedModel={voiceInputAssignedModel} />
-        )}
-        {activeTab === 'memory' && <MemoryTab />}
-        {activeTab === 'workbench' && !isMobilePlatform() && <WorkbenchTab />}
-        {activeTab === 'document-processing' && <DocumentProcessingTab />}
-        {/* MCP 工具编辑模态 */}
-        {renderMcpToolEditor()}
-        {/* MCP 全局安全策略模态 - 移动端通过右侧滑动面板渲染 */}
-        {!isSmallScreen && mcpPolicyModal.open && (
-          <UnifiedModal 
-            isOpen={true} 
-            onClose={() => setMcpPolicyModal(prev => ({ ...prev, open: false }))}
-            closeOnOverlayClick={false}
-          >
-            <div className="ui-rise-in relative mx-auto mt-10 flex min-h-0 max-h-[min(85dvh,720px)] w-[90%] max-w-[500px] flex-col overflow-hidden rounded-[var(--radius-shell-dialog)] bg-popover p-4 text-popover-foreground shadow-lg">
-              {/* 头部 */}
-              <div className="mb-4 flex items-center justify-between">
-                <h3 className="text-base font-semibold text-foreground">{t('settings:mcp.security_policy')}</h3>
-                <DsButton variant="ghost" size="icon" iconOnly onClick={() => setMcpPolicyModal(prev => ({ ...prev, open: false }))} aria-label={t('settings:a11y.close')} className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11">
-                  <X size={16} />
-                </DsButton>
-              </div>
-              {/* 矮窗口下限高滚动，避免表单被弹窗限高裁剪后按钮不可达 */}
-              <CustomScrollArea
-                className="min-h-0 flex-1"
-                viewportClassName="pr-1"
-                trackOffsetTop={4}
-                trackOffsetBottom={4}
-              >
-                <div className="grid gap-3">
-                <label className="inline-flex items-center gap-2 cursor-pointer [@media(pointer:coarse)]:min-h-11">
-                  <Switch
-                    checked={mcpPolicyModal.advertiseAll}
-                    onCheckedChange={(checked) => setMcpPolicyModal(prev => ({ ...prev, advertiseAll: !!checked }))}
-                  />
-                  <span className="text-sm">{t('settings:mcp_policy.advertise_all')}</span>
-                </label>
-                <div className="text-xs text-muted-foreground">
-                  {t('settings:mcp_policy.whitelist_mode_hint')}
-                </div>
-
-                {!mcpPolicyModal.advertiseAll && (
-                  <>
-                    <label className="text-xs text-foreground">{t('settings:mcp_policy.whitelist_label')}</label>
-                    <Input
-                      type="text"
-                      value={mcpPolicyModal.whitelist}
-                      onChange={(e) => setMcpPolicyModal(prev => ({ ...prev, whitelist: e.target.value }))}
-                      placeholder="read_file, write_file, list_directory"
-                    />
-                  </>
-                )}
-
-                <label className="text-xs text-foreground">{t('settings:mcp_policy.blacklist_label')}</label>
-                <Input
-                  type="text"
-                  value={mcpPolicyModal.blacklist}
-                  onChange={(e) => setMcpPolicyModal(prev => ({ ...prev, blacklist: e.target.value }))}
-                  placeholder="delete_file, execute_command, rm, sudo"
-                />
-                <div className="text-xs text-muted-foreground">{t('settings:mcp_policy.danger_hint')}</div>
-
-                <div className="two-col-grid">
-                  <div>
-                    <label className="text-xs text-foreground">{t('settings:mcp_policy.timeout_label')}</label>
-                    <Input
-                      type="number"
-                      min={1000}
-                      value={mcpPolicyModal.timeoutMs}
-                      onChange={(e) => setMcpPolicyModal(prev => ({ ...prev, timeoutMs: parseInt(e.target.value || '0', 10) || 15000 }))}
-                      className="w-full"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-foreground">{t('settings:mcp_policy.rate_limit_label')}</label>
-                    <Input
-                      type="number"
-                      min={1}
-                      value={mcpPolicyModal.rateLimit}
-                      onChange={(e) => setMcpPolicyModal(prev => ({ ...prev, rateLimit: parseInt(e.target.value || '0', 10) || 10 }))}
-                      className="w-full"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-foreground">{t('settings:mcp_policy.cache_max_label')}</label>
-                    <Input
-                      type="number"
-                      min={0}
-                      value={mcpPolicyModal.cacheMax}
-                      onChange={(e) => {
-                        const parsed = parseInt(e.target.value, 10);
-                        setMcpPolicyModal(prev => ({
-                          ...prev,
-                          cacheMax: Number.isFinite(parsed) ? Math.max(0, parsed) : 100,
-                        }));
-                      }}
-                      className="w-full"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-foreground">{t('settings:mcp_policy.cache_ttl_label')}</label>
-                    <Input
-                      type="number"
-                      min={0}
-                      value={mcpPolicyModal.cacheTtlMs}
-                      onChange={(e) => {
-                        const parsed = parseInt(e.target.value, 10);
-                        setMcpPolicyModal(prev => ({
-                          ...prev,
-                          cacheTtlMs: Number.isFinite(parsed) ? Math.max(0, parsed) : 300000,
-                        }));
-                      }}
-                      className="w-full"
-                    />
-                  </div>
-                </div>
-                </div>
-              </CustomScrollArea>
-              <div className="mt-4 flex justify-end gap-2">
-                <DsButton variant="ghost" className="[@media(pointer:coarse)]:!min-h-11" onClick={() => setMcpPolicyModal(prev => ({ ...prev, open: false }))}>{t('common:actions.cancel')}</DsButton>
-                <DsButton
-                  variant="primary"
-                  className="[@media(pointer:coarse)]:!min-h-11"
-                  onClick={async () => {
-                    const nextPolicy = {
-                      mcpAdvertiseAll: mcpPolicyModal.advertiseAll,
-                      mcpWhitelist: mcpPolicyModal.whitelist,
-                      mcpBlacklist: mcpPolicyModal.blacklist,
-                      mcpTimeoutMs: mcpPolicyModal.timeoutMs,
-                      mcpRateLimit: mcpPolicyModal.rateLimit,
-                      mcpCacheMax: mcpPolicyModal.cacheMax,
-                      mcpCacheTtlMs: mcpPolicyModal.cacheTtlMs,
-                    };
-
-                    try {
-                      if (invoke) {
-                        await Promise.all([
-                          saveSetting('mcp.tools.advertise_all_tools', mcpPolicyModal.advertiseAll.toString()),
-                          saveSetting('mcp.tools.whitelist', mcpPolicyModal.whitelist),
-                          saveSetting('mcp.tools.blacklist', mcpPolicyModal.blacklist),
-                          saveSetting('mcp.performance.timeout_ms', String(mcpPolicyModal.timeoutMs)),
-                          saveSetting('mcp.performance.rate_limit_per_second', String(mcpPolicyModal.rateLimit)),
-                          saveSetting('mcp.performance.cache_max_size', String(mcpPolicyModal.cacheMax)),
-                          saveSetting('mcp.performance.cache_ttl_ms', String(mcpPolicyModal.cacheTtlMs)),
-                        ]);
-                      }
-                    } catch (err) {
-                      const errorMessage = getErrorMessage(err);
-                      console.error('保存MCP安全策略失败:', err);
-                      showGlobalNotification('error', t('settings:mcp_descriptions.policy_save_failed', { error: errorMessage }));
-                      return;
-                    }
-
-                    setConfig(prev => ({ ...prev, ...nextPolicy }));
-                    showGlobalNotification('success', t('settings:mcp_descriptions.policy_saved'));
-                    setMcpPolicyModal(prev => ({ ...prev, open: false }));
-                  }}
-                >{t('common:save')}</DsButton>
-              </div>
-            </div>
-          </UnifiedModal>
-        )}
-        {/* 快捷键设置 */}
-        {activeTab === 'shortcuts' && (
-          <ShortcutSettings className="min-h-[500px]" scrollElement={settingsScrollElement} />
-        )}
-
-        {/* 关于页面 */}
-        {/* 关于页面 */}
-        {activeTab === 'about' && <AboutTab />}
-            </div>
-            </React.Suspense>
-          </ShellViewSwitch>
-          </div>
-        </CustomScrollArea>
-    </div>
+    <SettingsMainContent
+      activeTab={activeTab}
+      setActiveTab={setActiveTab}
+      activeCategory={activeCategory}
+      activeSectionEntry={activeSectionEntry}
+      settingsNavigationId={settingsNavigationId}
+      mobilePageMode={mobilePageMode}
+      mobileVendorDetailOpen={mobileVendorDetailOpen}
+      effectiveMobilePanelMode={effectiveMobilePanelMode}
+      isSmallScreen={isSmallScreen}
+      isMobile={isMobile}
+      setSettingsScrollElement={setSettingsScrollElement}
+      sectionProps={sectionProps}
+      t={t}
+      mcpPreview={mcpPreview}
+      stripMcpPrefix={stripMcpPrefix}
+      handleClosePreview={handleClosePreview}
+      mcpPolicyModal={mcpPolicyModal}
+      setMcpPolicyModal={setMcpPolicyModal}
+      renderMcpToolEditor={renderMcpToolEditor}
+      invoke={invoke}
+      setConfig={setConfig}
+    />
   );
 
-  // ===== 移动端布局：三屏滑动布局（侧栏 ← 主视图 → 编辑面板） =====
-  // 渲染右侧编辑面板内容
-  const renderRightPanel = () => {
-    // 根据面板类型渲染不同内容
-    switch (rightPanelType) {
-      case 'modelEditor':
-        if (!modelEditor) {
-          return (
-            <div className="h-full flex items-center justify-center text-muted-foreground">
-              <p className="text-sm">{t('settings:vendor_panel.select_model_to_edit')}</p>
-            </div>
-          );
-        }
-        return (
-          <div
-            className="flex h-full min-h-0 flex-col bg-background"
-            style={{
-              paddingBottom: 'var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px))',
-            }}
-          >
-            <ShadApiEditModal
-              // 表单内部状态在挂载时初始化：切换编辑目标必须重挂载，否则残留上一个模型的值
-              key={modelEditor.api.id}
-              api={modelEditor.api}
-              onSave={handleSaveModelProfileAndClose}
-              onCancel={handleCloseModelEditor}
-              hideConnectionFields
-              lockedVendorInfo={{
-                name: modelEditor.vendor.name,
-                baseUrl: modelEditor.vendor.baseUrl,
-                providerType: modelEditor.vendor.providerType,
-              }}
-              embeddedMode={true}
-              mobilePanelMode={true}
-            />
-          </div>
-        );
+  const renderRightPanel = () => (
+    <SettingsMobileRightPanel
+      rightPanelType={rightPanelType}
+      modelEditor={modelEditor}
+      handleSaveModelProfileAndClose={handleSaveModelProfileAndClose}
+      handleCloseModelEditor={handleCloseModelEditor}
+      renderMcpToolEditorEmbedded={renderMcpToolEditorEmbedded}
+      renderMcpPolicyEditorEmbedded={renderMcpPolicyEditorEmbedded}
+      mcpPreview={mcpPreview}
+      stripMcpPrefix={stripMcpPrefix}
+      t={t}
+      vendorModalOpen={vendorModalOpen}
+      editingVendor={editingVendor}
+      handleSaveVendorModal={handleSaveVendorModal}
+      closeRightPanel={closeRightPanel}
+      setVendorModalOpen={setVendorModalOpen}
+      setEditingVendor={setEditingVendor}
+      vendorConfigModalRef={vendorConfigModalRef}
+    />
+  );
 
-      case 'mcpTool':
-        return renderMcpToolEditorEmbedded();
-
-      case 'mcpPolicy':
-        return renderMcpPolicyEditorEmbedded();
-
-      case 'mcpPreview':
-        // P0-4：MCP 工具/资源预览（移动端），标题由统一顶栏承载
-        return (
-          <div
-            className="flex h-full min-h-0 flex-col bg-background"
-            style={{
-              paddingBottom: 'var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px))',
-            }}
-          >
-            <CustomScrollArea
-              className="flex-1 min-h-0 w-full"
-              // 外层容器（--android-safe-area-bottom）已消费底部安全区；
-              // Sheet 根现在重建了 --mobile-safe-area-bottom，这里再叠加会双倍留白。
-              viewportClassName="px-4 py-4"
-              trackOffsetTop={12}
-              trackOffsetBottom={12}
-            >
-              <div className="space-y-3">
-                <p className="text-xs text-muted-foreground">{t('settings:mcp.preview.description')}</p>
-                {mcpPreview.serverId && (
-                  <p className="text-xs text-muted-foreground break-all">
-                    {t('settings:mcp.preview.id_label')}：{mcpPreview.serverId}
-                  </p>
-                )}
-                {renderMcpPreviewBody()}
-              </div>
-            </CustomScrollArea>
-          </div>
-        );
-
-      case 'vendorConfig':
-        return renderVendorConfigEmbedded();
-
-      default:
-        return (
-          <div className="h-full flex items-center justify-center text-muted-foreground">
-            <p className="text-sm">{t('settings:vendor_panel.select_model_to_edit')}</p>
-          </div>
-        );
-    }
-  };
+  const appMenuDemoDialog = (
+    <DsDialog open={showAppMenuDemo} onOpenChange={setShowAppMenuDemo} maxWidth="max-w-4xl">
+      <DsDialogHeader>
+        <DsDialogTitle className="flex items-center gap-2">
+          <Stack size={20} />
+          {t('acknowledgements.ui_components.app_menu')}
+        </DsDialogTitle>
+        <DsDialogDescription>
+          {t('acknowledgements.ui_components.app_menu_desc')}
+        </DsDialogDescription>
+      </DsDialogHeader>
+      <DsDialogBody overlayScroll>
+        <AppMenuDemo />
+      </DsDialogBody>
+    </DsDialog>
+  );
 
   if (isSmallScreen) {
     // 移动端设置按普通页面承载（2026-09 起不再使用底部 Sheet）：
@@ -1855,27 +526,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
             className="flex min-h-0 flex-1 flex-col"
           >
           {loading ? (
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden text-foreground" data-settings-mobile-level="loading">
-              <CustomScrollArea
-                className="settings-mobile-sheet-body min-h-0 flex-1 w-full"
-                viewportClassName="settings-mobile-sheet-scroll-viewport h-full"
-              >
-                <div className="space-y-5 px-4 pb-[calc(1.25rem+var(--mobile-safe-area-bottom,0px))] pt-4">
-                  <div className="h-11 w-full animate-pulse rounded-[14px] bg-muted" />
-                  <div className="overflow-hidden rounded-2xl border border-border/40 bg-background p-1">
-                    {sidebarCategories.map((category) => (
-                      <div key={category.value} className="flex min-h-[72px] items-center gap-3 border-b border-border/30 px-3 last:border-b-0">
-                        <div className="h-6 w-6 animate-pulse rounded-md bg-muted" />
-                        <div className="min-w-0 flex-1 space-y-2">
-                          <div className="h-4 w-28 max-w-[60%] animate-pulse rounded bg-muted" />
-                          <div className="h-3 w-44 max-w-[80%] animate-pulse rounded bg-muted" />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </CustomScrollArea>
-            </div>
+            <SettingsMobileLoadingSkeleton categories={sidebarCategories} />
           ) : isSectionsLevel ? (
             <MobileSlidingLayout
               sidebar={
@@ -1919,20 +570,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
           </ShellViewSwitch>
         </div>
 
-        <DsDialog open={showAppMenuDemo} onOpenChange={setShowAppMenuDemo} maxWidth="max-w-4xl">
-          <DsDialogHeader>
-            <DsDialogTitle className="flex items-center gap-2">
-              <Stack size={20} />
-              {t('acknowledgements.ui_components.app_menu')}
-            </DsDialogTitle>
-            <DsDialogDescription>
-              {t('acknowledgements.ui_components.app_menu_desc')}
-            </DsDialogDescription>
-          </DsDialogHeader>
-          <DsDialogBody overlayScroll>
-            <AppMenuDemo />
-          </DsDialogBody>
-        </DsDialog>
+        {appMenuDemoDialog}
       </>
     );
   }
@@ -1949,78 +587,26 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
       {/* 主内容区域 */}
       {renderSettingsMainContent()}
 
-      {modelEditor && (
-        <ShadApiEditModal
-          api={modelEditor.api}
-          onSave={handleSaveModelProfile}
-          onCancel={() => setModelEditor(null)}
-          hideConnectionFields
-          lockedVendorInfo={{
-            name: modelEditor.vendor.name,
-            baseUrl: modelEditor.vendor.baseUrl,
-            providerType: modelEditor.vendor.providerType,
-          }}
-        />
-      )}
-      <VendorConfigModal
-        open={vendorModalOpen}
-        vendor={editingVendor}
-        onClose={() => {
-          setVendorModalOpen(false);
-          setEditingVendor(null);
-        }}
-        onSave={handleSaveVendorModal}
+      <SettingsDesktopDialogs
+        modelEditor={modelEditor}
+        handleSaveModelProfile={handleSaveModelProfile}
+        setModelEditor={setModelEditor}
+        vendorModalOpen={vendorModalOpen}
+        editingVendor={editingVendor}
+        setVendorModalOpen={setVendorModalOpen}
+        setEditingVendor={setEditingVendor}
+        handleSaveVendorModal={handleSaveVendorModal}
+        modelDeleteDialog={modelDeleteDialog}
+        setModelDeleteDialog={setModelDeleteDialog}
+        confirmDeleteModelProfile={confirmDeleteModelProfile}
+        vendorDeleteDialog={vendorDeleteDialog}
+        setVendorDeleteDialog={setVendorDeleteDialog}
+        confirmDeleteVendor={confirmDeleteVendor}
+        t={t}
       />
-      <DsAlertDialog
-        open={Boolean(modelDeleteDialog)}
-        onOpenChange={open => { if (!open) setModelDeleteDialog(null); }}
-        title={t('settings:vendor_panel.delete_model_title')}
-        description={t('settings:vendor_panel.delete_model_desc')}
-        confirmText={t('common:actions.delete')}
-        cancelText={t('common:actions.cancel')}
-        confirmVariant="danger"
-        onConfirm={confirmDeleteModelProfile}
-      >
-        {modelDeleteDialog?.referencingKeys.length ? (
-          <p className="text-sm text-muted-foreground">
-            {t('settings:common_labels.confirm_delete_api_with_assignments', {
-              count: modelDeleteDialog.referencingKeys.length,
-            })}
-          </p>
-        ) : (
-          <p className="text-sm text-muted-foreground">{t('settings:common_labels.confirm_delete_api')}</p>
-        )}
-      </DsAlertDialog>
-      <DsAlertDialog
-        open={Boolean(vendorDeleteDialog)}
-        onOpenChange={open => { if (!open) setVendorDeleteDialog(null); }}
-        title={t('settings:vendor_panel.delete_vendor_title')}
-        description={t('settings:vendor_panel.delete_vendor_desc')}
-        confirmText={t('common:actions.delete')}
-        cancelText={t('common:actions.cancel')}
-        confirmVariant="danger"
-        onConfirm={confirmDeleteVendor}
-      >
-        {vendorDeleteDialog && (
-          <p className="text-sm text-muted-foreground">{t('settings:vendor_panel.confirm_delete', { name: vendorDeleteDialog.name })}</p>
-        )}
-      </DsAlertDialog>
 
       {/* 现代化菜单演示对话框 */}
-      <DsDialog open={showAppMenuDemo} onOpenChange={setShowAppMenuDemo} maxWidth="max-w-4xl">
-        <DsDialogHeader>
-          <DsDialogTitle className="flex items-center gap-2">
-            <Stack size={20} />
-            {t('acknowledgements.ui_components.app_menu')}
-          </DsDialogTitle>
-          <DsDialogDescription>
-            {t('acknowledgements.ui_components.app_menu_desc')}
-          </DsDialogDescription>
-        </DsDialogHeader>
-        <DsDialogBody overlayScroll>
-          <AppMenuDemo />
-        </DsDialogBody>
-      </DsDialog>
+      {appMenuDemoDialog}
     </div>
   );
 };

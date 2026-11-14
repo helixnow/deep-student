@@ -12,10 +12,11 @@
 
 import React, { useState, useCallback, useMemo } from 'react';
 import { DsButton } from '@/components/ui/DsButton';
+import { PulseDot } from '@/components/ui/PulseDot';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useDisclosureMotion } from '../../hooks/useDisclosureMotion';
-import { Check, Circle, CircleNotch, X, SkipForward, CaretDown } from '@phosphor-icons/react';
+import { Check, Circle, X, SkipForward, CaretDown } from '@phosphor-icons/react';
 import { cn } from '@/utils/cn';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
 
@@ -73,32 +74,32 @@ const StatusIcon: React.FC<StatusIconProps> = ({ status, index }) => {
   switch (status) {
     case 'running':
       return (
-        <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-[color:hsl(var(--primary))] text-[color:hsl(var(--primary-foreground))] text-2xs font-bold flex-shrink-0">
+        <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-primary text-primary-foreground text-2xs font-bold tabular-nums flex-shrink-0">
           {index + 1}
         </span>
       );
     case 'completed':
       return (
-        <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-[color:hsl(var(--success)/0.18)] flex-shrink-0">
-          <Check size={12} className="text-[color:hsl(var(--success))]" strokeWidth={3} />
+        <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-success/15 flex-shrink-0">
+          <Check size={12} weight="bold" className="text-success" />
         </span>
       );
     case 'failed':
       return (
-        <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-[color:hsl(var(--destructive)/0.14)] flex-shrink-0">
-          <X size={12} className="text-[color:hsl(var(--destructive))]" strokeWidth={3} />
+        <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-destructive/15 flex-shrink-0">
+          <X size={12} weight="bold" className="text-destructive" />
         </span>
       );
     case 'skipped':
       return (
-        <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-[color:hsl(var(--muted))] flex-shrink-0">
-          <SkipForward size={10} className="text-[color:var(--text-muted)]" />
+        <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-muted flex-shrink-0">
+          <SkipForward size={10} className="text-muted-foreground" />
         </span>
       );
     default: // pending
       return (
-        <span className="inline-flex items-center justify-center w-4 h-4 rounded-full border border-[color:var(--border-soft)] flex-shrink-0">
-          <Circle size={6} className="text-[color:var(--text-muted)] opacity-25" fill="currentColor" />
+        <span className="inline-flex items-center justify-center w-4 h-4 rounded-full border border-border/60 flex-shrink-0">
+          <Circle size={6} className="text-muted-foreground/30" fill="currentColor" />
         </span>
       );
   }
@@ -186,7 +187,7 @@ export const TodoListPanel: React.FC<TodoListPanelProps> = ({
     }
     return (
       <div className={cn('todo-list-panel flex items-center gap-1.5 py-0.5 text-xs text-muted-foreground', className)}>
-        <CircleNotch size={12} className="animate-spin flex-shrink-0" />
+        <PulseDot className="h-1.5 w-1.5 flex-shrink-0 text-primary" />
         <span className="truncate">{emptyPlaceholder}</span>
       </div>
     );
@@ -196,7 +197,7 @@ export const TodoListPanel: React.FC<TodoListPanelProps> = ({
   const getCollapsedSummary = () => {
     if (isInitTool || isGetTool) {
       // 初始化或获取：显示进度
-      return t('timeline.todoList.progress', { done: doneCount, total: totalCount });
+      return title || t('timeline.todoList.progress', { done: doneCount, total: totalCount });
     }
     if (changedStep) {
       // 更新：显示变更的步骤
@@ -206,32 +207,38 @@ export const TodoListPanel: React.FC<TodoListPanelProps> = ({
         : '○';
       return `${statusText} ${changedStep.description}`;
     }
-    return t('timeline.todoList.progress', { done: doneCount, total: totalCount });
+    return title || t('timeline.todoList.progress', { done: doneCount, total: totalCount });
   };
 
   return (
     <div className={cn('todo-list-panel', className)}>
-      {/* 可折叠头部 - 显示摘要或 diff */}
+      {/* 可折叠头部 - 显示摘要或 diff + 进度摘要 */}
       <DsButton
         variant="ghost"
         size="sm"
         onClick={toggleExpanded}
-        className="w-full !justify-start gap-1.5 !py-0.5 [@media(pointer:coarse)]:!min-h-11 text-left text-muted-foreground hover:text-foreground"
+        aria-expanded={isExpanded}
+        className="w-full !justify-between gap-2 !py-0.5 [@media(pointer:coarse)]:!min-h-11 text-left text-muted-foreground hover:text-foreground"
       >
-        <CaretDown
-          className={cn(
-            'transition-transform duration-200 flex-shrink-0',
-            !isExpanded && '-rotate-90'
-          )}
-          size={14}
-        />
-        <span className={cn(
-          'truncate',
-          !isExpanded && changedStep?.status === 'completed' && 'text-[color:hsl(var(--success))]',
-          !isExpanded && changedStep?.status === 'running' && 'text-[color:hsl(var(--primary))]',
-          !isExpanded && changedStep?.status === 'failed' && 'text-[color:hsl(var(--destructive))]'
-        )}>
-          {getCollapsedSummary()}
+        <div className="flex min-w-0 flex-1 items-center gap-1.5">
+          <CaretDown
+            className={cn(
+              'transition-transform duration-200 flex-shrink-0',
+              !isExpanded && '-rotate-90'
+            )}
+            size={14}
+          />
+          <span className={cn(
+            'truncate',
+            !isExpanded && changedStep?.status === 'completed' && 'text-success',
+            !isExpanded && changedStep?.status === 'running' && 'text-primary',
+            !isExpanded && changedStep?.status === 'failed' && 'text-destructive'
+          )}>
+            {getCollapsedSummary()}
+          </span>
+        </div>
+        <span className="shrink-0 rounded-md bg-muted/60 px-1.5 py-0.5 text-2xs font-medium text-muted-foreground tabular-nums">
+          {doneCount}/{totalCount}
         </span>
       </DsButton>
 
@@ -254,13 +261,13 @@ export const TodoListPanel: React.FC<TodoListPanelProps> = ({
                     className={cn(
                       'flex items-start gap-2 px-2 py-1',
                       'text-xs',
-                      step.status === 'completed' && 'text-[color:hsl(var(--success))]',
-                      step.status === 'running' && 'text-[color:var(--text-primary)] font-medium',
-                      step.status === 'failed' && 'text-[color:hsl(var(--destructive))]',
-                      step.status === 'skipped' && 'text-[color:var(--text-muted)] line-through',
-                      step.status === 'pending' && 'text-[color:var(--text-muted)]',
+                      step.status === 'completed' && 'text-success',
+                      step.status === 'running' && 'text-foreground font-medium',
+                      step.status === 'failed' && 'text-destructive',
+                      step.status === 'skipped' && 'text-muted-foreground line-through',
+                      step.status === 'pending' && 'text-muted-foreground',
                       // 🆕 高亮本次变更的步骤
-                      step.id === changedStepId && 'bg-[color:hsl(var(--primary)/0.1)] -mx-2 px-2 rounded'
+                      step.id === changedStepId && 'bg-primary/10 -mx-2 px-2 rounded'
                     )}
                   >
                     <StatusIcon status={step.status} index={index} />
@@ -273,14 +280,14 @@ export const TodoListPanel: React.FC<TodoListPanelProps> = ({
                       </span>
                       {/* 失败时显示错误信息 */}
                       {step.status === 'failed' && step.result && (
-                        <span className="block text-2xs text-[color:hsl(var(--destructive))] opacity-65 mt-0.5">
+                        <span className="block text-2xs text-destructive/75 mt-0.5">
                           {step.result}
                         </span>
                       )}
                     </div>
                     {/* 执行中的加载动画 */}
                     {step.status === 'running' && (
-                      <CircleNotch size={12} className="animate-spin text-[color:hsl(var(--primary))] flex-shrink-0 mt-0.5" />
+                      <PulseDot className="h-1.5 w-1.5 flex-shrink-0 mt-1 text-primary" />
                     )}
                   </li>
                 ))}
@@ -289,7 +296,7 @@ export const TodoListPanel: React.FC<TodoListPanelProps> = ({
 
             {/* 完成消息 */}
             {isAllDone && message && (
-              <div className="mt-1 text-2xs text-[color:hsl(var(--success))]">
+              <div className="mt-1 text-2xs text-success">
                 {message}
               </div>
             )}
@@ -320,7 +327,7 @@ const TodoListBlock: React.FC<BlockComponentProps> = React.memo(({ block }) => {
   if (block.status === 'error') {
     return (
       <div className="flex items-start gap-1.5 py-0.5 text-xs text-destructive">
-        <X size={12} className="mt-0.5 flex-shrink-0" strokeWidth={3} />
+        <X size={12} weight="bold" className="mt-0.5 flex-shrink-0" />
         <span className="break-words">
           {block.error || t('chatV2:blocks.todoList.blockError')}
         </span>
@@ -331,13 +338,23 @@ const TodoListBlock: React.FC<BlockComponentProps> = React.memo(({ block }) => {
   if (!output) {
     return (
       <div className="flex items-center gap-1.5 py-0.5 text-xs text-muted-foreground">
-        {isRunning && <CircleNotch size={12} className="animate-spin flex-shrink-0" />}
+        {isRunning && <PulseDot className="h-1.5 w-1.5 flex-shrink-0 text-primary" />}
         <span>{t('common:loading')}</span>
       </div>
     );
   }
 
   const { title, steps = [], isAllDone, completedCount, totalCount, message } = output;
+  const computedAllDone = Boolean(
+    isAllDone ||
+      (steps.length > 0 &&
+        steps.every(
+          (step) =>
+            step.status === 'completed' ||
+            step.status === 'failed' ||
+            step.status === 'skipped'
+        ))
+  );
 
   return (
     <TodoListPanel
@@ -347,7 +364,7 @@ const TodoListBlock: React.FC<BlockComponentProps> = React.memo(({ block }) => {
       completedCount={completedCount}
       totalCount={totalCount}
       message={message}
-      defaultExpanded={true}
+      defaultExpanded={!computedAllDone && steps.length <= 5}
       // 运行中短暂空列表不再直接消失
       emptyPlaceholder={isRunning ? t('chatV2:blocks.todoList.emptyRunning') : undefined}
     />

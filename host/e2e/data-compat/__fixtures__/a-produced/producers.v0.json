@@ -1,0 +1,102 @@
+{
+  "domain": "backup",
+  "commands": [
+    "data_governance_run_backup",
+    "data_governance_delete_backup",
+    "data_governance_get_backup_job",
+    "data_governance_get_backup_list",
+    "data_governance_backup_and_export_zip"
+  ],
+  "scenarios": [
+    {
+      "id": "w21.a-produce.full-backup",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "data_governance_run_backup",
+          "args": {
+            "backupType": "full"
+          }
+        },
+        {
+          "cmd": "data_governance_delete_backup",
+          "args": {
+            "backupId": "w21_produce_barrier_missing"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_get_backup_job",
+          "args": {
+            "jobId": "${0.job_id}"
+          }
+        },
+        {
+          "cmd": "data_governance_get_backup_list",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "w21.a-produce.historical-zips",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "data_governance_backup_and_export_zip",
+          "args": {
+            "outputPath": "/tmp/w21-a-produced/portable.zip",
+            "addToBackupList": false
+          }
+        },
+        {
+          "cmd": "data_governance_delete_backup",
+          "args": {
+            "backupId": "w21_produce_barrier_missing"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_get_backup_job",
+          "args": {
+            "jobId": "${0.job_id}"
+          }
+        },
+        {
+          "cmd": "data_governance_backup_and_export_zip",
+          "args": {
+            "outputPath": "/tmp/w21-a-produced/sealed.zip",
+            "addToBackupList": false,
+            "encryptionPassword": "w21-l21-historical-sealed"
+          }
+        },
+        {
+          "cmd": "data_governance_delete_backup",
+          "args": {
+            "backupId": "w21_produce_barrier_missing"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_get_backup_job",
+          "args": {
+            "jobId": "${3.job_id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

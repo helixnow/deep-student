@@ -6,14 +6,25 @@
  * 3. 当前视图高亮，不从网格里拿掉；闪卡中心任一分区活跃时「闪卡」高亮。
  */
 import React from 'react';
-import { describe, expect, it, beforeEach, vi } from 'vitest';
-import { render, screen, cleanup, fireEvent } from '@testing-library/react';
+import { describe, expect, it, beforeAll, afterAll, beforeEach, vi } from 'vitest';
+import { render as renderRoot, screen, cleanup, fireEvent } from '@testing-library/react';
+import { createOfficialUiTestKernel } from '@/ui-plugins/testing/render';
+import { UiKernelProvider } from '@/ui-kernel/react';
+import type { UiKernel } from '@/ui-kernel/kernel';
 import { useViewStore } from '@/stores/viewStore';
 import type { CurrentView } from '@/types/navigation';
 import { MOBILE_APP_LAUNCHER_VIEWS } from '@/config/navigation';
 import { rememberCardsHubView, resetCardsHubMemoryForTests } from '@/app/navigation/cardsHub';
 
 import { MobileSidebarNavigation } from '../MobileSidebarNavigation';
+
+let kernel: UiKernel;
+beforeAll(async () => { kernel = await createOfficialUiTestKernel(); });
+afterAll(async () => { cleanup(); await kernel.dispose(); });
+const render: typeof renderRoot = (ui, options) => renderRoot(ui, {
+  ...options,
+  wrapper: ({ children }) => <UiKernelProvider kernel={kernel}>{children}</UiKernelProvider>,
+});
 
 const setCurrentView = (view: CurrentView) => {
   useViewStore.setState({ currentView: view, previousView: null });

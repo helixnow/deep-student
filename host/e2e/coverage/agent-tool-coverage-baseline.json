@@ -1,0 +1,100 @@
+{
+ "description": "前端内置技能工具中，官方 desktop profile 装配后没有任何 agentTools 执行器 canHandle 的工具。只拦截新增；补上执行器后用 DSTU_WRITE_TOOL_COVERAGE_BASELINE=1 重跑 agent-tool-coverage.test.ts 收紧。",
+ "entries": [
+  {
+   "tool": "builtin-chatanki_control",
+   "skill": "chatanki",
+   "reason": "2026-11-07 快照：desktop profile 未注册可处理该工具的执行器（W02/W03/W04 正在补齐）"
+  },
+  {
+   "tool": "builtin-chatanki_delete_library_card",
+   "skill": "chatanki",
+   "reason": "2026-11-07 快照：desktop profile 未注册可处理该工具的执行器（W02/W03/W04 正在补齐）"
+  },
+  {
+   "tool": "builtin-chatanki_enqueue_library_review",
+   "skill": "chatanki",
+   "reason": "2026-11-07 快照：desktop profile 未注册可处理该工具的执行器（W02/W03/W04 正在补齐）"
+  },
+  {
+   "tool": "builtin-chatanki_run",
+   "skill": "chatanki",
+   "reason": "2026-11-07 快照：desktop profile 未注册可处理该工具的执行器（W02/W03/W04 正在补齐）"
+  },
+  {
+   "tool": "builtin-chatanki_set_library_suspended",
+   "skill": "chatanki",
+   "reason": "2026-11-07 快照：desktop profile 未注册可处理该工具的执行器（W02/W03/W04 正在补齐）"
+  },
+  {
+   "tool": "builtin-chatanki_start",
+   "skill": "chatanki",
+   "reason": "2026-11-07 快照：desktop profile 未注册可处理该工具的执行器（W02/W03/W04 正在补齐）"
+  },
+  {
+   "tool": "builtin-chatanki_sync",
+   "skill": "chatanki",
+   "reason": "2026-11-07 快照：desktop profile 未注册可处理该工具的执行器（W02/W03/W04 正在补齐）"
+  },
+  {
+   "tool": "builtin-chatanki_undo_library_last_review",
+   "skill": "chatanki",
+   "reason": "2026-11-07 快照：desktop profile 未注册可处理该工具的执行器（W02/W03/W04 正在补齐）"
+  },
+  {
+   "tool": "builtin-chatanki_update_library_card",
+   "skill": "chatanki",
+   "reason": "2026-11-07 快照：desktop profile 未注册可处理该工具的执行器（W02/W03/W04 正在补齐）"
+  },
+  {
+   "tool": "builtin-chatanki_wait",
+   "skill": "chatanki",
+   "reason": "2026-11-07 快照：desktop profile 未注册可处理该工具的执行器（W02/W03/W04 正在补齐）"
+  },
+  {
+   "tool": "builtin-git_branch",
+   "skill": "workspace-tools",
+   "reason": "2026-11-07 快照：desktop profile 未注册可处理该工具的执行器（W02/W03/W04 正在补齐）"
+  },
+  {
+   "tool": "builtin-git_commit",
+   "skill": "workspace-tools",
+   "reason": "2026-11-07 快照：desktop profile 未注册可处理该工具的执行器（W02/W03/W04 正在补齐）"
+  },
+  {
+   "tool": "builtin-git_diff",
+   "skill": "workspace-tools",
+   "reason": "2026-11-07 快照：desktop profile 未注册可处理该工具的执行器（W02/W03/W04 正在补齐）"
+  },
+  {
+   "tool": "builtin-git_log",
+   "skill": "workspace-tools",
+   "reason": "2026-11-07 快照：desktop profile 未注册可处理该工具的执行器（W02/W03/W04 正在补齐）"
+  },
+  {
+   "tool": "builtin-git_status",
+   "skill": "workspace-tools",
+   "reason": "2026-11-07 快照：desktop profile 未注册可处理该工具的执行器（W02/W03/W04 正在补齐）"
+  },
+  {
+   "tool": "builtin-local_shell_execute",
+   "skill": "workspace-tools",
+   "reason": "2026-11-07 快照：desktop profile 未注册可处理该工具的执行器（W02/W03/W04 正在补齐）"
+  },
+  {
+   "tool": "builtin-tool_pack",
+   "skill": "tool-pack",
+   "reason": "2026-11-07 快照：desktop profile 未注册可处理该工具的执行器（W02/W03/W04 正在补齐）"
+  },
+  {
+   "tool": "builtin-unified_search",
+   "skill": "knowledge-retrieval",
+   "reason": "2026-11-07 快照：desktop profile 未注册可处理该工具的执行器（W02/W03/W04 正在补齐）"
+  },
+  {
+   "tool": "builtin-web_search",
+   "skill": "knowledge-retrieval",
+   "reason": "2026-11-07 快照：desktop profile 未注册可处理该工具的执行器（W02/W03/W04 正在补齐）"
+  }
+ ]
+}

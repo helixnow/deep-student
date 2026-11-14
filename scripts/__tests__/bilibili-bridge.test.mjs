@@ -1,12 +1,9 @@
 import assert from 'node:assert/strict';
-import { readFileSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
+import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import test from 'node:test';
-import { prepareBilibiliAndroid } from '../ci/prepare-bilibili-android.mjs';
 
-const source = readFileSync(new URL('../../src-tauri/resources/bilibili/deepstudent-bili-bridge.user.js', import.meta.url), 'utf8');
+const source = readFileSync(new URL('../../host/plugins/media/assets/bilibili/deepstudent-bili-bridge.user.js.txt', import.meta.url), 'utf8');
 const tick = () => new Promise((resolve) => setTimeout(resolve, 5));
 function harness(responder, { autoCredit = true } = {}) {
   const sent = [];
@@ -125,28 +122,4 @@ test('unsafe target and credentials never reach GM; watchdog aborts a stalled ma
   slow.request({ timeoutMs: 20 }); await new Promise((r) => setTimeout(r, 40));
   assert.ok(slow.sent.some((v) => v.code === 'timeout'));
   assert.ok(slow.aborted > 0); slow.socket.close();
-});
-test('managed Android service preparation is idempotent and non-exported', () => {
-  const root = mkdtempSync(path.join(tmpdir(), 'ds-bili-android-'));
-  try {
-    const base = path.join(root, 'src-tauri/gen/android/app/src/main');
-    mkdirSync(path.join(base, 'java/com/deepstudent/app'), { recursive: true });
-    mkdirSync(path.join(root, 'src-tauri/mobile/android'), { recursive: true });
-    writeFileSync(path.join(root, 'src-tauri/mobile/android/BiliBridgePlugin.kt'), 'service');
-    writeFileSync(path.join(root, 'src-tauri/mobile/android/BilibiliRangeResponse.kt'), 'range adapter');
-    writeFileSync(path.join(root, 'src-tauri/mobile/android/bilibili-range.gradle.kts'), 'range build hook');
-    mkdirSync(path.join(root, 'src-tauri/mobile/android/tests'), { recursive: true });
-    writeFileSync(path.join(root, 'src-tauri/mobile/android/tests/BilibiliRangeInputStreamTest.kt'), 'range tests');
-    writeFileSync(path.join(root, 'src-tauri/gen/android/app/build.gradle.kts'), 'plugins {}');
-    writeFileSync(path.join(base, 'AndroidManifest.xml'), '<manifest xmlns:android="http://schemas.android.com/apk/res/android"><application></application></manifest>');
-    prepareBilibiliAndroid(root); prepareBilibiliAndroid(root);
-    const manifest = readFileSync(path.join(base, 'AndroidManifest.xml'), 'utf8');
-    assert.equal(manifest.match(/android.permission.FOREGROUND_SERVICE"/g).length, 1);
-    assert.equal(manifest.match(/BiliBridgeSessionService/g).length, 1);
-    assert.match(manifest, /android:exported="false" android:foregroundServiceType="dataSync"/);
-    const gradle = readFileSync(path.join(root, 'src-tauri/gen/android/app/build.gradle.kts'), 'utf8');
-    assert.equal(gradle.match(/apply\(from = "bilibili-range.gradle.kts"\)/g).length, 1);
-    assert.equal(readFileSync(path.join(base, 'java/com/deepstudent/app/BilibiliRangeResponse.kt'), 'utf8'), 'range adapter');
-    assert.equal(readFileSync(path.join(root, 'src-tauri/gen/android/app/src/test/java/com/deepstudent/app/BilibiliRangeInputStreamTest.kt'), 'utf8'), 'range tests');
-  } finally { rmSync(root, { recursive: true, force: true }); }
 });

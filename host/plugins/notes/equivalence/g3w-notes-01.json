@@ -1,0 +1,1286 @@
+{
+  "domain": "notes",
+  "commands": [
+    "canvas_note_append",
+    "canvas_note_read",
+    "canvas_note_replace",
+    "canvas_note_set",
+    "chat_v2_canvas_edit_ack",
+    "chat_v2_canvas_edit_result",
+    "notes_assets_bulk_delete",
+    "notes_assets_index_scan",
+    "notes_delete_asset",
+    "notes_export",
+    "notes_export_single",
+    "notes_get_backlinks",
+    "notes_import",
+    "notes_import_markdown",
+    "notes_import_markdown_batch",
+    "notes_list_assets",
+    "notes_resolve_asset_path",
+    "notes_restore",
+    "notes_save_asset"
+  ],
+  "scenarios": [
+    {
+      "id": "g3w.notes.canvas_note_read.note_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "canvas_note_read",
+          "args": {
+            "subject": "_global",
+            "noteId": "note_missing"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.canvas_note_read.section_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "画布读取",
+              "content": "# 第一节\n\n正文\n"
+            }
+          }
+        },
+        {
+          "cmd": "canvas_note_read",
+          "args": {
+            "subject": "_global",
+            "noteId": "${0.id}",
+            "section": "## 不存在"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.canvas_note_append.note_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "canvas_note_append",
+          "args": {
+            "subject": "_global",
+            "noteId": "note_missing",
+            "content": "追加"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.canvas_note_append.section_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "画布追加章节",
+              "content": "# 第一节\n\n正文\n"
+            }
+          }
+        },
+        {
+          "cmd": "canvas_note_append",
+          "args": {
+            "subject": "_global",
+            "noteId": "${0.id}",
+            "content": "追加",
+            "section": "## 不存在"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.canvas_note_append.update_rejected_block_marker_on_legacy",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "画布追加格式",
+              "content": "正文\n"
+            }
+          }
+        },
+        {
+          "cmd": "canvas_note_append",
+          "args": {
+            "subject": "_global",
+            "noteId": "${0.id}",
+            "content": "<!-- ds:block-id=a -->\n\n追加\n"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.canvas_note_append.update_lease_conflict",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "画布追加租约",
+              "content": "正文\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_editor_register",
+          "args": {
+            "noteId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "notes_editor_begin",
+          "args": {
+            "participantId": "${1.participant_id}",
+            "operationId": "g3w-canvas-append",
+            "noteIds": [
+              "${0.id}"
+            ]
+          }
+        },
+        {
+          "cmd": "canvas_note_append",
+          "args": {
+            "subject": "_global",
+            "noteId": "${0.id}",
+            "content": "追加"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.canvas_note_replace.empty_search",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "画布替换空串",
+              "content": "正文\n"
+            }
+          }
+        },
+        {
+          "cmd": "canvas_note_replace",
+          "args": {
+            "subject": "_global",
+            "noteId": "${0.id}",
+            "search": "",
+            "replace": "x",
+            "isRegex": false
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.canvas_note_replace.note_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "canvas_note_replace",
+          "args": {
+            "subject": "_global",
+            "noteId": "note_missing",
+            "search": "正文",
+            "replace": "改写",
+            "isRegex": false
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.canvas_note_replace.invalid_regex",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "画布替换正则",
+              "content": "正文\n"
+            }
+          }
+        },
+        {
+          "cmd": "canvas_note_replace",
+          "args": {
+            "subject": "_global",
+            "noteId": "${0.id}",
+            "search": "(",
+            "replace": "x",
+            "isRegex": true
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.canvas_note_replace.update_rejected_block_marker_on_legacy",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "画布替换格式",
+              "content": "正文\n"
+            }
+          }
+        },
+        {
+          "cmd": "canvas_note_replace",
+          "args": {
+            "subject": "_global",
+            "noteId": "${0.id}",
+            "search": "正文",
+            "replace": "<!-- ds:block-id=a -->\n\n正文",
+            "isRegex": false
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.canvas_note_replace.update_lease_conflict",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "画布替换租约",
+              "content": "正文\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_editor_register",
+          "args": {
+            "noteId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "notes_editor_begin",
+          "args": {
+            "participantId": "${1.participant_id}",
+            "operationId": "g3w-canvas-replace",
+            "noteIds": [
+              "${0.id}"
+            ]
+          }
+        },
+        {
+          "cmd": "canvas_note_replace",
+          "args": {
+            "subject": "_global",
+            "noteId": "${0.id}",
+            "search": "正文",
+            "replace": "改写",
+            "isRegex": false
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.canvas_note_set.note_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "canvas_note_set",
+          "args": {
+            "subject": "_global",
+            "noteId": "note_missing",
+            "content": "全文"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.canvas_note_set.update_rejected_block_marker_on_legacy",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "画布设置格式",
+              "content": "正文\n"
+            }
+          }
+        },
+        {
+          "cmd": "canvas_note_set",
+          "args": {
+            "subject": "_global",
+            "noteId": "${0.id}",
+            "content": "<!-- ds:block-id=a -->\n\n正文\n"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.canvas_note_set.update_lease_conflict",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "画布设置租约",
+              "content": "正文\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_editor_register",
+          "args": {
+            "noteId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "notes_editor_begin",
+          "args": {
+            "participantId": "${1.participant_id}",
+            "operationId": "g3w-canvas-set",
+            "noteIds": [
+              "${0.id}"
+            ]
+          }
+        },
+        {
+          "cmd": "canvas_note_set",
+          "args": {
+            "subject": "_global",
+            "noteId": "${0.id}",
+            "content": "全文"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.chat_v2_canvas_edit_result.blank_request_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_canvas_edit_result",
+          "args": {
+            "result": {
+              "requestId": "   ",
+              "success": false,
+              "error": "笔记未打开"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.chat_v2_canvas_edit_ack.blank_request_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_canvas_edit_ack",
+          "args": {
+            "requestId": "   "
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_save_asset.empty_note_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_save_asset",
+          "args": {
+            "subject": "_global",
+            "noteId": "",
+            "base64Data": "data:image/jpeg;base64,/9j/4AAQ",
+            "defaultExt": "jpg"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_save_asset.note_id_separator",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_save_asset",
+          "args": {
+            "subject": "_global",
+            "noteId": "a/b",
+            "base64Data": "data:image/jpeg;base64,/9j/4AAQ",
+            "defaultExt": "jpg"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_save_asset.note_id_dot_dot",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_save_asset",
+          "args": {
+            "subject": "_global",
+            "noteId": "..",
+            "base64Data": "data:image/jpeg;base64,/9j/4AAQ",
+            "defaultExt": "jpg"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_save_asset.note_id_drive_prefix",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_save_asset",
+          "args": {
+            "subject": "_global",
+            "noteId": "C:",
+            "base64Data": "data:image/jpeg;base64,/9j/4AAQ",
+            "defaultExt": "jpg"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_save_asset.base64_invalid",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_save_asset",
+          "args": {
+            "subject": "_global",
+            "noteId": "note_asset_owner",
+            "base64Data": "data:image/png;base64,***",
+            "defaultExt": "jpg"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_list_assets.empty_note_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_list_assets",
+          "args": {
+            "subject": "_global",
+            "noteId": ""
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_list_assets.note_id_separator",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_list_assets",
+          "args": {
+            "subject": "_global",
+            "noteId": "a/b"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_list_assets.note_id_dot_dot",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_list_assets",
+          "args": {
+            "subject": "_global",
+            "noteId": ".."
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_list_assets.note_id_drive_prefix",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_list_assets",
+          "args": {
+            "subject": "_global",
+            "noteId": "C:"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_assets_index_scan.empty_note_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_assets_index_scan",
+          "args": {
+            "subject": "_global",
+            "noteId": ""
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_assets_index_scan.note_id_separator",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_assets_index_scan",
+          "args": {
+            "subject": "_global",
+            "noteId": "a/b"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_assets_index_scan.note_id_dot_dot",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_assets_index_scan",
+          "args": {
+            "subject": "_global",
+            "noteId": ".."
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_assets_index_scan.note_id_drive_prefix",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_assets_index_scan",
+          "args": {
+            "subject": "_global",
+            "noteId": "C:"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_delete_asset.parent_dir_key_rejected",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_delete_asset",
+          "args": {
+            "relativePath": "../x.png"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_delete_asset.namespace_only_local_path_invalid",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_delete_asset",
+          "args": {
+            "relativePath": "active/"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_assets_bulk_delete.parent_dir_key_rejected",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_assets_bulk_delete",
+          "args": {
+            "paths": [
+              "../x.png"
+            ]
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_assets_bulk_delete.namespace_only_local_path_invalid",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_assets_bulk_delete",
+          "args": {
+            "paths": [
+              "active/"
+            ]
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_resolve_asset_path.parent_dir_rejected",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_resolve_asset_path",
+          "args": {
+            "relativePath": "../x"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_resolve_asset_path.existing_outside_app_data",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_resolve_asset_path",
+          "args": {
+            "relativePath": "/"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_resolve_asset_path.missing_outside_app_data",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_resolve_asset_path",
+          "args": {
+            "relativePath": "/nonexistent_g3w/x.png"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_import.empty_path",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_import",
+          "args": {
+            "request": {
+              "file_path": ""
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_import.missing_file",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_import",
+          "args": {
+            "request": {
+              "file_path": "/nonexistent_g3w/notes.zip"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_import.directory_not_zip",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_import",
+          "args": {
+            "request": {
+              "file_path": "/"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_import_markdown.blank_path",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_import_markdown",
+          "args": {
+            "request": {
+              "filePath": "   ",
+              "titleHint": null,
+              "folderId": null
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_import_markdown.missing_file",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_import_markdown",
+          "args": {
+            "request": {
+              "filePath": "/nonexistent_g3w/导入.md",
+              "titleHint": null,
+              "folderId": null
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_import_markdown.directory_read_failed",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_import_markdown",
+          "args": {
+            "request": {
+              "filePath": "/",
+              "titleHint": null,
+              "folderId": null
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_import_markdown_batch.blank_item_path",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_import_markdown_batch",
+          "args": {
+            "request": {
+              "items": [
+                {
+                  "filePath": "   ",
+                  "titleHint": null
+                }
+              ],
+              "folderId": null
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_import_markdown_batch.missing_item_file",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_import_markdown_batch",
+          "args": {
+            "request": {
+              "items": [
+                {
+                  "filePath": "/nonexistent_g3w/a.md",
+                  "titleHint": null
+                }
+              ],
+              "folderId": null
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_export.no_notes",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_export",
+          "args": {
+            "request": {
+              "include_versions": true
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_export_single.note_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_export_single",
+          "args": {
+            "request": {
+              "subject": "_global",
+              "note_id": "note_missing",
+              "include_versions": true
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_restore.note_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_restore",
+          "args": {
+            "subject": "_global",
+            "id": "note_missing"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_restore.note_not_deleted",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "未删除笔记",
+              "content": "正文\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_restore",
+          "args": {
+            "subject": "_global",
+            "id": "${0.id}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_get_backlinks.note_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_get_backlinks",
+          "args": {
+            "noteId": "note_missing"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

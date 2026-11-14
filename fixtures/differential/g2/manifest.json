@@ -1,0 +1,339 @@
+{
+  "schema": "x7-g2-evidence-v1",
+  "build": "20261106023719-bc16bc",
+  "normalization": [],
+  "scenarios": [
+    {
+      "flow": "chat",
+      "scenarioFile": "host/e2e/streaming/wave0/streaming.scenarios.json",
+      "scenarioSha256": "1779ed09a1e180c2f52154c58fb7c27a374d8d64841693297830577f3da93761",
+      "id": "chat.stream.success.answer",
+      "files": {
+        "A1": {
+          "run": "fixtures/differential/wp043/runs/g2/chat-A2x/chat.stream.success.answer/A1/trace.json",
+          "committed": "fixtures/differential/g2/chat.stream.success.answer/A1.json.xz",
+          "sha256": "3d9ea2b3eda162f3117fb0d04a71274e8747fd681eda01a8608e568c5086b89d",
+          "bytes": 9995363
+        },
+        "A2": {
+          "run": "fixtures/differential/wp043/runs/g2/chat-A2x/chat.stream.success.answer/A2/trace.json",
+          "committed": "fixtures/differential/g2/chat.stream.success.answer/A2.json.xz",
+          "sha256": "9851962580151916be4359c207018347087536ad19fa76dedf4859ee46dce4ab",
+          "bytes": 9995356
+        },
+        "B": {
+          "run": "fixtures/differential/wp043/runs/g2/chat-B/chat.stream.success.answer/B/trace.json",
+          "committed": "fixtures/differential/g2/chat.stream.success.answer/B.json.xz",
+          "sha256": "3bf5dc8e5d622629f027d7a138cc6fe203db65404799603761f24f31ba64f6b0",
+          "bytes": 9672611
+        },
+        "compare": {
+          "run": "fixtures/differential/wp043/runs/g2/compare-v2/chat.stream.success.answer.compare.json",
+          "committed": "fixtures/differential/g2/chat.stream.success.answer/compare.json.xz",
+          "sha256": "2c6ff7d70c4f6e53ef7b51f38f1d19cd92b4fb15659f2284de4eb320db2d3b54",
+          "bytes": 1526204
+        },
+        "A1-A2": {
+          "run": "fixtures/differential/wp043/runs/g2/compare-v2/chat.stream.success.answer.A1-A2.compare.json",
+          "committed": "fixtures/differential/g2/chat.stream.success.answer/A1-A2.json.xz",
+          "sha256": "58bc0cc8cb0609640742f6d6dafd7120047742752563d269aca4e8f53a5d39ae",
+          "bytes": 327384
+        }
+      },
+      "result": {
+        "equal": false,
+        "differences": 10,
+        "byKind": {
+          "args": 1,
+          "database": 6,
+          "events": 1,
+          "final-database": 1,
+          "outcome": 1
+        },
+        "eventsOutOfScope": 3,
+        "A1A2": {
+          "equal": false,
+          "differences": 10,
+          "byKind": {
+            "args": 1,
+            "database": 6,
+            "events": 1,
+            "final-database": 1,
+            "outcome": 1
+          }
+        },
+        "outcomeKinds": {
+          "A": "result,result,result,result",
+          "B": "result,result,result,result"
+        },
+        "finalDatabases": {
+          "A": [
+            "app-data/com.deepstudent.differential/hsts-storage.sqlite",
+            "app-data/com.deepstudent.differential/slots/slotA/chat_v2.db",
+            "app-data/com.deepstudent.differential/slots/slotA/databases/audit.db",
+            "app-data/com.deepstudent.differential/slots/slotA/databases/vfs.db",
+            "app-data/com.deepstudent.differential/slots/slotA/llm_usage.db",
+            "app-data/com.deepstudent.differential/slots/slotA/mistakes.db"
+          ],
+          "B": [
+            "app-data/com.deepstudent.differential/slots/slotA/chat_v2.db",
+            "app-data/com.deepstudent.differential/slots/slotA/databases/audit.db",
+            "app-data/com.deepstudent.differential/slots/slotA/databases/vfs.db",
+            "app-data/com.deepstudent.differential/slots/slotA/llm_usage.db",
+            "app-data/com.deepstudent.differential/slots/slotA/mistakes.db",
+            "app-data/deep-student/sync/sync_state.db"
+          ]
+        }
+      }
+    },
+    {
+      "flow": "notes",
+      "scenarioFile": "host/plugins/notes/equivalence/history.json",
+      "scenarioSha256": "5b567d1b9438325efebfabb7b43a4e03471d8c6f65bf3cdefeaa60e74ef55d5a",
+      "id": "notes.history.chain.create_edit_list_get_restore_current",
+      "files": {
+        "A1": {
+          "run": "fixtures/differential/wp043/runs/g2/notes-A2x/notes.history.chain.create_edit_list_get_restore_current/A1/trace.json",
+          "committed": "fixtures/differential/g2/notes.history.chain.create_edit_list_get_restore_current/A1.json.xz",
+          "sha256": "82b87f16c6e155d92cf2c4792d950c1c2c139f121052c14916367f9bbb45b298",
+          "bytes": 25366453
+        },
+        "A2": {
+          "run": "fixtures/differential/wp043/runs/g2/notes-A2x/notes.history.chain.create_edit_list_get_restore_current/A2/trace.json",
+          "committed": "fixtures/differential/g2/notes.history.chain.create_edit_list_get_restore_current/A2.json.xz",
+          "sha256": "e09b31284cd4e8b9fb944603d006e8f95f2e03e1397fb3e89726c11816f83a85",
+          "bytes": 25269282
+        },
+        "B": {
+          "run": "fixtures/differential/wp043/runs/g2/notes-B/notes.history.chain.create_edit_list_get_restore_current/B/trace.json",
+          "committed": "fixtures/differential/g2/notes.history.chain.create_edit_list_get_restore_current/B.json.xz",
+          "sha256": "9d98556f9ec163aa3858968637a24436e6204a2b5510b981aff97b216bd30cee",
+          "bytes": 23990457
+        },
+        "compare": {
+          "run": "fixtures/differential/wp043/runs/g2/compare-v2/notes.history.chain.create_edit_list_get_restore_current.compare.json",
+          "committed": "fixtures/differential/g2/notes.history.chain.create_edit_list_get_restore_current/compare.json.xz",
+          "sha256": "492ccfad5aa4b437ae5ea266663b84184918c434adada5cc9fb7acb581438061",
+          "bytes": 3650917
+        },
+        "A1-A2": {
+          "run": "fixtures/differential/wp043/runs/g2/compare-v2/notes.history.chain.create_edit_list_get_restore_current.A1-A2.compare.json",
+          "committed": "fixtures/differential/g2/notes.history.chain.create_edit_list_get_restore_current/A1-A2.json.xz",
+          "sha256": "f1e30c5cd438706c12603116ae1da7df78e5479359c893a9f20aac078b6bdbcf",
+          "bytes": 740299
+        }
+      },
+      "result": {
+        "equal": false,
+        "differences": 43,
+        "byKind": {
+          "args": 12,
+          "database": 16,
+          "events": 2,
+          "final-database": 1,
+          "outcome": 12
+        },
+        "eventsOutOfScope": 1,
+        "A1A2": {
+          "equal": false,
+          "differences": 43,
+          "byKind": {
+            "args": 12,
+            "database": 16,
+            "events": 2,
+            "final-database": 1,
+            "outcome": 12
+          }
+        },
+        "outcomeKinds": {
+          "A": "result,result,result,result,result,result,result,result,result,result,result,result,error,result",
+          "B": "result,result,result,result,result,result,result,result,result,result,result,result,error,result"
+        },
+        "finalDatabases": {
+          "A": [
+            "app-data/com.deepstudent.differential/hsts-storage.sqlite",
+            "app-data/com.deepstudent.differential/slots/slotA/chat_v2.db",
+            "app-data/com.deepstudent.differential/slots/slotA/databases/audit.db",
+            "app-data/com.deepstudent.differential/slots/slotA/databases/vfs.db",
+            "app-data/com.deepstudent.differential/slots/slotA/llm_usage.db",
+            "app-data/com.deepstudent.differential/slots/slotA/mistakes.db"
+          ],
+          "B": [
+            "app-data/com.deepstudent.differential/slots/slotA/chat_v2.db",
+            "app-data/com.deepstudent.differential/slots/slotA/databases/audit.db",
+            "app-data/com.deepstudent.differential/slots/slotA/databases/vfs.db",
+            "app-data/com.deepstudent.differential/slots/slotA/llm_usage.db",
+            "app-data/com.deepstudent.differential/slots/slotA/mistakes.db",
+            "app-data/deep-student/sync/sync_state.db"
+          ]
+        }
+      }
+    },
+    {
+      "flow": "notes",
+      "scenarioFile": "host/plugins/notes/equivalence/history.json",
+      "scenarioSha256": "5b567d1b9438325efebfabb7b43a4e03471d8c6f65bf3cdefeaa60e74ef55d5a",
+      "id": "notes.history.trash.history_survives_soft_delete",
+      "files": {
+        "A1": {
+          "run": "fixtures/differential/wp043/runs/g2/notes-A2x/notes.history.trash.history_survives_soft_delete/A1/trace.json",
+          "committed": "fixtures/differential/g2/notes.history.trash.history_survives_soft_delete/A1.json.xz",
+          "sha256": "0be95e3b97cb452ec7ed22c48f2876ea6bb64df9ac9b3c3eceafd85fb2370151",
+          "bytes": 25232067
+        },
+        "A2": {
+          "run": "fixtures/differential/wp043/runs/g2/notes-A2x/notes.history.trash.history_survives_soft_delete/A2/trace.json",
+          "committed": "fixtures/differential/g2/notes.history.trash.history_survives_soft_delete/A2.json.xz",
+          "sha256": "ef5cddb589190579628ebc762f9dc19982e2e5163f679a7e9068669e15f1fcd7",
+          "bytes": 25222587
+        },
+        "B": {
+          "run": "fixtures/differential/wp043/runs/g2/notes-B/notes.history.trash.history_survives_soft_delete/B/trace.json",
+          "committed": "fixtures/differential/g2/notes.history.trash.history_survives_soft_delete/B.json.xz",
+          "sha256": "031b61b0b62d5542d7d310fc3c83a61a84ac57a3838a2ea8354036623b5e9dcd",
+          "bytes": 23919939
+        },
+        "compare": {
+          "run": "fixtures/differential/wp043/runs/g2/compare-v2/notes.history.trash.history_survives_soft_delete.compare.json",
+          "committed": "fixtures/differential/g2/notes.history.trash.history_survives_soft_delete/compare.json.xz",
+          "sha256": "44069c7d27430ca5d7ac4a2ac43c8f76fa3e9defed5451967b1567c5574e03cc",
+          "bytes": 3649905
+        },
+        "A1-A2": {
+          "run": "fixtures/differential/wp043/runs/g2/compare-v2/notes.history.trash.history_survives_soft_delete.A1-A2.compare.json",
+          "committed": "fixtures/differential/g2/notes.history.trash.history_survives_soft_delete/A1-A2.json.xz",
+          "sha256": "694d758106276af11427b1015de66a6d02459007fce231a20b035886be074171",
+          "bytes": 738685
+        }
+      },
+      "result": {
+        "equal": false,
+        "differences": 39,
+        "byKind": {
+          "args": 10,
+          "database": 16,
+          "events": 4,
+          "final-database": 1,
+          "outcome": 8
+        },
+        "eventsOutOfScope": 3,
+        "A1A2": {
+          "equal": false,
+          "differences": 39,
+          "byKind": {
+            "args": 10,
+            "database": 16,
+            "events": 4,
+            "final-database": 1,
+            "outcome": 8
+          }
+        },
+        "outcomeKinds": {
+          "A": "result,result,result,result,result,error,result,result,result,result,result,error,error,error",
+          "B": "result,result,result,result,result,error,result,result,result,result,result,error,error,error"
+        },
+        "finalDatabases": {
+          "A": [
+            "app-data/com.deepstudent.differential/hsts-storage.sqlite",
+            "app-data/com.deepstudent.differential/slots/slotA/chat_v2.db",
+            "app-data/com.deepstudent.differential/slots/slotA/databases/audit.db",
+            "app-data/com.deepstudent.differential/slots/slotA/databases/vfs.db",
+            "app-data/com.deepstudent.differential/slots/slotA/llm_usage.db",
+            "app-data/com.deepstudent.differential/slots/slotA/mistakes.db"
+          ],
+          "B": [
+            "app-data/com.deepstudent.differential/slots/slotA/chat_v2.db",
+            "app-data/com.deepstudent.differential/slots/slotA/databases/audit.db",
+            "app-data/com.deepstudent.differential/slots/slotA/databases/vfs.db",
+            "app-data/com.deepstudent.differential/slots/slotA/llm_usage.db",
+            "app-data/com.deepstudent.differential/slots/slotA/mistakes.db",
+            "app-data/deep-student/sync/sync_state.db"
+          ]
+        }
+      }
+    },
+    {
+      "flow": "review",
+      "scenarioFile": "host/plugins/review/equivalence/fsrs-lifecycle.v0.json",
+      "scenarioSha256": "64154a5a663bb076b1687c48ecd2998456fa5400f3b497e912804219e94dc0ce",
+      "id": "review.rate.preview-good-undo",
+      "files": {
+        "A1": {
+          "run": "fixtures/differential/wp043/runs/g2/review-A2x/review.rate.preview-good-undo/A1/trace.json",
+          "committed": "fixtures/differential/g2/review.rate.preview-good-undo/A1.json.xz",
+          "sha256": "0db7cbc72e5d0c58bb65cd2fba6f55dd2cd70556f7b786387c94124b779dcffe",
+          "bytes": 26332778
+        },
+        "A2": {
+          "run": "fixtures/differential/wp043/runs/g2/review-A2x/review.rate.preview-good-undo/A2/trace.json",
+          "committed": "fixtures/differential/g2/review.rate.preview-good-undo/A2.json.xz",
+          "sha256": "3574c26654c83b59f91ff855fd3860c88aad3a51ef353ff52aef192584a4aadd",
+          "bytes": 26332852
+        },
+        "B": {
+          "run": "fixtures/differential/wp043/runs/g2/review-B/review.rate.preview-good-undo/B/trace.json",
+          "committed": "fixtures/differential/g2/review.rate.preview-good-undo/B.json.xz",
+          "sha256": "e4c6d9c0bfaa7dd1f05cff1203271434d1f9f1afc8769fa8ebdd50c5b20bfc04",
+          "bytes": 25001982
+        },
+        "compare": {
+          "run": "fixtures/differential/wp043/runs/g2/compare-v2/review.rate.preview-good-undo.compare.json",
+          "committed": "fixtures/differential/g2/review.rate.preview-good-undo/compare.json.xz",
+          "sha256": "62eb06bc7513cb3dea0a8ce01dd8847ba8db93161e43bde3c6986a1839324690",
+          "bytes": 3872802
+        },
+        "A1-A2": {
+          "run": "fixtures/differential/wp043/runs/g2/compare-v2/review.rate.preview-good-undo.A1-A2.compare.json",
+          "committed": "fixtures/differential/g2/review.rate.preview-good-undo/A1-A2.json.xz",
+          "sha256": "430c7d662882e9644d0b0f8e7a0e729c50661b0f19d49137f5b5bfe6beb3af07",
+          "bytes": 792363
+        }
+      },
+      "result": {
+        "equal": false,
+        "differences": 40,
+        "byKind": {
+          "args": 8,
+          "database": 17,
+          "events": 4,
+          "final-database": 1,
+          "outcome": 10
+        },
+        "eventsOutOfScope": 0,
+        "A1A2": {
+          "equal": false,
+          "differences": 40,
+          "byKind": {
+            "args": 8,
+            "database": 17,
+            "events": 4,
+            "final-database": 1,
+            "outcome": 10
+          }
+        },
+        "outcomeKinds": {
+          "A": "result,result,result,result,result,result,result,result,result,result,result,result,result,error,error",
+          "B": "result,result,result,result,result,result,result,result,result,result,result,result,result,error,error"
+        },
+        "finalDatabases": {
+          "A": [
+            "app-data/com.deepstudent.differential/hsts-storage.sqlite",
+            "app-data/com.deepstudent.differential/slots/slotA/chat_v2.db",
+            "app-data/com.deepstudent.differential/slots/slotA/databases/audit.db",
+            "app-data/com.deepstudent.differential/slots/slotA/databases/vfs.db",
+            "app-data/com.deepstudent.differential/slots/slotA/llm_usage.db",
+            "app-data/com.deepstudent.differential/slots/slotA/mistakes.db"
+          ],
+          "B": [
+            "app-data/com.deepstudent.differential/slots/slotA/chat_v2.db",
+            "app-data/com.deepstudent.differential/slots/slotA/databases/audit.db",
+            "app-data/com.deepstudent.differential/slots/slotA/databases/vfs.db",
+            "app-data/com.deepstudent.differential/slots/slotA/llm_usage.db",
+            "app-data/com.deepstudent.differential/slots/slotA/mistakes.db",
+            "app-data/deep-student/sync/sync_state.db"
+          ]
+        }
+      }
+    }
+  ]
+}

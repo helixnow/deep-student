@@ -280,18 +280,16 @@ const ReviewLinkCard: React.FC = () => {
     <button
       onClick={open}
       className={cn(
-        'group mx-4 mt-3 flex items-center gap-3 rounded-[var(--radius-shell-control)] border border-border/40 px-3 py-2.5 text-left transition-colors duration-150 sm:mx-6',
-        'hover:border-border hover:bg-[color:var(--interactive-hover)]',
+        'group flex w-full items-center gap-2.5 border-b border-border/20 px-4 py-2 text-left transition-colors duration-150 sm:px-6',
+        'hover:bg-[color:var(--interactive-hover)]',
       )}
     >
-      <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md bg-[color:hsl(var(--info))]/10 text-[color:hsl(var(--info))]">
-        <Brain size={16} />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block text-ui font-medium text-foreground">
+      <Brain size={15} className="flex-shrink-0 text-[color:hsl(var(--info))]" />
+      <span className="min-w-0 flex-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+        <span className="font-mono text-xs font-medium tabular-nums text-foreground">
           {t('todo:reviewLink.title', { count: total })}
         </span>
-        <span className="block text-xs text-muted-foreground">{parts}</span>
+        <span className="font-mono text-xs tabular-nums text-muted-foreground">{parts}</span>
       </span>
       <span className="flex flex-shrink-0 items-center gap-0.5 text-xs text-muted-foreground transition-colors group-hover:text-foreground">
         {t('todo:reviewLink.action')}
@@ -369,7 +367,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
     setCheckedIds((prev) => (prev.size > 0 ? new Set() : prev));
   }, []);
 
-  // 📱 触屏批量多选模式：触屏无 Cmd/Ctrl/Shift 修饰键，工具栏「选择」开关进入，
+  // 触屏批量多选模式：触屏无 Cmd/Ctrl/Shift 修饰键，工具栏「选择」开关进入，
   // 进入后行首显示复选框、点行即勾选（不打开详情）。行内左右滑手势暂停避免误触。
   const [checkMode, setCheckMode] = useState(false);
   const exitCheckMode = useCallback(() => {
@@ -874,7 +872,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                 {viewTitle}
               </h2>
             )}
-            <span className="min-w-0 truncate text-xs tabular-nums text-muted-foreground/40">
+            <span className="min-w-0 truncate font-mono text-xs tabular-nums text-muted-foreground/40">
               {pendingCount}&nbsp;{t('todo:stats.pending')}
               {completedCount > 0 && (
                 <>
@@ -984,7 +982,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
               <span className="hidden sm:inline">{t('todo:filters.showCompleted')}</span>
             </DsButton>
 
-            {/* 📱 批量多选开关：触屏没有 Cmd/Ctrl/Shift 点选入口，用模式切换替代 */}
+            {/* 批量多选开关：触屏没有 Cmd/Ctrl/Shift 点选入口，用模式切换替代 */}
             <DsButton
               variant="utility"
               size="sm"
@@ -1072,10 +1070,26 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
 
         {/* 内容区 */}
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          {matrixQuadrants && !isLoadingItems ? (
+            <>
+              {showQuickAdd && <TodoQuickAdd defaultDueDate={quickAddDefaultDueDate} />}
+              <MatrixBoard
+                quadrants={matrixQuadrants}
+                selectedItemId={selectedItemId}
+                focusedItemId={focusedItemId}
+                checkedIds={checkedIds}
+                onCheckToggle={handleCheckToggle}
+                checkMode={checkMode}
+                onToggle={toggleItem}
+                onSelect={handleSelect}
+                onDelete={deleteItem}
+                onRename={handleRename}
+              />
+            </>
+          ) : (
           <CustomScrollArea
             className="flex-1 min-h-0"
-            // --keyboard-inset：键盘弹出时垫高列表底部，QuickAdd/行内编辑/
-            // 内联改期条等低位输入框可滚出键盘遮挡区（桌面端恒为 0px）
+            // 垫高列表底部，键盘弹出时低位输入框仍可滚到可见区域。
             viewportClassName="pb-[calc(1.5rem+var(--keyboard-inset,0px))]"
             viewportRef={setScrollViewport}
           >
@@ -1157,19 +1171,6 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                   </div>
                 </SortableContext>
               </DndContext>
-            ) : matrixQuadrants ? (
-              <MatrixBoard
-                quadrants={matrixQuadrants}
-                selectedItemId={selectedItemId}
-                focusedItemId={focusedItemId}
-                checkedIds={checkedIds}
-                onCheckToggle={handleCheckToggle}
-                checkMode={checkMode}
-                onToggle={toggleItem}
-                onSelect={handleSelect}
-                onDelete={deleteItem}
-                onRename={handleRename}
-              />
             ) : upcomingGroups ? (
               <div className="flex flex-col">
                 {upcomingGroups.map((group) => {
@@ -1200,7 +1201,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                           >
                             {t(`todo:groups.${group.bucket}`)}
                           </span>
-                          <span className="text-xs tabular-nums text-muted-foreground/50">
+                          <span className="font-mono text-xs tabular-nums text-muted-foreground/50">
                             {group.items.length}
                           </span>
                         </button>
@@ -1257,6 +1258,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
               />
             )}
           </CustomScrollArea>
+          )}
         </div>
 
         <PomodoroPanel

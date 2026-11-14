@@ -9,7 +9,7 @@ import { getErrorMessage } from '@/utils/errorUtils';
 import { reportAdapterError } from '../errors/adapterErrorChannel';
 import type { BackendEvent } from '../../core/middleware/eventBridge';
 import { handleBackendEventWithSequence } from '../../core/middleware/eventBridge';
-import { logMultiVariant } from '@/debug-panel/plugins/MultiVariantDebugPlugin';
+import { logMultiVariant } from '@/shared/debug/channels/multiVariant';
 import {
   emitTemplateDesignerToolEvent,
   isTemplateDesignerToolName,

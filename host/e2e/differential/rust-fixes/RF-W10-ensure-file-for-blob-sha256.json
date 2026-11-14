@@ -1,0 +1,28 @@
+{
+  "id": "RF-W10-ensure-file-for-blob-sha256",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main-agent",
+  "approvedAt": "2026-11-07T09:40:00+08:00",
+  "title": "ensure_vfs_file_for_blob 写 files 行时补上 sha256，导入题图的 file id 不再悬空",
+  "rust": {
+    "file": "src-tauri/crates/dstu-qbank/src/question_import_service.rs",
+    "line": 3797,
+    "behavior": "INSERT OR IGNORE INTO files 不写 sha256 列；files.sha256 是 TEXT NOT NULL UNIQUE（V20260130__init.sql:109），OR IGNORE 连 NOT NULL 冲突一起吞掉，所以在已迁移库上永远不落行，却仍返回新生成的 file_id；每次调用都铸一个新 id。"
+  },
+  "fix": {
+    "files": ["host/plugins/vfs-repos/repository/files.ts"],
+    "behavior": "插入时 sha256 = blob_hash（VFS blob hash 本身就是内容 SHA-256，blob_repo.rs:1110 compute_hash），行真实落库、后续调用按 blob_hash 去重；若同内容已被软删除的行占用 sha256，则像 create_file 的 sha256 去重那样恢复该行并返回其 id。"
+  },
+  "evidence": "数据损坏：resume_question_import 的视觉导入把返回的 file_id 写进题目图片引用，但 files 表里没有这一行，图片引用悬空，且同一 blob 每次调用得到不同 id。与 Rust 自身意图矛盾：函数名与注释是“确保 blob 有 file 条目”，先查后建的去重逻辑因为从不落行而失效。复现：vfs-repos tests/files.test.ts 在真实迁移后的 vfs.db 上调用 ensureFileForBlobWithConn，旧实现 SELECT 不到返回的 id、第二次调用返回不同 id。此前 vfs-repos SPEC/LANE 记录为“已知 Rust 缺陷，按原样保留”，按 WAVE2-BRIEF 第 7 节改为登记修复。",
+  "userVisible": "能感知：从题目导入（视觉路径）恢复后，题图引用的 file id 现在能解析到真实文件记录，不再出现找不到文件的图片；被软删除的同内容文件会被恢复为 active。",
+  "dataCompat": "改变落库数据：files 表多出原本应有的行（字段与 Rust 期望的列集一致，只多写了 sha256），以及软删除行被恢复。旧 Rust 版能正常读取这些行（列与类型均是 Rust schema 的合法值）；新版读取旧 Rust 版留下的悬空 id 与之前行为相同。同步与备份格式不变。",
+  "g3": {
+    "affects": false,
+    "selectors": []
+  },
+  "tests": [
+    { "file": "host/plugins/vfs-repos/tests/files.test.ts", "name": "RF-W10-ensure-file-for-blob-sha256: the row is written with sha256 = blob hash, so the returned id resolves and later calls dedupe" },
+    { "file": "host/plugins/vfs-repos/tests/files.test.ts", "name": "RF-W10-ensure-file-for-blob-sha256: same content held by a soft-deleted row is restored instead of dangling" }
+  ]
+}

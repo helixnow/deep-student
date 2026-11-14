@@ -230,7 +230,10 @@ describe('unified scroll primitive contract', () => {
       /data-scroll-axes=\"horizontal\"[\s\S]*os-scrollbar-vertical[\s\S]*display: none !important/,
     );
     expect(scrollAreaSource).toContain('flowDirectionStyles: (viewport) =>');
-    expect(scrollAreaSource).toContain('direction === "rtl" ? { direction } : {}');
+    // RTL 量测前需恢复 noContent 子规则；返回值行为由 scrollAreaNoContentRule.test.tsx 覆盖。
+    expect(scrollAreaSource).toContain('if (direction !== "rtl") return {};');
+    expect(scrollAreaSource).toContain('restoreOverlayNoContentChildRule(viewport.ownerDocument);');
+    expect(scrollAreaSource).toContain('return { direction };');
     expect(scrollAreaSource).toContain('refreshScrollTimelineHandleGeometry');
     expect(scrollAreaSource).toContain('effect.setKeyframes(effect.getKeyframes())');
     expect(nativeScrollbarSource).toContain('var(--scroll-area-track-top)');

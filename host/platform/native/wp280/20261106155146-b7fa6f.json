@@ -1,0 +1,1 @@
+{"id":"20261106155146-b7fa6f","cwd":"/home/dsdev/dev/ds-mig/F7-native","cmd":["sh","-c","npm run migration:ledger -- --check --no-write && npm run migration:wiring -- --lane native && npm run migration:boundaries:strict"],"from":"F7-native","submittedAt":"2026-11-06T15:51:46.777Z","cls":"other","startedAt":"2026-11-06T15:51:51.907Z","endedAt":"2026-11-06T15:58:52.484Z","code":0}

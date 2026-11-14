@@ -7,7 +7,7 @@
 
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Lightning, ArrowClockwise, Check, User, Wrench, Star, CaretLeft, ShieldWarning, ShieldCheck, Terminal, Stack, Storefront, X } from '@phosphor-icons/react';
+import { Lightning, Check, User, Wrench, Star, CaretLeft, ShieldWarning, ShieldCheck, Terminal, Stack, Storefront, X } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
@@ -47,7 +47,6 @@ export interface SkillSelectorProps {
   /** 关闭面板回调 */
   onClose?: () => void;
   /** 刷新技能列表回调 */
-  onRefresh?: () => Promise<void>;
   /** 是否禁用操作 */
   disabled?: boolean;
   /** 自定义类名 */
@@ -69,7 +68,6 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
   activeSkillIds,
   onToggleSkill,
   onClose,
-  onRefresh,
   disabled = false,
   className,
   sessionId,
@@ -83,7 +81,6 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
   const { defaultIds, isDefault, toggleDefault } = useSkillDefaults();
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [registryVersion, setRegistryVersion] = useState(0);
   const [selectedSkillId, setSelectedSkillId] = useState<string | null>(null);
   const [bundleNameInput, setBundleNameInput] = useState<string | null>(null);
@@ -166,15 +163,6 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
     [activeSkillIds]
   );
 
-  const handleRefresh = useCallback(async () => {
-    if (!onRefresh || isRefreshing) return;
-    setIsRefreshing(true);
-    try {
-      await onRefresh();
-    } finally {
-      setIsRefreshing(false);
-    }
-  }, [onRefresh, isRefreshing]);
 
   const handleTrustOverride = useCallback(async (skillId: string, trust: 'trusted' | 'untrusted') => {
     try {
@@ -252,20 +240,6 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
       >
         <Storefront size={16} />
       </DsButton>
-      {onRefresh ? (
-        <DsButton
-          variant="ghost"
-          size="icon"
-          iconOnly
-          onClick={handleRefresh}
-          disabled={isRefreshing}
-          aria-label={t('skills:selector.refresh')}
-          title={t('skills:selector.refresh')}
-          className={cn('[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11', isRefreshing && 'animate-spin')}
-        >
-          <ArrowClockwise size={16} />
-        </DsButton>
-      ) : null}
     </>
   );
 
@@ -891,18 +865,6 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
       {isMenuVariant ? (
         <ComposerPanel.Footer divided className="!justify-between gap-2">
           <span className="flex items-center gap-1">
-            {onRefresh ? (
-              <DsButton
-                variant="ghost"
-                size="sm"
-                onClick={handleRefresh}
-                disabled={isRefreshing}
-                className="gap-1.5 [@media(pointer:coarse)]:!min-h-11"
-              >
-                <ArrowClockwise size={14} className={cn(isRefreshing && 'animate-spin')} />
-                <span>{t('skills:selector.refresh')}</span>
-              </DsButton>
-            ) : null}
             <DsButton
               variant="ghost"
               size="sm"

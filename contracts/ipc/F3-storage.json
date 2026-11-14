@@ -1,0 +1,2142 @@
+{
+  "lane": "F3-storage",
+  "generator": "deep-student/contracts-extract@1.6.0",
+  "commands": [
+    {
+      "name": "clear_test_slots",
+      "lane": "F3-storage",
+      "rust": {
+        "file": "crates/dstu-storage/src/data_space.rs",
+        "line": 2598,
+        "fn": "clear_test_slots"
+      },
+      "async": false,
+      "args": [],
+      "injected": [],
+      "result": {
+        "type": "string"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "export_startup_recovery_incident",
+      "lane": "F3-storage",
+      "rust": {
+        "file": "crates/dstu-storage/src/data_space.rs",
+        "line": 2231,
+        "fn": "export_startup_recovery_incident"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "incidentId",
+          "rustName": "incident_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "destination",
+          "rustName": "destination",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "window"
+        },
+        {
+          "kind": "state",
+          "rustType": "dstu_storage::data_space::StartupRecoveryState"
+        }
+      ],
+      "result": {
+        "type": "string"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "export_startup_recovery_report",
+      "lane": "F3-storage",
+      "rust": {
+        "file": "crates/dstu-storage/src/data_space.rs",
+        "line": 2269,
+        "fn": "export_startup_recovery_report"
+      },
+      "async": false,
+      "args": [
+        {
+          "key": "destination",
+          "rustName": "destination",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        },
+        {
+          "kind": "window"
+        },
+        {
+          "kind": "state",
+          "rustType": "dstu_storage::data_space::StartupRecoveryState"
+        }
+      ],
+      "result": {
+        "type": "string"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "get_data_space_info",
+      "lane": "F3-storage",
+      "rust": {
+        "file": "crates/dstu-storage/src/data_space.rs",
+        "line": 2493,
+        "fn": "get_data_space_info"
+      },
+      "async": false,
+      "args": [],
+      "injected": [],
+      "result": {
+        "$ref": "#/$defs/DataSpaceInfo"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "get_database_info",
+      "lane": "F3-storage",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 7308,
+        "fn": "get_database_info"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "get_slot_directory",
+      "lane": "F3-storage",
+      "rust": {
+        "file": "crates/dstu-storage/src/data_space.rs",
+        "line": 2616,
+        "fn": "get_slot_directory"
+      },
+      "async": false,
+      "args": [
+        {
+          "key": "slotName",
+          "rustName": "slot_name",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [],
+      "result": {
+        "type": "string"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "get_startup_recovery_status",
+      "lane": "F3-storage",
+      "rust": {
+        "file": "crates/dstu-storage/src/data_space.rs",
+        "line": 2169,
+        "fn": "get_startup_recovery_status"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/StartupRecoveryStatus"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "get_test_slot_info",
+      "lane": "F3-storage",
+      "rust": {
+        "file": "crates/dstu-storage/src/data_space.rs",
+        "line": 2576,
+        "fn": "get_test_slot_info"
+      },
+      "async": false,
+      "args": [],
+      "injected": [],
+      "result": {
+        "$ref": "#/$defs/TestSlotInfo"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "list_startup_recovery_incidents",
+      "lane": "F3-storage",
+      "rust": {
+        "file": "crates/dstu-storage/src/data_space.rs",
+        "line": 2469,
+        "fn": "list_startup_recovery_incidents"
+      },
+      "async": false,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "dstu_storage::data_space::StartupRecoveryState"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/StartupRecoveryIncident"
+        }
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "llm_usage_by_caller",
+      "lane": "F3-storage",
+      "rust": {
+        "file": "crates/dstu-storage/src/llm_usage/handlers.rs",
+        "line": 39,
+        "fn": "llm_usage_by_caller"
+      },
+      "async": true,
+      "renameAll": "camelCase",
+      "args": [
+        {
+          "key": "startDate",
+          "rustName": "start_date",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "endDate",
+          "rustName": "end_date",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_storage::llm_usage::database::LlmUsageDatabase>"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/CallerTypeSummary"
+        }
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "llm_usage_by_model",
+      "lane": "F3-storage",
+      "rust": {
+        "file": "crates/dstu-storage/src/llm_usage/handlers.rs",
+        "line": 29,
+        "fn": "llm_usage_by_model"
+      },
+      "async": true,
+      "renameAll": "camelCase",
+      "args": [
+        {
+          "key": "startDate",
+          "rustName": "start_date",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "endDate",
+          "rustName": "end_date",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_storage::llm_usage::database::LlmUsageDatabase>"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/ModelSummary"
+        }
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "llm_usage_cleanup",
+      "lane": "F3-storage",
+      "rust": {
+        "file": "crates/dstu-storage/src/llm_usage/handlers.rs",
+        "line": 89,
+        "fn": "llm_usage_cleanup"
+      },
+      "async": true,
+      "renameAll": "camelCase",
+      "args": [
+        {
+          "key": "beforeDate",
+          "rustName": "before_date",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_storage::llm_usage::database::LlmUsageDatabase>"
+        }
+      ],
+      "result": {
+        "type": "integer",
+        "x-int": "usize",
+        "minimum": 0
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "llm_usage_daily",
+      "lane": "F3-storage",
+      "rust": {
+        "file": "crates/dstu-storage/src/llm_usage/handlers.rs",
+        "line": 79,
+        "fn": "llm_usage_daily"
+      },
+      "async": true,
+      "renameAll": "camelCase",
+      "args": [
+        {
+          "key": "startDate",
+          "rustName": "start_date",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "endDate",
+          "rustName": "end_date",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_storage::llm_usage::database::LlmUsageDatabase>"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/DailySummary"
+        }
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "llm_usage_get_trends",
+      "lane": "F3-storage",
+      "rust": {
+        "file": "crates/dstu-storage/src/llm_usage/handlers.rs",
+        "line": 11,
+        "fn": "llm_usage_get_trends"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "days",
+          "rustName": "days",
+          "schema": {
+            "type": "integer",
+            "x-int": "u32",
+            "minimum": 0,
+            "maximum": 4294967295
+          },
+          "optional": false
+        },
+        {
+          "key": "granularity",
+          "rustName": "granularity",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_storage::llm_usage::database::LlmUsageDatabase>"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/UsageTrendPoint"
+        }
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "llm_usage_recent",
+      "lane": "F3-storage",
+      "rust": {
+        "file": "crates/dstu-storage/src/llm_usage/handlers.rs",
+        "line": 70,
+        "fn": "llm_usage_recent"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "limit",
+          "rustName": "limit",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_storage::llm_usage::database::LlmUsageDatabase>"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/UsageRecord"
+        }
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "llm_usage_session_summary",
+      "lane": "F3-storage",
+      "rust": {
+        "file": "crates/dstu-storage/src/llm_usage/handlers.rs",
+        "line": 61,
+        "fn": "llm_usage_session_summary"
+      },
+      "async": true,
+      "renameAll": "camelCase",
+      "args": [
+        {
+          "key": "sessionId",
+          "rustName": "session_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_storage::llm_usage::database::LlmUsageDatabase>"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/SessionUsageSummary"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "llm_usage_summary",
+      "lane": "F3-storage",
+      "rust": {
+        "file": "crates/dstu-storage/src/llm_usage/handlers.rs",
+        "line": 49,
+        "fn": "llm_usage_summary"
+      },
+      "async": true,
+      "renameAll": "camelCase",
+      "args": [
+        {
+          "key": "startDate",
+          "rustName": "start_date",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "endDate",
+          "rustName": "end_date",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_storage::llm_usage::database::LlmUsageDatabase>"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/UsageSummary"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "mark_data_space_pending_switch_to_inactive",
+      "lane": "F3-storage",
+      "rust": {
+        "file": "crates/dstu-storage/src/data_space.rs",
+        "line": 2523,
+        "fn": "mark_data_space_pending_switch_to_inactive"
+      },
+      "async": false,
+      "args": [],
+      "injected": [],
+      "result": {
+        "type": "string"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "open_startup_recovery_incident_folder",
+      "lane": "F3-storage",
+      "rust": {
+        "file": "crates/dstu-storage/src/data_space.rs",
+        "line": 2197,
+        "fn": "open_startup_recovery_incident_folder"
+      },
+      "async": false,
+      "args": [
+        {
+          "key": "incidentId",
+          "rustName": "incident_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "dstu_storage::data_space::StartupRecoveryState"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "purge_active_data_dir_now",
+      "lane": "F3-storage",
+      "rust": {
+        "file": "crates/dstu-storage/src/data_space.rs",
+        "line": 2552,
+        "fn": "purge_active_data_dir_now"
+      },
+      "async": false,
+      "args": [],
+      "injected": [],
+      "result": {
+        "type": "string"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "purge_all_database_files",
+      "lane": "F3-storage",
+      "rust": {
+        "file": "crates/dstu-storage/src/data_space.rs",
+        "line": 2539,
+        "fn": "purge_all_database_files"
+      },
+      "async": false,
+      "args": [],
+      "injected": [],
+      "result": {
+        "type": "string"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "reset_test_database",
+      "lane": "F3-storage",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 7215,
+        "fn": "reset_test_database"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "resolve_startup_recovery",
+      "lane": "F3-storage",
+      "rust": {
+        "file": "crates/dstu-storage/src/data_space.rs",
+        "line": 2478,
+        "fn": "resolve_startup_recovery"
+      },
+      "async": false,
+      "args": [
+        {
+          "key": "candidateId",
+          "rustName": "candidate_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "dstu_storage::data_space::StartupRecoveryState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/StartupRecoveryResolveResponse"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "restart_app",
+      "lane": "F3-storage",
+      "rust": {
+        "file": "crates/dstu-storage/src/data_space.rs",
+        "line": 2610,
+        "fn": "restart_app"
+      },
+      "async": false,
+      "args": [],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "retry_startup_recovery_preflight",
+      "lane": "F3-storage",
+      "rust": {
+        "file": "crates/dstu-storage/src/data_space.rs",
+        "line": 2190,
+        "fn": "retry_startup_recovery_preflight"
+      },
+      "async": false,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "dstu_storage::data_space::StartupRecoveryState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/StartupRecoveryStatus"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "seed_test_database",
+      "lane": "F3-storage",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 7330,
+        "fn": "seed_test_database"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "config",
+          "rustName": "config",
+          "schema": {
+            "anyOf": [
+              {
+                "x-rust": "serde_json::Value"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "set_test_run_id",
+      "lane": "F3-storage",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 7424,
+        "fn": "set_test_run_id"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "testRunId",
+          "rustName": "test_run_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "staged_upload_abort",
+      "lane": "F3-storage",
+      "rust": {
+        "file": "crates/dstu-storage/src/staged_upload.rs",
+        "line": 510,
+        "fn": "staged_upload_abort"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "uploadId",
+          "rustName": "upload_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "staged_upload_append",
+      "lane": "F3-storage",
+      "rust": {
+        "file": "crates/dstu-storage/src/staged_upload.rs",
+        "line": 461,
+        "fn": "staged_upload_append"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "request"
+        }
+      ],
+      "result": {
+        "type": "integer",
+        "x-int": "u64",
+        "minimum": 0
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "staged_upload_begin",
+      "lane": "F3-storage",
+      "rust": {
+        "file": "crates/dstu-storage/src/staged_upload.rs",
+        "line": 446,
+        "fn": "staged_upload_begin"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "name",
+          "rustName": "name",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "totalSize",
+          "rustName": "total_size",
+          "schema": {
+            "type": "integer",
+            "x-int": "u64",
+            "minimum": 0
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "type": "string"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "staged_upload_from_path",
+      "lane": "F3-storage",
+      "rust": {
+        "file": "crates/dstu-storage/src/staged_upload.rs",
+        "line": 490,
+        "fn": "staged_upload_from_path"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "path",
+          "rustName": "path",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "window"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/StagedFromPath"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "switch_to_production_database",
+      "lane": "F3-storage",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 7276,
+        "fn": "switch_to_production_database"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "switch_to_test_database",
+      "lane": "F3-storage",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 7169,
+        "fn": "switch_to_test_database"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    }
+  ],
+  "events": [],
+  "$defs": {
+    "CallerType": {
+      "oneOf": [
+        {
+          "const": "chat_v2"
+        },
+        {
+          "const": "translation"
+        },
+        {
+          "const": "anki"
+        },
+        {
+          "const": "analysis"
+        },
+        {
+          "const": "exam_sheet"
+        },
+        {
+          "const": "memory"
+        },
+        {
+          "const": "vfs_indexing"
+        },
+        {
+          "const": "embedding"
+        },
+        {
+          "const": "reranker"
+        },
+        {
+          "const": "voice_input"
+        },
+        {
+          "const": "media_transcription"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "other": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "other"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "x-rust": "dstu_storage::llm_usage::types::CallerType"
+    },
+    "CallerTypeSummary": {
+      "type": "object",
+      "properties": {
+        "callerType": {
+          "$ref": "#/$defs/CallerType"
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "requestCount": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "totalTokens": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "estimatedCostUsd": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "percentage": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        }
+      },
+      "required": [
+        "callerType",
+        "displayName",
+        "requestCount",
+        "totalTokens"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_storage::llm_usage::types::CallerTypeSummary"
+    },
+    "DailySummary": {
+      "type": "object",
+      "properties": {
+        "date": {
+          "type": "string"
+        },
+        "callerType": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CallerType"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "modelId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "requestCount": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "successCount": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "errorCount": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "totalPromptTokens": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "totalCompletionTokens": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "totalTokens": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "totalReasoningTokens": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u64",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "totalCachedTokens": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u64",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "totalEstimatedCostUsd": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "avgDurationMs": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        }
+      },
+      "required": [
+        "date",
+        "requestCount",
+        "successCount",
+        "errorCount",
+        "totalPromptTokens",
+        "totalCompletionTokens",
+        "totalTokens"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_storage::llm_usage::types::DailySummary"
+    },
+    "DataSpaceInfo": {
+      "type": "object",
+      "properties": {
+        "active_slot": {
+          "type": "string"
+        },
+        "inactive_slot": {
+          "type": "string"
+        },
+        "pending_slot": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "active_dir": {
+          "type": "string"
+        },
+        "inactive_dir": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "active_slot",
+        "inactive_slot",
+        "pending_slot",
+        "active_dir",
+        "inactive_dir"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_storage::data_space::DataSpaceInfo"
+    },
+    "ModelSummary": {
+      "type": "object",
+      "properties": {
+        "modelId": {
+          "type": "string"
+        },
+        "requestCount": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "totalTokens": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "promptTokens": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "completionTokens": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "estimatedCostUsd": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "percentage": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "avgTokensPerRequest": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        }
+      },
+      "required": [
+        "modelId",
+        "requestCount",
+        "totalTokens",
+        "promptTokens",
+        "completionTokens"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_storage::llm_usage::types::ModelSummary"
+    },
+    "SessionUsageSummary": {
+      "type": "object",
+      "properties": {
+        "sessionId": {
+          "type": "string"
+        },
+        "requestCount": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "promptTokens": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "completionTokens": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "totalTokens": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "estimatedCostUsd": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        }
+      },
+      "required": [
+        "sessionId",
+        "requestCount",
+        "promptTokens",
+        "completionTokens",
+        "totalTokens"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_storage::llm_usage::types::SessionUsageSummary"
+    },
+    "StagedFromPath": {
+      "type": "object",
+      "properties": {
+        "uploadId": {
+          "type": "string"
+        },
+        "size": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "uploadId",
+        "size"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_storage::staged_upload::StagedFromPath"
+    },
+    "StartupRecoveryCandidate": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "exists": {
+          "type": "boolean"
+        },
+        "has_data": {
+          "type": "boolean"
+        },
+        "has_database": {
+          "type": "boolean"
+        },
+        "size_bytes": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "latest_modified": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "database_filenames": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "core_database_filenames": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "valid_core_database_filenames": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "selectable": {
+          "type": "boolean"
+        },
+        "selection_block_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "recommended": {
+          "type": "boolean"
+        },
+        "recommendation_reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "exists",
+        "has_data",
+        "has_database",
+        "size_bytes",
+        "latest_modified",
+        "database_filenames",
+        "core_database_filenames",
+        "valid_core_database_filenames",
+        "selectable",
+        "recommended",
+        "recommendation_reason"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_storage::data_space::StartupRecoveryCandidate"
+    },
+    "StartupRecoveryIncident": {
+      "type": "object",
+      "properties": {
+        "incident_id": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "resolved": {
+          "type": "boolean"
+        },
+        "resolved_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "selected_candidate": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "recovery_error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "failed_operation": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "retry_requires_restart": {
+          "type": "boolean"
+        },
+        "candidates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/StartupRecoveryCandidate"
+          }
+        },
+        "legacy_entries": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "incident_id",
+        "created_at",
+        "resolved",
+        "retry_requires_restart",
+        "candidates",
+        "legacy_entries"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_storage::data_space::StartupRecoveryIncident"
+    },
+    "StartupRecoveryResolveResponse": {
+      "type": "object",
+      "properties": {
+        "resolved": {
+          "type": "boolean"
+        },
+        "restart_required": {
+          "type": "boolean"
+        },
+        "selected_candidate": {
+          "type": "string"
+        },
+        "incident_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "resolved",
+        "restart_required",
+        "selected_candidate",
+        "incident_id"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_storage::data_space::StartupRecoveryResolveResponse"
+    },
+    "StartupRecoveryStatus": {
+      "type": "object",
+      "properties": {
+        "recovery_required": {
+          "type": "boolean"
+        },
+        "incident": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StartupRecoveryIncident"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        }
+      },
+      "required": [
+        "recovery_required"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_storage::data_space::StartupRecoveryStatus"
+    },
+    "TestSlotInfo": {
+      "type": "object",
+      "properties": {
+        "slot_c_dir": {
+          "type": "string"
+        },
+        "slot_d_dir": {
+          "type": "string"
+        },
+        "slot_c_exists": {
+          "type": "boolean"
+        },
+        "slot_d_exists": {
+          "type": "boolean"
+        },
+        "slot_c_file_count": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "slot_d_file_count": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "slot_c_dir",
+        "slot_d_dir",
+        "slot_c_exists",
+        "slot_d_exists",
+        "slot_c_file_count",
+        "slot_d_file_count"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_storage::data_space::TestSlotInfo"
+    },
+    "UsageRecord": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "callerType": {
+          "$ref": "#/$defs/CallerType"
+        },
+        "callerId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "variantId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "runId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "modelId": {
+          "type": "string"
+        },
+        "configId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "providerId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "adapter": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "tokenSource": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "promptTokens": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "completionTokens": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "totalTokens": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "reasoningTokens": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "cachedTokens": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "cacheWriteTokens": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "estimatedCostUsd": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "durationMs": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u64",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "success": {
+          "type": "boolean"
+        },
+        "errorMessage": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "x-rust": "chrono::DateTime<chrono::Utc>",
+          "x-format": "RFC 3339, SecondsFormat::AutoSi, Z for UTC"
+        }
+      },
+      "required": [
+        "id",
+        "callerType",
+        "modelId",
+        "promptTokens",
+        "completionTokens",
+        "totalTokens",
+        "success",
+        "createdAt"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_storage::llm_usage::types::UsageRecord"
+    },
+    "UsageSummary": {
+      "type": "object",
+      "properties": {
+        "startDate": {
+          "type": "string",
+          "format": "date-time",
+          "x-rust": "chrono::DateTime<chrono::Utc>",
+          "x-format": "RFC 3339, SecondsFormat::AutoSi, Z for UTC"
+        },
+        "endDate": {
+          "type": "string",
+          "format": "date-time",
+          "x-rust": "chrono::DateTime<chrono::Utc>",
+          "x-format": "RFC 3339, SecondsFormat::AutoSi, Z for UTC"
+        },
+        "totalRequests": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "successRequests": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "errorRequests": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "totalPromptTokens": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "totalCompletionTokens": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "totalTokens": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "totalReasoningTokens": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u64",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "totalCachedTokens": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u64",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "totalEstimatedCostUsd": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "avgTokensPerRequest": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "avgDurationMs": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "byCallerType": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/CallerTypeSummary"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "byModel": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/ModelSummary"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "trendPoints": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/UsageTrendPoint"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        }
+      },
+      "required": [
+        "startDate",
+        "endDate",
+        "totalRequests",
+        "successRequests",
+        "errorRequests",
+        "totalPromptTokens",
+        "totalCompletionTokens",
+        "totalTokens"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_storage::llm_usage::types::UsageSummary"
+    },
+    "UsageTrendPoint": {
+      "type": "object",
+      "properties": {
+        "timeLabel": {
+          "type": "string"
+        },
+        "timestamp": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "requestCount": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "totalTokens": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "promptTokens": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "completionTokens": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "estimatedCostUsd": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "successRate": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        }
+      },
+      "required": [
+        "timeLabel",
+        "timestamp",
+        "requestCount",
+        "totalTokens",
+        "promptTokens",
+        "completionTokens"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_storage::llm_usage::types::UsageTrendPoint"
+    }
+  }
+}

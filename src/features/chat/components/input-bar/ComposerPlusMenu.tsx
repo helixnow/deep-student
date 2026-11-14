@@ -19,15 +19,18 @@ import {
   CaretRight,
   Check,
   FolderOpen,
+  Globe,
   Hammer,
   Lightning,
   LinkSimple,
+  Package,
   Paperclip,
   Plus,
   ShieldWarning,
   SlidersHorizontal,
   Sparkle,
   Warning,
+  X,
   FolderSimple,
 } from '@phosphor-icons/react';
 import {
@@ -101,6 +104,15 @@ export interface ComposerPlusMenuProps {
   /** 知识库主动检索开关（开启后注入系统提示词，要求模型优先检索本地知识库） */
   knowledgeBaseProactive?: boolean;
   onKnowledgeBaseProactiveChange?: (enabled: boolean) => void | Promise<void>;
+  /** 知识库检索开关（session features 'rag'，控制 RAG 工具是否可用） */
+  ragEnabled?: boolean;
+  onRagEnabledChange?: (enabled: boolean) => void | Promise<void>;
+  /** 联网搜索开关（session features 'webSearch'，控制 web_search 工具是否可用） */
+  webSearchEnabled?: boolean;
+  onWebSearchEnabledChange?: (enabled: boolean) => void | Promise<void>;
+  /** 插件工坊模式开关（激活/退出 dstu-plugin-development 技能） */
+  pluginWorkshopActive?: boolean;
+  onTogglePluginWorkshop?: () => void | Promise<void>;
 }
 
 // React.memo：输入栏每个按键都会重渲染，"+"菜单（AppMenu/Radix 子树）
@@ -131,6 +143,12 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
   onOpenAdvancedPanel,
   knowledgeBaseProactive = false,
   onKnowledgeBaseProactiveChange,
+  ragEnabled = true,
+  onRagEnabledChange,
+  webSearchEnabled = true,
+  onWebSearchEnabledChange,
+  pluginWorkshopActive = false,
+  onTogglePluginWorkshop,
 }) => {
   const { t } = useTranslation(['analysis', 'chatV2', 'skills', 'common']);
   const [confirmDangerOpen, setConfirmDangerOpen] = React.useState(false);
@@ -184,6 +202,22 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
     [onKnowledgeBaseProactiveChange],
   );
 
+  const handleRagEnabledChange = useCallback(
+    (checked: boolean) => {
+      if (!onRagEnabledChange) return;
+      void onRagEnabledChange(checked);
+    },
+    [onRagEnabledChange],
+  );
+
+  const handleWebSearchEnabledChange = useCallback(
+    (checked: boolean) => {
+      if (!onWebSearchEnabledChange) return;
+      void onWebSearchEnabledChange(checked);
+    },
+    [onWebSearchEnabledChange],
+  );
+
   const handleOpenConnectors = useCallback(() => {
     onOpenChange(false);
     onOpenMcpPanel?.();
@@ -199,11 +233,18 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
     onOpenAdvancedPanel?.();
   }, [onOpenChange, onOpenAdvancedPanel]);
 
+  const handleTogglePluginWorkshop = useCallback(() => {
+    onOpenChange(false);
+    void onTogglePluginWorkshop?.();
+  }, [onOpenChange, onTogglePluginWorkshop]);
+
   const showMode = Boolean(sessionId && onPermissionPresetChange);
-  const showKnowledgeBase = Boolean(onKnowledgeBaseProactiveChange);
+  const showKnowledgeBase = Boolean(onKnowledgeBaseProactiveChange || onRagEnabledChange);
+  const showWebSearch = Boolean(onWebSearchEnabledChange);
   const showSkills = Boolean(renderSkillPanel);
   const showConnectors = Boolean(renderMcpPanel && onOpenMcpPanel);
   const showAdvanced = Boolean(onOpenAdvancedPanel);
+  const showPluginWorkshop = Boolean(onTogglePluginWorkshop);
   // 📱 P1-1：移动端单层扁平列表（无 AppMenuSub 飞出层）
   // 行目标体系化：触控行高跟随 pointer:coarse（设备能力）而非布局断点，
   // 统一走 --touch-target-size token（44px），与 AppMenu.css 的 coarse 基线一致
@@ -225,6 +266,49 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
   ) : mcpEnabled ? (
     <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-success" />
   ) : null;
+
+  const renderKnowledgeBaseItems = (itemClassName?: string) => (
+    <>
+      {onRagEnabledChange && (
+        <AppMenuSwitchItem
+          className={itemClassName}
+          checked={ragEnabled}
+          onCheckedChange={handleRagEnabledChange}
+          data-testid="plus-menu-rag"
+          title={t('chatV2:inputBar.plusMenu.ragHint')}
+        >
+          {t('chatV2:inputBar.plusMenu.rag')}
+        </AppMenuSwitchItem>
+      )}
+      {onKnowledgeBaseProactiveChange && (
+        <AppMenuSwitchItem
+          className={itemClassName}
+          checked={knowledgeBaseProactive}
+          disabled={Boolean(onRagEnabledChange && !ragEnabled)}
+          onCheckedChange={handleKnowledgeBaseProactiveChange}
+          data-testid="plus-menu-kb-proactive"
+          title={t('chatV2:inputBar.plusMenu.kbProactiveHint')}
+        >
+          {t('chatV2:inputBar.plusMenu.kbProactive')}
+        </AppMenuSwitchItem>
+      )}
+      {sessionId && <KbScopeMenuItem sessionId={sessionId} className={itemClassName} />}
+    </>
+  );
+
+  const renderWebSearchItem = (itemClassName?: string) =>
+    showWebSearch ? (
+      <AppMenuSwitchItem
+        className={itemClassName}
+        icon={<Globe className="w-4 h-4" />}
+        checked={webSearchEnabled}
+        onCheckedChange={handleWebSearchEnabledChange}
+        data-testid="plus-menu-web-search"
+        title={t('chatV2:inputBar.plusMenu.webSearchHint')}
+      >
+        {t('chatV2:inputBar.plusMenu.webSearch')}
+      </AppMenuSwitchItem>
+    ) : null;
 
   return (
     <div className="flex items-center gap-1">
@@ -303,6 +387,20 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
                       {t(`chatV2:authority.permissionPreset.modes.${preset}`)}
                     </AppMenuItem>
                   ))}
+                  {showPluginWorkshop && (
+                    <>
+                      <AppMenuSeparator />
+                      <AppMenuSwitchItem
+                        className={mobileItemClass}
+                        checked={pluginWorkshopActive}
+                        onCheckedChange={() => handleTogglePluginWorkshop()}
+                        data-testid="plus-menu-mode-plugin-workshop"
+                        title={t('chatV2:inputBar.plusMenu.pluginWorkshopHint')}
+                      >
+                        {t('chatV2:inputBar.plusMenu.pluginWorkshop')}
+                      </AppMenuSwitchItem>
+                    </>
+                  )}
                 </AppMenuGroup>
                 {showKnowledgeBase && (
                   <>
@@ -311,16 +409,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
                       label={t('chatV2:inputBar.plusMenu.knowledgeBase')}
                       data-testid="plus-menu-knowledge-base-panel"
                     >
-                      <AppMenuSwitchItem
-                        className={mobileItemClass}
-                        checked={knowledgeBaseProactive}
-                        onCheckedChange={handleKnowledgeBaseProactiveChange}
-                        data-testid="plus-menu-kb-proactive"
-                        title={t('chatV2:inputBar.plusMenu.kbProactiveHint')}
-                      >
-                        {t('chatV2:inputBar.plusMenu.kbProactive')}
-                      </AppMenuSwitchItem>
-                      {sessionId && <KbScopeMenuItem sessionId={sessionId} className={mobileItemClass} />}
+                      {renderKnowledgeBaseItems(mobileItemClass)}
                     </AppMenuGroup>
                   </>
                 )}
@@ -382,20 +471,24 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
               {!showMode && showKnowledgeBase && (
                 <>
                   <AppMenuSeparator />
-                  <AppMenuSwitchItem
-                    className={mobileItemClass}
-                    checked={knowledgeBaseProactive}
-                    onCheckedChange={handleKnowledgeBaseProactiveChange}
-                    data-testid="plus-menu-kb-proactive"
-                    title={t('chatV2:inputBar.plusMenu.kbProactiveHint')}
-                  >
-                    {t('chatV2:inputBar.plusMenu.kbProactive')}
-                  </AppMenuSwitchItem>
-                  {sessionId && <KbScopeMenuItem sessionId={sessionId} className={mobileItemClass} />}
+                  {renderKnowledgeBaseItems(mobileItemClass)}
                 </>
               )}
 
-              {((showSkills && onOpenSkillPanel) || showConnectors || showAdvanced) && <AppMenuSeparator />}
+              {((showSkills && onOpenSkillPanel) || showPluginWorkshop || showWebSearch || showConnectors || showAdvanced) && <AppMenuSeparator />}
+              {renderWebSearchItem(mobileItemClass)}
+              {showPluginWorkshop && (
+                <AppMenuItem
+                  className={mobileItemClass}
+                  icon={<Package className="w-4 h-4" />}
+                  onClick={handleTogglePluginWorkshop}
+                  data-testid="plus-menu-plugin-workshop"
+                  title={t('chatV2:inputBar.plusMenu.pluginWorkshopHint')}
+                  suffix={pluginWorkshopActive ? <Check className="h-4 w-4 text-primary" /> : undefined}
+                >
+                  {t('chatV2:inputBar.plusMenu.pluginWorkshop')}
+                </AppMenuItem>
+              )}
               {showSkills && onOpenSkillPanel && (
                 <AppMenuItem
                   className={mobileItemClass}
@@ -500,6 +593,19 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
                       </span>
                     </AppMenuItem>
                   ))}
+                  {showPluginWorkshop && (
+                    <>
+                      <AppMenuSeparator />
+                      <AppMenuSwitchItem
+                        checked={pluginWorkshopActive}
+                        onCheckedChange={() => handleTogglePluginWorkshop()}
+                        data-testid="plus-menu-mode-plugin-workshop"
+                        title={t('chatV2:inputBar.plusMenu.pluginWorkshopHint')}
+                      >
+                        {t('chatV2:inputBar.plusMenu.pluginWorkshop')}
+                      </AppMenuSwitchItem>
+                    </>
+                  )}
                 </AppMenuSubContent>
               </AppMenuSub>
             )}
@@ -514,7 +620,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
                     <span className="truncate">
                       {t('chatV2:inputBar.plusMenu.knowledgeBase')}
                     </span>
-                    {knowledgeBaseProactive && (
+                    {ragEnabled && knowledgeBaseProactive && (
                       <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-success" />
                     )}
                   </span>
@@ -527,16 +633,23 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
                     {t('chatV2:inputBar.plusMenu.kbProactiveHint')}
                   </AppMenuLabel>
                   <AppMenuSeparator />
-                  <AppMenuSwitchItem
-                    checked={knowledgeBaseProactive}
-                    onCheckedChange={handleKnowledgeBaseProactiveChange}
-                    data-testid="plus-menu-kb-proactive"
-                  >
-                    {t('chatV2:inputBar.plusMenu.kbProactive')}
-                  </AppMenuSwitchItem>
-                  {sessionId && <KbScopeMenuItem sessionId={sessionId} />}
+                  {renderKnowledgeBaseItems()}
                 </AppMenuSubContent>
               </AppMenuSub>
+            )}
+
+            {renderWebSearchItem()}
+
+            {showPluginWorkshop && (
+              <AppMenuItem
+                icon={<Package className="w-4 h-4" />}
+                onClick={handleTogglePluginWorkshop}
+                data-testid="plus-menu-plugin-workshop"
+                title={t('chatV2:inputBar.plusMenu.pluginWorkshopHint')}
+                suffix={pluginWorkshopActive ? <Check className="h-4 w-4 text-primary" /> : undefined}
+              >
+                {t('chatV2:inputBar.plusMenu.pluginWorkshop')}
+              </AppMenuItem>
             )}
 
             {showSkills && (
@@ -604,6 +717,33 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
         </AppMenuContent>
       </AppMenu>
 
+      {pluginWorkshopActive && onTogglePluginWorkshop && (
+        <button
+          type="button"
+          className={cn(
+            'group inline-flex shrink-0 items-center justify-center focus-visible:outline-none',
+            '[@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
+          )}
+          onClick={() => void onTogglePluginWorkshop()}
+          data-testid="plugin-workshop-active"
+          title={t('chatV2:inputBar.plusMenu.pluginWorkshopExitHint')}
+          aria-label={t('chatV2:inputBar.plusMenu.pluginWorkshopExitHint')}
+        >
+          <span
+            className={cn(
+              'inline-flex h-6 items-center gap-1 rounded-md',
+              'bg-primary/15 px-2 text-caption font-medium leading-none text-primary',
+              'group-hover:bg-primary/25 group-focus-visible:ring-1 group-focus-visible:ring-primary/40',
+            )}
+          >
+            <Sparkle size={12} weight="fill" className="shrink-0" aria-hidden="true" />
+            <span className="max-w-[5rem] truncate">
+              {t('chatV2:inputBar.plusMenu.pluginWorkshopActive')}
+            </span>
+            <X size={10} weight="bold" className="shrink-0 opacity-70 group-hover:opacity-100" aria-hidden="true" />
+          </span>
+        </button>
+      )}
       {permissionPreset === 'full_access' && (
         <button
           type="button"

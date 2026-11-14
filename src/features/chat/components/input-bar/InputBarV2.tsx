@@ -14,16 +14,21 @@ import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { invoke } from '@tauri-apps/api/core';
 import { CircleNotch } from '@phosphor-icons/react';
-import { InputBarUI } from './InputBarUI';
+import * as InputBarUIModule from './InputBarUI';
 import { useInputBarV2 } from './useInputBarV2';
+
+const { InputBarUI } = InputBarUIModule;
+const globalSessionDraftLru =
+  'globalSessionDraftLru' in InputBarUIModule
+    ? InputBarUIModule.globalSessionDraftLru
+    : undefined;
 import { useQueueSettings } from '../../queue/useQueueSettings';
 import { QueuedMessageStack } from './QueuedMessageStack';
-import { modeRegistry } from '../../registry';
+import { modeRegistry, resolveSessionFeatureFlags } from '../../registry';
 import { ModelPicker, type ModelPickerMode } from './ModelPicker';
 import { SkillSelector } from '../../skills/components/SkillSelector';
 import { parseLeadingSkillCommands } from '../../skills/slashCommands';
 import { ThreadContentShell } from '../ui/ThreadContentShell';
-import { reloadSkills } from '../../skills/loader';
 import { useLoadedSkills } from '../../skills/hooks/useLoadedSkills';
 import type { InputBarV2Props } from './types';
 import { useModelMentionAutocomplete } from './useModelMentionAutocomplete';
@@ -52,7 +57,6 @@ import {
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import {
   coerceReasoningLevel,
-  type ReasoningControlKind,
   type ReasoningLevel,
 } from '@/utils/reasoning';
 import { resolveReasoningControl } from '@/utils/reasoning';
@@ -278,66 +282,81 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       permissionPreset,
       setPermissionPreset,
       knowledgeBaseProactive,
+      ragEnabled,
+      webSearchEnabled,
       setFeature,
     } = useStore(
       store,
-      useShallow((s) => ({
-        sessionId: s.sessionId,
-        mode: s.mode,
-        inputValue: s.inputValue,
-        enableThinking: s.chatParams.enableThinking,
-        modelId: s.chatParams.modelId,
-        modelDisplayName: s.chatParams.modelDisplayName,
-        modelIdPinnedByUser: s.chatParams.modelIdPinnedByUser,
-        model2OverrideId: s.chatParams.model2OverrideId ?? null,
-        maxTokens: s.chatParams.maxTokens,
-        contextLimit: s.chatParams.contextLimit,
-        reasoningEffort: s.chatParams.reasoningEffort,
-        thinkingBudget: s.chatParams.thinkingBudget,
-        lastAssistantUsage: (() => {
-          const messageOrder = Array.isArray(s.messageOrder) ? s.messageOrder : [];
-          const messageMap = s.messageMap instanceof Map ? s.messageMap : new Map();
-          // ★ 性能：selector 在流式期间每次 store flush 都会执行；
-          // 倒序扫描封顶 30 条——带 usage 的助手消息几乎总在末尾，
-          // 避免长会话（数百条）时每 32ms 全量倒扫
-          const scanFloor = Math.max(0, messageOrder.length - 30);
-          for (let i = messageOrder.length - 1; i >= scanFloor; i -= 1) {
-            const message = messageMap.get(messageOrder[i]);
-            if (message?.role === 'assistant' && message._meta?.usage) {
-              return message._meta.usage;
+      useShallow((s) => {
+        const featureFlags = resolveSessionFeatureFlags(s);
+        return {
+          sessionId: s.sessionId,
+          mode: s.mode,
+          inputValue: s.inputValue,
+          enableThinking: s.chatParams.enableThinking,
+          modelId: s.chatParams.modelId,
+          modelDisplayName: s.chatParams.modelDisplayName,
+          modelIdPinnedByUser: s.chatParams.modelIdPinnedByUser,
+          model2OverrideId: s.chatParams.model2OverrideId ?? null,
+          maxTokens: s.chatParams.maxTokens,
+          contextLimit: s.chatParams.contextLimit,
+          reasoningEffort: s.chatParams.reasoningEffort,
+          thinkingBudget: s.chatParams.thinkingBudget,
+          lastAssistantUsage: (() => {
+            const messageOrder = Array.isArray(s.messageOrder) ? s.messageOrder : [];
+            const messageMap = s.messageMap instanceof Map ? s.messageMap : new Map();
+            // ★ 性能：selector 在流式期间每次 store flush 都会执行；
+            // 倒序扫描封顶 30 条——带 usage 的助手消息几乎总在末尾，
+            // 避免长会话（数百条）时每 32ms 全量倒扫
+            const scanFloor = Math.max(0, messageOrder.length - 30);
+            for (let i = messageOrder.length - 1; i >= scanFloor; i -= 1) {
+              const message = messageMap.get(messageOrder[i]);
+              if (message?.role === 'assistant' && message._meta?.usage) {
+                return message._meta.usage;
+              }
             }
-          }
-          return undefined;
-        })(),
-        contextUsageOverride: s.contextUsageOverride,
-        compactionInProgress: s.compactionInProgress,
-        modelRetryTarget: s.modelRetryTarget,
-        setChatParams: s.setChatParams,
-        // ★ 2026-01 改造：Anki 工具已迁移到内置 MCP 服务器，移除 enableAnkiTools
-        // ☆ Skills 系统（多选模式）
-        activeSkillIds: s.activeSkillIds,
-        skillStateJson: s.skillStateJson,
-        activateSkill: s.activateSkill,
-        deactivateSkill: s.deactivateSkill,
-        // 🔧 P1-27: 上下文引用列表
-        pendingContextRefs: s.pendingContextRefs,
-        removeContextRef: s.removeContextRef,
-        clearContextRefs: s.clearContextRefs,
-        // 🆕 阻塞交互请求
-        pendingApprovalRequest: s.pendingBlockingInteraction,
-        permissionPreset: s.permissionPreset ?? 'relaxed',
-        setPermissionPreset: s.setPermissionPreset,
-        // 🆕 知识库主动检索开关（features 与 messageMap 同理做 Map 防御，
-        // 恢复/测试路径可能给到普通对象）
-        knowledgeBaseProactive:
-          s.features instanceof Map ? (s.features.get('kbProactive') ?? false) : false,
-        setFeature: s.setFeature,
-      }))
+            return undefined;
+          })(),
+          contextUsageOverride: s.contextUsageOverride,
+          compactionInProgress: s.compactionInProgress,
+          modelRetryTarget: s.modelRetryTarget,
+          setChatParams: s.setChatParams,
+          // ★ 2026-01 改造：Anki 工具已迁移到内置 MCP 服务器，移除 enableAnkiTools
+          // ☆ Skills 系统（多选模式）
+          activeSkillIds: s.activeSkillIds,
+          skillStateJson: s.skillStateJson,
+          activateSkill: s.activateSkill,
+          deactivateSkill: s.deactivateSkill,
+          // 🔧 P1-27: 上下文引用列表
+          pendingContextRefs: s.pendingContextRefs,
+          removeContextRef: s.removeContextRef,
+          clearContextRefs: s.clearContextRefs,
+          // 🆕 阻塞交互请求
+          pendingApprovalRequest: s.pendingBlockingInteraction,
+          permissionPreset: s.permissionPreset ?? 'relaxed',
+          setPermissionPreset: s.setPermissionPreset,
+          // 🆕 知识库主动检索开关（features 与 messageMap 同理做 Map 防御，
+          // 恢复/测试路径可能给到普通对象）
+          knowledgeBaseProactive:
+            s.features instanceof Map ? (s.features.get('kbProactive') ?? false) : false,
+          ragEnabled: featureFlags.ragEnabled,
+          webSearchEnabled: featureFlags.webSearchEnabled,
+          setFeature: s.setFeature,
+        };
+      })
     );
 
-    // 🆕 知识库主动检索开关（持久化到会话 features）
+    // 🆕 知识库主动检索 / 知识库检索 / 联网搜索开关（持久化到会话 features）
     const handleKnowledgeBaseProactiveChange = useCallback(
       (enabled: boolean) => setFeature('kbProactive', enabled),
+      [setFeature],
+    );
+    const handleRagEnabledChange = useCallback(
+      (enabled: boolean) => setFeature('rag', enabled),
+      [setFeature],
+    );
+    const handleWebSearchEnabledChange = useCallback(
+      (enabled: boolean) => setFeature('webSearch', enabled),
       [setFeature],
     );
 
@@ -403,6 +422,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       clearPageRefs: clearPdfPageRefs,
       removePageRef: removePdfPageRef,
       buildRefTags: buildPdfRefTags,
+      getSelectedPagesContext,
       hasPageRefs: hasPdfPageRefs,
     } = usePdfPageRefs();
 
@@ -433,13 +453,22 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       if (draftRestoredKeyRef.current === draftStorageKey) return;
       draftRestoredKeyRef.current = draftStorageKey;
       const state = store.getState();
-      const draft = restoreComposerDraftIfSafe(
+      const lruDraft = sessionId ? globalSessionDraftLru?.getDraft(sessionId) ?? null : null;
+      const storageDraft = restoreComposerDraftIfSafe(
         sessionId,
         state.inputValue,
         state.sessionStatus,
       );
-      if (draft) {
-        state.setInputValue(draft);
+      const restoredText = lruDraft?.text || storageDraft;
+      if (restoredText && state.inputValue === '' && state.sessionStatus === 'idle') {
+        state.setInputValue(restoredText);
+      }
+      if (storageDraft && sessionId && !lruDraft) {
+        globalSessionDraftLru?.saveDraft(sessionId, {
+          text: storageDraft,
+          attachments: [],
+          pastedPills: [],
+        });
       }
     }, [draftStorageKey, sessionId, store]);
 
@@ -447,16 +476,21 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       if (!draftStorageKey) return;
       // 恢复动作尚未执行前不要用空值覆盖已存草稿
       if (draftRestoredKeyRef.current !== draftStorageKey) return;
+      const liveInput = store.getState().inputValue;
+      const effectiveInput = inputValue || liveInput;
       // 清空必须同步：empty→docked remount 发生在同一轮 commit，等 300ms 会丢竞态
-      if (!inputValue) {
-        clearComposerDraft(sessionId);
+      if (!effectiveInput) {
+        const lruDraft = sessionId ? globalSessionDraftLru?.getDraft(sessionId) ?? null : null;
+        if (!lruDraft?.text && !(lruDraft?.pastedPills?.length)) {
+          clearComposerDraft(sessionId);
+        }
         return;
       }
       const timer = window.setTimeout(() => {
-        writeComposerDraft(sessionId, inputValue);
+        writeComposerDraft(sessionId, effectiveInput);
       }, 300);
       return () => window.clearTimeout(timer);
-    }, [draftStorageKey, inputValue, sessionId]);
+    }, [draftStorageKey, inputValue, sessionId, store]);
 
     const handleContextRefCreated = useCallback((payload: { contextRef: { resourceId: string; hash: string; typeId: string }; attachmentId: string }) => {
       const state = store.getState();
@@ -972,11 +1006,12 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       opts.clearSelectedModels = clearSelectedModels;
       // ★ PDF 页码引用
       opts.buildPdfRefTags = buildPdfRefTags;
+      opts.getSelectedPagesContext = getSelectedPagesContext;
       opts.clearPdfPageRefs = clearPdfPageRefs;
       // 🆕 队列模式启用开关（控制 useInputBarV2 内部 submit 路由）
       opts.queueEnabled = queueSettings.queueEnabled;
       return opts;
-    }, [availableModels, clearSelectedModels, buildPdfRefTags, clearPdfPageRefs, queueSettings.queueEnabled]);
+    }, [availableModels, clearSelectedModels, buildPdfRefTags, getSelectedPagesContext, clearPdfPageRefs, queueSettings.queueEnabled]);
 
     // 从 Store 订阅状态和 Actions
     const {
@@ -991,6 +1026,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       // Actions
       setInputValue,
       sendMessage,
+      steerMessage,
       abortStream,
       addAttachment,
       updateAttachment,
@@ -1312,9 +1348,6 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       await deactivateSkill();
     }, [deactivateSkill]);
 
-    const handleRefreshSkills = useCallback(async () => {
-      await reloadSkills();
-    }, []);
 
     const displayActiveSkillIds = useMemo(
       () => getManualPinnedSkillIds(skillStateJson, activeSkillIds),
@@ -1330,13 +1363,12 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
             if (opts?.variant === 'menu') return;
             setPanelState('skill', false);
           }}
-          onRefresh={handleRefreshSkills}
           disabled={isStreaming}
           sessionId={sessionId}
           variant={opts?.variant ?? 'panel'}
         />
       );
-    }, [activeSkillIds, handleToggleSkill, setPanelState, handleRefreshSkills, isStreaming, sessionId]);
+    }, [activeSkillIds, handleToggleSkill, setPanelState, isStreaming, sessionId]);
 
     // ★ 技能斜杠命令：消息开头的 /skill-id 令牌在发送前解析为显式激活
     //（最多叠加 5 个，遇到非技能令牌即停）
@@ -1366,6 +1398,30 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       }
       await sendMessage();
     }, [store, activeSkillIds, activateSkill, sendMessage, handleCompactContext, isStreaming]);
+
+    const steerMessageWithSkillCommands = useCallback(async () => {
+      const rawInput = store.getState().inputValue;
+      if (compactionPendingRef.current || store.getState().compactionInProgress) return;
+      const parsed = parseLeadingSkillCommands(rawInput);
+      if (parsed.skillIds.length > 0) {
+        for (const skillId of parsed.skillIds) {
+          if (!activeSkillIds.includes(skillId)) {
+            await activateSkill(skillId);
+          }
+        }
+        if (parsed.rest.trim() === '') {
+          store.getState().setInputValue('');
+          return;
+        }
+        store.getState().setInputValue(parsed.rest);
+      }
+      if (typeof steerMessage === 'function') {
+        await steerMessage();
+      } else {
+        await abortStream();
+        await sendMessage();
+      }
+    }, [store, activeSkillIds, activateSkill, steerMessage, abortStream, sendMessage]);
 
     return (
       <>
@@ -1397,6 +1453,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         // 🆕 队列模式：允许流式时入队，并在队列满时禁用发送
         queueEnabled={queueSettings.queueEnabled}
         queueFull={queueLength >= QUEUE_HARD_CAP}
+        allowSteer={queueSettings.allowSteer}
         canSubmit={canSubmit && !isCompactingContext}
         contextWindowUsage={contextWindowUsage}
         sessionUsage={sessionUsage}
@@ -1405,6 +1462,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         // 回调
         onInputChange={setInputValue}
         onSend={sendMessageWithSkillCommands}
+        onSteerSend={steerMessageWithSkillCommands}
         onAbort={abortStream}
         onAddAttachment={addAttachment}
         onUpdateAttachment={updateAttachment}
@@ -1477,9 +1535,13 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         sessionId={sessionId}
         permissionPreset={permissionPreset}
         onPermissionPresetChange={(preset, confirm) => setPermissionPreset(preset, confirm)}
-        // 🆕 知识库主动检索
+        // 🆕 知识库主动检索 / 知识库检索 / 联网搜索
         knowledgeBaseProactive={knowledgeBaseProactive}
         onKnowledgeBaseProactiveChange={handleKnowledgeBaseProactiveChange}
+        ragEnabled={ragEnabled}
+        onRagEnabledChange={handleRagEnabledChange}
+        webSearchEnabled={webSearchEnabled}
+        onWebSearchEnabledChange={handleWebSearchEnabledChange}
         // ★ PDF 页码引用
         pdfPageRefs={pdfPageRefs}
         onRemovePdfPageRef={removePdfPageRef}

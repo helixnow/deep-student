@@ -540,7 +540,7 @@
     "noSheets": "该工作簿不包含可预览的工作表",
     "encryptedOrLegacy": "文件已加密（受密码保护）或为旧版二进制格式（.doc/.xls/.ppt），无法在线预览，可下载后用 Office 打开",
     "invalidFormat": "文件不是有效的 Office 文档，可能已损坏",
-    "rowsTruncatedInfo": "已显示前 {{shown}} 行 / 共 {{total}} 行",
+    "rowsTruncatedInfo": "已展示前 {{shown}} 行预览 / 共 {{total}} 行",
     "colsTruncatedInfo": "已显示前 {{shown}} 列 / 共 {{total}} 列",
     "emptySheet": "此工作表没有可显示的单元格内容（可能为空白或仅包含图表）",
     "selectionLabel": "已选择单元格 {{range}}",
@@ -1788,5 +1788,41 @@
   },
   "mediaChapters": {
     "current": "本章：{{title}}"
+  },
+  "sourceImageViewer": {
+    "zoomOut": "缩小",
+    "zoomIn": "放大",
+    "fitWidth": "适应宽度",
+    "returnToSource": "回到原文",
+    "lazyPlaceholder": "等待进入视口后加载原图",
+    "loading": "正在读取材料原图",
+    "retryLoad": "重试加载",
+    "openSource": "打开原文",
+    "pageRegionLabel": "第 {{page}} 页 · 区域 {{startPct}}%–{{endPct}}%",
+    "pageLabel": "第 {{page}} 页",
+    "unitLabel": "第 {{unit}} 段",
+    "imageLabel": "原图 {{imageId}}",
+    "invalidRefLabel": "无效引用",
+    "noLoaderConfigured": "未配置原图加载器",
+    "errorFileDeleted": "本地材料文件已删除或无法访问",
+    "errorDigestMismatch": "材料内容已更新，原图版本摘要不匹配",
+    "errorDecode": "原图解码失败，请重试加载或打开原文核对",
+    "errorInvalidRef": "原图引用格式无效",
+    "errorMissing": "未找到对应的材料原图",
+    "regionHighlight": "原图定位区域"
+  },
+  "textPreview": {
+    "undoAgentCoedit": "撤销 AI 共编"
+  },
+  "spaceMount": {
+    "menuMountToSpace": "挂载到学习空间...",
+    "menuUnmountFromSpace": "解除当前空间挂载",
+    "pickerTitle": "挂载到学习空间",
+    "pickerSubtitle": "资料保留在原文件夹，不复制文件与向量索引，目标空间可直接检索与阅读",
+    "alreadyMounted": "已挂载",
+    "canonicalOwner": "所属空间",
+    "mountSuccess": "已挂载至「{{name}}」",
+    "unmountSuccess": "已解除空间挂载",
+    "noSpacesAvailable": "暂无可挂载的学习空间，请先在对话侧栏创建学习空间"
   }
 }

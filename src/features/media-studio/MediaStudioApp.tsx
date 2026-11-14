@@ -177,9 +177,9 @@ export const MediaStudioApp: React.FC<MediaStudioAppProps> = ({
           enableGesture={!inStudy}
           showSidebarAppNavigation
           showContentOverlay
-          className="flex-1"
+          className="flex-1 min-h-0"
         >
-          <div className="flex h-full min-h-0 flex-col">{content}</div>
+          {content}
         </MobileSlidingLayout>
       ) : content}
     </div>

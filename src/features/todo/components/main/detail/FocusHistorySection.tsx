@@ -12,6 +12,7 @@ import React, { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CaretDown, CheckCircle, Play, X } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
+import { DsButton } from '@/components/ui/DsButton';
 import type { PomodoroRecord } from '@/features/pomodoro/api';
 import { InlineReveal } from './InlineReveal';
 
@@ -121,15 +122,15 @@ export const FocusHistorySection: React.FC<{
           )}
         </span>
         {onStartFocus && (
-          <button
-            type="button"
+          <DsButton
+            variant="ghost"
+            size="sm"
             onClick={onStartFocus}
-            className="flex flex-shrink-0 items-center gap-1 rounded-[var(--radius-shell-control)] px-1.5 py-0.5 text-xs text-muted-foreground transition-colors duration-150 hover:bg-[color:var(--interactive-hover)] hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:hsl(var(--primary))] [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:px-2.5"
             title={t('todo:actions.startFocusSession')}
           >
             <Play size={12} />
             {t('todo:actions.startFocusSession')}
-          </button>
+          </DsButton>
         )}
       </div>
       <div className="space-y-0.5">

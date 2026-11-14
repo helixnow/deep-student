@@ -1,0 +1,1739 @@
+{
+  "lane": "F1-kernel",
+  "generator": "deep-student/contracts-extract@1.6.0",
+  "commands": [
+    {
+      "name": "plugin_begin_login",
+      "lane": "F1-kernel",
+      "rust": {
+        "file": "src/plugins/commands.rs",
+        "line": 66,
+        "fn": "plugin_begin_login"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "id",
+          "rustName": "id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::plugins::manager::PluginManager"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "plugin_cancel_login",
+      "lane": "F1-kernel",
+      "rust": {
+        "file": "src/plugins/commands.rs",
+        "line": 74,
+        "fn": "plugin_cancel_login"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "id",
+          "rustName": "id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::plugins::manager::PluginManager"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "plugin_get_config",
+      "lane": "F1-kernel",
+      "rust": {
+        "file": "src/plugins/commands.rs",
+        "line": 40,
+        "fn": "plugin_get_config"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "id",
+          "rustName": "id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::plugins::manager::PluginManager"
+        }
+      ],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "plugin_get_status",
+      "lane": "F1-kernel",
+      "rust": {
+        "file": "src/plugins/commands.rs",
+        "line": 32,
+        "fn": "plugin_get_status"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "id",
+          "rustName": "id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::plugins::manager::PluginManager"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/PluginStatusSnapshot"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "plugin_list",
+      "lane": "F1-kernel",
+      "rust": {
+        "file": "src/plugins/commands.rs",
+        "line": 11,
+        "fn": "plugin_list"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::plugins::manager::PluginManager"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/PluginInfo"
+        }
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "plugin_logout",
+      "lane": "F1-kernel",
+      "rust": {
+        "file": "src/plugins/commands.rs",
+        "line": 82,
+        "fn": "plugin_logout"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "id",
+          "rustName": "id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::plugins::manager::PluginManager"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "plugin_set_config",
+      "lane": "F1-kernel",
+      "rust": {
+        "file": "src/plugins/commands.rs",
+        "line": 48,
+        "fn": "plugin_set_config"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "id",
+          "rustName": "id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "patch",
+          "rustName": "patch",
+          "schema": {
+            "x-rust": "serde_json::Value"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::plugins::manager::PluginManager"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "plugin_set_enabled",
+      "lane": "F1-kernel",
+      "rust": {
+        "file": "src/plugins/commands.rs",
+        "line": 57,
+        "fn": "plugin_set_enabled"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "id",
+          "rustName": "id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "enabled",
+          "rustName": "enabled",
+          "schema": {
+            "type": "boolean"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::plugins::manager::PluginManager"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "plugin_start",
+      "lane": "F1-kernel",
+      "rust": {
+        "file": "src/plugins/commands.rs",
+        "line": 16,
+        "fn": "plugin_start"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "id",
+          "rustName": "id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::plugins::manager::PluginManager"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/PluginState"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "plugin_stop",
+      "lane": "F1-kernel",
+      "rust": {
+        "file": "src/plugins/commands.rs",
+        "line": 24,
+        "fn": "plugin_stop"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "id",
+          "rustName": "id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::plugins::manager::PluginManager"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/PluginState"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "plugin_unbind",
+      "lane": "F1-kernel",
+      "rust": {
+        "file": "src/plugins/commands.rs",
+        "line": 87,
+        "fn": "plugin_unbind"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "id",
+          "rustName": "id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::plugins::manager::PluginManager"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    }
+  ],
+  "events": [
+    {
+      "name": "plugin-activity",
+      "dynamic": false,
+      "payload": {
+        "$ref": "#/$defs/ActivityPayload"
+      },
+      "emitters": [
+        {
+          "file": "src/plugins/events.rs",
+          "line": 70,
+          "fn": "emit_activity",
+          "lane": "F1-kernel",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "plugin-qrcode",
+      "dynamic": false,
+      "payload": {
+        "$ref": "#/$defs/QrcodePayload"
+      },
+      "emitters": [
+        {
+          "file": "src/plugins/events.rs",
+          "line": 58,
+          "fn": "emit_qrcode",
+          "lane": "F1-kernel",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "plugin-state-changed",
+      "dynamic": false,
+      "payload": {
+        "$ref": "#/$defs/StateChangedPayload"
+      },
+      "emitters": [
+        {
+          "file": "src/plugins/events.rs",
+          "line": 46,
+          "fn": "emit_state",
+          "lane": "F1-kernel",
+          "method": "emit"
+        }
+      ]
+    }
+  ],
+  "hostNative": {
+    "commands": [
+      {
+        "name": "plugin:ui|ready",
+        "x-host-native": true,
+        "host": {
+          "file": "host/kernel/core.ts",
+          "const": "UI_READY_COMMAND",
+          "handler": "host/kernel/runtime.ts"
+        },
+        "args": [
+          {
+            "key": "id",
+            "optional": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "key": "version",
+            "optional": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "result": {
+          "description": "{id:string,matched:boolean}; mismatch unloads and degrades the plugin"
+        }
+      },
+      {
+        "name": "plugin:manager|set-trust",
+        "x-host-native": true,
+        "host": {
+          "file": "host/kernel/core.ts",
+          "const": "PLUGIN_MANAGER_SET_TRUST_COMMAND",
+          "handler": "host/kernel/plugin-admin.ts"
+        },
+        "args": [
+          {
+            "key": "id",
+            "optional": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "key": "version",
+            "optional": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "key": "permissions",
+            "optional": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "key": "trust",
+            "optional": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "full",
+                "restricted"
+              ]
+            }
+          },
+          {
+            "key": "confirmed",
+            "optional": false,
+            "schema": {
+              "const": true
+            }
+          }
+        ],
+        "result": {
+          "description": "PluginManagerConsentView with trust/source; exact user confirmation, same-process code"
+        }
+      },
+      {
+        "name": "plugin:manager|list",
+        "x-host-native": true,
+        "host": {
+          "file": "host/kernel/core.ts",
+          "const": "PLUGIN_MANAGER_LIST_COMMAND",
+          "handler": "host/kernel/plugin-admin.ts"
+        },
+        "args": [],
+        "result": {
+          "description": "PluginManagerInventory (host/kernel/core.ts); transport-authenticated main local page only"
+        }
+      },
+      {
+        "name": "plugin:manager|update-impact",
+        "x-host-native": true,
+        "host": {
+          "file": "host/kernel/core.ts",
+          "const": "PLUGIN_MANAGER_UPDATE_IMPACT_COMMAND",
+          "handler": "host/kernel/plugin-admin.ts"
+        },
+        "args": [
+          {
+            "key": "version",
+            "optional": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "result": {
+          "description": "PluginUpdateImpact; read-only manifest screening for the authenticated main page"
+        }
+      },
+      {
+        "name": "plugin:manager|config",
+        "x-host-native": true,
+        "host": {
+          "file": "host/kernel/core.ts",
+          "const": "PLUGIN_MANAGER_CONFIG_COMMAND",
+          "handler": "host/kernel/plugin-admin.ts"
+        },
+        "args": [
+          {
+            "key": "id",
+            "optional": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "result": {
+          "description": "PluginManagerConfigView (host/kernel/core.ts)"
+        }
+      },
+      {
+        "name": "plugin:manager|config|save",
+        "x-host-native": true,
+        "host": {
+          "file": "host/kernel/core.ts",
+          "const": "PLUGIN_MANAGER_CONFIG_SAVE_COMMAND",
+          "handler": "host/kernel/plugin-admin.ts"
+        },
+        "args": [
+          {
+            "key": "id",
+            "optional": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "key": "revision",
+            "optional": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "key": "values",
+            "optional": false,
+            "schema": {}
+          }
+        ],
+        "result": {
+          "description": "{id:string,revision:string}"
+        }
+      },
+      {
+        "name": "plugin:manager|set-enabled",
+        "x-host-native": true,
+        "host": {
+          "file": "host/kernel/core.ts",
+          "const": "PLUGIN_MANAGER_SET_ENABLED_COMMAND",
+          "handler": "host/kernel/plugin-admin.ts"
+        },
+        "args": [
+          {
+            "key": "id",
+            "optional": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "key": "revision",
+            "optional": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "key": "enabled",
+            "optional": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "result": {
+          "description": "{id:string,enabled:boolean,revision:string}"
+        }
+      },
+      {
+        "name": "plugin:manager|uninstall",
+        "x-host-native": true,
+        "host": {
+          "file": "host/kernel/core.ts",
+          "const": "PLUGIN_MANAGER_UNINSTALL_COMMAND",
+          "handler": "host/kernel/plugin-admin.ts"
+        },
+        "args": [
+          {
+            "key": "id",
+            "optional": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "key": "revision",
+            "optional": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "result": {
+          "description": "{id:string,removed:boolean,revision:string}"
+        }
+      },
+      {
+        "name": "plugin:manager|consent",
+        "x-host-native": true,
+        "host": {
+          "file": "host/kernel/core.ts",
+          "const": "PLUGIN_MANAGER_CONSENT_COMMAND",
+          "handler": "host/kernel/plugin-admin.ts"
+        },
+        "args": [
+          {
+            "key": "id",
+            "optional": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "key": "version",
+            "optional": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "key": "permissions",
+            "optional": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        ],
+        "result": {
+          "description": "PluginManagerConsentView (host/kernel/core.ts)"
+        }
+      },
+      {
+        "name": "plugin:manager|install",
+        "x-host-native": true,
+        "host": {
+          "file": "host/kernel/core.ts",
+          "const": "PLUGIN_MANAGER_INSTALL_COMMAND",
+          "handler": "host/kernel/plugin-admin.ts"
+        },
+        "args": [
+          {
+            "key": "path",
+            "optional": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "key": "revision",
+            "optional": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "result": {
+          "description": "PluginManagerInstallResult (host/kernel/core.ts); installed disabled, never implies consent or running"
+        }
+      },
+      {
+        "name": "plugin:ui|manifest",
+        "x-host-native": true,
+        "host": {
+          "file": "host/kernel/core.ts",
+          "const": "UI_MANIFEST_COMMAND",
+          "handler": "host/kernel/runtime.ts"
+        },
+        "description": "UI 引导清单：已装载插件中声明了 meta.ui 的 UI 半模块（docs/plugins/FRONTEND.md §3）。带 version: 2 时返回 UI 清单 v2：全部已装插件（来源、平台、safeMode）与未安装的插件（FE-A3）。",
+        "args": [
+          {
+            "key": "version",
+            "optional": true,
+            "schema": {
+              "type": "integer",
+              "enum": [
+                1,
+                2
+              ]
+            }
+          }
+        ],
+        "result": {
+          "oneOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "file": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "file"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "type": "object",
+              "properties": {
+                "version": {
+                  "const": 2
+                },
+                "plugins": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "origin": {
+                        "enum": [
+                          "builtin",
+                          "community"
+                        ]
+                      },
+                      "platforms": {
+                        "type": "array",
+                        "items": {
+                          "enum": [
+                            "desktop",
+                            "mobile"
+                          ]
+                        }
+                      },
+                      "version": {
+                        "type": "string"
+                      },
+                      "file": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "origin",
+                      "platforms"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "degraded": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "reason": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "reason"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "safeMode": {
+                  "type": "boolean",
+                  "description": "本次 Host 会话是否处于安全模式（W06 --safe-mode）：仅官方插件，社区 UI 不得装载。"
+                }
+              },
+              "required": [
+                "version",
+                "plugins",
+                "degraded",
+                "safeMode"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        }
+      },
+      {
+        "name": "plugin:host|call",
+        "x-host-native": true,
+        "host": {
+          "file": "host/kernel/core.ts",
+          "const": "HOST_CALL_COMMAND",
+          "handler": "host/kernel/runtime.ts"
+        },
+        "description": "UI 调用插件 meta.remote 放行的服务方法（docs/plugins/FRONTEND.md §5）；参数与返回值都必须是纯 JSON。caller 是调用方 UI 半的插件 id，必填（SEC-E06；Host 默认 require，缺了即拒绝）。",
+        "args": [
+          {
+            "key": "caller",
+            "optional": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "key": "service",
+            "optional": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "key": "method",
+            "optional": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "key": "args",
+            "optional": false,
+            "schema": {
+              "type": "array"
+            }
+          }
+        ],
+        "result": {
+          "description": "被调用服务方法的返回值（纯 JSON）"
+        },
+        "error": {
+          "$ref": "_shared.json#/$defs/AppError"
+        }
+      },
+      {
+        "name": "plugin:host|status",
+        "x-host-native": true,
+        "host": {
+          "file": "host/kernel/core.ts",
+          "const": "HOST_STATUS_COMMAND",
+          "handler": "host/kernel/runtime.ts"
+        },
+        "description": "本次 profile 装载中未安装的插件及原因。",
+        "args": [],
+        "result": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "reason"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "name": "vfs_study_space_get_profile",
+        "x-host-native": true,
+        "host": {
+          "file": "host/plugins/vfs/src/study-spaces.ts",
+          "const": "VFS_STUDY_SPACE_GET_PROFILE_COMMAND",
+          "handler": "host/plugins/vfs/src/plugin.ts"
+        },
+        "args": [
+          {
+            "key": "spaceId",
+            "optional": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "result": {
+          "description": "StudySpaceProfile | null"
+        }
+      },
+      {
+        "name": "vfs_study_space_list_profiles",
+        "x-host-native": true,
+        "host": {
+          "file": "host/plugins/vfs/src/study-spaces.ts",
+          "const": "VFS_STUDY_SPACE_LIST_PROFILES_COMMAND",
+          "handler": "host/plugins/vfs/src/plugin.ts"
+        },
+        "args": [],
+        "result": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
+      },
+      {
+        "name": "vfs_study_space_upsert_profile",
+        "x-host-native": true,
+        "host": {
+          "file": "host/plugins/vfs/src/study-spaces.ts",
+          "const": "VFS_STUDY_SPACE_UPSERT_PROFILE_COMMAND",
+          "handler": "host/plugins/vfs/src/plugin.ts"
+        },
+        "args": [
+          {
+            "key": "input",
+            "optional": false,
+            "schema": {
+              "type": "object"
+            }
+          }
+        ],
+        "result": {
+          "type": "object"
+        }
+      },
+      {
+        "name": "vfs_study_space_delete_profile",
+        "x-host-native": true,
+        "host": {
+          "file": "host/plugins/vfs/src/study-spaces.ts",
+          "const": "VFS_STUDY_SPACE_DELETE_PROFILE_COMMAND",
+          "handler": "host/plugins/vfs/src/plugin.ts"
+        },
+        "args": [
+          {
+            "key": "spaceId",
+            "optional": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "result": {
+          "type": "boolean"
+        }
+      },
+      {
+        "name": "vfs_space_mount_list",
+        "x-host-native": true,
+        "host": {
+          "file": "host/plugins/vfs/src/study-spaces.ts",
+          "const": "VFS_SPACE_MOUNT_LIST_COMMAND",
+          "handler": "host/plugins/vfs/src/plugin.ts"
+        },
+        "args": [
+          {
+            "key": "spaceId",
+            "optional": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "key": "targetFolderId",
+            "optional": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "key": "itemType",
+            "optional": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "key": "itemId",
+            "optional": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        ],
+        "result": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
+      },
+      {
+        "name": "vfs_space_mount_add",
+        "x-host-native": true,
+        "host": {
+          "file": "host/plugins/vfs/src/study-spaces.ts",
+          "const": "VFS_SPACE_MOUNT_ADD_COMMAND",
+          "handler": "host/plugins/vfs/src/plugin.ts"
+        },
+        "args": [
+          {
+            "key": "input",
+            "optional": false,
+            "schema": {
+              "type": "object"
+            }
+          }
+        ],
+        "result": {
+          "type": "object"
+        }
+      },
+      {
+        "name": "vfs_space_mount_remove",
+        "x-host-native": true,
+        "host": {
+          "file": "host/plugins/vfs/src/study-spaces.ts",
+          "const": "VFS_SPACE_MOUNT_REMOVE_COMMAND",
+          "handler": "host/plugins/vfs/src/plugin.ts"
+        },
+        "args": [
+          {
+            "key": "mountId",
+            "optional": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "key": "targetFolderId",
+            "optional": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "key": "itemType",
+            "optional": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "key": "itemId",
+            "optional": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "key": "input",
+            "optional": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        ],
+        "result": {
+          "type": "boolean"
+        }
+      },
+      {
+        "name": "vfs_ensure_inbox_folder",
+        "x-host-native": true,
+        "host": {
+          "file": "host/plugins/vfs/src/study-spaces.ts",
+          "const": "VFS_ENSURE_INBOX_FOLDER_COMMAND",
+          "handler": "host/plugins/vfs/src/plugin.ts"
+        },
+        "args": [],
+        "result": {
+          "type": "object"
+        }
+      },
+      {
+        "name": "vfs_anchor_edges_upsert",
+        "x-host-native": true,
+        "host": {
+          "file": "host/plugins/vfs/src/study-spaces.ts",
+          "const": "VFS_ANCHOR_EDGES_UPSERT_COMMAND",
+          "handler": "host/plugins/vfs/src/plugin.ts"
+        },
+        "args": [
+          {
+            "key": "edges",
+            "optional": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            }
+          }
+        ],
+        "result": {
+          "type": "object"
+        }
+      },
+      {
+        "name": "vfs_anchor_edges_delete_by_source",
+        "x-host-native": true,
+        "host": {
+          "file": "host/plugins/vfs/src/study-spaces.ts",
+          "const": "VFS_ANCHOR_EDGES_DELETE_BY_SOURCE_COMMAND",
+          "handler": "host/plugins/vfs/src/plugin.ts"
+        },
+        "args": [
+          {
+            "key": "sourceKind",
+            "optional": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "key": "sourceResourceId",
+            "optional": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "key": "keepEdgeIds",
+            "optional": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        ],
+        "result": {
+          "type": "object"
+        }
+      },
+      {
+        "name": "vfs_anchor_edges_query_by_target",
+        "x-host-native": true,
+        "host": {
+          "file": "host/plugins/vfs/src/study-spaces.ts",
+          "const": "VFS_ANCHOR_EDGES_QUERY_BY_TARGET_COMMAND",
+          "handler": "host/plugins/vfs/src/plugin.ts"
+        },
+        "args": [
+          {
+            "key": "targetResourceIds",
+            "optional": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "key": "targetKind",
+            "optional": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        ],
+        "result": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
+      }
+    ],
+    "events": [
+      {
+        "name": "host://ui-manifest",
+        "x-host-native": true,
+        "host": {
+          "file": "host/kernel/core.ts",
+          "const": "UI_MANIFEST_EVENT",
+          "handler": "host/kernel/runtime.ts"
+        },
+        "description": "UI 引导清单变化（启动、插件装卸、profile 回退），payload 与 plugin:ui|manifest 的返回值相同。",
+        "dynamic": false,
+        "payload": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "file": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "file"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "name": "host://ui-manifest-v2",
+        "x-host-native": true,
+        "host": {
+          "file": "host/kernel/core.ts",
+          "const": "UI_MANIFEST_V2_EVENT",
+          "handler": "host/kernel/runtime.ts"
+        },
+        "description": "UI 清单 v2 变化（插件装卸、profile 装载与降级），payload 与 plugin:ui|manifest {version: 2} 的返回值相同；只在本 Host 收到过 v2 请求后发出（FE-A3）。",
+        "dynamic": false,
+        "payload": {
+          "type": "object",
+          "properties": {
+            "version": {
+              "const": 2
+            },
+            "plugins": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "origin": {
+                    "enum": [
+                      "builtin",
+                      "community"
+                    ]
+                  },
+                  "platforms": {
+                    "type": "array",
+                    "items": {
+                      "enum": [
+                        "desktop",
+                        "mobile"
+                      ]
+                    }
+                  },
+                  "version": {
+                    "type": "string"
+                  },
+                  "file": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "origin",
+                  "platforms"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "degraded": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "reason"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "safeMode": {
+              "type": "boolean",
+              "description": "本次 Host 会话是否处于安全模式（W06 --safe-mode）：仅官方插件，社区 UI 不得装载。"
+            }
+          },
+          "required": [
+            "version",
+            "plugins",
+            "degraded",
+            "safeMode"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "host://plugins-degraded",
+        "x-host-native": true,
+        "host": {
+          "file": "host/kernel/core.ts",
+          "const": "PLUGINS_DEGRADED_EVENT",
+          "handler": "host/kernel/runtime.ts"
+        },
+        "description": "profile 装载后仍有插件未安装时广播，payload 与 plugin:host|status 的返回值相同。",
+        "dynamic": false,
+        "payload": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "reason"
+            ],
+            "additionalProperties": false
+          }
+        }
+      }
+    ]
+  },
+  "$defs": {
+    "ActivityPayload": {
+      "type": "object",
+      "properties": {
+        "pluginId": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "ts": {
+          "type": "integer",
+          "x-int": "i64"
+        }
+      },
+      "required": [
+        "pluginId",
+        "kind",
+        "summary",
+        "ts"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::plugins::events::ActivityPayload"
+    },
+    "PluginInfo": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "blurb": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/PluginKind"
+        },
+        "state": {
+          "$ref": "#/$defs/PluginState"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "configured": {
+          "type": "boolean"
+        },
+        "bound": {
+          "type": "boolean"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "blurb",
+        "kind",
+        "state",
+        "enabled",
+        "configured",
+        "bound",
+        "error"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::plugins::types::PluginInfo"
+    },
+    "PluginKind": {
+      "type": "string",
+      "enum": [
+        "channel"
+      ],
+      "x-rust": "deep_student_lib::plugins::types::PluginKind"
+    },
+    "PluginState": {
+      "type": "string",
+      "enum": [
+        "stopped",
+        "starting",
+        "waiting_login",
+        "running",
+        "stopping",
+        "error"
+      ],
+      "x-rust": "deep_student_lib::plugins::types::PluginState"
+    },
+    "PluginStatusSnapshot": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "$ref": "#/$defs/PluginState"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "configured": {
+          "type": "boolean"
+        },
+        "bound": {
+          "type": "boolean"
+        },
+        "loginStatus": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "accountId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "userId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "lastError": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "lastActivity": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "qrcodePngBase64": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "qrcodeStatus": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "state",
+        "enabled",
+        "configured",
+        "bound",
+        "loginStatus",
+        "accountId",
+        "userId",
+        "lastError",
+        "lastActivity",
+        "qrcodePngBase64",
+        "qrcodeStatus"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::plugins::types::PluginStatusSnapshot"
+    },
+    "QrcodePayload": {
+      "type": "object",
+      "properties": {
+        "pluginId": {
+          "type": "string"
+        },
+        "pngBase64": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "ts": {
+          "type": "integer",
+          "x-int": "i64"
+        }
+      },
+      "required": [
+        "pluginId",
+        "pngBase64",
+        "status",
+        "ts"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::plugins::events::QrcodePayload"
+    },
+    "StateChangedPayload": {
+      "type": "object",
+      "properties": {
+        "pluginId": {
+          "type": "string"
+        },
+        "state": {
+          "$ref": "#/$defs/PluginState"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "ts": {
+          "type": "integer",
+          "x-int": "i64"
+        }
+      },
+      "required": [
+        "pluginId",
+        "state",
+        "error",
+        "ts"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::plugins::events::StateChangedPayload"
+    }
+  }
+}

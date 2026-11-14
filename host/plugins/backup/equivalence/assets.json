@@ -1,0 +1,261 @@
+{
+  "domain": "backup",
+  "commands": [
+    "data_governance_get_asset_types",
+    "data_governance_scan_assets"
+  ],
+  "scenarios": [
+    {
+      "id": "backup.assets.empty.types_and_scan_variants",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "data_governance_get_asset_types",
+          "args": {}
+        },
+        {
+          "cmd": "data_governance_scan_assets",
+          "args": {}
+        },
+        {
+          "cmd": "data_governance_scan_assets",
+          "args": {
+            "assetTypes": null
+          }
+        },
+        {
+          "cmd": "data_governance_scan_assets",
+          "args": {
+            "assetTypes": []
+          }
+        },
+        {
+          "cmd": "data_governance_scan_assets",
+          "args": {
+            "assetTypes": [
+              "images"
+            ]
+          }
+        },
+        {
+          "cmd": "data_governance_scan_assets",
+          "args": {
+            "assetTypes": [
+              "notes_assets"
+            ]
+          }
+        },
+        {
+          "cmd": "data_governance_scan_assets",
+          "args": {
+            "assetTypes": [
+              "documents"
+            ]
+          }
+        },
+        {
+          "cmd": "data_governance_scan_assets",
+          "args": {
+            "assetTypes": [
+              "vfs_blobs"
+            ]
+          }
+        },
+        {
+          "cmd": "data_governance_scan_assets",
+          "args": {
+            "assetTypes": [
+              "subjects"
+            ]
+          }
+        },
+        {
+          "cmd": "data_governance_scan_assets",
+          "args": {
+            "assetTypes": [
+              "workspaces"
+            ]
+          }
+        },
+        {
+          "cmd": "data_governance_scan_assets",
+          "args": {
+            "assetTypes": [
+              "audio"
+            ]
+          }
+        },
+        {
+          "cmd": "data_governance_scan_assets",
+          "args": {
+            "assetTypes": [
+              "videos"
+            ]
+          }
+        },
+        {
+          "cmd": "data_governance_scan_assets",
+          "args": {
+            "assetTypes": [
+              "textbooks"
+            ]
+          }
+        },
+        {
+          "cmd": "data_governance_scan_assets",
+          "args": {
+            "assetTypes": [
+              "pdf_ocr_sessions"
+            ]
+          }
+        },
+        {
+          "cmd": "data_governance_scan_assets",
+          "args": {
+            "assetTypes": [
+              "images",
+              "notes_assets",
+              "documents",
+              "vfs_blobs",
+              "subjects",
+              "workspaces",
+              "audio",
+              "videos",
+              "textbooks",
+              "pdf_ocr_sessions"
+            ]
+          }
+        },
+        {
+          "cmd": "data_governance_scan_assets",
+          "args": {
+            "assetTypes": [
+              "images",
+              "images"
+            ]
+          }
+        },
+        {
+          "cmd": "data_governance_scan_assets",
+          "args": {
+            "assetTypes": [
+              "vfs_blobs",
+              "pdf_ocr_sessions"
+            ]
+          }
+        },
+        {
+          "cmd": "data_governance_scan_assets",
+          "args": {
+            "assetTypes": [
+              "bogus"
+            ]
+          }
+        },
+        {
+          "cmd": "data_governance_scan_assets",
+          "args": {
+            "assetTypes": [
+              "Images"
+            ]
+          }
+        },
+        {
+          "cmd": "data_governance_scan_assets",
+          "args": {
+            "assetTypes": [
+              " images"
+            ]
+          }
+        },
+        {
+          "cmd": "data_governance_scan_assets",
+          "args": {
+            "assetTypes": [
+              ""
+            ]
+          }
+        },
+        {
+          "cmd": "data_governance_scan_assets",
+          "args": {
+            "assetTypes": [
+              "images",
+              "bogus"
+            ]
+          }
+        },
+        {
+          "cmd": "data_governance_get_asset_types",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "backup.assets.ipc_args",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "data_governance_scan_assets",
+          "args": {
+            "assetTypes": "images"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_scan_assets",
+          "args": {
+            "assetTypes": [
+              1
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_scan_assets",
+          "args": {
+            "assetTypes": [
+              null
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_scan_assets",
+          "args": {
+            "assetTypes": {
+              "images": true
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_scan_assets",
+          "args": {
+            "unexpected": true
+          }
+        },
+        {
+          "cmd": "data_governance_get_asset_types",
+          "args": {
+            "unexpected": true
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

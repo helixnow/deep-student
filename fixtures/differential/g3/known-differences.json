@@ -1,0 +1,33 @@
+{
+  "schema": "g3-known-differences/v1",
+  "note": "G3 报告的差异归类登记（scripts/electron-migration/record/g3-classify.mjs）。归类只解释差异，不改变 fail；未命中任何条目、也不是 A1≠A2 位置的差异一律是真实产品差异。",
+  "entries": [
+    {
+      "id": "K-001",
+      "category": "a-defect",
+      "match": { "side": "A", "errorIncludes": "no such table: chat_v2_blocks" },
+      "scope": "A 端该步及之后的所有差异（包括 after/final 抓库）",
+      "owner": "Rust A 端（src-tauri chat_v2 迁移）；X7 录制",
+      "evidence": "W10 第二轮 host/plugins/chat/W10-PROGRESS.md Task 1：13 个 chat 场景 Rust A1/A2 在插入消息行后首次 chat_v2_upsert_streaming_block 报 no such table: chat_v2_blocks，TS 成功；A1=A2，可复现。",
+      "note": "A 端参考实现自身失败，后续抓库无对照意义；修 A 端迁移或在 A 构建里补表后重录。"
+    },
+    {
+      "id": "K-002",
+      "category": "environment",
+      "match": { "commands": ["pdfstream_check_access"] },
+      "scope": "该命令的所有差异",
+      "owner": "X7-differential / F2-shell",
+      "evidence": "G3 triage：B runner（scripts/electron-migration/record/g3-run-b.mjs）对所有 shell-request 返回错误，命令先请求 app.pdfStreamAllowedDirs（electron/index.ts:135）。",
+      "note": "录制驱动限制，不是产品行为；需要真实 main 驱动后重录。"
+    },
+    {
+      "id": "K-003",
+      "category": "nondeterministic",
+      "match": { "scenarios": ["anki.generate.start-cancel-then-retry-task"], "kinds": ["events"] },
+      "scope": "该场景各步的事件窗口差异（worker 进度事件条数）",
+      "owner": "L16-anki（host/plugins/anki）",
+      "evidence": "W10 第二轮 W10-PROGRESS.md Task 1：anki document_tasks 的 worker 与取消竞争，A1≠A2。W13 第三轮回放：step 3/4/6/7/9 的事件条数 A 与 B 不同（如 0 对 3、4 对 1），同场景的 get_document_tasks 返回值差异已由 A1≠A2 自动归入非确定性。",
+      "note": "同一场景里的 custom_anki_templates 内容差异不在此列，仍是真实产品差异。要消除需让场景在取消前等 worker 到达确定状态（场景 owner）。"
+    }
+  ]
+}

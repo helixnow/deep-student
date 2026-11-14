@@ -1,0 +1,4 @@
+{
+ "description": "插件 manifest 门禁基线（按 规则+文件+细节 计数，只减不增）。示例插件由 W17 在 P0 修；官方插件补 package.json 后另排。见 plugin-manifest.mjs 文件头。",
+ "entries": []
+}

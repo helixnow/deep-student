@@ -1,0 +1,13 @@
+{
+  "schema": "wp043-first-A-double-record",
+  "buildJob": "20261106023719-bc16bc",
+  "inputSha256": "771489967f154a87f190b4b99660bfdf1910514049f19c9be3b3d2d3a9e56e08",
+  "recordings": [
+    "A1",
+    "A2"
+  ],
+  "databaseDifferences": 172,
+  "normalization": [],
+  "comparison": "not-run",
+  "commands": {}
+}

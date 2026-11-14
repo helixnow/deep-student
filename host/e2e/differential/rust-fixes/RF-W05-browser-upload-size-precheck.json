@@ -1,0 +1,25 @@
+{
+  "id": "RF-W05-browser-upload-size-precheck",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T15:30:00+08:00",
+  "title": "browser_file_upload 先按 stat 大小检查 16 MiB 上限，再读文件",
+  "rust": {
+    "file": "src-tauri/src/chat_v2/tools/browser_executor.rs",
+    "line": 771,
+    "behavior": "std::fs::read 把整个文件读进内存之后才累加大小并检查 MAX_UPLOAD_TOTAL_BYTES（16 MiB）；模型或用户选中工作区里几 GB 的文件时，Host 先分配同样大小的内存，再报 BROWSER_FILE_TOO_LARGE"
+  },
+  "fix": {
+    "files": ["host/plugins/browser/src/browser-tool-executor.ts"],
+    "behavior": "授权校验通过后，用已经取到的 stat.size 先算累计大小，超过 16 MiB 直接报同样的 BROWSER_FILE_TOO_LARGE（文案不变），不读文件；读完后的累计检查保留，覆盖 stat 之后文件变大的情况"
+  },
+  "evidence": "S01 安全复核（.reports/agent-final/S01-1245-665d2519.md 第 6 条）：无界读取，可让 Host 进程因一次工具调用分配任意大的内存。上限本身就是 Rust 的意图（MAX_UPLOAD_TOTAL_BYTES），只是检查放在读之后。唯一的外部差异：超限且不可读的文件，Rust 报 BROWSER_FILE_READ_FAILED，修复后报 BROWSER_FILE_TOO_LARGE；未超限的文件行为不变。不改变落库数据、同步载荷与备份格式。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "host/plugins/browser/tests/tool-executor-execute.test.ts",
+      "name": "RF-W05-browser-upload-size-precheck: rejects an oversized file from its stat size without reading it"
+    }
+  ]
+}

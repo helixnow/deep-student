@@ -22,6 +22,10 @@ import { render, screen, act, cleanup, fireEvent, waitFor } from '@testing-libra
 
 const generateCardsFromSelection = vi.fn();
 const saveAsNoteStart = vi.fn();
+const { emitAutoExcerptMock } = vi.hoisted(() => ({ emitAutoExcerptMock: vi.fn() }));
+vi.mock('@/ui-kernel/bootstrap', () => ({ getAppKernel: () => ({
+  dnd: { emitAutoExcerpt: emitAutoExcerptMock, startExcerptDrag: (_event: unknown, input: unknown) => input },
+}) }));
 
 let selectionState = {
   selectedText: '',
@@ -57,9 +61,24 @@ vi.mock('@/shared/notes', async (importOriginal) => ({
 }));
 
 vi.mock('@/features/chat/components/ExplainPopover', () => ({
-  ExplainPopover: ({ sourceText, onClose }: { sourceText: string; onClose: () => void }) => (
-    <div data-testid="explain-popover">
+  ExplainPopover: ({
+    sourceText,
+    academicMode,
+    onClose,
+    onSaveToAnnotation,
+  }: {
+    sourceText: string;
+    academicMode?: boolean;
+    onClose: () => void;
+    onSaveToAnnotation?: (text: string) => void;
+  }) => (
+    <div data-testid="explain-popover" data-academic-mode={academicMode ? 'true' : 'false'}>
       <span data-testid="explain-source">{sourceText}</span>
+      {onSaveToAnnotation && (
+        <button type="button" onClick={() => onSaveToAnnotation('AI 精读笔记')}>
+          存入批注
+        </button>
+      )}
       <button type="button" onClick={onClose}>
         关闭
       </button>
@@ -68,9 +87,22 @@ vi.mock('@/features/chat/components/ExplainPopover', () => ({
 }));
 
 vi.mock('@/features/chat/components/TranslationPopover', () => ({
-  TranslationPopover: ({ sourceText, contextBefore }: { sourceText: string; contextBefore: string }) => (
+  TranslationPopover: ({
+    sourceText,
+    contextBefore,
+    onSaveToAnnotation,
+  }: {
+    sourceText: string;
+    contextBefore: string;
+    onSaveToAnnotation?: (text: string) => void;
+  }) => (
     <div data-testid="translate-popover" data-context-before={contextBefore}>
-      {sourceText}
+      <span>{sourceText}</span>
+      {onSaveToAnnotation && (
+        <button type="button" onClick={() => onSaveToAnnotation('译文批注')}>
+          译文存入批注
+        </button>
+      )}
     </div>
   ),
 }));
@@ -80,6 +112,7 @@ vi.mock('@/features/chat/services/selectionCardGeneration', () => ({
 }));
 
 import { PdfSelectionActions } from '../PdfSelectionActions';
+import { sharedPdfExcerptGuard } from '../../interop/pdfInteropBridge';
 
 const SELECTED = '费曼路径积分表述';
 
@@ -92,7 +125,7 @@ function renderActions(props: Partial<React.ComponentProps<typeof PdfSelectionAc
     return (
       <div ref={containerRef} style={{ position: 'relative' }}>
         {/* 模拟 pdf.js 页面包裹层：resolveSelectionPage 靠 data-page-number 定位 */}
-        <div data-page-number="3">
+        <div data-page-number="3" className="textLayer">
           <span data-testid="page-text">{SELECTED}</span>
         </div>
         {mounted && (
@@ -126,6 +159,8 @@ beforeEach(() => {
   window.getSelection()?.removeAllRanges();
   generateCardsFromSelection.mockReset();
   saveAsNoteStart.mockReset();
+  emitAutoExcerptMock.mockReset();
+  sharedPdfExcerptGuard.reset();
   selectionState = {
     selectedText: SELECTED,
     selectionRect: { top: 200, left: 100, width: 120, height: 20, bottom: 220 },
@@ -160,6 +195,59 @@ describe('PdfSelectionActions mounting', () => {
     // 单工具条契约：学习动作只由这一条共享 SelectionToolbar 承载；
     // viewer 内建 ds-highlight-menu 只留高亮选色 + 复制（由 source contract 锁定）
     expect(screen.getAllByRole('toolbar', { hidden: true })).toHaveLength(1);
+  });
+});
+
+describe('auto-excerpt selection gestures', () => {
+  function selectExcerpt(text = SELECTED) {
+    const span = screen.getByTestId('page-text');
+    span.textContent = text;
+    span.parentElement!.getBoundingClientRect = () => ({ left: 0, top: 0, width: 400, height: 800 }) as DOMRect;
+    const range = document.createRange();
+    range.selectNodeContents(span);
+    range.getClientRects = () => [{ left: 40, top: 80, width: 200, height: 20 }] as unknown as DOMRectList;
+    const selection = window.getSelection()!;
+    selection.removeAllRanges();
+    selection.addRange(range);
+    return span;
+  }
+
+  it('emits only a completed text-layer selection, never toggling on or re-rendering a stale selection', () => {
+    const view = renderActions({ interopResourceId: 'pdf_a', autoExcerptActive: true });
+    const span = screen.getByTestId('page-text');
+    expect(emitAutoExcerptMock).not.toHaveBeenCalled();
+    fireEvent.mouseDown(span, { clientX: 40, clientY: 80 });
+    selectExcerpt();
+    fireEvent.mouseUp(span, { clientX: 240, clientY: 80 });
+    expect(emitAutoExcerptMock).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      text: SELECTED, anchor: expect.objectContaining({ resourceId: 'pdf_a', page: 3 }),
+    }));
+    view.rerender(<view.Host />);
+    fireEvent.mouseUp(button('复制'));
+    expect(emitAutoExcerptMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores simple clicks, whitespace double-clicks, one character and programmatic clear', () => {
+    renderActions({ interopResourceId: 'pdf_a', autoExcerptActive: true });
+    const span = selectExcerpt();
+    fireEvent.mouseDown(span);
+    fireEvent.mouseUp(span);
+    for (const text of [' ', '字']) {
+      fireEvent.mouseDown(span);
+      selectExcerpt(text);
+      fireEvent.mouseUp(span, { detail: 2, clientX: 50 });
+    }
+    window.getSelection()?.removeAllRanges();
+    document.dispatchEvent(new Event('selectionchange'));
+    expect(emitAutoExcerptMock).not.toHaveBeenCalled();
+  });
+
+  it('unmounting an unrelated selection toolbar does not cancel another viewer drag', () => {
+    const view = renderActions({ interopResourceId: 'pdf_a' });
+    sharedPdfExcerptGuard.beginDrag();
+    view.unmount();
+    expect(sharedPdfExcerptGuard.isDragging()).toBe(true);
+    sharedPdfExcerptGuard.endDrag();
   });
 });
 
@@ -326,5 +414,58 @@ describe('cards and chat handoff', () => {
     // PREFILL 确实发出 → 点击走完了派发路径，「无裸通道」断言不是空转
     expect(prefills).toHaveLength(1);
     expect(rawInputs).toHaveLength(0);
+  });
+});
+
+describe('academic paper reading upgrades (reflow, lenses, pin-to-annotation, shortcuts)', () => {
+  it('reflows cross-line hyphenated PDF text before explain/translate and keeps toolbar hidden while open', async () => {
+    selectionState = {
+      ...selectionState,
+      selectedText: 'Trans-\nformer architec-\nture',
+    };
+    renderActions();
+    act(() => {
+      fireEvent.click(button('解释'));
+    });
+
+    const popover = await screen.findByTestId('explain-popover');
+    expect(popover.getAttribute('data-academic-mode')).toBe('true');
+    expect(screen.getByTestId('explain-source').textContent).toBe('Transformer architecture');
+    // 即使原始选区含跨行断词，归一化比对后工具条仍正确让位
+    expect(screen.queryByRole('toolbar', { hidden: true })).toBeNull();
+  });
+
+  it('pins AI explanation or translation back into the PDF highlight note with resolved page', async () => {
+    const onPinToAnnotation = vi.fn();
+    renderActions({ onPinToAnnotation });
+    selectTextInsidePage();
+
+    act(() => {
+      fireEvent.click(button('解释'));
+    });
+    const pinBtn = await screen.findByRole('button', { name: '存入批注', hidden: true });
+    fireEvent.click(pinBtn);
+
+    expect(onPinToAnnotation).toHaveBeenCalledWith({
+      sourceText: SELECTED,
+      noteText: 'AI 精读笔记',
+      page: 3,
+    });
+  });
+
+  it('opens translation / explain panel when triggered via T / E single-key shortcut event', async () => {
+    const view = renderActions();
+    const containerEl = view.container.firstElementChild as HTMLElement;
+
+    act(() => {
+      containerEl.dispatchEvent(
+        new CustomEvent('pdf-selection-trigger-action', {
+          detail: { action: 'translate', text: 'Self-\nattention mechanism' },
+        }),
+      );
+    });
+
+    const popover = await screen.findByTestId('translate-popover');
+    expect(popover.textContent).toContain('Self-attention mechanism');
   });
 });

@@ -1,0 +1,32 @@
+{
+  "id": "RF-W23-updater-ignore-page-options",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main-agent",
+  "approvedAt": "2026-11-07T03:27:08Z",
+  "title": "更新检查与下载不再采用页面传入的 allowDowngrades / proxy / headers",
+  "rust": {
+    "file": "src-tauri/src/lib.rs",
+    "line": 738,
+    "behavior": "tauri_plugin_updater::Builder::new().build() 未限制前端参数：plugin:updater|check 的 allowDowngrades、proxy、headers 与 download / download_and_install 的 headers 由调用页面任意指定，Rust 照单全收（updater:default 授予主 WebView 全部命令）"
+  },
+  "fix": {
+    "files": ["electron/shell/updater.ts"],
+    "behavior": "updaterPlugin 的 check 固定使用空请求头、直连、只接受比当前版本高的发布（allowDowngrades=false）；download / download_and_install 只用 check 时确定的请求头（即空）。timeout 与 target 仍按页面参数；checkForUpdate / downloadPackage 本身的语义不变"
+  },
+  "evidence": "安全问题：更新包虽有 minisign 签名，但签名只证明“是发布者的某个版本”。allowDowngrades=true 让主窗口里的注入脚本把应用降级安装到存在已知漏洞的旧签名版本（降级攻击）；proxy 让更新流量走页面指定的代理（可观察、拦截或阻断安全更新，也能指向内网主机）；headers 让页面向更新服务器附加任意请求头。前端唯一调用点 src/hooks/useAppUpdater.ts 调 check() 不带任何参数，update.downloadAndInstall(onEvent) 也不传 headers，修复不影响现有功能。复现：electron/tests/updater-page-options.test.ts——修复前带 proxy 的 check 被送往页面指定的代理（测试代理不应答，超时失败），x-page 请求头到达更新服务器。",
+  "userVisible": "正常更新流程感知不到。",
+  "dataCompat": "不改变落库数据、同步载荷与备份格式。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "electron/tests/updater-page-options.test.ts",
+      "name": "RF-W23-updater-ignore-page-options: check ignores page allowDowngrades, proxy and headers"
+    },
+    {
+      "file": "electron/tests/updater-page-options.test.ts",
+      "name": "RF-W23-updater-ignore-page-options: download and download_and_install ignore page headers"
+    }
+  ],
+  "notes": "Rust 侧对应修法：updater 改由应用命令包装（Builder 上固定 headers/proxy，并拒绝前端的 allowDowngrades），或从 default.json 去掉 updater:default、只暴露应用自己的 check/install 命令。"
+}

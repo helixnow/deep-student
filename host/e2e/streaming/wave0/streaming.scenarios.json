@@ -1,0 +1,218 @@
+{
+  "domain": "chat-streaming",
+  "commands": ["save_api_configurations", "save_model_assignments", "chat_v2_create_session", "chat_v2_send_message", "chat_v2_cancel_stream"],
+  "scenarios": [
+    {
+      "id": "chat.stream.success.answer",
+      "seed": "empty",
+      "llm": "success.answer",
+      "steps": [
+        { "cmd": "save_api_configurations", "args": { "configs": [{ "id": "x5-wave0-config", "name": "X5 WAVE0", "apiKey": "", "authMode": "none",
+          "baseUrl": "${llm.baseUrl}", "model": "x5-wave0-model", "apiProtocol": "openai_chat_completions", "modelAdapter": "general",
+          "enabled": true, "supportsTools": false, "isMultimodal": false, "isReasoning": false, "isEmbedding": false, "isReranker": false,
+          "contextWindow": 32768, "maxOutputTokens": 128 }] } },
+        { "cmd": "save_model_assignments", "args": { "assignments": { "model2_config_id": "x5-wave0-config" } } },
+        { "cmd": "chat_v2_create_session", "args": { "mode": "chat", "title": "x5 wave0" } },
+        { "cmd": "chat_v2_send_message", "args": { "request": { "sessionId": "${2.id}", "content": "固定问题",
+          "userMessageId": "msg_x5_w0_user", "assistantMessageId": "msg_x5_w0_answer",
+          "options": { "modelId": "x5-wave0-config", "enableThinking": false, "memoryEnabled": false, "ragEnabled": false,
+            "webSearchEnabled": false, "autoMemoryExtraction": false, "contextLimit": 32768, "maxTokens": 128 } } },
+          "waitAfter": { "event": "stream_complete", "channelPrefix": "chat_v2_session_" } }
+      ],
+      "capture": { "events": true, "db": ["chat_v2"] },
+      "normalize": []
+    },
+    {
+      "id": "chat.stream.error.eof-after-partial",
+      "seed": "empty",
+      "llm": "error.eof-after-partial",
+      "steps": [
+        { "cmd": "save_api_configurations", "args": { "configs": [{ "id": "x5-wave0-config", "name": "X5 WAVE0", "apiKey": "", "authMode": "none",
+          "baseUrl": "${llm.baseUrl}", "model": "x5-wave0-model", "apiProtocol": "openai_chat_completions", "modelAdapter": "general",
+          "enabled": true, "supportsTools": false, "isMultimodal": false, "isReasoning": false, "isEmbedding": false, "isReranker": false,
+          "contextWindow": 32768, "maxOutputTokens": 128 }] } },
+        { "cmd": "save_model_assignments", "args": { "assignments": { "model2_config_id": "x5-wave0-config" } } },
+        { "cmd": "chat_v2_create_session", "args": { "mode": "chat", "title": "x5 wave0" } },
+        { "cmd": "chat_v2_send_message", "args": { "request": { "sessionId": "${2.id}", "content": "固定问题",
+          "userMessageId": "msg_x5_w0_user", "assistantMessageId": "msg_x5_w0_answer",
+          "options": { "modelId": "x5-wave0-config", "enableThinking": false, "memoryEnabled": false, "ragEnabled": false,
+            "webSearchEnabled": false, "autoMemoryExtraction": false, "contextLimit": 32768, "maxTokens": 128 } } },
+          "waitAfter": { "event": "stream_error", "channelPrefix": "chat_v2_session_" } }
+      ],
+      "capture": { "events": true, "db": ["chat_v2"] },
+      "normalize": []
+    },
+    {
+      "id": "chat.stream.interrupt.cancel-after-partial",
+      "seed": "empty",
+      "llm": "interrupt.hold-after-partial",
+      "steps": [
+        { "cmd": "save_api_configurations", "args": { "configs": [{ "id": "x5-wave0-config", "name": "X5 WAVE0", "apiKey": "", "authMode": "none",
+          "baseUrl": "${llm.baseUrl}", "model": "x5-wave0-model", "apiProtocol": "openai_chat_completions", "modelAdapter": "general",
+          "enabled": true, "supportsTools": false, "isMultimodal": false, "isReasoning": false, "isEmbedding": false, "isReranker": false,
+          "contextWindow": 32768, "maxOutputTokens": 128 }] } },
+        { "cmd": "save_model_assignments", "args": { "assignments": { "model2_config_id": "x5-wave0-config" } } },
+        { "cmd": "chat_v2_create_session", "args": { "mode": "chat", "title": "x5 wave0" } },
+        { "cmd": "chat_v2_send_message", "args": { "request": { "sessionId": "${2.id}", "content": "固定问题",
+          "userMessageId": "msg_x5_w0_user", "assistantMessageId": "msg_x5_w0_answer",
+          "options": { "modelId": "x5-wave0-config", "enableThinking": false, "memoryEnabled": false, "ragEnabled": false,
+            "webSearchEnabled": false, "autoMemoryExtraction": false, "contextLimit": 32768, "maxTokens": 128 } } } },
+        { "cmd": "chat_v2_cancel_stream", "args": { "sessionId": "${2.id}", "messageId": "msg_x5_w0_answer" },
+          "waitBefore": { "event": "content:chunk", "channelPrefix": "chat_v2_event_" },
+          "waitAfter": { "event": "stream_cancelled", "channelPrefix": "chat_v2_session_" } }
+      ],
+      "capture": { "events": true, "db": ["chat_v2"] },
+      "normalize": []
+    },
+    {
+      "id": "chat.stream.tool.second-round",
+      "seed": "empty",
+      "llm": "tool.second-round",
+      "steps": [
+        { "cmd": "save_api_configurations", "args": { "configs": [{ "id": "x5-wave0-config", "name": "X5 WAVE0", "apiKey": "", "authMode": "none",
+          "baseUrl": "${llm.baseUrl}", "model": "x5-wave0-model", "apiProtocol": "openai_chat_completions", "modelAdapter": "general",
+          "enabled": true, "supportsTools": true, "isMultimodal": false, "isReasoning": false, "isEmbedding": false, "isReranker": false,
+          "contextWindow": 32768, "maxOutputTokens": 128 }] } },
+        { "cmd": "save_model_assignments", "args": { "assignments": { "model2_config_id": "x5-wave0-config" } } },
+        { "cmd": "chat_v2_create_session", "args": { "mode": "chat", "title": "x5 wave0" } },
+        { "cmd": "chat_v2_send_message", "args": { "request": { "sessionId": "${2.id}", "content": "list templates",
+          "userMessageId": "msg_x5_w0_user", "assistantMessageId": "msg_x5_w0_answer",
+          "options": { "modelId": "x5-wave0-config", "enableThinking": false, "memoryEnabled": false, "ragEnabled": false,
+            "webSearchEnabled": false, "autoMemoryExtraction": false, "contextLimit": 32768, "maxTokens": 128,
+            "mcpToolSchemas": [{ "name": "builtin-template_list", "description": "列出模板库摘要，支持关键词搜索、仅激活/仅内置筛选。",
+              "inputSchema": { "type": "object", "properties": { "activeOnly": { "type": "boolean", "description": "只返回激活模板，默认 true" },
+                "builtinOnly": { "type": "boolean", "description": "只返回内置模板" }, "query": { "type": "string", "description": "关键词，模糊匹配 name/description" },
+                "limit": { "type": "integer", "description": "返回最大数量", "default": 50, "minimum": 1, "maximum": 200 } } } }] } } },
+          "waitAfter": { "event": "stream_complete", "channelPrefix": "chat_v2_session_" } }
+      ],
+      "capture": { "events": true, "db": ["chat_v2"] },
+      "normalize": []
+    },
+    {
+      "id": "chat.stream.success.thinking",
+      "seed": "empty",
+      "llm": "success.thinking",
+      "steps": [
+        { "cmd": "save_api_configurations", "args": { "configs": [{ "id": "x5-wave0-config", "name": "X5 WAVE0", "apiKey": "", "authMode": "none",
+          "baseUrl": "${llm.baseUrl}", "model": "x5-wave0-model", "apiProtocol": "openai_chat_completions", "modelAdapter": "general",
+          "enabled": true, "supportsTools": false, "isMultimodal": false, "isReasoning": true, "isEmbedding": false, "isReranker": false,
+          "contextWindow": 32768, "maxOutputTokens": 128 }] } },
+        { "cmd": "save_model_assignments", "args": { "assignments": { "model2_config_id": "x5-wave0-config" } } },
+        { "cmd": "chat_v2_create_session", "args": { "mode": "chat", "title": "x5 wave0" } },
+        { "cmd": "chat_v2_send_message", "args": { "request": { "sessionId": "${2.id}", "content": "固定问题",
+          "userMessageId": "msg_x5_w0_user", "assistantMessageId": "msg_x5_w0_answer",
+          "options": { "modelId": "x5-wave0-config", "enableThinking": true, "memoryEnabled": false, "ragEnabled": false,
+            "webSearchEnabled": false, "autoMemoryExtraction": false, "contextLimit": 32768, "maxTokens": 128 } } },
+          "waitAfter": { "event": "stream_complete", "channelPrefix": "chat_v2_session_" } }
+      ],
+      "capture": { "events": true, "db": ["chat_v2"] },
+      "normalize": []
+    },
+    {
+      "id": "chat.stream.success.empty",
+      "seed": "empty",
+      "llm": "success.empty",
+      "steps": [
+        { "cmd": "save_api_configurations", "args": { "configs": [{ "id": "x5-wave0-config", "name": "X5 WAVE0", "apiKey": "", "authMode": "none",
+          "baseUrl": "${llm.baseUrl}", "model": "x5-wave0-model", "apiProtocol": "openai_chat_completions", "modelAdapter": "general",
+          "enabled": true, "supportsTools": false, "isMultimodal": false, "isReasoning": false, "isEmbedding": false, "isReranker": false,
+          "contextWindow": 32768, "maxOutputTokens": 128 }] } },
+        { "cmd": "save_model_assignments", "args": { "assignments": { "model2_config_id": "x5-wave0-config" } } },
+        { "cmd": "chat_v2_create_session", "args": { "mode": "chat", "title": "x5 wave0" } },
+        { "cmd": "chat_v2_send_message", "args": { "request": { "sessionId": "${2.id}", "content": "固定问题",
+          "userMessageId": "msg_x5_w0_user", "assistantMessageId": "msg_x5_w0_answer",
+          "options": { "modelId": "x5-wave0-config", "enableThinking": false, "memoryEnabled": false, "ragEnabled": false,
+            "webSearchEnabled": false, "autoMemoryExtraction": false, "contextLimit": 32768, "maxTokens": 128 } } },
+          "waitAfter": { "event": "stream_error", "channelPrefix": "chat_v2_session_" } }
+      ],
+      "capture": { "events": true, "db": ["chat_v2"] },
+      "normalize": []
+    },
+    {
+      "id": "chat.stream.retry.http-500-then-answer",
+      "seed": "empty",
+      "llm": "chat.stream.retry.http-500-then-answer",
+      "steps": [
+        { "cmd": "save_api_configurations", "args": { "configs": [{ "id": "x5-wave0-config", "name": "X5 WAVE0", "apiKey": "", "authMode": "none",
+          "baseUrl": "${llm.baseUrl}", "model": "x5-wave0-model", "apiProtocol": "openai_chat_completions", "modelAdapter": "general",
+          "enabled": true, "supportsTools": false, "isMultimodal": false, "isReasoning": false, "isEmbedding": false, "isReranker": false,
+          "contextWindow": 32768, "maxOutputTokens": 128 }] } },
+        { "cmd": "save_model_assignments", "args": { "assignments": { "model2_config_id": "x5-wave0-config" } } },
+        { "cmd": "chat_v2_create_session", "args": { "mode": "chat", "title": "x5 wave0" } },
+        { "cmd": "chat_v2_send_message", "args": { "request": { "sessionId": "${2.id}", "content": "固定问题",
+          "userMessageId": "msg_x5_w0_user", "assistantMessageId": "msg_x5_w0_answer",
+          "options": { "modelId": "x5-wave0-config", "enableThinking": false, "memoryEnabled": false, "ragEnabled": false,
+            "webSearchEnabled": false, "autoMemoryExtraction": false, "contextLimit": 32768, "maxTokens": 128 } } },
+          "waitAfter": { "event": "stream_complete", "channelPrefix": "chat_v2_session_" } }
+      ],
+      "capture": { "events": true, "db": ["chat_v2"] },
+      "normalize": []
+    },
+    {
+      "id": "chat.stream.error.http-400-no-retry",
+      "seed": "empty",
+      "llm": "chat.stream.error.http-400-no-retry",
+      "steps": [
+        { "cmd": "save_api_configurations", "args": { "configs": [{ "id": "x5-wave0-config", "name": "X5 WAVE0", "apiKey": "", "authMode": "none",
+          "baseUrl": "${llm.baseUrl}", "model": "x5-wave0-model", "apiProtocol": "openai_chat_completions", "modelAdapter": "general",
+          "enabled": true, "supportsTools": false, "isMultimodal": false, "isReasoning": false, "isEmbedding": false, "isReranker": false,
+          "contextWindow": 32768, "maxOutputTokens": 128 }] } },
+        { "cmd": "save_model_assignments", "args": { "assignments": { "model2_config_id": "x5-wave0-config" } } },
+        { "cmd": "chat_v2_create_session", "args": { "mode": "chat", "title": "x5 wave0" } },
+        { "cmd": "chat_v2_send_message", "args": { "request": { "sessionId": "${2.id}", "content": "固定问题",
+          "userMessageId": "msg_x5_w0_user", "assistantMessageId": "msg_x5_w0_answer",
+          "options": { "modelId": "x5-wave0-config", "enableThinking": false, "memoryEnabled": false, "ragEnabled": false,
+            "webSearchEnabled": false, "autoMemoryExtraction": false, "contextLimit": 32768, "maxTokens": 128 } } },
+          "waitAfter": { "event": "stream_error", "channelPrefix": "chat_v2_session_" } }
+      ],
+      "capture": { "events": true, "db": ["chat_v2"] },
+      "normalize": []
+    },
+    {
+      "id": "chat.stream.interrupt.cancel-during-retry",
+      "seed": "empty",
+      "llm": "error.http-500",
+      "steps": [
+        { "cmd": "save_api_configurations", "args": { "configs": [{ "id": "x5-wave0-config", "name": "X5 WAVE0", "apiKey": "", "authMode": "none",
+          "baseUrl": "${llm.baseUrl}", "model": "x5-wave0-model", "apiProtocol": "openai_chat_completions", "modelAdapter": "general",
+          "enabled": true, "supportsTools": false, "isMultimodal": false, "isReasoning": false, "isEmbedding": false, "isReranker": false,
+          "contextWindow": 32768, "maxOutputTokens": 128 }] } },
+        { "cmd": "save_model_assignments", "args": { "assignments": { "model2_config_id": "x5-wave0-config" } } },
+        { "cmd": "chat_v2_create_session", "args": { "mode": "chat", "title": "x5 wave0" } },
+        { "cmd": "chat_v2_send_message", "args": { "request": { "sessionId": "${2.id}", "content": "固定问题",
+          "userMessageId": "msg_x5_w0_user", "assistantMessageId": "msg_x5_w0_answer",
+          "options": { "modelId": "x5-wave0-config", "enableThinking": false, "memoryEnabled": false, "ragEnabled": false,
+            "webSearchEnabled": false, "autoMemoryExtraction": false, "contextLimit": 32768, "maxTokens": 128 } } } },
+        { "cmd": "chat_v2_cancel_stream", "args": { "sessionId": "${2.id}", "messageId": "msg_x5_w0_answer" },
+          "waitBefore": { "event": "stream_reconnect", "channelPrefix": "chat_v2_session_" },
+          "waitAfter": { "event": "stream_cancelled", "channelPrefix": "chat_v2_session_" } }
+      ],
+      "capture": { "events": true, "db": ["chat_v2"] },
+      "normalize": []
+    },
+    {
+      "id": "chat.stream.tool.second-round-error",
+      "seed": "empty",
+      "llm": "chat.stream.tool.second-round-error",
+      "steps": [
+        { "cmd": "save_api_configurations", "args": { "configs": [{ "id": "x5-wave0-config", "name": "X5 WAVE0", "apiKey": "", "authMode": "none",
+          "baseUrl": "${llm.baseUrl}", "model": "x5-wave0-model", "apiProtocol": "openai_chat_completions", "modelAdapter": "general",
+          "enabled": true, "supportsTools": true, "isMultimodal": false, "isReasoning": false, "isEmbedding": false, "isReranker": false,
+          "contextWindow": 32768, "maxOutputTokens": 128 }] } },
+        { "cmd": "save_model_assignments", "args": { "assignments": { "model2_config_id": "x5-wave0-config" } } },
+        { "cmd": "chat_v2_create_session", "args": { "mode": "chat", "title": "x5 wave0" } },
+        { "cmd": "chat_v2_send_message", "args": { "request": { "sessionId": "${2.id}", "content": "list templates",
+          "userMessageId": "msg_x5_w0_user", "assistantMessageId": "msg_x5_w0_answer",
+          "options": { "modelId": "x5-wave0-config", "enableThinking": false, "memoryEnabled": false, "ragEnabled": false,
+            "webSearchEnabled": false, "autoMemoryExtraction": false, "contextLimit": 32768, "maxTokens": 128,
+            "mcpToolSchemas": [{ "name": "builtin-template_list", "description": "列出模板库摘要，支持关键词搜索、仅激活/仅内置筛选。",
+              "inputSchema": { "type": "object", "properties": { "activeOnly": { "type": "boolean", "description": "只返回激活模板，默认 true" },
+                "builtinOnly": { "type": "boolean", "description": "只返回内置模板" }, "query": { "type": "string", "description": "关键词，模糊匹配 name/description" },
+                "limit": { "type": "integer", "description": "返回最大数量", "default": 50, "minimum": 1, "maximum": 200 } } } }] } } },
+          "waitAfter": { "event": "stream_error", "channelPrefix": "chat_v2_session_" } }
+      ],
+      "capture": { "events": true, "db": ["chat_v2"] },
+      "normalize": []
+    }
+  ]
+}

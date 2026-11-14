@@ -112,6 +112,15 @@ describe('filterHighlights / collectHighlightColors', () => {
     expect(result.map((h) => h.id)).toEqual(['y1', 'g1', 'y2']);
     expect(result).not.toBe(items);
   });
+
+  it('matches query against highlight comment as well as quoted text', () => {
+    const withNotes = [
+      hl({ id: 'n1', text: 'KL divergence term', comment: '衡量策略偏离参考模型的正则项' }),
+      hl({ id: 'n2', text: 'Reward clipping', comment: '防止极端奖励导致梯度爆炸' }),
+    ];
+    expect(filterHighlights(withNotes, { query: '正则项' }).map((h) => h.id)).toEqual(['n1']);
+    expect(filterHighlights(withNotes, { query: 'clipping' }).map((h) => h.id)).toEqual(['n2']);
+  });
 });
 
 describe('resourceIdFromDstuPath', () => {
@@ -164,13 +173,13 @@ describe('buildAnnotationSummaryMarkdown', () => {
         '> 首页摘录',
         '> 跨行',
         '',
-        '[—— 摘自《x.pdf》第 1 页](pdfref://tb_1?page=1)',
+        '[—— 摘自《x.pdf》第 1 页](pdfref://tb_1?page=1&quote=%E9%A6%96%E9%A1%B5%E6%91%98%E5%BD%95%20%E8%B7%A8%E8%A1%8C)',
         '',
         '## 第 2 页',
         '',
         '> 第二页摘录',
         '',
-        '[—— 摘自《x.pdf》第 2 页](pdfref://tb_1?page=2)',
+        '[—— 摘自《x.pdf》第 2 页](pdfref://tb_1?page=2&quote=%E7%AC%AC%E4%BA%8C%E9%A1%B5%E6%91%98%E5%BD%95)',
         '',
       ].join('\n'),
     );
@@ -188,5 +197,32 @@ describe('buildAnnotationSummaryMarkdown', () => {
 
   it('returns empty string for empty highlight list', () => {
     expect(buildAnnotationSummaryMarkdown({ highlights: [], sourceId: 'tb_1', labels })).toBe('');
+  });
+
+  it('exports highlight comments beneath the quote block when present', () => {
+    const md = buildAnnotationSummaryMarkdown({
+      highlights: [
+        hl({
+          id: 'c1',
+          pageIndex: 4,
+          text: 'Attention(Q, K, V) = softmax(QK^T / sqrt(d_k))V',
+          comment: '除以 sqrt(d_k) 是为了避免大维度点积把 softmax 推入梯度极小的饱和区。',
+        }),
+      ],
+      sourceId: 'tb_attn',
+      labels: { ...labels, commentPrefix: '批注：' },
+    });
+    expect(md).toBe(
+      [
+        '## 第 4 页',
+        '',
+        '> Attention(Q, K, V) = softmax(QK^T / sqrt(d_k))V',
+        '',
+        '**批注：**除以 sqrt(d_k) 是为了避免大维度点积把 softmax 推入梯度极小的饱和区。',
+        '',
+        '[—— 摘自《x.pdf》第 4 页](pdfref://tb_attn?page=4&quote=Attention%28Q%2C%20K%2C%20V%29%20%3D%20softmax%28QK%5ET%20%2F%20sqrt%28d_k%29%29V)',
+        '',
+      ].join('\n'),
+    );
   });
 });

@@ -1,0 +1,37 @@
+{
+  "id": "RF-W10-blob-path-containment",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T16:30:00+08:00",
+  "title": "VFS blob 的读、写、删只接受落在 vfs_blobs 内的 relative_path：拒绝绝对路径（含 Windows 盘符与 UNC）、`..`、vfs_blobs 下的符号链接目录，以及最后一级解析到 vfs_blobs 之外（含悬空）的符号链接",
+  "rust": {
+    "file": "src-tauri/crates/dstu-vfs/src/vfs/repos/blob_repo.rs",
+    "line": 476,
+    "behavior": "get_blob_path_with_conn 直接 blobs_dir.join(&b.relative_path)，store_blob_with_conn（:249-253）对已有行同样直接 join 后写入；file_repo.rs get_content_with_conn 经 get_blob_path 读文件。blobs.relative_path 由云同步写入，被改写成 ../x 或绝对路径时，读取会越出 vfs_blobs，存同 hash 的 blob 时会写到 vfs_blobs 之外。"
+  },
+  "fix": {
+    "files": [
+      "host/plugins/vfs-repos/repository/blobs.ts",
+      "host/plugins/vfs/repository/create.ts",
+      "host/plugins/vfs/repository/resources.ts"
+    ],
+    "behavior": "vfs-repos BlobRepo 统一解析 relative_path：为空、按 Windows 规则有根（覆盖 POSIX 绝对路径、盘符、盘符相对路径与 UNC）、含 `..`，或 vfs_blobs 与目标之间任一已存在的目录是符号链接时视为越界；目标文件已存在时还要求 realpath(目标) 严格落在 realpath(vfs_blobs) 之内（与 W04 vfs-index/src/blob-path.ts containedBlobPath 同一规则，最后一级是指向 vfs_blobs 内的符号链接仍可用），目标不存在时沿用拼接路径，但最后一级是悬空符号链接时拒绝（之后的写入会在链接指向处创建文件）。检查与随后的读写之间仍有 TOCTOU 窗口，利用需要本机文件系统写权限。getBlobPath 对越界行返回 null 并记 warn；新增 resolveBlobPath 供其他插件复用；storeBlob 与 vfs 的 storeBlobWithConn 对越界的已有行抛 PathParse，不创建目录也不写文件；删除路径原有的词法检查补上符号链接目录检查。vfs 的图片内容读取改走 getBlobPath，越界时按找不到资源处理。"
+  },
+  "evidence": "W32 同步安全交接（vfs/repository/resources.ts:1017、vfs-repos/repository/blobs.ts:294 直接 join 读 blob）。修复前：vfs-repos/tests/blobs.test.ts 中 relative_path='../outside.txt' 的行 getBlobPath 返回 vfs_blobs 之外的路径；已有行为 '../escaped.bin' 时 storeBlob 不报错；cleanupBlob 经符号链接目录删除了 vfs_blobs 之外的文件。同文件中 relative_path='ab/leaf.bin' 而 vfs_blobs/ab/leaf.bin 是指向 vfs_blobs 外文件的符号链接时，getBlobPath 返回该路径（读取即读到外部文件），storeBlob/cleanupBlob 不报错（A12 复核 F3）。vfs/tests/blob-path-containment.test.ts 中图片内容读取返回了 vfs_blobs 之外文件的 base64，storeBlobWithConn 不报错。",
+  "userVisible": "正常数据不受影响（本机写入的 relative_path 都是 `<前两位>/<hash>.<扩展名>`）。被篡改的 blob 行读不到内容（按资源不存在处理），存同内容文件时报 Failed to parse path '<relative_path>': blob path must remain inside vfs_blobs。",
+  "dataCompat": "不改库表和 blob 布局；只拒绝越界的 relative_path。original_path 保持 Rust/E 兼容读取行为；后续 original_path 安全方案按 16:58 排除裁定，在交付验收之后讨论。",
+  "g3": {
+    "affects": false,
+    "selectors": []
+  },
+  "tests": [
+    { "file": "host/plugins/vfs-repos/tests/blobs.test.ts", "name": "RF-W10-blob-path-containment > getBlobPath does not resolve a synced relative_path that leaves vfs_blobs" },
+    { "file": "host/plugins/vfs-repos/tests/blobs.test.ts", "name": "RF-W10-blob-path-containment > storeBlob refuses to write through an escaping or symlinked relative_path from an existing row" },
+    { "file": "host/plugins/vfs-repos/tests/blobs.test.ts", "name": "RF-W10-blob-path-containment > cleanupBlob does not delete through a symlinked directory under vfs_blobs" },
+    { "file": "host/plugins/vfs-repos/tests/blobs.test.ts", "name": "RF-W10-blob-path-containment > a final path component that is a symlink must resolve inside vfs_blobs" },
+    { "file": "host/plugins/vfs-repos/tests/files.test.ts", "name": "RF-W10-blob-path-containment > getContent does not read a blob whose relative_path leaves vfs_blobs" },
+    { "file": "host/plugins/vfs/tests/blob-path-containment.test.ts", "name": "RF-W10-blob-path-containment: vfs blob reads and writes stay inside vfs_blobs > image content does not read a blob whose relative_path leaves vfs_blobs" },
+    { "file": "host/plugins/vfs/tests/blob-path-containment.test.ts", "name": "RF-W10-blob-path-containment: vfs blob reads and writes stay inside vfs_blobs > storeBlobWithConn refuses to write through an escaping relative_path from an existing row" }
+  ]
+}

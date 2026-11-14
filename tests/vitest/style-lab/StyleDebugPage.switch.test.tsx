@@ -8,7 +8,7 @@ describe('StyleDebugPage switch lab', () => {
     render(<StyleDebugPage />);
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole('button', { name: '组件对比' }));
+    await user.click(screen.getByRole('tab', { name: '组件对比' }));
     await user.click(screen.getByRole('button', { name: 'Form Controls' }));
 
     expect(screen.getByText('Form Controls')).toBeInTheDocument();

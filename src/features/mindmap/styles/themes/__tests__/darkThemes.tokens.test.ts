@@ -141,12 +141,9 @@ describe('StyleRegistry.subscribe', () => {
 });
 
 describe('Token-based themes use CSS variable tokens', () => {
-  // paper / paper-dark 是 identity 主题（暖色纸感有意不跟随应用背景），单独断言
+  // default (Mineral Zen) / minimal (Nordic Stone) / paper (Warm Linen) 是高定色阶 identity 主题，
+  // 下面对它们单独断言精确色阶与暗色防闪白；dark / colorful / colorful-dark 走全局 CSS token。
   const tokenThemes = [
-    defaultTheme,
-    defaultDarkTheme,
-    minimalTheme,
-    minimalDarkTheme,
     darkTheme,
     colorfulTheme,
     colorfulDarkTheme,
@@ -180,22 +177,32 @@ describe('Token-based themes use CSS variable tokens', () => {
   it('minimalDark root is dark-coordinated (not white-on-black flash)', () => {
     const root = minimalDarkTheme.node!.root;
     expect(root.background).not.toMatch(/#fff|#ffffff|white/i);
-    expect(root.background).toMatch(/var\(/);
-    expect(root.foreground).toMatch(/var\(/);
     expect(root.foreground).not.toMatch(/#000|#000000/i);
+    expect(minimalTheme.canvas?.background).toBe('#F6F7F9');
+    expect(minimalDarkTheme.canvas?.background).toBe('#121316');
   });
 
-  it('defaultDark canvas/edge use mm or foreground tokens', () => {
-    expect(defaultDarkTheme.canvas?.background).toBe('var(--mm-bg)');
-    expect(defaultDarkTheme.edge?.stroke).toContain('var(--foreground)');
-    expect(defaultDarkTheme.node?.root.background).toBe('var(--mm-bg-elevated)');
+  it('default (Mineral Zen) and defaultDark use calibrated celadon mineral tones', () => {
+    expect(defaultTheme.canvas?.background).toBe('#F4F6F5');
+    expect(defaultTheme.node?.root.background).toBe('#1E3A34');
+    expect(defaultTheme.node?.root.foreground).toBe('#F2F7F5');
+    expect(defaultTheme.node?.root.borderRadius).toBe(10);
+    expect(defaultTheme.node?.branch.background).toBe('#FBFCFC');
+    expect(defaultTheme.node?.branch.borderRadius).toBe(8);
+    expect(defaultTheme.edge?.stroke).toBe('#BCCBC6');
+    expect(defaultTheme.edge?.strokeActive).toBe('#2A6F5E');
+
+    expect(defaultDarkTheme.canvas?.background).toBe('#111615');
+    expect(defaultDarkTheme.node?.root.background).toBe('#23453E');
+    expect(defaultDarkTheme.edge?.strokeActive).toBe('#5EA893');
   });
 });
 
 describe('Paper identity themes (intentionally non-tokenized)', () => {
-  it('paper light keeps warm paper canvas and ink root', () => {
-    expect(paperTheme.canvas?.background).toBe('#F6F1E4');
-    expect(paperTheme.node?.root.background).toBe('#2F2A24');
+  it('paper light keeps warm linen canvas and dark roast ink root', () => {
+    expect(paperTheme.canvas?.background).toBe('#F5F4EE');
+    expect(paperTheme.node?.root.background).toBe('#2C2825');
+    expect(paperTheme.node?.branch.background).toBe('#FDFCFB');
   });
 
   it('paper-dark is warm-dark with no pure-white flashes', () => {
@@ -204,9 +211,9 @@ describe('Paper identity themes (intentionally non-tokenized)', () => {
       expect(color).not.toMatch(/#fff\b|#ffffff|rgba\(\s*255\s*,\s*255\s*,\s*255/i);
     }
     // 画布是暖暗色而非应用 token（identity）
-    expect(paperDarkTheme.canvas?.background).toBe('#201C15');
-    // 根节点为宣纸底浓墨字（亮色反转），非纯白
-    expect(paperDarkTheme.node?.root.background).toBe('#EFE6D2');
+    expect(paperDarkTheme.canvas?.background).toBe('#1A1815');
+    // 根节点为暖亚麻底浓墨字（亮色反转），非纯白
+    expect(paperDarkTheme.node?.root.background).toBe('#EAE3D5');
   });
 });
 
@@ -263,8 +270,8 @@ describe('getThemeFontMetrics', () => {
     });
     expect(getThemeFontMetrics(defaultTheme, false)).toMatchObject({
       fontSize: 15,
-      paddingX: 24, // '6px 12px'
-      paddingY: 12,
+      paddingX: 28, // '7px 14px' → 左右 14+14
+      paddingY: 14,
     });
   });
 

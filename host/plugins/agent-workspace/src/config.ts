@@ -1,0 +1,14 @@
+// workspace/config.rs
+export const MAX_INBOX_SIZE = 100;
+export const MAX_MESSAGES_PER_INJECTION = 10;
+export const INJECTION_COOLDOWN_MS = 50;
+export const DEFAULT_HISTORY_INJECTION_COUNT = 10;
+export const MAX_AGENTS_PER_WORKSPACE = 10;
+export const MAX_WORKSPACE_MESSAGE_RATE_PER_MINUTE = 100;
+export const INBOX_DRAIN_BATCH_SIZE = 10;
+export const MAX_AGENT_RETRY_ATTEMPTS = 3;
+export const WORKER_PIPELINE_TIMEOUT_SECS = 600;
+export const WORKER_PIPELINE_CANCEL_GRACE_SECS = 30;
+export const MAX_CONCURRENT_WORKERS = 4;
+export const MAX_SUBAGENT_DEPTH = 3;
+export const SUBAGENT_WAIT_BUDGET_SECS = 750;

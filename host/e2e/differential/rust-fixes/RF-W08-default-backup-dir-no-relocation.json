@@ -1,0 +1,27 @@
+{
+  "id": "RF-W08-default-backup-dir-no-relocation",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T15:02:00+08:00",
+  "title": "get_default_backup_directory 由持久目录（活动槽）推出，活动槽不可用时报错，不再报出回退目录",
+  "rust": {
+    "file": "src-tauri/src/backup_config.rs",
+    "line": 185,
+    "behavior": "get_default_backup_directory 返回 default_recovery_backup_dir(state.file_manager.get_writable_app_data_dir())；活动槽 create_dir_all 或 .write_test 探针失败时 get_writable_app_data_dir 回退到 dirs::data_dir()/DeepStudent、再到 temp_dir()/deep_student_data，命令照常返回 <回退目录>/recovery/backups"
+  },
+  "fix": {
+    "files": ["host/platform/settings/backup-commands.ts"],
+    "behavior": "装了 fileManagerPaths（官方桌面 profile 由 dstu.platform.storage 提供）时改用 getPersistentAppDataDir()（RF-W07-persistent-app-data-no-silent-relocation）：活动槽可写时结果不变（<数据根>/recovery/backups），不可用时抛 AppError.file_system（`持久数据目录不可用（创建目录失败|目录不可写）: <活动槽> (<io 错误>)`），不创建回退目录。没装 fileManagerPaths 的宿主保留原来的回退链"
+  },
+  "evidence": "TS 备份插件各命令的备份根固定是 backupDir(ctx.app.dataDir) = <数据根>/recovery/backups（backup/src/backup-commands.ts），不经回退链；自动备份调度器（backup_config.rs:409）尚未移植。Rust 的数据治理备份（commands.rs:93-99 get_live_app_data_dir）与自动备份同样走回退链，活动槽暂时不可写时备份被写到 data_dir()/DeepStudent 或 temp 下，活动槽恢复后不再被列出，temp 下的还会被系统清理。修复前这个命令是 TS 里唯一还会报出回退目录的地方，前端把它当作默认备份位置展示，与备份实际所在位置不一致。W07 的调用方表把 backup_config.rs:185 列为持久数据调用方（RF-W07-persistent-app-data-no-silent-relocation 的 rust.behavior 也点名了它），本条把该修复落到这个命令上。复现：活动槽 chmod 0555 后调用命令，修复前返回路径，修复后报 FileSystem 错误且 data_dir()/DeepStudent 不存在。",
+  "userVisible": "活动槽不可写时，设置页取默认备份目录会显示错误，而不是显示一个不会被写入的目录；正常情况下返回值不变",
+  "dataCompat": "不改落库数据、设置键、同步载荷或备份格式",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "host/platform/settings/tests/backup-commands.test.ts",
+      "name": "RF-W08-default-backup-dir-no-relocation: get_default_backup_directory derives from the persistent active slot and fails instead of relocating"
+    }
+  ]
+}

@@ -55,3 +55,7 @@ export interface BlockRendererPlugin {
 export const blockRegistry = new Registry<BlockRendererPlugin>('BlockRegistry', {
   warnOnOverwrite: true,
 });
+
+// UI 内核装配（ui-kernel/bootstrap.ts）只导入本模块，事件与模式注册表经此一并交给内核。
+export { eventRegistry } from './eventRegistry';
+export { modeRegistry } from './modeRegistry';

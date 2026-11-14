@@ -1,0 +1,13 @@
+[Unit]
+Description=定期全量测试（4 分片经作业队列，合并报告供账本计算测试 B 级）
+
+[Service]
+Type=oneshot
+User=dsdev
+Group=dsdev
+Slice=dsdev.slice
+WorkingDirectory=/home/dsdev/dev/deep-student
+Environment=PATH=/opt/node26/bin:/home/dsdev/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=HOME=/home/dsdev
+ExecStart=/opt/node26/bin/node /home/dsdev/dev/deep-student/scripts/electron-migration/fulltest.mjs
+TimeoutStartSec=3h

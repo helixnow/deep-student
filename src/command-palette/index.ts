@@ -42,5 +42,5 @@ export type { ShortcutBinding, ShortcutConflict } from './registry/shortcutManag
 
 export { CATEGORY_CONFIG } from './registry/types';
 
-// 内置命令注册（在 App 初始化时调用）
-export { registerBuiltinCommands } from './registry/builtinCommands';
+// 功能 UI 插件贡献命令（内置命令由 src/ui-plugins/official/* 贡献）
+export { contributeCommands } from './contribute';

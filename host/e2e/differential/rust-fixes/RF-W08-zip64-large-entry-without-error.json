@@ -1,0 +1,24 @@
+{
+  "id": "RF-W08-zip64-large-entry-without-error",
+  "kind": "deliberate",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T09:20+08:00",
+  "title": "单个条目超过 4GiB 时自动写 ZIP64，而不是导出失败",
+  "rust": {
+    "file": "src-tauri/crates/dstu-sync/src/data_governance/backup/zip_export.rs",
+    "line": 1213,
+    "behavior": "导出用 FileOptions::default()（large_file=false），zip 0.6.6（write.rs:249/1146）在条目写过 4GiB 时报 'Large file option has not been set'，整个导出失败"
+  },
+  "fix": {
+    "files": ["host/platform/zip/core/writer.ts"],
+    "behavior": "已知条目大小（sizeHint，导出时取 stat 大小）可能达到 4GiB（stored 按原大小，deflated 按 deflateBound）时按 large_file=true 写本地头 ZIP64 字段；大小未知且未声明 zip64 的条目仍按 Rust 报同样的错误"
+  },
+  "evidence": "备份目录里只要有一个 >=4GiB 的文件（大视频、大数据库），Rust 版就无法导出可移植 ZIP。ZIP64 是标准写法，Rust 读取器本身支持。按产品决策登记。",
+  "userVisible": "只在备份含 >=4GiB 的单个文件时可感知：新版能导出成功，Rust 版导出失败并提示 Large file option has not been set。",
+  "dataCompat": "仅影响含 >=4GiB 单文件的 ZIP（Rust 版本来就产不出）：本地头带 20 字节 ZIP64 扩展字段、中央目录带 ZIP64 大小。Rust zip 0.6.6 读取器支持 ZIP64，旧 Rust 版可以导入；其他 ZIP 的布局不变。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    { "file": "host/platform/zip/tests/core.test.ts", "name": "RF-W08-zip64-large-entry-without-error: a size hint of 4GiB or more switches the entry to ZIP64 instead of failing" }
+  ]
+}

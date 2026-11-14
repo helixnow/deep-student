@@ -61,6 +61,16 @@ export class PersistentSetManager {
     }
   }
 
+  /**
+   * 从 localStorage 重新读取（settings 镜像在启动时覆盖 localStorage 后调用）。
+   * 内容无变化时不通知监听器。
+   */
+  reload(): void {
+    const before = JSON.stringify([...this.items]);
+    this.load();
+    if (JSON.stringify([...this.items]) !== before) this.notifyListeners();
+  }
+
   // --------------- public API ---------------
 
   /**

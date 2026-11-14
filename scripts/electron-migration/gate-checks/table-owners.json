@@ -1,0 +1,4149 @@
+{
+  "version": 2,
+  "policy": "docs/plugins/ARCHITECTURE.md:63; decisions.md D1; owner-rulings.json (C2 X6-OWN-C2-20261104, V2-OWNER-QBANK) take precedence; otherwise Rust schema + LANE-owned repositories corroborated by SPEC. Null owners are unknown, never blocking.",
+  "namespaces": [
+    {
+      "plugin": "agent-workspace",
+      "tables": [
+        "agent",
+        "context",
+        "document",
+        "inbox",
+        "message",
+        "workspace"
+      ],
+      "evidence": "workspace database only; not any same-name string elsewhere (e.g. chat messages).",
+      "owner": "agent-workspace"
+    },
+    {
+      "plugin": "anki",
+      "file": "host/plugins/anki/repository/apkg-export.ts",
+      "tables": [
+        "col",
+        "notes",
+        "cards",
+        "revlog",
+        "graves"
+      ],
+      "evidence": "exported collection.anki2 only: host/plugins/anki/repository/apkg-export.ts:1-49; src-tauri/crates/dstu-anki/src/apkg_exporter_service.rs:1235-1453.",
+      "owner": "anki"
+    },
+    {
+      "plugin": "browser",
+      "tables": [
+        "downloads",
+        "history",
+        "sessions",
+        "site_permissions",
+        "settings"
+      ],
+      "evidence": "browser.db (V20260711) only; settings outside browser.db is F4 main settings but the database is not identifiable statically, so it stays unknown.",
+      "owner": "browser"
+    }
+  ],
+  "tables": {
+    "__asset_deletion_queue": {
+      "owner": "notes",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260527__add_asset_deletion_queue.sql:13"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: D1 notes/deletion journal; vfs and chat_v2 same-name journals keep separate schema/methods; F3 file orchestration and L05 workspace call the owner with the same conn; rag_configurations is notes RAG config (notes/repository/revisions, rag-config)."
+    },
+    "__audit_log": {
+      "owner": "backup",
+      "schema": [
+        "src-tauri/crates/dstu-storage/src/audit/mod.rs:193"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: Rust dstu-storage/audit/mod.rs:193; governance business audit; F3 only initializes schema."
+    },
+    "__blob_deletion_queue": {
+      "owner": "vfs-repos",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260312__add_blob_deletion_queue.sql:12"
+      ],
+      "evidence": [
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/blob_repo.rs:382",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/blob_repo.rs:850",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        }
+      ]
+    },
+    "__change_log": {
+      "owner": "sync",
+      "schema": [
+        "src-tauri/crates/dstu-sync/src/data_governance/backup/mod.rs:2214",
+        "src-tauri/crates/dstu-vfs/src/vfs/repos/note_history_integration_tests.rs:313",
+        "src-tauri/migrations/chat_v2/V20260131__add_change_log.sql:9",
+        "src-tauri/migrations/llm_usage/V20260131__add_change_log.sql:9",
+        "src-tauri/migrations/mistakes/V20260131__add_change_log.sql:9",
+        "src-tauri/migrations/vfs/V20260131__add_change_log.sql:16",
+        "src-tauri/tests/sync_adversarial_tests.rs:30",
+        "src-tauri/tests/sync_chaos_tests.rs:42",
+        "src-tauri/tests/sync_integration_deep_tests.rs:21",
+        "src-tauri/tests/sync_pathological_tests.rs:18",
+        "src-tauri/tests/sync_pathological_tests.rs:553",
+        "src-tauri/tests/sync_pathological_tests.rs:601",
+        "src-tauri/tests/sync_pathological_tests.rs:1015",
+        "src-tauri/tests/sync_pathological_tests.rs:1066",
+        "src-tauri/tests/sync_pathological_tests.rs:1127",
+        "src-tauri/tests/sync_pathological_tests.rs:1245",
+        "src-tauri/tests/sync_proptest.rs:30",
+        "src-tauri/tests/sync_r02_hardening_tests.rs:36",
+        "src-tauri/tests/sync_r02_hardening_tests.rs:327",
+        "src-tauri/tests/sync_r05_regression_tests.rs:36",
+        "src-tauri/tests/sync_r06_delete_resolve_tests.rs:54",
+        "src-tauri/tests/sync_r07_delete_resolve_lock_tests.rs:40",
+        "src-tauri/tests/sync_r10_chaos_clock.rs:33",
+        "src-tauri/tests/sync_r10_chaos_idempotent.rs:96",
+        "src-tauri/tests/sync_r10_chaos_mixed_e2ee.rs:127",
+        "src-tauri/tests/sync_r10_chaos_truncation.rs:148",
+        "src-tauri/tests/sync_r11_history.rs:48",
+        "src-tauri/tests/sync_r12_conflict_fast_path.rs:52",
+        "src-tauri/tests/sync_real_business_tables_tests.rs:30",
+        "src-tauri/tests/sync_real_business_tables_tests.rs:71",
+        "src-tauri/tests/sync_real_business_tables_tests.rs:111",
+        "src-tauri/tests/sync_real_business_tables_tests.rs:152",
+        "src-tauri/tests/sync_real_business_tables_tests.rs:194",
+        "src-tauri/tests/sync_real_business_tables_tests.rs:228",
+        "src-tauri/tests/sync_real_schema_tests.rs:25",
+        "src-tauri/tests/sync_real_schema_tests.rs:176",
+        "src-tauri/tests/sync_real_schema_tests.rs:474",
+        "src-tauri/tests/sync_regression_tests.rs:28",
+        "src-tauri/tests/sync_regression_tests.rs:261",
+        "src-tauri/tests/sync_regression_tests.rs:282",
+        "src-tauri/tests/sync_scenarios_tests.rs:164",
+        "src-tauri/tests/sync_scenarios_tests.rs:474",
+        "src-tauri/tests/sync_scenarios_tests.rs:1551",
+        "src-tauri/tests/sync_weird_tests.rs:19",
+        "src-tauri/tests/sync_weird_tests.rs:873",
+        "src-tauri/tests/sync_weird_tests.rs:1360",
+        "src-tauri/tests/sync_weird_tests.rs:1412",
+        "src-tauri/tests/sync_weird_tests.rs:1536",
+        "src-tauri/tests/sync_weird_tests.rs:1573",
+        "src-tauri/tests/sync_weird_tests.rs:1761"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: Rust sync/mod.rs and history; owner triggers producing change log are not consumer SQL permission; L11 idAlias read-only."
+    },
+    "__file_deletion_journal": {
+      "owner": "notes",
+      "schema": [
+        "src-tauri/migrations/chat_v2/V20260721__workspace_deletion_intent_journal.sql:7",
+        "src-tauri/migrations/vfs/V20260808__file_deletion_intent_journal.sql:8"
+      ],
+      "evidence": [
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/blob_repo.rs:372",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/blob_repo.rs:656",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/blob_repo.rs:822",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/blob_repo.rs:861",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        }
+      ],
+      "decision": "X6-OWN-C2-20261104: D1 notes/deletion journal; vfs and chat_v2 same-name journals keep separate schema/methods; F3 file orchestration and L05 workspace call the owner with the same conn; rag_configurations is notes RAG config (notes/repository/revisions, rag-config)."
+    },
+    "__lance_orphan_queue": {
+      "owner": "vfs-repos",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260611__add_lance_orphan_queue.sql:20"
+      ],
+      "evidence": [
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/embedding_dim_repo.rs:1015",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/index_segment_repo.rs:101",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/index_segment_repo.rs:131",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/index_segment_repo.rs:143",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/index_segment_repo.rs:515",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/index_segment_repo.rs:540",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/index_unit_repo.rs:444",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/index_unit_repo.rs:465",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/resource_repo.rs:487",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/resource_repo.rs:566",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        }
+      ],
+      "decision": "C2-platform ruling 2026-11-04T11:00Z"
+    },
+    "__sync_conflicts": {
+      "owner": "sync-support",
+      "schema": [
+        "src-tauri/crates/dstu-sync/src/data_governance/sync/conflict_resolver.rs:171",
+        "src-tauri/tests/sync_regression_tests.rs:315",
+        "src-tauri/tests/sync_regression_tests.rs:492",
+        "src-tauri/tests/sync_regression_tests.rs:802",
+        "src-tauri/tests/sync_weird_tests.rs:1982"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: Rust conflict_resolver.rs/state.rs; support publishes state/conflicts; L20 via same-conn business API."
+    },
+    "__sync_delete_versions": {
+      "owner": "sync",
+      "schema": [
+        "src-tauri/crates/dstu-sync/src/data_governance/sync/mod.rs:8191"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: Rust sync/mod.rs and history; owner triggers producing change log are not consumer SQL permission; L11 idAlias read-only."
+    },
+    "__sync_id_aliases": {
+      "owner": "sync",
+      "schema": [
+        "src-tauri/crates/dstu-sync/src/data_governance/sync/mod.rs:5876"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: Rust sync/mod.rs and history; owner triggers producing change log are not consumer SQL permission; L11 idAlias read-only."
+    },
+    "__sync_quarantine": {
+      "owner": "sync",
+      "schema": [
+        "src-tauri/crates/dstu-sync/src/data_governance/sync/mod.rs:6509"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: Rust sync/mod.rs and history; owner triggers producing change log are not consumer SQL permission; L11 idAlias read-only."
+    },
+    "__sync_record_history": {
+      "owner": "sync",
+      "schema": [
+        "src-tauri/crates/dstu-sync/src/data_governance/sync/history.rs:74"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: Rust sync/mod.rs and history; owner triggers producing change log are not consumer SQL permission; L11 idAlias read-only."
+    },
+    "__workspace_deletion_queue": {
+      "owner": "notes",
+      "schema": [
+        "src-tauri/migrations/chat_v2/V20260527__add_workspace_deletion_queue.sql:9"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: D1 notes/deletion journal; vfs and chat_v2 same-name journals keep separate schema/methods; F3 file orchestration and L05 workspace call the owner with the same conn; rag_configurations is notes RAG config (notes/repository/revisions, rag-config)."
+    },
+    "a": {
+      "owner": null,
+      "schema": [
+        "src-tauri/tests/sync_pathological_tests.rs:1066"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104 not-production: schema evidence only from src-tauri/tests, vendor tests or refinery dynamic identifiers; a production write stays unknown and needs re-ruling."
+    },
+    "agent": {
+      "owner": null,
+      "schema": [
+        "src-tauri/crates/dstu-agent/src/chat_v2/workspace/database.rs:18"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: owned only inside the listed namespace; elsewhere the database is not identifiable -> unknown"
+    },
+    "anki_cards": {
+      "owner": "anki",
+      "schema": [
+        "src-tauri/crates/dstu-storage/src/database/mod.rs:1242",
+        "src-tauri/crates/dstu-vfs/src/vfs/repos/note_storage_tests.rs:445",
+        "src-tauri/migrations/mistakes/V20260130__init.sql:180",
+        "src-tauri/tests/anki_nullable_card_reads.rs:53",
+        "src-tauri/tests/sync_r13_migration_change_log_propagation.rs:211"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: D1 cards and parent task atomic persistence; Rust storage cards/task tables; L18 document_tasks access via same-conn owner API."
+    },
+    "anki_decks": {
+      "owner": "anki",
+      "schema": [
+        "src-tauri/migrations/mistakes/V20260709__flashcard_fsrs.sql:8"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: D1 cards and parent task atomic persistence; Rust storage cards/task tables; L18 document_tasks access via same-conn owner API."
+    },
+    "answer_submissions": {
+      "owner": "vfs-repos",
+      "schema": [
+        "src-tauri/crates/dstu-storage/src/migration/coordinator.rs:3532",
+        "src-tauri/migrations/vfs/V20260210__add_answer_submissions.sql:7"
+      ],
+      "evidence": [
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/exam_repo.rs:1092",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/question_repo.rs:3100",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/question_repo.rs:3275",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/question_repo.rs:3337",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/question_repo.rs:3354",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        }
+      ]
+    },
+    "automation_definitions": {
+      "owner": "agent-orchestration",
+      "schema": [
+        "src-tauri/migrations/mistakes/V20260714__automation_scheduler.sql:5"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: automation migrations; L06 definition/run/delivery receipt lifecycle; todo body stays L11."
+    },
+    "automation_runs": {
+      "owner": "agent-orchestration",
+      "schema": [
+        "src-tauri/migrations/mistakes/V20260714__automation_scheduler.sql:38"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: automation migrations; L06 definition/run/delivery receipt lifecycle; todo body stays L11."
+    },
+    "automation_todo_deliveries": {
+      "owner": "agent-orchestration",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260715__automation_todo_delivery_receipts.sql:5"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: automation migrations; L06 definition/run/delivery receipt lifecycle; todo body stays L11."
+    },
+    "b": {
+      "owner": null,
+      "schema": [
+        "src-tauri/tests/sync_pathological_tests.rs:1066"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104 not-production: schema evidence only from src-tauri/tests, vendor tests or refinery dynamic identifiers; a production write stays unknown and needs re-ruling."
+    },
+    "big": {
+      "owner": null,
+      "schema": [
+        "src-tauri/tests/sync_pathological_tests.rs:1125"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104 not-production: schema evidence only from src-tauri/tests, vendor tests or refinery dynamic identifiers; a production write stays unknown and needs re-ruling."
+    },
+    "blobs": {
+      "owner": "vfs-repos",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260130__init.sql:278",
+        "src-tauri/tests/sync_scenarios_tests.rs:2233"
+      ],
+      "evidence": [
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/blob_repo.rs:212",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/blob_repo.rs:359",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/blob_repo.rs:497",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/blob_repo.rs:544",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/blob_repo.rs:670",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        }
+      ]
+    },
+    "budget_snapshots": {
+      "owner": "chat-pipeline",
+      "schema": [
+        "src-tauri/migrations/chat_v2/V20260910__revocation_epochs_and_budget.sql:37"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: revocation_epochs_and_budget migration; Rust token budget; chat-pipeline/repository/budget."
+    },
+    "cards": {
+      "owner": null,
+      "schema": [
+        "src-tauri/crates/dstu-anki/src/apkg_exporter_service.rs:1244",
+        "src-tauri/crates/dstu-anki/src/apkg_exporter_service.rs:2135",
+        "src-tauri/tests/chatanki_apkg_executor_e2e.rs:89",
+        "src-tauri/tests/chatanki_apkg_executor_e2e.rs:149"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: owned only inside the listed namespace; elsewhere the database is not identifiable -> unknown"
+    },
+    "chat_messages": {
+      "owner": "chat",
+      "schema": [
+        "src-tauri/crates/dstu-storage/src/database/mod.rs:1242",
+        "src-tauri/migrations/mistakes/V20260130__init.sql:38"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: D1 chat data incl. legacy chat; Rust grants.rs:433 writes revocation; todo_executor/session relations."
+    },
+    "chat_v2_attachments": {
+      "owner": "chat",
+      "schema": [
+        "src-tauri/migrations/chat_v2/V20260130__init.sql:113"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: D1 chat data incl. legacy chat; Rust grants.rs:433 writes revocation; todo_executor/session relations."
+    },
+    "chat_v2_blocks": {
+      "owner": "chat",
+      "schema": [
+        "src-tauri/migrations/chat_v2/V20260130__init.sql:81",
+        "src-tauri/tests/sync_real_business_tables_tests.rs:152"
+      ],
+      "evidence": [
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/repo.rs:1794",
+          "spec": "host/plugins/chat/SPEC.md"
+        },
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/repo.rs:1858",
+          "spec": "host/plugins/chat/SPEC.md"
+        },
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/repo.rs:2101",
+          "spec": "host/plugins/chat/SPEC.md"
+        },
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/repo.rs:2178",
+          "spec": "host/plugins/chat/SPEC.md"
+        },
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/repo.rs:2204",
+          "spec": "host/plugins/chat/SPEC.md"
+        },
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/repo.rs:2265",
+          "spec": "host/plugins/chat/SPEC.md"
+        },
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/repo.rs:2278",
+          "spec": "host/plugins/chat/SPEC.md"
+        },
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/repo.rs:2307",
+          "spec": "host/plugins/chat/SPEC.md"
+        },
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/repo.rs:3434",
+          "spec": "host/plugins/chat/SPEC.md"
+        },
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/repo.rs:3476",
+          "spec": "host/plugins/chat/SPEC.md"
+        },
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/repo.rs:3487",
+          "spec": "host/plugins/chat/SPEC.md"
+        },
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/repo.rs:3969",
+          "spec": "host/plugins/chat/SPEC.md"
+        },
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/repo.rs:4118",
+          "spec": "host/plugins/chat/SPEC.md"
+        }
+      ],
+      "decision": "docs/dev/electron-migration/decisions.md:106-111"
+    },
+    "chat_v2_compactions": {
+      "owner": "chat",
+      "schema": [
+        "src-tauri/migrations/chat_v2/V20260510__add_compaction.sql:5"
+      ],
+      "evidence": [
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/repo.rs:8341",
+          "spec": "host/plugins/chat/SPEC.md"
+        }
+      ]
+    },
+    "chat_v2_content_fts": {
+      "owner": "chat",
+      "schema": [
+        "src-tauri/migrations/chat_v2/V20260301__content_search_and_tags.sql:10"
+      ],
+      "evidence": [
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/repo.rs:4393",
+          "spec": "host/plugins/chat/SPEC.md"
+        },
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/repo.rs:4395",
+          "spec": "host/plugins/chat/SPEC.md"
+        }
+      ]
+    },
+    "chat_v2_goals": {
+      "owner": "chat",
+      "schema": [
+        "src-tauri/migrations/chat_v2/V20260905__goal_table.sql:22"
+      ],
+      "evidence": [
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/repo.rs:8657",
+          "spec": "host/plugins/chat/SPEC.md"
+        },
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/repo.rs:8697",
+          "spec": "host/plugins/chat/SPEC.md"
+        },
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/repo.rs:8721",
+          "spec": "host/plugins/chat/SPEC.md"
+        },
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/repo.rs:8745",
+          "spec": "host/plugins/chat/SPEC.md"
+        },
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/repo.rs:8771",
+          "spec": "host/plugins/chat/SPEC.md"
+        },
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/repo.rs:8788",
+          "spec": "host/plugins/chat/SPEC.md"
+        }
+      ]
+    },
+    "chat_v2_messages": {
+      "owner": "chat",
+      "schema": [
+        "src-tauri/migrations/chat_v2/V20260130__init.sql:50",
+        "src-tauri/tests/sync_real_business_tables_tests.rs:111"
+      ],
+      "evidence": [
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/repo.rs:1316",
+          "spec": "host/plugins/chat/SPEC.md"
+        },
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/repo.rs:1621",
+          "spec": "host/plugins/chat/SPEC.md"
+        },
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/repo.rs:1659",
+          "spec": "host/plugins/chat/SPEC.md"
+        },
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/repo.rs:3736",
+          "spec": "host/plugins/chat/SPEC.md"
+        },
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/repo.rs:3777",
+          "spec": "host/plugins/chat/SPEC.md"
+        },
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/repo.rs:3822",
+          "spec": "host/plugins/chat/SPEC.md"
+        },
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/repo.rs:3885",
+          "spec": "host/plugins/chat/SPEC.md"
+        },
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/repo.rs:4012",
+          "spec": "host/plugins/chat/SPEC.md"
+        },
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/repo.rs:4112",
+          "spec": "host/plugins/chat/SPEC.md"
+        },
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/repo.rs:4155",
+          "spec": "host/plugins/chat/SPEC.md"
+        },
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/repo.rs:4233",
+          "spec": "host/plugins/chat/SPEC.md"
+        }
+      ],
+      "decision": "docs/dev/electron-migration/decisions.md:106-111"
+    },
+    "chat_v2_session_groups": {
+      "owner": "chat",
+      "schema": [
+        "src-tauri/crates/dstu-storage/src/migration/coordinator.rs:3859",
+        "src-tauri/migrations/chat_v2/V20260204__session_groups.sql:6"
+      ],
+      "evidence": [
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/repo.rs:692",
+          "spec": "host/plugins/chat/SPEC.md"
+        },
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/repo.rs:798",
+          "spec": "host/plugins/chat/SPEC.md"
+        },
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/repo.rs:832",
+          "spec": "host/plugins/chat/SPEC.md"
+        },
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/repo.rs:893",
+          "spec": "host/plugins/chat/SPEC.md"
+        },
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/repo.rs:1068",
+          "spec": "host/plugins/chat/SPEC.md"
+        },
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/repo.rs:1083",
+          "spec": "host/plugins/chat/SPEC.md"
+        },
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/repo.rs:1108",
+          "spec": "host/plugins/chat/SPEC.md"
+        }
+      ]
+    },
+    "chat_v2_session_mistakes": {
+      "owner": "chat",
+      "schema": [
+        "src-tauri/migrations/chat_v2/V20260130__init.sql:181"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: D1 chat data incl. legacy chat; Rust grants.rs:433 writes revocation; todo_executor/session relations."
+    },
+    "chat_v2_session_state": {
+      "owner": "chat",
+      "schema": [
+        "src-tauri/migrations/chat_v2/V20260130__init.sql:141"
+      ],
+      "evidence": [
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/repo.rs:2689",
+          "spec": "host/plugins/chat/SPEC.md"
+        }
+      ]
+    },
+    "chat_v2_session_tags": {
+      "owner": "chat",
+      "schema": [
+        "src-tauri/migrations/chat_v2/V20260301__content_search_and_tags.sql:59"
+      ],
+      "evidence": [
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/repo.rs:4619",
+          "spec": "host/plugins/chat/SPEC.md"
+        },
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/repo.rs:4624",
+          "spec": "host/plugins/chat/SPEC.md"
+        },
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/repo.rs:4651",
+          "spec": "host/plugins/chat/SPEC.md"
+        },
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/repo.rs:4660",
+          "spec": "host/plugins/chat/SPEC.md"
+        }
+      ]
+    },
+    "chat_v2_sessions": {
+      "owner": "chat",
+      "schema": [
+        "src-tauri/migrations/chat_v2/V20260130__init.sql:25"
+      ],
+      "evidence": [
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/repo.rs:364",
+          "spec": "host/plugins/chat/SPEC.md"
+        },
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/repo.rs:507",
+          "spec": "host/plugins/chat/SPEC.md"
+        },
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/repo.rs:551",
+          "spec": "host/plugins/chat/SPEC.md"
+        },
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/repo.rs:874",
+          "spec": "host/plugins/chat/SPEC.md"
+        },
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/repo.rs:957",
+          "spec": "host/plugins/chat/SPEC.md"
+        },
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/repo.rs:1092",
+          "spec": "host/plugins/chat/SPEC.md"
+        },
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/repo.rs:1123",
+          "spec": "host/plugins/chat/SPEC.md"
+        },
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/repo.rs:3529",
+          "spec": "host/plugins/chat/SPEC.md"
+        },
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/repo.rs:4745",
+          "spec": "host/plugins/chat/SPEC.md"
+        },
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/repo.rs:4756",
+          "spec": "host/plugins/chat/SPEC.md"
+        },
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/repo.rs:8400",
+          "spec": "host/plugins/chat/SPEC.md"
+        },
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/repo.rs:8422",
+          "spec": "host/plugins/chat/SPEC.md"
+        }
+      ],
+      "decision": "docs/dev/electron-migration/decisions.md:106-111"
+    },
+    "chat_v2_todo_lists": {
+      "owner": "chat",
+      "schema": [
+        "src-tauri/migrations/chat_v2/V20260130__init.sql:220"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: D1 chat data incl. legacy chat; Rust grants.rs:433 writes revocation; todo_executor/session relations."
+    },
+    "children": {
+      "owner": null,
+      "schema": [
+        "src-tauri/tests/sync_real_schema_tests.rs:474",
+        "src-tauri/tests/sync_scenarios_tests.rs:474"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104 not-production: schema evidence only from src-tauri/tests, vendor tests or refinery dynamic identifiers; a production write stays unknown and needs re-ruling."
+    },
+    "col": {
+      "owner": null,
+      "schema": [
+        "src-tauri/crates/dstu-anki/src/apkg_exporter_service.rs:1244",
+        "src-tauri/crates/dstu-anki/src/apkg_exporter_service.rs:2135",
+        "src-tauri/tests/chatanki_apkg_executor_e2e.rs:89",
+        "src-tauri/tests/chatanki_apkg_executor_e2e.rs:149"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: owned only inside the listed namespace; elsewhere the database is not identifiable -> unknown"
+    },
+    "completion_outbox": {
+      "owner": "agent-workspace",
+      "schema": [
+        "src-tauri/migrations/chat_v2/V20260908__completion_outbox.sql:17"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: Rust workspace/database.rs, completion_outbox, sleep/task schema and L05 repositories."
+    },
+    "connector_operations": {
+      "owner": "agent-skills",
+      "schema": [
+        "src-tauri/migrations/chat_v2/V20260907__connector_operations.sql:25"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: connector ledger / skill usage repositories; L03/L04 call owner."
+    },
+    "consume_cursor": {
+      "owner": "sync-support",
+      "schema": [
+        "src-tauri/crates/dstu-sync/src/data_governance/sync/state.rs:61"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: Rust conflict_resolver.rs/state.rs; support publishes state/conflicts; L20 via same-conn business API."
+    },
+    "context": {
+      "owner": null,
+      "schema": [
+        "src-tauri/crates/dstu-agent/src/chat_v2/workspace/database.rs:18"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: owned only inside the listed namespace; elsewhere the database is not identifiable -> unknown"
+    },
+    "contract_marker": {
+      "owner": null,
+      "schema": [
+        "src-tauri/tests/sync_provider_contract_tests.rs:421"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104 not-production: schema evidence only from src-tauri/tests, vendor tests or refinery dynamic identifiers; a production write stays unknown and needs re-ruling."
+    },
+    "custom_anki_templates": {
+      "owner": "anki",
+      "schema": [
+        "src-tauri/migrations/mistakes/V20260130__init.sql:200"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: D1 cards and parent task atomic persistence; Rust storage cards/task tables; L18 document_tasks access via same-conn owner API."
+    },
+    "device_history": {
+      "owner": "sync-support",
+      "schema": [
+        "src-tauri/crates/dstu-sync/src/data_governance/sync/state.rs:61"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: Rust conflict_resolver.rs/state.rs; support publishes state/conflicts; L20 via same-conn business API."
+    },
+    "document": {
+      "owner": null,
+      "schema": [
+        "src-tauri/crates/dstu-agent/src/chat_v2/workspace/database.rs:18"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: owned only inside the listed namespace; elsewhere the database is not identifiable -> unknown"
+    },
+    "document_control_states": {
+      "owner": "anki",
+      "schema": [
+        "src-tauri/crates/dstu-storage/src/database/mod.rs:1242",
+        "src-tauri/migrations/mistakes/V20260130__init.sql:222"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: D1 cards and parent task atomic persistence; Rust storage cards/task tables; L18 document_tasks access via same-conn owner API."
+    },
+    "document_tasks": {
+      "owner": "anki",
+      "schema": [
+        "src-tauri/crates/dstu-storage/src/database/mod.rs:1242",
+        "src-tauri/crates/dstu-vfs/src/vfs/repos/note_storage_tests.rs:445",
+        "src-tauri/migrations/mistakes/V20260130__init.sql:166",
+        "src-tauri/tests/anki_nullable_card_reads.rs:53"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: D1 cards and parent task atomic persistence; Rust storage cards/task tables; L18 document_tasks access via same-conn owner API."
+    },
+    "downloads": {
+      "owner": null,
+      "schema": [
+        "src-tauri/migrations/browser/V20260711__init.sql:73"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: owned only inside the listed namespace; elsewhere the database is not identifiable -> unknown"
+    },
+    "essay_sessions": {
+      "owner": "vfs-repos",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260130__init.sql:255"
+      ],
+      "evidence": [
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/essay_repo.rs:392",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/essay_repo.rs:759",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/essay_repo.rs:966",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/essay_repo.rs:973",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/essay_repo.rs:980",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/essay_repo.rs:987",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/essay_repo.rs:994",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/essay_repo.rs:1050",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/essay_repo.rs:1104",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/essay_repo.rs:1173",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/essay_repo.rs:1381",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        }
+      ]
+    },
+    "essays": {
+      "owner": "vfs-repos",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260130__init.sql:226"
+      ],
+      "evidence": [
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/essay_repo.rs:313",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/essay_repo.rs:432",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/essay_repo.rs:463",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/essay_repo.rs:496",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/essay_repo.rs:572",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/essay_repo.rs:642",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/essay_repo.rs:1044",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        }
+      ]
+    },
+    "exam_sheet_sessions": {
+      "owner": "media",
+      "schema": [
+        "src-tauri/migrations/mistakes/V20260130__init.sql:274"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: legacy mistakes exam-sheet recognition session; L18 examSheetSession; not L11 exam_sheets."
+    },
+    "exam_sheets": {
+      "owner": "vfs-repos",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260130__init.sql:159",
+        "src-tauri/tests/sync_real_schema_tests.rs:25"
+      ],
+      "evidence": [
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/exam_repo.rs:288",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/exam_repo.rs:659",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/exam_repo.rs:720",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/exam_repo.rs:759",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/exam_repo.rs:799",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/exam_repo.rs:834",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/exam_repo.rs:875",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/exam_repo.rs:1109",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/exam_repo.rs:1224",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/exam_repo.rs:1365",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/exam_repo.rs:1431",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/exam_repo.rs:1505",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/exam_repo.rs:1521",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/exam_repo.rs:1840",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/exam_repo.rs:2011",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/exam_repo.rs:2072",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        }
+      ],
+      "decision": "C2-platform ruling 2026-11-04T11:00Z"
+    },
+    "files": {
+      "owner": "vfs-repos",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260130__init.sql:105",
+        "src-tauri/tests/sync_scenarios_tests.rs:2374"
+      ],
+      "evidence": [
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/attachment_repo.rs:808",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/attachment_repo.rs:1111",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/attachment_repo.rs:1144",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/attachment_repo.rs:1236",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/attachment_repo.rs:1248",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/attachment_repo.rs:1340",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/attachment_repo.rs:1561",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/attachment_repo.rs:2329",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/attachment_repo.rs:2514",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/attachment_repo.rs:2518",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/attachment_repo.rs:2809",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/attachment_repo.rs:2847",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/attachment_repo.rs:2882",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/attachment_repo.rs:2905",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/attachment_repo.rs:3026",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/attachment_repo.rs:3197",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/attachment_repo.rs:3247",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/file_repo.rs:94",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/file_repo.rs:130",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/file_repo.rs:386",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/file_repo.rs:513",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/file_repo.rs:549",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/file_repo.rs:621",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/file_repo.rs:917",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/file_repo.rs:950",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/file_repo.rs:973",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/file_repo.rs:1031",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/file_repo.rs:1258",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/file_repo.rs:1262",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/file_repo.rs:1655",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/textbook_repo.rs:125",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/textbook_repo.rs:224",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/textbook_repo.rs:580",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/textbook_repo.rs:608",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/textbook_repo.rs:636",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/textbook_repo.rs:677",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/textbook_repo.rs:707",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/textbook_repo.rs:734",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/textbook_repo.rs:834",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/textbook_repo.rs:871",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/textbook_repo.rs:920",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/textbook_repo.rs:961",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/textbook_repo.rs:1004",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/textbook_repo.rs:1180",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/textbook_repo.rs:1654",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/textbook_repo.rs:1695",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/textbook_repo.rs:1842",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/textbook_repo.rs:1931",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/textbook_repo.rs:2011",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        }
+      ],
+      "decision": "C2-platform ruling 2026-11-04T11:00Z"
+    },
+    "folder_items": {
+      "owner": "vfs-repos",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260130__init.sql:316"
+      ],
+      "evidence": [
+        {
+          "plugin": "notes",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/note_repo.rs:1633",
+          "spec": "host/plugins/notes/SPEC.md"
+        },
+        {
+          "plugin": "notes",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/note_repo.rs:1749",
+          "spec": "host/plugins/notes/SPEC.md"
+        },
+        {
+          "plugin": "notes",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/note_repo.rs:1797",
+          "spec": "host/plugins/notes/SPEC.md"
+        },
+        {
+          "plugin": "notes",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/note_repo.rs:2383",
+          "spec": "host/plugins/notes/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/attachment_repo.rs:2406",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/attachment_repo.rs:2454",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/essay_repo.rs:583",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/essay_repo.rs:656",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/essay_repo.rs:1056",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/essay_repo.rs:1156",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/essay_repo.rs:1186",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/essay_repo.rs:1490",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/exam_repo.rs:912",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/exam_repo.rs:1060",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/exam_repo.rs:1237",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/exam_repo.rs:1721",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/file_repo.rs:1008",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/file_repo.rs:1045",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/file_repo.rs:1097",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/file_repo.rs:1147",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/folder_repo.rs:831",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/folder_repo.rs:947",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/folder_repo.rs:1029",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/folder_repo.rs:1104",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/folder_repo.rs:1197",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/folder_repo.rs:1287",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/folder_repo.rs:1511",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/folder_repo.rs:1929",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/folder_repo.rs:2115",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/folder_repo.rs:2686",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/folder_repo.rs:2691",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/folder_repo.rs:2971",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/folder_repo.rs:3021",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/folder_repo.rs:3036",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/mindmap_repo.rs:1108",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/mindmap_repo.rs:1179",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/mindmap_repo.rs:1286",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/textbook_repo.rs:934",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/textbook_repo.rs:1175",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/textbook_repo.rs:1478",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/translation_repo.rs:654",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/translation_repo.rs:702",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/translation_repo.rs:916",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        }
+      ],
+      "decision": "X6-OWN-C2-20261104: D1 VFS owner; notes references are not a second owner; L12 schedules via same-conn methods."
+    },
+    "folders": {
+      "owner": "vfs-repos",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260130__init.sql:293"
+      ],
+      "evidence": [
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/folder_repo.rs:348",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/folder_repo.rs:1073",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/folder_repo.rs:1162",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/folder_repo.rs:1242",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/folder_repo.rs:1271",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/folder_repo.rs:1387",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/folder_repo.rs:1482",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/folder_repo.rs:1495",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/folder_repo.rs:1998",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/folder_repo.rs:2030",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/folder_repo.rs:2103",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        }
+      ]
+    },
+    "foo": {
+      "owner": null,
+      "schema": [
+        "src-tauri/vendor/r2d2_sqlite/tests/test.rs:137",
+        "src-tauri/vendor/r2d2_sqlite/tests/test.rs:176",
+        "src-tauri/vendor/r2d2_sqlite/tests/test.rs:181",
+        "src-tauri/vendor/r2d2_sqlite/tests/test.rs:194"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104 not-production: schema evidence only from src-tauri/tests, vendor tests or refinery dynamic identifiers; a production write stays unknown and needs re-ruling."
+    },
+    "fsrs_card_states": {
+      "owner": "review",
+      "schema": [
+        "src-tauri/migrations/mistakes/V20260709__flashcard_fsrs.sql:20",
+        "src-tauri/tests/anki_nullable_card_reads.rs:53"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: D1 FSRS/review/mastery/study time; last four legacy review-domain compatibility tables."
+    },
+    "fsrs_review_logs": {
+      "owner": "review",
+      "schema": [
+        "src-tauri/migrations/mistakes/V20260709__flashcard_fsrs.sql:41"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: D1 FSRS/review/mastery/study time; last four legacy review-domain compatibility tables."
+    },
+    "graves": {
+      "owner": null,
+      "schema": [
+        "src-tauri/crates/dstu-anki/src/apkg_exporter_service.rs:1244",
+        "src-tauri/crates/dstu-anki/src/apkg_exporter_service.rs:2135"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: owned only inside the listed namespace; elsewhere the database is not identifiable -> unknown"
+    },
+    "hello": {
+      "owner": null,
+      "schema": [
+        "src-tauri/vendor/r2d2_sqlite/tests/test.rs:103"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104 not-production: schema evidence only from src-tauri/tests, vendor tests or refinery dynamic identifiers; a production write stays unknown and needs re-ruling."
+    },
+    "history": {
+      "owner": null,
+      "schema": [
+        "src-tauri/migrations/browser/V20260711__init.sql:42"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: owned only inside the listed namespace; elsewhere the database is not identifiable -> unknown"
+    },
+    "inbox": {
+      "owner": null,
+      "schema": [
+        "src-tauri/crates/dstu-agent/src/chat_v2/workspace/database.rs:18"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: owned only inside the listed namespace; elsewhere the database is not identifiable -> unknown"
+    },
+    "insight_events": {
+      "owner": "memory",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260907__insight_cards.sql:149"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: insight migrations and memory/insight repositories; D1 memory receipt."
+    },
+    "insight_evidence": {
+      "owner": "memory",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260907__insight_cards.sql:89"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: insight migrations and memory/insight repositories; D1 memory receipt."
+    },
+    "insight_fts": {
+      "owner": "memory",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260908__insight_fts.sql:26"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: insight migrations and memory/insight repositories; D1 memory receipt."
+    },
+    "insight_jobs": {
+      "owner": "memory",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260910__insight_jobs.sql:21"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: insight migrations and memory/insight repositories; D1 memory receipt."
+    },
+    "insight_relations": {
+      "owner": "memory",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260907__insight_cards.sql:121"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: insight migrations and memory/insight repositories; D1 memory receipt."
+    },
+    "insight_revisions": {
+      "owner": "memory",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260907__insight_cards.sql:63"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: insight migrations and memory/insight repositories; D1 memory receipt."
+    },
+    "insights": {
+      "owner": "memory",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260907__insight_cards.sql:33"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: insight migrations and memory/insight repositories; D1 memory receipt."
+    },
+    "instance_binding": {
+      "owner": "sync-support",
+      "schema": [
+        "src-tauri/crates/dstu-sync/src/data_governance/sync/state.rs:61"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: Rust conflict_resolver.rs/state.rs; support publishes state/conflicts; L20 via same-conn business API."
+    },
+    "items": {
+      "owner": null,
+      "schema": [
+        "src-tauri/tests/sync_adversarial_tests.rs:30",
+        "src-tauri/tests/sync_chaos_tests.rs:42",
+        "src-tauri/tests/sync_pathological_tests.rs:18",
+        "src-tauri/tests/sync_pathological_tests.rs:553",
+        "src-tauri/tests/sync_pathological_tests.rs:601",
+        "src-tauri/tests/sync_pathological_tests.rs:702",
+        "src-tauri/tests/sync_pathological_tests.rs:1015",
+        "src-tauri/tests/sync_pathological_tests.rs:1245",
+        "src-tauri/tests/sync_proptest.rs:30",
+        "src-tauri/tests/sync_r02_hardening_tests.rs:327",
+        "src-tauri/tests/sync_r05_regression_tests.rs:36",
+        "src-tauri/tests/sync_r06_delete_resolve_tests.rs:54",
+        "src-tauri/tests/sync_r07_delete_resolve_lock_tests.rs:40",
+        "src-tauri/tests/sync_r10_chaos_clock.rs:33",
+        "src-tauri/tests/sync_r10_chaos_idempotent.rs:96",
+        "src-tauri/tests/sync_r10_chaos_mixed_e2ee.rs:127",
+        "src-tauri/tests/sync_r10_chaos_truncation.rs:148",
+        "src-tauri/tests/sync_r11_history.rs:48",
+        "src-tauri/tests/sync_r12_conflict_fast_path.rs:52",
+        "src-tauri/tests/sync_regression_tests.rs:28",
+        "src-tauri/tests/sync_weird_tests.rs:19",
+        "src-tauri/tests/sync_weird_tests.rs:1360",
+        "src-tauri/tests/sync_weird_tests.rs:1412",
+        "src-tauri/tests/sync_weird_tests.rs:1536",
+        "src-tauri/tests/sync_weird_tests.rs:1573"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104 not-production: schema evidence only from src-tauri/tests, vendor tests or refinery dynamic identifiers; a production write stays unknown and needs re-ruling."
+    },
+    "legacy_processed_key": {
+      "owner": "sync-support",
+      "schema": [
+        "src-tauri/crates/dstu-sync/src/data_governance/sync/state.rs:61"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: Rust conflict_resolver.rs/state.rs; support publishes state/conflicts; L20 via same-conn business API."
+    },
+    "llm_usage_daily": {
+      "owner": "platform:storage",
+      "schema": [
+        "src-tauri/migrations/llm_usage/V20260130__init.sql:87",
+        "src-tauri/tests/sync_real_business_tables_tests.rs:194",
+        "src-tauri/tests/sync_real_schema_tests.rs:176",
+        "src-tauri/tests/sync_weird_tests.rs:1761"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: F3: usage official command/service; migration ledgers; mistakes legacy storage compatibility (not new questions)."
+    },
+    "llm_usage_logs": {
+      "owner": "platform:storage",
+      "schema": [
+        "src-tauri/migrations/llm_usage/V20260130__init.sql:17"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: F3: usage official command/service; migration ledgers; mistakes legacy storage compatibility (not new questions)."
+    },
+    "mastery_events": {
+      "owner": "review",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260718__add_mastery_tables.sql:6"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: D1 FSRS/review/mastery/study time; last four legacy review-domain compatibility tables."
+    },
+    "mastery_events_new": {
+      "owner": "platform:storage-migration",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260909__mastery_events_insight_source.sql:21"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: F3 migration temp tables (CREATE->copy->rename/drop) only; no runtime business writer; final tables belong to domain owners."
+    },
+    "mastery_states": {
+      "owner": "review",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260718__add_mastery_tables.sql:22"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: D1 FSRS/review/mastery/study time; last four legacy review-domain compatibility tables."
+    },
+    "media_progress": {
+      "owner": "vfs-repos",
+      "schema": [
+        "src-tauri/migrations/vfs/V20261005__media_transcripts.sql:24"
+      ],
+      "evidence": [
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/media_transcript_repo.rs:509",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/media_transcript_repo.rs:544",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        }
+      ]
+    },
+    "media_transcript_segments": {
+      "owner": "vfs-repos",
+      "schema": [
+        "src-tauri/migrations/vfs/V20261005__media_transcripts.sql:9"
+      ],
+      "evidence": [
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/media_transcript_repo.rs:246",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/media_transcript_repo.rs:312",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/media_transcript_repo.rs:357",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/media_transcript_repo.rs:365",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/media_transcript_repo.rs:382",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/media_transcript_repo.rs:393",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/media_transcript_repo.rs:414",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/media_transcript_repo.rs:445",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        }
+      ]
+    },
+    "memory_audit_log": {
+      "owner": "memory",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260227__add_memory_audit_log.sql:19"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: insight migrations and memory/insight repositories; D1 memory receipt."
+    },
+    "memory_config": {
+      "owner": "memory",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260130__init.sql:650"
+      ],
+      "evidence": [],
+      "decision": "docs/dev/electron-migration/decisions.md:106-111"
+    },
+    "memory_write_idempotency": {
+      "owner": "memory",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260303__add_memory_write_idempotency.sql:2"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: insight migrations and memory/insight repositories; D1 memory receipt."
+    },
+    "message": {
+      "owner": null,
+      "schema": [
+        "src-tauri/crates/dstu-agent/src/chat_v2/workspace/database.rs:18"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: owned only inside the listed namespace; elsewhere the database is not identifiable -> unknown"
+    },
+    "migration_progress": {
+      "owner": "platform:storage",
+      "schema": [
+        "src-tauri/crates/dstu-storage/src/database/mod.rs:1242",
+        "src-tauri/migrations/mistakes/V20260130__init.sql:290"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: F3: usage official command/service; migration ledgers; mistakes legacy storage compatibility (not new questions)."
+    },
+    "migration_table_name": {
+      "owner": null,
+      "schema": [
+        "src-tauri/vendor/refinery-core/src/drivers/tiberius.rs:92",
+        "src-tauri/vendor/refinery-core/src/traits/mod.rs:108"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104 not-production: schema evidence only from src-tauri/tests, vendor tests or refinery dynamic identifiers; a production write stays unknown and needs re-ruling."
+    },
+    "mindmap_versions": {
+      "owner": "vfs-repos",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260212__add_mindmap_versions.sql:8"
+      ],
+      "evidence": [
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/mindmap_repo.rs:1277",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/mindmap_repo.rs:1567",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/mindmap_repo.rs:1719",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        }
+      ]
+    },
+    "mindmaps": {
+      "owner": "vfs-repos",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260130__init.sql:354"
+      ],
+      "evidence": [
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/mindmap_repo.rs:388",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/mindmap_repo.rs:725",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/mindmap_repo.rs:1077",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/mindmap_repo.rs:1164",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/mindmap_repo.rs:1282",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/mindmap_repo.rs:1378",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/mindmap_repo.rs:2016",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        }
+      ]
+    },
+    "mistakes": {
+      "owner": "platform:storage",
+      "schema": [
+        "src-tauri/migrations/mistakes/V20260130__init.sql:14",
+        "src-tauri/tests/sync_real_business_tables_tests.rs:228"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: F3: usage official command/service; migration ledgers; mistakes legacy storage compatibility (not new questions)."
+    },
+    "note_document_formats": {
+      "owner": "notes",
+      "schema": [
+        "src-tauri/crates/dstu-vfs/src/vfs/repos/note_history_integration_tests.rs:313",
+        "src-tauri/migrations/vfs/V20260922__note_storage_foundations.sql:2"
+      ],
+      "evidence": [],
+      "decision": "docs/dev/electron-migration/decisions.md:106-111"
+    },
+    "note_document_revisions": {
+      "owner": "notes",
+      "schema": [
+        "src-tauri/crates/dstu-vfs/src/vfs/repos/note_history_integration_tests.rs:313",
+        "src-tauri/migrations/vfs/V20260921__note_document_revisions.sql:3"
+      ],
+      "evidence": [
+        {
+          "plugin": "notes",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/note_transfer_repo.rs:107",
+          "spec": "host/plugins/notes/SPEC.md"
+        },
+        {
+          "plugin": "notes",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/note_transfer_repo.rs:138",
+          "spec": "host/plugins/notes/SPEC.md"
+        }
+      ],
+      "decision": "docs/dev/electron-migration/decisions.md:106-111"
+    },
+    "note_editor_lease_acks": {
+      "owner": "notes",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260924__note_editor_leases.sql:41"
+      ],
+      "evidence": [
+        {
+          "plugin": "notes",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/note_lease_repo.rs:147",
+          "spec": "host/plugins/notes/SPEC.md"
+        },
+        {
+          "plugin": "notes",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/note_lease_repo.rs:255",
+          "spec": "host/plugins/notes/SPEC.md"
+        },
+        {
+          "plugin": "notes",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/note_lease_repo.rs:294",
+          "spec": "host/plugins/notes/SPEC.md"
+        },
+        {
+          "plugin": "notes",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/note_lease_repo.rs:352",
+          "spec": "host/plugins/notes/SPEC.md"
+        },
+        {
+          "plugin": "notes",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/note_lease_repo.rs:430",
+          "spec": "host/plugins/notes/SPEC.md"
+        },
+        {
+          "plugin": "notes",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/note_lease_repo.rs:458",
+          "spec": "host/plugins/notes/SPEC.md"
+        },
+        {
+          "plugin": "notes",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/note_lease_repo.rs:485",
+          "spec": "host/plugins/notes/SPEC.md"
+        }
+      ]
+    },
+    "note_editor_lease_notes": {
+      "owner": "notes",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260924__note_editor_leases.sql:37"
+      ],
+      "evidence": [
+        {
+          "plugin": "notes",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/note_lease_repo.rs:252",
+          "spec": "host/plugins/notes/SPEC.md"
+        },
+        {
+          "plugin": "notes",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/note_lease_repo.rs:487",
+          "spec": "host/plugins/notes/SPEC.md"
+        }
+      ]
+    },
+    "note_editor_leases": {
+      "owner": "notes",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260924__note_editor_leases.sql:32"
+      ],
+      "evidence": [
+        {
+          "plugin": "notes",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/note_lease_repo.rs:151",
+          "spec": "host/plugins/notes/SPEC.md"
+        },
+        {
+          "plugin": "notes",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/note_lease_repo.rs:177",
+          "spec": "host/plugins/notes/SPEC.md"
+        },
+        {
+          "plugin": "notes",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/note_lease_repo.rs:237",
+          "spec": "host/plugins/notes/SPEC.md"
+        },
+        {
+          "plugin": "notes",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/note_lease_repo.rs:295",
+          "spec": "host/plugins/notes/SPEC.md"
+        },
+        {
+          "plugin": "notes",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/note_lease_repo.rs:375",
+          "spec": "host/plugins/notes/SPEC.md"
+        },
+        {
+          "plugin": "notes",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/note_lease_repo.rs:494",
+          "spec": "host/plugins/notes/SPEC.md"
+        }
+      ]
+    },
+    "note_editor_participants": {
+      "owner": "notes",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260924__note_editor_leases.sql:27"
+      ],
+      "evidence": [
+        {
+          "plugin": "notes",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/note_lease_repo.rs:135",
+          "spec": "host/plugins/notes/SPEC.md"
+        },
+        {
+          "plugin": "notes",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/note_lease_repo.rs:173",
+          "spec": "host/plugins/notes/SPEC.md"
+        },
+        {
+          "plugin": "notes",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/note_lease_repo.rs:513",
+          "spec": "host/plugins/notes/SPEC.md"
+        },
+        {
+          "plugin": "notes",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/note_lease_repo.rs:533",
+          "spec": "host/plugins/notes/SPEC.md"
+        }
+      ]
+    },
+    "note_editor_write_grants": {
+      "owner": "notes",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260924__note_editor_leases.sql:48"
+      ],
+      "evidence": [
+        {
+          "plugin": "notes",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/note_lease_repo.rs:318",
+          "spec": "host/plugins/notes/SPEC.md"
+        },
+        {
+          "plugin": "notes",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/note_lease_repo.rs:356",
+          "spec": "host/plugins/notes/SPEC.md"
+        },
+        {
+          "plugin": "notes",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/note_lease_repo.rs:491",
+          "spec": "host/plugins/notes/SPEC.md"
+        }
+      ]
+    },
+    "note_history_retention": {
+      "owner": "notes",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260923__note_history_integration.sql:2"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: D1 notes/deletion journal; vfs and chat_v2 same-name journals keep separate schema/methods; F3 file orchestration and L05 workspace call the owner with the same conn; rag_configurations is notes RAG config (notes/repository/revisions, rag-config)."
+    },
+    "note_learning_relations": {
+      "owner": "notes",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260922__note_storage_foundations.sql:39"
+      ],
+      "evidence": [
+        {
+          "plugin": "notes",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/note_repo.rs:827",
+          "spec": "host/plugins/notes/SPEC.md"
+        }
+      ]
+    },
+    "note_links": {
+      "owner": "notes",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260725__note_links.sql:28"
+      ],
+      "evidence": [
+        {
+          "plugin": "notes",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/note_repo.rs:2757",
+          "spec": "host/plugins/notes/SPEC.md"
+        },
+        {
+          "plugin": "notes",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/note_repo.rs:2770",
+          "spec": "host/plugins/notes/SPEC.md"
+        }
+      ],
+      "decision": "docs/dev/electron-migration/decisions.md:106-111"
+    },
+    "note_review_save_operations": {
+      "owner": "notes",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260923__note_history_integration.sql:12"
+      ],
+      "evidence": [
+        {
+          "plugin": "notes",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/note_review_repo.rs:71",
+          "spec": "host/plugins/notes/SPEC.md"
+        },
+        {
+          "plugin": "notes",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/note_review_repo.rs:103",
+          "spec": "host/plugins/notes/SPEC.md"
+        }
+      ]
+    },
+    "note_review_save_receipts": {
+      "owner": "notes",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260923__note_history_integration.sql:19"
+      ],
+      "evidence": [
+        {
+          "plugin": "notes",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/note_review_repo.rs:112",
+          "spec": "host/plugins/notes/SPEC.md"
+        }
+      ]
+    },
+    "note_state": {
+      "owner": "notes",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260922__note_storage_foundations.sql:26"
+      ],
+      "evidence": [
+        {
+          "plugin": "notes",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/note_state_repo.rs:163",
+          "spec": "host/plugins/notes/SPEC.md"
+        },
+        {
+          "plugin": "notes",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/note_state_repo.rs:166",
+          "spec": "host/plugins/notes/SPEC.md"
+        }
+      ]
+    },
+    "note_tags": {
+      "owner": "notes",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260722__note_tags.sql:27"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: D1 notes/deletion journal; vfs and chat_v2 same-name journals keep separate schema/methods; F3 file orchestration and L05 workspace call the owner with the same conn; rag_configurations is notes RAG config (notes/repository/revisions, rag-config)."
+    },
+    "note_transfer_operations": {
+      "owner": "notes",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260922__note_storage_foundations.sql:12"
+      ],
+      "evidence": [
+        {
+          "plugin": "notes",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/note_transfer_repo.rs:210",
+          "spec": "host/plugins/notes/SPEC.md"
+        },
+        {
+          "plugin": "notes",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/note_transfer_repo.rs:246",
+          "spec": "host/plugins/notes/SPEC.md"
+        }
+      ]
+    },
+    "notes": {
+      "owner": "notes",
+      "schema": [
+        "src-tauri/crates/dstu-anki/src/apkg_exporter_service.rs:1244",
+        "src-tauri/crates/dstu-anki/src/apkg_exporter_service.rs:2135",
+        "src-tauri/migrations/vfs/V20260130__init.sql:65",
+        "src-tauri/tests/chatanki_apkg_executor_e2e.rs:89",
+        "src-tauri/tests/chatanki_apkg_executor_e2e.rs:149",
+        "src-tauri/tests/sync_file_level_e2ee.rs:492",
+        "src-tauri/tests/sync_integration_deep_tests.rs:21",
+        "src-tauri/tests/sync_pathological_tests.rs:1015",
+        "src-tauri/tests/sync_pathological_tests.rs:1601",
+        "src-tauri/tests/sync_r02_hardening_tests.rs:36",
+        "src-tauri/tests/sync_r09_file_e2ee.rs:163",
+        "src-tauri/tests/sync_real_business_tables_tests.rs:71",
+        "src-tauri/tests/sync_real_flow_smoke_tests.rs:2965",
+        "src-tauri/tests/sync_real_schema_tests.rs:25",
+        "src-tauri/tests/sync_scenarios_tests.rs:164",
+        "src-tauri/tests/sync_scenarios_tests.rs:1551"
+      ],
+      "evidence": [
+        {
+          "plugin": "notes",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/note_repo.rs:522",
+          "spec": "host/plugins/notes/SPEC.md"
+        },
+        {
+          "plugin": "notes",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/note_repo.rs:780",
+          "spec": "host/plugins/notes/SPEC.md"
+        },
+        {
+          "plugin": "notes",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/note_repo.rs:796",
+          "spec": "host/plugins/notes/SPEC.md"
+        },
+        {
+          "plugin": "notes",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/note_repo.rs:1439",
+          "spec": "host/plugins/notes/SPEC.md"
+        },
+        {
+          "plugin": "notes",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/note_repo.rs:1483",
+          "spec": "host/plugins/notes/SPEC.md"
+        },
+        {
+          "plugin": "notes",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/note_repo.rs:1580",
+          "spec": "host/plugins/notes/SPEC.md"
+        },
+        {
+          "plugin": "notes",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/note_repo.rs:1809",
+          "spec": "host/plugins/notes/SPEC.md"
+        },
+        {
+          "plugin": "notes",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/note_repo.rs:1927",
+          "spec": "host/plugins/notes/SPEC.md"
+        },
+        {
+          "plugin": "notes",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/note_repo.rs:2065",
+          "spec": "host/plugins/notes/SPEC.md"
+        }
+      ],
+      "decision": "docs/dev/electron-migration/decisions.md:106-111"
+    },
+    "notes_fts": {
+      "owner": "notes",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260724__notes_fts.sql:31"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: D1 notes/deletion journal; vfs and chat_v2 same-name journals keep separate schema/methods; F3 file orchestration and L05 workspace call the owner with the same conn; rag_configurations is notes RAG config (notes/repository/revisions, rag-config)."
+    },
+    "notes_versions": {
+      "owner": "notes",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260130__init.sql:86"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: D1 notes/deletion journal; vfs and chat_v2 same-name journals keep separate schema/methods; F3 file orchestration and L05 workspace call the owner with the same conn; rag_configurations is notes RAG config (notes/repository/revisions, rag-config)."
+    },
+    "parents": {
+      "owner": null,
+      "schema": [
+        "src-tauri/tests/sync_real_schema_tests.rs:474",
+        "src-tauri/tests/sync_scenarios_tests.rs:474"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104 not-production: schema evidence only from src-tauri/tests, vendor tests or refinery dynamic identifiers; a production write stays unknown and needs re-ruling."
+    },
+    "path_cache": {
+      "owner": "vfs-repos",
+      "schema": [
+        "src-tauri/crates/dstu-vfs/src/vfs/repos/path_cache_repo.rs:66",
+        "src-tauri/migrations/vfs/V20260130__init.sql:339"
+      ],
+      "evidence": [
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/path_cache_repo.rs:210",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/path_cache_repo.rs:262",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/path_cache_repo.rs:317",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/path_cache_repo.rs:397",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/path_cache_repo.rs:442",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/path_cache_repo.rs:483",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/path_cache_repo.rs:520",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        }
+      ]
+    },
+    "plain_table": {
+      "owner": null,
+      "schema": [
+        "src-tauri/tests/sync_regression_tests.rs:282"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104 not-production: schema evidence only from src-tauri/tests, vendor tests or refinery dynamic identifiers; a production write stays unknown and needs re-ruling."
+    },
+    "pomodoro_records": {
+      "owner": "vfs-repos",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260310__add_pomodoro.sql:20"
+      ],
+      "evidence": [
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/pomodoro_repo.rs:173",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/pomodoro_repo.rs:270",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        }
+      ]
+    },
+    "progress": {
+      "owner": null,
+      "schema": [
+        "src-tauri/tests/sync_r12_delta_gc.rs:238",
+        "src-tauri/tests/sync_r12_delta_inventory.rs:44",
+        "src-tauri/tests/sync_r12_delta_restore.rs:191",
+        "src-tauri/tests/sync_r12_delta_upload.rs:202"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104 not-production: schema evidence only from src-tauri/tests, vendor tests or refinery dynamic identifiers; a production write stays unknown and needs re-ruling."
+    },
+    "qbank_generation_tasks": {
+      "owner": "qbank",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260912__qbank_generation_tasks.sql:8"
+      ],
+      "evidence": [
+        {
+          "plugin": "qbank",
+          "evidence": "src-tauri/crates/dstu-qbank/src/qbank_generation/task_repo.rs:139",
+          "spec": "host/plugins/qbank/SPEC.md"
+        },
+        {
+          "plugin": "qbank",
+          "evidence": "src-tauri/crates/dstu-qbank/src/qbank_generation/task_repo.rs:231",
+          "spec": "host/plugins/qbank/SPEC.md"
+        },
+        {
+          "plugin": "qbank",
+          "evidence": "src-tauri/crates/dstu-qbank/src/qbank_generation/task_repo.rs:263",
+          "spec": "host/plugins/qbank/SPEC.md"
+        },
+        {
+          "plugin": "qbank",
+          "evidence": "src-tauri/crates/dstu-qbank/src/qbank_generation/task_repo.rs:283",
+          "spec": "host/plugins/qbank/SPEC.md"
+        },
+        {
+          "plugin": "qbank",
+          "evidence": "src-tauri/crates/dstu-qbank/src/qbank_generation/task_repo.rs:292",
+          "spec": "host/plugins/qbank/SPEC.md"
+        },
+        {
+          "plugin": "qbank",
+          "evidence": "src-tauri/crates/dstu-qbank/src/qbank_generation/task_repo.rs:311",
+          "spec": "host/plugins/qbank/SPEC.md"
+        },
+        {
+          "plugin": "qbank",
+          "evidence": "src-tauri/crates/dstu-qbank/src/qbank_generation/task_repo.rs:326",
+          "spec": "host/plugins/qbank/SPEC.md"
+        }
+      ]
+    },
+    "qbank_group_materials": {
+      "owner": "qbank",
+      "schema": [
+        "src-tauri/migrations/vfs/V20261023__question_authoring_v2.sql:23"
+      ],
+      "evidence": [
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/exam_repo.rs:2171",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        }
+      ],
+      "decision": "X6-OWN-C2-20261104: V2-OWNER-QBANK (C1/C2): Rust qbank_authoring_service.rs:357/359/431/443/445, qbank_practice.rs:534; L11 cascades via examCascade.*WithConn; exam_repo references must not re-derive vfs-repos."
+    },
+    "qbank_groups": {
+      "owner": "qbank",
+      "schema": [
+        "src-tauri/migrations/vfs/V20261023__question_authoring_v2.sql:16"
+      ],
+      "evidence": [
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/exam_repo.rs:2141",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        }
+      ],
+      "decision": "X6-OWN-C2-20261104: V2-OWNER-QBANK (C1/C2): Rust qbank_authoring_service.rs:357/359/431/443/445, qbank_practice.rs:534; L11 cascades via examCascade.*WithConn; exam_repo references must not re-derive vfs-repos."
+    },
+    "qbank_import_jobs": {
+      "owner": "qbank",
+      "schema": [
+        "src-tauri/migrations/vfs/V20261023__question_authoring_v2.sql:32"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: authoring/practice original schema and domain writers; questions/question_history stay L11."
+    },
+    "qbank_materials": {
+      "owner": "qbank",
+      "schema": [
+        "src-tauri/migrations/vfs/V20261023__question_authoring_v2.sql:9"
+      ],
+      "evidence": [
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/exam_repo.rs:2140",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/exam_repo.rs:2154",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        }
+      ],
+      "decision": "X6-OWN-C2-20261104: V2-OWNER-QBANK (C1/C2): Rust qbank_authoring_service.rs:357/359/431/443/445, qbank_practice.rs:534; L11 cascades via examCascade.*WithConn; exam_repo references must not re-derive vfs-repos."
+    },
+    "qbank_papers": {
+      "owner": "qbank",
+      "schema": [
+        "src-tauri/migrations/vfs/V20261027__practice_sessions.sql:1"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: authoring/practice original schema and domain writers; questions/question_history stay L11."
+    },
+    "qbank_practice_attempts": {
+      "owner": "qbank",
+      "schema": [
+        "src-tauri/migrations/vfs/V20261027__practice_sessions.sql:28"
+      ],
+      "evidence": [
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/exam_repo.rs:911",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/exam_repo.rs:1254",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        }
+      ],
+      "decision": "X6-OWN-C2-20261104: V2-OWNER-QBANK (C1/C2): Rust qbank_authoring_service.rs:357/359/431/443/445, qbank_practice.rs:534; L11 cascades via examCascade.*WithConn; exam_repo references must not re-derive vfs-repos."
+    },
+    "qbank_practice_drafts": {
+      "owner": "qbank",
+      "schema": [
+        "src-tauri/migrations/vfs/V20261027__practice_sessions.sql:17"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: authoring/practice original schema and domain writers; questions/question_history stay L11."
+    },
+    "qbank_practice_jobs": {
+      "owner": "qbank",
+      "schema": [
+        "src-tauri/migrations/vfs/V20261027__practice_sessions.sql:44"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: authoring/practice original schema and domain writers; questions/question_history stay L11."
+    },
+    "qbank_sources": {
+      "owner": "qbank",
+      "schema": [
+        "src-tauri/migrations/vfs/V20261023__question_authoring_v2.sql:2"
+      ],
+      "evidence": [
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/exam_repo.rs:2139",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        }
+      ],
+      "decision": "X6-OWN-C2-20261104: V2-OWNER-QBANK (C1/C2): Rust qbank_authoring_service.rs:357/359/431/443/445, qbank_practice.rs:534; L11 cascades via examCascade.*WithConn; exam_repo references must not re-derive vfs-repos."
+    },
+    "question_bank_stats": {
+      "owner": "vfs-repos",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260130__init.sql:451"
+      ],
+      "evidence": [
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/exam_repo.rs:1100",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/question_repo.rs:2962",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        }
+      ],
+      "decision": "docs/dev/electron-migration/decisions.md:106-111"
+    },
+    "question_history": {
+      "owner": "vfs-repos",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260130__init.sql:433"
+      ],
+      "evidence": [
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/exam_repo.rs:1096",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/question_repo.rs:2779",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        }
+      ]
+    },
+    "question_sync_conflicts": {
+      "owner": "vfs-repos",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260130__init.sql:601"
+      ],
+      "evidence": [
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/exam_repo.rs:1082",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        }
+      ]
+    },
+    "question_sync_logs": {
+      "owner": "vfs-repos",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260130__init.sql:628"
+      ],
+      "evidence": [
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/exam_repo.rs:1086",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        }
+      ]
+    },
+    "questions": {
+      "owner": "vfs-repos",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260130__init.sql:377",
+        "src-tauri/tests/sync_real_schema_tests.rs:25"
+      ],
+      "evidence": [
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/exam_repo.rs:490",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/exam_repo.rs:510",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/exam_repo.rs:521",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/exam_repo.rs:535",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/exam_repo.rs:554",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/exam_repo.rs:1105",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/exam_repo.rs:1243",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/exam_repo.rs:1711",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/question_repo.rs:2240",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/question_repo.rs:2479",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/question_repo.rs:2563",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/question_repo.rs:2626",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/question_repo.rs:2658",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/question_repo.rs:2708",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        }
+      ],
+      "decision": "docs/dev/electron-migration/decisions.md:106-111"
+    },
+    "questions_fts": {
+      "owner": "vfs-repos",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260130__init.sql:468"
+      ],
+      "evidence": [
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/question_repo.rs:1155",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/question_repo.rs:1159",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/question_repo.rs:1170",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        }
+      ]
+    },
+    "questions_fts_rebuild_log": {
+      "owner": null,
+      "schema": [
+        "src-tauri/tests/sync_real_schema_tests.rs:25"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104 not-production: schema evidence only from src-tauri/tests, vendor tests or refinery dynamic identifiers; a production write stays unknown and needs re-ruling."
+    },
+    "r10_marker": {
+      "owner": null,
+      "schema": [
+        "src-tauri/tests/sync_r10_download.rs:429"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104 not-production: schema evidence only from src-tauri/tests, vendor tests or refinery dynamic identifiers; a production write stays unknown and needs re-ruling."
+    },
+    "rag_configurations": {
+      "owner": "notes",
+      "schema": [
+        "src-tauri/migrations/mistakes/V20260130__init.sql:149"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: D1 notes/deletion journal; vfs and chat_v2 same-name journals keep separate schema/methods; F3 file orchestration and L05 workspace call the owner with the same conn; rag_configurations is notes RAG config (notes/repository/revisions, rag-config)."
+    },
+    "rag_document_chunks": {
+      "owner": "vfs-index",
+      "schema": [
+        "src-tauri/crates/dstu-vfs/src/lance_vector_store.rs:2953"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: legacy LanceVectorStore metadata; Rust lance_vector_store.rs:2897-2974 ensure_base_rag_schema (non-test)."
+    },
+    "rag_documents": {
+      "owner": "vfs-index",
+      "schema": [
+        "src-tauri/crates/dstu-vfs/src/lance_vector_store.rs:2933"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: legacy LanceVectorStore metadata; Rust lance_vector_store.rs:2897-2974 ensure_base_rag_schema (non-test)."
+    },
+    "rag_sub_libraries": {
+      "owner": "vfs-index",
+      "schema": [
+        "src-tauri/crates/dstu-vfs/src/lance_vector_store.rs:2906",
+        "src-tauri/migrations/mistakes/V20260130__init.sql:248"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: legacy LanceVectorStore metadata; Rust lance_vector_store.rs:2897-2974 ensure_base_rag_schema (non-test)."
+    },
+    "refinery_schema_history": {
+      "owner": "platform:storage",
+      "schema": [
+        "src-tauri/crates/dstu-storage/src/migration/coordinator.rs:1436",
+        "src-tauri/crates/dstu-storage/src/migration/coordinator.rs:2898",
+        "src-tauri/tests/sync_adversarial_tests.rs:30",
+        "src-tauri/tests/sync_chaos_tests.rs:42",
+        "src-tauri/tests/sync_integration_deep_tests.rs:21",
+        "src-tauri/tests/sync_pathological_tests.rs:18",
+        "src-tauri/tests/sync_proptest.rs:30",
+        "src-tauri/tests/sync_real_schema_tests.rs:25",
+        "src-tauri/tests/sync_real_schema_tests.rs:176",
+        "src-tauri/tests/sync_scenarios_tests.rs:164",
+        "src-tauri/tests/sync_weird_tests.rs:19"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: F3: usage official command/service; migration ledgers; mistakes legacy storage compatibility (not new questions)."
+    },
+    "resources": {
+      "owner": "vfs-repos",
+      "schema": [
+        "src-tauri/migrations/chat_v2/V20260130__init.sql:198",
+        "src-tauri/migrations/vfs/V20260130__init.sql:17",
+        "src-tauri/tests/sync_real_business_tables_tests.rs:30",
+        "src-tauri/tests/sync_real_schema_tests.rs:25",
+        "src-tauri/tests/sync_scenarios_tests.rs:2374"
+      ],
+      "evidence": [
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/resource_repo.rs:128",
+          "spec": "host/plugins/chat/SPEC.md"
+        },
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/resource_repo.rs:288",
+          "spec": "host/plugins/chat/SPEC.md"
+        },
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/resource_repo.rs:313",
+          "spec": "host/plugins/chat/SPEC.md"
+        },
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/resource_repo.rs:350",
+          "spec": "host/plugins/chat/SPEC.md"
+        },
+        {
+          "plugin": "chat",
+          "evidence": "src-tauri/crates/dstu-agent/src/chat_v2/resource_repo.rs:384",
+          "spec": "host/plugins/chat/SPEC.md"
+        },
+        {
+          "plugin": "notes",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/note_repo.rs:538",
+          "spec": "host/plugins/notes/SPEC.md"
+        },
+        {
+          "plugin": "notes",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/note_repo.rs:837",
+          "spec": "host/plugins/notes/SPEC.md"
+        },
+        {
+          "plugin": "notes",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/note_repo.rs:1878",
+          "spec": "host/plugins/notes/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/attachment_repo.rs:1158",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/attachment_repo.rs:1581",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/attachment_repo.rs:2554",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/embedding_dim_repo.rs:655",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/embedding_repo.rs:418",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/embedding_repo.rs:471",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/embedding_repo.rs:498",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/embedding_repo.rs:520",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/embedding_repo.rs:578",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/embedding_repo.rs:745",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/embedding_repo.rs:798",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/embedding_repo.rs:880",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/essay_repo.rs:339",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/essay_repo.rs:602",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/essay_repo.rs:1073",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/exam_repo.rs:308",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/exam_repo.rs:1128",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/file_repo.rs:122",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/file_repo.rs:371",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/file_repo.rs:576",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/file_repo.rs:1298",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/folder_repo.rs:3054",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/mindmap_repo.rs:1314",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/mindmap_repo.rs:1343",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/mindmap_repo.rs:1750",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/question_repo.rs:2034",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/resource_repo.rs:143",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/resource_repo.rs:252",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/resource_repo.rs:389",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/resource_repo.rs:417",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/resource_repo.rs:516",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/resource_repo.rs:588",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/resource_repo.rs:822",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/resource_repo.rs:935",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/textbook_repo.rs:156",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/textbook_repo.rs:824",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/textbook_repo.rs:1195",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/translation_repo.rs:729",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/translation_repo.rs:841",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        }
+      ],
+      "decision": "C2-platform ruling 2026-11-04T11:00Z"
+    },
+    "resources_rebuild_v20260528": {
+      "owner": "platform:storage-migration",
+      "schema": [
+        "src-tauri/migrations/chat_v2/V20260528__resources_type_check_rebuild.sql:17"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: F3 migration temp tables (CREATE->copy->rename/drop) only; no runtime business writer; final tables belong to domain owners."
+    },
+    "restore_matrix_probe": {
+      "owner": null,
+      "schema": [
+        "src-tauri/tests/restore_domain_plan_tests.rs:104"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104 not-production: schema evidence only from src-tauri/tests, vendor tests or refinery dynamic identifiers; a production write stays unknown and needs re-ruling."
+    },
+    "review_analyses": {
+      "owner": "review",
+      "schema": [
+        "src-tauri/crates/dstu-storage/src/database/mod.rs:1242",
+        "src-tauri/migrations/mistakes/V20260130__init.sql:81"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: D1 FSRS/review/mastery/study time; last four legacy review-domain compatibility tables."
+    },
+    "review_chat_messages": {
+      "owner": "review",
+      "schema": [
+        "src-tauri/crates/dstu-storage/src/database/mod.rs:1242",
+        "src-tauri/migrations/mistakes/V20260130__init.sql:97"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: D1 FSRS/review/mastery/study time; last four legacy review-domain compatibility tables."
+    },
+    "review_history": {
+      "owner": "vfs-repos",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260130__init.sql:553"
+      ],
+      "evidence": [
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/exam_repo.rs:1066",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/review_plan_repo.rs:822",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        }
+      ]
+    },
+    "review_plans": {
+      "owner": "vfs-repos",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260130__init.sql:514"
+      ],
+      "evidence": [
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/exam_repo.rs:1072",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/review_plan_repo.rs:274",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/review_plan_repo.rs:540",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/review_plan_repo.rs:598",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/review_plan_repo.rs:635",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/review_plan_repo.rs:670",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/review_plan_repo.rs:709",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/review_plan_repo.rs:735",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/review_plan_repo.rs:765",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/review_plan_repo.rs:789",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        }
+      ]
+    },
+    "review_session_mistakes": {
+      "owner": "review",
+      "schema": [
+        "src-tauri/migrations/mistakes/V20260130__init.sql:128"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: D1 FSRS/review/mastery/study time; last four legacy review-domain compatibility tables."
+    },
+    "review_sessions": {
+      "owner": "review",
+      "schema": [
+        "src-tauri/migrations/mistakes/V20260130__init.sql:118"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: D1 FSRS/review/mastery/study time; last four legacy review-domain compatibility tables."
+    },
+    "review_stats": {
+      "owner": "vfs-repos",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260130__init.sql:579"
+      ],
+      "evidence": [
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/review_plan_repo.rs:1032",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        }
+      ]
+    },
+    "revlog": {
+      "owner": null,
+      "schema": [
+        "src-tauri/crates/dstu-anki/src/apkg_exporter_service.rs:1244",
+        "src-tauri/crates/dstu-anki/src/apkg_exporter_service.rs:2135"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: owned only inside the listed namespace; elsewhere the database is not identifiable -> unknown"
+    },
+    "revocation_epochs": {
+      "owner": "chat",
+      "schema": [
+        "src-tauri/migrations/chat_v2/V20260910__revocation_epochs_and_budget.sql:29"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: D1 chat data incl. legacy chat; Rust grants.rs:433 writes revocation; todo_executor/session relations."
+    },
+    "roundtrip_marker": {
+      "owner": null,
+      "schema": [
+        "src-tauri/tests/sync_android_device_switch.rs:451",
+        "src-tauri/tests/zip_export_import_restore_tests.rs:65"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104 not-production: schema evidence only from src-tauri/tests, vendor tests or refinery dynamic identifiers; a production write stays unknown and needs re-ruling."
+    },
+    "schema_version": {
+      "owner": "platform:storage",
+      "schema": [
+        "src-tauri/crates/dstu-storage/src/database/mod.rs:1242"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: F3: usage official command/service; migration ledgers; mistakes legacy storage compatibility (not new questions)."
+    },
+    "search_logs": {
+      "owner": "vfs-index",
+      "schema": [
+        "src-tauri/migrations/mistakes/V20260130__init.sql:257"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: legacy LanceVectorStore metadata; Rust lance_vector_store.rs:2897-2974 ensure_base_rag_schema (non-test)."
+    },
+    "sessions": {
+      "owner": null,
+      "schema": [
+        "src-tauri/migrations/browser/V20260711__init.sql:14"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: owned only inside the listed namespace; elsewhere the database is not identifiable -> unknown"
+    },
+    "settings": {
+      "owner": null,
+      "schema": [
+        "src-tauri/crates/dstu-agent/src/chat_v2/super_session/mod.rs:75",
+        "src-tauri/crates/dstu-memory/src/memory/mod.rs:94",
+        "src-tauri/crates/dstu-qbank/src/question_authoring_runner/tests.rs:159",
+        "src-tauri/crates/dstu-qbank/src/question_authoring_runner/tests.rs:289",
+        "src-tauri/crates/dstu-storage/src/database/mod.rs:1242",
+        "src-tauri/migrations/browser/V20260711__init.sql:119",
+        "src-tauri/migrations/mistakes/V20260130__init.sql:142",
+        "src-tauri/tests/secure_store_tests.rs:14",
+        "src-tauri/tests/sync_android_device_switch.rs:427",
+        "src-tauri/tests/sync_android_restart.rs:218",
+        "src-tauri/tests/tools_integration_tests.rs:19"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: owned only inside the listed namespace; elsewhere the database is not identifiable -> unknown"
+    },
+    "site_permissions": {
+      "owner": null,
+      "schema": [
+        "src-tauri/migrations/browser/V20260711__init.sql:100"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: owned only inside the listed namespace; elsewhere the database is not identifiable -> unknown"
+    },
+    "skill_candidates": {
+      "owner": "agent-skills",
+      "schema": [
+        "src-tauri/migrations/chat_v2/V20260909__skill_usage_candidates.sql:66"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: connector ledger / skill usage repositories; L03/L04 call owner."
+    },
+    "skill_usage": {
+      "owner": "agent-skills",
+      "schema": [
+        "src-tauri/migrations/chat_v2/V20260909__skill_usage_candidates.sql:39"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: connector ledger / skill usage repositories; L03/L04 call owner."
+    },
+    "sleep_block": {
+      "owner": "agent-workspace",
+      "schema": [
+        "src-tauri/crates/dstu-agent/src/chat_v2/workspace/database.rs:18",
+        "src-tauri/migrations/chat_v2/V20260130__init.sql:255",
+        "src-tauri/migrations/chat_v2/V20260202__schema_repair.sql:16"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: Rust workspace/database.rs, completion_outbox, sleep/task schema and L05 repositories."
+    },
+    "study_time_daily": {
+      "owner": "review",
+      "schema": [
+        "src-tauri/migrations/vfs/V20261006__study_time.sql:6"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: D1 FSRS/review/mastery/study time; last four legacy review-domain compatibility tables."
+    },
+    "subagent_task": {
+      "owner": "agent-workspace",
+      "schema": [
+        "src-tauri/crates/dstu-agent/src/chat_v2/workspace/database.rs:18",
+        "src-tauri/migrations/chat_v2/V20260130__init.sql:279",
+        "src-tauri/migrations/chat_v2/V20260203__ensure_subagent_task.sql:9"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: Rust workspace/database.rs, completion_outbox, sleep/task schema and L05 repositories."
+    },
+    "synced_items": {
+      "owner": null,
+      "schema": [
+        "src-tauri/tests/sync_regression_tests.rs:345"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104 not-production: schema evidence only from src-tauri/tests, vendor tests or refinery dynamic identifiers; a production write stays unknown and needs re-ruling."
+    },
+    "t": {
+      "owner": null,
+      "schema": [
+        "src-tauri/tests/sync_file_level_e2ee.rs:377"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104 not-production: schema evidence only from src-tauri/tests, vendor tests or refinery dynamic identifiers; a production write stays unknown and needs re-ruling."
+    },
+    "table": {
+      "owner": "vfs-repos",
+      "schema": [
+        "src-tauri/crates/dstu-agent/src/chat_v2/pipeline/compaction/memory_flush.rs:52"
+      ],
+      "evidence": [
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/exam_repo.rs:909",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/exam_repo.rs:1252",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        }
+      ]
+    },
+    "temp_sessions": {
+      "owner": "integration",
+      "schema": [
+        "src-tauri/crates/dstu-storage/src/database/mod.rs:1242",
+        "src-tauri/migrations/mistakes/V20260130__init.sql:67"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: C2-platform correction after architect 15:09 evidence: supersedes only the temp_sessions item in 037376b1e (other 117 unchanged). mistakes.db.temp_sessions business owner is L22-app-commands/integration, not chat. Rust src-tauri/src/commands.rs:166-171 persist_temp_session_to_db, :248-285 modify_temp_session (DB read-back + persist), :356-395 pin_images/unpin_images call modify_temp_session; main host/plugins/integration/api.ts APP_STATE_OWNERS.temp_sessions='L22-app-commands'; candidate 780b9b9e6 host/plugins/integration/repository/temp-sessions.ts and modifyTempSession. F3 schema initialization does not establish runtime business ownership."
+    },
+    "todo_items": {
+      "owner": "vfs-repos",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260308__add_todo_tables.sql:40"
+      ],
+      "evidence": [
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/pomodoro_repo.rs:322",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/todo_repo.rs:890",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/todo_repo.rs:958",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/todo_repo.rs:1024",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/todo_repo.rs:1347",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/todo_repo.rs:1711",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/todo_repo.rs:1914",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/todo_repo.rs:2010",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/todo_repo.rs:2034",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/todo_repo.rs:2096",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/todo_repo.rs:2128",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/todo_repo.rs:2220",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/todo_repo.rs:2228",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/todo_repo.rs:2347",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/todo_repo.rs:2459",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/todo_repo.rs:2477",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/todo_repo.rs:3225",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/todo_repo.rs:3333",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/todo_repo.rs:3369",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        }
+      ]
+    },
+    "todo_lists": {
+      "owner": "vfs-repos",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260308__add_todo_tables.sql:15"
+      ],
+      "evidence": [
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/todo_repo.rs:570",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/todo_repo.rs:695",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/todo_repo.rs:766",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/todo_repo.rs:859",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/todo_repo.rs:936",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/todo_repo.rs:1018",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/todo_repo.rs:1069",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/todo_repo.rs:1129",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/todo_repo.rs:1372",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/todo_repo.rs:1770",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/todo_repo.rs:1942",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/todo_repo.rs:2052",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/todo_repo.rs:2143",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/todo_repo.rs:2244",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/todo_repo.rs:2292",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/todo_repo.rs:2354",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/todo_repo.rs:2484",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/todo_repo.rs:3230",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        }
+      ]
+    },
+    "todo_lists_new": {
+      "owner": "platform:storage-migration",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260309__decouple_todo_from_vfs.sql:19"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: F3 migration temp tables (CREATE->copy->rename/drop) only; no runtime business writer; final tables belong to domain owners."
+    },
+    "tombstone_event_publish": {
+      "owner": "sync-support",
+      "schema": [
+        "src-tauri/crates/dstu-sync/src/data_governance/sync/state.rs:61"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: Rust conflict_resolver.rs/state.rs; support publishes state/conflicts; L20 via same-conn business API."
+    },
+    "tombstone_watermark": {
+      "owner": "sync-support",
+      "schema": [
+        "src-tauri/crates/dstu-sync/src/data_governance/sync/state.rs:61"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: Rust conflict_resolver.rs/state.rs; support publishes state/conflicts; L20 via same-conn business API."
+    },
+    "translations": {
+      "owner": "vfs-repos",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260130__init.sql:199"
+      ],
+      "evidence": [
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/translation_repo.rs:417",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/translation_repo.rs:533",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/translation_repo.rs:580",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/translation_repo.rs:620",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/translation_repo.rs:708",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/translation_repo.rs:823",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/translation_repo.rs:848",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/translation_repo.rs:900",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/translation_repo.rs:1040",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        }
+      ]
+    },
+    "upload_seq": {
+      "owner": "sync-support",
+      "schema": [
+        "src-tauri/crates/dstu-sync/src/data_governance/sync/state.rs:61"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: Rust conflict_resolver.rs/state.rs; support publishes state/conflicts; L20 via same-conn business API."
+    },
+    "vectorized_data": {
+      "owner": "vfs-index",
+      "schema": [
+        "src-tauri/migrations/mistakes/V20260130__init.sql:238"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: legacy LanceVectorStore metadata; Rust lance_vector_store.rs:2897-2974 ensure_base_rag_schema (non-test)."
+    },
+    "vfs_embedding_dims": {
+      "owner": "vfs-repos",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260130__init.sql:750"
+      ],
+      "evidence": [
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/embedding_dim_repo.rs:358",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/embedding_dim_repo.rs:526",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/embedding_dim_repo.rs:605",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/embedding_dim_repo.rs:716",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/embedding_dim_repo.rs:734",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/embedding_dim_repo.rs:752",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/embedding_dim_repo.rs:764",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/embedding_dim_repo.rs:910",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/embedding_dim_repo.rs:1096",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/embedding_dim_repo.rs:1215",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/embedding_dim_repo.rs:1259",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/embedding_repo.rs:267",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/embedding_repo.rs:284",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        }
+      ],
+      "decision": "C2-platform ruling 2026-11-04T11:00Z"
+    },
+    "vfs_index_profiles": {
+      "owner": "vfs-repos",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260714__add_vector_index_profiles.sql:7"
+      ],
+      "evidence": [
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/embedding_dim_repo.rs:542",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/embedding_dim_repo.rs:550",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/embedding_dim_repo.rs:558",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/embedding_dim_repo.rs:580",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/embedding_dim_repo.rs:859",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/embedding_dim_repo.rs:916",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/embedding_dim_repo.rs:931",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/embedding_dim_repo.rs:1100",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/embedding_dim_repo.rs:1295",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/embedding_dim_repo.rs:1308",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        }
+      ],
+      "decision": "C2-platform ruling 2026-11-04T11:00Z"
+    },
+    "vfs_index_segments": {
+      "owner": "vfs-repos",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260130__init.sql:726"
+      ],
+      "evidence": [
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/embedding_dim_repo.rs:1031",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/index_segment_repo.rs:223",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/index_segment_repo.rs:310",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/index_segment_repo.rs:452",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/index_segment_repo.rs:480",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/index_segment_repo.rs:553",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/index_segment_repo.rs:590",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/index_segment_repo.rs:612",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        }
+      ],
+      "decision": "C2-platform ruling 2026-11-04T11:00Z"
+    },
+    "vfs_index_segments_new": {
+      "owner": "platform:storage-migration",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260202__add_segments_fk.sql:39"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: F3 migration temp tables (CREATE->copy->rename/drop) only; no runtime business writer; final tables belong to domain owners."
+    },
+    "vfs_index_units": {
+      "owner": "vfs-repos",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260130__init.sql:691"
+      ],
+      "evidence": [
+        {
+          "plugin": "notes",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/note_repo.rs:2397",
+          "spec": "host/plugins/notes/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/embedding_dim_repo.rs:633",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/embedding_dim_repo.rs:1045",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/embedding_dim_repo.rs:1061",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/embedding_dim_repo.rs:1071",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/embedding_dim_repo.rs:1085",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/embedding_repo.rs:492",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/index_unit_repo.rs:203",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/index_unit_repo.rs:268",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/index_unit_repo.rs:376",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/index_unit_repo.rs:405",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/index_unit_repo.rs:423",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/index_unit_repo.rs:478",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/index_unit_repo.rs:499",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/index_unit_repo.rs:519",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/index_unit_repo.rs:547",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/index_unit_repo.rs:562",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/index_unit_repo.rs:701",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/index_unit_repo.rs:1092",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/resource_repo.rs:505",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/resource_repo.rs:582",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        }
+      ],
+      "decision": "C2-platform ruling 2026-11-04T11:00Z"
+    },
+    "vfs_indexing_config": {
+      "owner": "vfs-repos",
+      "schema": [
+        "src-tauri/migrations/vfs/V20260130__init.sql:665"
+      ],
+      "evidence": [
+        {
+          "plugin": "notes",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/note_repo.rs:3112",
+          "spec": "host/plugins/notes/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/embedding_repo.rs:531",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        },
+        {
+          "plugin": "vfs-repos",
+          "evidence": "src-tauri/crates/dstu-vfs/src/vfs/repos/embedding_repo.rs:1048",
+          "spec": "host/plugins/vfs-repos/SPEC.md"
+        }
+      ],
+      "decision": "X6-OWN-C2-20261104: D1 VFS owner; notes references are not a second owner; L12 schedules via same-conn methods."
+    },
+    "weird": {
+      "owner": null,
+      "schema": [
+        "src-tauri/tests/sync_weird_tests.rs:873"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104 not-production: schema evidence only from src-tauri/tests, vendor tests or refinery dynamic identifiers; a production write stays unknown and needs re-ruling."
+    },
+    "workspace": {
+      "owner": null,
+      "schema": [
+        "src-tauri/crates/dstu-agent/src/chat_v2/workspace/database.rs:18"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: owned only inside the listed namespace; elsewhere the database is not identifiable -> unknown"
+    },
+    "workspace_index": {
+      "owner": "agent-workspace",
+      "schema": [
+        "src-tauri/migrations/chat_v2/V20260130__init.sql:240"
+      ],
+      "evidence": [],
+      "decision": "X6-OWN-C2-20261104: Rust workspace/database.rs, completion_outbox, sleep/task schema and L05 repositories."
+    }
+  },
+  "ambiguous": [],
+  "rulingsWithoutSchema": []
+}

@@ -4,7 +4,6 @@ import {
   MagnifyingGlass,
   Plus,
   X,
-  ArrowClockwise,
   FolderPlus,
   FileText,
   ClipboardText,
@@ -77,9 +76,7 @@ interface DstuAppLauncherProps {
   /** 当前视图是否禁用新建 */
   createDisabled?: boolean;
   /** 刷新当前视图（文件列表 / 导航状态） */
-  onRefresh?: () => void | Promise<void>;
   /** 是否正在刷新 */
-  isRefreshing?: boolean;
 }
 
 /**
@@ -98,8 +95,6 @@ export const DstuAppLauncher: React.FC<DstuAppLauncherProps> = React.memo(({
   onSearchChange,
   searchDisabled = false,
   createDisabled = false,
-  onRefresh,
-  isRefreshing = false,
 }) => {
   const { t } = useTranslation(['learningHub', 'common', 'sidebar']);
   const [isSearchFocused, setIsSearchFocused] = useState(false);
@@ -259,20 +254,6 @@ export const DstuAppLauncher: React.FC<DstuAppLauncherProps> = React.memo(({
 
   const toolbar = (
     <div className={cn('flex items-center gap-1.5', embedded ? 'mb-2 px-1' : 'px-3 py-3 shrink-0')}>
-      {onRefresh && (
-        <DsButton
-          variant="ghost"
-          size="icon"
-          iconOnly
-          onClick={() => void onRefresh()}
-          disabled={isRefreshing}
-          className="shrink-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
-          title={t('common:refresh')}
-          aria-label={t('common:refresh')}
-        >
-          <ArrowClockwise size={embedded ? 18 : 20} className={cn(isRefreshing && 'animate-spin')} />
-        </DsButton>
-      )}
       <div className="flex-1 relative group min-w-0">
         <MagnifyingGlass
           className={cn(
@@ -413,7 +394,8 @@ export const DstuAppLauncher: React.FC<DstuAppLauncherProps> = React.memo(({
       {toolbar}
       <CustomScrollArea className="flex-1 min-h-0">
         <div className="px-2 pb-6">
-          <div className="mt-1 space-y-1">{quickAccessItems.map(renderLegacyNavItem)}</div>
+          {renderSectionTitle(t('learningHub:finder.quickAccess.materials'))}
+          <div className="space-y-1">{quickAccessItems.map(renderLegacyNavItem)}</div>
           {renderSectionTitle(t('learningHub:apps.resourceTypes'))}
           <div className="space-y-1">{resourceTypeItems.map(renderLegacyNavItem)}</div>
           {renderSectionTitle(t('learningHub:finder.quickAccess.media'))}

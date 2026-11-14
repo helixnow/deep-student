@@ -126,15 +126,9 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
     );
 
     return (
-        <div className="flex flex-col h-full min-h-0 flex-1 basis-1/2 min-w-0 bg-muted/10 group/target">
-            {/* 桌面工具栏 */}
-            <div data-wb-blur-surface className="hidden md:flex items-center justify-between px-4 h-10 border-b border-border/50 bg-background/50 backdrop-blur z-10 shrink-0">
-                <span className="text-sm text-foreground/70 flex items-center gap-1.5 min-w-0 truncate">
-                    <Translate size={14} className="shrink-0 text-muted-foreground" />
-                    {t('translation:target_section.title')}
-                </span>
-
-                <div className="flex items-center gap-1 shrink-0">
+        <div className="flex flex-col h-full min-h-0 flex-1 basis-1/2 min-w-0 bg-foreground/[0.015] relative group/target">
+            {/* 桌面右上轻量悬浮动作组（消除独立二级顶栏横线，空态仅保留对照切换） */}
+            <div data-wb-blur-surface className="hidden md:flex items-center gap-0.5 absolute top-2.5 right-3 z-10 rounded-full border border-border/25 bg-background/80 backdrop-blur-md px-1.5 py-0.5 shadow-xs">
                     {/* 对照切换（tooltip 带用途说明，帮助首次用户理解该视图） */}
                     <CommonTooltip content={`${t('translation:comparison.toggle')} · ${t('translation:tabs.comparison_description')}`}>
                         <DsButton
@@ -146,18 +140,18 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                             aria-label={t('translation:comparison.toggle')}
                             className={cn(
                                 COARSE_HIT,
-                                'h-8 w-8 transition-colors',
+                                'h-7 w-7 transition-colors',
                                 showComparison
                                     ? 'text-primary bg-primary/10'
                                     : 'text-muted-foreground hover:text-foreground'
                             )}
                         >
-                            <Columns size={16} />
+                            <Columns size={15} />
                         </DsButton>
                     </CommonTooltip>
 
                     {/* 同步滚动（lg+ 由顶部工具栏承载，这里只补足中等宽度） */}
-                    <div className="flex lg:hidden items-center gap-2 mr-2 px-2 py-1 rounded-md hover:bg-[var(--interactive-hover)] transition-colors">
+                    <div className="flex lg:hidden items-center gap-1.5 px-1.5 py-0.5 rounded-md hover:bg-[var(--interactive-hover)] transition-colors">
                         <Switch
                             id="target-sync-scroll"
                             checked={isSyncScroll}
@@ -171,7 +165,7 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
 
                     {translatedText && (
                         <>
-                            <div className="w-px h-4 bg-border mx-1" />
+                            <div className="w-px h-3.5 bg-border/35 mx-0.5" />
                             <CommonTooltip content={t('translation:target_section.edit')}>
                                 <DsButton
                                     variant="ghost"
@@ -179,9 +173,9 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                                     onClick={onEditTranslation}
                                     disabled={isEditingTranslation || isTranslating}
                                     aria-label={t('translation:target_section.edit')}
-                                    className={cn(COARSE_HIT, "w-8 h-8 text-muted-foreground hover:text-foreground")}
+                                    className={cn(COARSE_HIT, "w-7 h-7 text-muted-foreground hover:text-foreground")}
                                 >
-                                    <PencilSimple size={16} />
+                                    <PencilSimple size={15} />
                                 </DsButton>
                             </CommonTooltip>
                             <CommonTooltip content={isSpeaking ? t('translation:target_section.stop_listen') : t('translation:target_section.listen')}>
@@ -193,11 +187,11 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                                     aria-label={isSpeaking ? t('translation:target_section.stop_listen') : t('translation:target_section.listen')}
                                     className={cn(
                                         COARSE_HIT,
-                                        'h-8 w-8 transition-colors',
+                                        'h-7 w-7 transition-colors',
                                         isSpeaking ? 'text-primary bg-primary/10' : 'text-muted-foreground hover:text-foreground'
                                     )}
                                 >
-                                    <SpeakerHigh size={16} className={isSpeaking ? 'animate-pulse motion-reduce:animate-none' : ''} />
+                                    <SpeakerHigh size={15} className={isSpeaking ? 'animate-pulse motion-reduce:animate-none' : ''} />
                                 </DsButton>
                             </CommonTooltip>
                             <CommonTooltip content={justCopied ? t('translation:target_section.copied') : t('translation:target_section.copy')}>
@@ -207,7 +201,7 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                                     onClick={handleCopy}
                                     disabled={isTranslating}
                                     aria-label={t('translation:target_section.copy')}
-                                    className={cn(COARSE_HIT, "w-8 h-8 text-muted-foreground hover:text-foreground")}
+                                    className={cn(COARSE_HIT, "w-7 h-7 text-muted-foreground hover:text-foreground")}
                                 >
                                     {copyIcon}
                                 </DsButton>
@@ -219,23 +213,22 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                                     onClick={onExportTranslation}
                                     disabled={isTranslating}
                                     aria-label={t('translation:target_section.export')}
-                                    className={cn(COARSE_HIT, "w-8 h-8 text-muted-foreground hover:text-foreground")}
+                                    className={cn(COARSE_HIT, "w-7 h-7 text-muted-foreground hover:text-foreground")}
                                 >
-                                    <Download size={16} />
+                                    <Download size={15} />
                                 </DsButton>
                             </CommonTooltip>
                         </>
                     )}
-                </div>
             </div>
 
             {/* 移动端操作栏 */}
             {translatedText && !isEditingTranslation && (
-                <div className="md:hidden flex items-center justify-between px-3 h-10 border-b border-border/50 bg-background/50 shrink-0">
+                <div className="md:hidden flex items-center justify-between px-3 h-10 border-b border-border/35 bg-background/40 shrink-0">
                     <span className="text-xs text-muted-foreground flex items-center gap-1 min-w-0 truncate">
                         <Translate size={13} className="shrink-0" />
                         {t('translation:target_section.title')}
-                        <span className="tabular-nums text-muted-foreground/60">· {targetCharCount.toLocaleString()}</span>
+                        <span className="font-mono tabular-nums text-muted-foreground/60">· {targetCharCount.toLocaleString()}</span>
                     </span>
                     <div className="flex items-center gap-0.5 shrink-0">
                         <DsButton
@@ -342,7 +335,7 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                         {/* 悬浮状态条：评分 + 字数 */}
                         {translatedText && !isTranslating && (
                             <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between pointer-events-none opacity-0 group-hover/target:opacity-100 [@media(pointer:coarse)]:opacity-100 transition-opacity duration-200">
-                                <div data-wb-blur-surface className="pointer-events-auto bg-background/80 backdrop-blur-sm border rounded-full shadow-sm px-1 py-0.5 flex items-center">
+                                <div data-wb-blur-surface className="pointer-events-auto bg-background/85 backdrop-blur-md border border-border/35 rounded-full shadow-sm px-1 py-0.5 flex items-center">
                                     {[1, 2, 3, 4, 5].map((rating) => (
                                         <DsButton
                                             key={rating}
@@ -364,7 +357,7 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                                         </DsButton>
                                     ))}
                                 </div>
-                                <div data-wb-blur-surface className="bg-background/80 backdrop-blur-sm border rounded-lg px-2 py-1 text-xs text-muted-foreground shadow-sm tabular-nums">
+                                <div data-wb-blur-surface className="bg-background/85 backdrop-blur-md border border-border/35 rounded-full px-2.5 py-1 text-xs text-muted-foreground shadow-sm font-mono tabular-nums">
                                     {targetCharCount.toLocaleString()} {t('translation:stats.characters')}
                                 </div>
                             </div>

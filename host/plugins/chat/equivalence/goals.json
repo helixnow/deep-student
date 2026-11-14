@@ -1,0 +1,278 @@
+{
+  "domain": "chat",
+  "commands": [
+    "chat_v2_goal_get",
+    "chat_v2_goal_pause",
+    "chat_v2_goal_resume",
+    "chat_v2_goal_edit",
+    "chat_v2_goal_clear"
+  ],
+  "scenarios": [
+    {
+      "id": "chat.goal.no_goal_get_clear_and_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "目标会话"
+          }
+        },
+        {
+          "cmd": "chat_v2_goal_get",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_goal_get",
+          "args": {
+            "sessionId": "sess_wp226_missing"
+          }
+        },
+        {
+          "cmd": "chat_v2_goal_get",
+          "args": {
+            "sessionId": "no_prefix_at_all"
+          }
+        },
+        {
+          "cmd": "chat_v2_goal_get",
+          "args": {
+            "sessionId": ""
+          }
+        },
+        {
+          "cmd": "chat_v2_goal_clear",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_goal_clear",
+          "args": {
+            "sessionId": "sess_wp226_missing"
+          }
+        },
+        {
+          "cmd": "chat_v2_goal_pause",
+          "args": {
+            "sessionId": "${0.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_goal_resume",
+          "args": {
+            "sessionId": "${0.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_goal_edit",
+          "args": {
+            "sessionId": "${0.id}",
+            "objective": "完成第三章",
+            "tokenBudget": 1000
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_goal_edit",
+          "args": {
+            "sessionId": "${0.id}",
+            "objective": "   "
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_goal_edit",
+          "args": {
+            "sessionId": "${0.id}",
+            "objective": "",
+            "tokenBudget": 1000
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_goal_edit",
+          "args": {
+            "sessionId": "${0.id}",
+            "objective": "完成",
+            "tokenBudget": 0
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_goal_edit",
+          "args": {
+            "sessionId": "${0.id}",
+            "objective": "完成",
+            "tokenBudget": -5
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_goal_edit",
+          "args": {
+            "sessionId": "${0.id}",
+            "objective": "   ",
+            "tokenBudget": 0
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_goal_edit",
+          "args": {
+            "sessionId": "${0.id}",
+            "objective": "完成",
+            "tokenBudget": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_goal_pause",
+          "args": {
+            "sessionId": "sess_wp226_missing"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_goal_edit",
+          "args": {
+            "sessionId": "${0.id}",
+            "objective": "完成",
+            "tokenBudget": 1.5
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_goal_edit",
+          "args": {
+            "sessionId": "${0.id}",
+            "objective": "完成",
+            "tokenBudget": "100"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_goal_edit",
+          "args": {
+            "sessionId": "${0.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_goal_get",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_goal_pause",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_goal_resume",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_goal_clear",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "chat.goal.subagent_readonly_guard",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "子代理只读",
+            "metadata": {
+              "is_subagent": true
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "字符串不算只读",
+            "metadata": {
+              "is_subagent": "true"
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_goal_get",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_goal_pause",
+          "args": {
+            "sessionId": "${0.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_goal_resume",
+          "args": {
+            "sessionId": "${0.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_goal_edit",
+          "args": {
+            "sessionId": "${0.id}",
+            "objective": "   ",
+            "tokenBudget": 0
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_goal_clear",
+          "args": {
+            "sessionId": "${0.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_goal_pause",
+          "args": {
+            "sessionId": "${1.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_goal_clear",
+          "args": {
+            "sessionId": "${1.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

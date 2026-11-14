@@ -176,17 +176,6 @@ export type {
   EditorComponent,
 } from './editorTypes';
 
-export type {
-  ContextMenuActionHandler,
-} from './contextMenu';
-
-export {
-  buildContextMenu,
-  buildQuickMenu,
-  buildBatchMenu,
-  registerContextMenuActionHandler,
-} from './contextMenu';
-
 // ── 模块适配器（Prompt 10: 各模块接入改造） ──
 
 export {

@@ -1,0 +1,127 @@
+{
+  "domain": "anki",
+  "commands": [
+    "notes_save_asset",
+    "import_apkg_to_library",
+    "get_document_cards",
+    "read_anki_media"
+  ],
+  "scenarios": [
+    {
+      "id": "anki.media.import-then-read-image-audio-svg",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_save_asset",
+          "args": {
+            "subject": "_global",
+            "note_id": "w233-media-stage",
+            "noteId": "w233-media-stage",
+            "base64_data": "UEsDBBQAAAAIAAAAIVwl2+ns2QEAAABAAAAQAAAAY29sbGVjdGlvbi5hbmtpMu3YPW/TQBgH8LvGoRQJgtQhAwMPt7SVrCglWwQVaXCrijSF1ECrqkKHz7Ws+iWyjVBbebDUke/ABAtDB0Y+EPAR2LAdWqVpEBNCQv+fHp91z734dNvj7Wc9N7HpIIx8mVCL3Wacs0dEjDHt13OuMtHn7M801rD4zWLxrQ+sdlbT8xcAAAAAAADAdJlWma3X6zxzEvnasy0ZqbhstO7A6JgGmZ3VnkFlihZdRRt901g3BvR0sLHZGezSE2NXp2BsoL9lUv95r6eTmpoNo6vZpYzNjI7xqjxGECZ2XDaVS8coU78/hj/1g4l0YjKNHXMsd+CpidzSFp+tz8/zrDq6iNDLY+byJYQeLfqhsr0r+ynbOpzcsKjNee2U5QEAAAAAAAAAf9Ex17Ju90QsN5uifSIC6duiLVZl7FpCF8nRMO82dVH8DhDtvYsJa1EYJPmEMFL5eKqPrbQOz/PL6X6a5luPbfzyfqtFm7ZypUjTUf3/keUBAAAAAAAAAP/UDr/G+L3sjnpb1O5+Ubt/ffeJHri+Q3FkPRSWTBrDwBErdy9yC49d6UTSb2y/WF9YoW9nX76//0x7cfgmUG3Lc4cNf9jaH9X/P1geAAAAAAAAAPC/qd6osrm56z8BUEsDBBQAAAAIAAAAIVzDqeayLQAAADAAAAAFAAAAbWVkaWGrVjJQslJKTizRK8hLV9JRMgTxcjIL9HILjIFcIyDXJTMxvSgxVy84zF2pFgBQSwMEFAAAAAgAAAAhXGZDFMc/AAAARgAAAAEAAAAw6wzwc+flkuJiYGDg9fRwCQLSjCDMwQYk5UWPdIIlXBxDKm4l/zl/4IM8AysrE0P8iY+XgBIMnq5+LuucEpoAUEsDBBQAAAAIAAAAIVyPASxdDwAAAB8AAAABAAAAMfN0MWZmAAP+/78nMKADAFBLAwQUAAAACAAAACFcfrjuJEkAAABfAAAAAQAAADKzKS5LV6jIzckrtlXKKCkpsNLXLy8v1ys31ssvStc3MjAw0AeqUFIoz0wpybBVMlRSyEjNTM8oATHtbIpSk0uwSunb2YD02QEAUEsBAhQDFAAAAAgAAAAhXCXb6ezZAQAAAEAAABAAAAAAAAAAAAAAAIABAAAAAGNvbGxlY3Rpb24uYW5raTJQSwECFAMUAAAACAAAACFcw6nmsi0AAAAwAAAABQAAAAAAAAAAAAAAgAEHAgAAbWVkaWFQSwECFAMUAAAACAAAACFcZkMUxz8AAABGAAAAAQAAAAAAAAAAAAAAgAFXAgAAMFBLAQIUAxQAAAAIAAAAIVyPASxdDwAAAB8AAAABAAAAAAAAAAAAAACAAbUCAAAxUEsBAhQDFAAAAAgAAAAhXH647iRJAAAAXwAAAAEAAAAAAAAAAAAAAIAB4wIAADJQSwUGAAAAAAUABQD+AAAASwMAAAAA",
+            "base64Data": "UEsDBBQAAAAIAAAAIVwl2+ns2QEAAABAAAAQAAAAY29sbGVjdGlvbi5hbmtpMu3YPW/TQBgH8LvGoRQJgtQhAwMPt7SVrCglWwQVaXCrijSF1ECrqkKHz7Ws+iWyjVBbebDUke/ABAtDB0Y+EPAR2LAdWqVpEBNCQv+fHp91z734dNvj7Wc9N7HpIIx8mVCL3Wacs0dEjDHt13OuMtHn7M801rD4zWLxrQ+sdlbT8xcAAAAAAADAdJlWma3X6zxzEvnasy0ZqbhstO7A6JgGmZ3VnkFlihZdRRt901g3BvR0sLHZGezSE2NXp2BsoL9lUv95r6eTmpoNo6vZpYzNjI7xqjxGECZ2XDaVS8coU78/hj/1g4l0YjKNHXMsd+CpidzSFp+tz8/zrDq6iNDLY+byJYQeLfqhsr0r+ynbOpzcsKjNee2U5QEAAAAAAAAAf9Ex17Ju90QsN5uifSIC6duiLVZl7FpCF8nRMO82dVH8DhDtvYsJa1EYJPmEMFL5eKqPrbQOz/PL6X6a5luPbfzyfqtFm7ZypUjTUf3/keUBAAAAAAAAAP/UDr/G+L3sjnpb1O5+Ubt/ffeJHri+Q3FkPRSWTBrDwBErdy9yC49d6UTSb2y/WF9YoW9nX76//0x7cfgmUG3Lc4cNf9jaH9X/P1geAAAAAAAAAPC/qd6osrm56z8BUEsDBBQAAAAIAAAAIVzDqeayLQAAADAAAAAFAAAAbWVkaWGrVjJQslJKTizRK8hLV9JRMgTxcjIL9HILjIFcIyDXJTMxvSgxVy84zF2pFgBQSwMEFAAAAAgAAAAhXGZDFMc/AAAARgAAAAEAAAAw6wzwc+flkuJiYGDg9fRwCQLSjCDMwQYk5UWPdIIlXBxDKm4l/zl/4IM8AysrE0P8iY+XgBIMnq5+LuucEpoAUEsDBBQAAAAIAAAAIVyPASxdDwAAAB8AAAABAAAAMfN0MWZmAAP+/78nMKADAFBLAwQUAAAACAAAACFcfrjuJEkAAABfAAAAAQAAADKzKS5LV6jIzckrtlXKKCkpsNLXLy8v1ys31ssvStc3MjAw0AeqUFIoz0wpybBVMlRSyEjNTM8oATHtbIpSk0uwSunb2YD02QEAUEsBAhQDFAAAAAgAAAAhXCXb6ezZAQAAAEAAABAAAAAAAAAAAAAAAIABAAAAAGNvbGxlY3Rpb24uYW5raTJQSwECFAMUAAAACAAAACFcw6nmsi0AAAAwAAAABQAAAAAAAAAAAAAAgAEHAgAAbWVkaWFQSwECFAMUAAAACAAAACFcZkMUxz8AAABGAAAAAQAAAAAAAAAAAAAAgAFXAgAAMFBLAQIUAxQAAAAIAAAAIVyPASxdDwAAAB8AAAABAAAAAAAAAAAAAACAAbUCAAAxUEsBAhQDFAAAAAgAAAAhXH647iRJAAAAXwAAAAEAAAAAAAAAAAAAAIAB4wIAADJQSwUGAAAAAAUABQD+AAAASwMAAAAA",
+            "default_ext": "apkg",
+            "defaultExt": "apkg"
+          }
+        },
+        {
+          "cmd": "import_apkg_to_library",
+          "args": {
+            "path": "${0.absolute_path}"
+          }
+        },
+        {
+          "cmd": "get_document_cards",
+          "args": {
+            "documentId": "${1.documentId}"
+          }
+        },
+        {
+          "cmd": "read_anki_media",
+          "args": {
+            "path": "${2.0.images.0}"
+          }
+        },
+        {
+          "cmd": "read_anki_media",
+          "args": {
+            "path": "${2.0.images.1}"
+          }
+        },
+        {
+          "cmd": "read_anki_media",
+          "args": {
+            "path": "${2.0.images.2}"
+          }
+        },
+        {
+          "cmd": "read_anki_media",
+          "args": {
+            "path": "${2.0.images.0}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.media.reimport-same-package-reuses-files",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_save_asset",
+          "args": {
+            "subject": "_global",
+            "note_id": "w233-media-reimport",
+            "noteId": "w233-media-reimport",
+            "base64_data": "UEsDBBQAAAAIAAAAIVwl2+ns2QEAAABAAAAQAAAAY29sbGVjdGlvbi5hbmtpMu3YPW/TQBgH8LvGoRQJgtQhAwMPt7SVrCglWwQVaXCrijSF1ECrqkKHz7Ws+iWyjVBbebDUke/ABAtDB0Y+EPAR2LAdWqVpEBNCQv+fHp91z734dNvj7Wc9N7HpIIx8mVCL3Wacs0dEjDHt13OuMtHn7M801rD4zWLxrQ+sdlbT8xcAAAAAAADAdJlWma3X6zxzEvnasy0ZqbhstO7A6JgGmZ3VnkFlihZdRRt901g3BvR0sLHZGezSE2NXp2BsoL9lUv95r6eTmpoNo6vZpYzNjI7xqjxGECZ2XDaVS8coU78/hj/1g4l0YjKNHXMsd+CpidzSFp+tz8/zrDq6iNDLY+byJYQeLfqhsr0r+ynbOpzcsKjNee2U5QEAAAAAAAAAf9Ex17Ju90QsN5uifSIC6duiLVZl7FpCF8nRMO82dVH8DhDtvYsJa1EYJPmEMFL5eKqPrbQOz/PL6X6a5luPbfzyfqtFm7ZypUjTUf3/keUBAAAAAAAAAP/UDr/G+L3sjnpb1O5+Ubt/ffeJHri+Q3FkPRSWTBrDwBErdy9yC49d6UTSb2y/WF9YoW9nX76//0x7cfgmUG3Lc4cNf9jaH9X/P1geAAAAAAAAAPC/qd6osrm56z8BUEsDBBQAAAAIAAAAIVzDqeayLQAAADAAAAAFAAAAbWVkaWGrVjJQslJKTizRK8hLV9JRMgTxcjIL9HILjIFcIyDXJTMxvSgxVy84zF2pFgBQSwMEFAAAAAgAAAAhXGZDFMc/AAAARgAAAAEAAAAw6wzwc+flkuJiYGDg9fRwCQLSjCDMwQYk5UWPdIIlXBxDKm4l/zl/4IM8AysrE0P8iY+XgBIMnq5+LuucEpoAUEsDBBQAAAAIAAAAIVyPASxdDwAAAB8AAAABAAAAMfN0MWZmAAP+/78nMKADAFBLAwQUAAAACAAAACFcfrjuJEkAAABfAAAAAQAAADKzKS5LV6jIzckrtlXKKCkpsNLXLy8v1ys31ssvStc3MjAw0AeqUFIoz0wpybBVMlRSyEjNTM8oATHtbIpSk0uwSunb2YD02QEAUEsBAhQDFAAAAAgAAAAhXCXb6ezZAQAAAEAAABAAAAAAAAAAAAAAAIABAAAAAGNvbGxlY3Rpb24uYW5raTJQSwECFAMUAAAACAAAACFcw6nmsi0AAAAwAAAABQAAAAAAAAAAAAAAgAEHAgAAbWVkaWFQSwECFAMUAAAACAAAACFcZkMUxz8AAABGAAAAAQAAAAAAAAAAAAAAgAFXAgAAMFBLAQIUAxQAAAAIAAAAIVyPASxdDwAAAB8AAAABAAAAAAAAAAAAAACAAbUCAAAxUEsBAhQDFAAAAAgAAAAhXH647iRJAAAAXwAAAAEAAAAAAAAAAAAAAIAB4wIAADJQSwUGAAAAAAUABQD+AAAASwMAAAAA",
+            "base64Data": "UEsDBBQAAAAIAAAAIVwl2+ns2QEAAABAAAAQAAAAY29sbGVjdGlvbi5hbmtpMu3YPW/TQBgH8LvGoRQJgtQhAwMPt7SVrCglWwQVaXCrijSF1ECrqkKHz7Ws+iWyjVBbebDUke/ABAtDB0Y+EPAR2LAdWqVpEBNCQv+fHp91z734dNvj7Wc9N7HpIIx8mVCL3Wacs0dEjDHt13OuMtHn7M801rD4zWLxrQ+sdlbT8xcAAAAAAADAdJlWma3X6zxzEvnasy0ZqbhstO7A6JgGmZ3VnkFlihZdRRt901g3BvR0sLHZGezSE2NXp2BsoL9lUv95r6eTmpoNo6vZpYzNjI7xqjxGECZ2XDaVS8coU78/hj/1g4l0YjKNHXMsd+CpidzSFp+tz8/zrDq6iNDLY+byJYQeLfqhsr0r+ynbOpzcsKjNee2U5QEAAAAAAAAAf9Ex17Ju90QsN5uifSIC6duiLVZl7FpCF8nRMO82dVH8DhDtvYsJa1EYJPmEMFL5eKqPrbQOz/PL6X6a5luPbfzyfqtFm7ZypUjTUf3/keUBAAAAAAAAAP/UDr/G+L3sjnpb1O5+Ubt/ffeJHri+Q3FkPRSWTBrDwBErdy9yC49d6UTSb2y/WF9YoW9nX76//0x7cfgmUG3Lc4cNf9jaH9X/P1geAAAAAAAAAPC/qd6osrm56z8BUEsDBBQAAAAIAAAAIVzDqeayLQAAADAAAAAFAAAAbWVkaWGrVjJQslJKTizRK8hLV9JRMgTxcjIL9HILjIFcIyDXJTMxvSgxVy84zF2pFgBQSwMEFAAAAAgAAAAhXGZDFMc/AAAARgAAAAEAAAAw6wzwc+flkuJiYGDg9fRwCQLSjCDMwQYk5UWPdIIlXBxDKm4l/zl/4IM8AysrE0P8iY+XgBIMnq5+LuucEpoAUEsDBBQAAAAIAAAAIVyPASxdDwAAAB8AAAABAAAAMfN0MWZmAAP+/78nMKADAFBLAwQUAAAACAAAACFcfrjuJEkAAABfAAAAAQAAADKzKS5LV6jIzckrtlXKKCkpsNLXLy8v1ys31ssvStc3MjAw0AeqUFIoz0wpybBVMlRSyEjNTM8oATHtbIpSk0uwSunb2YD02QEAUEsBAhQDFAAAAAgAAAAhXCXb6ezZAQAAAEAAABAAAAAAAAAAAAAAAIABAAAAAGNvbGxlY3Rpb24uYW5raTJQSwECFAMUAAAACAAAACFcw6nmsi0AAAAwAAAABQAAAAAAAAAAAAAAgAEHAgAAbWVkaWFQSwECFAMUAAAACAAAACFcZkMUxz8AAABGAAAAAQAAAAAAAAAAAAAAgAFXAgAAMFBLAQIUAxQAAAAIAAAAIVyPASxdDwAAAB8AAAABAAAAAAAAAAAAAACAAbUCAAAxUEsBAhQDFAAAAAgAAAAhXH647iRJAAAAXwAAAAEAAAAAAAAAAAAAAIAB4wIAADJQSwUGAAAAAAUABQD+AAAASwMAAAAA",
+            "default_ext": "apkg",
+            "defaultExt": "apkg"
+          }
+        },
+        {
+          "cmd": "import_apkg_to_library",
+          "args": {
+            "path": "${0.absolute_path}"
+          }
+        },
+        {
+          "cmd": "import_apkg_to_library",
+          "args": {
+            "path": "${0.absolute_path}"
+          }
+        },
+        {
+          "cmd": "get_document_cards",
+          "args": {
+            "documentId": "${2.documentId}"
+          }
+        },
+        {
+          "cmd": "read_anki_media",
+          "args": {
+            "path": "${3.0.images.0}"
+          }
+        },
+        {
+          "cmd": "read_anki_media",
+          "args": {
+            "path": "${3.0.images.2}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "id": "RF-W08-zip64-eocd-at-65535-entries",
+  "kind": "deliberate",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T09:20+08:00",
+  "title": "条目数恰好 65535 时也写 ZIP64 结尾记录",
+  "rust": {
+    "file": "src-tauri/crates/dstu-sync/src/data_governance/backup/zip_export.rs",
+    "line": 1407,
+    "behavior": "zip_writer.finish() 由 zip 0.6.6 写结尾（crate 内 src/write.rs:839），只在条目数 > 65535 时写 ZIP64 EOCD；恰好 65535 时 EOCD 的条目数字段写 0xFFFF（ZIP64 哨兵值）却没有 ZIP64 记录"
+  },
+  "fix": {
+    "files": ["host/platform/zip/core/writer.ts"],
+    "behavior": "条目数 >= 65535（以及中央目录偏移/大小 >= 0xFFFFFFFF）时写 ZIP64 EOCD 与定位器；其余布局与 zip 0.6.6 逐字节一致"
+  },
+  "evidence": "APPNOTE 4.4.1.4 规定字段值为 0xFFFF 时读取方应到 ZIP64 记录取真实值；Rust 产物在这个边界上被 JSZip 等实现拒绝（host/platform/zip/tests/zip.test.ts 的 65535 慢测试用 Rust 生成的夹具复现）。属于容器写法选择，按产品决策登记。",
+  "userVisible": "只在可移植 ZIP 恰好含 65535 个条目时可感知：第三方解压工具（JSZip 等）能打开新版导出的文件，Rust 版导出的同样文件打不开。",
+  "dataCompat": "改变 ZIP 结尾记录（仅 65535 条目这一种情况）。新版产物带标准 ZIP64 EOCD，Rust zip 0.6.6 的读取器支持 ZIP64，旧 Rust 版可以导入；Rust 旧产物新版同样能读（读取器兼容 0xFFFF 无 ZIP64 的写法）。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    { "file": "host/platform/zip/tests/core.test.ts", "name": "RF-W08-zip64-eocd-at-65535-entries: exactly 65535 entries get a ZIP64 end record and stay readable" }
+  ]
+}

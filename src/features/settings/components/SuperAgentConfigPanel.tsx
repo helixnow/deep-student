@@ -70,7 +70,7 @@ export const SuperAgentConfigPanel: React.FC<Props> = ({
   }
 
   return (
-    <div className="mt-2 border-t border-border/40 pt-2" data-testid="superagent-config">
+    <div className="mt-1 pt-1" data-testid="superagent-config">
       <SettingRow
         title={t('config.instructionsTitle')}
         description={t('config.instructionsDescription')}

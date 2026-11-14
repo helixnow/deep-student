@@ -1,0 +1,119 @@
+{
+  "lane": "L24-chatanki",
+  "generator": "deep-student/contracts-extract@1.6.0",
+  "commands": [],
+  "events": [
+    {
+      "name": "fsrs://changed",
+      "dynamic": false,
+      "payload": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "source": {
+                "type": "string"
+              },
+              "action": {
+                "type": "string"
+              },
+              "entityIds": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "runId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "source",
+              "action",
+              "entityIds",
+              "runId"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "x-rust": "serde_json::Value"
+          }
+        ],
+        "x-note": "emitters send different payload shapes"
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-anki/src/fsrs_review_service.rs",
+          "line": 5496,
+          "fn": "emit_fsrs_enqueue_changed",
+          "lane": "L15-review-analytics",
+          "method": "emit"
+        },
+        {
+          "file": "src/chat_v2/tools/chatanki_executor.rs",
+          "line": 8757,
+          "fn": "run_chatanki_pipeline_background",
+          "lane": "L24-chatanki",
+          "method": "emit"
+        },
+        {
+          "file": "src/chat_v2/tools/chatanki_executor.rs",
+          "line": 12230,
+          "fn": "emit_enqueue_review_changed",
+          "lane": "L24-chatanki",
+          "method": "emit"
+        },
+        {
+          "file": "src/chat_v2/tools/chatanki_executor.rs",
+          "line": 12467,
+          "fn": "emit_agent_review_changed",
+          "lane": "L24-chatanki",
+          "method": "emit"
+        },
+        {
+          "file": "src/chat_v2/tools/chatanki_executor.rs",
+          "line": 13719,
+          "fn": "emit_fsrs_cards_changed_with_cards",
+          "lane": "L24-chatanki",
+          "method": "emit"
+        },
+        {
+          "file": "src/chat_v2/tools/chatanki_executor.rs",
+          "line": 13730,
+          "fn": "emit_fsrs_import_changed",
+          "lane": "L24-chatanki",
+          "method": "emit"
+        },
+        {
+          "file": "src/cmd/anki_connect.rs",
+          "line": 938,
+          "fn": "save_anki_cards",
+          "lane": "L16-anki",
+          "method": "emit"
+        },
+        {
+          "file": "src/cmd/apkg_import.rs",
+          "line": 71,
+          "fn": "emit_import_changed",
+          "lane": "L16-anki",
+          "method": "emit"
+        },
+        {
+          "file": "src/cmd/fsrs_review.rs",
+          "line": 101,
+          "fn": "emit_fsrs_changed",
+          "lane": "L15-review-analytics",
+          "method": "emit"
+        },
+        {
+          "file": "src/cmd/fsrs_review.rs",
+          "line": 291,
+          "fn": "fsrs_rate",
+          "lane": "L15-review-analytics",
+          "method": "emit"
+        }
+      ]
+    }
+  ],
+  "$defs": {}
+}

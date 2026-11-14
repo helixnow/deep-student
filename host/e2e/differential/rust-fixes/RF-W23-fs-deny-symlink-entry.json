@@ -1,0 +1,46 @@
+{
+  "id": "RF-W23-fs-deny-symlink-entry",
+  "kind": "deliberate",
+  "status": "proposed",
+  "title": "fs deny 同时按目录项本身的位置判定：受保护目录里的符号链接即使指向 allow 区，也不能被改名覆盖、删除、读取或经它写入；相对链接目标按链接所在目录解析",
+  "rust": {
+    "file": "src-tauri/Cargo.toml",
+    "line": 156,
+    "behavior": "tauri-2.11.5 src/scope/fs.rs is_allowed / is_forbidden：请求路径是符号链接时先 std::fs::read_link，再对目标 canonicalize 后匹配，只看链接目标，不看链接自己所在的位置；read_link 返回相对路径时 canonicalize 按进程 cwd 解析，而不是按链接所在目录。Rust 版没有 fs deny，所以前一点没有可见后果；后一点让相对链接在 Rust 版里通常判成作用域外"
+  },
+  "fix": {
+    "files": ["electron/shell/scope.ts"],
+    "behavior": "resolveForMatch 对每个请求另外产出只用于 deny 的候选：请求的字面形态，以及父目录规范化（canonicalizeParent）后拼回最后一个组件的形态，即目录项本身的位置；目标不存在时目标的字面形态照旧在内。deny 在这些形态与规范形态（链接目标）上任一命中即拒绝，Windows 上照常加去流后缀、去末尾点和空格的形态，macOS / Windows 照常大小写折叠；allow 仍只看规范形态。请求路径是符号链接且 readlink 结果是相对路径时，按链接所在目录拼接后再判定"
+  },
+  "evidence": "上一轮交付报告 .reports/agent-final/W23-1548-da5838e3.md「3c 两项设计」第二项与 A14 复核（.reports/audit/reviews/W23-28d9d042.md 对 3c 的意见：对每个请求都把父目录 realpath 加最后一个组件加进 deny 候选）。复现（真实文件系统，host/e2e/security/shell-builtin-acl.test.ts）：$APPDATA/plugins/user.profile.json 是指向 $APPDATA/profile-source.json 的链接时，主窗口 plugin:fs|rename $APPDATA/evil.json → plugins/user.profile.json 修复前返回 { ok: true }，Host 下次启动读到的是页面写的 profile；remove / read_text_file / write_text_file 同理只按链接目标判定。修复前 electron/tests/fs-scope-deny-symlink-entry.test.ts 5 例中 4 例失败（darwin: expected false to be true；经别名父目录 /Users/heli/Library/alias/com.deepstudent.app/plugins/user.profile.json: expected false to be true；相对链接两例；真实文件系统一例），e2e 一例失败（expected { ok: true, value: null } to match object { ok: false, …(1) }）。链接的建立本身需要页面之外的能力（fs 插件没有 symlink 命令），因此等级为中：用户或其他程序在 plugins 里放了链接（例如把 profile 指到同步盘里的文件）后，主窗口 XSS 可借它替换 Host 的插件配置。Windows 只在假文件系统上验证",
+  "userVisible": "正常使用感知不到。受保护目录（$APPDATA/plugins、各 slot 的 browser-profiles、Electron 用户数据目录、Windows 的 EBWebView 之下）里的符号链接一律拒绝访问，即使它指向允许的位置；链接指向的文件本身经其他允许的路径仍可访问，这是边界：页面仍能直接写链接目标。相对符号链接按其所在目录解析：作用域内指向作用域内文件的相对链接现在可以读写（Rust 版按进程工作目录解析，通常判成作用域外），指向受保护目录的相对链接被拒。scope.ts 由 fs 插件、asset 协议（main.ts:199）和 opener（main.ts:202）共用：相对链接的放宽在 asset 读取和 opener 打开上同样生效（只是读取和打开）；按链接自身位置判定的 deny 也作用于 asset 作用域（RF-W23-asset-scope-protected-deny 接线后它才有 deny），opener 作用域没有 deny，不受影响。",
+  "notes": "撤回依赖：本条（2a1825b7）是三条里最后一个提交，否决时可以直接 git revert；它改写了 RF-W23-fs-scope-literal-win32-normalize 与 RF-W23-fs-deny-protected-ancestor 的代码，那两条的撤回步骤见 RF-W23-fs-deny-protected-ancestor 的 notes。",
+  "dataCompat": "不改变落库数据、同步载荷与备份格式。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "electron/tests/fs-scope-deny-symlink-entry.test.ts",
+      "name": "RF-W23-fs-deny-symlink-entry: a link inside plugins pointing at an allowed file is denied by where the link sits"
+    },
+    {
+      "file": "electron/tests/fs-scope-deny-symlink-entry.test.ts",
+      "name": "RF-W23-fs-deny-symlink-entry: the link is judged at its real location when its parent is reached through another link"
+    },
+    {
+      "file": "electron/tests/fs-scope-deny-symlink-entry.test.ts",
+      "name": "RF-W23-fs-deny-symlink-entry: a relative link target is resolved from the directory holding the link, not from the process cwd"
+    },
+    {
+      "file": "electron/tests/fs-scope-deny-symlink-entry.test.ts",
+      "name": "RF-W23-fs-deny-symlink-entry: other paths keep their verdicts (plain files, missing files, links out of plugins)"
+    },
+    {
+      "file": "electron/tests/fs-scope-deny-symlink-entry.test.ts",
+      "name": "RF-W23-fs-deny-symlink-entry: on the real file system a link inside plugins is denied however it is spelled, and a relative link resolves next to itself"
+    },
+    {
+      "file": "host/e2e/security/shell-builtin-acl.test.ts",
+      "name": "RF-W23-fs-deny-symlink-entry: a link the user put in $APPDATA/plugins cannot be replaced, removed or written through, even when it points into AppData"
+    }
+  ]
+}

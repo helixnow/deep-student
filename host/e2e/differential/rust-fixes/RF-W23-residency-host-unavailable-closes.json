@@ -1,0 +1,25 @@
+{
+  "id": "RF-W23-residency-host-unavailable-closes",
+  "kind": "deliberate",
+  "status": "proposed",
+  "title": "Host 不可用（invoke 抛错或 5 秒内不回答）时关闭主窗口，驻留条件按读取失败的缺省（全不成立）判定：Windows / Linux 照常关闭，macOS 退出",
+  "rust": {
+    "file": "src-tauri/src/lib.rs",
+    "line": 1714,
+    "behavior": "主窗口 CloseRequested 时在同一进程内同步读三个驻留条件与通知策略（quick_assistant.background_enabled、super_session::is_enabled、should_keep_automation_background，lib.rs:1714-1783），不存在“读的一方不在”的情况。各项读取失败时的缺省：快速助手、Super 为 false；automation_background_enabled 为 true，但 load_automations 失败为 false（automations.rs:4779-4792）；所以全部读失败时三个条件都不成立，macOS app.exit(0)，Windows / Linux 照常关闭"
+  },
+  "fix": {
+    "files": ["electron/shell/background-residency.ts"],
+    "behavior": "条件改由 Host 判定，主进程经 invoke 询问。Host 不可用分两种：invoke 抛错时 queryResidencyState 记一条 `[residency] agentAutomation.backgroundResidency unavailable (…)` 告警，再用 get_setting / chat_v2_automation_list 降级读取，这些读取也失败时按上面 Rust 的读取失败缺省，结果是三个条件都不成立；5 秒内不回答时 BackgroundResidency 记 `[residency] background conditions unreadable, treating them as off: no answer within 5000 ms`，同样按全不成立。之后与 Rust 相同：Windows / Linux 照常关闭（只剩隐藏窗口时退出，RF-W23-close-main-quits-with-only-hidden-windows），macOS 退出。窗口在询问前已经藏起，用户看来都是立即消失。本条只登记这一差异，行为没有改"
+  },
+  "evidence": "进程拆分带来的新情况，不是 Rust bug：Rust 版判定在进程内完成，Host 不可用这个分支在 Rust 里不存在。选择按读取失败缺省而不是保守地驻留，理由：Host 不可用时定时任务、Super 会话都跑在 Host 里，本来就不在运行，驻留只会留下一个无窗口、也做不了事的进程；macOS 上这正是 lib.rs:1771-1778 注释要避免的情况。代价：Host 只是慢（超过 5 秒）而不是挂掉时，用户开着后台驻留也会退出，正在运行的后台任务被中断；W23 第 5 轮报告里写了另一种做法（超时时只隐藏、不退出）的理由，留给主编排决定，本轮不改。复现：electron/tests/background-residency.test.ts 的本 RF 用例（每个 invoke 都抛 Host process is not running），以及 `a Host that does not answer in time counts as unreadable` 一例（超时）。",
+  "userVisible": "Host 崩溃或无响应时关闭主窗口：即使开着“关闭窗口后驻留后台”、快速助手后台常驻或 Super 会话，Windows / Linux 关闭窗口（没有其他可见窗口时应用退出），macOS 应用退出，不弹“正在后台运行”通知；Host 正常时没有差别。",
+  "dataCompat": "不改变落库数据、同步载荷与备份格式。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "electron/tests/background-residency.test.ts",
+      "name": "RF-W23-residency-host-unavailable-closes: with the Host down the close falls back to the settings reads, logs the warning, and closes like Rust does when every read fails"
+    }
+  ]
+}

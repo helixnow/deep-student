@@ -1,0 +1,11 @@
+{
+  "id": "RF-P3-workshop-tools", "kind": "deliberate", "status": "proposed",
+  "title": "六个插件工坊工具、用户确认驱动后台生成和托管撤销恢复",
+  "rust": { "file": "src-tauri/src/lib.rs", "line": 1, "behavior": "Rust 没有内置插件工坊工具、后台生成确认卡和保留源码的跨 Host 恢复。" },
+  "fix": { "files": ["host/plugins/plugin-workshop/index.ts", "host/plugins/plugin-workshop/src/tools.ts", "host/plugins/plugin-workshop/src/operations.ts", "host/plugins/plugin-workshop/src/generation.ts", "host/kernel/runtime.ts", "host/kernel/plugin-admin.ts", "host/kernel/workshop-ui-authority.ts"], "behavior": "通过现有 agentTools 注册六个执行工具，只读发现来自实际插件 meta/config 与出货 SDK 资源。propose 不生成，用户 create 后由现有 chatPipeline 使用技能生成文件清单；只允许两个只读发现工具，Host 将文件物化到托管 source。用户管理 facade 仅消费 kernel 对 paired UI/main-local RPC 签发的一次性私有收据，普通 Host 调用无权。安装/恢复经 kernel-only dstuPluginInstaller；实际应用启用结果推进持久 usableVersion，跨 Host 可恢复旧版；自检使用实际授予的 trust 和非 K7 应用服务。" },
+  "evidence": "BRIEF P3.4/6；operations/tools/generation/managed-install 测试分别覆盖六工具边界、会话主体、取消、冻结候选、真实 P1 ZIP/同意/profile 事务及跨 Host 恢复。",
+  "userVisible": "确认卡显示草稿/生成/待确认/已安装/失败/撤销，生成可取消；没有 Agent 自行安装或改 profile 的工具。",
+  "dataCompat": "仅新增应用托管目录与普通插件安装，既有 P1 账本/包事务语义不变。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [{ "file": "host/plugins/plugin-workshop/tests/operations.test.ts", "name": "RF-P3-workshop-tools: never generates on propose; cancels background writes and preserves files" }, { "file": "host/plugins/plugin-workshop/tests/managed-install.test.ts", "name": "RF-P3-workshop-tools: installs through P1 real ZIP/consent/profile transaction; revoke and cross-Host restore retain source without model" }]
+}

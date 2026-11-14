@@ -1,0 +1,364 @@
+[START+115ms] [dialog_result] [WARNING] 用户取消选择
+  Details: {
+  "path": null
+}
+
+[START+299ms] [image_render] [WARNING] 图片渲染
+  Details: {
+  "naturalWidth": 0
+}
+  DOM: {
+  "tagName": "img",
+  "className": "image",
+  "id": "",
+  "attributes": {
+    "class": "image",
+    "src": "assets/a.png",
+    "alt": "a"
+  }
+}
+
+[START+368ms] [click_detected] [WARNING] 模拟点击测试 - 未找到 .uploader 元素
+  Details: {
+  "found": false
+}
+----
+{
+  "timestamp": "START+391ms",
+  "environment": {
+    "isTauri": false,
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) DeepStudentProbe/1.0",
+    "platform": "MacIntel"
+  },
+  "lastSnapshot": {
+    "hasImageBlock": false,
+    "hasImageInline": false,
+    "hasImageEdit": false,
+    "hasPlaceholder": false,
+    "hasUploader": false,
+    "hasHiddenInput": false,
+    "imageBlockClasses": [],
+    "fullDOMPath": []
+  },
+  "logsCount": 20,
+  "errorCount": 1,
+  "warningCount": 3,
+  "logs": [
+    {
+      "time": "START+23ms",
+      "stage": "click_detected",
+      "level": "info",
+      "message": "点击图片上传区域",
+      "details": {
+        "target": "span.icon",
+        "button": 0
+      },
+      "domInfo": {
+        "tagName": "span",
+        "className": "icon",
+        "id": "",
+        "attributes": {
+          "class": "icon"
+        }
+      }
+    },
+    {
+      "time": "START+46ms",
+      "stage": "selector_check",
+      "level": "debug",
+      "message": "选择器检查",
+      "details": {
+        "matched": [
+          "label.uploader"
+        ]
+      }
+    },
+    {
+      "time": "START+69ms",
+      "stage": "tauri_check",
+      "level": "debug",
+      "message": "Tauri 环境检测",
+      "details": {
+        "isTauri": false
+      }
+    },
+    {
+      "time": "START+92ms",
+      "stage": "dialog_open",
+      "level": "info",
+      "message": "打开文件对话框",
+      "details": {
+        "multiple": false,
+        "filters": [
+          "png",
+          "jpg"
+        ]
+      }
+    },
+    {
+      "time": "START+115ms",
+      "stage": "dialog_result",
+      "level": "warning",
+      "message": "用户取消选择",
+      "details": {
+        "path": null
+      }
+    },
+    {
+      "time": "START+138ms",
+      "stage": "file_read",
+      "level": "debug",
+      "message": "proxyDomURL 被调用",
+      "details": {
+        "url": "assets/a.png"
+      }
+    },
+    {
+      "time": "START+161ms",
+      "stage": "file_convert",
+      "level": "success",
+      "message": "Base64 转换成功",
+      "details": {
+        "length": 1234
+      }
+    },
+    {
+      "time": "START+184ms",
+      "stage": "upload_start",
+      "level": "info",
+      "message": "调用 notes_save_asset",
+      "details": {
+        "noteId": "note_1",
+        "size": 2048
+      }
+    },
+    {
+      "time": "START+207ms",
+      "stage": "upload_complete",
+      "level": "success",
+      "message": "notes_save_asset 返回成功",
+      "details": {
+        "path": "assets/a.png"
+      }
+    },
+    {
+      "time": "START+230ms",
+      "stage": "node_find",
+      "level": "debug",
+      "message": "查找节点",
+      "details": {
+        "found": true
+      }
+    },
+    {
+      "time": "START+253ms",
+      "stage": "node_update",
+      "level": "success",
+      "message": "更新节点"
+    },
+    {
+      "time": "START+276ms",
+      "stage": "node_insert",
+      "level": "info",
+      "message": "插入节点",
+      "details": {
+        "pos": 12
+      }
+    },
+    {
+      "time": "START+299ms",
+      "stage": "image_render",
+      "level": "warning",
+      "message": "图片渲染",
+      "details": {
+        "naturalWidth": 0
+      },
+      "domInfo": {
+        "tagName": "img",
+        "className": "image",
+        "id": "",
+        "attributes": {
+          "class": "image",
+          "src": "assets/a.png",
+          "alt": "a"
+        }
+      }
+    },
+    {
+      "time": "START+322ms",
+      "stage": "click_detected",
+      "level": "debug",
+      "message": "点击普通文本",
+      "domInfo": {
+        "tagName": "em",
+        "className": "",
+        "id": "",
+        "attributes": {}
+      }
+    },
+    {
+      "time": "START+345ms",
+      "stage": "dom_snapshot",
+      "level": "info",
+      "message": "DOM 快照",
+      "imageBlockSnapshot": {
+        "hasImageBlock": true,
+        "hasImageInline": false,
+        "hasImageEdit": true,
+        "hasPlaceholder": true,
+        "hasUploader": true,
+        "hasHiddenInput": true,
+        "imageBlockClasses": [
+          "milkdown-image-block",
+          "selected",
+          "empty"
+        ],
+        "fullDOMPath": [
+          "div.milkdown-image-block.selected.empty",
+          "div.image-edit",
+          "div.placeholder",
+          "label.uploader"
+        ],
+        "hiddenInputId": "upload-1",
+        "uploaderForAttr": "upload-1"
+      }
+    },
+    {
+      "time": "START+368ms",
+      "stage": "error",
+      "level": "error",
+      "message": "图片保存失败",
+      "details": {
+        "error": "ENOSPC: no space left on device"
+      }
+    },
+    {
+      "time": "START+368ms",
+      "stage": "click_detected",
+      "level": "info",
+      "message": "模拟点击测试 - 找到 .uploader 元素",
+      "details": {
+        "found": true
+      },
+      "domInfo": {
+        "tagName": "label",
+        "className": "uploader",
+        "id": "",
+        "attributes": {
+          "class": "uploader",
+          "for": "upload-1"
+        }
+      },
+      "selectorMatches": [
+        {
+          "selector": "label.uploader",
+          "matched": true,
+          "matchedElement": {
+            "tagName": "label",
+            "className": "uploader",
+            "id": "",
+            "attributes": {
+              "class": "uploader",
+              "for": "upload-1"
+            }
+          }
+        },
+        {
+          "selector": ".uploader",
+          "matched": true,
+          "matchedElement": {
+            "tagName": "label",
+            "className": "uploader",
+            "id": "",
+            "attributes": {
+              "class": "uploader",
+              "for": "upload-1"
+            }
+          }
+        },
+        {
+          "selector": ".placeholder",
+          "matched": true,
+          "matchedElement": {
+            "tagName": "div",
+            "className": "placeholder",
+            "id": "",
+            "attributes": {
+              "class": "placeholder"
+            }
+          }
+        },
+        {
+          "selector": ".image-edit",
+          "matched": true,
+          "matchedElement": {
+            "tagName": "div",
+            "className": "image-edit",
+            "id": "",
+            "attributes": {
+              "class": "image-edit"
+            }
+          }
+        },
+        {
+          "selector": ".link-importer",
+          "matched": false
+        },
+        {
+          "selector": ".milkdown-image-block",
+          "matched": true,
+          "matchedElement": {
+            "tagName": "div",
+            "className": "milkdown-image-block selected empty",
+            "id": "",
+            "attributes": {
+              "class": "milkdown-image-block selected empty"
+            }
+          }
+        },
+        {
+          "selector": ".milkdown-image-inline",
+          "matched": false
+        },
+        {
+          "selector": "input[type=\"file\"]",
+          "matched": false
+        }
+      ]
+    },
+    {
+      "time": "START+368ms",
+      "stage": "click_detected",
+      "level": "warning",
+      "message": "模拟点击测试 - 未找到 .uploader 元素",
+      "details": {
+        "found": false
+      }
+    },
+    {
+      "time": "START+368ms",
+      "stage": "dom_snapshot",
+      "level": "info",
+      "message": "手动触发 DOM 快照",
+      "imageBlockSnapshot": {
+        "hasImageBlock": false,
+        "hasImageInline": false,
+        "hasImageEdit": false,
+        "hasPlaceholder": false,
+        "hasUploader": false,
+        "hasHiddenInput": false,
+        "imageBlockClasses": [],
+        "fullDOMPath": []
+      }
+    },
+    {
+      "time": "START+391ms",
+      "stage": "tauri_check",
+      "level": "success",
+      "message": "Tauri 环境"
+    }
+  ]
+}
+----
+success: 已复制 3 条日志
+success: 已复制完整诊断报告

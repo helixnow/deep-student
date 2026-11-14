@@ -1,0 +1,27 @@
+{
+  "id": "RF-W09-chat-dev-integration-test-copy-localized",
+  "kind": "deliberate",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T14:25:00+08:00",
+  "title": "开发构建的 Chat V2 集成测试页与测试控制改用已有的 chatV2:dev.* 词条，英文界面显示英文",
+  "rust": {
+    "file": "src/features/chat/dev/IntegrationTest.tsx",
+    "line": 428,
+    "behavior": "Rust 快照的 chatV2.json 已有 dev.integrationTest.{runTests,testLogs,acceptanceChecklist,checklist.*} 与 dev.testControls.{title,messages} 的中英文词条，但集成测试页的“运行测试”按钮（IntegrationTest.tsx:428）、“测试日志”（476）、“验收清单”及 10 条清单项（498-511），测试控制的标题“测试控制”（TestControls.tsx:181）与“N 条消息”（197）仍写死中文，英文界面也显示中文"
+  },
+  "fix": {
+    "files": ["src/features/chat/dev/IntegrationTest.tsx", "src/features/chat/dev/TestControls.tsx"],
+    "behavior": "上述文字改读对应的已有词条，不新增词条。zh-CN 词条值与原文逐字相同（中文界面不变）；en-US 显示 Run Tests、Test Logs、Acceptance Checklist、Send message flow complete 等与 Test Controls、N messages"
+  },
+  "evidence": "hardcoded-copy 门禁基线；词条在 Rust 快照里就已存在且中文与原文一致，只是组件没有引用。",
+  "userVisible": "只在开发构建可见：集成测试页经 lazyComponents.tsx 的 LazyChatV2IntegrationTest 只在 import.meta.env.DEV 下装配。英文界面下这些文字变为英文；中文界面不变。",
+  "dataCompat": "只改前端显示；不改 IPC 载荷、落库数据、同步载荷与备份格式。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "tests/vitest/chat/chatDevPagesCopy.test.tsx",
+      "name": "RF-W09-chat-dev-integration-test-copy-localized: %s test controls header, integration test page and acceptance checklist"
+    }
+  ]
+}

@@ -235,6 +235,7 @@ export function getChatCommands(): Command[] {
       return {
         ...command,
         visibleInViews: CHAT_READY_COMMAND_VIEWS,
+        workbenchApps: ['chat'],
         isEnabled: (deps) => {
           if (!isChatCommandContextEnabled(deps)) return false;
           return previousIsEnabled ? previousIsEnabled(deps) : true;

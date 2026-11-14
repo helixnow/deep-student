@@ -1,0 +1,20 @@
+{
+  "scene": "anki",
+  "steps": [
+    {
+      "name": "boot",
+      "order": "sequence",
+      "calls": [
+        "listen:anki_generation_event",
+        "list_document_sessions(limit)",
+        "get_setting(key)",
+        "save_setting(key,value)",
+        "import_builtin_templates()",
+        "get_all_custom_templates()",
+        "get_default_template_id()",
+        "get_prevent_sleep()",
+        "get_anki_stats()"
+      ]
+    }
+  ]
+}

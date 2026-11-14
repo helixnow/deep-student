@@ -9,14 +9,13 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Archive,
-  ArrowClockwise,
   ArrowsLeftRight,
   CheckCircle,
   Database,
   Gauge,
   HardDrive,
+  QrCode,
   Shield,
-  ShieldCheck,
   Spinner,
   Warning,
   XCircle,
@@ -26,6 +25,7 @@ import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/shad/Table';
 import { settingsQuietTableRowClassName } from '../SettingsCommon';
+import { GroupTitle } from '../settingsTabPrimitives';
 import type {
   HealthCheckResponse,
   MigrationStatusResponse,
@@ -37,7 +37,6 @@ export interface OverviewTabProps {
   migrationStatus: MigrationStatusResponse | null;
   healthCheck: HealthCheckResponse | null;
   loading: boolean;
-  onRefresh: () => void;
   onRunHealthCheck: () => void;
   /** 最近一次备份验证结果 */
   lastAutoVerifyResult?: AutoVerifyResponse | null;
@@ -47,18 +46,20 @@ export interface OverviewTabProps {
   onVerifyLatestBackup?: () => void;
   /** 打开归档会话 */
   onOpenArchive?: () => void;
+  /** 打开扫码同步与跨设备配对 */
+  onOpenSync?: () => void;
 }
 
 export const OverviewTab: React.FC<OverviewTabProps> = ({
   migrationStatus,
   healthCheck,
   loading,
-  onRefresh,
   onRunHealthCheck,
   lastAutoVerifyResult,
   isVerifying,
   onVerifyLatestBackup,
   onOpenArchive,
+  onOpenSync,
 }) => {
   const { t } = useTranslation(['data', 'common']);
   const pendingMigrationCount = healthCheck?.pending_migrations_count ?? 0;
@@ -75,7 +76,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
             <Database className="h-4 w-4" />
             {t('data:governance.global_version')}
           </div>
-          <div className="text-2xl font-semibold text-foreground">
+          <div className="text-2xl font-semibold tabular-nums text-foreground">
             v{migrationStatus?.global_version ?? '-'}
           </div>
         </div>
@@ -110,7 +111,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
             {t('data:governance.databases')}
           </div>
           <div className="flex items-baseline gap-2">
-            <div className="text-2xl font-semibold text-foreground">
+            <div className="text-2xl font-semibold tabular-nums text-foreground">
               {healthCheck?.initialized_count ?? 0}/{healthCheck?.total_databases ?? 0}
             </div>
             <span className="text-xs text-muted-foreground">
@@ -125,7 +126,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
             {t('data:governance.pending_migrations_label')}
           </div>
           <div className="flex items-baseline gap-2">
-            <div className={`text-2xl font-semibold ${
+            <div className={`text-2xl font-semibold tabular-nums ${
               hasPendingMigrations
                 ? 'text-warning' 
                 : 'text-foreground'
@@ -140,6 +141,30 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           </div>
         </div>
       </div>
+
+      {onOpenSync && (
+        <div className="rounded-2xl bg-muted p-4" data-testid="overview-qr-sync-card">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 items-start gap-3">
+              <div className="mt-0.5 rounded-md bg-primary/10 p-2 text-primary">
+                <QrCode className="h-4 w-4" />
+              </div>
+              <div className="min-w-0 space-y-1">
+                <p className="text-sm font-medium text-foreground">
+                  {t('data:governance.qr_sync_overview_title')}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {t('data:governance.qr_sync_overview_desc')}
+                </p>
+              </div>
+            </div>
+            <DsButton variant="outline" size="sm" onClick={onOpenSync} className="shrink-0">
+              <QrCode className="h-3.5 w-3.5" />
+              {t('data:governance.qr_sync_overview_action')}
+            </DsButton>
+          </div>
+        </div>
+      )}
 
       {onOpenArchive && (
         <div className="rounded-2xl bg-muted p-4">
@@ -166,30 +191,29 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
       )}
 
       {/* 最近备份验证 */}
-      <div className="rounded-2xl bg-muted p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-            <ShieldCheck className="h-4 w-4" />
-            {t('data:governance.last_verification')}
-          </div>
-          {onVerifyLatestBackup && (
-            <DsButton
-              variant="outline"
-              size="sm"
-              onClick={onVerifyLatestBackup}
-              disabled={loading || isVerifying}
-            >
-              {isVerifying ? (
-                <Spinner className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-              ) : (
-                <Shield className="h-3.5 w-3.5 mr-1.5" />
-              )}
-              {t('data:governance.verify_latest_backup')}
-            </DsButton>
-          )}
-        </div>
-
-        {lastAutoVerifyResult ? (
+      <section className="min-w-0">
+        <GroupTitle
+          title={t('data:governance.last_verification')}
+          actions={
+            onVerifyLatestBackup ? (
+              <DsButton
+                variant="outline"
+                size="sm"
+                onClick={onVerifyLatestBackup}
+                disabled={loading || isVerifying}
+              >
+                {isVerifying ? (
+                  <Spinner className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                ) : (
+                  <Shield className="h-3.5 w-3.5 mr-1.5" />
+                )}
+                {t('data:governance.verify_latest_backup')}
+              </DsButton>
+            ) : undefined
+          }
+        />
+        <div className="rounded-2xl bg-muted p-4 space-y-3">
+          {lastAutoVerifyResult ? (
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="space-y-0.5">
               <div className="text-xs text-muted-foreground">
@@ -261,7 +285,8 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
             ))}
           </div>
         )}
-      </div>
+        </div>
+      </section>
 
       {/* Schema 迁移待执行（无错误，重启即可） */}
       {hasPendingMigrations && !(migrationStatus?.has_pending_migrations && migrationStatus.last_error) && (
@@ -316,30 +341,20 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
         </div>
       )}
 
-      <div className="border-t border-border/40" />
-
       {/* 数据库状态列表 */}
-      <div className="space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="space-y-1">
-            <h3 className="text-base font-semibold text-foreground">
-              {t('data:governance.database_status')}
-            </h3>
-            <p className="text-sm text-muted-foreground">
-              {t('data:governance.database_status_desc')}
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <DsButton variant="outline" size="sm" onClick={onRefresh} disabled={loading}>
-              <ArrowClockwise className={`h-3.5 w-3.5 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
-              {t('common:actions.refresh')}
-            </DsButton>
-            <DsButton variant="outline" size="sm" onClick={onRunHealthCheck} disabled={loading}>
-              <Shield className="h-3.5 w-3.5 mr-1.5" />
-              {t('data:governance.run_health_check')}
-            </DsButton>
-          </div>
-        </div>
+      <section className="min-w-0">
+        <GroupTitle
+          title={t('data:governance.database_status')}
+          description={t('data:governance.database_status_desc')}
+          actions={
+            <>
+              <DsButton variant="outline" size="sm" onClick={onRunHealthCheck} disabled={loading}>
+                <Shield className="h-3.5 w-3.5 mr-1.5" />
+                {t('data:governance.run_health_check')}
+              </DsButton>
+            </>
+          }
+        />
 
         <div className="hidden md:block">
           <CustomScrollArea
@@ -440,7 +455,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           </CustomScrollArea>
         </div>
 
-        <div className="space-y-2 md:hidden">
+        <div className="space-y-2 rounded-2xl bg-muted p-4 md:hidden">
           {healthCheckDatabases.map((db) => (
             <div key={db.id} className="space-y-3 rounded-md border border-border/40 bg-background/50 p-3">
               <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
@@ -524,7 +539,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
             </div>
           )}
         </div>
-      </div>
+      </section>
 
       {/* 依赖检查结果 */}
       {healthCheck && !healthCheck.dependency_check_passed && healthCheck.dependency_error && (

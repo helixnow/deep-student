@@ -61,15 +61,21 @@
   color: hsl(var(--muted-foreground));
 }
 
-/* ---------- 筛选 / 排序行 ---------- */
+/* ---------- 筛选 / 排序行（单行横向控制轨，不换行堆高） ---------- */
 
 .fc-lib-filters {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   min-width: 0;
   font-size: 12px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.fc-lib-filters::-webkit-scrollbar {
+  display: none;
 }
 
 .fc-lib-filters[hidden] {
@@ -94,9 +100,10 @@
 
 .fc-lib-filters-group {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 4px;
+  flex-shrink: 0;
   min-width: 0;
 }
 
@@ -326,23 +333,24 @@
 .fc-lib-row {
   position: relative;
   outline: none;
+  border-radius: 8px;
   transition: background-color 120ms ease-out;
 }
 
 .fc-lib-row:hover {
-  background: color-mix(in hsl, hsl(var(--muted)) 26%, transparent 74%);
+  background: hsl(var(--foreground) / 0.035);
 }
 
 .fc-lib-row[data-selected='true'] {
-  background: color-mix(in hsl, hsl(var(--info)) 8%, transparent 92%);
+  background: color-mix(in hsl, hsl(var(--info)) 7%, transparent 93%);
 }
 
 .fc-lib-row[data-expanded='true'] {
-  background: color-mix(in hsl, hsl(var(--muted)) 20%, transparent 80%);
+  background: hsl(var(--foreground) / 0.025);
 }
 
 .fc-lib-row:focus-visible {
-  box-shadow: inset 0 0 0 2px hsl(var(--ring) / 0.55);
+  box-shadow: inset 0 0 0 1.5px hsl(var(--ring) / 0.5);
 }
 
 .fc-lib-row-main {
@@ -383,47 +391,59 @@
   }
 }
 
-/* ---------- 状态徽标 ---------- */
+/* ---------- 状态指示（6px 语义微圆点 + 安静文本，无彩色胶囊底） ---------- */
 
 .fc-lib-badge {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  padding: 1px 6px;
-  border-radius: 3px;
-  font-size: 10px;
-  line-height: 1.5;
+  gap: 5px;
+  padding: 0;
+  border-radius: 0;
+  font-size: 11.5px;
+  line-height: 1.4;
   white-space: nowrap;
-  background: color-mix(in hsl, hsl(var(--muted)) 55%, transparent 45%);
+  background: transparent;
   color: hsl(var(--muted-foreground));
 }
 
-.fc-lib-badge[data-status='new'] {
-  background: color-mix(in hsl, hsl(var(--info)) 14%, transparent 86%);
-  color: hsl(var(--info));
+.fc-lib-badge::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: hsl(var(--muted-foreground) / 0.45);
 }
 
-.fc-lib-badge[data-status='learning'],
-.fc-lib-badge[data-status='relearning'] {
-  background: color-mix(in hsl, hsl(var(--warning)) 16%, transparent 84%);
-  color: hsl(var(--warning));
+.fc-lib-badge[data-status='new']::before {
+  background: hsl(var(--info));
 }
 
-.fc-lib-badge[data-status='review'] {
-  background: color-mix(in hsl, hsl(var(--success)) 14%, transparent 86%);
-  color: hsl(var(--success));
+.fc-lib-badge[data-status='learning']::before,
+.fc-lib-badge[data-status='relearning']::before {
+  background: hsl(var(--warning));
+}
+
+.fc-lib-badge[data-status='review']::before {
+  background: hsl(var(--success));
 }
 
 .fc-lib-badge[data-status='suspended'] {
-  background: color-mix(in hsl, hsl(var(--neutral, var(--muted))) 40%, transparent 60%);
-  color: hsl(var(--muted-foreground));
+  color: hsl(var(--muted-foreground) / 0.7);
   text-decoration: line-through;
 }
 
+.fc-lib-badge[data-status='suspended']::before {
+  background: hsl(var(--muted-foreground) / 0.35);
+}
+
 .fc-lib-badge[data-status='due'] {
-  background: color-mix(in hsl, hsl(var(--danger)) 13%, transparent 87%);
   color: hsl(var(--danger));
   font-weight: 500;
+}
+
+.fc-lib-badge[data-status='due']::before {
+  background: hsl(var(--danger));
 }
 
 /* ---------- 行内展开（grid rows 高度动画） ---------- */
@@ -459,25 +479,38 @@
   cursor: default;
 }
 
+/* 单层扁平预览容器：不再在行内嵌多层边框盒与悬浮阴影 */
+.fc-lib-paper {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid hsl(var(--border) / 0.35);
+  border-radius: 8px;
+  background: hsl(var(--muted) / 0.15);
+}
+
 .fc-lib-face {
-  padding: 8px 10px;
-  border: 1px solid color-mix(in hsl, hsl(var(--border)) 40%, transparent 60%);
-  border-radius: 6px;
-  background: color-mix(in hsl, hsl(var(--card)) 70%, transparent 30%);
-  font-size: 12.5px;
-  line-height: 1.5;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font-size: 13px;
+  line-height: 1.6;
   color: hsl(var(--foreground));
   white-space: pre-wrap;
   word-break: break-word;
 }
 
+.fc-lib-face + .fc-lib-face {
+  padding-top: 10px;
+  border-top: 1px solid hsl(var(--border) / 0.35);
+}
+
 .fc-lib-face-label {
   display: block;
   margin-bottom: 3px;
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  font-size: 11.5px;
+  font-weight: 500;
   color: hsl(var(--muted-foreground));
 }
 

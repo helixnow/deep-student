@@ -1,0 +1,1376 @@
+{
+  "domain": "agent-skills",
+  "commands": [
+    "skill_list_directories",
+    "skill_create",
+    "skill_read_file",
+    "skill_list_package_files",
+    "skill_update",
+    "skill_delete",
+    "skill_export_tap",
+    "skill_import_zip",
+    "skill_probe_requires",
+    "skill_tap_catalog",
+    "skill_tap_install"
+  ],
+  "scenarios": [
+    {
+      "id": "skills.list_directories.missing_hidden_files_only",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "skill_list_directories",
+          "args": {
+            "path": "~/.deep-student/skills/w0-ld"
+          }
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills/w0-ld",
+            "skillId": "alpha",
+            "content": "---\nname: w0-simple\ndescription: equivalence seed\n---\n# Simple\n"
+          }
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills/w0-ld/.hidden",
+            "skillId": "h1",
+            "content": "---\nname: w0-simple\ndescription: equivalence seed\n---\n# Simple\n"
+          }
+        },
+        {
+          "cmd": "skill_list_directories",
+          "args": {
+            "path": "~/.deep-student/skills/w0-ld"
+          }
+        },
+        {
+          "cmd": "skill_list_directories",
+          "args": {
+            "path": "~/.deep-student/skills/w0-ld/alpha"
+          }
+        },
+        {
+          "cmd": "skill_list_directories",
+          "args": {
+            "path": "${1.path}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "skills.list_directories.multi_entry_order",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills/w0-order",
+            "skillId": "c-skill",
+            "content": "---\nname: w0-simple\ndescription: equivalence seed\n---\n# Simple\n"
+          }
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills/w0-order",
+            "skillId": "a-skill",
+            "content": "---\nname: w0-simple\ndescription: equivalence seed\n---\n# Simple\n"
+          }
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills/w0-order",
+            "skillId": "b-skill",
+            "content": "---\nname: w0-simple\ndescription: equivalence seed\n---\n# Simple\n"
+          }
+        },
+        {
+          "cmd": "skill_list_directories",
+          "args": {
+            "path": "~/.deep-student/skills/w0-order"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "skills.list_directories.traversal_rejected",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "skill_list_directories",
+          "args": {
+            "path": "/w0-nonexistent-outside"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_list_directories",
+          "args": {
+            "path": "~/.deep-student/skills/../w0-escape"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_list_directories",
+          "args": {
+            "path": "~"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_list_directories",
+          "args": {
+            "path": ""
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": []
+      },
+      "normalize": []
+    },
+    {
+      "id": "skills.read_file.success_and_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills/w0-rf",
+            "skillId": "alpha",
+            "content": "---\nname: w0-rf\n---\n中文内容 ✓\n"
+          }
+        },
+        {
+          "cmd": "skill_read_file",
+          "args": {
+            "path": "${0.path}"
+          }
+        },
+        {
+          "cmd": "skill_read_file",
+          "args": {
+            "path": "~/.deep-student/skills/w0-rf/alpha/SKILL.md"
+          }
+        },
+        {
+          "cmd": "skill_read_file",
+          "args": {
+            "path": "~/.deep-student/skills/w0-rf/./alpha/SKILL.md"
+          }
+        },
+        {
+          "cmd": "skill_read_file",
+          "args": {
+            "path": "~/.deep-student/skills/w0-rf/alpha/MISSING.md"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_read_file",
+          "args": {
+            "path": "~/.deep-student/skills/w0-rf/alpha"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_read_file",
+          "args": {
+            "path": "/etc/hostname"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_read_file",
+          "args": {
+            "path": "~/.deep-student/skills/../../w0-rf-escape.md"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "skills.list_package_files.tree_skip_depth",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills/w0-pf",
+            "skillId": "pkg",
+            "content": "---\nname: w0-simple\ndescription: equivalence seed\n---\n# Simple\n"
+          }
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills/w0-pf/pkg/references",
+            "skillId": "guide",
+            "content": "# guide\n"
+          }
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills/w0-pf/pkg/scripts",
+            "skillId": "tool",
+            "content": "echo tool\n"
+          }
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills/w0-pf/pkg/node_modules",
+            "skillId": "dep",
+            "content": "x"
+          }
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills/w0-pf/pkg/.cache",
+            "skillId": "c1",
+            "content": "x"
+          }
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills/w0-pf/pkg/build",
+            "skillId": "b1",
+            "content": "x"
+          }
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills/w0-pf/pkg/d1/d2/d3",
+            "skillId": "d4",
+            "content": "depth4"
+          }
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills/w0-pf/pkg/d1/d2/d3/d4",
+            "skillId": "d5",
+            "content": "depth5"
+          }
+        },
+        {
+          "cmd": "skill_list_package_files",
+          "args": {
+            "path": "~/.deep-student/skills/w0-pf/pkg"
+          }
+        },
+        {
+          "cmd": "skill_list_package_files",
+          "args": {
+            "path": "~/.deep-student/skills/w0-pf/pkg/"
+          }
+        },
+        {
+          "cmd": "skill_list_package_files",
+          "args": {
+            "path": "${0.path}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_list_package_files",
+          "args": {
+            "path": "~/.deep-student/skills/w0-pf/pkg/d1"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_list_package_files",
+          "args": {
+            "path": "~/.deep-student/skills/w0-pf/none"
+          }
+        },
+        {
+          "cmd": "skill_list_package_files",
+          "args": {
+            "path": "/w0-outside-pkg"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "skills.create.success_and_validation",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills/w0-cr/nested/base",
+            "skillId": "alpha_1-x",
+            "content": "---\nname: w0-simple\ndescription: equivalence seed\n---\n# Simple\n"
+          }
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills/w0-cr",
+            "skillId": "技能一",
+            "content": "---\nname: w0-simple\ndescription: equivalence seed\n---\n# Simple\n"
+          }
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills/w0-cr",
+            "skillId": "bad id",
+            "content": "---\nname: w0-simple\ndescription: equivalence seed\n---\n# Simple\n"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills/w0-cr",
+            "skillId": "a.b",
+            "content": "---\nname: w0-simple\ndescription: equivalence seed\n---\n# Simple\n"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills/w0-cr",
+            "skillId": "../escape",
+            "content": "---\nname: w0-simple\ndescription: equivalence seed\n---\n# Simple\n"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills/w0-cr",
+            "skillId": "a/b",
+            "content": "---\nname: w0-simple\ndescription: equivalence seed\n---\n# Simple\n"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills/w0-cr",
+            "skillId": "",
+            "content": "---\nname: w0-simple\ndescription: equivalence seed\n---\n# Simple\n"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills/w0-cr/nested/base",
+            "skillId": "alpha_1-x",
+            "content": "---\nname: w0-simple\ndescription: equivalence seed\n---\n# Simple\n"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "/w0-outside-base",
+            "skillId": "alpha",
+            "content": "---\nname: w0-simple\ndescription: equivalence seed\n---\n# Simple\n"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills/../w0-escape-base",
+            "skillId": "alpha",
+            "content": "---\nname: w0-simple\ndescription: equivalence seed\n---\n# Simple\n"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "${0.path}",
+            "skillId": "child",
+            "content": "---\nname: w0-simple\ndescription: equivalence seed\n---\n# Simple\n"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "${0.path}/sub",
+            "skillId": "child",
+            "content": "---\nname: w0-simple\ndescription: equivalence seed\n---\n# Simple\n"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills/w0-cr",
+            "skillId": "empty_content",
+            "content": ""
+          }
+        },
+        {
+          "cmd": "skill_read_file",
+          "args": {
+            "path": "~/.deep-student/skills/w0-cr/nested/base/alpha_1-x/SKILL.md"
+          }
+        },
+        {
+          "cmd": "skill_read_file",
+          "args": {
+            "path": "~/.deep-student/skills/w0-cr/技能一/SKILL.md"
+          }
+        },
+        {
+          "cmd": "skill_read_file",
+          "args": {
+            "path": "~/.deep-student/skills/w0-cr/empty_content/SKILL.md"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "skills.update.success_and_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills/w0-up",
+            "skillId": "alpha",
+            "content": "---\nname: w0-simple\ndescription: equivalence seed\n---\n# Simple\n"
+          }
+        },
+        {
+          "cmd": "skill_update",
+          "args": {
+            "path": "${0.path}",
+            "content": "---\nname: w0-up\n---\nupdated\n"
+          }
+        },
+        {
+          "cmd": "skill_read_file",
+          "args": {
+            "path": "${0.path}"
+          }
+        },
+        {
+          "cmd": "skill_update",
+          "args": {
+            "path": "${0.path}",
+            "content": ""
+          }
+        },
+        {
+          "cmd": "skill_read_file",
+          "args": {
+            "path": "${0.path}"
+          }
+        },
+        {
+          "cmd": "skill_update",
+          "args": {
+            "path": "~/.deep-student/skills/w0-up/alpha/MISSING.md",
+            "content": "x"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_update",
+          "args": {
+            "path": "~/.deep-student/skills/w0-up/alpha",
+            "content": "x"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_update",
+          "args": {
+            "path": "/w0-outside/SKILL.md",
+            "content": "x"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_update",
+          "args": {
+            "path": "~/.deep-student/skills/w0-up/../../w0-escape.md",
+            "content": "x"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "skills.delete.success_and_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills/w0-del",
+            "skillId": "alpha",
+            "content": "---\nname: w0-simple\ndescription: equivalence seed\n---\n# Simple\n"
+          }
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills/w0-del/holder",
+            "skillId": "inner",
+            "content": "---\nname: w0-simple\ndescription: equivalence seed\n---\n# Simple\n"
+          }
+        },
+        {
+          "cmd": "skill_delete",
+          "args": {
+            "path": "~/.deep-student/skills/w0-del/holder"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_delete",
+          "args": {
+            "path": "${0.path}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_delete",
+          "args": {
+            "path": "~/.deep-student/skills/w0-del/none"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_delete",
+          "args": {
+            "path": "/w0-outside-del"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_delete",
+          "args": {
+            "path": "~/.deep-student/skills/w0-del/alpha"
+          }
+        },
+        {
+          "cmd": "skill_list_directories",
+          "args": {
+            "path": "~/.deep-student/skills/w0-del"
+          }
+        },
+        {
+          "cmd": "skill_delete",
+          "args": {
+            "path": "~/.deep-student/skills/w0-del/alpha"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_delete",
+          "args": {
+            "path": "~/.deep-student/skills/w0-del/holder/inner"
+          }
+        },
+        {
+          "cmd": "skill_list_directories",
+          "args": {
+            "path": "~/.deep-student/skills/w0-del/holder"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "skills.export_import.roundtrip",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills",
+            "skillId": "w0-exa",
+            "content": "---\nname: w0-rich\ndescription: equivalence rich\nallowed-tools:\n  - local_shell\n  - fetch\nrequires:\n  bins:\n    - sh\n    - w0-definitely-missing-bin\n  env:\n    - PATH\n    - W0_DEFINITELY_UNSET_ENV\n---\n# Rich\nSee https://example.com/manual\n"
+          }
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills/w0-exa/scripts",
+            "skillId": "tool",
+            "content": "#!/bin/sh\necho hi\n"
+          }
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills/w0-exa/.hidden",
+            "skillId": "h",
+            "content": "---\nname: w0-simple\ndescription: equivalence seed\n---\n# Simple\n"
+          }
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills",
+            "skillId": "w0-exb",
+            "content": "---\nname: w0-simple\ndescription: equivalence seed\n---\n# Simple\n"
+          }
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills",
+            "skillId": "w0-exhold",
+            "content": "---\nname: w0-simple\ndescription: equivalence seed\n---\n# Simple\n"
+          }
+        },
+        {
+          "cmd": "skill_export_tap",
+          "args": {
+            "skillIds": [
+              "w0-exa",
+              "w0-exb"
+            ],
+            "destPath": "${4.path}.zip"
+          }
+        },
+        {
+          "cmd": "skill_read_file",
+          "args": {
+            "path": "${5.path}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_import_zip",
+          "args": {
+            "zipPath": "${5.path}",
+            "basePath": "~/.cursor/skills-cursor",
+            "overwrite": false,
+            "dryRun": true
+          }
+        },
+        {
+          "cmd": "skill_list_directories",
+          "args": {
+            "path": "~/.cursor/skills-cursor"
+          }
+        },
+        {
+          "cmd": "skill_import_zip",
+          "args": {
+            "zipPath": "${5.path}",
+            "basePath": "~/.cursor/skills-cursor",
+            "overwrite": false
+          }
+        },
+        {
+          "cmd": "skill_list_package_files",
+          "args": {
+            "path": "${9.path}"
+          }
+        },
+        {
+          "cmd": "skill_import_zip",
+          "args": {
+            "zipPath": "${5.path}",
+            "basePath": "~/.cursor/skills-cursor",
+            "overwrite": false,
+            "dryRun": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_import_zip",
+          "args": {
+            "zipPath": "${5.path}",
+            "basePath": "~/.cursor/skills-cursor",
+            "overwrite": true,
+            "dryRun": null
+          }
+        },
+        {
+          "cmd": "skill_import_zip",
+          "args": {
+            "zipPath": "${5.path}",
+            "basePath": "/w0-outside-base",
+            "overwrite": false,
+            "dryRun": true
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_import_zip",
+          "args": {
+            "zipPath": "${5.path}",
+            "basePath": "~/.deep-student/skills",
+            "overwrite": false,
+            "dryRun": true
+          }
+        },
+        {
+          "cmd": "skill_import_zip",
+          "args": {
+            "zipPath": "${5.path}",
+            "basePath": "~/.deep-student/skills",
+            "overwrite": false,
+            "dryRun": false
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "skills.export_tap.errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "skill_export_tap",
+          "args": {
+            "skillIds": [],
+            "destPath": "~/.deep-student/skills/w0-ex.zip"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_export_tap",
+          "args": {
+            "skillIds": [
+              "w0-n0",
+              "w0-n1",
+              "w0-n2",
+              "w0-n3",
+              "w0-n4",
+              "w0-n5",
+              "w0-n6",
+              "w0-n7",
+              "w0-n8",
+              "w0-n9",
+              "w0-n10",
+              "w0-n11",
+              "w0-n12",
+              "w0-n13",
+              "w0-n14",
+              "w0-n15",
+              "w0-n16",
+              "w0-n17",
+              "w0-n18",
+              "w0-n19",
+              "w0-n20",
+              "w0-n21",
+              "w0-n22",
+              "w0-n23",
+              "w0-n24",
+              "w0-n25",
+              "w0-n26",
+              "w0-n27",
+              "w0-n28",
+              "w0-n29",
+              "w0-n30",
+              "w0-n31",
+              "w0-n32",
+              "w0-n33",
+              "w0-n34",
+              "w0-n35",
+              "w0-n36",
+              "w0-n37",
+              "w0-n38",
+              "w0-n39",
+              "w0-n40",
+              "w0-n41",
+              "w0-n42",
+              "w0-n43",
+              "w0-n44",
+              "w0-n45",
+              "w0-n46",
+              "w0-n47",
+              "w0-n48",
+              "w0-n49",
+              "w0-n50",
+              "w0-n51",
+              "w0-n52",
+              "w0-n53",
+              "w0-n54",
+              "w0-n55",
+              "w0-n56",
+              "w0-n57",
+              "w0-n58",
+              "w0-n59",
+              "w0-n60",
+              "w0-n61",
+              "w0-n62",
+              "w0-n63",
+              "w0-n64"
+            ],
+            "destPath": "~/.deep-student/skills/w0-ex.zip"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_export_tap",
+          "args": {
+            "skillIds": [
+              "w0-n0",
+              "w0-n1",
+              "w0-n2",
+              "w0-n3",
+              "w0-n4",
+              "w0-n5",
+              "w0-n6",
+              "w0-n7",
+              "w0-n8",
+              "w0-n9",
+              "w0-n10",
+              "w0-n11",
+              "w0-n12",
+              "w0-n13",
+              "w0-n14",
+              "w0-n15",
+              "w0-n16",
+              "w0-n17",
+              "w0-n18",
+              "w0-n19",
+              "w0-n20",
+              "w0-n21",
+              "w0-n22",
+              "w0-n23",
+              "w0-n24",
+              "w0-n25",
+              "w0-n26",
+              "w0-n27",
+              "w0-n28",
+              "w0-n29",
+              "w0-n30",
+              "w0-n31",
+              "w0-n32",
+              "w0-n33",
+              "w0-n34",
+              "w0-n35",
+              "w0-n36",
+              "w0-n37",
+              "w0-n38",
+              "w0-n39",
+              "w0-n40",
+              "w0-n41",
+              "w0-n42",
+              "w0-n43",
+              "w0-n44",
+              "w0-n45",
+              "w0-n46",
+              "w0-n47",
+              "w0-n48",
+              "w0-n49",
+              "w0-n50",
+              "w0-n51",
+              "w0-n52",
+              "w0-n53",
+              "w0-n54",
+              "w0-n55",
+              "w0-n56",
+              "w0-n57",
+              "w0-n58",
+              "w0-n59",
+              "w0-n60",
+              "w0-n61",
+              "w0-n62",
+              "w0-n63"
+            ],
+            "destPath": "~/.deep-student/skills/w0-ex64.zip"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_export_tap",
+          "args": {
+            "skillIds": [
+              "bad id"
+            ],
+            "destPath": "~/.deep-student/skills/w0-ex.zip"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_export_tap",
+          "args": {
+            "skillIds": [
+              ""
+            ],
+            "destPath": "~/.deep-student/skills/w0-ex.zip"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_export_tap",
+          "args": {
+            "skillIds": [
+              "w0-none"
+            ],
+            "destPath": "~/.deep-student/skills/w0-ex.txt"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_export_tap",
+          "args": {
+            "skillIds": [
+              "w0-none"
+            ],
+            "destPath": "content%3A%2F%2Fcom.example.w0%2Fdoc.zip"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_export_tap",
+          "args": {
+            "skillIds": [
+              "w0-none"
+            ],
+            "destPath": "~/w0-export-missing.zip"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills/w0-exhid/.h",
+            "skillId": "x",
+            "content": "---\nname: w0-simple\ndescription: equivalence seed\n---\n# Simple\n"
+          }
+        },
+        {
+          "cmd": "skill_export_tap",
+          "args": {
+            "skillIds": [
+              "w0-exhid"
+            ],
+            "destPath": "${8.path}.zip"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills",
+            "skillId": "w0-exok",
+            "content": "---\nname: w0-simple\ndescription: equivalence seed\n---\n# Simple\n"
+          }
+        },
+        {
+          "cmd": "skill_export_tap",
+          "args": {
+            "skillIds": [
+              "w0-exok"
+            ],
+            "destPath": "${10.path}/sub.zip"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_export_tap",
+          "args": {
+            "skillIds": [
+              "w0-exok"
+            ],
+            "destPath": "content://com.example.w0/document/1"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_export_tap",
+          "args": {
+            "skillIds": [
+              "w0-exok",
+              "w0-exok"
+            ],
+            "destPath": "${10.path}.zip"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "skills.import_zip.errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills/w0-iz",
+            "skillId": "alpha",
+            "content": "---\nname: w0-simple\ndescription: equivalence seed\n---\n# Simple\n"
+          }
+        },
+        {
+          "cmd": "skill_import_zip",
+          "args": {
+            "zipPath": "~/.deep-student/skills/w0-iz/missing.zip",
+            "basePath": "~/.deep-student/skills",
+            "overwrite": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_import_zip",
+          "args": {
+            "zipPath": "~/.deep-student/skills/w0-iz/alpha",
+            "basePath": "~/.deep-student/skills",
+            "overwrite": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_import_zip",
+          "args": {
+            "zipPath": "${0.path}",
+            "basePath": "~/.deep-student/skills",
+            "overwrite": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_create",
+          "args": {
+            "basePath": "~/.deep-student/skills/w0-iz",
+            "skillId": "empty",
+            "content": ""
+          }
+        },
+        {
+          "cmd": "skill_import_zip",
+          "args": {
+            "zipPath": "${4.path}",
+            "basePath": "~/.deep-student/skills",
+            "overwrite": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_import_zip",
+          "args": {
+            "zipPath": "${0.path}",
+            "basePath": "/w0-outside-base",
+            "overwrite": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_import_zip",
+          "args": {
+            "zipPath": "content://com.example.w0/document/2",
+            "basePath": "~/.deep-student/skills",
+            "overwrite": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_import_zip",
+          "args": {
+            "zipPath": "${0.path}",
+            "basePath": "~/.deep-student/skills",
+            "overwrite": false,
+            "dryRun": true
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "skills.probe_requires.empty_inputs",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "skill_probe_requires",
+          "args": {}
+        },
+        {
+          "cmd": "skill_probe_requires",
+          "args": {
+            "bins": null,
+            "env": null,
+            "pythonPackages": null
+          }
+        },
+        {
+          "cmd": "skill_probe_requires",
+          "args": {
+            "bins": [],
+            "env": [],
+            "pythonPackages": []
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": []
+      },
+      "normalize": []
+    },
+    {
+      "id": "skills.probe_requires.valid_invalid_boundaries",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "skill_probe_requires",
+          "args": {
+            "bins": [
+              "sh",
+              "w0-definitely-missing-bin",
+              "sh",
+              "bad bin",
+              "$(whoami)",
+              "bad bin",
+              "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            ],
+            "env": [
+              "PATH",
+              "W0_DEFINITELY_UNSET_ENV",
+              "bad-env",
+              "1BAD",
+              "EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE",
+              "EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE"
+            ],
+            "pythonPackages": [
+              "bad pkg",
+              "../evil",
+              "-bad",
+              "bad pkg"
+            ]
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": []
+      },
+      "normalize": []
+    },
+    {
+      "id": "skills.probe_requires.python_packages",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "skill_probe_requires",
+          "args": {
+            "pythonPackages": [
+              "json",
+              "deep-student-definitely-missing-pkg-xyz"
+            ]
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": []
+      },
+      "normalize": []
+    },
+    {
+      "id": "skills.probe_requires.frontend_snake_case_key",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "skill_probe_requires",
+          "args": {
+            "bins": [
+              "sh"
+            ],
+            "env": [
+              "PATH"
+            ],
+            "python_packages": [
+              "bad pkg"
+            ]
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": []
+      },
+      "normalize": []
+    },
+    {
+      "id": "skills.tap_catalog.offline_rejections",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "skill_tap_catalog",
+          "args": {
+            "repoUrl": "http://github.com/a/b"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_tap_catalog",
+          "args": {
+            "repoUrl": "https://gitlab.com/a/b"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_tap_catalog",
+          "args": {
+            "repoUrl": "https://github.com/onlyowner"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_tap_catalog",
+          "args": {
+            "repoUrl": "https://github.com/a/.git"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_tap_catalog",
+          "args": {
+            "repoUrl": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_tap_catalog",
+          "args": {
+            "repoUrl": "  https://github.com/  "
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": []
+      },
+      "normalize": []
+    },
+    {
+      "id": "skills.tap_install.offline_rejections",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "skill_tap_install",
+          "args": {
+            "zipUrl": "https://github.com/a/b",
+            "subdir": "x",
+            "overwrite": false,
+            "dryRun": true,
+            "expectedPackageSha256": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_tap_install",
+          "args": {
+            "zipUrl": "http://codeload.github.com/a/b/zip/main",
+            "subdir": "x",
+            "overwrite": false,
+            "dryRun": false,
+            "expectedPackageSha256": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_tap_install",
+          "args": {
+            "zipUrl": "",
+            "subdir": "",
+            "overwrite": true
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

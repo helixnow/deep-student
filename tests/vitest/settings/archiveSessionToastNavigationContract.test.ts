@@ -7,6 +7,7 @@ describe('archive session toast settings navigation contract', () => {
     const pendingSettingsSource = readFileSync(resolve(process.cwd(), 'src/utils/pendingSettingsTab.ts'), 'utf-8');
     const settingsSource = readFileSync(resolve(process.cwd(), 'src/features/settings/components/Settings.tsx'), 'utf-8');
     const dashboardSource = readFileSync(resolve(process.cwd(), 'src/features/settings/components/DataGovernanceDashboard.tsx'), 'utf-8');
+    const sectionsSource = readFileSync(resolve(process.cwd(), 'src/ui-plugins/official/settings/sections.tsx'), 'utf-8');
 
     expect(pendingSettingsSource).toContain('openArchivedSessionsSettings');
     expect(pendingSettingsSource).toContain("tab: 'data-governance'");
@@ -17,7 +18,8 @@ describe('archive session toast settings navigation contract', () => {
     expect(settingsSource).toContain('consumePendingSettingsRoute');
     expect(settingsSource).toContain('dataGovernanceTabTarget');
     expect(settingsSource).toContain('dataGovernanceTab');
-    expect(settingsSource).toContain('tabTarget={dataGovernanceTabTarget}');
+    expect(settingsSource).toContain("'data-governance': () => ({ tabTarget: dataGovernanceTabTarget }),");
+    expect(sectionsSource).toContain("<DataGovernanceDashboard {...getProps['data-governance']()} />");
 
     expect(dashboardSource).toContain('tabTarget?: DataGovernanceTabTarget | null');
     expect(dashboardSource).toContain('setActiveTab(tabTarget.tab)');

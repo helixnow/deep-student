@@ -1,0 +1,905 @@
+{
+  "lane": "L23-sync-providers",
+  "generator": "deep-student/contracts-extract@1.6.0",
+  "commands": [
+    {
+      "name": "cloud_storage_check_connection",
+      "lane": "L23-sync-providers",
+      "rust": {
+        "file": "crates/dstu-sync/src/cloud_storage/mod.rs",
+        "line": 297,
+        "fn": "cloud_storage_check_connection"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "config",
+          "rustName": "config",
+          "schema": {
+            "$ref": "_shared.json#/$defs/CloudStorageConfig"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "type": "boolean"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "cloud_storage_delete",
+      "lane": "L23-sync-providers",
+      "rust": {
+        "file": "crates/dstu-sync/src/cloud_storage/mod.rs",
+        "line": 346,
+        "fn": "cloud_storage_delete"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "config",
+          "rustName": "config",
+          "schema": {
+            "$ref": "_shared.json#/$defs/CloudStorageConfig"
+          },
+          "optional": false
+        },
+        {
+          "key": "key",
+          "rustName": "key",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "cloud_storage_exists",
+      "lane": "L23-sync-providers",
+      "rust": {
+        "file": "crates/dstu-sync/src/cloud_storage/mod.rs",
+        "line": 370,
+        "fn": "cloud_storage_exists"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "config",
+          "rustName": "config",
+          "schema": {
+            "$ref": "_shared.json#/$defs/CloudStorageConfig"
+          },
+          "optional": false
+        },
+        {
+          "key": "key",
+          "rustName": "key",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "type": "boolean"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "cloud_storage_get",
+      "lane": "L23-sync-providers",
+      "rust": {
+        "file": "crates/dstu-sync/src/cloud_storage/mod.rs",
+        "line": 322,
+        "fn": "cloud_storage_get"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "config",
+          "rustName": "config",
+          "schema": {
+            "$ref": "_shared.json#/$defs/CloudStorageConfig"
+          },
+          "optional": false
+        },
+        {
+          "key": "key",
+          "rustName": "key",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "anyOf": [
+          {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "x-int": "u8",
+              "minimum": 0,
+              "maximum": 255
+            }
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "x-option": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "cloud_storage_is_s3_enabled",
+      "lane": "L23-sync-providers",
+      "rust": {
+        "file": "crates/dstu-sync/src/cloud_storage/mod.rs",
+        "line": 737,
+        "fn": "cloud_storage_is_s3_enabled"
+      },
+      "async": false,
+      "args": [],
+      "injected": [],
+      "result": {
+        "type": "boolean"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "cloud_storage_list",
+      "lane": "L23-sync-providers",
+      "rust": {
+        "file": "crates/dstu-sync/src/cloud_storage/mod.rs",
+        "line": 334,
+        "fn": "cloud_storage_list"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "config",
+          "rustName": "config",
+          "schema": {
+            "$ref": "_shared.json#/$defs/CloudStorageConfig"
+          },
+          "optional": false
+        },
+        {
+          "key": "prefix",
+          "rustName": "prefix",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/FileInfo"
+        }
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "cloud_storage_put",
+      "lane": "L23-sync-providers",
+      "rust": {
+        "file": "crates/dstu-sync/src/cloud_storage/mod.rs",
+        "line": 309,
+        "fn": "cloud_storage_put"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "config",
+          "rustName": "config",
+          "schema": {
+            "$ref": "_shared.json#/$defs/CloudStorageConfig"
+          },
+          "optional": false
+        },
+        {
+          "key": "key",
+          "rustName": "key",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "data",
+          "rustName": "data",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "x-int": "u8",
+              "minimum": 0,
+              "maximum": 255
+            }
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "cloud_storage_stat",
+      "lane": "L23-sync-providers",
+      "rust": {
+        "file": "crates/dstu-sync/src/cloud_storage/mod.rs",
+        "line": 358,
+        "fn": "cloud_storage_stat"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "config",
+          "rustName": "config",
+          "schema": {
+            "$ref": "_shared.json#/$defs/CloudStorageConfig"
+          },
+          "optional": false
+        },
+        {
+          "key": "key",
+          "rustName": "key",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/FileInfo"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "x-option": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "cloud_sync_delete_version",
+      "lane": "L23-sync-providers",
+      "rust": {
+        "file": "crates/dstu-sync/src/cloud_storage/mod.rs",
+        "line": 714,
+        "fn": "cloud_sync_delete_version"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "config",
+          "rustName": "config",
+          "schema": {
+            "$ref": "_shared.json#/$defs/CloudStorageConfig"
+          },
+          "optional": false
+        },
+        {
+          "key": "versionId",
+          "rustName": "version_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "cloud_sync_download",
+      "lane": "L23-sync-providers",
+      "rust": {
+        "file": "crates/dstu-sync/src/cloud_storage/mod.rs",
+        "line": 552,
+        "fn": "cloud_sync_download"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "config",
+          "rustName": "config",
+          "schema": {
+            "$ref": "_shared.json#/$defs/CloudStorageConfig"
+          },
+          "optional": false
+        },
+        {
+          "key": "versionId",
+          "rustName": "version_id",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "localDir",
+          "rustName": "local_dir",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "allowPlaintextHistory",
+          "rustName": "allow_plaintext_history",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/DownloadResult"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "cloud_sync_get_device_id",
+      "lane": "L23-sync-providers",
+      "rust": {
+        "file": "crates/dstu-sync/src/cloud_storage/mod.rs",
+        "line": 731,
+        "fn": "cloud_sync_get_device_id"
+      },
+      "async": false,
+      "args": [],
+      "injected": [],
+      "result": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "cloud_sync_get_status",
+      "lane": "L23-sync-providers",
+      "rust": {
+        "file": "crates/dstu-sync/src/cloud_storage/mod.rs",
+        "line": 384,
+        "fn": "cloud_sync_get_status"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "config",
+          "rustName": "config",
+          "schema": {
+            "$ref": "_shared.json#/$defs/CloudStorageConfig"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/SyncStatus"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "cloud_sync_list_versions",
+      "lane": "L23-sync-providers",
+      "rust": {
+        "file": "crates/dstu-sync/src/cloud_storage/mod.rs",
+        "line": 396,
+        "fn": "cloud_sync_list_versions"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "config",
+          "rustName": "config",
+          "schema": {
+            "$ref": "_shared.json#/$defs/CloudStorageConfig"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/BackupVersion"
+        }
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "cloud_sync_upload",
+      "lane": "L23-sync-providers",
+      "rust": {
+        "file": "crates/dstu-sync/src/cloud_storage/mod.rs",
+        "line": 410,
+        "fn": "cloud_sync_upload"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "config",
+          "rustName": "config",
+          "schema": {
+            "$ref": "_shared.json#/$defs/CloudStorageConfig"
+          },
+          "optional": false
+        },
+        {
+          "key": "zipPath",
+          "rustName": "zip_path",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "appVersion",
+          "rustName": "app_version",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "note",
+          "rustName": "note",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "recoveryKind",
+          "rustName": "recovery_kind",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/UploadResult"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    }
+  ],
+  "events": [
+    {
+      "name": "cloud-sync-progress",
+      "dynamic": false,
+      "payload": {
+        "$ref": "#/$defs/CloudSyncProgressEvent"
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-sync/src/cloud_storage/mod.rs",
+          "line": 206,
+          "fn": "emit_sync_progress",
+          "lane": "L23-sync-providers",
+          "method": "emit"
+        }
+      ]
+    }
+  ],
+  "$defs": {
+    "BackupVersion": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "x-rust": "chrono::DateTime<chrono::Utc>",
+          "x-format": "RFC 3339, SecondsFormat::AutoSi, Z for UTC"
+        },
+        "size": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "checksum": {
+          "type": "string"
+        },
+        "deviceId": {
+          "type": "string"
+        },
+        "appVersion": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "recoveryKind": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        }
+      },
+      "required": [
+        "id",
+        "timestamp",
+        "size",
+        "checksum",
+        "deviceId"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_sync::cloud_storage::sync_manager::BackupVersion"
+    },
+    "CloudSyncProgressEvent": {
+      "type": "object",
+      "properties": {
+        "operationId": {
+          "type": "string"
+        },
+        "operation": {
+          "type": "string"
+        },
+        "stage": {
+          "type": "string"
+        },
+        "stageLabel": {
+          "type": "string"
+        },
+        "bytesDone": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "bytesTotal": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "percent": {
+          "type": "number",
+          "x-float": "f32"
+        }
+      },
+      "required": [
+        "operationId",
+        "operation",
+        "stage",
+        "stageLabel",
+        "bytesDone",
+        "bytesTotal",
+        "percent"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_sync::cloud_storage::CloudSyncProgressEvent"
+    },
+    "DownloadResult": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "$ref": "#/$defs/BackupVersion"
+        },
+        "localPath": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "version",
+        "localPath"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_sync::cloud_storage::sync_manager::DownloadResult"
+    },
+    "EncryptionMemoryPersistFailure": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "at": {
+          "type": "string",
+          "format": "date-time",
+          "x-rust": "chrono::DateTime<chrono::Utc>",
+          "x-format": "RFC 3339, SecondsFormat::AutoSi, Z for UTC"
+        }
+      },
+      "required": [
+        "code",
+        "at"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_sync::cloud_storage::sync_manager::EncryptionMemoryPersistFailure"
+    },
+    "FileInfo": {
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "size": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "lastModified": {
+          "type": "string",
+          "format": "date-time",
+          "x-rust": "chrono::DateTime<chrono::Utc>",
+          "x-format": "RFC 3339, SecondsFormat::AutoSi, Z for UTC"
+        },
+        "etag": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        }
+      },
+      "required": [
+        "key",
+        "size",
+        "lastModified"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_sync::cloud_storage::traits::FileInfo"
+    },
+    "SyncStatus": {
+      "type": "object",
+      "properties": {
+        "connected": {
+          "type": "boolean"
+        },
+        "cloudVersionCount": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "latestVersion": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BackupVersion"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "lastSyncTime": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time",
+              "x-rust": "chrono::DateTime<chrono::Utc>",
+              "x-format": "RFC 3339, SecondsFormat::AutoSi, Z for UTC"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "encryptionMemoryPersistFailure": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EncryptionMemoryPersistFailure"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        }
+      },
+      "required": [
+        "connected",
+        "cloudVersionCount"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_sync::cloud_storage::sync_manager::SyncStatus"
+    },
+    "UploadResult": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "$ref": "#/$defs/BackupVersion"
+        },
+        "prunedVersions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "version",
+        "prunedVersions"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_sync::cloud_storage::sync_manager::UploadResult"
+    }
+  }
+}

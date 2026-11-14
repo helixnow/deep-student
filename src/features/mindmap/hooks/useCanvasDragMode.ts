@@ -2,8 +2,8 @@
  * 画布交互偏好（全局、localStorage 持久化、跨实例实时同步）：
  *
  * - 空白拖拽行为：框选（select）或平移（pan）
- * - 滚轮/触控板语义：双指平移（pan，默认，对齐常见导图软件与 macOS 习惯）
- *   或旧「滚轮直接缩放」（zoom）
+ * - 滚轮/触控板语义：滚轮直接缩放（zoom，默认）
+ *   或双指平移（pan，对齐 macOS 触控板习惯）
  *
  * 实现：useSyncExternalStore + 模块级监听集合，多个画布实例（分屏/多标签）
  * 实时同步。触屏设备由调用方强制平移，偏好只影响鼠标/触控板指针。
@@ -85,19 +85,19 @@ export function useCanvasDragMode(): [CanvasDragMode, (mode: CanvasDragMode) => 
 }
 
 // ============================================================================
-// 滚轮/触控板语义：双指平移（默认） / 旧滚轮缩放
+// 滚轮/触控板语义：滚轮缩放（默认） / 双指平移
 // ============================================================================
 
 /**
- * - pan（默认）：滚轮/双指滑动平移画布，pinch 或 Cmd/Ctrl+滚轮缩放
+ * - zoom（默认）：滚轮/双指滑动直接缩放画布，平移用空白拖拽 / Space / 中键
+ * - pan：滚轮/双指滑动平移画布，pinch 或 Cmd/Ctrl+滚轮缩放
  *   （对齐 macOS 上常见画布应用的平台习惯）
- * - zoom（旧行为）：滚轮直接缩放画布，平移用空白拖拽 / Space / 中键
  */
 export type CanvasWheelMode = 'pan' | 'zoom';
 
 const wheelModePreference = createStoredPreference<CanvasWheelMode>(
   'mindmap:canvas-wheel-mode',
-  'pan',
+  'zoom',
   (raw): raw is CanvasWheelMode => raw === 'pan' || raw === 'zoom',
 );
 

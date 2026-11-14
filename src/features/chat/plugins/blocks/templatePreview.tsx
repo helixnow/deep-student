@@ -15,10 +15,18 @@
 import React, { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
-import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
-import { CircleNotch, WarningCircle, Layout, CaretDown } from '@phosphor-icons/react';
+import {
+  CaretDown,
+  CaretRight,
+  CheckCircle,
+  Layout,
+  WarningCircle,
+} from '@phosphor-icons/react';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
+import { TextShimmer } from '../../components/ui/TextShimmer';
+import { ToolActivitySweep } from '../../components/ui/ToolActivitySweep';
+import { formatToolDurationShort } from '@/features/chat/utils/toolDuration';
 import { TemplateToolOutput, isTemplateVisualOutput } from './components';
 
 /** 安全序列化（循环引用/BigInt 等场景降级） */
@@ -35,82 +43,132 @@ function safeStringify(value: unknown): string {
  */
 const TemplatePreviewBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStreaming }) => {
   const { t } = useTranslation('chatV2');
-  const [rawExpanded, setRawExpanded] = useState(false);
-
-  const toggleRaw = useCallback(() => setRawExpanded((prev) => !prev), []);
+  const [userExpanded, setUserExpanded] = useState<boolean | null>(null);
 
   const isRunning = block.status === 'running' || block.status === 'pending' || Boolean(isStreaming);
   const isError = block.status === 'error';
   // 先通过类型守卫收窄并保存结果，供下方分支直接使用（unknown -> TemplateVisualData）
   const visualOutput = isTemplateVisualOutput(block.toolOutput) ? block.toolOutput : null;
   const hasVisual = visualOutput !== null;
+  const isLoading = !hasVisual && !isError && isRunning;
+  const isSuccess = !isLoading && !isError;
+  const durationMs =
+    block.startedAt && block.endedAt ? block.endedAt - block.startedAt : undefined;
 
-  // 加载中（尚无可视化输出）
-  if (!hasVisual && isRunning) {
-    return (
-      <div className="rounded-lg border border-border/50 bg-card overflow-hidden">
-        <div className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground">
-          <CircleNotch size={16} className="animate-spin text-primary" />
-          <span>{t('blocks.templatePreview.loading')}</span>
-        </div>
-      </div>
-    );
-  }
+  const hasBody = !isLoading;
+  const isExpanded = userExpanded ?? (hasVisual || isError);
+  const toggleExpanded = useCallback(() => {
+    setUserExpanded((prev) => !(prev ?? (hasVisual || isError)));
+  }, [hasVisual, isError]);
 
-  // 错误态
-  if (isError) {
-    return (
-      <div className="rounded-lg border border-destructive/30 bg-card overflow-hidden">
-        <div className="flex items-start gap-2 px-3 py-2">
-          <WarningCircle size={16} className="mt-0.5 flex-shrink-0 text-destructive" />
-          <div className="min-w-0 flex-1 text-sm">
-            <span className="font-medium text-destructive">
-              {t('blocks.templatePreview.error')}
-            </span>
-            {block.error && (
-              <div className="mt-0.5 text-xs text-destructive/80 break-words">{block.error}</div>
+  const subtitle = isLoading
+    ? t('blocks.templatePreview.loading')
+    : isError
+      ? t('blocks.templatePreview.error')
+      : visualOutput
+        ? visualOutput.name || null
+        : t('blocks.templatePreview.nonVisualFallback');
+
+  return (
+    <div
+      className={cn(
+        'rounded-lg border overflow-hidden bg-card dark:bg-card/80',
+        isError ? 'border-destructive/30' : 'border-border/50'
+      )}
+    >
+      {/* 统一头部 */}
+      <button
+        type="button"
+        onClick={hasBody ? toggleExpanded : undefined}
+        aria-expanded={hasBody ? isExpanded : undefined}
+        className={cn(
+          'flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left',
+          hasBody
+            ? 'transition-colors hover:bg-muted/40 [@media(pointer:coarse)]:!min-h-11'
+            : 'cursor-default',
+          hasBody && isExpanded && 'border-b border-border/40'
+        )}
+      >
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <ToolActivitySweep
+            active={isLoading}
+            className="h-7 w-7 shrink-0 justify-center rounded-md bg-muted/70 dark:bg-muted/40"
+          >
+            <Layout size={16} className="text-muted-foreground" />
+          </ToolActivitySweep>
+          <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
+            <ToolActivitySweep active={isLoading} className="min-w-0 max-w-full leading-4">
+              <span className="block truncate text-xs font-medium leading-4 text-muted-foreground">
+                {t('templateTool.previewTitle')}
+              </span>
+            </ToolActivitySweep>
+            {subtitle && (
+              isLoading ? (
+                <TextShimmer
+                  className="text-xs leading-4 text-muted-foreground"
+                  duration={1.5}
+                  spread={3}
+                >
+                  {subtitle}
+                </TextShimmer>
+              ) : (
+                <span
+                  className={cn(
+                    'truncate text-xs leading-4',
+                    isError ? 'text-destructive' : 'text-muted-foreground/80'
+                  )}
+                >
+                  {subtitle}
+                </span>
+              )
             )}
           </div>
         </div>
-      </div>
-    );
-  }
 
-  // 正常可视化输出
-  if (visualOutput) {
-    return (
-      <div className="rounded-lg border border-border/50 bg-card overflow-hidden p-3">
-        <TemplateToolOutput output={visualOutput} />
-      </div>
-    );
-  }
+        <div className="flex shrink-0 items-center gap-2">
+          {!isLoading && durationMs !== undefined && durationMs >= 0 && (
+            <span className="text-xs text-muted-foreground tabular-nums">
+              {formatToolDurationShort(durationMs)}
+            </span>
+          )}
+          {isSuccess && <CheckCircle size={14} className="shrink-0 text-success" />}
+          {isError && <WarningCircle size={14} className="shrink-0 text-destructive" />}
+          {hasBody && (
+            isExpanded ? (
+              <CaretDown size={14} className="shrink-0 text-muted-foreground" />
+            ) : (
+              <CaretRight size={14} className="shrink-0 text-muted-foreground" />
+            )
+          )}
+        </div>
+      </button>
 
-  // 非可视化输出回退：折叠 JSON（不再静默消失）
-  return (
-    <div className="rounded-lg border border-border/50 bg-card overflow-hidden">
-      <DsButton
-        variant="ghost"
-        size="sm"
-        onClick={toggleRaw}
-        aria-expanded={rawExpanded}
-        className="w-full !justify-start gap-2 !px-3 !py-2 text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-11"
-      >
-        <CaretDown
-          size={14}
-          className={cn('transition-transform duration-200 flex-shrink-0', !rawExpanded && '-rotate-90')}
-        />
-        <Layout size={14} className="flex-shrink-0" />
-        <span className="text-sm">{t('blocks.templatePreview.nonVisualFallback')}</span>
-      </DsButton>
-      {rawExpanded && (
-        <div className="border-t border-border/30 px-3 py-2">
-          <CustomScrollArea fullHeight={false} className="max-h-48 rounded" viewportClassName="max-h-48">
-            <pre className="whitespace-pre-wrap break-words bg-background/50 p-2 text-xs text-muted-foreground">
-              {block.toolOutput === undefined
-                ? t('blocks.templatePreview.noOutput')
-                : safeStringify(block.toolOutput)}
-            </pre>
-          </CustomScrollArea>
+      {/* 展开内容 */}
+      {hasBody && isExpanded && (
+        <div>
+          {isError && (
+            <div className="px-3 py-2.5 text-xs text-destructive break-words">
+              {block.error || t('blocks.templatePreview.error')}
+            </div>
+          )}
+
+          {!isError && visualOutput && (
+            <div className="p-3">
+              <TemplateToolOutput output={visualOutput} />
+            </div>
+          )}
+
+          {!isError && !visualOutput && (
+            <div className="px-3 py-2">
+              <CustomScrollArea fullHeight={false} className="max-h-48 rounded" viewportClassName="max-h-48">
+                <pre className="whitespace-pre-wrap break-words bg-background/50 p-2 text-xs text-muted-foreground">
+                  {block.toolOutput === undefined
+                    ? t('blocks.templatePreview.noOutput')
+                    : safeStringify(block.toolOutput)}
+                </pre>
+              </CustomScrollArea>
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -21,6 +21,28 @@ import { isMobilePlatform, isAndroid } from '../utils/platform';
 import { openLink } from '../utils/urlOpener';
 import { showGlobalNotification } from '../components/UnifiedNotification';
 import i18n from '@/i18n';
+import type { PluginUpdateImpact } from '../../host/kernel/core';
+import { readShellPlatform } from '../ui-kernel/services/shell-platform';
+
+async function confirmPluginUpdateImpact(version: string): Promise<boolean> {
+  const messages: string[] = [];
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    const impact = await invoke<PluginUpdateImpact>('plugin:manager|update-impact', { version });
+    if (impact.incompatible.length) messages.push(i18n.t('common:update.pluginImpactIncompatible', {
+      version, plugins: impact.incompatible.join(', '),
+    }));
+    if (impact.unchecked.length) messages.push(i18n.t('common:update.pluginImpactUnchecked', {
+      plugins: impact.unchecked.join(', '),
+    }));
+  } catch {
+    messages.push(i18n.t('common:update.pluginImpactUnavailable'));
+  }
+  if (!messages.length) return true;
+  messages.push(i18n.t('common:update.pluginImpactContinue'));
+  const { confirm } = await import('@tauri-apps/plugin-dialog');
+  return confirm(messages.join('\n\n'), { title: i18n.t('common:update.pluginImpactTitle'), kind: 'warning' });
+}
 
 /**
  * 获取一个不受 WebView 网络限制约束的 fetch 函数。
@@ -31,6 +53,9 @@ import i18n from '@/i18n';
  * 纯浏览器环境（demo 壳 / vite dev）降级为 window.fetch。
  */
 async function getNativeFetch(): Promise<typeof fetch> {
+  if (readShellPlatform()?.kind === 'mobile' || !(window as any).__TAURI_INTERNALS__) {
+    return window.fetch.bind(window);
+  }
   try {
     const { fetch: tauriFetch } = await import('@tauri-apps/plugin-http');
     return tauriFetch as typeof fetch;
@@ -618,6 +643,11 @@ export function useAppUpdater(): AppUpdaterController {
   const downloadAndInstall = useCallback(async () => {
     if (downloadingRef.current) return; // 防止并发下载
 
+    if (readShellPlatform()?.kind === 'mobile') {
+      await openLink(state.info?.apkUrl || GH_RELEASES_PAGE);
+      return;
+    }
+
     // Android：应用内下载 + 系统安装器；iOS 不支持应用内安装（走外链）
     if (mobile) {
       if (!android) return;
@@ -642,6 +672,11 @@ export function useAppUpdater(): AppUpdaterController {
       if (!update) {
         downloadingRef.current = false;
         setState(prev => ({ ...prev, downloading: false, error: { phase: 'unavailable', message: i18n.t('settings:about.update.error.unavailable') } }));
+        return;
+      }
+      if (readShellPlatform()?.kind === 'desktop' && !await confirmPluginUpdateImpact(update.version)) {
+        downloadingRef.current = false;
+        setState(prev => ({ ...prev, downloading: false }));
         return;
       }
       pendingUpdateRef.current = null;
@@ -695,35 +730,25 @@ export function useAppUpdater(): AppUpdaterController {
       downloadingRef.current = false;
       const errorMsg = err?.message || String(err) || 'Unknown error';
       setState(prev => {
-        // 如果 Finished 事件已触发（progress >= 100），说明下载完成、
-        // 更新大概率已写入磁盘（macOS .app 替换后抛异常的典型场景）。
-        // 此时归为 relaunch 阶段，避免误报"安装失败"。
-        if (prev.progress >= 100) {
-          console.warn('[Updater] Post-install error (update likely applied):', errorMsg, err);
-          return {
-            ...prev,
-            available: false,
-            downloading: false,
-            readyToRelaunch: true,
-            error: {
-              phase: 'relaunch',
-              message: i18n.t('settings:about.update.error.relaunch'),
-            },
-          };
-        }
         const phase = classifyDownloadInstallError(err);
         console.error(`[Updater] ${phase} failed:`, errorMsg, err);
         return {
           ...prev,
           downloading: false,
+          readyToRelaunch: false,
           error: { phase, message: errorMsg },
         };
       });
     }
-  }, [mobile, android, downloadApkAndInstall, relaunchApp]);
+  }, [mobile, android, downloadApkAndInstall, relaunchApp, state.info]);
 
   const performUpdateAction = useCallback(async () => {
     if (!state.available || !state.info) return;
+
+    if (readShellPlatform()?.kind === 'mobile') {
+      await openLink(state.info.apkUrl || GH_RELEASES_PAGE);
+      return;
+    }
 
     if (state.readyToRelaunch) {
       await relaunchApp();
@@ -798,7 +823,7 @@ export function useAppUpdater(): AppUpdaterController {
   return useMemo(() => ({
     ...state,
     isMobile: mobile,
-    canInstallInApp: mobile && android,
+    canInstallInApp: readShellPlatform()?.kind !== 'mobile' && mobile && android,
     checkForUpdate,
     downloadAndInstall,
     relaunchApp,

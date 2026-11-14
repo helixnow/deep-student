@@ -28,11 +28,11 @@ function createFakeStorage() {
 }
 
 describe('pdf view state persistence', () => {
-  it('round-trips zoom/viewMode/coverOffset per resource path', () => {
+  it('round-trips zoom/viewMode/coverOffset/trimMargins per resource path', () => {
     const storage = createFakeStorage();
     savePdfViewState(
       '/高考复习/tb_1',
-      { zoomMode: 'custom', scale: 1.5, viewMode: 'dual', coverOffset: true },
+      { zoomMode: 'custom', scale: 1.5, viewMode: 'dual', coverOffset: true, trimMargins: true },
       storage,
     );
     expect(loadPdfViewState('/高考复习/tb_1', storage)).toEqual({
@@ -40,6 +40,7 @@ describe('pdf view state persistence', () => {
       scale: 1.5,
       viewMode: 'dual',
       coverOffset: true,
+      trimMargins: true,
     });
     // 其它文档互不影响
     expect(loadPdfViewState('/高考复习/tb_2', storage)).toEqual({});
@@ -95,7 +96,13 @@ describe('resolvePdfViewStateOnSwitch', () => {
         { zoomMode: 'fitWidth', scale: 1, viewMode: 'single' },
         { zoomMode: 'custom', scale: 1.5 },
       ),
-    ).toEqual({ zoomMode: 'custom', scale: 1.5, viewMode: 'single', coverOffset: false });
+    ).toEqual({
+      zoomMode: 'custom',
+      scale: 1.5,
+      viewMode: 'single',
+      coverOffset: false,
+      trimMargins: false,
+    });
   });
 
   it('resets coverOffset to false when neither side specifies it', () => {

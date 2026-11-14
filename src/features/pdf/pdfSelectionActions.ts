@@ -5,6 +5,17 @@
  * 这里只放可单测的纯逻辑：引用 locator、摘录笔记内容、菜单视口钳位。
  */
 
+import { buildPdfRefHref } from '@/components/crepe/plugins/pdfRef/protocol';
+
+/** Markdown href 中编码标点而非删除，确保公式回链的 quote 仍能匹配原文。 */
+export function buildPdfQuoteHref(sourceId: string, page: number, quote?: string): string {
+  const base = buildPdfRefHref(sourceId, page);
+  const normalized = quote?.replace(/\s+/g, ' ').trim().slice(0, 120);
+  if (!normalized) return base;
+  const encoded = encodeURIComponent(normalized).replace(/[()]/g, (char) => char === '(' ? '%28' : '%29');
+  return `${base}&quote=${encoded}`;
+}
+
 /** 划词动作载荷（划词菜单 → 视图回调） */
 export interface PdfSelectionPayload {
   /** 选中的原文（已 trim） */

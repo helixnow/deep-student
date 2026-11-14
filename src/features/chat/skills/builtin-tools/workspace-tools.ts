@@ -10,15 +10,7 @@ import type { SkillDefinition } from '../types';
 import { ATTACHMENT_STAGE_TOOL } from './attachment-tools';
 
 const WORKSPACE_TOOL_NAMES = [
-  'builtin-workspace_create',
-  'builtin-workspace_create_agent',
   'builtin-subagent_call',
-  'builtin-workspace_send',
-  'builtin-workspace_query',
-  'builtin-workspace_set_context',
-  'builtin-workspace_get_context',
-  'builtin-workspace_update_document',
-  'builtin-workspace_read_document',
   'builtin-workspace_file_list',
   'builtin-workspace_file_read',
   'builtin-workspace_text_search',
@@ -49,7 +41,7 @@ const WORKSPACE_TOOL_NAMES = [
 export const workspaceToolsSkill: SkillDefinition = {
   id: 'workspace-tools',
   name: 'workspace-tools',
-  description: '工作区协作与本地运行时能力组：创建多 Agent 协作工作区、注册或即时派发 Worker（workspace_create/create_agent/subagent_call）、共享上下文和文档；并提供受授权目录约束的本地文件读取/列目录、会话产物写入，以及经用户审批的本地 shell 命令预检与执行。当需要多 Agent 协作、读取用户授权的本地资料，或在本机执行命令类任务时使用。',
+  description: '子代理任务委派与本地运行时能力组：通过 Task 模式即时派发子代理或并行协调（subagent_call / coordinator_sleep），并提供受授权目录约束的本地文件读写/检索/LSP、Git、会话产物写入，以及经用户审批的本地 shell 命令预检与执行。当需要委派子代理并行或独立完成任务、读取用户授权的本地资料，或在本机执行命令类任务时使用。',
   version: '1.0.0',
   author: 'Deep Student',
   priority: 8,
@@ -58,18 +50,17 @@ export const workspaceToolsSkill: SkillDefinition = {
   isBuiltin: true,
   disableAutoInvoke: false,
   skillType: 'standalone',
-  content: `# 工作区协作技能
+  content: `# 子代理任务委派与本地工作区工具
 
-当你需要把任务委托给子代理，或协调多个 Agent 完成复杂任务时，使用这些工具：
+当你需要把任务委托给子代理，或协调多个子代理完成复杂任务时，使用 Task 模式的 \`builtin-subagent_call\` 与 \`builtin-coordinator_sleep\`：
 
 ## 子代理委托决策树
 
 按场景选择路径，不要混用：
 
-1. **单个委托任务（最常见）**：直接调用 \`builtin-subagent_call\`（默认 wait=true 阻塞等待）。不需要预先 workspace_create，也不需要 coordinator_sleep——子代理的最终输出就在工具返回值的 \`output\` 字段里。
-2. **并行 fan-out 且本回合要汇总结果**：多次调用 \`builtin-subagent_call\` 并显式传 \`wait: false\` 立即拿到各自的 ids，全部派发完后调用**一次** \`builtin-coordinator_sleep\` 统一等待；唤醒后继续在本回合汇总各子代理结果。
-3. **后台异步（自己还有活 / 或干完就结束）**：以 \`wait: false\` 派发子代理后**继续做你自己的工作**（或干完就结束本回合），**不要**调用 \`coordinator_sleep\`——每当一个后台子代理完成，系统会以内部唤醒回合把完成摘要注入模型（聊天界面不出现伪用户消息）；模型会收到以 \`[子代理完成通知]\` 开头的唤醒内容。多个后台子代理各自完成时会各唤醒一次。期间可用 \`builtin-workspace_query\`（query_type="tasks"）查询后台任务状态与结果摘要。被唤醒后先消化该结果，再视需要检查其余任务，不要重复派发相同任务。
-4. **多代理长期协作 / 共享文档**：走 workspace 三件套高级路径（workspace_create → workspace_create_agent → workspace_query/send，配合 coordinator_sleep）。
+1. **单个委托任务（最常见）**：直接调用 \`builtin-subagent_call\`（默认 \`wait=true\` 阻塞等待）。不需要任何前置创建步骤，也不需要 \`coordinator_sleep\`——子代理的最终输出就在工具返回值的 \`output\` 字段里。
+2. **并行 fan-out 且本回合要汇总结果**：多次调用 \`builtin-subagent_call\` 并显式传 \`wait: false\` 立即拿到各自的 \`agent_session_id\` 与 \`workspace_id\`，全部派发完后调用**一次** \`builtin-coordinator_sleep\` 统一等待；唤醒后继续在本回合汇总各子代理结果。
+3. **后台异步（自己还有活 / 或干完就结束）**：以 \`wait: false\` 派发子代理后**继续做你自己的工作**（或干完就结束本回合），**不要**调用 \`coordinator_sleep\`——每当一个后台子代理完成，系统会以内部唤醒回合把完成摘要注入模型（聊天界面不出现伪用户消息）；模型会收到以 \`[子代理完成通知]\` 开头的唤醒内容。被唤醒后先消化该结果，不要重复派发相同任务；如需对同一子代理追问，传 \`resume_agent_session_id\` 与 \`workspace_id\` 调用 \`builtin-subagent_call\` 续跑；若需阻塞等待其余未完成的并行子代理，可调用 \`builtin-coordinator_sleep\`。
 
 ### 续跑与自定义代理
 
@@ -85,40 +76,18 @@ base: worker
 你是代码审阅者，只指出问题，不改写代码。
 \`\`\`
 
-frontmatter 里 \`name\` 必填（小写字母/数字/连字符，不得与内建名冲突）；可选 \`base\`（缺省 worker）、\`model\`、\`tools\`（只能是只读白名单 + workspace 协作工具的子集）；正文即 instructions。
+frontmatter 里 \`name\` 必填（小写字母/数字/连字符，不得与内建名冲突）；可选 \`base\`（缺省 worker）、\`model\`、\`tools\`（只能是只读安全白名单的子集）；正文即 instructions。
 
 ## 工具选择指南
 
-### 工作区管理
-- **builtin-workspace_create**: 创建新工作区（仅高级协作路径需要；subagent_call 缺省 workspace_id 时会自动创建）
-- **builtin-workspace_create_agent**: 在工作区中注册 Agent；提供 initial_task 时由后端运行时直接派发（返回 status:"dispatched"）
-- **builtin-subagent_call**: 单 Task 委托工具：即时创建并派发一个子代理，默认阻塞直到完成并在返回值中直接携带最终输出
-- **builtin-workspace_query**: 查询工作区信息
+### 子代理编排（Task 模式）
+- **builtin-subagent_call**: Task 式子代理委托工具：即时创建并派发一个子代理，默认阻塞直到完成并在返回值 \`output\` 中直接携带最终输出。不传 \`workspace_id\` 时后端会自动创建内部跟踪工作区（返回值 \`auto_created_workspace: true\`）。profile 选择指南：\`worker\`（默认）适合纯执行任务；\`explorer\` 拥有只读检索工具面，适合需要检索或阅读资料的调研任务。若使用 legacy 的 \`skill_id\`，必须是真实已加载的技能 ID（例如 \`subagent-worker\`、\`academic-search\`、\`document-processing\`）。子代理完成后的结果交付由运行时负责。
 
 ### 等待子代理
 - **builtin-coordinator_sleep**（决策树第 2 条）：并行 fan-out 且**本回合要汇总结果**时使用——全部以 wait=false 派发完成后调用**一次**，睡眠期间 pipeline 挂起，子代理完成后自动唤醒继续汇总。默认（wait=true）的 subagent_call 阻塞直接返回结果，不需要 sleep
-- **后台异步（决策树第 3 条）**：派发后你还有自己的活，或干完就结束回合——**不要 sleep**；子代理完成后系统会通过内部唤醒回合注入以 \`[子代理完成通知]\` 开头的内容，聊天界面不会出现伪用户消息。期间用 \`workspace_query(query_type="tasks")\` 查询后台任务状态
+- **后台异步（决策树第 3 条）**：派发后你还有自己的活，或干完就结束回合——**不要 sleep**；子代理完成后系统会通过内部唤醒回合注入以 \`[子代理完成通知]\` 开头的内容，聊天界面不会出现伪用户消息。追问同一子代理用 \`resume_agent_session_id\` 续跑，不要重复派发相同任务
 
-### Workspace 三件套与编排边界
-
-大多数委托场景只需要一次 \`builtin-subagent_call\`：不传 \`workspace_id\` 时后端会自动创建工作区并把当前会话注册为 coordinator（返回值 \`auto_created_workspace: true\`）；默认 wait=true 阻塞返回，\`output\` 字段即子代理最终结果。
-
-需要显式编排多代理协作时，工作区三件套是：
-
-1. \`builtin-workspace_create\` 建立共享工作区并取得 \`workspace_id\`；
-2. \`builtin-workspace_create_agent\` 注册一个可协作的 Worker（提供 \`initial_task\` 时由后端运行时直接派发），或使用 \`builtin-subagent_call\` 按 \`task\`（可选 \`profile\` / \`skill_id\`）即时派发专用子代理；
-3. 用 \`builtin-workspace_query\` / \`builtin-workspace_send\` 观察和沟通；对以 wait=false 派发的子代理，由协调者调用 \`builtin-coordinator_sleep\` 统一等待。
-
-\`subagent_call\` 是 \`workspace_create_agent\` 的运行时派发路径，不是另一个未实现的 MCP 工具；同一任务只选择一种派发路径，避免重复创建 Worker。profile 选择指南：\`worker\`（默认）适合纯执行任务；\`explorer\` 拥有只读检索工具面，适合需要检索或阅读资料的调研任务。若使用 legacy 的 \`skill_id\`，必须是真实已加载的技能 ID（例如 \`subagent-worker\`、\`academic-search\`、\`document-processing\`）。子代理完成后的结果交付由运行时负责，不依赖子代理调用 workspace_send。
-
-### 消息通信
-- **builtin-workspace_send**: 向 Agent 发送消息
-
-### 共享资源
-- **builtin-workspace_set_context**: 设置共享上下文
-- **builtin-workspace_get_context**: 获取共享上下文
-- **builtin-workspace_update_document**: 创建/更新文档
-- **builtin-workspace_read_document**: 读取文档
+### 本地文件、检索与执行工具
 - **builtin-workspace_file_list**: 列出授权 runtime root 或当前 Skill package root 下的文件
 - **builtin-workspace_file_read**: 读取授权 runtime root 或当前 Skill package root 下的 UTF-8 文本文件；可用 offset/max_bytes 续读，返回 sha256（完整文件）、returned_bytes、next_offset、eof
 - **builtin-workspace_text_search**: 在 workspace 中跨文件搜索文本/正则，返回路径、行列和单行预览
@@ -198,42 +167,12 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
   allowedTools: [...WORKSPACE_TOOL_NAMES],
   embeddedTools: [
     {
-      name: 'builtin-workspace_create',
-      description:
-        '创建多 Agent 协作工作区（仅高级协作路径需要；subagent_call 缺省时会自动创建）。',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          name: { type: 'string', description: '工作区名称（可选，不指定则自动生成）' },
-        },
-      },
-    },
-    {
-      name: 'builtin-workspace_create_agent',
-      description:
-        '在已创建的工作区中注册 Agent。提供 initial_task 时由后端直接派发（返回 status:"dispatched"）；不提供则 Worker 保持空闲，不处理后续消息。',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          workspace_id: { type: 'string', description: '工作区 ID' },
-          role: {
-            type: 'string',
-            enum: ['coordinator', 'worker'],
-            description: 'Agent 角色：worker（执行者，默认）',
-          },
-          skill_id: { type: 'string', description: '可选：Worker 预置技能 ID' },
-          initial_task: { type: 'string', description: '【推荐】初始任务；提供后 Worker 立即执行并返回结果，否则保持空闲' },
-        },
-        required: ['workspace_id'],
-      },
-    },
-    {
       // Progressive disclosure forwards embeddedTools to Chat V2; keep this as
       // the single production schema for subagent_call instead of duplicating
       // an unconsumed Rust schema beside the executor.
       name: 'builtin-subagent_call',
       description:
-        '单 Task 委托：即时创建并派发一个子代理。默认 wait=true 阻塞返回，output 字段即最终输出，无需预先 workspace_create 或事后 coordinator_sleep；缺省 workspace_id 时自动创建工作区（auto_created_workspace=true）。并行 fan-out 用 wait=false 拿 ids 后调一次 coordinator_sleep；追问同一子代理传 resume_agent_session_id 续跑。委托路径与 profile 选择见技能说明；终态含 token_usage（可能为 null）。不要对同一任务同时调用 workspace_create_agent。',
+        '单 Task 委托：即时创建并派发一个子代理。默认 wait=true 阻塞返回，output 字段即最终输出，无需事后 coordinator_sleep；缺省 workspace_id 时自动创建内部跟踪工作区（auto_created_workspace=true）。并行 fan-out 用 wait=false 拿 ids 后调一次 coordinator_sleep；追问同一子代理传 resume_agent_session_id 续跑。委托路径与 profile 选择见技能说明；终态含 token_usage（可能为 null）。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
@@ -248,7 +187,7 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
             type: 'string',
             minLength: 1,
             description:
-              '可选；缺省时自动创建工作区并把当前会话注册为 coordinator（auto_created_workspace=true）',
+              '可选；缺省时自动创建内部跟踪工作区（auto_created_workspace=true）',
           },
           profile: {
             type: 'string',
@@ -278,101 +217,10 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
             type: 'boolean',
             default: true,
             description:
-              '默认 true：阻塞等待完成（预算 750s），返回 output，超预算返回 status:"running" 与 ids。false 立即返回 ids：本回合汇总用 coordinator_sleep 等待；否则继续自己的工作（可用 workspace_query(query_type="tasks") 查状态），子代理完成后系统自动唤醒',
+              '默认 true：阻塞等待完成（预算 750s），返回 output，超预算返回 status:"running" 与 ids。false 立即返回 ids：本回合汇总用 coordinator_sleep 等待；否则继续自己的工作，子代理完成后系统自动唤醒（追问同一子代理用 resume_agent_session_id 续跑）',
           },
         },
         required: ['task'],
-      },
-    },
-    {
-      name: 'builtin-workspace_send',
-      description:
-        '向工作区中的 Agent 发送消息。对已结束/空闲的子代理消息只入队不触发执行；要它继续处理请用 subagent_call 续跑（会一并消费积压消息）。',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          workspace_id: { type: 'string', description: '工作区 ID' },
-          content: { type: 'string', description: '消息内容文本（参数名是 content 不是 message）' },
-          target_session_id: { type: 'string', description: '目标 Agent 会话 ID（省略则广播）' },
-          message_type: {
-            type: 'string',
-            enum: ['task', 'progress', 'result', 'query', 'correction', 'broadcast'],
-            description: '消息类型（可选，默认 task）',
-          },
-        },
-        required: ['workspace_id', 'content'],
-      },
-    },
-    {
-      name: 'builtin-workspace_query',
-      description: '查询工作区信息：Agent 列表、消息记录、文档、后台任务等。',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          workspace_id: { type: 'string', description: '工作区 ID' },
-          query_type: {
-            type: 'string',
-            enum: ['agents', 'messages', 'documents', 'context', 'tasks', 'all'],
-            description: '查询类型；tasks=后台子代理任务状态（含 status/result_summary）',
-          },
-          limit: { type: 'integer', description: '返回数量限制', default: 50, minimum: 1, maximum: 200 },
-        },
-        required: ['workspace_id'],
-      },
-    },
-    {
-      name: 'builtin-workspace_set_context',
-      description: '设置工作区共享上下文变量；所有 Agent 可读写，用于协作共享状态。',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          workspace_id: { type: 'string', description: '工作区 ID' },
-          key: { type: 'string', description: '上下文键名' },
-          value: { description: '上下文值（任意 JSON 值）' },
-        },
-        required: ['workspace_id', 'key', 'value'],
-      },
-    },
-    {
-      name: 'builtin-workspace_get_context',
-      description: '获取工作区共享上下文变量。',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          workspace_id: { type: 'string', description: '工作区 ID' },
-          key: { type: 'string', description: '上下文键名，如 "messages"、"state" 等' },
-        },
-        required: ['workspace_id', 'key'],
-      },
-    },
-    {
-      name: 'builtin-workspace_update_document',
-      description: '在工作区中创建或更新文档（计划、研究笔记、产出物等），所有 Agent 可访问。',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          workspace_id: { type: 'string', description: '工作区 ID' },
-          title: { type: 'string', description: '文档标题' },
-          content: { type: 'string', description: '文档内容' },
-          doc_type: {
-            type: 'string',
-            enum: ['plan', 'research', 'artifact', 'notes'],
-            description: '文档类型',
-          },
-        },
-        required: ['workspace_id', 'title', 'content'],
-      },
-    },
-    {
-      name: 'builtin-workspace_read_document',
-      description: '读取工作区中的文档。',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          workspace_id: { type: 'string', description: '工作区 ID' },
-          document_id: { type: 'string', description: '文档 ID' },
-        },
-        required: ['workspace_id', 'document_id'],
       },
     },
     {

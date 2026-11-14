@@ -15,7 +15,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useDisclosureMotion } from '../../hooks/useDisclosureMotion';
 import {
   CaretDown,
-  CaretUp,
+  CaretRight,
   Chat,
   Copy,
   Check,
@@ -27,6 +27,7 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { cn } from '@/utils/cn';
 import { useShallow } from 'zustand/react/shallow';
 import { useWorkspaceStore } from '../workspaceStore';
+import { WORKSPACE_MESSAGE_TYPE_CLASSES } from '../../plugins/blocks/workspaceInjection';
 import type { WorkspaceMessage, MessageType } from '../types';
 import type { StoreApi } from 'zustand';
 import type { ChatStore } from '../../core/types';
@@ -37,36 +38,30 @@ import { copyTextToClipboard } from '@/utils/clipboardUtils';
 // 消息类型配置
 // ============================================================================
 
-// 消息类型徽章（语义 token，与 WorkspaceMessageItem.typeColors 同一语义映射）
-const messageTypeConfig: Record<MessageType, { i18nKey: string; className: string; icon: string }> = {
-  task: { 
-    i18nKey: 'workspace.messageType.task', 
-    className: 'bg-info/10 text-info',
+// 消息类型徽章（语义 token，复用 WORKSPACE_MESSAGE_TYPE_CLASSES）
+const messageTypeConfig: Record<MessageType, { i18nKey: string; icon: string }> = {
+  task: {
+    i18nKey: 'workspace.messageType.task',
     icon: '📋',
   },
-  progress: { 
-    i18nKey: 'workspace.messageType.progress', 
-    className: 'bg-warning/10 text-warning',
+  progress: {
+    i18nKey: 'workspace.messageType.progress',
     icon: '⏳',
   },
-  result: { 
-    i18nKey: 'workspace.messageType.result', 
-    className: 'bg-success/10 text-success',
+  result: {
+    i18nKey: 'workspace.messageType.result',
     icon: '✅',
   },
-  query: { 
-    i18nKey: 'workspace.messageType.query', 
-    className: 'bg-primary/10 text-primary',
+  query: {
+    i18nKey: 'workspace.messageType.query',
     icon: '❓',
   },
-  correction: { 
-    i18nKey: 'workspace.messageType.correction', 
-    className: 'bg-destructive/10 text-destructive',
+  correction: {
+    i18nKey: 'workspace.messageType.correction',
     icon: '🔧',
   },
-  broadcast: { 
-    i18nKey: 'workspace.messageType.broadcast', 
-    className: 'bg-muted text-muted-foreground',
+  broadcast: {
+    i18nKey: 'workspace.messageType.broadcast',
     icon: '📢',
   },
 };
@@ -83,7 +78,12 @@ const MessageTypeBadge: React.FC<MessageTypeBadgeProps> = ({ type }) => {
   const { t } = useTranslation('chatV2');
   const config = messageTypeConfig[type];
   return (
-    <span className={cn('px-1.5 py-0.5 text-2xs font-medium rounded inline-flex items-center gap-0.5', config.className)}>
+    <span
+      className={cn(
+        'px-1.5 py-0.5 text-2xs font-medium rounded inline-flex items-center gap-0.5',
+        WORKSPACE_MESSAGE_TYPE_CLASSES[type]
+      )}
+    >
       <span>{config.icon}</span>
       <span>{t(config.i18nKey)}</span>
     </span>
@@ -141,7 +141,7 @@ const LogMessageItem: React.FC<LogMessageItemProps> = ({ message, agents }) => {
     <div className="py-2 border-b border-border/30 last:border-0">
       {/* 头部信息 */}
       <div className="flex items-center gap-2 mb-1 flex-wrap">
-        <span className="text-2xs text-muted-foreground font-mono">{time}</span>
+        <span className="text-2xs text-muted-foreground font-mono tabular-nums">{time}</span>
         <MessageTypeBadge type={message.messageType} />
         <div className="flex items-center gap-1 text-xs text-muted-foreground">
           {senderInfo?.role === 'coordinator' ? (
@@ -167,7 +167,7 @@ const LogMessageItem: React.FC<LogMessageItemProps> = ({ message, agents }) => {
         </div>
       </div>
       {/* 消息内容 */}
-      <div className="text-sm text-foreground/90 pl-1 whitespace-pre-wrap break-words">
+      <div className="text-xs text-foreground/90 pl-1 whitespace-pre-wrap break-words">
         {message.content}
       </div>
     </div>
@@ -284,7 +284,7 @@ export const WorkspaceLogInline: React.FC<WorkspaceLogInlineProps> = ({
   return (
     <div
       className={cn(
-        'mt-3 rounded-lg border border-border/50 bg-muted/20 overflow-hidden',
+        'mt-3 rounded-lg border border-border/50 bg-card dark:bg-card/80 overflow-hidden',
         className
       )}
     >
@@ -293,7 +293,7 @@ export const WorkspaceLogInline: React.FC<WorkspaceLogInlineProps> = ({
         role="button"
         tabIndex={0}
         aria-expanded={isExpanded}
-        className="flex items-center justify-between px-3 py-2 [@media(pointer:coarse)]:!min-h-11 cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors"
+        className="flex items-center justify-between gap-2 px-3 py-2.5 [@media(pointer:coarse)]:!min-h-11 cursor-pointer hover:bg-muted/20 transition-colors"
         onClick={() => setIsExpanded(!isExpanded)}
         onKeyDown={(e) => {
           if (e.target !== e.currentTarget) return;
@@ -303,16 +303,18 @@ export const WorkspaceLogInline: React.FC<WorkspaceLogInlineProps> = ({
           }
         }}
       >
-        <div className="flex items-center gap-2">
-          <Chat size={16} className="text-primary" />
-          <span className="text-sm font-medium">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-muted/70 dark:bg-muted/40">
+            <Chat size={16} className="text-muted-foreground" />
+          </span>
+          <span className="truncate text-xs font-medium text-muted-foreground">
             {t('workspace.log.title')}
           </span>
-          <span className="text-xs text-muted-foreground">
+          <span className="text-xs text-muted-foreground tabular-nums">
             ({filteredMessages.length})
           </span>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex shrink-0 items-center gap-1">
           {/* 🆕 复制完整调试信息按钮 */}
           {store && (
             <DsButton variant="ghost" size="icon" iconOnly className="[@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11" onClick={(e) => { e.stopPropagation(); handleCopyDebugInfo(); }} aria-label={t('debug.copyDebugInfo')} title={t('debug.copyDebugInfo')}>
@@ -324,9 +326,9 @@ export const WorkspaceLogInline: React.FC<WorkspaceLogInlineProps> = ({
             {copied ? <Check size={14} className="text-success" /> : <Copy size={14} />}
           </DsButton>
           {isExpanded ? (
-            <CaretUp size={16} className="text-muted-foreground" />
+            <CaretDown size={14} className="text-muted-foreground shrink-0" />
           ) : (
-            <CaretDown size={16} className="text-muted-foreground" />
+            <CaretRight size={14} className="text-muted-foreground shrink-0" />
           )}
         </div>
       </div>

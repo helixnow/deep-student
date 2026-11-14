@@ -1,0 +1,32 @@
+{
+  "id": "RF-W04-image-download-redirect-cap",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main-agent",
+  "approvedAt": "2026-11-07T13:00:00+08:00",
+  "title": "image_generate 下载 URL 结果时只校验第一跳、不限体积：重定向可绕过内网封锁，超大响应整体读进内存",
+  "rust": {
+    "file": "src-tauri/src/chat_v2/tools/image_generation_executor.rs",
+    "line": 611,
+    "behavior": "download_image_url 只对生图接口返回的原始 URL 做一次 DNS 解析和 is_blocked_internal_ip 判定（:620-639），随后用 request_image 建的 reqwest 客户端 GET（:641-645）。该客户端没有设置 redirect 策略（:172-175），按 reqwest 默认最多跟随 10 跳且不复检目标，所以公网地址 302 到 10.x、169.254.169.254、0.0.0.0 等被封锁地址时照样请求并把响应存进 VFS。响应体用 response.bytes()（:657-661）整体读取，没有任何上限。"
+  },
+  "fix": {
+    "files": ["host/plugins/media/src/tools/image-generation-executor.ts"],
+    "behavior": "第一跳的协议、host、DNS 与内网判定及其报错不变。下载改走 ctx.http.fetch(url, { destination: 'public' })：仍按 reqwest 的策略跟随重定向（最多 10 跳），但每一跳在请求前用 net-policy isSafeRemoteUrl 复检，私网、链路本地、元数据、0.0.0.0 一律拒绝，回环照旧放行（Rust 注释：本地 ComfyUI/A1111 是合法来源）；被拒报“生图 URL 指向被封锁的内网地址”，与第一跳被拒相同。响应体先看 Content-Length，读取中再复核，超过 25 MB 立即取消并报“生成图片超过 25MB 上限”。ctx.http 不可用时 URL 结果报“下载生成图片失败: HTTP 服务不可用（需要 http）”，不退回不复检的客户端；b64_json 结果不受影响。生图请求本身仍走 llmHttp。"
+  },
+  "evidence": "S01 安全审查 S4（reviews/AGENT-EXECUTOR-SECURITY.md §2，INTEGRATION-NOTES.md:251 分派给 W04）：建议生图下载改为手动重定向、逐跳校验，加 25 MB 上限。Rust 在 :620-621 明确要做 SSRF 防护（与 fetch_executor 同一判定），重定向让这层判定失效，属于 Rust 自身意图内的缺陷。生图 URL 来自第三方服务的响应（用户配置的 baseUrl 可以是任意兼容服务），image_generate 敏感度为 low，不经审批。复现：让生图接口返回 {data:[{url:'http://公网/a'}]}，/a 回 302 Location: http://169.254.169.254/latest/meta-data/，Rust 会请求元数据地址并把返回存成“AI 生成图片”附件；返回数 GB 的响应体会被整体读进内存。",
+  "userVisible": "正常生图无变化：b64_json 结果、公网 URL（含公网之间的重定向）和本机回环服务（ComfyUI/A1111）都照常下载。只有生图 URL 经重定向到达内网/元数据地址时失败（生图 URL 指向被封锁的内网地址），或图片超过 25 MB 时失败（生成图片超过 25MB 上限）；主流服务单张图远小于 25 MB。",
+  "dataCompat": "不改变落库数据、同步载荷与备份格式；只是少存一些原本会被存下的附件。",
+  "notes": "未用 public-pinned：它不走代理，而 Rust 的 reqwest 客户端读取 HTTP(S)_PROXY / 系统代理，改用会让需要代理才能访问生图 CDN 的用户下载失败。残留与 Rust 相同：DNS 判定与实际连接之间的 rebinding；只解析到回环的域名仍放行（Rust 有意放行回环）。G3：没有场景调用 image_generate，不登记选择器。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "host/plugins/media/tests/media-image-tool-executors.test.ts",
+      "name": "RF-W04-image-download-redirect-cap: every redirect hop is checked before it is requested"
+    },
+    {
+      "file": "host/plugins/media/tests/media-image-tool-executors.test.ts",
+      "name": "RF-W04-image-download-redirect-cap: a generated image over 25 MB is refused"
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+{
+  "plugins": [
+    { "id": "fixture.startup-real", "module": "./startup-real.plugin.ts", "config": { "recovery": true } }
+  ]
+}

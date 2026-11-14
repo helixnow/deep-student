@@ -1,0 +1,38 @@
+{
+  "id": "RF-W07-crypto-root-adopts-slot-master-key",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T14:25:00+08:00",
+  "title": "API Key 主密钥统一放在应用根目录；升级时把活动槽位里已有的 .master_key 复制过去",
+  "rust": {
+    "file": "src-tauri/crates/dstu-llm/src/llm_manager/mod.rs",
+    "line": 4757,
+    "behavior": "LLMManager::new 用 FileManager 的 app_data_dir 打开 CryptoService，而 FileManager 由 build_app_state(active_app_data_dir) 创建（lib.rs:1321、3488），所以加密 API Key 的主密钥是 <app_data>/slots/<活动槽位>/.master_key；备份 backup_crypto_keys 与恢复 restore_crypto_keys 却读写 application_data_root()（backup/mod.rs:2665、3321、3862）即 <app_data>/.master_key"
+  },
+  "fix": {
+    "files": ["host/platform/storage/startup.ts"],
+    "behavior": "TS 的 llm 插件与备份都用应用根目录的 .master_key（host/plugins/llm/index.ts:107 openCrypto(ctx.app.dataDir)）；数据空间启动完成后，若根目录还没有 .master_key 而活动槽位有一把可用的（普通文件、合法 UTF-8、base64 解出 32 字节），把它逐字节原子复制到根目录；副本在 rename 前按新建主密钥的规则收紧权限（POSIX 0600；Windows 与 crypto-service.ts 的 restrictMasterKeyFile 同一个 icacls 调用：/inheritance:r，只授予当前用户、SYSTEM、Administrators，失败只告警），槽内原文件保留；根目录已有密钥时不动；槽内密钥不可用或复制失败只记 warn，不阻断启动"
+  },
+  "evidence": "restore_crypto_keys 的文档写明恢复 .master_key 是为了『跨设备恢复后 API 密钥可正常解密』，但 LLMManager 从不读根目录这把：备份里的 crypto/.master_key 取自根目录（通常不存在，或是早先恢复发布进来的旧密钥），恢复后新活动槽位里没有 .master_key，LLMManager 新建一把，已保存的供应商 API Key 解密失败并被清空（TS config_store.ts:263 同样行为）。TS 侧不做复制时问题更直接：Tauri 老用户升级后根目录没有 .master_key，llm 插件新建一把，槽内密钥加密的 API Key 全部报『AES-GCM 解密失败: aead::Error』。复现见测试：活动槽位 slotB 放 .master_key 并用它加密一条 API Key，启动数据空间后按 llm 插件的方式 openCrypto(<app_data>)，修复前解密失败。",
+  "dataCompat": "落盘多一个 <app_data>/.master_key（活动槽位那把的逐字节副本）。槽内原文件不删不改，回退到旧版 Rust 时仍读槽内密钥，升级前后加密的 API Key 互通；TS 备份里的 crypto/.master_key 就是这把，恢复到 Rust 时 Rust 把它发布到根目录（Rust 不读，不影响）。只复制活动槽位：另一个槽位如果有自己的密钥（旧版 Rust 恢复后才可能出现），切换过去后那边的密文仍需该槽位密钥，记为已知限制。Windows 上副本与新建主密钥一样经 icacls 去掉继承 ACL（best-effort，与 Rust create_master_key 相同）。",
+  "g3": {
+    "affects": false,
+    "selectors": []
+  },
+  "notes": "G3 覆盖不到本条：G3 只采 SQLite，fs 面只覆盖一侧独有的数据库文件（g3-rust-fixes.mjs 的 rowCovered 按 row.db 匹配），.master_key 不是数据库文件，原来的 fs 选择器 .master_key 永远不会命中，已删除。G3 场景的数据目录都由种子新建，种子里没有 .master_key，活动槽位没有可复制的密钥，两侧 API Key 的加解密结果相同。修复只在 Tauri 老数据目录升级时生效，证据是 master-key-adoption.test.ts。",
+  "tests": [
+    {
+      "file": "host/platform/storage/tests/master-key-adoption.test.ts",
+      "name": "RF-W07-crypto-root-adopts-slot-master-key: an upgraded Tauri data dir keeps decrypting API keys encrypted with the active slot .master_key"
+    },
+    {
+      "file": "host/platform/storage/tests/master-key-adoption.test.ts",
+      "name": "RF-W07-crypto-root-adopts-slot-master-key: on Windows the root copy gets the icacls tightening of a newly created .master_key before it is renamed into place"
+    },
+    {
+      "file": "host/platform/storage/tests/master-key-adoption.test.ts",
+      "name": "RF-W07-crypto-root-adopts-slot-master-key: on POSIX the root copy is 0600 and icacls is never run"
+    }
+  ]
+}

@@ -1,0 +1,43 @@
+{
+  "id": "RF-W02-executable-only-tool-face",
+  "kind": "deliberate",
+  "status": "approved",
+  "approvedBy": "main-agent",
+  "approvedAt": "2026-11-07T09:50:00+08:00",
+  "title": "前端下发的工具 schema 中，没有可执行执行器的工具不发给模型，也不进入冻结工具面",
+  "rust": {
+    "file": "src-tauri/crates/dstu-agent/src/chat_v2/pipeline/tool_loop.rs",
+    "line": 1004,
+    "behavior": "前端 mcp_tool_schemas 经白名单/黑名单过滤后全部注入 custom_tools，再按名字冻结进 session.metadata.frozenToolSchemaOrder；注册表里没有执行器的工具照样发给模型，模型调用后才在执行阶段失败。"
+  },
+  "fix": {
+    "files": [
+      "host/plugins/chat-pipeline/src/tool-loop.ts",
+      "host/plugins/chat-pipeline/src/tool-runtime.ts",
+      "host/plugins/chat-pipeline/src/variant-run-single.ts"
+    ],
+    "behavior": "注入前按 ToolExecutorRegistry 判断：内置名必须有专属执行器，外部 MCP 名由 General 执行器承接；判否的 schema 不进 custom_tools、不进冻结顺序，只记一条 Withheld 日志。有执行器的部分与 Rust 完全一致（顺序、代号、摘要）。执行器补齐后该工具在下一轮按前缀扩展追加到冻结顺序尾部。"
+  },
+  "evidence": "迁移期间部分 Rust 工具尚无 TS 执行器（如 chatanki 的 run/start/wait/control/sync 与 5 个库级写工具）。照 Rust 广告这些工具，模型会选中它们并在执行时失败，用户看到失败的工具块、浪费一轮调用。G3 场景 chatanki.library.list.bad_args.negative_page 中 Rust 冻结 7 个名字，本实现冻结其中 5 个（缺 update_library_card、delete_library_card）。",
+  "userVisible": "能：模型看不到当前版本无法执行的工具，不会再出现“调用了不存在的执行器”这类失败工具块；可执行工具的行为不变。",
+  "dataCompat": "chat_v2_sessions.metadata_json 的 frozenToolSchemaOrder 少了被扣下的名字，键与格式不变；读取 Rust 写入的冻结顺序（含暂不可执行的名字）不受影响，冻结顺序只追加不删除。同步与备份格式不变。",
+  "commits": ["97b4cb33"],
+  "g3": {
+    "affects": true,
+    "selectors": [
+      {
+        "scenario": "chatanki.*",
+        "surface": "db",
+        "table": "chat_v2_sessions",
+        "column": "metadata_json",
+        "jsonPath": "$.frozenToolSchemaOrder"
+      }
+    ]
+  },
+  "tests": [
+    {
+      "file": "host/plugins/chat-pipeline/tests/chatanki-tool-face.test.ts",
+      "name": "RF-W02-executable-only-tool-face: a chatanki turn freezes the executable offered tools into session metadata in Rust order"
+    }
+  ]
+}

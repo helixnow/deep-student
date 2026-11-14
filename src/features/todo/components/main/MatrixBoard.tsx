@@ -32,19 +32,12 @@ import { EISENHOWER_QUADRANTS, localToday } from '../../types';
 import { TodoItemRow } from './TodoItemRow';
 import '../../styles/todo-motion.css';
 
-const QUADRANT_ACCENTS: Record<EisenhowerQuadrant, string> = {
-  urgentImportant: 'text-[color:hsl(var(--destructive))]',
-  importantNotUrgent: 'text-[color:hsl(var(--warning))]',
-  urgentNotImportant: 'text-[color:hsl(var(--info))]',
-  neither: 'text-muted-foreground',
-};
-
-/** 象限头部极淡着色条（深浅色模式均用 /[0.06] 透明底，不喧宾夺主） */
-const QUADRANT_HEADER_TINTS: Record<EisenhowerQuadrant, string> = {
-  urgentImportant: 'bg-[color:hsl(var(--destructive))]/[0.06]',
-  importantNotUrgent: 'bg-[color:hsl(var(--warning))]/[0.06]',
-  urgentNotImportant: 'bg-[color:hsl(var(--info))]/[0.06]',
-  neither: 'bg-[color:var(--interactive-hover)]',
+/** 象限头部 6px 语义微圆点（替代整条彩色底纹，保持 Things 3 / Linear 极简克制） */
+const QUADRANT_DOTS: Record<EisenhowerQuadrant, string> = {
+  urgentImportant: 'bg-[color:hsl(var(--destructive))]',
+  importantNotUrgent: 'bg-[color:hsl(var(--warning))]',
+  urgentNotImportant: 'bg-[color:hsl(var(--info))]',
+  neither: 'bg-muted-foreground/45',
 };
 
 /** 拖到目标象限时需要落库的字段变更；已在该象限则返回 null */
@@ -99,31 +92,39 @@ const DraggableMatrixRow: React.FC<{
 
 const QuadrantCell: React.FC<{
   quadrant: EisenhowerQuadrant;
+  index: number;
   count: number;
   /** 当前有拖拽在途（用于弱提示所有可放置区域） */
   dragActive: boolean;
   children: React.ReactNode;
-}> = ({ quadrant, count, dragActive, children }) => {
+}> = ({ quadrant, index, count, dragActive, children }) => {
   const { t } = useTranslation(['todo']);
   const { setNodeRef, isOver } = useDroppable({ id: quadrant });
   return (
     <div
       ref={setNodeRef}
+      data-todo-quadrant={quadrant}
       className={cn(
-        'flex min-h-[180px] flex-col overflow-hidden rounded-[var(--radius-shell-control)] border bg-[color:var(--surface-raised,transparent)]',
-        'transition-[border-color,background-color,box-shadow] duration-150',
+        'flex min-h-[150px] min-w-0 flex-col overflow-hidden bg-transparent md:min-h-0',
+        'transition-[background-color,box-shadow] duration-150',
+        // 1px 十字分割线：小屏纵向逐块底线，宽屏 2x2 十字线
+        index < 3 && 'border-b border-[color:var(--border-default)]/35',
+        index >= 2 && 'md:border-b-0',
+        index % 2 === 0 && 'md:border-r md:border-[color:var(--border-default)]/35',
         isOver
-          ? 'border-[color:hsl(var(--primary))]/60 bg-[color:var(--interactive-hover)] shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.35)]'
-          : dragActive
-          ? 'border-dashed border-[color:var(--border-default)]'
-          : 'border-[color:var(--border-default)]/60',
+          ? 'bg-[color:var(--interactive-hover)] shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.35)]'
+          : dragActive && 'bg-foreground/[0.015]',
       )}
     >
-      <div className={cn('flex items-center gap-2 px-3 py-2', QUADRANT_HEADER_TINTS[quadrant])}>
-        <span className={cn('text-xs font-semibold', QUADRANT_ACCENTS[quadrant])}>
+      <div className="flex shrink-0 items-center gap-2 px-4 py-2">
+        <span
+          aria-hidden="true"
+          className={cn('h-1.5 w-1.5 shrink-0 rounded-full', QUADRANT_DOTS[quadrant])}
+        />
+        <span className="text-xs font-medium text-foreground/85">
           {t(`todo:matrix.${quadrant}`)}
         </span>
-        <span className="text-xs tabular-nums text-muted-foreground/50">{count}</span>
+        <span className="font-mono text-xs tabular-nums text-muted-foreground/55">{count}</span>
         {isOver && (
           <span className="ui-rise-in ml-auto text-xs font-medium text-[color:hsl(var(--primary))]">
             {t('todo:matrix.dropHere', { defaultValue: '放到这里' })}
@@ -142,7 +143,7 @@ interface MatrixBoardProps {
   /** 批量多选集合（与列表视图共用同一选择编排） */
   checkedIds?: ReadonlySet<string>;
   onCheckToggle?: (id: string, opts: { shift: boolean }) => void;
-  /** 📱 触屏批量多选模式（行首显复选框、点行即勾选） */
+  /** 触屏批量多选模式（行首显复选框、点行即勾选） */
   checkMode?: boolean;
   onToggle: (id: string) => void;
   onSelect: (id: string) => void;
@@ -203,17 +204,18 @@ export const MatrixBoard: React.FC<MatrixBoardProps> = ({
       onDragEnd={handleDragEnd}
       onDragCancel={() => setActiveItem(null)}
     >
-      <div className="grid grid-cols-1 gap-3 p-4 sm:p-6 lg:grid-cols-2">
-        {EISENHOWER_QUADRANTS.map((quadrant) => {
+      <div data-todo-matrix="" className="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto border-t border-[color:var(--border-default)]/35 pb-[var(--keyboard-inset,0px)] md:grid-cols-2 md:grid-rows-2 md:overflow-hidden">
+        {EISENHOWER_QUADRANTS.map((quadrant, index) => {
           const quadItems = quadrants[quadrant];
           return (
             <QuadrantCell
               key={quadrant}
               quadrant={quadrant}
+              index={index}
               count={quadItems.length}
               dragActive={activeItem !== null}
             >
-              <div className="flex min-h-0 flex-1 flex-col divide-y divide-border/[0.08]">
+              <div className="flex min-h-0 flex-1 flex-col divide-y divide-border/[0.08] md:overflow-y-auto">
                 {quadItems.length === 0 ? (
                   <div className="flex flex-1 items-center justify-center py-6 text-xs text-muted-foreground/40">
                     {t('todo:matrix.empty')}

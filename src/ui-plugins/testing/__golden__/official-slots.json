@@ -1,0 +1,4081 @@
+{
+ "slots": {
+  "app.menu": [
+   {
+    "id": "app:windows",
+    "order": 10,
+    "owner": "dstu.ui.menu",
+    "origin": "builtin",
+    "value": {
+     "items": "function",
+     "menu": "workbench.app"
+    }
+   },
+   {
+    "id": "brand:desktop",
+    "order": 10,
+    "owner": "dstu.ui.menu",
+    "origin": "builtin",
+    "value": {
+     "items": "function",
+     "menu": "workbench.brand"
+    }
+   },
+   {
+    "id": "window:list",
+    "order": 10,
+    "owner": "dstu.ui.menu",
+    "origin": "builtin",
+    "value": {
+     "items": "function",
+     "menu": "workbench.window"
+    }
+   },
+   {
+    "id": "brand:system",
+    "order": 20,
+    "owner": "dstu.ui.menu",
+    "origin": "builtin",
+    "value": {
+     "items": "function",
+     "menu": "workbench.brand"
+    }
+   },
+   {
+    "id": "window:tile",
+    "order": 20,
+    "owner": "dstu.ui.menu",
+    "origin": "builtin",
+    "value": {
+     "items": "function",
+     "menu": "workbench.window"
+    }
+   },
+   {
+    "id": "brand:exit",
+    "order": 30,
+    "owner": "dstu.ui.menu",
+    "origin": "builtin",
+    "value": {
+     "items": "function",
+     "menu": "workbench.brand"
+    }
+   }
+  ],
+  "chat.toolResults": [
+   {
+    "id": "dstu.ui.chat/tool-result/completion/attempt_completion",
+    "key": "attempt_completion",
+    "order": 0,
+    "owner": "dstu.ui.chat",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "match": "qualified",
+     "placement": "block",
+     "when": "function"
+    }
+   },
+   {
+    "id": "dstu.ui.chat/tool-result/doc-read/docx_extract_tables",
+    "key": "docx_extract_tables",
+    "order": 0,
+    "owner": "dstu.ui.chat",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "placement": "actions"
+    }
+   },
+   {
+    "id": "dstu.ui.chat/tool-result/doc-read/docx_get_metadata",
+    "key": "docx_get_metadata",
+    "order": 0,
+    "owner": "dstu.ui.chat",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "placement": "actions"
+    }
+   },
+   {
+    "id": "dstu.ui.chat/tool-result/doc-read/docx_read_structured",
+    "key": "docx_read_structured",
+    "order": 0,
+    "owner": "dstu.ui.chat",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "placement": "actions"
+    }
+   },
+   {
+    "id": "dstu.ui.chat/tool-result/doc-read/docx_to_spec",
+    "key": "docx_to_spec",
+    "order": 0,
+    "owner": "dstu.ui.chat",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "placement": "actions"
+    }
+   },
+   {
+    "id": "dstu.ui.chat/tool-result/doc-read/pptx_extract_tables",
+    "key": "pptx_extract_tables",
+    "order": 0,
+    "owner": "dstu.ui.chat",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "placement": "actions"
+    }
+   },
+   {
+    "id": "dstu.ui.chat/tool-result/doc-read/pptx_get_metadata",
+    "key": "pptx_get_metadata",
+    "order": 0,
+    "owner": "dstu.ui.chat",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "placement": "actions"
+    }
+   },
+   {
+    "id": "dstu.ui.chat/tool-result/doc-read/pptx_read_structured",
+    "key": "pptx_read_structured",
+    "order": 0,
+    "owner": "dstu.ui.chat",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "placement": "actions"
+    }
+   },
+   {
+    "id": "dstu.ui.chat/tool-result/doc-read/pptx_to_spec",
+    "key": "pptx_to_spec",
+    "order": 0,
+    "owner": "dstu.ui.chat",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "placement": "actions"
+    }
+   },
+   {
+    "id": "dstu.ui.chat/tool-result/doc-read/xlsx_extract_tables",
+    "key": "xlsx_extract_tables",
+    "order": 0,
+    "owner": "dstu.ui.chat",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "placement": "actions"
+    }
+   },
+   {
+    "id": "dstu.ui.chat/tool-result/doc-read/xlsx_get_metadata",
+    "key": "xlsx_get_metadata",
+    "order": 0,
+    "owner": "dstu.ui.chat",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "placement": "actions"
+    }
+   },
+   {
+    "id": "dstu.ui.chat/tool-result/doc-read/xlsx_read_structured",
+    "key": "xlsx_read_structured",
+    "order": 0,
+    "owner": "dstu.ui.chat",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "placement": "actions"
+    }
+   },
+   {
+    "id": "dstu.ui.chat/tool-result/doc-read/xlsx_to_spec",
+    "key": "xlsx_to_spec",
+    "order": 0,
+    "owner": "dstu.ui.chat",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "placement": "actions"
+    }
+   },
+   {
+    "id": "dstu.ui.chat/tool-result/doc-write/docx_create",
+    "key": "docx_create",
+    "order": 0,
+    "owner": "dstu.ui.chat",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "placement": "actions"
+    }
+   },
+   {
+    "id": "dstu.ui.chat/tool-result/doc-write/docx_replace_text",
+    "key": "docx_replace_text",
+    "order": 0,
+    "owner": "dstu.ui.chat",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "placement": "actions"
+    }
+   },
+   {
+    "id": "dstu.ui.chat/tool-result/doc-write/pptx_create",
+    "key": "pptx_create",
+    "order": 0,
+    "owner": "dstu.ui.chat",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "placement": "actions"
+    }
+   },
+   {
+    "id": "dstu.ui.chat/tool-result/doc-write/pptx_replace_text",
+    "key": "pptx_replace_text",
+    "order": 0,
+    "owner": "dstu.ui.chat",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "placement": "actions"
+    }
+   },
+   {
+    "id": "dstu.ui.chat/tool-result/doc-write/xlsx_create",
+    "key": "xlsx_create",
+    "order": 0,
+    "owner": "dstu.ui.chat",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "placement": "actions"
+    }
+   },
+   {
+    "id": "dstu.ui.chat/tool-result/doc-write/xlsx_edit_cells",
+    "key": "xlsx_edit_cells",
+    "order": 0,
+    "owner": "dstu.ui.chat",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "placement": "actions"
+    }
+   },
+   {
+    "id": "dstu.ui.chat/tool-result/doc-write/xlsx_replace_text",
+    "key": "xlsx_replace_text",
+    "order": 0,
+    "owner": "dstu.ui.chat",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "placement": "actions"
+    }
+   },
+   {
+    "id": "dstu.ui.chat/tool-result/note/note_append",
+    "key": "note_append",
+    "order": 0,
+    "owner": "dstu.ui.chat",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "placement": "actions"
+    }
+   },
+   {
+    "id": "dstu.ui.chat/tool-result/note/note_create",
+    "key": "note_create",
+    "order": 0,
+    "owner": "dstu.ui.chat",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "placement": "actions"
+    }
+   },
+   {
+    "id": "dstu.ui.chat/tool-result/note/note_list",
+    "key": "note_list",
+    "order": 0,
+    "owner": "dstu.ui.chat",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "placement": "actions"
+    }
+   },
+   {
+    "id": "dstu.ui.chat/tool-result/note/note_read",
+    "key": "note_read",
+    "order": 0,
+    "owner": "dstu.ui.chat",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "placement": "actions"
+    }
+   },
+   {
+    "id": "dstu.ui.chat/tool-result/note/note_replace",
+    "key": "note_replace",
+    "order": 0,
+    "owner": "dstu.ui.chat",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "placement": "actions"
+    }
+   },
+   {
+    "id": "dstu.ui.chat/tool-result/note/note_search",
+    "key": "note_search",
+    "order": 0,
+    "owner": "dstu.ui.chat",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "placement": "actions"
+    }
+   },
+   {
+    "id": "dstu.ui.chat/tool-result/note/note_set",
+    "key": "note_set",
+    "order": 0,
+    "owner": "dstu.ui.chat",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "placement": "actions"
+    }
+   },
+   {
+    "id": "dstu.ui.chat/tool-result/paper-save/paper_save",
+    "key": "paper_save",
+    "order": 0,
+    "owner": "dstu.ui.chat",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "match": "qualified",
+     "placement": "block"
+    }
+   },
+   {
+    "id": "dstu.ui.chat/tool-result/shell/local_shell_execute",
+    "key": "local_shell_execute",
+    "order": 0,
+    "owner": "dstu.ui.chat",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "match": "qualified",
+     "placement": "output"
+    }
+   },
+   {
+    "id": "dstu.ui.chat/tool-result/todo/todo_add",
+    "key": "todo_add",
+    "order": 0,
+    "owner": "dstu.ui.chat",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "placement": "block"
+    }
+   },
+   {
+    "id": "dstu.ui.chat/tool-result/todo/todo_get",
+    "key": "todo_get",
+    "order": 0,
+    "owner": "dstu.ui.chat",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "placement": "block"
+    }
+   },
+   {
+    "id": "dstu.ui.chat/tool-result/todo/todo_init",
+    "key": "todo_init",
+    "order": 0,
+    "owner": "dstu.ui.chat",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "placement": "block"
+    }
+   },
+   {
+    "id": "dstu.ui.chat/tool-result/todo/todo_update",
+    "key": "todo_update",
+    "order": 0,
+    "owner": "dstu.ui.chat",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "placement": "block"
+    }
+   }
+  ],
+  "dashboard.charts": [],
+  "dashboard.stats": [],
+  "dashboard.widgets": [],
+  "debug.panels": [],
+  "editor.blockMenu": [],
+  "editor.extensions": [],
+  "editor.selectionToolbar": [],
+  "editor.slashMenu": [],
+  "genui.components": [
+   {
+    "id": "genui:action-bar",
+    "key": "action-bar",
+    "order": 0,
+    "owner": "dstu.ui.genui",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "description": "操作栏：仅声明 action id，副作用由 handler 执行",
+     "propsSchema": {
+      "decode": "function",
+      "decodeAsync": "function",
+      "def": {
+       "shape": {
+        "actions": "object",
+        "id": "object"
+       },
+       "type": "object"
+      },
+      "encode": "function",
+      "encodeAsync": "function",
+      "parse": "function",
+      "parseAsync": "function",
+      "safeDecode": "function",
+      "safeDecodeAsync": "function",
+      "safeEncode": "function",
+      "safeEncodeAsync": "function",
+      "safeParse": "function",
+      "safeParseAsync": "function",
+      "spa": "function",
+      "toJSONSchema": "function",
+      "type": "object"
+     },
+     "type": "action-bar"
+    }
+   },
+   {
+    "id": "genui:alert",
+    "key": "alert",
+    "order": 0,
+    "owner": "dstu.ui.genui",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "description": "提示条：info/warning/destructive",
+     "propsSchema": {
+      "decode": "function",
+      "decodeAsync": "function",
+      "def": {
+       "shape": {
+        "description": "object",
+        "id": "object",
+        "title": "object",
+        "variant": "object"
+       },
+       "type": "object"
+      },
+      "encode": "function",
+      "encodeAsync": "function",
+      "parse": "function",
+      "parseAsync": "function",
+      "safeDecode": "function",
+      "safeDecodeAsync": "function",
+      "safeEncode": "function",
+      "safeEncodeAsync": "function",
+      "safeParse": "function",
+      "safeParseAsync": "function",
+      "spa": "function",
+      "toJSONSchema": "function",
+      "type": "object"
+     },
+     "type": "alert"
+    }
+   },
+   {
+    "id": "genui:chart",
+    "key": "chart",
+    "order": 0,
+    "owner": "dstu.ui.genui",
+    "origin": "builtin",
+    "value": {
+     "allowPartialRender": true,
+     "component": "function",
+     "description": "图表：限定 bar/line/pie，categories + series",
+     "propsSchema": {
+      "decode": "function",
+      "decodeAsync": "function",
+      "def": {
+       "checks": [
+        "object"
+       ],
+       "shape": {
+        "categories": "object",
+        "id": "object",
+        "kind": "object",
+        "series": "object",
+        "title": "object",
+        "unit": "object"
+       },
+       "type": "object"
+      },
+      "encode": "function",
+      "encodeAsync": "function",
+      "parse": "function",
+      "parseAsync": "function",
+      "safeDecode": "function",
+      "safeDecodeAsync": "function",
+      "safeEncode": "function",
+      "safeEncodeAsync": "function",
+      "safeParse": "function",
+      "safeParseAsync": "function",
+      "spa": "function",
+      "toJSONSchema": "function",
+      "type": "object"
+     },
+     "type": "chart"
+    }
+   },
+   {
+    "id": "genui:flashcard-preview",
+    "key": "flashcard-preview",
+    "order": 0,
+    "owner": "dstu.ui.genui",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "description": "闪卡预览：front/back/tags",
+     "propsSchema": {
+      "decode": "function",
+      "decodeAsync": "function",
+      "def": {
+       "shape": {
+        "back": "object",
+        "deckName": "object",
+        "front": "object",
+        "id": "object",
+        "tags": "object"
+       },
+       "type": "object"
+      },
+      "encode": "function",
+      "encodeAsync": "function",
+      "parse": "function",
+      "parseAsync": "function",
+      "safeDecode": "function",
+      "safeDecodeAsync": "function",
+      "safeEncode": "function",
+      "safeEncodeAsync": "function",
+      "safeParse": "function",
+      "safeParseAsync": "function",
+      "spa": "function",
+      "toJSONSchema": "function",
+      "type": "object"
+     },
+     "type": "flashcard-preview"
+    }
+   },
+   {
+    "id": "genui:key-value-grid",
+    "key": "key-value-grid",
+    "order": 0,
+    "owner": "dstu.ui.genui",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "description": "键值对网格：摘要/metadata",
+     "propsSchema": {
+      "decode": "function",
+      "decodeAsync": "function",
+      "def": {
+       "shape": {
+        "id": "object",
+        "rows": "object",
+        "title": "object"
+       },
+       "type": "object"
+      },
+      "encode": "function",
+      "encodeAsync": "function",
+      "parse": "function",
+      "parseAsync": "function",
+      "safeDecode": "function",
+      "safeDecodeAsync": "function",
+      "safeEncode": "function",
+      "safeEncodeAsync": "function",
+      "safeParse": "function",
+      "safeParseAsync": "function",
+      "spa": "function",
+      "toJSONSchema": "function",
+      "type": "object"
+     },
+     "type": "key-value-grid"
+    }
+   },
+   {
+    "id": "genui:list",
+    "key": "list",
+    "order": 0,
+    "owner": "dstu.ui.genui",
+    "origin": "builtin",
+    "value": {
+     "allowPartialRender": true,
+     "component": "function",
+     "description": "列表：标题 + 条目（label/description/badge）",
+     "propsSchema": {
+      "decode": "function",
+      "decodeAsync": "function",
+      "def": {
+       "shape": {
+        "emptyLabel": "object",
+        "id": "object",
+        "items": "object",
+        "title": "object"
+       },
+       "type": "object"
+      },
+      "encode": "function",
+      "encodeAsync": "function",
+      "parse": "function",
+      "parseAsync": "function",
+      "safeDecode": "function",
+      "safeDecodeAsync": "function",
+      "safeEncode": "function",
+      "safeEncodeAsync": "function",
+      "safeParse": "function",
+      "safeParseAsync": "function",
+      "spa": "function",
+      "toJSONSchema": "function",
+      "type": "object"
+     },
+     "type": "list"
+    }
+   },
+   {
+    "id": "genui:markdown",
+    "key": "markdown",
+    "order": 0,
+    "owner": "dstu.ui.genui",
+    "origin": "builtin",
+    "value": {
+     "allowPartialRender": true,
+     "component": "function",
+     "description": "Markdown 正文：title + body，复用 Chat MarkdownRenderer",
+     "propsSchema": {
+      "decode": "function",
+      "decodeAsync": "function",
+      "def": {
+       "shape": {
+        "body": "object",
+        "id": "object",
+        "title": "object",
+        "variant": "object"
+       },
+       "type": "object"
+      },
+      "encode": "function",
+      "encodeAsync": "function",
+      "parse": "function",
+      "parseAsync": "function",
+      "safeDecode": "function",
+      "safeDecodeAsync": "function",
+      "safeEncode": "function",
+      "safeEncodeAsync": "function",
+      "safeParse": "function",
+      "safeParseAsync": "function",
+      "spa": "function",
+      "toJSONSchema": "function",
+      "type": "object"
+     },
+     "type": "markdown"
+    }
+   },
+   {
+    "id": "genui:mindmap-embed",
+    "key": "mindmap-embed",
+    "order": 0,
+    "owner": "dstu.ui.genui",
+    "origin": "builtin",
+    "value": {
+     "allowPartialRender": false,
+     "component": "function",
+     "description": "思维导图嵌入：mindmapId 引用式预览",
+     "propsSchema": {
+      "decode": "function",
+      "decodeAsync": "function",
+      "def": {
+       "checks": [
+        "object"
+       ],
+       "shape": {
+        "height": "object",
+        "id": "object",
+        "mindmapId": "object",
+        "title": "object",
+        "versionId": "object"
+       },
+       "type": "object"
+      },
+      "encode": "function",
+      "encodeAsync": "function",
+      "parse": "function",
+      "parseAsync": "function",
+      "safeDecode": "function",
+      "safeDecodeAsync": "function",
+      "safeEncode": "function",
+      "safeEncodeAsync": "function",
+      "safeParse": "function",
+      "safeParseAsync": "function",
+      "spa": "function",
+      "toJSONSchema": "function",
+      "type": "object"
+     },
+     "type": "mindmap-embed"
+    }
+   },
+   {
+    "id": "genui:mistake-analysis",
+    "key": "mistake-analysis",
+    "order": 0,
+    "owner": "dstu.ui.genui",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "description": "错题分析：主题 + 错误率 + 建议",
+     "propsSchema": {
+      "decode": "function",
+      "decodeAsync": "function",
+      "def": {
+       "shape": {
+        "errorRate": "object",
+        "id": "object",
+        "mistakeCount": "object",
+        "severity": "object",
+        "suggestion": "object",
+        "topic": "object"
+       },
+       "type": "object"
+      },
+      "encode": "function",
+      "encodeAsync": "function",
+      "parse": "function",
+      "parseAsync": "function",
+      "safeDecode": "function",
+      "safeDecodeAsync": "function",
+      "safeEncode": "function",
+      "safeEncodeAsync": "function",
+      "safeParse": "function",
+      "safeParseAsync": "function",
+      "spa": "function",
+      "toJSONSchema": "function",
+      "type": "object"
+     },
+     "type": "mistake-analysis"
+    }
+   },
+   {
+    "id": "genui:paper-digest",
+    "key": "paper-digest",
+    "order": 0,
+    "owner": "dstu.ui.genui",
+    "origin": "builtin",
+    "value": {
+     "allowPartialRender": true,
+     "component": "function",
+     "description": "论文摘要：标题、作者、要点、引用标签",
+     "propsSchema": {
+      "decode": "function",
+      "decodeAsync": "function",
+      "def": {
+       "shape": {
+        "abstractExcerpt": "object",
+        "authors": "object",
+        "citationCount": "object",
+        "citationLabel": "object",
+        "id": "object",
+        "keyFindings": "object",
+        "title": "object",
+        "venue": "object",
+        "year": "object"
+       },
+       "type": "object"
+      },
+      "encode": "function",
+      "encodeAsync": "function",
+      "parse": "function",
+      "parseAsync": "function",
+      "safeDecode": "function",
+      "safeDecodeAsync": "function",
+      "safeEncode": "function",
+      "safeEncodeAsync": "function",
+      "safeParse": "function",
+      "safeParseAsync": "function",
+      "spa": "function",
+      "toJSONSchema": "function",
+      "type": "object"
+     },
+     "type": "paper-digest"
+    }
+   },
+   {
+    "id": "genui:progress",
+    "key": "progress",
+    "order": 0,
+    "owner": "dstu.ui.genui",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "description": "进度条：current/total",
+     "propsSchema": {
+      "decode": "function",
+      "decodeAsync": "function",
+      "def": {
+       "shape": {
+        "current": "object",
+        "id": "object",
+        "label": "object",
+        "title": "object",
+        "total": "object"
+       },
+       "type": "object"
+      },
+      "encode": "function",
+      "encodeAsync": "function",
+      "parse": "function",
+      "parseAsync": "function",
+      "safeDecode": "function",
+      "safeDecodeAsync": "function",
+      "safeEncode": "function",
+      "safeEncodeAsync": "function",
+      "safeParse": "function",
+      "safeParseAsync": "function",
+      "spa": "function",
+      "toJSONSchema": "function",
+      "type": "object"
+     },
+     "type": "progress"
+    }
+   },
+   {
+    "id": "genui:research-plan",
+    "key": "research-plan",
+    "order": 0,
+    "owner": "dstu.ui.genui",
+    "origin": "builtin",
+    "value": {
+     "allowPartialRender": true,
+     "component": "function",
+     "description": "研究计划：多步骤进度（pending/active/done）",
+     "propsSchema": {
+      "decode": "function",
+      "decodeAsync": "function",
+      "def": {
+       "shape": {
+        "id": "object",
+        "round": "object",
+        "steps": "object",
+        "title": "object"
+       },
+       "type": "object"
+      },
+      "encode": "function",
+      "encodeAsync": "function",
+      "parse": "function",
+      "parseAsync": "function",
+      "safeDecode": "function",
+      "safeDecodeAsync": "function",
+      "safeEncode": "function",
+      "safeEncodeAsync": "function",
+      "safeParse": "function",
+      "safeParseAsync": "function",
+      "spa": "function",
+      "toJSONSchema": "function",
+      "type": "object"
+     },
+     "type": "research-plan"
+    }
+   },
+   {
+    "id": "genui:research-report",
+    "key": "research-report",
+    "order": 0,
+    "owner": "dstu.ui.genui",
+    "origin": "builtin",
+    "value": {
+     "allowPartialRender": true,
+     "component": "function",
+     "description": "研究报告：正文 + [类型-N] 引用标记（可流式 partial body）",
+     "propsSchema": {
+      "decode": "function",
+      "decodeAsync": "function",
+      "def": {
+       "shape": {
+        "body": "object",
+        "density": "object",
+        "id": "object",
+        "title": "object"
+       },
+       "type": "object"
+      },
+      "encode": "function",
+      "encodeAsync": "function",
+      "parse": "function",
+      "parseAsync": "function",
+      "safeDecode": "function",
+      "safeDecodeAsync": "function",
+      "safeEncode": "function",
+      "safeEncodeAsync": "function",
+      "safeParse": "function",
+      "safeParseAsync": "function",
+      "spa": "function",
+      "toJSONSchema": "function",
+      "type": "object"
+     },
+     "type": "research-report"
+    }
+   },
+   {
+    "id": "genui:review-calendar",
+    "key": "review-calendar",
+    "order": 0,
+    "owner": "dstu.ui.genui",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "description": "复习日历：日期 + 待复习数量",
+     "propsSchema": {
+      "decode": "function",
+      "decodeAsync": "function",
+      "def": {
+       "shape": {
+        "days": "object",
+        "id": "object",
+        "title": "object"
+       },
+       "type": "object"
+      },
+      "encode": "function",
+      "encodeAsync": "function",
+      "parse": "function",
+      "parseAsync": "function",
+      "safeDecode": "function",
+      "safeDecodeAsync": "function",
+      "safeEncode": "function",
+      "safeEncodeAsync": "function",
+      "safeParse": "function",
+      "safeParseAsync": "function",
+      "spa": "function",
+      "toJSONSchema": "function",
+      "type": "object"
+     },
+     "type": "review-calendar"
+    }
+   },
+   {
+    "id": "genui:stat-card",
+    "key": "stat-card",
+    "order": 0,
+    "owner": "dstu.ui.genui",
+    "origin": "builtin",
+    "value": {
+     "allowPartialRender": true,
+     "component": "function",
+     "description": "指标卡片：标题、数值、可选趋势",
+     "propsSchema": {
+      "decode": "function",
+      "decodeAsync": "function",
+      "def": {
+       "shape": {
+        "id": "object",
+        "subtitle": "object",
+        "title": "object",
+        "trend": "object",
+        "trendLabel": "object",
+        "value": "object"
+       },
+       "type": "object"
+      },
+      "encode": "function",
+      "encodeAsync": "function",
+      "parse": "function",
+      "parseAsync": "function",
+      "safeDecode": "function",
+      "safeDecodeAsync": "function",
+      "safeEncode": "function",
+      "safeEncodeAsync": "function",
+      "safeParse": "function",
+      "safeParseAsync": "function",
+      "spa": "function",
+      "toJSONSchema": "function",
+      "type": "object"
+     },
+     "type": "stat-card"
+    }
+   },
+   {
+    "id": "genui:steps",
+    "key": "steps",
+    "order": 0,
+    "owner": "dstu.ui.genui",
+    "origin": "builtin",
+    "value": {
+     "allowPartialRender": true,
+     "component": "function",
+     "description": "学习计划步骤：通用步骤列表（pending/active/done/error/skipped，可选时长）",
+     "propsSchema": {
+      "decode": "function",
+      "decodeAsync": "function",
+      "def": {
+       "shape": {
+        "id": "object",
+        "steps": "object",
+        "title": "object"
+       },
+       "type": "object"
+      },
+      "encode": "function",
+      "encodeAsync": "function",
+      "parse": "function",
+      "parseAsync": "function",
+      "safeDecode": "function",
+      "safeDecodeAsync": "function",
+      "safeEncode": "function",
+      "safeEncodeAsync": "function",
+      "safeParse": "function",
+      "safeParseAsync": "function",
+      "spa": "function",
+      "toJSONSchema": "function",
+      "type": "object"
+     },
+     "type": "steps"
+    }
+   },
+   {
+    "id": "genui:table",
+    "key": "table",
+    "order": 0,
+    "owner": "dstu.ui.genui",
+    "origin": "builtin",
+    "value": {
+     "allowPartialRender": true,
+     "component": "function",
+     "description": "表格：列 schema + 行数据（允许流式 rows）",
+     "propsSchema": {
+      "decode": "function",
+      "decodeAsync": "function",
+      "def": {
+       "shape": {
+        "caption": "object",
+        "columns": "object",
+        "emptyLabel": "object",
+        "id": "object",
+        "rows": "object",
+        "title": "object"
+       },
+       "type": "object"
+      },
+      "encode": "function",
+      "encodeAsync": "function",
+      "parse": "function",
+      "parseAsync": "function",
+      "safeDecode": "function",
+      "safeDecodeAsync": "function",
+      "safeEncode": "function",
+      "safeEncodeAsync": "function",
+      "safeParse": "function",
+      "safeParseAsync": "function",
+      "spa": "function",
+      "toJSONSchema": "function",
+      "type": "object"
+     },
+     "type": "table"
+    }
+   },
+   {
+    "id": "genui:text",
+    "key": "text",
+    "order": 0,
+    "owner": "dstu.ui.genui",
+    "origin": "builtin",
+    "value": {
+     "allowPartialRender": true,
+     "component": "function",
+     "description": "文本块：heading + body，SaaS 信息密度",
+     "propsSchema": {
+      "decode": "function",
+      "decodeAsync": "function",
+      "def": {
+       "shape": {
+        "body": "object",
+        "density": "object",
+        "heading": "object",
+        "id": "object"
+       },
+       "type": "object"
+      },
+      "encode": "function",
+      "encodeAsync": "function",
+      "parse": "function",
+      "parseAsync": "function",
+      "safeDecode": "function",
+      "safeDecodeAsync": "function",
+      "safeEncode": "function",
+      "safeEncodeAsync": "function",
+      "safeParse": "function",
+      "safeParseAsync": "function",
+      "spa": "function",
+      "toJSONSchema": "function",
+      "type": "object"
+     },
+     "type": "text"
+    }
+   }
+  ],
+  "markdown.codeBlocks": [
+   {
+    "id": "codeblock:math",
+    "key": "math",
+    "order": 10,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "matches": "function"
+    }
+   },
+   {
+    "id": "codeblock:latex",
+    "key": "latex",
+    "order": 20,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "matches": "function"
+    }
+   },
+   {
+    "id": "codeblock:mermaid",
+    "key": "mermaid",
+    "order": 30,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "codeBlock": {
+      "kind": "mermaid"
+     }
+    }
+   },
+   {
+    "id": "codeblock:svg",
+    "key": "svg",
+    "order": 40,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "codeBlock": {
+      "kind": "svg"
+     }
+    }
+   },
+   {
+    "id": "codeblock:html",
+    "key": "html",
+    "order": 50,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "codeBlock": {
+      "kind": "html"
+     }
+    }
+   },
+   {
+    "id": "codeblock:htm",
+    "key": "htm",
+    "order": 60,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "codeBlock": {
+      "kind": "html"
+     }
+    }
+   },
+   {
+    "id": "codeblock:xml",
+    "key": "xml",
+    "order": 70,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "codeBlock": {
+      "kind": "xml"
+     }
+    }
+   },
+   {
+    "id": "codeblock:vega-lite",
+    "key": "vega-lite",
+    "order": 80,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "codeBlock": {
+      "capability": "charts",
+      "kind": "rich",
+      "richRendererKind": "vega-lite"
+     }
+    }
+   },
+   {
+    "id": "codeblock:vega",
+    "key": "vega",
+    "order": 90,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "codeBlock": {
+      "capability": "charts",
+      "kind": "rich",
+      "richRendererKind": "vega-lite"
+     }
+    }
+   },
+   {
+    "id": "codeblock:dot",
+    "key": "dot",
+    "order": 100,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "codeBlock": {
+      "capability": "graphviz",
+      "kind": "rich",
+      "richRendererKind": "dot"
+     }
+    }
+   },
+   {
+    "id": "codeblock:abc",
+    "key": "abc",
+    "order": 110,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "codeBlock": {
+      "capability": "music",
+      "kind": "rich",
+      "richRendererKind": "abc"
+     }
+    }
+   },
+   {
+    "id": "codeblock:wavedrom",
+    "key": "wavedrom",
+    "order": 120,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "codeBlock": {
+      "capability": "timing",
+      "kind": "rich",
+      "richRendererKind": "wavedrom"
+     }
+    }
+   },
+   {
+    "id": "codeblock:mol",
+    "key": "mol",
+    "order": 130,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "codeBlock": {
+      "capability": "chemicalFiles",
+      "kind": "rich",
+      "richRendererKind": "molecule-2d"
+     }
+    }
+   },
+   {
+    "id": "codeblock:molfile",
+    "key": "molfile",
+    "order": 140,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "codeBlock": {
+      "capability": "chemicalFiles",
+      "kind": "rich",
+      "richRendererKind": "molecule-2d"
+     }
+    }
+   },
+   {
+    "id": "codeblock:sdf",
+    "key": "sdf",
+    "order": 150,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "codeBlock": {
+      "capability": "chemicalFiles",
+      "kind": "rich",
+      "richRendererKind": "molecule-2d"
+     }
+    }
+   },
+   {
+    "id": "codeblock:pdb",
+    "key": "pdb",
+    "order": 160,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "codeBlock": {
+      "capability": "molecular3d",
+      "kind": "rich",
+      "richRendererKind": "molecule-3d"
+     }
+    }
+   },
+   {
+    "id": "codeblock:geojson",
+    "key": "geojson",
+    "order": 170,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "codeBlock": {
+      "capability": "geojson",
+      "kind": "rich",
+      "richRendererKind": "geojson"
+     }
+    }
+   }
+  ],
+  "markdown.rehype": [
+   {
+    "id": "rehype:raw",
+    "order": 10,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "create": "function"
+    }
+   },
+   {
+    "id": "rehype:sanitize",
+    "order": 20,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "create": "function"
+    }
+   },
+   {
+    "id": "rehype:search-highlights",
+    "order": 30,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "create": "function"
+    }
+   }
+  ],
+  "markdown.remark": [
+   {
+    "id": "remark:disable-indented-code",
+    "order": 10,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "create": "function"
+    }
+   },
+   {
+    "id": "remark:full-width-punctuation",
+    "order": 20,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "create": "function"
+    }
+   },
+   {
+    "id": "remark:math-code-blocks",
+    "order": 30,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "create": "function"
+    }
+   },
+   {
+    "id": "remark:math",
+    "order": 40,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "create": "function"
+    }
+   },
+   {
+    "id": "remark:inline-smiles",
+    "order": 50,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "create": "function"
+    }
+   },
+   {
+    "id": "remark:gfm",
+    "order": 60,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "create": "function"
+    }
+   },
+   {
+    "id": "remark:citations",
+    "order": 70,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "create": "function"
+    }
+   }
+  ],
+  "nav": [
+   {
+    "id": "chat-v2",
+    "order": 10,
+    "owner": "dstu.ui.shell",
+    "origin": "builtin",
+    "value": {
+     "desktop": {
+      "action": "new-session",
+      "chatScope": true,
+      "omitFallback": true,
+      "placement": "primary"
+     },
+     "fallback": "新会话",
+     "icon": "function",
+     "id": "chat-v2",
+     "labelKey": "sidebar:navigation.chat_v2",
+     "mobile": {
+      "ariaLabel": {
+       "fallback": "会话",
+       "key": "sidebar:navigation.sessions"
+      },
+      "label": {
+       "fallback": "会话",
+       "key": "sidebar:navigation.launcher.chat_v2"
+      },
+      "placement": "launcher"
+     },
+     "order": 10,
+     "viewId": "chat-v2"
+    }
+   },
+   {
+    "id": "learning-hub",
+    "order": 20,
+    "owner": "dstu.ui.shell",
+    "origin": "builtin",
+    "value": {
+     "desktop": {
+      "placement": "primary"
+     },
+     "fallback": "资源库",
+     "icon": "function",
+     "id": "learning-hub",
+     "labelKey": "sidebar:navigation.learning_hub",
+     "mobile": {
+      "ariaLabel": {
+       "fallback": "资源库",
+       "key": "sidebar:navigation.learning_hub"
+      },
+      "label": {
+       "fallback": "资源",
+       "key": "sidebar:navigation.launcher.learning_hub"
+      },
+      "placement": "launcher"
+     },
+     "order": 20,
+     "viewId": "learning-hub"
+    }
+   },
+   {
+    "id": "media",
+    "order": 30,
+    "owner": "dstu.ui.shell",
+    "origin": "builtin",
+    "value": {
+     "desktop": {
+      "placement": "primary"
+     },
+     "fallback": "音视频",
+     "icon": "function",
+     "id": "media",
+     "labelKey": "sidebar:navigation.media",
+     "mobile": {
+      "ariaLabel": {
+       "fallback": "音视频",
+       "key": "sidebar:navigation.media"
+      },
+      "label": {
+       "fallback": "音视频",
+       "key": "sidebar:navigation.launcher.media"
+      },
+      "placement": "launcher"
+     },
+     "order": 30,
+     "viewId": "media"
+    }
+   },
+   {
+    "id": "todo",
+    "order": 40,
+    "owner": "dstu.ui.shell",
+    "origin": "builtin",
+    "value": {
+     "desktop": {
+      "placement": "primary"
+     },
+     "icon": "function",
+     "id": "todo",
+     "labelKey": "sidebar:navigation.todo",
+     "mobile": {
+      "ariaLabel": {
+       "fallback": "待办",
+       "key": "sidebar:navigation.todo"
+      },
+      "label": {
+       "fallback": "待办",
+       "key": "sidebar:navigation.launcher.todo"
+      },
+      "placement": "launcher"
+     },
+     "order": 40,
+     "viewId": "todo"
+    }
+   },
+   {
+    "id": "skills-management",
+    "order": 50,
+    "owner": "dstu.ui.shell",
+    "origin": "builtin",
+    "value": {
+     "desktop": {
+      "placement": "primary"
+     },
+     "fallback": "技能管理",
+     "icon": "function",
+     "id": "skills-management",
+     "labelKey": "sidebar:navigation.skills_management",
+     "mobile": {
+      "ariaLabel": {
+       "fallback": "技能管理",
+       "key": "sidebar:navigation.skills_management"
+      },
+      "label": {
+       "fallback": "技能",
+       "key": "sidebar:navigation.launcher.skills_management"
+      },
+      "placement": "launcher"
+     },
+     "order": 50,
+     "viewId": "skills-management"
+    }
+   },
+   {
+    "id": "flashcards",
+    "order": 60,
+    "owner": "dstu.ui.shell",
+    "origin": "builtin",
+    "value": {
+     "desktop": {
+      "placement": "primary"
+     },
+     "fallback": "闪卡",
+     "icon": "function",
+     "id": "flashcards",
+     "labelKey": "sidebar:navigation.flashcards",
+     "mobile": {
+      "ariaLabel": {
+       "fallback": "闪卡",
+       "key": "sidebar:navigation.flashcards"
+      },
+      "label": {
+       "fallback": "闪卡",
+       "key": "sidebar:navigation.launcher.flashcards"
+      },
+      "placement": "launcher"
+     },
+     "order": 60,
+     "viewId": "flashcards"
+    }
+   },
+   {
+    "id": "ui-lab",
+    "order": 70,
+    "owner": "dstu.ui.shell",
+    "origin": "builtin",
+    "value": {
+     "desktop": {
+      "placement": "primary"
+     },
+     "icon": "function",
+     "id": "ui-lab",
+     "labelKey": "sidebar:navigation.ui_lab",
+     "order": 70,
+     "viewId": "ui-lab",
+     "visible": "function"
+    }
+   },
+   {
+    "id": "data-management",
+    "order": 80,
+    "owner": "dstu.ui.shell",
+    "origin": "builtin",
+    "value": {
+     "fallback": "数据管理",
+     "icon": "component",
+     "id": "data-management",
+     "labelKey": "common:navigation.data_management",
+     "mobile": {
+      "ariaLabel": {
+       "fallback": "数据管理",
+       "key": "common:navigation.data_management"
+      },
+      "label": {
+       "fallback": "数据",
+       "key": "sidebar:navigation.launcher.data_management"
+      },
+      "placement": "launcher"
+     },
+     "order": 80,
+     "viewId": "data-management"
+    }
+   },
+   {
+    "id": "settings",
+    "order": 90,
+    "owner": "dstu.ui.shell",
+    "origin": "builtin",
+    "value": {
+     "desktop": {
+      "placement": "settings"
+     },
+     "fallback": "设置",
+     "icon": "function",
+     "id": "settings",
+     "labelKey": "sidebar:navigation.settings",
+     "mobile": {
+      "placement": "settings"
+     },
+     "order": 90,
+     "viewId": "settings"
+    }
+   }
+  ],
+  "resource.contextMenu": [
+   {
+    "id": "empty:1",
+    "order": 10,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "icon": "Clipboard",
+     "id": "empty:1",
+     "labelKey": "function",
+     "labelParams": "function",
+     "order": 10,
+     "run": "function",
+     "visible": "function"
+    }
+   },
+   {
+    "id": "folder:1",
+    "order": 10,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "icon": "FolderOpen",
+     "id": "folder:1",
+     "labelKey": "contextMenu.open",
+     "order": 10,
+     "run": "function",
+     "visible": "function"
+    }
+   },
+   {
+    "id": "resource:1",
+    "order": 10,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "icon": "ArrowSquareOut",
+     "id": "resource:1",
+     "labelKey": "contextMenu.open",
+     "order": 10,
+     "run": "function",
+     "visible": "function"
+    }
+   },
+   {
+    "id": "trash-empty:1",
+    "order": 10,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "danger": true,
+     "icon": "Warning",
+     "id": "trash-empty:1",
+     "labelKey": "finder.trash.emptyAction",
+     "order": 10,
+     "run": "function",
+     "visible": "function"
+    }
+   },
+   {
+    "id": "trash-item:1",
+    "order": 10,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "icon": "ArrowCounterClockwise",
+     "id": "trash-item:1",
+     "labelKey": "finder.contextMenu.restore",
+     "order": 10,
+     "run": "function",
+     "visible": "function"
+    }
+   },
+   {
+    "id": "empty:2",
+    "order": 20,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "id": "empty:2",
+     "order": 20,
+     "separator": true,
+     "visible": "function"
+    }
+   },
+   {
+    "id": "folder:2",
+    "order": 20,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "id": "folder:2",
+     "order": 20,
+     "separator": true,
+     "visible": "function"
+    }
+   },
+   {
+    "id": "resource:2",
+    "order": 20,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "id": "resource:2",
+     "order": 20,
+     "separator": true,
+     "visible": "function"
+    }
+   },
+   {
+    "id": "trash-empty:2",
+    "order": 20,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "id": "trash-empty:2",
+     "order": 20,
+     "separator": true,
+     "visible": "function"
+    }
+   },
+   {
+    "id": "trash-item:2",
+    "order": 20,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "id": "trash-item:2",
+     "order": 20,
+     "separator": true,
+     "visible": "function"
+    }
+   },
+   {
+    "id": "empty:3",
+    "order": 30,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "icon": "FolderPlus",
+     "id": "empty:3",
+     "labelKey": "folder.newFolder",
+     "order": 30,
+     "run": "function",
+     "visible": "function"
+    }
+   },
+   {
+    "id": "folder:3",
+    "order": 30,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "icon": "FolderPlus",
+     "id": "folder:3",
+     "labelKey": "contextMenu.newSubfolder",
+     "order": 30,
+     "run": "function",
+     "visible": "function"
+    }
+   },
+   {
+    "id": "resource:3",
+    "order": 30,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "icon": "Chat",
+     "id": "resource:3",
+     "labelKey": "contextMenu.referenceToChat",
+     "order": 30,
+     "run": "function",
+     "visible": "function"
+    }
+   },
+   {
+    "id": "trash-empty:3",
+    "order": 30,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "icon": "ArrowClockwise",
+     "id": "trash-empty:3",
+     "labelKey": "common.refresh",
+     "order": 30,
+     "run": "function",
+     "visible": "function"
+    }
+   },
+   {
+    "id": "trash-item:3",
+    "order": 30,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "danger": true,
+     "icon": "Trash",
+     "id": "trash-item:3",
+     "labelKey": "finder.contextMenu.permanentDelete",
+     "order": 30,
+     "run": "function",
+     "visible": "function"
+    }
+   },
+   {
+    "id": "empty:4",
+    "order": 40,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "id": "empty:4",
+     "order": 40,
+     "separator": true,
+     "visible": "function"
+    }
+   },
+   {
+    "id": "folder:4",
+    "order": 40,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "icon": "FileText",
+     "id": "folder:4",
+     "labelKey": "contextMenu.newNoteHere",
+     "order": 40,
+     "run": "function",
+     "visible": "function"
+    }
+   },
+   {
+    "id": "resource:4",
+    "order": 40,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "icon": "Cards",
+     "id": "resource:4",
+     "labelKey": "contextMenu.makeCards",
+     "order": 40,
+     "run": "function",
+     "visible": "function"
+    }
+   },
+   {
+    "id": "empty:5",
+    "order": 50,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "icon": "FileText",
+     "id": "empty:5",
+     "labelKey": "contextMenu.newNote",
+     "order": 50,
+     "run": "function",
+     "visible": "function"
+    }
+   },
+   {
+    "id": "folder:5",
+    "order": 50,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "id": "folder:5",
+     "labelKey": "contextMenu.importMarkdownHere",
+     "order": 50,
+     "run": "function",
+     "visible": "function"
+    }
+   },
+   {
+    "id": "resource:5",
+    "order": 50,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "icon": "Copy",
+     "id": "resource:5",
+     "labelKey": "contextMenu.copy",
+     "order": 50,
+     "run": "function",
+     "visible": "function"
+    }
+   },
+   {
+    "id": "empty:6",
+    "order": 60,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "id": "empty:6",
+     "labelKey": "contextMenu.importMarkdown",
+     "order": 60,
+     "run": "function",
+     "visible": "function"
+    }
+   },
+   {
+    "id": "folder:6",
+    "order": 60,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "id": "folder:6",
+     "order": 60,
+     "separator": true,
+     "visible": "function"
+    }
+   },
+   {
+    "id": "resource:6",
+    "order": 60,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "id": "resource:6",
+     "labelKey": "contextMenu.duplicate",
+     "order": 60,
+     "run": "function",
+     "visible": "function"
+    }
+   },
+   {
+    "id": "empty:7",
+    "order": 70,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "id": "empty:7",
+     "labelKey": "contextMenu.newExam",
+     "order": 70,
+     "run": "function",
+     "visible": "function"
+    }
+   },
+   {
+    "id": "folder:7",
+    "order": 70,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "icon": "Copy",
+     "id": "folder:7",
+     "labelKey": "contextMenu.copy",
+     "order": 70,
+     "run": "function",
+     "visible": "function"
+    }
+   },
+   {
+    "id": "resource:7",
+    "order": 70,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "id": "resource:7",
+     "labelKey": "contextMenu.moveTo",
+     "order": 70,
+     "run": "function",
+     "visible": "function"
+    }
+   },
+   {
+    "id": "empty:8",
+    "order": 80,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "id": "empty:8",
+     "labelKey": "contextMenu.newTextbook",
+     "order": 80,
+     "run": "function",
+     "visible": "function"
+    }
+   },
+   {
+    "id": "folder:8",
+    "order": 80,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "id": "folder:8",
+     "labelKey": "contextMenu.duplicate",
+     "order": 80,
+     "run": "function",
+     "visible": "function"
+    }
+   },
+   {
+    "id": "resource:8",
+    "order": 80,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "id": "resource:8",
+     "order": 80,
+     "separator": true,
+     "visible": "function"
+    }
+   },
+   {
+    "id": "empty:9",
+    "order": 90,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "id": "empty:9",
+     "labelKey": "contextMenu.newTranslation",
+     "order": 90,
+     "run": "function",
+     "visible": "function"
+    }
+   },
+   {
+    "id": "folder:9",
+    "order": 90,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "id": "folder:9",
+     "labelKey": "contextMenu.moveTo",
+     "order": 90,
+     "run": "function",
+     "visible": "function"
+    }
+   },
+   {
+    "id": "resource:9",
+    "order": 90,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "icon": "Pencil",
+     "id": "resource:9",
+     "labelKey": "contextMenu.rename",
+     "order": 90,
+     "run": "function",
+     "visible": "function"
+    }
+   },
+   {
+    "id": "empty:10",
+    "order": 100,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "id": "empty:10",
+     "labelKey": "contextMenu.newEssay",
+     "order": 100,
+     "run": "function",
+     "visible": "function"
+    }
+   },
+   {
+    "id": "folder:10",
+    "order": 100,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "icon": "Pencil",
+     "id": "folder:10",
+     "labelKey": "contextMenu.rename",
+     "order": 100,
+     "run": "function",
+     "visible": "function"
+    }
+   },
+   {
+    "id": "resource:10",
+    "order": 100,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "id": "resource:10",
+     "order": 100,
+     "separator": true,
+     "visible": "function"
+    }
+   },
+   {
+    "id": "empty:11",
+    "order": 110,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "id": "empty:11",
+     "labelKey": "contextMenu.newMindMap",
+     "order": 110,
+     "run": "function",
+     "visible": "function"
+    }
+   },
+   {
+    "id": "folder:11",
+    "order": 110,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "id": "folder:11",
+     "labelKey": "contextMenu.exportFolderZip",
+     "order": 110,
+     "run": "function",
+     "visible": "function"
+    }
+   },
+   {
+    "id": "resource:11",
+    "order": 110,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "icon": "function",
+     "id": "resource:11",
+     "labelKey": "function",
+     "order": 110,
+     "run": "function",
+     "visible": "function"
+    }
+   },
+   {
+    "id": "empty:12",
+    "order": 120,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "id": "empty:12",
+     "order": 120,
+     "separator": true,
+     "visible": "function"
+    }
+   },
+   {
+    "id": "folder:12",
+    "order": 120,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "danger": true,
+     "icon": "Trash",
+     "id": "folder:12",
+     "labelKey": "contextMenu.delete",
+     "order": 120,
+     "run": "function",
+     "visible": "function"
+    }
+   },
+   {
+    "id": "resource:12",
+    "order": 120,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "disabled": "function",
+     "icon": "function",
+     "iconClassName": "function",
+     "id": "resource:12",
+     "labelKey": "function",
+     "order": 120,
+     "run": "function",
+     "visible": "function"
+    }
+   },
+   {
+    "id": "empty:13",
+    "order": 130,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "icon": "ArrowClockwise",
+     "id": "empty:13",
+     "labelKey": "common.refresh",
+     "order": 130,
+     "run": "function",
+     "visible": "function"
+    }
+   },
+   {
+    "id": "resource:13",
+    "order": 130,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "id": "resource:13",
+     "order": 130,
+     "separator": true,
+     "visible": "function"
+    }
+   },
+   {
+    "id": "resource:14",
+    "order": 140,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "id": "resource:14",
+     "labelKey": "contextMenu.export",
+     "order": 140,
+     "run": "function",
+     "visible": "function"
+    }
+   },
+   {
+    "id": "resource:15",
+    "order": 150,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "id": "resource:15",
+     "order": 150,
+     "separator": true,
+     "visible": "function"
+    }
+   },
+   {
+    "id": "resource:16",
+    "order": 160,
+    "owner": "dstu.ui.content",
+    "origin": "builtin",
+    "value": {
+     "danger": true,
+     "icon": "Trash",
+     "id": "resource:16",
+     "labelKey": "contextMenu.delete",
+     "order": 160,
+     "run": "function",
+     "visible": "function"
+    }
+   }
+  ],
+  "resource.types": [
+   {
+    "id": "resource-type:note",
+    "key": "note",
+    "order": 10,
+    "owner": "dstu.ui.learning-hub",
+    "origin": "builtin",
+    "value": {
+     "icon": "FileText",
+     "labelKey": "learningHub:resourceType.note",
+     "operations": [
+      "open",
+      "preview",
+      "rename",
+      "move",
+      "delete",
+      "copy",
+      "favorite",
+      "add-to-chat",
+      "add-to-desktop"
+     ],
+     "order": 10,
+     "preview": "markdown",
+     "type": "note"
+    }
+   },
+   {
+    "id": "resource-type:textbook",
+    "key": "textbook",
+    "order": 20,
+    "owner": "dstu.ui.learning-hub",
+    "origin": "builtin",
+    "value": {
+     "icon": "<undefined>",
+     "labelKey": "learningHub:resourceType.textbook",
+     "operations": [
+      "open",
+      "preview",
+      "rename",
+      "move",
+      "delete",
+      "copy",
+      "favorite",
+      "add-to-chat",
+      "add-to-desktop"
+     ],
+     "order": 20,
+     "preview": "pdf",
+     "type": "textbook"
+    }
+   },
+   {
+    "id": "resource-type:exam",
+    "key": "exam",
+    "order": 30,
+    "owner": "dstu.ui.learning-hub",
+    "origin": "builtin",
+    "value": {
+     "icon": "Clipboard",
+     "labelKey": "learningHub:resourceType.exam",
+     "operations": [
+      "open",
+      "preview",
+      "rename",
+      "move",
+      "delete",
+      "copy",
+      "favorite",
+      "add-to-chat",
+      "add-to-desktop"
+     ],
+     "order": 30,
+     "preview": "exam",
+     "type": "exam"
+    }
+   },
+   {
+    "id": "resource-type:translation",
+    "key": "translation",
+    "order": 40,
+    "owner": "dstu.ui.learning-hub",
+    "origin": "builtin",
+    "value": {
+     "icon": "<undefined>",
+     "labelKey": "learningHub:resourceType.translation",
+     "operations": [
+      "open",
+      "preview",
+      "rename",
+      "move",
+      "delete",
+      "copy",
+      "favorite",
+      "add-to-chat",
+      "add-to-desktop"
+     ],
+     "order": 40,
+     "preview": "markdown",
+     "type": "translation"
+    }
+   },
+   {
+    "id": "resource-type:essay",
+    "key": "essay",
+    "order": 50,
+    "owner": "dstu.ui.learning-hub",
+    "origin": "builtin",
+    "value": {
+     "icon": "Pencil",
+     "labelKey": "learningHub:resourceType.essay",
+     "operations": [
+      "open",
+      "preview",
+      "rename",
+      "move",
+      "delete",
+      "copy",
+      "favorite",
+      "add-to-chat",
+      "add-to-desktop"
+     ],
+     "order": 50,
+     "preview": "markdown",
+     "type": "essay"
+    }
+   },
+   {
+    "id": "resource-type:image",
+    "key": "image",
+    "order": 60,
+    "owner": "dstu.ui.learning-hub",
+    "origin": "builtin",
+    "value": {
+     "icon": "<undefined>",
+     "labelKey": "learningHub:resourceType.image",
+     "operations": [
+      "open",
+      "preview",
+      "rename",
+      "move",
+      "delete",
+      "copy",
+      "favorite",
+      "add-to-chat",
+      "add-to-desktop"
+     ],
+     "order": 60,
+     "preview": "image",
+     "type": "image"
+    }
+   },
+   {
+    "id": "resource-type:file",
+    "key": "file",
+    "order": 70,
+    "owner": "dstu.ui.learning-hub",
+    "origin": "builtin",
+    "value": {
+     "icon": "FileText",
+     "labelKey": "learningHub:resourceType.file",
+     "operations": [
+      "open",
+      "preview",
+      "rename",
+      "move",
+      "delete",
+      "copy",
+      "favorite",
+      "add-to-chat",
+      "add-to-desktop"
+     ],
+     "order": 70,
+     "preview": "none",
+     "type": "file"
+    }
+   },
+   {
+    "id": "resource-type:mindmap",
+    "key": "mindmap",
+    "order": 80,
+    "owner": "dstu.ui.learning-hub",
+    "origin": "builtin",
+    "value": {
+     "icon": "<undefined>",
+     "labelKey": "learningHub:resourceType.mindmap",
+     "operations": [
+      "open",
+      "preview",
+      "rename",
+      "move",
+      "delete",
+      "copy",
+      "favorite",
+      "add-to-chat",
+      "add-to-desktop"
+     ],
+     "order": 80,
+     "preview": "mindmap",
+     "type": "mindmap"
+    }
+   }
+  ],
+  "settings.sections": [
+   {
+    "id": "apis",
+    "key": "apis",
+    "order": 10,
+    "owner": "dstu.ui.settings",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "group": "ai",
+     "id": "apis",
+     "navigation": {
+      "category": {
+       "icon": "component",
+       "id": "ai",
+       "order": 10,
+       "titleKey": "settings:categories.ai"
+      },
+      "categoryOrder": 10,
+      "icon": "component",
+      "legacyGroup": 0,
+      "mobileAccent": "var(--settings-nav-accent-amber)",
+      "mobileDescriptionKey": "settings:mobile_descriptions.apis",
+      "order": 10,
+      "tourId": "settings-tab-apis"
+     },
+     "order": 10,
+     "placement": "before-preview",
+     "searchDetails": [
+      {
+       "keywords": [
+        "API",
+        "add",
+        "config"
+       ],
+       "labelKey": "settings:api.add_api_config",
+       "order": 200
+      },
+      {
+       "keywords": [
+        "basic",
+        "API name",
+        "endpoint"
+       ],
+       "labelKey": "settings:api.modal.basic_info",
+       "order": 210
+      },
+      {
+       "keywords": [
+        "apikey",
+        "api key",
+        "key"
+       ],
+       "labelKey": "settings:api.modal.fields.api_key",
+       "order": 220
+      },
+      {
+       "keywords": [
+        "adapter",
+        "openai",
+        "azure",
+        "gemini",
+        "claude"
+       ],
+       "labelKey": "settings:api.modal.model_adapter",
+       "order": 230
+      }
+     ],
+     "titleKey": "settings:tabs.api_config"
+    }
+   },
+   {
+    "id": "search",
+    "key": "search",
+    "order": 20,
+    "owner": "dstu.ui.settings",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "group": "integrations",
+     "id": "search",
+     "navigation": {
+      "category": {
+       "icon": "component",
+       "id": "integrations",
+       "order": 40,
+       "titleKey": "settings:categories.integrations"
+      },
+      "categoryOrder": 20,
+      "icon": "component",
+      "legacyGroup": 2,
+      "mobileAccent": "var(--settings-nav-accent-sky)",
+      "mobileDescriptionKey": "settings:mobile_descriptions.search",
+      "order": 110,
+      "tourId": "<undefined>"
+     },
+     "order": 20,
+     "searchDetails": [
+      {
+       "keywords": [
+        "search engine",
+        "google",
+        "bing",
+        "tavily",
+        "searxng",
+        "deepseek"
+       ],
+       "labelKey": "settings:search_engine.title",
+       "order": 320
+      },
+      {
+       "keywords": [
+        "searxng",
+        "search"
+       ],
+       "label": "SearXNG",
+       "order": 330
+      },
+      {
+       "keywords": [
+        "tavily",
+        "search",
+        "api"
+       ],
+       "label": "Tavily",
+       "order": 340
+      },
+      {
+       "keywords": [
+        "exa",
+        "search"
+       ],
+       "label": "Exa",
+       "order": 350
+      }
+     ],
+     "titleKey": "settings:tabs.external_search"
+    }
+   },
+   {
+    "id": "models",
+    "key": "models",
+    "order": 30,
+    "owner": "dstu.ui.settings",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "group": "ai",
+     "id": "models",
+     "navigation": {
+      "category": {
+       "icon": "component",
+       "id": "ai",
+       "order": 10,
+       "titleKey": "settings:categories.ai"
+      },
+      "categoryOrder": 20,
+      "icon": "component",
+      "legacyGroup": 0,
+      "mobileAccent": "var(--settings-nav-accent-blue)",
+      "mobileDescriptionKey": "settings:mobile_descriptions.models",
+      "order": 20,
+      "tourId": "settings-tab-models"
+     },
+     "order": 30,
+     "searchDetails": [
+      {
+       "keywords": [
+        "chat model",
+        "conversation",
+        "reasoning"
+       ],
+       "labelKey": "settings:api.model2_title",
+       "order": 240
+      },
+      {
+       "keywords": [
+        "embedding",
+        "RAG",
+        "vector"
+       ],
+       "labelKey": "settings:api.embedding_title",
+       "order": 250
+      },
+      {
+       "keywords": [
+        "reranker",
+        "RAG"
+       ],
+       "labelKey": "settings:api.reranker_title",
+       "order": 260
+      },
+      {
+       "keywords": [
+        "anki",
+        "card"
+       ],
+       "labelKey": "settings:api.anki_card_title",
+       "order": 270
+      }
+     ],
+     "titleKey": "settings:tabs.model_assignment"
+    }
+   },
+   {
+    "id": "plugins",
+    "key": "plugins",
+    "order": 40,
+    "owner": "dstu.ui.settings",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "contentVisible": "function",
+     "group": "integrations",
+     "id": "plugins",
+     "mobileFallbackKey": "settings:plugins.mobile_hidden",
+     "navigation": {
+      "category": {
+       "icon": "component",
+       "id": "integrations",
+       "order": 40,
+       "titleKey": "settings:categories.integrations"
+      },
+      "categoryOrder": 30,
+      "icon": "component",
+      "legacyGroup": 2,
+      "mobileAccent": "var(--settings-nav-accent-purple)",
+      "mobileDescriptionKey": "settings:mobile_descriptions.plugins",
+      "order": 120,
+      "tourId": "<undefined>"
+     },
+     "order": 40,
+     "searchDetails": [
+      {
+       "keywords": [
+        "plugin",
+        "ilink",
+        "wechat",
+        "微信",
+        "clawbot",
+        "集成"
+       ],
+       "labelKey": "settings:tabs.plugins",
+       "order": 300
+      },
+      {
+       "keywords": [
+        "qr",
+        "扫码",
+        "绑定"
+       ],
+       "labelKey": "settings:plugins.scan_qr",
+       "order": 310
+      }
+     ],
+     "titleKey": "settings:tabs.plugins",
+     "visible": "function"
+    }
+   },
+   {
+    "id": "mcp",
+    "key": "mcp",
+    "order": 50,
+    "owner": "dstu.ui.settings",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "group": "integrations",
+     "id": "mcp",
+     "navigation": {
+      "category": {
+       "icon": "component",
+       "id": "integrations",
+       "order": 40,
+       "titleKey": "settings:categories.integrations"
+      },
+      "categoryOrder": 10,
+      "icon": "component",
+      "legacyGroup": 2,
+      "mobileAccent": "var(--settings-nav-accent-green)",
+      "mobileDescriptionKey": "settings:mobile_descriptions.mcp",
+      "order": 100,
+      "tourId": "<undefined>"
+     },
+     "order": 50,
+     "searchDetails": [
+      {
+       "keywords": [
+        "mcp",
+        "server",
+        "tool"
+       ],
+       "labelKey": "settings:mcp.server",
+       "order": 280
+      },
+      {
+       "keywords": [
+        "add server",
+        "mcp"
+       ],
+       "labelKey": "settings:mcp.add_server",
+       "order": 290
+      }
+     ],
+     "titleKey": "settings:tabs.mcp_tools"
+    }
+   },
+   {
+    "id": "statistics",
+    "key": "statistics",
+    "order": 60,
+    "owner": "dstu.ui.settings",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "group": "data",
+     "id": "statistics",
+     "navigation": {
+      "category": {
+       "icon": "component",
+       "id": "data",
+       "order": 60,
+       "titleKey": "settings:categories.data"
+      },
+      "categoryOrder": 10,
+      "icon": "component",
+      "legacyGroup": 3,
+      "mobileAccent": "var(--settings-nav-accent-sky)",
+      "mobileDescriptionKey": "settings:mobile_descriptions.statistics",
+      "order": 130,
+      "tourId": "<undefined>"
+     },
+     "order": 60,
+     "searchDetails": [
+      {
+       "keywords": [
+        "learning time",
+        "statistics"
+       ],
+       "labelKey": "settings:statistics.learning_time",
+       "order": 360
+      },
+      {
+       "keywords": [
+        "chat stats",
+        "session"
+       ],
+       "labelKey": "settings:statistics.chat_stats",
+       "order": 370
+      },
+      {
+       "keywords": [
+        "heatmap",
+        "activity"
+       ],
+       "labelKey": "settings:statistics.heatmap",
+       "order": 380
+      }
+     ],
+     "titleKey": "settings:tabs.statistics"
+    }
+   },
+   {
+    "id": "automation",
+    "key": "automation",
+    "order": 70,
+    "owner": "dstu.ui.settings",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "group": "workflow",
+     "id": "automation",
+     "navigation": {
+      "category": {
+       "icon": "component",
+       "id": "workflow",
+       "order": 50,
+       "titleKey": "settings:categories.workflow"
+      },
+      "categoryOrder": 10,
+      "icon": "component",
+      "legacyGroup": 1,
+      "mobileAccent": "var(--settings-nav-accent-orange)",
+      "mobileDescriptionKey": "settings:mobile_descriptions.automation",
+      "order": 90,
+      "tourId": "<undefined>"
+     },
+     "order": 70,
+     "searchDetails": [
+      {
+       "keywords": [
+        "automation",
+        "schedule",
+        "reminder",
+        "agent",
+        "自动化",
+        "定时",
+        "调度"
+       ],
+       "labelKey": "settings:automation.title",
+       "order": 110
+      },
+      {
+       "keywords": [
+        "subagent",
+        "profile",
+        "persona",
+        "agent",
+        "子代理",
+        "档案",
+        "智能体"
+       ],
+       "labelKey": "settings:subagentProfiles.title",
+       "order": 120
+      }
+     ],
+     "titleKey": "settings:tabs.automation"
+    }
+   },
+   {
+    "id": "data-governance",
+    "key": "data-governance",
+    "order": 80,
+    "owner": "dstu.ui.settings",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "group": "data",
+     "id": "data-governance",
+     "navigation": {
+      "category": {
+       "icon": "component",
+       "id": "data",
+       "order": 60,
+       "titleKey": "settings:categories.data"
+      },
+      "categoryOrder": 20,
+      "icon": "component",
+      "legacyGroup": 3,
+      "mobileAccent": "var(--settings-nav-accent-sky)",
+      "mobileDescriptionKey": "settings:mobile_descriptions.data_governance",
+      "order": 140,
+      "tourId": "<undefined>"
+     },
+     "order": 80,
+     "searchDetails": [
+      {
+       "keywords": [
+        "data governance",
+        "import",
+        "export"
+       ],
+       "labelKey": "data:governance.title",
+       "order": 390
+      },
+      {
+       "keywords": [
+        "backup",
+        "export"
+       ],
+       "labelKey": "data:governance.backup",
+       "order": 400
+      },
+      {
+       "keywords": [
+        "restore",
+        "import"
+       ],
+       "labelKey": "data:governance.restore",
+       "order": 410
+      }
+     ],
+     "titleKey": "settings:tabs.data_governance"
+    }
+   },
+   {
+    "id": "general",
+    "key": "general",
+    "order": 90,
+    "owner": "dstu.ui.settings",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "group": "experience",
+     "id": "general",
+     "navigation": {
+      "category": {
+       "icon": "component",
+       "id": "experience",
+       "order": 20,
+       "titleKey": "settings:categories.experience"
+      },
+      "categoryOrder": 10,
+      "icon": "component",
+      "legacyGroup": 1,
+      "mobileAccent": "var(--settings-nav-accent-slate)",
+      "mobileDescriptionKey": "settings:mobile_descriptions.general",
+      "order": 30,
+      "tourId": "<undefined>"
+     },
+     "order": 90,
+     "searchDetails": [
+      {
+       "keywords": [
+        "language"
+       ],
+       "labelKey": "settings:language.title",
+       "order": 80
+      },
+      {
+       "keywords": [
+        "permission",
+        "authorization",
+        "notification",
+        "microphone",
+        "file access",
+        "权限",
+        "授权",
+        "通知",
+        "麦克风",
+        "文件访问"
+       ],
+       "labelKey": "settings:system_authorization.title",
+       "order": 90
+      }
+     ],
+     "titleKey": "settings:tabs.general"
+    }
+   },
+   {
+    "id": "appearance",
+    "key": "appearance",
+    "order": 100,
+    "owner": "dstu.ui.settings",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "group": "experience",
+     "id": "appearance",
+     "navigation": {
+      "category": {
+       "icon": "component",
+       "id": "experience",
+       "order": 20,
+       "titleKey": "settings:categories.experience"
+      },
+      "categoryOrder": 20,
+      "icon": "component",
+      "legacyGroup": 1,
+      "mobileAccent": "var(--settings-nav-accent-purple)",
+      "mobileDescriptionKey": "settings:mobile_descriptions.appearance",
+      "order": 70,
+      "tourId": "<undefined>"
+     },
+     "order": 100,
+     "searchDetails": [
+      {
+       "keywords": [
+        "theme",
+        "dark",
+        "light",
+        "appearance"
+       ],
+       "labelKey": "settings:appearance.theme.title",
+       "order": 10
+      },
+      {
+       "keywords": [
+        "font",
+        "typeface"
+       ],
+       "labelKey": "settings:appearance.font.title",
+       "order": 20
+      },
+      {
+       "keywords": [
+        "font size"
+       ],
+       "labelKey": "settings:appearance.font.size_label",
+       "order": 30
+      },
+      {
+       "keywords": [
+        "heading font"
+       ],
+       "labelKey": "settings:appearance.font.heading_label",
+       "order": 40
+      },
+      {
+       "keywords": [
+        "body font"
+       ],
+       "labelKey": "settings:appearance.font.body_label",
+       "order": 50
+      },
+      {
+       "keywords": [
+        "sidebar",
+        "navigation"
+       ],
+       "labelKey": "settings:appearance.sidebar.title",
+       "order": 60
+      },
+      {
+       "keywords": [
+        "sidebar position"
+       ],
+       "labelKey": "settings:appearance.sidebar.position",
+       "order": 70
+      }
+     ],
+     "titleKey": "settings:tabs.appearance"
+    }
+   },
+   {
+    "id": "params",
+    "key": "params",
+    "order": 110,
+    "owner": "dstu.ui.settings",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "group": "ai",
+     "id": "params",
+     "navigation": {
+      "category": {
+       "icon": "component",
+       "id": "ai",
+       "order": 10,
+       "titleKey": "settings:categories.ai"
+      },
+      "categoryOrder": 30,
+      "icon": "component",
+      "legacyGroup": 4,
+      "mobileAccent": "var(--settings-nav-accent-amber)",
+      "mobileDescriptionKey": "settings:mobile_descriptions.params",
+      "order": 150,
+      "tourId": "<undefined>"
+     },
+     "order": 110,
+     "searchDetails": [
+      {
+       "keywords": [
+        "timeout",
+        "stream",
+        "超时",
+        "流式"
+       ],
+       "labelKey": "common:settings.chat_stream.card_title",
+       "order": 420
+      },
+      {
+       "keywords": [
+        "fts",
+        "semantic",
+        "search",
+        "语义搜索"
+       ],
+       "labelKey": "settings:cards.search_settings_title",
+       "order": 430
+      }
+     ],
+     "titleKey": "settings:tabs.params"
+    }
+   },
+   {
+    "id": "voice-input",
+    "key": "voice-input",
+    "order": 120,
+    "owner": "dstu.ui.settings",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "group": "personalization",
+     "id": "voice-input",
+     "navigation": {
+      "category": {
+       "icon": "component",
+       "id": "personalization",
+       "order": 30,
+       "titleKey": "settings:categories.personalization"
+      },
+      "categoryOrder": 10,
+      "icon": "component",
+      "legacyGroup": 1,
+      "mobileAccent": "var(--settings-nav-accent-coral)",
+      "mobileDescriptionKey": "settings:mobile_descriptions.voice_input",
+      "order": 40,
+      "tourId": "<undefined>"
+     },
+     "order": 120,
+     "searchDetails": [
+      {
+       "keywords": [
+        "voice input",
+        "dictation",
+        "asr",
+        "microphone",
+        "speech to text",
+        "听写",
+        "语音输入"
+       ],
+       "labelKey": "settings:voice_input.title",
+       "order": 100
+      },
+      {
+       "keywords": [
+        "hotkey",
+        "shortcut",
+        "keyboard",
+        "press to talk",
+        "toggle dictation",
+        "快捷键"
+       ],
+       "labelKey": "settings:voice_input.shortcut_title",
+       "order": 130
+      },
+      {
+       "keywords": [
+        "dictionary",
+        "vocabulary",
+        "pronunciation hints",
+        "词典",
+        "短语"
+       ],
+       "labelKey": "settings:voice_input.dictionary_title",
+       "order": 140
+      },
+      {
+       "keywords": [
+        "history",
+        "recent dictation",
+        "transcript recovery",
+        "历史记录",
+        "转写记录"
+       ],
+       "labelKey": "settings:voice_input.history_title",
+       "order": 150
+      }
+     ],
+     "titleKey": "settings:tabs.voice_input"
+    }
+   },
+   {
+    "id": "memory",
+    "key": "memory",
+    "order": 130,
+    "owner": "dstu.ui.settings",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "group": "personalization",
+     "id": "memory",
+     "navigation": {
+      "category": {
+       "icon": "component",
+       "id": "personalization",
+       "order": 30,
+       "titleKey": "settings:categories.personalization"
+      },
+      "categoryOrder": 20,
+      "icon": "component",
+      "legacyGroup": 1,
+      "mobileAccent": "var(--settings-nav-accent-teal)",
+      "mobileDescriptionKey": "settings:mobile_descriptions.memory",
+      "order": 50,
+      "tourId": "<undefined>"
+     },
+     "order": 130,
+     "searchDetails": [
+      {
+       "keywords": [
+        "memory",
+        "记忆",
+        "本地记忆"
+       ],
+       "labelKey": "settings:memory.title",
+       "order": 160
+      }
+     ],
+     "titleKey": "settings:tabs.memory"
+    }
+   },
+   {
+    "id": "workbench",
+    "key": "workbench",
+    "order": 140,
+    "owner": "dstu.ui.settings",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "contentVisible": "function",
+     "group": "experience",
+     "id": "workbench",
+     "navigation": {
+      "category": {
+       "icon": "component",
+       "id": "experience",
+       "order": 20,
+       "titleKey": "settings:categories.experience"
+      },
+      "categoryOrder": 30,
+      "icon": "component",
+      "legacyGroup": 1,
+      "mobileAccent": "var(--settings-nav-accent-indigo)",
+      "mobileDescriptionKey": "settings:mobile_descriptions.workbench",
+      "order": 60,
+      "tourId": "<undefined>"
+     },
+     "order": 140,
+     "redirect": "function",
+     "searchDetails": [
+      {
+       "keywords": [
+        "workbench",
+        "工作台",
+        "工作区",
+        "workspace"
+       ],
+       "labelKey": "workbench:settings.sectionTitle",
+       "order": 170
+      }
+     ],
+     "titleKey": "settings:tabs.workbench",
+     "visible": "function"
+    }
+   },
+   {
+    "id": "document-processing",
+    "key": "document-processing",
+    "order": 150,
+    "owner": "dstu.ui.settings",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "group": "workflow",
+     "id": "document-processing",
+     "navigation": {
+      "category": {
+       "icon": "component",
+       "id": "workflow",
+       "order": 50,
+       "titleKey": "settings:categories.workflow"
+      },
+      "categoryOrder": 20,
+      "icon": "component",
+      "legacyGroup": 4,
+      "mobileAccent": "var(--settings-nav-accent-violet)",
+      "mobileDescriptionKey": "settings:mobile_descriptions.document_processing",
+      "order": 160,
+      "tourId": "<undefined>"
+     },
+     "order": 150,
+     "searchDetails": [
+      {
+       "defaultValue": "PDF 设置",
+       "keywords": [
+        "pdf",
+        "PDF"
+       ],
+       "labelKey": "settings:pdf.title",
+       "order": 180
+      },
+      {
+       "defaultValue": "OCR 设置",
+       "keywords": [
+        "ocr",
+        "OCR",
+        "文字识别"
+       ],
+       "labelKey": "settings:ocr.title",
+       "order": 190
+      }
+     ],
+     "titleKey": "settings:tabs.document_processing"
+    }
+   },
+   {
+    "id": "shortcuts",
+    "key": "shortcuts",
+    "order": 160,
+    "owner": "dstu.ui.settings",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "group": "experience",
+     "id": "shortcuts",
+     "navigation": {
+      "category": {
+       "icon": "component",
+       "id": "experience",
+       "order": 20,
+       "titleKey": "settings:categories.experience"
+      },
+      "categoryOrder": 40,
+      "icon": "component",
+      "legacyGroup": 4,
+      "mobileAccent": "var(--settings-nav-accent-slate)",
+      "mobileDescriptionKey": "settings:mobile_descriptions.shortcuts",
+      "order": 170,
+      "tourId": "<undefined>"
+     },
+     "order": 160,
+     "placement": "after-modals",
+     "searchDetails": [
+      {
+       "keywords": [
+        "shortcuts",
+        "keyboard",
+        "hotkey"
+       ],
+       "labelKey": "settings:tabs.shortcuts",
+       "order": 440
+      }
+     ],
+     "titleKey": "settings:tabs.shortcuts",
+     "visible": "function"
+    }
+   },
+   {
+    "id": "about",
+    "key": "about",
+    "order": 170,
+    "owner": "dstu.ui.settings",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "desktopHeadingKey": "settings:tabs.about",
+     "group": "about",
+     "id": "about",
+     "navigation": {
+      "category": "<undefined>",
+      "categoryOrder": "<undefined>",
+      "icon": "component",
+      "legacyGroup": 4,
+      "mobileAccent": "var(--settings-nav-accent-pink)",
+      "mobileDescriptionKey": "settings:mobile_descriptions.about",
+      "order": 180,
+      "tourId": "<undefined>"
+     },
+     "order": 170,
+     "placement": "after-modals",
+     "searchDetails": [
+      {
+       "keywords": [
+        "about",
+        "version",
+        "acknowledgements"
+       ],
+       "labelKey": "settings:tabs.about",
+       "order": 450
+      }
+     ],
+     "titleKey": "settings:tabs.about"
+    }
+   }
+  ],
+  "views": [
+   {
+    "id": "dashboard",
+    "key": "dashboard",
+    "order": 10,
+    "owner": "dstu.ui.shell",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "contentKey": "dashboardContent",
+     "extraClass": "overflow-hidden",
+     "id": "dashboard",
+     "keepAlive": true,
+     "order": 10,
+     "shell": {
+      "mobileBackToHome": true,
+      "sidebarKind": "main"
+     },
+     "titleKey": "common:navigation.dashboard"
+    }
+   },
+   {
+    "id": "settings",
+    "key": "settings",
+    "order": 20,
+    "owner": "dstu.ui.shell",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "contentKey": "settingsContent",
+     "extraClass": "overflow-hidden",
+     "id": "settings",
+     "keepAlive": true,
+     "order": 20,
+     "shell": {
+      "contentClass": "settings-view",
+      "hideExpandedSidebarToggle": true,
+      "mobileBackToHome": true,
+      "sidebarKind": "settings",
+      "sidebarOwnsBackNavigation": true
+     },
+     "titleKey": "sidebar:navigation.settings"
+    }
+   },
+   {
+    "id": "task-dashboard",
+    "key": "task-dashboard",
+    "order": 30,
+    "owner": "dstu.ui.shell",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "contentKey": "taskDashboardContent",
+     "id": "task-dashboard",
+     "keepAlive": true,
+     "order": 30,
+     "shell": {
+      "cardsHubTabs": true,
+      "mobileBackToHome": true,
+      "sidebarKind": "main"
+     },
+     "titleKey": "sidebar:navigation.flashcards"
+    }
+   },
+   {
+    "id": "skills-management",
+    "key": "skills-management",
+    "order": 40,
+    "owner": "dstu.ui.shell",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "contentKey": "skillsManagementContent",
+     "id": "skills-management",
+     "keepAlive": true,
+     "order": 40,
+     "shell": {
+      "mobileBackToHome": true,
+      "sidebarKind": "main",
+      "toolbarSlot": "skills-toolbar"
+     },
+     "titleKey": "sidebar:navigation.skills_management"
+    }
+   },
+   {
+    "id": "data-management",
+    "key": "data-management",
+    "order": 50,
+    "owner": "dstu.ui.shell",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "contentKey": "dataManagementContent",
+     "id": "data-management",
+     "keepAlive": true,
+     "order": 50,
+     "shell": {
+      "mobileBackToHome": true,
+      "sidebarKind": "main"
+     },
+     "titleKey": "common:navigation.data_management"
+    }
+   },
+   {
+    "id": "template-management",
+    "key": "template-management",
+    "order": 60,
+    "owner": "dstu.ui.shell",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "contentKey": "templateManagementContent",
+     "id": "template-management",
+     "keepAlive": true,
+     "order": 60,
+     "shell": {
+      "cardsHubTabs": true,
+      "mobileBackToHome": true,
+      "sidebarKind": "main"
+     },
+     "titleKey": "sidebar:navigation.flashcards"
+    }
+   },
+   {
+    "id": "ui-lab",
+    "key": "ui-lab",
+    "order": 70,
+    "owner": "dstu.ui.shell",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "contentKey": "styleDebugContent",
+     "id": "ui-lab",
+     "keepAlive": true,
+     "order": 70,
+     "shell": {
+      "mobileBackToHome": true,
+      "sidebarKind": "main"
+     },
+     "titleKey": "sidebar:navigation.ui_lab",
+     "visible": "function"
+    }
+   },
+   {
+    "id": "learning-hub",
+    "key": "learning-hub",
+    "order": 80,
+    "owner": "dstu.ui.shell",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "contentKey": "learningHubContent",
+     "id": "learning-hub",
+     "keepAlive": true,
+     "order": 80,
+     "shell": {
+      "mobileBackToHome": true,
+      "pageBackButton": true,
+      "sidebarKind": "desktop-page",
+      "toolbarSlot": "learning-hub-toolbar"
+     },
+     "titleKey": "sidebar:navigation.learning_hub"
+    }
+   },
+   {
+    "id": "media",
+    "key": "media",
+    "order": 90,
+    "owner": "dstu.ui.shell",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "contentKey": "mediaStudioContent",
+     "id": "media",
+     "keepAlive": true,
+     "order": 90,
+     "shell": {
+      "mobileBackToHome": true,
+      "sidebarKind": "main",
+      "toolbarSlot": "media-toolbar"
+     },
+     "titleKey": "sidebar:navigation.media"
+    }
+   },
+   {
+    "id": "sandbox-workbench",
+    "key": "sandbox-workbench",
+    "order": 100,
+    "owner": "dstu.ui.shell",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "contentKey": "sandboxWorkbenchContent",
+     "id": "sandbox-workbench",
+     "keepAlive": true,
+     "order": 100,
+     "shell": {
+      "mobileBackToHome": true,
+      "sidebarKind": "main"
+     },
+     "titleKey": "common:navigation.sandbox_workbench"
+    }
+   },
+   {
+    "id": "pdf-reader",
+    "key": "pdf-reader",
+    "order": 110,
+    "owner": "dstu.ui.shell",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "contentKey": "pdfReaderContent",
+     "id": "pdf-reader",
+     "keepAlive": true,
+     "order": 110,
+     "shell": {
+      "mobileBackToHome": true,
+      "sidebarKind": "main"
+     },
+     "titleKey": "common:navigation.pdf_reader"
+    }
+   },
+   {
+    "id": "todo",
+    "key": "todo",
+    "order": 120,
+    "owner": "dstu.ui.shell",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "contentKey": "todoContent",
+     "id": "todo",
+     "keepAlive": true,
+     "order": 120,
+     "shell": {
+      "mobileBackToHome": true,
+      "sidebarKind": "todo",
+      "sidebarOwnsBackNavigation": true,
+      "toolbarSlot": "todo-toolbar"
+     },
+     "titleKey": "sidebar:navigation.todo"
+    }
+   },
+   {
+    "id": "flashcards",
+    "key": "flashcards",
+    "order": 130,
+    "owner": "dstu.ui.shell",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "contentKey": "flashcardsContent",
+     "id": "flashcards",
+     "keepAlive": true,
+     "order": 130,
+     "shell": {
+      "cardsHubTabs": true,
+      "mobileBackToHome": true,
+      "sidebarKind": "main"
+     },
+     "titleKey": "sidebar:navigation.flashcards"
+    }
+   },
+   {
+    "id": "crepe-demo",
+    "key": "crepe-demo",
+    "order": 140,
+    "owner": "dstu.ui.shell",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "contentKey": "crepeDemoContent",
+     "id": "crepe-demo",
+     "keepAlive": true,
+     "order": 140,
+     "shell": {
+      "mobileBackToHome": true,
+      "sidebarKind": "main"
+     },
+     "titleKey": "common:navigation.crepe_demo",
+     "visible": "function"
+    }
+   },
+   {
+    "id": "chat-v2-test",
+    "key": "chat-v2-test",
+    "order": 150,
+    "owner": "dstu.ui.shell",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "contentKey": "chatV2TestContent",
+     "id": "chat-v2-test",
+     "keepAlive": true,
+     "order": 150,
+     "shell": {
+      "mobileBackToHome": true,
+      "sidebarKind": "main"
+     },
+     "titleKey": "common:navigation.chat_v2_test",
+     "visible": "function"
+    }
+   },
+   {
+    "id": "llm-playground",
+    "key": "llm-playground",
+    "order": 160,
+    "owner": "dstu.ui.shell",
+    "origin": "builtin",
+    "value": {
+     "component": "function",
+     "contentKey": "llmPlaygroundContent",
+     "id": "llm-playground",
+     "keepAlive": true,
+     "order": 160,
+     "shell": {
+      "mobileBackToHome": true,
+      "sidebarKind": "main"
+     },
+     "titleKey": "common:navigation.llm_playground",
+     "visible": "function"
+    }
+   },
+   {
+    "id": "chat-v2",
+    "key": "chat-v2",
+    "order": 170,
+    "owner": "dstu.ui.shell",
+    "origin": "builtin",
+    "value": {
+     "allowInDemo": true,
+     "component": "function",
+     "contentKey": "chatV2Content",
+     "id": "chat-v2",
+     "keepAlive": true,
+     "order": 170,
+     "shell": {
+      "chatHeader": true,
+      "mobileBackToHome": false,
+      "sidebarKind": "main"
+     },
+     "titleKey": "sidebar:navigation.chat_v2"
+    }
+   }
+  ]
+ },
+ "chat": {
+  "blocks": [
+   {
+    "key": "academic_search",
+    "owner": "dstu.ui.chat",
+    "origin": "builtin"
+   },
+   {
+    "key": "anki_cards",
+    "owner": "dstu.ui.chat",
+    "origin": "builtin"
+   },
+   {
+    "key": "ask_user",
+    "owner": "dstu.ui.chat",
+    "origin": "builtin"
+   },
+   {
+    "key": "compaction_summary",
+    "owner": "dstu.ui.chat",
+    "origin": "builtin"
+   },
+   {
+    "key": "content",
+    "owner": "dstu.ui.chat",
+    "origin": "builtin"
+   },
+   {
+    "key": "generative_ui",
+    "owner": "dstu.ui.chat",
+    "origin": "builtin"
+   },
+   {
+    "key": "generic",
+    "owner": "dstu.ui.chat",
+    "origin": "builtin"
+   },
+   {
+    "key": "image_gen",
+    "owner": "dstu.ui.chat",
+    "origin": "builtin"
+   },
+   {
+    "key": "insight_recall",
+    "owner": "dstu.ui.chat",
+    "origin": "builtin"
+   },
+   {
+    "key": "mcp_tool",
+    "owner": "dstu.ui.chat",
+    "origin": "builtin"
+   },
+   {
+    "key": "memory",
+    "owner": "dstu.ui.chat",
+    "origin": "builtin"
+   },
+   {
+    "key": "multimodal_rag",
+    "owner": "dstu.ui.chat",
+    "origin": "builtin"
+   },
+   {
+    "key": "paper_save",
+    "owner": "dstu.ui.chat",
+    "origin": "builtin"
+   },
+   {
+    "key": "qbank_questions",
+    "owner": "dstu.ui.chat",
+    "origin": "builtin"
+   },
+   {
+    "key": "rag",
+    "owner": "dstu.ui.chat",
+    "origin": "builtin"
+   },
+   {
+    "key": "sleep",
+    "owner": "dstu.ui.chat",
+    "origin": "builtin"
+   },
+   {
+    "key": "subagent_embed",
+    "owner": "dstu.ui.chat",
+    "origin": "builtin"
+   },
+   {
+    "key": "subagent_retry",
+    "owner": "dstu.ui.chat",
+    "origin": "builtin"
+   },
+   {
+    "key": "template_preview",
+    "owner": "dstu.ui.chat",
+    "origin": "builtin"
+   },
+   {
+    "key": "thinking",
+    "owner": "dstu.ui.chat",
+    "origin": "builtin"
+   },
+   {
+    "key": "todo_list",
+    "owner": "dstu.ui.chat",
+    "origin": "builtin"
+   },
+   {
+    "key": "tool_limit",
+    "owner": "dstu.ui.chat",
+    "origin": "builtin"
+   },
+   {
+    "key": "web_search",
+    "owner": "dstu.ui.chat",
+    "origin": "builtin"
+   },
+   {
+    "key": "workbench_ops",
+    "owner": "dstu.ui.chat",
+    "origin": "builtin"
+   },
+   {
+    "key": "workspace_injection",
+    "owner": "dstu.ui.chat",
+    "origin": "builtin"
+   },
+   {
+    "key": "workspace_send",
+    "owner": "dstu.ui.chat",
+    "origin": "builtin"
+   },
+   {
+    "key": "workspace_status",
+    "owner": "dstu.ui.chat",
+    "origin": "builtin"
+   }
+  ],
+  "events": [
+   {
+    "key": "academic_search",
+    "owner": "dstu.ui.chat",
+    "origin": "builtin"
+   },
+   {
+    "key": "anki_cards",
+    "owner": "dstu.ui.chat",
+    "origin": "builtin"
+   },
+   {
+    "key": "content",
+    "owner": "dstu.ui.chat",
+    "origin": "builtin"
+   },
+   {
+    "key": "generative_ui",
+    "owner": "dstu.ui.chat",
+    "origin": "builtin"
+   },
+   {
+    "key": "image_gen",
+    "owner": "dstu.ui.chat",
+    "origin": "builtin"
+   },
+   {
+    "key": "insight_recall",
+    "owner": "dstu.ui.chat",
+    "origin": "builtin"
+   },
+   {
+    "key": "memory",
+    "owner": "dstu.ui.chat",
+    "origin": "builtin"
+   },
+   {
+    "key": "multimodal_rag",
+    "owner": "dstu.ui.chat",
+    "origin": "builtin"
+   },
+   {
+    "key": "plan_gate",
+    "owner": "dstu.ui.chat",
+    "origin": "builtin"
+   },
+   {
+    "key": "rag",
+    "owner": "dstu.ui.chat",
+    "origin": "builtin"
+   },
+   {
+    "key": "thinking",
+    "owner": "dstu.ui.chat",
+    "origin": "builtin"
+   },
+   {
+    "key": "tool_approval_request",
+    "owner": "dstu.ui.chat",
+    "origin": "builtin"
+   },
+   {
+    "key": "tool_call",
+    "owner": "dstu.ui.chat",
+    "origin": "builtin"
+   },
+   {
+    "key": "tool_call_preparing",
+    "owner": "dstu.ui.chat",
+    "origin": "builtin"
+   },
+   {
+    "key": "tool_limit",
+    "owner": "dstu.ui.chat",
+    "origin": "builtin"
+   },
+   {
+    "key": "web_search",
+    "owner": "dstu.ui.chat",
+    "origin": "builtin"
+   },
+   {
+    "key": "workspace_injection",
+    "owner": "dstu.ui.chat",
+    "origin": "builtin"
+   }
+  ],
+  "modes": [
+   {
+    "key": "analysis",
+    "owner": "dstu.ui.chat",
+    "origin": "builtin"
+   },
+   {
+    "key": "chat",
+    "owner": "dstu.ui.chat",
+    "origin": "builtin"
+   }
+  ]
+ }
+}

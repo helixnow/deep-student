@@ -1,4 +1,9 @@
-export const NOTES_OUTLINE_DEBUG_EVENT = 'notes:outline-scroll-debug';
+/**
+ * Notes outline scroll diagnostics: a debug bus channel served by NotesOutlineDebugPlugin (no-op in production).
+ */
+import { debugChannel } from '@/shared/debug/bus';
+
+export const NOTES_OUTLINE_DEBUG_CHANNEL = 'notes-outline';
 
 export type OutlineDebugLogLevel = 'info' | 'warn' | 'error';
 
@@ -49,19 +54,12 @@ export type OutlineDebugEventDetail =
   | { type: 'log'; payload: OutlineDebugLogPayload }
   | { type: 'snapshot'; payload: OutlineScrollSnapshot };
 
-const dispatchDebugEvent = (detail: OutlineDebugEventDetail) => {
-  if (typeof window === 'undefined') return;
-  try {
-    window.dispatchEvent(new CustomEvent(NOTES_OUTLINE_DEBUG_EVENT, { detail }));
-  } catch {
-    // ignore - 调试辅助工具不影响主流程
-  }
+export type NotesOutlineDebugHandlers = {
+  log: (payload: OutlineDebugLogPayload) => void;
+  snapshot: (payload: OutlineScrollSnapshot) => void;
 };
 
-export const emitOutlineDebugLog = (payload: OutlineDebugLogPayload) => {
-  dispatchDebugEvent({ type: 'log', payload });
-};
+const channel = debugChannel<NotesOutlineDebugHandlers>(NOTES_OUTLINE_DEBUG_CHANNEL);
 
-export const emitOutlineDebugSnapshot = (payload: OutlineScrollSnapshot) => {
-  dispatchDebugEvent({ type: 'snapshot', payload });
-};
+export const emitOutlineDebugLog = channel.emitter('log');
+export const emitOutlineDebugSnapshot = channel.emitter('snapshot');

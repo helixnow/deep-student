@@ -1,0 +1,2143 @@
+{
+  "lane": "L07-agent-skills-ptc",
+  "generator": "deep-student/contracts-extract@1.6.0",
+  "commands": [
+    {
+      "name": "chat_v2_list_skill_candidates",
+      "lane": "L07-agent-skills-ptc",
+      "rust": {
+        "file": "crates/dstu-agent/src/chat_v2/skill_replay.rs",
+        "line": 1263,
+        "fn": "chat_v2_list_skill_candidates"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "status",
+          "rustName": "status",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "limit",
+          "rustName": "limit",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_agent::chat_v2::database::ChatV2Database>"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/SkillCandidateSummary"
+        }
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "chat_v2_promote_skill_candidate",
+      "lane": "L07-agent-skills-ptc",
+      "rust": {
+        "file": "crates/dstu-agent/src/chat_v2/skill_replay.rs",
+        "line": 1308,
+        "fn": "chat_v2_promote_skill_candidate"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "candidateId",
+          "rustName": "candidate_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_agent::chat_v2::database::ChatV2Database>"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/SkillCandidatePromotion"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "chat_v2_record_skill_activation",
+      "lane": "L07-agent-skills-ptc",
+      "rust": {
+        "file": "crates/dstu-agent/src/chat_v2/skill_usage.rs",
+        "line": 1101,
+        "fn": "chat_v2_record_skill_activation"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "skillId",
+          "rustName": "skill_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "sessionId",
+          "rustName": "session_id",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_agent::chat_v2::database::ChatV2Database>"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "chat_v2_replay_skill_candidate",
+      "lane": "L07-agent-skills-ptc",
+      "rust": {
+        "file": "crates/dstu-agent/src/chat_v2/skill_replay.rs",
+        "line": 1287,
+        "fn": "chat_v2_replay_skill_candidate"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "candidateId",
+          "rustName": "candidate_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_agent::chat_v2::database::ChatV2Database>"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/ReplayReport"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "chat_v2_rollback_skill_candidate",
+      "lane": "L07-agent-skills-ptc",
+      "rust": {
+        "file": "crates/dstu-agent/src/chat_v2/skill_replay.rs",
+        "line": 1331,
+        "fn": "chat_v2_rollback_skill_candidate"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "candidateId",
+          "rustName": "candidate_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_agent::chat_v2::database::ChatV2Database>"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/SkillCandidateRollback"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "skill_check_updates",
+      "lane": "L07-agent-skills-ptc",
+      "rust": {
+        "file": "crates/dstu-agent/src/chat_v2/skill_updates.rs",
+        "line": 354,
+        "fn": "skill_check_updates"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "skillIds",
+          "rustName": "skill_ids",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_storage::database::Database>"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/SkillUpdateCheckResult"
+        }
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "skill_create",
+      "lane": "L07-agent-skills-ptc",
+      "rust": {
+        "file": "crates/dstu-agent/src/chat_v2/skills.rs",
+        "line": 646,
+        "fn": "skill_create"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "basePath",
+          "rustName": "base_path",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "skillId",
+          "rustName": "skill_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "content",
+          "rustName": "content",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [],
+      "result": {
+        "$ref": "#/$defs/SkillFileContent"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "skill_delete",
+      "lane": "L07-agent-skills-ptc",
+      "rust": {
+        "file": "crates/dstu-agent/src/chat_v2/skills.rs",
+        "line": 796,
+        "fn": "skill_delete"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "path",
+          "rustName": "path",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "skill_export_tap",
+      "lane": "L07-agent-skills-ptc",
+      "rust": {
+        "file": "src/chat_v2/skill_taps.rs",
+        "line": 17,
+        "fn": "skill_export_tap"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "skillIds",
+          "rustName": "skill_ids",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "optional": false
+        },
+        {
+          "key": "destPath",
+          "rustName": "dest_path",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "window"
+        },
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/TapExportResult"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "skill_import_zip",
+      "lane": "L07-agent-skills-ptc",
+      "rust": {
+        "file": "crates/dstu-agent/src/chat_v2/skills.rs",
+        "line": 2320,
+        "fn": "skill_import_zip"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "zipPath",
+          "rustName": "zip_path",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "basePath",
+          "rustName": "base_path",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "overwrite",
+          "rustName": "overwrite",
+          "schema": {
+            "type": "boolean"
+          },
+          "optional": false
+        },
+        {
+          "key": "dryRun",
+          "rustName": "dry_run",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "window"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/SkillImportZipResult"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "skill_list_directories",
+      "lane": "L07-agent-skills-ptc",
+      "rust": {
+        "file": "crates/dstu-agent/src/chat_v2/skills.rs",
+        "line": 370,
+        "fn": "skill_list_directories"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "path",
+          "rustName": "path",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/SkillDirectoryEntry"
+        }
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "skill_list_package_files",
+      "lane": "L07-agent-skills-ptc",
+      "rust": {
+        "file": "crates/dstu-agent/src/chat_v2/skills.rs",
+        "line": 565,
+        "fn": "skill_list_package_files"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "path",
+          "rustName": "path",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/SkillPackageFileEntry"
+        }
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "skill_market_download_and_scan",
+      "lane": "L07-agent-skills-ptc",
+      "rust": {
+        "file": "crates/dstu-agent/src/chat_v2/skill_market_client.rs",
+        "line": 1277,
+        "fn": "skill_market_download_and_scan"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "slug",
+          "rustName": "slug",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "version",
+          "rustName": "version",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "install",
+          "rustName": "install",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "overwrite",
+          "rustName": "overwrite",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "expectedPackageSha256",
+          "rustName": "expected_package_sha256",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "tempZipPath",
+          "rustName": "temp_zip_path",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "declaredRiskLevel",
+          "rustName": "declared_risk_level",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_storage::database::Database>"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/SkillMarketDownloadScanResult"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "skill_market_search",
+      "lane": "L07-agent-skills-ptc",
+      "rust": {
+        "file": "crates/dstu-agent/src/chat_v2/skill_market_client.rs",
+        "line": 1196,
+        "fn": "skill_market_search"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "q",
+          "rustName": "q",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "limit",
+          "rustName": "limit",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "nonSuspiciousOnly",
+          "rustName": "non_suspicious_only",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "sort",
+          "rustName": "sort",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [],
+      "result": {
+        "$ref": "#/$defs/SkillMarketSearchResponse"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "skill_market_skill_detail",
+      "lane": "L07-agent-skills-ptc",
+      "rust": {
+        "file": "crates/dstu-agent/src/chat_v2/skill_market_client.rs",
+        "line": 1237,
+        "fn": "skill_market_skill_detail"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "slug",
+          "rustName": "slug",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [],
+      "result": {
+        "$ref": "#/$defs/SkillMarketSkillDetail"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "skill_market_verify",
+      "lane": "L07-agent-skills-ptc",
+      "rust": {
+        "file": "crates/dstu-agent/src/chat_v2/skill_market_client.rs",
+        "line": 1252,
+        "fn": "skill_market_verify"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "slug",
+          "rustName": "slug",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "version",
+          "rustName": "version",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [],
+      "result": {
+        "$ref": "#/$defs/SkillMarketVerifyResult"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "skill_probe_requires",
+      "lane": "L07-agent-skills-ptc",
+      "rust": {
+        "file": "crates/dstu-agent/src/chat_v2/skill_requires.rs",
+        "line": 87,
+        "fn": "skill_probe_requires"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "bins",
+          "rustName": "bins",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "env",
+          "rustName": "env",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "pythonPackages",
+          "rustName": "python_packages",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [],
+      "result": {
+        "$ref": "#/$defs/SkillRequiresProbe"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "skill_read_file",
+      "lane": "L07-agent-skills-ptc",
+      "rust": {
+        "file": "crates/dstu-agent/src/chat_v2/skills.rs",
+        "line": 595,
+        "fn": "skill_read_file"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "path",
+          "rustName": "path",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [],
+      "result": {
+        "$ref": "#/$defs/SkillFileContent"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "skill_tap_catalog",
+      "lane": "L07-agent-skills-ptc",
+      "rust": {
+        "file": "crates/dstu-agent/src/chat_v2/skill_taps.rs",
+        "line": 462,
+        "fn": "skill_tap_catalog"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "repoUrl",
+          "rustName": "repo_url",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [],
+      "result": {
+        "$ref": "#/$defs/TapCatalog"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "skill_tap_install",
+      "lane": "L07-agent-skills-ptc",
+      "rust": {
+        "file": "crates/dstu-agent/src/chat_v2/skill_taps.rs",
+        "line": 489,
+        "fn": "skill_tap_install"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "zipUrl",
+          "rustName": "zip_url",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "subdir",
+          "rustName": "subdir",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "overwrite",
+          "rustName": "overwrite",
+          "schema": {
+            "type": "boolean"
+          },
+          "optional": false
+        },
+        {
+          "key": "dryRun",
+          "rustName": "dry_run",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "expectedPackageSha256",
+          "rustName": "expected_package_sha256",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_storage::database::Database>"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/SkillImportZipResult"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "skill_update",
+      "lane": "L07-agent-skills-ptc",
+      "rust": {
+        "file": "crates/dstu-agent/src/chat_v2/skills.rs",
+        "line": 743,
+        "fn": "skill_update"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "path",
+          "rustName": "path",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "content",
+          "rustName": "content",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [],
+      "result": {
+        "$ref": "#/$defs/SkillFileContent"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "skill_update_from_source",
+      "lane": "L07-agent-skills-ptc",
+      "rust": {
+        "file": "crates/dstu-agent/src/chat_v2/skill_updates.rs",
+        "line": 414,
+        "fn": "skill_update_from_source"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "skillId",
+          "rustName": "skill_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_storage::database::Database>"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/SkillUpdateApplyResult"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    }
+  ],
+  "events": [
+    {
+      "name": "acr:bridge-cancel",
+      "dynamic": false,
+      "payload": {
+        "$ref": "#/$defs/AcrBridgeCancel"
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-agent/src/chat_v2/tools/workbench_bridge.rs",
+          "line": 237,
+          "fn": "emit_bridge_cancel",
+          "lane": "L07-agent-skills-ptc",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "acr:bridge-request",
+      "dynamic": false,
+      "payload": {
+        "$ref": "#/$defs/AcrBridgeRequest"
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-agent/src/chat_v2/tools/workbench_bridge.rs",
+          "line": 401,
+          "fn": "acr_bridge_call",
+          "lane": "L07-agent-skills-ptc",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "chat_v2://settings_changed",
+      "dynamic": false,
+      "payload": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "key"
+        ],
+        "additionalProperties": false
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-agent/src/chat_v2/tools/mcp_settings_store.rs",
+          "line": 93,
+          "fn": "emit_mcp_list_changed",
+          "lane": "L07-agent-skills-ptc",
+          "method": "emit"
+        },
+        {
+          "file": "src/chat_v2/tools/settings_models_executor.rs",
+          "line": 234,
+          "fn": "execute_settings_set",
+          "lane": "L02-llm-manager",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "skill-lifecycle-bridge-request",
+      "dynamic": false,
+      "payload": {
+        "type": "object",
+        "properties": {
+          "correlationId": {
+            "type": "string"
+          },
+          "command": {
+            "type": "string"
+          },
+          "args": {
+            "x-rust": "serde_json::Value"
+          },
+          "sessionId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "correlationId",
+          "command",
+          "args",
+          "sessionId"
+        ],
+        "additionalProperties": false
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-agent/src/chat_v2/tools/skill_lifecycle_executor.rs",
+          "line": 214,
+          "fn": "bridge_call",
+          "lane": "L07-agent-skills-ptc",
+          "method": "emit"
+        }
+      ]
+    }
+  ],
+  "$defs": {
+    "AcrBridgeCancel": {
+      "type": "object",
+      "properties": {
+        "correlationId": {
+          "type": "string"
+        },
+        "bridgeToken": {
+          "type": "string"
+        },
+        "runId": {
+          "type": "string"
+        },
+        "toolCallId": {
+          "type": "string"
+        },
+        "sessionId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "correlationId",
+        "bridgeToken",
+        "runId",
+        "toolCallId",
+        "sessionId"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_agent::chat_v2::tools::workbench_bridge::AcrBridgeCancel"
+    },
+    "AcrBridgeRequest": {
+      "type": "object",
+      "properties": {
+        "correlationId": {
+          "type": "string"
+        },
+        "bridgeToken": {
+          "type": "string"
+        },
+        "command": {
+          "type": "string"
+        },
+        "args": {
+          "x-rust": "serde_json::Value"
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "runId": {
+          "type": "string"
+        },
+        "toolCallId": {
+          "type": "string"
+        },
+        "sessionId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "correlationId",
+        "bridgeToken",
+        "command",
+        "args",
+        "timeoutMs",
+        "runId",
+        "toolCallId",
+        "sessionId"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_agent::chat_v2::tools::workbench_bridge::AcrBridgeRequest"
+    },
+    "CandidateSignalCounts": {
+      "type": "object",
+      "properties": {
+        "distinctTools": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "toolCalls": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "failedToolCalls": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "skillsLoaded": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "correctedSkills": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "distinctTools",
+        "toolCalls",
+        "failedToolCalls",
+        "skillsLoaded",
+        "correctedSkills"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_agent::chat_v2::skill_replay::CandidateSignalCounts"
+    },
+    "CandidateSourceKind": {
+      "type": "string",
+      "enum": [
+        "trajectory",
+        "user_correction"
+      ],
+      "x-rust": "dstu_agent::chat_v2::skill_usage::CandidateSourceKind"
+    },
+    "CandidateStatus": {
+      "type": "string",
+      "enum": [
+        "new",
+        "screened",
+        "replaying",
+        "passed",
+        "failed",
+        "published",
+        "rolled_back"
+      ],
+      "x-rust": "dstu_agent::chat_v2::skill_usage::CandidateStatus"
+    },
+    "ReplayReport": {
+      "type": "object",
+      "properties": {
+        "candidateId": {
+          "type": "string"
+        },
+        "sourceKind": {
+          "$ref": "#/$defs/CandidateSourceKind"
+        },
+        "sessionId": {
+          "type": "string"
+        },
+        "stillValid": {
+          "type": "boolean"
+        },
+        "driftReasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "traceHashStored": {
+          "type": "string"
+        },
+        "traceHashRecomputed": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "traceHashMatches": {
+          "type": "boolean"
+        },
+        "previousStatus": {
+          "$ref": "#/$defs/CandidateStatus"
+        },
+        "resultingStatus": {
+          "$ref": "#/$defs/CandidateStatus"
+        },
+        "replayedAt": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "candidateId",
+        "sourceKind",
+        "sessionId",
+        "stillValid",
+        "driftReasons",
+        "traceHashStored",
+        "traceHashRecomputed",
+        "traceHashMatches",
+        "previousStatus",
+        "resultingStatus",
+        "replayedAt"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_agent::chat_v2::skill_replay::ReplayReport"
+    },
+    "SkillCandidatePromotion": {
+      "type": "object",
+      "properties": {
+        "candidateId": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/CandidateStatus"
+        },
+        "draftPayload": {
+          "x-rust": "serde_json::Value"
+        },
+        "promotedAt": {
+          "type": "string"
+        },
+        "skillId": {
+          "type": "string"
+        },
+        "skillFilePath": {
+          "type": "string"
+        },
+        "skillVersion": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "skillFileWritten": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "candidateId",
+        "status",
+        "draftPayload",
+        "promotedAt",
+        "skillId",
+        "skillFilePath",
+        "skillVersion",
+        "skillFileWritten"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_agent::chat_v2::skill_replay::SkillCandidatePromotion"
+    },
+    "SkillCandidateRollback": {
+      "type": "object",
+      "properties": {
+        "candidateId": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/CandidateStatus"
+        },
+        "skillId": {
+          "type": "string"
+        },
+        "retiredFrom": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "archivedTo": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "rolledBackAt": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "candidateId",
+        "status",
+        "skillId",
+        "retiredFrom",
+        "archivedTo",
+        "rolledBackAt"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_agent::chat_v2::skill_replay::SkillCandidateRollback"
+    },
+    "SkillCandidateSummary": {
+      "type": "object",
+      "properties": {
+        "candidateId": {
+          "type": "string"
+        },
+        "sourceKind": {
+          "$ref": "#/$defs/CandidateSourceKind"
+        },
+        "status": {
+          "$ref": "#/$defs/CandidateStatus"
+        },
+        "sessionId": {
+          "type": "string"
+        },
+        "traceHash": {
+          "type": "string"
+        },
+        "skillIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "signals": {
+          "$ref": "#/$defs/CandidateSignalCounts"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "candidateId",
+        "sourceKind",
+        "status",
+        "sessionId",
+        "traceHash",
+        "skillIds",
+        "signals",
+        "createdAt",
+        "updatedAt"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_agent::chat_v2::skill_replay::SkillCandidateSummary"
+    },
+    "SkillDirectoryEntry": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "path"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_agent::chat_v2::skills::SkillDirectoryEntry"
+    },
+    "SkillFileContent": {
+      "type": "object",
+      "properties": {
+        "content": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "content",
+        "path"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_agent::chat_v2::skills::SkillFileContent"
+    },
+    "SkillImportZipResult": {
+      "type": "object",
+      "properties": {
+        "skill_id": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "files_extracted": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "scripts_count": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "references_count": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "allowed_tools_count": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "package_sha256": {
+          "type": "string"
+        },
+        "risk_level": {
+          "type": "string"
+        },
+        "risk_signals": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "requires": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SkillRequiresProbe"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        }
+      },
+      "required": [
+        "skill_id",
+        "path",
+        "files_extracted",
+        "scripts_count",
+        "references_count",
+        "allowed_tools_count",
+        "package_sha256",
+        "risk_level",
+        "risk_signals"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_agent::chat_v2::skills::SkillImportZipResult"
+    },
+    "SkillMarketDownloadScanResult": {
+      "type": "object",
+      "properties": {
+        "slug": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "provenance": {
+          "type": "string"
+        },
+        "tempZipPath": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "sourceKind": {
+          "type": "string"
+        },
+        "scan": {
+          "$ref": "#/$defs/SkillImportZipResult"
+        },
+        "installed": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "slug",
+        "version",
+        "provenance",
+        "sourceKind",
+        "scan",
+        "installed"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_agent::chat_v2::skill_market_client::SkillMarketDownloadScanResult"
+    },
+    "SkillMarketSearchResponse": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SkillMarketSkillCard"
+          }
+        }
+      },
+      "required": [
+        "mode",
+        "items"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_agent::chat_v2::skill_market_client::SkillMarketSearchResponse"
+    },
+    "SkillMarketSkillCard": {
+      "type": "object",
+      "properties": {
+        "slug": {
+          "type": "string"
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "downloads": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "ownerHandle": {
+          "type": "string"
+        },
+        "stars": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "verify": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SkillMarketVerifyResult"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        }
+      },
+      "required": [
+        "slug",
+        "displayName",
+        "summary",
+        "version",
+        "downloads",
+        "ownerHandle",
+        "stars"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_agent::chat_v2::skill_market_client::SkillMarketSkillCard"
+    },
+    "SkillMarketSkillDetail": {
+      "type": "object",
+      "properties": {
+        "slug": {
+          "type": "string"
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "downloads": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "stars": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "ownerHandle": {
+          "type": "string"
+        },
+        "ownerDisplayName": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "slug",
+        "displayName",
+        "summary",
+        "description",
+        "version",
+        "downloads",
+        "stars",
+        "ownerHandle",
+        "ownerDisplayName"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_agent::chat_v2::skill_market_client::SkillMarketSkillDetail"
+    },
+    "SkillMarketVerifyResult": {
+      "type": "object",
+      "properties": {
+        "ok": {
+          "type": "boolean"
+        },
+        "decision": {
+          "type": "string"
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "slug": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "securityStatus": {
+          "type": "string"
+        },
+        "securityPassed": {
+          "type": "boolean"
+        },
+        "publisherHandle": {
+          "type": "string"
+        },
+        "publisherDisplayName": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "ok",
+        "decision",
+        "reasons",
+        "slug",
+        "version",
+        "securityStatus",
+        "securityPassed",
+        "publisherHandle",
+        "publisherDisplayName"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_agent::chat_v2::skill_market_client::SkillMarketVerifyResult"
+    },
+    "SkillPackageFileEntry": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "size": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "path",
+        "size"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_agent::chat_v2::skills::SkillPackageFileEntry"
+    },
+    "SkillRequiresBinProbe": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "found": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "found"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_agent::chat_v2::skill_requires::SkillRequiresBinProbe"
+    },
+    "SkillRequiresEnvProbe": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "set": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "set"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_agent::chat_v2::skill_requires::SkillRequiresEnvProbe"
+    },
+    "SkillRequiresProbe": {
+      "type": "object",
+      "properties": {
+        "bins": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SkillRequiresBinProbe"
+          }
+        },
+        "env": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SkillRequiresEnvProbe"
+          }
+        },
+        "python_packages": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SkillRequiresPythonPackageProbe"
+          }
+        },
+        "invalid": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "missing_count": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "bins",
+        "env",
+        "python_packages",
+        "invalid",
+        "missing_count"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_agent::chat_v2::skill_requires::SkillRequiresProbe"
+    },
+    "SkillRequiresPythonPackageProbe": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "found": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "found"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_agent::chat_v2::skill_requires::SkillRequiresPythonPackageProbe"
+    },
+    "SkillUpdateApplyResult": {
+      "type": "object",
+      "properties": {
+        "skillId": {
+          "type": "string"
+        },
+        "updated": {
+          "type": "boolean"
+        },
+        "packageSha256": {
+          "type": "string"
+        },
+        "riskLevel": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "trustStatus": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "skillId",
+        "updated",
+        "packageSha256",
+        "riskLevel",
+        "path",
+        "trustStatus"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_agent::chat_v2::skill_updates::SkillUpdateApplyResult"
+    },
+    "SkillUpdateCheckResult": {
+      "type": "object",
+      "properties": {
+        "skillId": {
+          "type": "string"
+        },
+        "checkable": {
+          "type": "boolean"
+        },
+        "updateAvailable": {
+          "type": "boolean"
+        },
+        "sourceKind": {
+          "type": "string"
+        },
+        "sourceSummary": {
+          "type": "string"
+        },
+        "currentSha256": {
+          "type": "string"
+        },
+        "remoteSha256": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "currentVersion": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "remoteVersion": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "skillId",
+        "checkable",
+        "updateAvailable",
+        "sourceKind",
+        "sourceSummary",
+        "currentSha256",
+        "remoteSha256",
+        "error"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_agent::chat_v2::skill_updates::SkillUpdateCheckResult"
+    },
+    "TapCatalog": {
+      "type": "object",
+      "properties": {
+        "repoUrl": {
+          "type": "string"
+        },
+        "resolvedZipUrl": {
+          "type": "string"
+        },
+        "skills": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TapCatalogEntry"
+          }
+        }
+      },
+      "required": [
+        "repoUrl",
+        "resolvedZipUrl",
+        "skills"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_agent::chat_v2::skill_taps::TapCatalog"
+    },
+    "TapCatalogEntry": {
+      "type": "object",
+      "properties": {
+        "subdir": {
+          "type": "string"
+        },
+        "skillId": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "fileCount": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "subdir",
+        "skillId",
+        "name",
+        "description",
+        "version",
+        "fileCount"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_agent::chat_v2::skill_taps::TapCatalogEntry"
+    },
+    "TapExportResult": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "skillCount": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "fileCount": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "path",
+        "skillCount",
+        "fileCount"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_agent::chat_v2::skill_taps::TapExportResult"
+    }
+  }
+}

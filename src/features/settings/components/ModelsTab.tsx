@@ -7,7 +7,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
-import { SettingSection } from './SettingsCommon';
+import { SettingSection, settingsQuietInteractiveRowClassName } from './SettingsCommon';
 import { GroupTitle } from './settingsTabPrimitives';
 import { UnifiedModelSelector } from '@/components/shared/UnifiedModelSelector';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
@@ -89,7 +89,7 @@ const ModelAssignmentRow = ({
   setConfig: React.Dispatch<React.SetStateAction<any>>;
 }) => (
   // 双栏切换点与 isSmallScreen（<768）对齐，避免 640-767px 移动模式下出现桌面双栏行
-  <div className="group flex flex-col md:flex-row md:items-start gap-2 py-2.5 px-1 rounded overflow-hidden">
+  <div className={cn("group flex flex-col md:flex-row md:items-start gap-2 py-2.5 px-2 rounded-lg overflow-hidden", settingsQuietInteractiveRowClassName)}>
     <div className="flex-1 min-w-0 pt-1.5 md:min-w-[200px]">
       <h3 className="text-sm text-foreground/90 leading-tight">{title}</h3>
       <p className="mt-0.5 break-words text-xs leading-relaxed text-muted-foreground/70 md:line-clamp-2">
@@ -144,7 +144,7 @@ const TranslationDisplayModeRow = ({
   setConfig: React.Dispatch<React.SetStateAction<any>>;
 }) => (
   // 双栏切换点与 isSmallScreen（<768）对齐，避免 640-767px 移动模式下出现桌面双栏行
-  <div className="group flex flex-col md:flex-row md:items-start gap-2 py-2.5 px-1 rounded overflow-hidden">
+  <div className={cn("group flex flex-col md:flex-row md:items-start gap-2 py-2.5 px-2 rounded-lg overflow-hidden", settingsQuietInteractiveRowClassName)}>
     <div className="flex-1 min-w-0 pt-1.5 md:min-w-[200px]">
       <h3 className="text-sm text-foreground/90 leading-tight">{title}</h3>
       <p className="mt-0.5 break-words text-xs leading-relaxed text-muted-foreground/70 md:line-clamp-2">
@@ -461,37 +461,39 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
         </div>
 
         {/* 配置状态概览 */}
-        <div className="mt-8 pt-4 border-t border-border/20">
-          <h3 className="text-base font-semibold text-foreground mb-3">{t('settings:cards.config_check_title')}</h3>
-          <div className="grid gap-1.5 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 text-sm">
-            {[
-              { id: config.model2ConfigId, label: t('settings:config_status.model2') },
-              { id: config.ankiCardModelConfigId, label: t('settings:config_status.anki_card') },
-              { id: config.qbank_ai_grading_model_config_id, label: t('settings:status_labels.qbank_ai_grading_model') },
-              { id: config.qbank_ai_generation_model_config_id, label: t('settings:status_labels.qbank_ai_generation_model'), optional: true },
-              { id: config.rerankerModelConfigId, label: t('settings:config_status.reranker'), optional: true },
-              { id: config.chat_title_model_config_id, label: t('settings:status_labels.chat_title_model') },
-              { id: config.voice_input_asr_model_config_id, label: t('settings:status_labels.voice_input_asr_model'), optional: true },
-              { id: config.image_generation_model_config_id, label: t('settings:status_labels.image_generation_model', 'Image generation'), optional: true },
-              { id: ocrEngineConfigured ? 'configured' : '', label: t('settings:status_labels.exam_sheet_ocr'), optional: true },
-            ].map((item, idx) => (
-              <div key={idx} className="flex items-center gap-1.5 py-0.5">
-                <span className={cn(
-                  "w-1.5 h-1.5 rounded-full flex-shrink-0",
-                  item.id ? "bg-emerald-500" : item.optional ? "bg-amber-500/70" : "bg-muted-foreground/30"
-                )} />
-                <span className={cn("truncate text-xs", item.id ? "text-foreground/80" : "text-muted-foreground/60")}>
-                  {item.label}
-                </span>
-              </div>
-            ))}
-          </div>
-          
-          {config.model2ConfigId && (
-            <div className="mt-3 text-xs text-emerald-600/80 py-1">
-              {t('settings:status_labels.basic_config_complete')}
+        <div className="mt-8">
+          <GroupTitle title={t('settings:cards.config_check_title')} />
+          <div className="rounded-2xl bg-muted px-3 py-3 sm:px-4">
+            <div className="grid gap-1.5 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 text-sm">
+              {[
+                { id: config.model2ConfigId, label: t('settings:config_status.model2') },
+                { id: config.ankiCardModelConfigId, label: t('settings:config_status.anki_card') },
+                { id: config.qbank_ai_grading_model_config_id, label: t('settings:status_labels.qbank_ai_grading_model') },
+                { id: config.qbank_ai_generation_model_config_id, label: t('settings:status_labels.qbank_ai_generation_model'), optional: true },
+                { id: config.rerankerModelConfigId, label: t('settings:config_status.reranker'), optional: true },
+                { id: config.chat_title_model_config_id, label: t('settings:status_labels.chat_title_model') },
+                { id: config.voice_input_asr_model_config_id, label: t('settings:status_labels.voice_input_asr_model'), optional: true },
+                { id: config.image_generation_model_config_id, label: t('settings:status_labels.image_generation_model', 'Image generation'), optional: true },
+                { id: ocrEngineConfigured ? 'configured' : '', label: t('settings:status_labels.exam_sheet_ocr'), optional: true },
+              ].map((item, idx) => (
+                <div key={idx} className="flex items-center gap-1.5 py-0.5">
+                  <span className={cn(
+                    "w-1.5 h-1.5 rounded-full flex-shrink-0",
+                    item.id ? "bg-emerald-500" : item.optional ? "bg-amber-500/70" : "bg-muted-foreground/30"
+                  )} />
+                  <span className={cn("truncate text-xs", item.id ? "text-foreground/80" : "text-muted-foreground/60")}>
+                    {item.label}
+                  </span>
+                </div>
+              ))}
             </div>
-          )}
+            
+            {config.model2ConfigId && (
+              <div className="mt-3 text-xs text-emerald-600/80 py-1">
+                {t('settings:status_labels.basic_config_complete')}
+              </div>
+            )}
+          </div>
         </div>
       </SettingSection>
     </div>

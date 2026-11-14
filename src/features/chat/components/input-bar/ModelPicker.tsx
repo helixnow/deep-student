@@ -44,6 +44,10 @@ import type { ModelAssignments } from '@/types';
 import { useRecentChatModels } from '../../hooks/useRecentChatModels';
 import { useFavoriteChatModels } from '../../hooks/useFavoriteChatModels';
 import { isAvailableChatModel } from '@/utils/chatModelEligibility';
+import {
+  invalidateModelConfigSnapshot,
+  loadModelConfigSnapshot,
+} from '../../utils/modelConfigSnapshot';
 import { isOpenCodeGoConfig } from '@/utils/opencodeGo';
 import { formatRequestCount, getOpenCodeGoModelQuota, useOpenCodeGoPlan } from '@/utils/opencodeGoPlans';
 
@@ -174,12 +178,13 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
         setLoading(true);
         isInitialLoad.current = false;
       }
-      const configs = await invoke<ApiModelConfig[]>('get_api_configurations');
+      const snapshot = await loadModelConfigSnapshot<ApiModelConfig, VendorConfigSlim>();
+      const configs = snapshot.configs;
       const chatModels = (configs || []).filter(isAvailableChatModel);
       setModels(chatModels);
 
       try {
-        const vendorConfigs = await invoke<VendorConfigSlim[]>('get_vendor_configs');
+        const vendorConfigs = snapshot.vendorConfigs;
         const orderMap = new Map<string, number>();
         const nameMap = new Map<string, string>();
         const sorted = [...(vendorConfigs || [])].sort((a, b) => {
@@ -202,12 +207,7 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
         setVendorNameMap(new Map());
       }
 
-      try {
-        const assignments = await invoke<Record<string, string | null>>('get_model_assignments');
-        setDefaultModelId(assignments?.['model2_config_id'] || null);
-      } catch {
-        setDefaultModelId(null);
-      }
+      setDefaultModelId(snapshot.assignments?.['model2_config_id'] || null);
     } catch (error: unknown) {
       console.error('[ModelPicker] Failed to load models:', error);
       setModels([]);
@@ -221,7 +221,10 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
   }, [loadModels]);
 
   useEffect(() => {
-    const reload = () => { void loadModels(); };
+    const reload = () => {
+      invalidateModelConfigSnapshot();
+      void loadModels();
+    };
     window.addEventListener('api_configurations_changed', reload as EventListener);
     window.addEventListener('model_assignments_changed', reload as EventListener);
     return () => {
@@ -361,6 +364,7 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
         model2_config_id: modelId,
       };
       await invoke<void>('save_model_assignments', { assignments: newAssignments });
+      invalidateModelConfigSnapshot();
       try {
         if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
           window.dispatchEvent(new CustomEvent('model_assignments_changed'));

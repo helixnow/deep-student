@@ -5,6 +5,7 @@ import { MarkdownRenderer } from './MarkdownRenderer';
 import { BlockedMarkdownRenderer } from './BlockedMarkdownRenderer';
 import { shallowEqualSpans, makeUncertaintyHighlightPlugin, parseChainOfThought } from './rendererUtils';
 import { useSuspendedStreamContent } from './StreamPreferencesContext';
+import { filterStreamingTableRows } from '@/features/chat/utils/streamingMarkdownTable';
 import type { RetrievalSourceType } from '../../plugins/blocks/components/types';
 import './streaming.css';
 
@@ -18,6 +19,7 @@ export type StreamRenderingMode = 'legacy' | 'blocked';
 interface StreamingMarkdownRendererProps {
   content: string;
   isStreaming: boolean;
+  enableChainOfThought?: boolean;
   chainOfThought?: {
     enabled: boolean;
     details?: any;
@@ -58,15 +60,173 @@ const EMPTY_REMARK_PLUGINS: any[] = [];
 // - 在 natural preset 下文本以 API 原生速度流出，partial text 仅短暂可见
 //
 // KaTeX 已有 `throwOnError: false` 兜底，单点解析失败不会让组件崩。
-const preprocessStreamingContent = (content: string, _isStreaming: boolean) => {
+function isTableDelimiterLine(line: string): boolean {
+  const trimmed = line.trim();
+  if (!trimmed.includes('|') || !trimmed.includes('-')) return false;
+  return /^\|?(?:\s*:?-{1,}:?\s*\|)+\s*(?::?-{1,}:?\s*\|?)?$/.test(trimmed);
+}
+
+function isClosedTableLine(line: string): boolean {
+  const trimmed = line.trim();
+  return trimmed.startsWith('|') && trimmed.endsWith('|') && !trimmed.endsWith('\\|');
+}
+
+function splitMarkdownTableCells(line: string): string[] {
+  const trimmed = line.trim();
+  const withoutLeading = trimmed.startsWith('|') ? trimmed.slice(1) : trimmed;
+  const withoutTrailing =
+    withoutLeading.endsWith('|') && !withoutLeading.endsWith('\\|')
+      ? withoutLeading.slice(0, -1)
+      : withoutLeading;
+  return withoutTrailing.split(/(?<!\\)\|/).map((cell) => cell.trim());
+}
+
+/**
+ * 流式 Markdown 表格防抖与行稳定器：
+ * - 当 `isStreaming === false` 时原样返回；
+ * - 当 `isStreaming === true` 时，剥离末尾未闭合的半截表格行，并对已闭合但缺失单元格的行自动补齐缺失单元格。
+ */
+export function stabilizeStreamingMarkdownTables(
+  content: string,
+  isStreaming: boolean = true,
+): string {
+  if (!isStreaming || !content || !content.includes('|')) {
+    return content;
+  }
+
+  const normalized = content.includes('\r') ? content.replace(/\r\n/g, '\n') : content;
+  const lines = normalized.split('\n');
+  const output: string[] = [];
+  let inCodeFence = false;
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+    if (/^\s{0,3}(?:```|~~~)/.test(line)) {
+      inCodeFence = !inCodeFence;
+      output.push(line);
+      i += 1;
+      continue;
+    }
+
+    if (inCodeFence || !line.includes('|')) {
+      output.push(line);
+      i += 1;
+      continue;
+    }
+
+    // 检查是否构成 Markdown 表格起始（当前行为表头，下一行为分隔行或末尾半截分隔行）
+    const nextLine = lines[i + 1];
+    const headerCells = splitMarkdownTableCells(line);
+    const colCount = headerCells.length;
+
+    if (colCount === 0 || nextLine === undefined) {
+      // 若位于全文末尾且是以 | 开头的未闭合半截表格行，剥离之
+      if (i === lines.length - 1 && line.trim().startsWith('|') && !isClosedTableLine(line)) {
+        i += 1;
+        continue;
+      }
+      output.push(line);
+      i += 1;
+      continue;
+    }
+
+    const nextTrimmed = nextLine.trim();
+    const isNextPartialDelimiter =
+      i + 1 === lines.length - 1 &&
+      nextTrimmed.startsWith('|') &&
+      /^[\s|:-]+$/.test(nextTrimmed) &&
+      !isClosedTableLine(nextLine);
+
+    if (isNextPartialDelimiter) {
+      // 表头后紧跟末尾未闭合的分隔行，保留表头、剥离半截分隔行
+      output.push(line);
+      i += 2;
+      continue;
+    }
+
+    if (!isTableDelimiterLine(nextLine)) {
+      output.push(line);
+      i += 1;
+      continue;
+    }
+
+    // 确认进入表格块：输出表头与补齐后的分隔行
+    output.push(line);
+    const delimiterCells = splitMarkdownTableCells(nextLine);
+    if (delimiterCells.length < colCount) {
+      const paddedDelims = [...delimiterCells];
+      while (paddedDelims.length < colCount) {
+        paddedDelims.push('---');
+      }
+      output.push(`| ${paddedDelims.join(' | ')} |`);
+    } else {
+      output.push(nextLine);
+    }
+
+    i += 2;
+
+    // 处理表格数据行
+    while (i < lines.length) {
+      const rowLine = lines[i];
+      const rowTrimmed = rowLine.trim();
+      if (!rowTrimmed || /^\s{0,3}(?:```|~~~)/.test(rowLine) || !rowLine.includes('|')) {
+        break;
+      }
+
+      const isLastLineOfStream = i === lines.length - 1;
+      const isClosed = isClosedTableLine(rowLine);
+
+      // 末尾未闭合的半截表格行：直接剥离
+      if (isLastLineOfStream && !isClosed) {
+        i += 1;
+        continue;
+      }
+
+      const rawCells = splitMarkdownTableCells(rowLine);
+      const paddedCells = rawCells.slice(0, colCount);
+      while (paddedCells.length < colCount) {
+        paddedCells.push('');
+      }
+
+      // 复用 filterStreamingTableRows 剔除流式期间全空白占坑行
+      const validRows = filterStreamingTableRows(
+        headerCells,
+        [{ cells: paddedCells }],
+        true,
+      );
+      if (validRows.length === 0) {
+        i += 1;
+        continue;
+      }
+
+      if (rawCells.length === colCount && isClosed) {
+        output.push(rowLine);
+      } else {
+        output.push(`| ${paddedCells.join(' | ')} |`);
+      }
+      i += 1;
+    }
+  }
+
+  return output.join('\n');
+}
+
+const preprocessStreamingContent = (content: string, isStreaming: boolean) => {
   if (!content) return { content: '', hasPartialMath: false };
-  return { content, hasPartialMath: false };
+  const stabilized =
+    isStreaming && content.includes('|')
+      ? stabilizeStreamingMarkdownTables(content, true)
+      : content;
+  return { content: stabilized, hasPartialMath: false };
 };
 
 // P1修复：StreamingMarkdownRenderer memo化，减少不必要重渲染
 export const StreamingMarkdownRenderer: React.FC<StreamingMarkdownRendererProps> = memo(({
   content,
   isStreaming,
+  enableChainOfThought,
+  chainOfThought,
   onLinkClick,
   highlightSpans,
   extraRemarkPlugins,
@@ -87,7 +247,6 @@ export const StreamingMarkdownRenderer: React.FC<StreamingMarkdownRendererProps>
     [suspendableContent, isStreaming]
   );
   const displayContent = processedContent.content;
-  const hasVisibleContent = displayContent.trim().length > 0;
 
   // 🔧 P1修复：使用稳定引用比较替代 JSON.stringify
   const highlightSpansRef = React.useRef(highlightSpans);
@@ -95,7 +254,19 @@ export const StreamingMarkdownRenderer: React.FC<StreamingMarkdownRendererProps>
     highlightSpansRef.current = highlightSpans;
   }
 
-  const parsedContent = useMemo(() => parseChainOfThought(displayContent), [displayContent]);
+  const isChainOfThoughtEnabled = enableChainOfThought ?? chainOfThought?.enabled ?? true;
+  const parsedContent = useMemo(() => {
+    if (!isChainOfThoughtEnabled) return null;
+    const rawParsed = parseChainOfThought(suspendableContent);
+    if (!rawParsed) return null;
+    return {
+      thinkingContent: preprocessStreamingContent(rawParsed.thinkingContent, isStreaming).content,
+      mainContent: preprocessStreamingContent(rawParsed.mainContent, isStreaming).content,
+    };
+  }, [isChainOfThoughtEnabled, suspendableContent, isStreaming]);
+  const hasVisibleContent = parsedContent
+    ? parsedContent.thinkingContent.trim().length > 0 || parsedContent.mainContent.trim().length > 0
+    : displayContent.trim().length > 0;
   const stableHighlightSpans = highlightSpansRef.current;
   const thinkingContent = parsedContent?.thinkingContent ?? '';
 
@@ -234,6 +405,8 @@ export const StreamingMarkdownRenderer: React.FC<StreamingMarkdownRendererProps>
   return (
     prevProps.content === nextProps.content &&
     prevProps.isStreaming === nextProps.isStreaming &&
+    prevProps.enableChainOfThought === nextProps.enableChainOfThought &&
+    prevProps.chainOfThought?.enabled === nextProps.chainOfThought?.enabled &&
     shallowEqualSpans(prevProps.highlightSpans, nextProps.highlightSpans) &&
     prevProps.extraRemarkPlugins === nextProps.extraRemarkPlugins &&
     prevProps.streamRenderingMode === nextProps.streamRenderingMode &&

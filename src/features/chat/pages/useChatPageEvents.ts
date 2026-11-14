@@ -343,7 +343,7 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
       const sourceId = source.sourceId;
       const dstuPath = sourceId.startsWith('/') ? sourceId : `/${sourceId}`;
       const isAttachmentLike = sourceId.startsWith('att_') || sourceId.startsWith('file_');
-      const isTextbook = sourceId.startsWith('tb_');
+      const isTextbook = sourceId.startsWith('tb_') || sourceId.startsWith('file_');
       // 回链高亮选区原文本身（不只是跳到那一页）
       const quote = typeof parsed?.text === 'string' && parsed.text.trim() ? parsed.text : undefined;
       const inChatPanel = isAttachmentLike || isTextbook;
@@ -633,7 +633,7 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
         const isAttachmentLike = sourceId.startsWith('att_') || sourceId.startsWith('file_');
         // 教材同样在聊天右侧面板打开：旧实现派发 NAVIGATE_TO_VIEW 把学习者踢出聊天页
         //（且 openResource 延迟 150ms 才打开，冷启动时跳页事件可能落空）
-        const isTextbook = sourceId.startsWith('tb_');
+        const isTextbook = sourceId.startsWith('tb_') || sourceId.startsWith('file_');
 
 
         if (isAttachmentLike || isTextbook) {
@@ -642,7 +642,7 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
             detail: {
               id: sourceId,
               type: isTextbook ? 'textbook' : 'file',
-              title: isTextbook ? t('pdfRef.textbookTitle', { defaultValue: '教材' }) : 'PDF',
+              title: 'PDF',
             },
           }));
           requestPdfFocusUntilHandled({

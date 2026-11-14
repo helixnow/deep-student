@@ -1,0 +1,25 @@
+{
+  "id": "RF-W09-new-note-title-focus",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main-agent",
+  "approvedAt": "2026-11-07T10:12:00+08:00",
+  "title": "新建笔记时标题先拿到焦点、正文编辑器就绪后又被抢走，紧接着打字会落进正文",
+  "rust": {
+    "file": "src/features/notes/NotesCrepeEditor.tsx",
+    "line": 2978,
+    "behavior": "Rust 快照 21c9d808 中 autoFocusTitle 只看只读、内容已加载与正文为空，不等正文编辑器就绪；NotesEditorHeader.tsx:143-152 在下一帧聚焦标题，约 80ms 后正文编辑器就绪，焦点落到正文，用户以为在写标题，字却进了正文"
+  },
+  "fix": {
+    "files": ["src/features/notes/NotesCrepeEditor.tsx"],
+    "behavior": "autoFocusTitle 额外要求正文编辑器已就绪（editorApi 已由 onReady 设置），标题在编辑器就绪后的下一帧才聚焦，不再被抢；仍保留原有判断：正文已有焦点、只读或笔记非空时不聚焦标题；每篇笔记只自动聚焦一次"
+  },
+  "evidence": "W12 冒烟 #23：host/e2e/smoke/__tests__/golden/03-notes.spec.ts 新建笔记后观察到焦点约 80ms 后从标题移到正文，规格里只能先点一下标题再输入。Tauri 版使用同一份前端代码与同一顺序，同样存在。单元测试把正文编辑器的 onReady 延后：修复前编辑器就绪前就请求聚焦标题（测试失败），修复后只在就绪后请求。真实浏览器中焦点最终停在哪里由 W12 冒烟的 new-note-focus-after-1s 注解复核。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "src/features/notes/fullDocument.host.test.tsx",
+      "name": "RF-W09-new-note-title-focus: new note title focus waits for the body editor"
+    }
+  ]
+}

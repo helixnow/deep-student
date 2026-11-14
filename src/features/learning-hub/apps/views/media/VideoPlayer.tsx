@@ -2,9 +2,9 @@
  * VideoPlayer — 视频预览播放器（Learning Hub 文件预览）
  *
  * 黑底沉浸式布局 + 悬浮控制条（播放时 2.5s 自动隐藏，隐藏时光标一并隐藏）。
- * 能力：播放/暂停、±10s、可拖进度（含缓冲显示）、倍速、循环、
- * 音量+静音（记忆，hover 展开滑杆）、全屏、快捷键（空格 / ← → / M / F）、
- * 缓冲指示、单击暂停 / 双击全屏。
+ * 能力：播放/暂停、±10s（700ms 窗口累加一次性 Seek）、可拖进度（含缓冲显示与 160ms 防抖缩略图预览）、
+ * 倍速（含长按 450ms 临时 3.0x 倍速播放松手恢复）、循环、音量+静音（记忆，hover 展开滑杆）、
+ * 全屏、快捷键（空格 / ← → / M / F）、缓冲指示、首帧未就绪防黑块闪烁、单击暂停 / 双击全屏。
  */
 
 import React, { useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
@@ -22,7 +22,7 @@ import {
   ArrowsIn,
   CircleNotch,
 } from '@phosphor-icons/react';
-import { cn } from '@/lib/utils';
+import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
 import { Slider } from '@/components/ui/shad/Slider';
 import { formatMediaTime } from '../previewUtils';
@@ -31,6 +31,12 @@ import { MediaScrubber, type MediaScrubberMarker, type MediaScrubberRange } from
 import { PlaybackRateMenu } from './PlaybackRateMenu';
 import { QualityMenu, type QualityMenuOption } from './QualityMenu';
 import { hasShortcutModifier, isInteractiveShortcutTarget, SKIP_SECONDS } from './mediaShortcuts';
+import {
+  CumulativeSeekController,
+  HoldSpeedBoostController,
+  formatBoostRate,
+  type CumulativeSeekSnapshot,
+} from './playerMicroInteractions';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import type { MediaPlayerHandle, MediaPlayerStatus } from './mediaPlayerHandle';
 import { useScreenWakeLock } from './useScreenWakeLock';
@@ -39,7 +45,7 @@ import { useScreenWakeLock } from './useScreenWakeLock';
 const DOUBLE_TAP_MS = 280;
 /** 左 / 右两侧各占画面宽度的比例（双击快退 / 快进区） */
 const DOUBLE_TAP_ZONE = 0.35;
-/** 双击快进退提示的显示时长 */
+/** 快进退提示气泡的显示时长 */
 const SEEK_FLASH_MS = 650;
 
 const HIDE_CONTROLS_DELAY_MS = 2500;
@@ -120,12 +126,109 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     play,
     pause,
     seekTo,
-    seekBy,
     setVolume,
     toggleMute,
     setRate,
     toggleLoop,
   } = useMediaPlayback<HTMLVideoElement>({ src, isActive, onError });
+
+  // 首帧未就绪防黑块闪烁：新源切入到首帧解码前保持透明，解码完成后平滑显现
+  const [isFirstFrameReady, setIsFirstFrameReady] = useState(false);
+  useEffect(() => {
+    setIsFirstFrameReady(false);
+  }, [src]);
+
+  const rateRef = useRef(rate);
+  rateRef.current = rate;
+  const seekToRef = useRef(seekTo);
+  seekToRef.current = seekTo;
+
+  // 1. 长按 450ms 临时 3.0x 倍速播放控制器
+  const [boostState, setBoostState] = useState<{ active: boolean; rate: number }>({
+    active: false,
+    rate: 3.0,
+  });
+  const suppressNextClickRef = useRef(false);
+  const arrowRightHeldRef = useRef(false);
+
+  const boostControllerRef = useRef<HoldSpeedBoostController | null>(null);
+  if (boostControllerRef.current === null) {
+    boostControllerRef.current = new HoldSpeedBoostController({
+      getPlaybackRate: () => {
+        const el = mediaRef.current;
+        return el && Number.isFinite(el.playbackRate) && el.playbackRate > 0
+          ? el.playbackRate
+          : rateRef.current;
+      },
+      applyPlaybackRate: (nextRate) => {
+        const el = mediaRef.current;
+        if (el) {
+          el.playbackRate = nextRate;
+        }
+      },
+      onBoostStateChange: (active, nextRate) => {
+        setBoostState({ active, rate: nextRate });
+      },
+    });
+  }
+
+  // 2. 连按快进退 700ms 窗口累加一次性 Seek 控制器
+  const [seekFlash, setSeekFlash] = useState<{
+    side: 'left' | 'right';
+    seconds: number;
+    key: number;
+  } | null>(null);
+  const [cumulativeState, setCumulativeState] = useState<CumulativeSeekSnapshot>({
+    isAccumulating: false,
+    anchorTime: 0,
+    accumulatedDelta: 0,
+    targetTime: 0,
+  });
+
+  const cumulativeSeekRef = useRef<CumulativeSeekController | null>(null);
+  if (cumulativeSeekRef.current === null) {
+    cumulativeSeekRef.current = new CumulativeSeekController({
+      commitSeek: (targetTime) => {
+        seekToRef.current(targetTime);
+      },
+      onStateChange: (snapshot) => {
+        setCumulativeState(snapshot);
+      },
+    });
+  }
+
+  useEffect(() => {
+    const boostCtrl = boostControllerRef.current;
+    const seekCtrl = cumulativeSeekRef.current;
+    return () => {
+      boostCtrl?.dispose();
+      seekCtrl?.dispose();
+    };
+  }, []);
+
+  const triggerCumulativeSeek = useCallback(
+    (deltaSeconds: number) => {
+      const el = mediaRef.current;
+      const baseTime =
+        el && Number.isFinite(el.currentTime) ? el.currentTime : currentTime;
+      const totalDuration =
+        el && Number.isFinite(el.duration) && el.duration > 0
+          ? el.duration
+          : duration;
+      const snapshot = cumulativeSeekRef.current!.stepSeek(
+        deltaSeconds,
+        baseTime,
+        totalDuration,
+      );
+      const totalSeconds = Math.abs(snapshot.accumulatedDelta);
+      setSeekFlash({
+        side: snapshot.accumulatedDelta < 0 ? 'left' : 'right',
+        seconds: totalSeconds > 0 ? totalSeconds : Math.abs(deltaSeconds),
+        key: Date.now(),
+      });
+    },
+    [mediaRef, currentTime, duration],
+  );
 
   useImperativeHandle(
     handleRef,
@@ -189,13 +292,59 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   // 把控制条提前唤出，click 时读实时 state 会误判为"已可见"。
   const lastPointerTypeRef = useRef<string>('mouse');
   const controlsVisibleAtPointerDownRef = useRef(true);
+  const windowHoldCleanupRef = useRef<(() => void) | null>(null);
+
+  const clearWindowHoldListeners = useCallback(() => {
+    if (windowHoldCleanupRef.current) {
+      windowHoldCleanupRef.current();
+      windowHoldCleanupRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => clearWindowHoldListeners, [clearWindowHoldListeners]);
+
+  const handleVideoPointerUpOrCancel = useCallback(() => {
+    clearWindowHoldListeners();
+    const result = boostControllerRef.current?.endHold();
+    if (result?.wasBoosting) {
+      suppressNextClickRef.current = true;
+    }
+  }, [clearWindowHoldListeners]);
 
   const handleVideoPointerDown = useCallback(
     (event: React.PointerEvent<HTMLVideoElement>) => {
-      lastPointerTypeRef.current = event.pointerType || 'mouse';
+      const pointerType = event.pointerType || 'mouse';
+      if (pointerType === 'mouse' && typeof event.button === 'number' && event.button !== 0) {
+        return;
+      }
+      lastPointerTypeRef.current = pointerType;
       controlsVisibleAtPointerDownRef.current = showControls || !isPlaying;
+      suppressNextClickRef.current = false;
+      if (!isPlaying) return;
+
+      // 长按画面（仅鼠标左键或触屏且正在播放时）满 450ms 进入临时 3.0x 倍速播放
+      const currentRate =
+        mediaRef.current && Number.isFinite(mediaRef.current.playbackRate)
+          ? mediaRef.current.playbackRate
+          : rate;
+      boostControllerRef.current?.startHold(currentRate);
+
+      clearWindowHoldListeners();
+      const onWindowRelease = () => {
+        handleVideoPointerUpOrCancel();
+      };
+      window.addEventListener('pointerup', onWindowRelease, { once: true });
+      window.addEventListener('pointercancel', onWindowRelease, { once: true });
+      window.addEventListener('contextmenu', onWindowRelease, { once: true });
+      window.addEventListener('blur', onWindowRelease, { once: true });
+      windowHoldCleanupRef.current = () => {
+        window.removeEventListener('pointerup', onWindowRelease);
+        window.removeEventListener('pointercancel', onWindowRelease);
+        window.removeEventListener('contextmenu', onWindowRelease);
+        window.removeEventListener('blur', onWindowRelease);
+      };
     },
-    [showControls, isPlaying],
+    [showControls, isPlaying, mediaRef, rate, clearWindowHoldListeners, handleVideoPointerUpOrCancel],
   );
 
   const runSingleTap = useCallback(() => {
@@ -214,7 +363,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     side: null,
     timer: null,
   });
-  const [seekFlash, setSeekFlash] = useState<{ side: 'left' | 'right'; key: number } | null>(null);
   useEffect(() => () => {
     if (tapRef.current.timer !== null) window.clearTimeout(tapRef.current.timer);
   }, []);
@@ -225,6 +373,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   }, [seekFlash]);
 
   const handleVideoClick = useCallback((event: React.MouseEvent<HTMLVideoElement>) => {
+    if (suppressNextClickRef.current) {
+      suppressNextClickRef.current = false;
+      return;
+    }
     if (lastPointerTypeRef.current === 'mouse') {
       runSingleTap();
       return;
@@ -238,8 +390,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     tap.timer = null;
     if (side && tap.side === side && now - tap.at < DOUBLE_TAP_MS) {
       tap.side = null;
-      seekBy(side === 'left' ? -SKIP_SECONDS : SKIP_SECONDS);
-      setSeekFlash({ side, key: now });
+      triggerCumulativeSeek(side === 'left' ? -SKIP_SECONDS : SKIP_SECONDS);
       return;
     }
     if (!side) {
@@ -254,7 +405,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       tap.side = null;
       runSingleTap();
     }, DOUBLE_TAP_MS);
-  }, [runSingleTap, seekBy]);
+  }, [runSingleTap, triggerCumulativeSeek]);
 
   useScreenWakeLock(isPlaying);
 
@@ -307,13 +458,20 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         case 'ArrowLeft':
           if (onControl) return;
           event.preventDefault();
-          seekBy(-SKIP_SECONDS);
+          triggerCumulativeSeek(-SKIP_SECONDS);
           break;
-        case 'ArrowRight':
+        case 'ArrowRight': {
           if (onControl) return;
           event.preventDefault();
-          seekBy(SKIP_SECONDS);
+          if (event.repeat || arrowRightHeldRef.current) return;
+          arrowRightHeldRef.current = true;
+          const currentRate =
+            mediaRef.current && Number.isFinite(mediaRef.current.playbackRate)
+              ? mediaRef.current.playbackRate
+              : rate;
+          boostControllerRef.current?.startHold(currentRate);
           break;
+        }
         case 'm':
         case 'M':
           event.preventDefault();
@@ -328,8 +486,28 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           break;
       }
     },
-    [togglePlay, seekBy, toggleMute, toggleFullscreen],
+    [togglePlay, triggerCumulativeSeek, mediaRef, rate, toggleMute, toggleFullscreen],
   );
+
+  const handleKeyUp = useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if (event.key !== 'ArrowRight') return;
+      if (!arrowRightHeldRef.current && !boostControllerRef.current?.isHolding) return;
+      event.preventDefault();
+      arrowRightHeldRef.current = false;
+      const result = boostControllerRef.current?.endHold();
+      if (!result?.wasBoosting) {
+        triggerCumulativeSeek(SKIP_SECONDS);
+      }
+    },
+    [triggerCumulativeSeek],
+  );
+
+  const handleBlur = useCallback(() => {
+    arrowRightHeldRef.current = false;
+    boostControllerRef.current?.cancel();
+    cumulativeSeekRef.current?.flush();
+  }, []);
 
   const handleVolumeSlider = useCallback(
     (value: number[]) => {
@@ -342,6 +520,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   const VolumeIcon = muted || volume === 0 ? SpeakerX : volume < 0.5 ? SpeakerLow : SpeakerHigh;
   const controlsVisible = showControls || !isPlaying;
+  const displayedCurrentTime = cumulativeState.isAccumulating
+    ? cumulativeState.targetTime
+    : currentTime;
+  const firstFrameVisible = isFirstFrameReady || isReady;
 
   // 窄播放器（手机竖屏 / 窄分栏）：一行放不下全部控件时收起循环与音量（触屏音量走系统按键），
   // 避免时间文本被挤成竖排、全屏按钮被挤出画面
@@ -370,7 +552,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       const controlsTop = (bar.firstElementChild ?? bar).getBoundingClientRect().top;
       const occupied = controlsVisible ? Math.max(0, videoRect.bottom - controlsTop) : 0;
       const line = Math.max(50, Math.min(94, Math.floor(100 * (1 - occupied / videoRect.height)) - 2));
-      for (const track of Array.from(video.textTracks)) {
+      for (const track of video.textTracks ? Array.from(video.textTracks) : []) {
         for (const cue of Array.from(track.cues ?? []) as VTTCue[]) {
           if (cue.line === line && !cue.snapToLines) continue;
           cue.snapToLines = false;
@@ -385,17 +567,18 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     ro?.observe(bar);
     // 增量加入的 cue / 新挂的轨道在下一次 cuechange 时校正
     const tracks = video.textTracks;
-    const bindTrack = (track: TextTrack) => track.addEventListener('cuechange', apply);
-    for (const track of Array.from(tracks)) bindTrack(track);
+    const trackList = tracks ? Array.from(tracks) : [];
+    const bindTrack = (track: TextTrack) => track.addEventListener?.('cuechange', apply);
+    for (const track of trackList) bindTrack(track);
     const onAddTrack = (event: TrackEvent) => {
       if (event.track) bindTrack(event.track as TextTrack);
       apply();
     };
-    tracks.addEventListener('addtrack', onAddTrack);
+    tracks?.addEventListener?.('addtrack', onAddTrack);
     return () => {
       ro?.disconnect();
-      tracks.removeEventListener('addtrack', onAddTrack);
-      for (const track of Array.from(tracks)) track.removeEventListener('cuechange', apply);
+      tracks?.removeEventListener?.('addtrack', onAddTrack);
+      for (const track of trackList) track.removeEventListener?.('cuechange', apply);
     };
   }, [mediaRef, controlsVisible]);
 
@@ -406,6 +589,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       aria-label={fileName}
       tabIndex={0}
       onKeyDown={handleKeyDown}
+      onKeyUp={handleKeyUp}
+      onBlur={handleBlur}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
       className={cn(
@@ -414,14 +599,22 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         !controlsVisible && 'cursor-none',
       )}
     >
-      {/* 双击全屏只挂在 video 上，避免快速双击控制条按钮误触全屏 */}
+      {/* 双击全屏只挂在 video 上，避免快速双击控制条按钮误触全屏；首帧就绪前隐藏防黑块闪烁 */}
       <video
         ref={mediaRef}
         src={src}
         crossOrigin={crossOrigin}
         preload="metadata"
-        className="absolute inset-0 h-full w-full object-contain"
+        data-first-frame-ready={firstFrameVisible ? 'true' : 'false'}
+        className={cn(
+          'absolute inset-0 h-full w-full object-contain transition-opacity duration-150 motion-reduce:transition-none',
+          firstFrameVisible ? 'opacity-100' : 'opacity-0',
+        )}
+        onLoadedData={() => setIsFirstFrameReady(true)}
+        onCanPlay={() => setIsFirstFrameReady(true)}
         onPointerDown={handleVideoPointerDown}
+        onPointerUp={handleVideoPointerUpOrCancel}
+        onPointerCancel={handleVideoPointerUpOrCancel}
         onClick={handleVideoClick}
         onDoubleClick={() => {
           // 触屏禁用双击全屏（与单击唤出控制条/播放切换冲突且易误触）
@@ -431,6 +624,21 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       >
         {trackSlot}
       </video>
+
+      {/* 顶部居中毛玻璃倍速胶囊指示器（长按 450ms 临时 3.0x 倍速播放时显现） */}
+      {boostState.active && (
+        <div
+          role="status"
+          aria-live="polite"
+          data-testid="speed-boost-indicator"
+          data-boost-active="true"
+          data-wb-blur-surface
+          className="pointer-events-none absolute left-1/2 top-4 z-20 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-white/15 bg-black/65 px-3 py-1 text-xs font-medium text-white backdrop-blur-md"
+        >
+          <span className="font-mono tabular-nums">{formatBoostRate(boostState.rate)}</span>
+          <span>{t('learningHub:mediaPreview.playbackRate')}</span>
+        </div>
+      )}
 
       {seekFlash && (
         <div
@@ -442,8 +650,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             seekFlash.side === 'left' ? 'left-0' : 'right-0',
           )}
         >
-          <span className="rounded-full bg-black/55 px-3 py-1.5 text-sm font-medium tabular-nums text-white">
-            {seekFlash.side === 'left' ? `−${SKIP_SECONDS}s` : `+${SKIP_SECONDS}s`}
+          <span className="rounded-full bg-black/55 px-3 py-1.5 font-mono text-sm font-medium tabular-nums text-white">
+            {seekFlash.side === 'left' ? `−${seekFlash.seconds}s` : `+${seekFlash.seconds}s`}
           </span>
         </div>
       )}
@@ -493,7 +701,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         )}
       >
         <MediaScrubber
-          currentTime={currentTime}
+          currentTime={displayedCurrentTime}
           duration={duration}
           bufferedEnd={bufferedEnd}
           disabled={!isReady}
@@ -502,6 +710,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           onSeek={seekTo}
           markers={scrubberMarkers}
           highlightRanges={scrubberHighlights}
+          previewSrc={src}
+          previewCrossOrigin={crossOrigin}
         />
 
         <div className="mt-1.5 flex items-center gap-1">
@@ -536,7 +746,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             iconOnly
             aria-label={t('learningHub:mediaPreview.skipBackward')}
             title={t('learningHub:mediaPreview.skipBackward')}
-            onClick={() => seekBy(-SKIP_SECONDS)}
+            onClick={() => triggerCumulativeSeek(-SKIP_SECONDS)}
             disabled={!isReady}
             className={overlayButtonClass}
           >
@@ -549,15 +759,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             iconOnly
             aria-label={t('learningHub:mediaPreview.skipForward')}
             title={t('learningHub:mediaPreview.skipForward')}
-            onClick={() => seekBy(SKIP_SECONDS)}
+            onClick={() => triggerCumulativeSeek(SKIP_SECONDS)}
             disabled={!isReady}
             className={overlayButtonClass}
           >
             <ArrowClockwise size={16} aria-hidden="true" />
           </DsButton>
 
-          <span className="ml-1.5 shrink-0 whitespace-nowrap text-xs tabular-nums text-white/90">
-            {formatMediaTime(currentTime)}
+          <span className="ml-1.5 shrink-0 whitespace-nowrap font-mono text-xs tabular-nums text-white/90">
+            {formatMediaTime(displayedCurrentTime)}
             <span className="text-white/50"> / {isReady ? formatMediaTime(duration) : '--:--'}</span>
           </span>
 

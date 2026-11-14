@@ -1,0 +1,33 @@
+{
+  "id": "RF-W19-mcp-error-message-repeated",
+  "kind": "rust-bug",
+  "status": "proposed",
+  "title": "MCP 调试面板的 Error 详情不再把“名称: 消息”首行重复一遍",
+  "rust": {
+    "file": "src/debug-panel/plugins/McpDebugPlugin.tsx",
+    "line": 158,
+    "behavior": "Tauri 快照 21c9d808 的 McpDebugPlugin.tsx：truncateData 把 Error 写成 `${name}: ${message}` 加换行再加 stack（158）。Chromium 系 webview（Windows 上的 WebView2，以及现在的 Electron）里 stack 的首行本来就是“名称: 消息”，于是连接失败、stdio 错误、工具错误的详情和复制文本里这一行出现两次。WebKit（macOS/Linux 上的 Tauri）的 stack 只有调用帧，不重复"
+  },
+  "fix": {
+    "files": ["src/debug-panel/plugins/mcp/sanitize.ts"],
+    "behavior": "stack 首行就是 Error.prototype.toString 的结果时，只保留一次（首行仍按原格式写成“名称: 消息”）；stack 不以它开头时（WebKit、构造后改过 message）照旧在前面加“名称: 消息”。500 字符截断不变"
+  },
+  "evidence": "显示结果与代码意图矛盾：前缀是为了在 stack 前补上名称和消息，在 stack 已带这一行的环境里就成了重复。拆分前的证据 golden（mcpPanel.evidence 的 mcp.round.txt 与 mcp.copied.json，第 5 轮录制）里连接失败详情是“TypeError: fetch failed: ECONNREFUSED\\nTypeError: fetch failed: ECONNREFUSED\\n    at connectSse (…)”。迁到 Electron 后所有平台都是 Chromium，这一重复在 macOS 上也会出现。复现：src/debug-panel/__tests__/mcpDetails.test.tsx 修复前 3 条 RF 测试失败、对照测试通过。",
+  "userVisible": "只在开发构建可见：调试面板只在 import.meta.env.DEV 下装配。MCP 调试面板里 Error 类详情（连接失败、stdio 错误、工具错误）以及复制/导出的文本，首行“名称: 消息”只出现一次。",
+  "dataCompat": "只改开发构建里调试面板的显示和复制文本；不改 IPC 载荷、落库数据、同步载荷与备份格式。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "src/debug-panel/__tests__/mcpDetails.test.tsx",
+      "name": "RF-W19-mcp-error-message-repeated: shows the name and message line once when the stack starts with it"
+    },
+    {
+      "file": "src/debug-panel/__tests__/mcpDetails.test.tsx",
+      "name": "RF-W19-mcp-error-message-repeated: shows the line once for an error raised in this runtime"
+    },
+    {
+      "file": "src/debug-panel/__tests__/mcpDetails.test.tsx",
+      "name": "RF-W19-mcp-error-message-repeated: drops the repeated line for an error without a message"
+    }
+  ]
+}

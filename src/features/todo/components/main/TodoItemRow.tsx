@@ -341,7 +341,7 @@ export interface TodoItemRowProps {
   isChecked?: boolean;
   /** 批量多选：Cmd/Ctrl/Shift + 点击时回调（shift = 范围选择） */
   onCheckToggle?: (id: string, opts: { shift: boolean }) => void;
-  /** 📱 批量多选模式（触屏工具栏「选择」开关）：行首显复选框、点行即勾选、滑动手势暂停 */
+  /** 批量多选模式（触屏工具栏「选择」开关）：行首显复选框、点行即勾选、滑动手势暂停 */
   checkMode?: boolean;
   /** 子任务缩进层级（0 = 顶层） */
   depth?: number;
@@ -601,7 +601,7 @@ const TodoItemRowInner: React.FC<TodoItemRowProps> = ({
         closeActions();
         return;
       }
-      // 📱 多选模式（触屏）：点行即勾选，不打开详情
+      // 多选模式（触屏）：点行即勾选，不打开详情
       if (checkMode && onCheckToggle) {
         onCheckToggle(item.id, { shift: e.shiftKey });
         return;
@@ -760,7 +760,7 @@ const TodoItemRowInner: React.FC<TodoItemRowProps> = ({
       {dragHandle}
 
       {checkMode ? (
-        // 📱 多选模式：行首换成选择复选框（视觉方形区分完成圆圈），点行任意处即切换
+        // 多选模式：行首换成选择复选框（视觉方形区分完成圆圈），点行任意处即切换
         <span
           aria-hidden
           className={cn(
@@ -850,7 +850,7 @@ const TodoItemRowInner: React.FC<TodoItemRowProps> = ({
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
             {links.length > 0 && (
               <span
-                className="inline-flex items-center gap-1 text-xs tabular-nums text-muted-foreground"
+                className="inline-flex items-center gap-1 font-mono text-xs tabular-nums text-muted-foreground"
                 title={t('todo:links.count', { count: links.length })}
               >
                 <Paperclip size={12} aria-hidden="true" />
@@ -860,7 +860,7 @@ const TodoItemRowInner: React.FC<TodoItemRowProps> = ({
             {subtaskProgress && (
               <span
                 className={cn(
-                  'inline-flex items-center gap-1 text-xs tabular-nums',
+                  'inline-flex items-center gap-1 font-mono text-xs tabular-nums',
                   subtaskProgress.done >= subtaskProgress.total
                     ? 'text-[color:hsl(var(--success))]'
                     : 'text-muted-foreground',
@@ -896,7 +896,7 @@ const TodoItemRowInner: React.FC<TodoItemRowProps> = ({
 
             {item.estimatedPomodoros ? (
               <span
-                className="study-shell-badge study-shell-badge--warning tabular-nums"
+                className="inline-flex items-center gap-1 font-mono text-xs tabular-nums text-muted-foreground"
                 title={t('todo:pomodoro.progressTitle', {
                   done: item.completedPomodoros || 0,
                   total: item.estimatedPomodoros,
@@ -919,10 +919,9 @@ const TodoItemRowInner: React.FC<TodoItemRowProps> = ({
             {item.dueDate && (
               <span
                 className={cn(
-                  'inline-flex items-center gap-1 text-xs',
-                  // 逾期：淡红底 pill，比纯文字着色更醒目（深浅色模式均用 /10 透明底）
+                  'inline-flex items-center gap-1 font-mono text-xs tabular-nums',
                   overdue
-                    ? '-mx-0.5 rounded-full bg-[color:hsl(var(--destructive))]/10 px-1.5 py-px font-medium text-[color:hsl(var(--destructive))]'
+                    ? 'font-medium text-[color:hsl(var(--destructive))]'
                     : dueToday
                     ? 'font-medium text-[color:hsl(var(--primary))]'
                     : 'text-muted-foreground',
@@ -944,7 +943,7 @@ const TodoItemRowInner: React.FC<TodoItemRowProps> = ({
 
             {item.reminder && (
               <span
-                className="inline-flex items-center gap-1 text-xs text-muted-foreground"
+                className="inline-flex items-center gap-1 font-mono text-xs tabular-nums text-muted-foreground"
                 title={item.reminder.replace('T', ' ')}
               >
                 <Bell size={12} />
@@ -953,13 +952,17 @@ const TodoItemRowInner: React.FC<TodoItemRowProps> = ({
             )}
 
             {tags.length > 0 && (
-              <div className="flex gap-1">
+              <div className="flex gap-1.5 text-xs text-muted-foreground/80">
                 {tags.slice(0, 3).map((tag) => (
-                  <span key={tag} className="study-shell-badge">
+                  <span key={tag} className="rounded bg-foreground/[0.04] px-1.5 py-px text-[11px]">
                     {tag}
                   </span>
                 ))}
-                {tags.length > 3 && <span className="study-shell-badge">+{tags.length - 3}</span>}
+                {tags.length > 3 && (
+                  <span className="rounded bg-foreground/[0.04] px-1.5 py-px font-mono text-[11px] tabular-nums">
+                    +{tags.length - 3}
+                  </span>
+                )}
               </div>
             )}
           </div>

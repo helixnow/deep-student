@@ -12,11 +12,14 @@ import {
   CLOUD_STORAGE_CONFIG_V2_STORAGE_KEY,
   CLOUD_STORAGE_LEGACY_STORAGE_KEY,
   CLOUD_STORAGE_SSOT_MIGRATED_STORAGE_KEY,
+  fromSafeCloudStorageConfig,
   isPublicHttpEndpoint,
+  loadStoredCloudStorageConfigSafe,
   resolveCloudStorageConfig,
   toRuntimeCloudStorageConfig,
   toSafeCloudStorageConfig,
   type CloudStorageConfig,
+  type SafeCloudStorageConfig,
 } from '../cloudStorageApi';
 
 class MemoryStorage {
@@ -300,6 +303,139 @@ describe('cloud storage backend SSOT DTO', () => {
     expect(runtime.ftp?.password).toBe('');
     expect(runtime.allowInsecure).toBeUndefined();
     expect(JSON.stringify(runtime)).not.toContain('secret');
+  });
+
+  // Rust `SafeCloudStorageConfig` (deny_unknown_fields) only knows `allow_insecure`;
+  // the Tauri frontend sent `allowInsecure`, so LAN/public HTTP WebDAV and
+  // non-TLS FTP could never be saved and the flag always read back as false.
+  it('RF-W09-cloud-config-allow-insecure-wire-key: the wire DTO carries allow_insecure, never allowInsecure', () => {
+    const webdav = toSafeCloudStorageConfig({
+      provider: 'webdav',
+      webdav: { endpoint: 'http://192.168.1.10/dav', username: 'u', password: '' },
+      allowInsecure: true,
+    });
+    expect(webdav).toEqual({
+      provider: 'webdav',
+      webdav: { endpoint: 'http://192.168.1.10/dav', username: 'u' },
+      allow_insecure: true,
+    });
+    expect(webdav).not.toHaveProperty('allowInsecure');
+
+    const ftp = toSafeCloudStorageConfig({
+      provider: 'ftp',
+      ftp: { host: 'nas.local', port: 21, username: 'u', password: 'p', useTls: false },
+      root: 'ds',
+      allowInsecure: true,
+    });
+    expect(ftp).toEqual({
+      provider: 'ftp',
+      ftp: { host: 'nas.local', port: 21, username: 'u', useTls: false },
+      root: 'ds',
+      allow_insecure: true,
+    });
+    expect(ftp).not.toHaveProperty('allowInsecure');
+
+    expect(toSafeCloudStorageConfig({
+      provider: 'webdav',
+      webdav: { endpoint: 'https://dav.example.test', username: 'u', password: '' },
+      allowInsecure: false,
+    })).not.toHaveProperty('allow_insecure');
+  });
+
+  it('RF-W09-cloud-config-allow-insecure-wire-key: reads allow_insecure back from the backend DTO', () => {
+    const webdav: SafeCloudStorageConfig = {
+      provider: 'webdav',
+      webdav: { endpoint: 'http://192.168.1.10/dav', username: 'u' },
+      allow_insecure: true,
+    };
+    expect(fromSafeCloudStorageConfig(webdav).allowInsecure).toBe(true);
+    const ftp: SafeCloudStorageConfig = {
+      provider: 'ftp',
+      ftp: { host: 'nas.local', port: 21, username: 'u', useTls: false },
+      allow_insecure: true,
+    };
+    expect(fromSafeCloudStorageConfig(ftp).allowInsecure).toBe(true);
+    expect(fromSafeCloudStorageConfig({
+      provider: 'webdav',
+      webdav: { endpoint: 'https://dav.example.test', username: 'u' },
+    }).allowInsecure).toBe(false);
+  });
+
+  it('RF-W09-cloud-config-allow-insecure-wire-key: resolve keeps the backend opt-in', async () => {
+    invokeMock.mockResolvedValueOnce({
+      configured: true,
+      provider: 'webdav',
+      config: {
+        provider: 'webdav',
+        webdav: { endpoint: 'http://192.168.1.10/dav', username: 'u' },
+        allow_insecure: true,
+      },
+    });
+
+    const resolved = await resolveCloudStorageConfig(new MemoryStorage());
+
+    expect(resolved?.allowInsecure).toBe(true);
+  });
+
+  it('RF-W09-cloud-config-allow-insecure-wire-key: a cached config is read in either spelling and rewritten with the backend allow_insecure only', () => {
+    const stored = (value: Record<string, unknown>) => {
+      localStorage.setItem(CLOUD_STORAGE_CONFIG_V2_STORAGE_KEY, JSON.stringify(value));
+      return loadStoredCloudStorageConfigSafe();
+    };
+    try {
+      // Written by the old toSafeCloudStorageConfig + writeSafeCloudConfigCache.
+      expect(stored({
+        provider: 'webdav',
+        webdav: { endpoint: 'http://192.168.1.10/dav', username: 'u' },
+        allowInsecure: true,
+      })?.allowInsecure).toBe(true);
+      const rewritten = JSON.parse(localStorage.getItem(CLOUD_STORAGE_CONFIG_V2_STORAGE_KEY)!);
+      expect(rewritten).toMatchObject({ allow_insecure: true });
+      expect(rewritten).not.toHaveProperty('allowInsecure');
+
+      // Written by CloudStorageSection after publish (the backend DTO as-is).
+      expect(stored({
+        provider: 'ftp',
+        ftp: { host: 'nas.local', port: 21, username: 'u', useTls: false },
+        allow_insecure: true,
+      })?.allowInsecure).toBe(true);
+    } finally {
+      localStorage.removeItem(CLOUD_STORAGE_CONFIG_V2_STORAGE_KEY);
+    }
+  });
+
+  it('RF-W09-cloud-config-allow-insecure-wire-key: one-time migration forwards the stored opt-in as allow_insecure', async () => {
+    for (const flag of [{ allowInsecure: true }, { allow_insecure: true }]) {
+      invokeMock.mockReset();
+      const storage = new MemoryStorage();
+      storage.setItem(CLOUD_STORAGE_CONFIG_V2_STORAGE_KEY, JSON.stringify({
+        provider: 'webdav',
+        webdav: { endpoint: 'http://192.168.1.10/dav', username: 'u' },
+        ...flag,
+      }));
+      invokeMock
+        .mockResolvedValueOnce({ configured: false })
+        .mockResolvedValueOnce({
+          configured: true,
+          provider: 'webdav',
+          config: {
+            provider: 'webdav',
+            webdav: { endpoint: 'http://192.168.1.10/dav', username: 'u' },
+            allow_insecure: true,
+          },
+        });
+
+      const resolved = await resolveCloudStorageConfig(storage);
+
+      expect(invokeMock.mock.calls[1]).toEqual(['cloud_config_ssot_save', {
+        config: {
+          provider: 'webdav',
+          webdav: { endpoint: 'http://192.168.1.10/dav', username: 'u' },
+          allow_insecure: true,
+        },
+      }]);
+      expect(resolved?.allowInsecure).toBe(true);
+    }
   });
 
   it('distinguishes loopback HTTP from public HTTP', () => {

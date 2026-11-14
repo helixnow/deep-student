@@ -220,7 +220,7 @@ const pendingSubagentRetryBlocks = new Map<string, SubagentRetryBlockRecord>();
 // 异步子代理完成 → 唤醒空闲主代理
 // ============================================================
 
-/** 唤醒消息里结果摘要的最大长度（完整结果可经 workspace_query/会话查看） */
+/** 唤醒消息里结果摘要的最大长度（完整结果可经子代理会话或 resume_agent_session_id 查看） */
 const WAKE_SUMMARY_MAX_CHARS = 2000;
 
 /**
@@ -295,7 +295,7 @@ const completionWakeController = new SubagentIdleWakeController({
         `[子代理完成通知] agent=${payload.agent_session_id} status=${payload.status}`,
         summary ? `结果摘要：\n${summary}` : '（子代理未产出文本摘要）',
         '请基于该结果继续处理原任务。若该子代理结果已在上一回合工具返回值中处理过，无需重复处理。',
-        '若还有其他后台子代理未完成，可用 workspace_query(query_type="tasks") 查询状态，不要重复派发相同任务。',
+        '若还有其他后台子代理未完成，请等待系统自动唤醒（或用 coordinator_sleep 等待）；如需追问同一子代理，请传 resume_agent_session_id 调用 subagent_call，不要重复派发相同任务。',
       ].join('\n\n');
 
       console.log(

@@ -309,9 +309,12 @@ export const PptxPreview: React.FC<PptxPreviewProps> = ({
           container.innerHTML = '';
         }
 
-        // 渲染 PPTX - 使用较大宽度保证质量，后续通过 CSS 缩放适配
+        // 渲染宽度跟容器走：移动端/窄侧栏不再先按固定 960px 溢出（后续
+        // autoScale 只负责进一步缩小，不能修复初始渲染宽度超出容器的抖动）
+        const containerWidth = viewportRef.current?.clientWidth || container.clientWidth;
+        const renderWidth = Math.max(320, Math.min(960, Math.round(containerWidth || 960)));
         const previewer = initPptxPreview(container, {
-          width: 960,
+          width: renderWidth,
         });
         // ★ 持有实例引用：cleanup 时必须调用 destroy() 释放库内部
         //   注册的图表（echarts）实例，否则跨挂载周期泄漏

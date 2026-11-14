@@ -61,32 +61,30 @@ export interface MultimodalSourceCardProps {
 // 辅助函数
 // ============================================================================
 
+const SOURCE_TYPE_ICONS: Readonly<Record<string, React.ReactNode>> = {
+  exam: <FileText size={16} />,
+  textbook: <BookOpen size={16} />,
+  attachment: <Paperclip size={16} />,
+};
+
 /** 获取来源类型图标 */
-function getSourceTypeIcon(sourceType?: MultimodalSourceType) {
-  switch (sourceType) {
-    case 'exam':
-      return <FileText size={16} />;
-    case 'textbook':
-      return <BookOpen size={16} />;
-    case 'attachment':
-      return <Paperclip size={16} />;
-    default:
-      return <ImageIcon size={16} />;
-  }
+export function getSourceTypeIcon(sourceType?: MultimodalSourceType) {
+  return Object.hasOwn(SOURCE_TYPE_ICONS, sourceType ?? '')
+    ? SOURCE_TYPE_ICONS[sourceType!]
+    : <ImageIcon size={16} />;
 }
 
+const SOURCE_TYPE_COLORS: Readonly<Record<string, string>> = {
+  exam: 'text-primary bg-primary/10',
+  textbook: 'text-success bg-success/10',
+  attachment: 'text-muted-foreground bg-muted',
+};
+
 /** 获取来源类型色标（token 化） */
-function getSourceTypeColor(sourceType?: MultimodalSourceType): string {
-  switch (sourceType) {
-    case 'exam':
-      return 'text-primary bg-primary/10';
-    case 'textbook':
-      return 'text-success bg-success/10';
-    case 'attachment':
-      return 'text-muted-foreground bg-muted';
-    default:
-      return 'text-muted-foreground bg-muted';
-  }
+export function getSourceTypeColor(sourceType?: MultimodalSourceType): string {
+  return Object.hasOwn(SOURCE_TYPE_COLORS, sourceType ?? '')
+    ? SOURCE_TYPE_COLORS[sourceType!]
+    : 'text-muted-foreground bg-muted';
 }
 
 /**

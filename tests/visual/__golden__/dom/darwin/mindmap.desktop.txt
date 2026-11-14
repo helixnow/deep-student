@@ -1,0 +1,1106 @@
+<body .light-theme>
+  <div data-demo-app="mindmap" id="@1">
+    <div .demo-app-frame data-demo-app-frame="true">
+      <div .wb-content-host data-wb-content-host="true" data-wb-mindmap-host="true">
+        <div .wb-content-viewport>
+          <div .bg-[var(--mm-bg)].flex.flex-col.h-full.mindmap-container.w-full tabindex="-1">
+            <div .mm-toolbar>
+              <div .flex.gap-3.items-center>
+                <div .bg-[color:var(--surface-muted)].p-[3px].rounded-[var(--radius-shell-control)].study-shell-segmented aria-label="视图" data-size="compact" role="radiogroup">
+                  <span .study-shell-segmented-thumb aria-hidden="true" />
+                  <button .[@media(pointer:coarse)]:!min-h-11.font-medium.h-7.px-2.5.rounded-[calc(var(--radius-shell-control)-2px)].study-shell-segmented-button.text-foreground.text-xs aria-checked="false" aria-label="大纲" data-selected="false" role="radio" tabindex="-1" type="button">
+                    <span .study-shell-segmented-label>
+                      <span .inline-flex.items-center>
+                        <svg .h-3.5.mm-view-switcher-icon.mr-1.5.w-3.5 viewBox="0 0 256 256" />
+                        <span .mm-view-switcher-label>
+                          "大纲"
+                  <button .[@media(pointer:coarse)]:!min-h-11.font-medium.h-7.px-2.5.rounded-[calc(var(--radius-shell-control)-2px)].study-shell-segmented-button.text-foreground.text-xs aria-checked="true" aria-label="导图" data-selected="true" role="radio" tabindex="0" type="button">
+                    <span .study-shell-segmented-label>
+                      <span .inline-flex.items-center>
+                        <svg .h-3.5.mm-view-switcher-icon.mr-1.5.w-3.5 viewBox="0 0 256 256" />
+                        <span .mm-view-switcher-label>
+                          "导图"
+                <div .bg-[var(--mm-border)].h-4.hidden.md:block.w-px />
+                <div .flex.gap-0.5.items-center>
+                  <span .inline-flex>
+                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.ds-btn.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="撤销" disabled type="button">
+                      <svg viewBox="0 0 256 256" />
+                  <span .inline-flex>
+                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.ds-btn.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="重做" disabled type="button">
+                      <svg viewBox="0 0 256 256" />
+                <div .bg-[var(--mm-border)].h-4.hidden.md:block.w-px />
+                <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.ds-btn.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hidden.hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].md:flex.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap disabled type="button">
+                  <span .bg-[var(--mm-text-muted)].h-1.5.opacity-60.rounded-full.shrink-0.w-1.5 aria-hidden="true" />
+                  <span aria-live="polite">
+                    <span .t-text-swap.text-[var(--mm-text-muted)].text-xs>
+                      "已保存"
+              <div .flex.gap-1.items-center>
+                <div .hidden.md:flex.relative>
+                  <div>
+                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-toolbar-button.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="切换结构" type="button">
+                      <svg viewBox="0 0 256 256" />
+                <div .hidden.md:flex.relative>
+                  <div>
+                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-toolbar-button.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="样式设置" type="button">
+                      <svg viewBox="0 0 256 256" />
+                <div .hidden.md:flex.mm-learning-group aria-label="学习" role="group">
+                  <span .mm-learning-label>
+                    "学习"
+                  <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-learning-button.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="背诵模式" aria-pressed="false" title="进入背诵模式" type="button">
+                    <svg viewBox="0 0 256 256" />
+                    <span .mm-learning-text>
+                      "背诵模式"
+                  <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-learning-button.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="隐藏已完成" aria-pressed="false" title="隐藏已完成" type="button">
+                    <svg viewBox="0 0 256 256" />
+                    <span .mm-learning-text>
+                      "隐藏已完成"
+                <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hidden.hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].md:flex.mm-toolbar-button.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="搜索" aria-pressed="false" type="button">
+                  <svg viewBox="0 0 256 256" />
+                <div .bg-[var(--mm-border)].h-4.hidden.md:block.mx-1.w-px />
+                <div .app-menu-root.inline-flex.relative>
+                  <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].app-menu-trigger.bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hidden.hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].md:flex.mm-toolbar-button.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-expanded="false" aria-haspopup="menu" aria-label="更多操作" id="@2" title="更多操作" type="button">
+                    <svg viewBox="0 0 256 256" />
+                <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!h-11.[@media(pointer:coarse)]:!w-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.ds-btn.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-10.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].md:hidden.mm-mobile-more.motion-reduce:transition-none.outline-none.px-0.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-10.whitespace-nowrap aria-label="更多操作" title="更多操作" type="button">
+                  <svg viewBox="0 0 256 256" />
+            <div .bg-[var(--mm-bg)].flex.flex-1.flex-col.overflow-hidden.relative>
+              <div .flex-1.min-h-0.relative>
+                <div .h-full.relative.w-full>
+                  <div .bg-[var(--mm-bg)].h-full.mm-canvas-mode-pan.overflow-hidden.relative.w-full>
+                    <div .light.react-flow data-testid="rf__wrapper" role="application">
+                      <div .react-flow__renderer>
+                        <div .draggable.react-flow__pane>
+                          <div .react-flow__container.react-flow__viewport.xyflow__viewport>
+                            <div .react-flow__edges>
+                              <svg />
+                              <svg />
+                              <svg />
+                              <svg />
+                              <svg />
+                              <svg />
+                              <svg />
+                              <svg />
+                              <svg />
+                              <svg />
+                              <svg />
+                              <svg />
+                              <svg />
+                              <svg />
+                              <svg />
+                              <svg />
+                              <svg />
+                              <svg />
+                              <svg />
+                              <svg />
+                              <svg />
+                            <div .react-flow__edgelabel-renderer />
+                            <div .react-flow__nodes>
+                              <div .react-flow__node.react-flow__node-rootNode.selectable aria-roledescription="node" data-id="root" data-testid="rf__node-root" role="group" tabindex="0">
+                                <div .flex.group.items-center.justify-center.mm-root-node.relative>
+                                  <div .flex.flex-col.max-w-[600px].min-w-[20px].relative>
+                                    <div .flex.gap-1.items-center.relative>
+                                      <div .flex-1.min-w-0.relative>
+                                        <span .break-words.inline-block.min-h-[1.2em].mm-node-text.nodrag.nopan.px-1.rounded-sm.whitespace-pre-wrap>
+                                          <span .mm-blankable-text-segment>
+                                            "第 5 章 · 特征值与特征向量"
+                                  <div .absolute.flex.group-hover:pointer-events-auto.group-hover:visible.invisible.items-center.justify-end.pointer-events-none.w-8>
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].bg-[var(--mm-bg-elevated)].border.border-[color:var(--button-plain-border)].border-[var(--mm-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-6.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-[var(--mm-bg-hover)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-collapse-btn.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-6.whitespace-nowrap aria-label="添加子节点" type="button">
+                                      <svg .h-3.5.text-[var(--mm-text-secondary)].w-3.5 viewBox="0 0 256 256" />
+                                  <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-left.source data-handleid="left" data-handlepos="left" data-id="1-root-left-source" data-nodeid="root" />
+                                  <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-right.source data-handleid="right" data-handlepos="right" data-id="1-root-right-source" data-nodeid="root" />
+                              <div .draggable.nopan.react-flow__node.react-flow__node-branchNode.selectable aria-roledescription="node" data-id="prop" data-testid="rf__node-prop" role="group" tabindex="0">
+                                <div .flex.gap-1.group.items-center.justify-center.mm-branch-node.mm-node-origin-right data-node-chrome="box">
+                                  <div .group-hover:visible.h-5.invisible.mm-collapse-wrap.w-5.z-20>
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].bg-transparent.border.border-[color:var(--button-plain-border)].border-[var(--mm-border)].border-transparent.disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-5.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-[var(--mm-bg-hover)].hover:border-[var(--mm-border)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-collapse-btn.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-5.whitespace-nowrap aria-label="折叠" type="button">
+                                      <div .bg-[var(--mm-border-strong)].group-hover:bg-[var(--mm-text-secondary)].h-1.5.rounded-full.transition-colors.w-1.5 />
+                                  <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-right.target data-handlepos="right" data-id="1-prop-null-target" data-nodeid="prop" />
+                                  <div .flex.items-center>
+                                    <div .flex.flex-col.max-w-[600px].min-w-[20px].relative>
+                                      <div .flex.gap-1.items-center.relative>
+                                        <div .flex-1.min-w-0.relative>
+                                          <span .break-words.inline-block.min-h-[1.2em].mm-node-text.nodrag.nopan.px-1.rounded-sm.whitespace-pre-wrap>
+                                            <span .mm-blankable-text-segment>
+                                              "重要性质"
+                                  <div .group-hover:pointer-events-auto.group-hover:visible.invisible.mm-node-actions.nodrag.nopan.pointer-events-none>
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--add.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="添加子节点" title="添加子节点 (Tab)" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--menu.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="打开节点菜单" title="更多操作" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].dark:hover:bg-red-900/20.disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-red-50.hover:text-foreground.hover:text-red-500.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--delete.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="删除" title="删除 (Del)" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                  <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-left.source data-handlepos="left" data-id="1-prop-null-source" data-nodeid="prop" />
+                              <div .draggable.nopan.react-flow__node.react-flow__node-branchNode.selectable aria-roledescription="node" data-id="prop-1" data-testid="rf__node-prop-1" role="group" tabindex="0">
+                                <div .flex.gap-1.group.items-center.justify-center.mindmap-node-underline.mm-node--underline.mm-node-origin-right data-node-chrome="underline">
+                                  <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-right.target data-handlepos="right" data-id="1-prop-1-null-target" data-nodeid="prop-1" />
+                                  <div .flex.items-center>
+                                    <div .flex.flex-col.max-w-[600px].min-w-[20px].relative>
+                                      <div .flex.gap-1.items-center.relative>
+                                        <div .flex-1.min-w-0.relative>
+                                          <span .break-words.inline-block.min-h-[1.2em].mm-node-text.opacity-0.opacity-100.px-1.rounded-sm.select-none.whitespace-pre-wrap>
+                                            "特征值之和等于迹："
+                                            <span .katex>
+                                              <span .katex-mathml>
+                                                <math>
+                                                  <semantics>
+                                                    <mrow>
+                                                      <mo>
+                                                        "∑"
+                                                      <msub>
+                                                        <mi>
+                                                          "λ"
+                                                        <mi>
+                                                          "i"
+                                                      <mo>
+                                                        "="
+                                                      <mi>
+                                                        "tr"
+                                                      <mo>
+                                                        "⁡"
+                                                      <mi>
+                                                        "A"
+                                                    <annotation>
+                                                      "\\sum\\lambda_i=\\operatorname{tr}A"
+                                              <span .katex-html aria-hidden="true">
+                                                <span .base>
+                                                  <span .strut />
+                                                  <span .mop.op-symbol.small-op>
+                                                    "∑"
+                                                  <span .mspace />
+                                                  <span .mord>
+                                                    <span .mathnormal.mord>
+                                                      "λ"
+                                                    <span .msupsub>
+                                                      <span .vlist-t.vlist-t2>
+                                                        <span .vlist-r>
+                                                          <span .vlist>
+                                                            <span>
+                                                              <span .pstrut />
+                                                              <span .mtight.reset-size6.size3.sizing>
+                                                                <span .mathnormal.mord.mtight>
+                                                                  "i"
+                                                          <span .vlist-s>
+                                                            "​"
+                                                        <span .vlist-r>
+                                                          <span .vlist>
+                                                            <span />
+                                                  <span .mspace />
+                                                  <span .mrel>
+                                                    "="
+                                                  <span .mspace />
+                                                <span .base>
+                                                  <span .strut />
+                                                  <span .mop>
+                                                    <span .mathrm.mord>
+                                                      "tr"
+                                                  <span .mspace />
+                                                  <span .mathnormal.mord>
+                                                    "A"
+                                  <div .group-hover:pointer-events-auto.group-hover:visible.invisible.mm-node-actions.nodrag.nopan.pointer-events-none>
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--add.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="添加子节点" title="添加子节点 (Tab)" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--menu.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="打开节点菜单" title="更多操作" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].dark:hover:bg-red-900/20.disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-red-50.hover:text-foreground.hover:text-red-500.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--delete.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="删除" title="删除 (Del)" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                  <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-left.source data-handlepos="left" data-id="1-prop-1-null-source" data-nodeid="prop-1" />
+                              <div .draggable.nopan.react-flow__node.react-flow__node-branchNode.selectable aria-roledescription="node" data-id="prop-1b" data-testid="rf__node-prop-1b" role="group" tabindex="0">
+                                <div .flex.gap-1.group.items-center.justify-center.mindmap-node-underline.mm-node--underline.mm-node-origin-right data-node-chrome="underline">
+                                  <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-right.target data-handlepos="right" data-id="1-prop-1b-null-target" data-nodeid="prop-1b" />
+                                  <div .flex.items-center>
+                                    <div .flex.flex-col.max-w-[600px].min-w-[20px].relative>
+                                      <div .flex.gap-1.items-center.relative>
+                                        <div .flex-1.min-w-0.relative>
+                                          <span .break-words.inline-block.min-h-[1.2em].mm-node-text.nodrag.nopan.px-1.rounded-sm.whitespace-pre-wrap>
+                                            <span .mm-blankable-text-segment>
+                                              "特征值之积等于"
+                                            <span .border-amber-500/70.border-b.border-dashed.px-0.5.rounded-sm title="行列式">
+                                              "行列式"
+                                  <div .group-hover:pointer-events-auto.group-hover:visible.invisible.mm-node-actions.nodrag.nopan.pointer-events-none>
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--add.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="添加子节点" title="添加子节点 (Tab)" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--menu.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="打开节点菜单" title="更多操作" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].dark:hover:bg-red-900/20.disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-red-50.hover:text-foreground.hover:text-red-500.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--delete.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="删除" title="删除 (Del)" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                  <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-left.source data-handlepos="left" data-id="1-prop-1b-null-source" data-nodeid="prop-1b" />
+                              <div .draggable.nopan.react-flow__node.react-flow__node-branchNode.selectable aria-roledescription="node" data-id="prop-3" data-testid="rf__node-prop-3" role="group" tabindex="0">
+                                <div .flex.gap-1.group.items-center.justify-center.mindmap-node-underline.mm-node--underline.mm-node-origin-right data-node-chrome="underline">
+                                  <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-right.target data-handlepos="right" data-id="1-prop-3-null-target" data-nodeid="prop-3" />
+                                  <div .flex.items-center>
+                                    <div .flex.flex-col.max-w-[600px].min-w-[20px].relative>
+                                      <div .flex.gap-1.items-center.relative>
+                                        <div .flex-1.min-w-0.relative>
+                                          <span .break-words.inline-block.min-h-[1.2em].mm-node-text.nodrag.nopan.px-1.rounded-sm.whitespace-pre-wrap>
+                                            <span .mm-blankable-text-segment>
+                                              "不同特征值的特征向量"
+                                            <span .border-amber-500/70.border-b.border-dashed.px-0.5.rounded-sm title="线性无关">
+                                              "线性无关"
+                                  <div .group-hover:pointer-events-auto.group-hover:visible.invisible.mm-node-actions.nodrag.nopan.pointer-events-none>
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--add.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="添加子节点" title="添加子节点 (Tab)" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--menu.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="打开节点菜单" title="更多操作" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].dark:hover:bg-red-900/20.disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-red-50.hover:text-foreground.hover:text-red-500.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--delete.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="删除" title="删除 (Del)" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                  <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-left.source data-handlepos="left" data-id="1-prop-3-null-source" data-nodeid="prop-3" />
+                              <div .draggable.nopan.react-flow__node.react-flow__node-branchNode.selectable aria-roledescription="node" data-id="prop-4" data-testid="rf__node-prop-4" role="group" tabindex="0">
+                                <div .flex.gap-1.group.items-center.justify-center.mindmap-node-underline.mm-node--underline.mm-node-origin-right data-node-chrome="underline">
+                                  <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-right.target data-handlepos="right" data-id="1-prop-4-null-target" data-nodeid="prop-4" />
+                                  <div .flex.items-center>
+                                    <div .flex.flex-col.max-w-[600px].min-w-[20px].relative>
+                                      <div .flex.gap-1.items-center.relative>
+                                        <div .flex-1.min-w-0.relative>
+                                          <span .break-words.inline-block.min-h-[1.2em].mm-node-text.opacity-0.opacity-100.px-1.rounded-sm.select-none.whitespace-pre-wrap>
+                                            <span .katex>
+                                              <span .katex-mathml>
+                                                <math>
+                                                  <semantics>
+                                                    <mrow>
+                                                      <mi>
+                                                        "f"
+                                                      <mo>
+                                                        "("
+                                                      <mi>
+                                                        "A"
+                                                      <mo>
+                                                        ")"
+                                                    <annotation>
+                                                      "f(A)"
+                                              <span .katex-html aria-hidden="true">
+                                                <span .base>
+                                                  <span .strut />
+                                                  <span .mathnormal.mord>
+                                                    "f"
+                                                  <span .mopen>
+                                                    "("
+                                                  <span .mathnormal.mord>
+                                                    "A"
+                                                  <span .mclose>
+                                                    ")"
+                                            "的特征值为"
+                                            <span .katex>
+                                              <span .katex-mathml>
+                                                <math>
+                                                  <semantics>
+                                                    <mrow>
+                                                      <mi>
+                                                        "f"
+                                                      <mo>
+                                                        "("
+                                                      <mi>
+                                                        "λ"
+                                                      <mo>
+                                                        ")"
+                                                    <annotation>
+                                                      "f(\\lambda)"
+                                              <span .katex-html aria-hidden="true">
+                                                <span .base>
+                                                  <span .strut />
+                                                  <span .mathnormal.mord>
+                                                    "f"
+                                                  <span .mopen>
+                                                    "("
+                                                  <span .mathnormal.mord>
+                                                    "λ"
+                                                  <span .mclose>
+                                                    ")"
+                                      <span .leading-tight.mt-0.5.px-1.text-[var(--mm-text-muted)].text-left.text-xs.whitespace-pre-wrap>
+                                        "例："
+                                        <span .katex>
+                                          <span .katex-mathml>
+                                            <math>
+                                              <semantics>
+                                                <mrow>
+                                                  <msup>
+                                                    <mi>
+                                                      "A"
+                                                    <mrow>
+                                                      <mo>
+                                                        "−"
+                                                      <mn>
+                                                        "1"
+                                                <annotation>
+                                                  "A^{-1}"
+                                          <span .katex-html aria-hidden="true">
+                                            <span .base>
+                                              <span .strut />
+                                              <span .mord>
+                                                <span .mathnormal.mord>
+                                                  "A"
+                                                <span .msupsub>
+                                                  <span .vlist-t>
+                                                    <span .vlist-r>
+                                                      <span .vlist>
+                                                        <span>
+                                                          <span .pstrut />
+                                                          <span .mtight.reset-size6.size3.sizing>
+                                                            <span .mord.mtight>
+                                                              <span .mord.mtight>
+                                                                "−"
+                                                              <span .mord.mtight>
+                                                                "1"
+                                        "的特征值为"
+                                        <span .katex>
+                                          <span .katex-mathml>
+                                            <math>
+                                              <semantics>
+                                                <mrow>
+                                                  <mn>
+                                                    "1"
+                                                  <mi>
+                                                    "/"
+                                                  <mi>
+                                                    "λ"
+                                                <annotation>
+                                                  "1/\\lambda"
+                                          <span .katex-html aria-hidden="true">
+                                            <span .base>
+                                              <span .strut />
+                                              <span .mord>
+                                                "1/"
+                                              <span .mathnormal.mord>
+                                                "λ"
+                                        "，"
+                                        <span .katex>
+                                          <span .katex-mathml>
+                                            <math>
+                                              <semantics>
+                                                <mrow>
+                                                  <msup>
+                                                    <mi>
+                                                      "A"
+                                                    <mo>
+                                                      "∗"
+                                                <annotation>
+                                                  "A^*"
+                                          <span .katex-html aria-hidden="true">
+                                            <span .base>
+                                              <span .strut />
+                                              <span .mord>
+                                                <span .mathnormal.mord>
+                                                  "A"
+                                                <span .msupsub>
+                                                  <span .vlist-t>
+                                                    <span .vlist-r>
+                                                      <span .vlist>
+                                                        <span>
+                                                          <span .pstrut />
+                                                          <span .mtight.reset-size6.size3.sizing>
+                                                            <span .mbin.mtight>
+                                                              "∗"
+                                        "的特征值为"
+                                        <span .katex>
+                                          <span .katex-mathml>
+                                            <math>
+                                              <semantics>
+                                                <mrow>
+                                                  <mo>
+                                                    "∣"
+                                                  <mi>
+                                                    "A"
+                                                  <mo>
+                                                    "∣"
+                                                  <mi>
+                                                    "/"
+                                                  <mi>
+                                                    "λ"
+                                                <annotation>
+                                                  "\\lvert A\\rvert/\\lambda"
+                                          <span .katex-html aria-hidden="true">
+                                            <span .base>
+                                              <span .strut />
+                                              <span .mopen>
+                                                "∣"
+                                              <span .mathnormal.mord>
+                                                "A"
+                                              <span .mclose>
+                                                "∣"
+                                              <span .mord>
+                                                "/"
+                                              <span .mathnormal.mord>
+                                                "λ"
+                                        "。"
+                                  <div .group-hover:pointer-events-auto.group-hover:visible.invisible.mm-node-actions.nodrag.nopan.pointer-events-none>
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--add.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="添加子节点" title="添加子节点 (Tab)" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--menu.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="打开节点菜单" title="更多操作" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].dark:hover:bg-red-900/20.disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-red-50.hover:text-foreground.hover:text-red-500.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--delete.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="删除" title="删除 (Del)" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                  <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-left.source data-handlepos="left" data-id="1-prop-4-null-source" data-nodeid="prop-4" />
+                              <div .draggable.nopan.react-flow__node.react-flow__node-branchNode.selectable aria-roledescription="node" data-id="calc" data-testid="rf__node-calc" role="group" tabindex="0">
+                                <div .flex.gap-1.group.items-center.justify-center.mm-branch-node.mm-node-origin-right data-node-chrome="box">
+                                  <div .group-hover:visible.h-5.invisible.mm-collapse-wrap.w-5.z-20>
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].bg-transparent.border.border-[color:var(--button-plain-border)].border-[var(--mm-border)].border-transparent.disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-5.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-[var(--mm-bg-hover)].hover:border-[var(--mm-border)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-collapse-btn.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-5.whitespace-nowrap aria-label="折叠" type="button">
+                                      <div .bg-[var(--mm-border-strong)].group-hover:bg-[var(--mm-text-secondary)].h-1.5.rounded-full.transition-colors.w-1.5 />
+                                  <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-right.target data-handlepos="right" data-id="1-calc-null-target" data-nodeid="calc" />
+                                  <div .flex.items-center>
+                                    <div .flex.flex-col.max-w-[600px].min-w-[20px].relative>
+                                      <div .flex.gap-1.items-center.relative>
+                                        <div .flex-1.min-w-0.relative>
+                                          <span .break-words.inline-block.min-h-[1.2em].mm-node-text.nodrag.nopan.px-1.rounded-sm.whitespace-pre-wrap>
+                                            <span .mm-blankable-text-segment>
+                                              "计算步骤"
+                                  <div .group-hover:pointer-events-auto.group-hover:visible.invisible.mm-node-actions.nodrag.nopan.pointer-events-none>
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--add.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="添加子节点" title="添加子节点 (Tab)" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--menu.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="打开节点菜单" title="更多操作" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].dark:hover:bg-red-900/20.disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-red-50.hover:text-foreground.hover:text-red-500.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--delete.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="删除" title="删除 (Del)" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                  <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-left.source data-handlepos="left" data-id="1-calc-null-source" data-nodeid="calc" />
+                              <div .draggable.nopan.react-flow__node.react-flow__node-branchNode.selectable aria-roledescription="node" data-id="calc-1" data-testid="rf__node-calc-1" role="group" tabindex="0">
+                                <div .flex.gap-1.group.items-center.justify-center.mindmap-node-underline.mm-node--underline.mm-node-origin-right data-node-chrome="underline">
+                                  <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-right.target data-handlepos="right" data-id="1-calc-1-null-target" data-nodeid="calc-1" />
+                                  <div .flex.items-center>
+                                    <div .flex.flex-col.max-w-[600px].min-w-[20px].relative>
+                                      <div .flex.gap-1.items-center.relative>
+                                        <div .flex-1.min-w-0.relative>
+                                          <span .break-words.inline-block.min-h-[1.2em].mm-node-text.opacity-0.opacity-100.px-1.rounded-sm.select-none.whitespace-pre-wrap>
+                                            "① 解特征方程求全部"
+                                            <span .katex>
+                                              <span .katex-mathml>
+                                                <math>
+                                                  <semantics>
+                                                    <mrow>
+                                                      <msub>
+                                                        <mi>
+                                                          "λ"
+                                                        <mi>
+                                                          "i"
+                                                    <annotation>
+                                                      "\\lambda_i"
+                                              <span .katex-html aria-hidden="true">
+                                                <span .base>
+                                                  <span .strut />
+                                                  <span .mord>
+                                                    <span .mathnormal.mord>
+                                                      "λ"
+                                                    <span .msupsub>
+                                                      <span .vlist-t.vlist-t2>
+                                                        <span .vlist-r>
+                                                          <span .vlist>
+                                                            <span>
+                                                              <span .pstrut />
+                                                              <span .mtight.reset-size6.size3.sizing>
+                                                                <span .mathnormal.mord.mtight>
+                                                                  "i"
+                                                          <span .vlist-s>
+                                                            "​"
+                                                        <span .vlist-r>
+                                                          <span .vlist>
+                                                            <span />
+                                  <div .group-hover:pointer-events-auto.group-hover:visible.invisible.mm-node-actions.nodrag.nopan.pointer-events-none>
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--add.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="添加子节点" title="添加子节点 (Tab)" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--menu.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="打开节点菜单" title="更多操作" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].dark:hover:bg-red-900/20.disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-red-50.hover:text-foreground.hover:text-red-500.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--delete.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="删除" title="删除 (Del)" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                  <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-left.source data-handlepos="left" data-id="1-calc-1-null-source" data-nodeid="calc-1" />
+                              <div .draggable.nopan.react-flow__node.react-flow__node-branchNode.selectable aria-roledescription="node" data-id="calc-2" data-testid="rf__node-calc-2" role="group" tabindex="0">
+                                <div .flex.gap-1.group.items-center.justify-center.mindmap-node-underline.mm-node--underline.mm-node-origin-right data-node-chrome="underline">
+                                  <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-right.target data-handlepos="right" data-id="1-calc-2-null-target" data-nodeid="calc-2" />
+                                  <div .flex.items-center>
+                                    <div .flex.flex-col.max-w-[600px].min-w-[20px].relative>
+                                      <div .flex.gap-1.items-center.relative>
+                                        <div .flex-1.min-w-0.relative>
+                                          <span .break-words.inline-block.min-h-[1.2em].mm-node-text.opacity-0.opacity-100.px-1.rounded-sm.select-none.whitespace-pre-wrap>
+                                            "② 对每个"
+                                            <span .katex>
+                                              <span .katex-mathml>
+                                                <math>
+                                                  <semantics>
+                                                    <mrow>
+                                                      <msub>
+                                                        <mi>
+                                                          "λ"
+                                                        <mi>
+                                                          "i"
+                                                    <annotation>
+                                                      "\\lambda_i"
+                                              <span .katex-html aria-hidden="true">
+                                                <span .base>
+                                                  <span .strut />
+                                                  <span .mord>
+                                                    <span .mathnormal.mord>
+                                                      "λ"
+                                                    <span .msupsub>
+                                                      <span .vlist-t.vlist-t2>
+                                                        <span .vlist-r>
+                                                          <span .vlist>
+                                                            <span>
+                                                              <span .pstrut />
+                                                              <span .mtight.reset-size6.size3.sizing>
+                                                                <span .mathnormal.mord.mtight>
+                                                                  "i"
+                                                          <span .vlist-s>
+                                                            "​"
+                                                        <span .vlist-r>
+                                                          <span .vlist>
+                                                            <span />
+                                            "解齐次方程组"
+                                  <div .group-hover:pointer-events-auto.group-hover:visible.invisible.mm-node-actions.nodrag.nopan.pointer-events-none>
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--add.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="添加子节点" title="添加子节点 (Tab)" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--menu.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="打开节点菜单" title="更多操作" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].dark:hover:bg-red-900/20.disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-red-50.hover:text-foreground.hover:text-red-500.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--delete.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="删除" title="删除 (Del)" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                  <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-left.source data-handlepos="left" data-id="1-calc-2-null-source" data-nodeid="calc-2" />
+                              <div .draggable.nopan.react-flow__node.react-flow__node-branchNode.selectable aria-roledescription="node" data-id="calc-3" data-testid="rf__node-calc-3" role="group" tabindex="0">
+                                <div .flex.gap-1.group.items-center.justify-center.mindmap-node-underline.mm-node--underline.mm-node-origin-right data-node-chrome="underline">
+                                  <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-right.target data-handlepos="right" data-id="1-calc-3-null-target" data-nodeid="calc-3" />
+                                  <div .flex.items-center>
+                                    <div .flex.flex-col.max-w-[600px].min-w-[20px].relative>
+                                      <div .flex.gap-1.items-center.relative>
+                                        <div .flex-1.min-w-0.relative>
+                                          <span .break-words.inline-block.min-h-[1.2em].mm-node-text.nodrag.nopan.px-1.rounded-sm.whitespace-pre-wrap>
+                                            <span .mm-blankable-text-segment>
+                                              "③"
+                                            <span .border-amber-500/70.border-b.border-dashed.px-0.5.rounded-sm title="基础解系">
+                                              "基础解系"
+                                            <span .mm-blankable-text-segment>
+                                              "即线性无关的特征向量"
+                                  <div .group-hover:pointer-events-auto.group-hover:visible.invisible.mm-node-actions.nodrag.nopan.pointer-events-none>
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--add.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="添加子节点" title="添加子节点 (Tab)" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--menu.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="打开节点菜单" title="更多操作" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].dark:hover:bg-red-900/20.disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-red-50.hover:text-foreground.hover:text-red-500.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--delete.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="删除" title="删除 (Del)" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                  <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-left.source data-handlepos="left" data-id="1-calc-3-null-source" data-nodeid="calc-3" />
+                              <div .draggable.nopan.react-flow__node.react-flow__node-branchNode.selectable aria-roledescription="node" data-id="app" data-testid="rf__node-app" role="group" tabindex="0">
+                                <div .flex.gap-1.group.items-center.justify-center.mm-branch-node.mm-node-origin-right data-node-chrome="box">
+                                  <div .group-hover:visible.h-5.invisible.mm-collapse-wrap.w-5.z-20>
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].bg-transparent.border.border-[color:var(--button-plain-border)].border-[var(--mm-border)].border-transparent.disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-5.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-[var(--mm-bg-hover)].hover:border-[var(--mm-border)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-collapse-btn.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-5.whitespace-nowrap aria-label="折叠" type="button">
+                                      <div .bg-[var(--mm-border-strong)].group-hover:bg-[var(--mm-text-secondary)].h-1.5.rounded-full.transition-colors.w-1.5 />
+                                  <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-right.target data-handlepos="right" data-id="1-app-null-target" data-nodeid="app" />
+                                  <div .flex.items-center>
+                                    <div .flex.flex-col.max-w-[600px].min-w-[20px].relative>
+                                      <div .flex.gap-1.items-center.relative>
+                                        <div .flex-1.min-w-0.relative>
+                                          <span .break-words.inline-block.min-h-[1.2em].mm-node-text.nodrag.nopan.px-1.rounded-sm.whitespace-pre-wrap>
+                                            <span .mm-blankable-text-segment>
+                                              "典型应用"
+                                  <div .group-hover:pointer-events-auto.group-hover:visible.invisible.mm-node-actions.nodrag.nopan.pointer-events-none>
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--add.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="添加子节点" title="添加子节点 (Tab)" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--menu.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="打开节点菜单" title="更多操作" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].dark:hover:bg-red-900/20.disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-red-50.hover:text-foreground.hover:text-red-500.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--delete.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="删除" title="删除 (Del)" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                  <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-left.source data-handlepos="left" data-id="1-app-null-source" data-nodeid="app" />
+                              <div .draggable.nopan.react-flow__node.react-flow__node-branchNode.selectable aria-roledescription="node" data-id="app-1" data-testid="rf__node-app-1" role="group" tabindex="0">
+                                <div .flex.gap-1.group.items-center.justify-center.mindmap-node-underline.mm-node--underline.mm-node-origin-right data-node-chrome="underline">
+                                  <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-right.target data-handlepos="right" data-id="1-app-1-null-target" data-nodeid="app-1" />
+                                  <div .flex.items-center>
+                                    <div .flex.flex-col.max-w-[600px].min-w-[20px].relative>
+                                      <div .flex.gap-1.items-center.relative>
+                                        <div .flex-1.min-w-0.relative>
+                                          <span .break-words.inline-block.min-h-[1.2em].mm-node-text.opacity-0.opacity-100.px-1.rounded-sm.select-none.whitespace-pre-wrap>
+                                            "求"
+                                            <span .katex>
+                                              <span .katex-mathml>
+                                                <math>
+                                                  <semantics>
+                                                    <mrow>
+                                                      <msup>
+                                                        <mi>
+                                                          "A"
+                                                        <mi>
+                                                          "n"
+                                                    <annotation>
+                                                      "A^n"
+                                              <span .katex-html aria-hidden="true">
+                                                <span .base>
+                                                  <span .strut />
+                                                  <span .mord>
+                                                    <span .mathnormal.mord>
+                                                      "A"
+                                                    <span .msupsub>
+                                                      <span .vlist-t>
+                                                        <span .vlist-r>
+                                                          <span .vlist>
+                                                            <span>
+                                                              <span .pstrut />
+                                                              <span .mtight.reset-size6.size3.sizing>
+                                                                <span .mathnormal.mord.mtight>
+                                                                  "n"
+                                            "："
+                                            <span .katex>
+                                              <span .katex-mathml>
+                                                <math>
+                                                  <semantics>
+                                                    <mrow>
+                                                      <msup>
+                                                        <mi>
+                                                          "A"
+                                                        <mi>
+                                                          "n"
+                                                      <mo>
+                                                        "="
+                                                      <mi>
+                                                        "P"
+                                                      <msup>
+                                                        <mi>
+                                                          "Λ"
+                                                        <mi>
+                                                          "n"
+                                                      <msup>
+                                                        <mi>
+                                                          "P"
+                                                        <mrow>
+                                                          <mo>
+                                                            "−"
+                                                          <mn>
+                                                            "1"
+                                                    <annotation>
+                                                      "A^n=P\\Lambda^nP^{-1}"
+                                              <span .katex-html aria-hidden="true">
+                                                <span .base>
+                                                  <span .strut />
+                                                  <span .mord>
+                                                    <span .mathnormal.mord>
+                                                      "A"
+                                                    <span .msupsub>
+                                                      <span .vlist-t>
+                                                        <span .vlist-r>
+                                                          <span .vlist>
+                                                            <span>
+                                                              <span .pstrut />
+                                                              <span .mtight.reset-size6.size3.sizing>
+                                                                <span .mathnormal.mord.mtight>
+                                                                  "n"
+                                                  <span .mspace />
+                                                  <span .mrel>
+                                                    "="
+                                                  <span .mspace />
+                                                <span .base>
+                                                  <span .strut />
+                                                  <span .mathnormal.mord>
+                                                    "P"
+                                                  <span .mord>
+                                                    <span .mord>
+                                                      "Λ"
+                                                    <span .msupsub>
+                                                      <span .vlist-t>
+                                                        <span .vlist-r>
+                                                          <span .vlist>
+                                                            <span>
+                                                              <span .pstrut />
+                                                              <span .mtight.reset-size6.size3.sizing>
+                                                                <span .mathnormal.mord.mtight>
+                                                                  "n"
+                                                  <span .mord>
+                                                    <span .mathnormal.mord>
+                                                      "P"
+                                                    <span .msupsub>
+                                                      <span .vlist-t>
+                                                        <span .vlist-r>
+                                                          <span .vlist>
+                                                            <span>
+                                                              <span .pstrut />
+                                                              <span .mtight.reset-size6.size3.sizing>
+                                                                <span .mord.mtight>
+                                                                  <span .mord.mtight>
+                                                                    "−"
+                                                                  <span .mord.mtight>
+                                                                    "1"
+                                  <div .group-hover:pointer-events-auto.group-hover:visible.invisible.mm-node-actions.nodrag.nopan.pointer-events-none>
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--add.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="添加子节点" title="添加子节点 (Tab)" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--menu.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="打开节点菜单" title="更多操作" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].dark:hover:bg-red-900/20.disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-red-50.hover:text-foreground.hover:text-red-500.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--delete.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="删除" title="删除 (Del)" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                  <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-left.source data-handlepos="left" data-id="1-app-1-null-source" data-nodeid="app-1" />
+                              <div .draggable.nopan.react-flow__node.react-flow__node-branchNode.selectable aria-roledescription="node" data-id="app-2" data-testid="rf__node-app-2" role="group" tabindex="0">
+                                <div .flex.gap-1.group.items-center.justify-center.mindmap-node-underline.mm-node--underline.mm-node-origin-right data-node-chrome="underline">
+                                  <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-right.target data-handlepos="right" data-id="1-app-2-null-target" data-nodeid="app-2" />
+                                  <div .flex.items-center>
+                                    <div .flex.flex-col.max-w-[600px].min-w-[20px].relative>
+                                      <div .flex.gap-1.items-center.relative>
+                                        <div .flex-1.min-w-0.relative>
+                                          <span .break-words.inline-block.min-h-[1.2em].mm-node-text.nodrag.nopan.px-1.rounded-sm.whitespace-pre-wrap>
+                                            <span .mm-blankable-text-segment>
+                                              "二次型化标准形"
+                                  <div .group-hover:pointer-events-auto.group-hover:visible.invisible.mm-node-actions.nodrag.nopan.pointer-events-none>
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--add.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="添加子节点" title="添加子节点 (Tab)" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--menu.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="打开节点菜单" title="更多操作" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].dark:hover:bg-red-900/20.disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-red-50.hover:text-foreground.hover:text-red-500.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--delete.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="删除" title="删除 (Del)" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                  <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-left.source data-handlepos="left" data-id="1-app-2-null-source" data-nodeid="app-2" />
+                              <div .draggable.nopan.react-flow__node.react-flow__node-branchNode.selectable aria-roledescription="node" data-id="app-3" data-testid="rf__node-app-3" role="group" tabindex="0">
+                                <div .flex.gap-1.group.items-center.justify-center.mindmap-node-underline.mm-node--underline.mm-node-origin-right data-node-chrome="underline">
+                                  <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-right.target data-handlepos="right" data-id="1-app-3-null-target" data-nodeid="app-3" />
+                                  <div .flex.items-center>
+                                    <div .flex.flex-col.max-w-[600px].min-w-[20px].relative>
+                                      <div .flex.gap-1.items-center.relative>
+                                        <div .flex-1.min-w-0.relative>
+                                          <span .break-words.inline-block.min-h-[1.2em].mm-node-text.nodrag.nopan.px-1.rounded-sm.whitespace-pre-wrap>
+                                            <span .mm-blankable-text-segment>
+                                              "PCA：协方差矩阵的特征分解"
+                                  <div .group-hover:pointer-events-auto.group-hover:visible.invisible.mm-node-actions.nodrag.nopan.pointer-events-none>
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--add.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="添加子节点" title="添加子节点 (Tab)" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--menu.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="打开节点菜单" title="更多操作" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].dark:hover:bg-red-900/20.disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-red-50.hover:text-foreground.hover:text-red-500.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--delete.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="删除" title="删除 (Del)" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                  <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-left.source data-handlepos="left" data-id="1-app-3-null-source" data-nodeid="app-3" />
+                              <div .draggable.nopan.react-flow__node.react-flow__node-branchNode.selectable aria-roledescription="node" data-id="def" data-testid="rf__node-def" role="group" tabindex="0">
+                                <div .flex.gap-1.group.items-center.justify-center.mm-branch-node.mm-node-origin-left data-node-chrome="box">
+                                  <div .group-hover:visible.h-5.invisible.mm-collapse-wrap.w-5.z-20>
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].bg-transparent.border.border-[color:var(--button-plain-border)].border-[var(--mm-border)].border-transparent.disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-5.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-[var(--mm-bg-hover)].hover:border-[var(--mm-border)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-collapse-btn.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-5.whitespace-nowrap aria-label="折叠" type="button">
+                                      <div .bg-[var(--mm-border-strong)].group-hover:bg-[var(--mm-text-secondary)].h-1.5.rounded-full.transition-colors.w-1.5 />
+                                  <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-left.target data-handlepos="left" data-id="1-def-null-target" data-nodeid="def" />
+                                  <div .flex.items-center>
+                                    <div .flex.flex-col.max-w-[600px].min-w-[20px].relative>
+                                      <div .flex.gap-1.items-center.relative>
+                                        <div .flex-1.min-w-0.relative>
+                                          <span .break-words.inline-block.min-h-[1.2em].mm-node-text.nodrag.nopan.px-1.rounded-sm.whitespace-pre-wrap>
+                                            <span .mm-blankable-text-segment>
+                                              "基本概念"
+                                  <div .group-hover:pointer-events-auto.group-hover:visible.invisible.mm-node-actions.nodrag.nopan.pointer-events-none>
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--add.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="添加子节点" title="添加子节点 (Tab)" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--menu.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="打开节点菜单" title="更多操作" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].dark:hover:bg-red-900/20.disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-red-50.hover:text-foreground.hover:text-red-500.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--delete.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="删除" title="删除 (Del)" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                  <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-right.source data-handlepos="right" data-id="1-def-null-source" data-nodeid="def" />
+                              <div .draggable.nopan.react-flow__node.react-flow__node-branchNode.selectable aria-roledescription="node" data-id="def-1" data-testid="rf__node-def-1" role="group" tabindex="0">
+                                <div .flex.gap-1.group.items-center.justify-center.mindmap-node-underline.mm-node--underline.mm-node-origin-left data-node-chrome="underline">
+                                  <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-left.target data-handlepos="left" data-id="1-def-1-null-target" data-nodeid="def-1" />
+                                  <div .flex.items-center>
+                                    <div .flex.flex-col.max-w-[600px].min-w-[20px].relative>
+                                      <div .flex.gap-1.items-center.relative>
+                                        <div .flex-1.min-w-0.relative>
+                                          <span .break-words.inline-block.min-h-[1.2em].mm-node-text.opacity-0.opacity-100.px-1.rounded-sm.select-none.whitespace-pre-wrap>
+                                            "定义："
+                                            <span .katex>
+                                              <span .katex-mathml>
+                                                <math>
+                                                  <semantics>
+                                                    <mrow>
+                                                      <mi>
+                                                        "A"
+                                                      <mi>
+                                                        "x"
+                                                      <mo>
+                                                        "="
+                                                      <mi>
+                                                        "λ"
+                                                      <mi>
+                                                        "x"
+                                                    <annotation>
+                                                      "A\\boldsymbol{x}=\\lambda\\boldsymbol{x}"
+                                              <span .katex-html aria-hidden="true">
+                                                <span .base>
+                                                  <span .strut />
+                                                  <span .mathnormal.mord>
+                                                    "A"
+                                                  <span .mord>
+                                                    <span .mord>
+                                                      <span .boldsymbol.mord>
+                                                        "x"
+                                                  <span .mspace />
+                                                  <span .mrel>
+                                                    "="
+                                                  <span .mspace />
+                                                <span .base>
+                                                  <span .strut />
+                                                  <span .mathnormal.mord>
+                                                    "λ"
+                                                  <span .mord>
+                                                    <span .mord>
+                                                      <span .boldsymbol.mord>
+                                                        "x"
+                                            "（"
+                                            <span .katex>
+                                              <span .katex-mathml>
+                                                <math>
+                                                  <semantics>
+                                                    <mrow>
+                                                      <mi>
+                                                        "x"
+                                                    <annotation>
+                                                      "\\boldsymbol{x}"
+                                              <span .katex-html aria-hidden="true">
+                                                <span .base>
+                                                  <span .strut />
+                                                  <span .mord>
+                                                    <span .mord>
+                                                      <span .boldsymbol.mord>
+                                                        "x"
+                                            "为非零向量）"
+                                  <div .group-hover:pointer-events-auto.group-hover:visible.invisible.mm-node-actions.nodrag.nopan.pointer-events-none>
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--add.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="添加子节点" title="添加子节点 (Tab)" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--menu.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="打开节点菜单" title="更多操作" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].dark:hover:bg-red-900/20.disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-red-50.hover:text-foreground.hover:text-red-500.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--delete.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="删除" title="删除 (Del)" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                  <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-right.source data-handlepos="right" data-id="1-def-1-null-source" data-nodeid="def-1" />
+                              <div .draggable.nopan.react-flow__node.react-flow__node-branchNode.selectable aria-roledescription="node" data-id="def-2" data-testid="rf__node-def-2" role="group" tabindex="0">
+                                <div .flex.gap-1.group.items-center.justify-center.mindmap-node-underline.mm-node--underline.mm-node-origin-left data-node-chrome="underline">
+                                  <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-left.target data-handlepos="left" data-id="1-def-2-null-target" data-nodeid="def-2" />
+                                  <div .flex.items-center>
+                                    <div .flex.flex-col.max-w-[600px].min-w-[20px].relative>
+                                      <div .flex.gap-1.items-center.relative>
+                                        <div .flex-1.min-w-0.relative>
+                                          <span .break-words.inline-block.min-h-[1.2em].mm-node-text.opacity-0.opacity-100.px-1.rounded-sm.select-none.whitespace-pre-wrap>
+                                            "特征方程"
+                                            <span .katex>
+                                              <span .katex-mathml>
+                                                <math>
+                                                  <semantics>
+                                                    <mrow>
+                                                      <mo>
+                                                        "∣"
+                                                      <mi>
+                                                        "λ"
+                                                      <mi>
+                                                        "E"
+                                                      <mo>
+                                                        "−"
+                                                      <mi>
+                                                        "A"
+                                                      <mo>
+                                                        "∣"
+                                                      <mo>
+                                                        "="
+                                                      <mn>
+                                                        "0"
+                                                    <annotation>
+                                                      "\\lvert\\lambda E-A\\rvert=0"
+                                              <span .katex-html aria-hidden="true">
+                                                <span .base>
+                                                  <span .strut />
+                                                  <span .mopen>
+                                                    "∣"
+                                                  <span .mathnormal.mord>
+                                                    "λ"
+                                                  <span .mathnormal.mord>
+                                                    "E"
+                                                  <span .mspace />
+                                                  <span .mbin>
+                                                    "−"
+                                                  <span .mspace />
+                                                <span .base>
+                                                  <span .strut />
+                                                  <span .mathnormal.mord>
+                                                    "A"
+                                                  <span .mclose>
+                                                    "∣"
+                                                  <span .mspace />
+                                                  <span .mrel>
+                                                    "="
+                                                  <span .mspace />
+                                                <span .base>
+                                                  <span .strut />
+                                                  <span .mord>
+                                                    "0"
+                                  <div .group-hover:pointer-events-auto.group-hover:visible.invisible.mm-node-actions.nodrag.nopan.pointer-events-none>
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--add.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="添加子节点" title="添加子节点 (Tab)" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--menu.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="打开节点菜单" title="更多操作" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].dark:hover:bg-red-900/20.disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-red-50.hover:text-foreground.hover:text-red-500.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--delete.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="删除" title="删除 (Del)" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                  <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-right.source data-handlepos="right" data-id="1-def-2-null-source" data-nodeid="def-2" />
+                              <div .draggable.nopan.react-flow__node.react-flow__node-branchNode.selectable aria-roledescription="node" data-id="def-3" data-testid="rf__node-def-3" role="group" tabindex="0">
+                                <div .flex.gap-1.group.items-center.justify-center.mindmap-node-underline.mm-node--underline.mm-node-origin-left data-node-chrome="underline">
+                                  <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-left.target data-handlepos="left" data-id="1-def-3-null-target" data-nodeid="def-3" />
+                                  <div .flex.items-center>
+                                    <div .flex.flex-col.max-w-[600px].min-w-[20px].relative>
+                                      <div .flex.gap-1.items-center.relative>
+                                        <div .flex-1.min-w-0.relative>
+                                          <span .break-words.inline-block.min-h-[1.2em].mm-node-text.opacity-0.opacity-100.px-1.rounded-sm.select-none.whitespace-pre-wrap>
+                                            "特征子空间 ="
+                                            <span .katex>
+                                              <span .katex-mathml>
+                                                <math>
+                                                  <semantics>
+                                                    <mrow>
+                                                      <mo>
+                                                        "("
+                                                      <mi>
+                                                        "λ"
+                                                      <mi>
+                                                        "E"
+                                                      <mo>
+                                                        "−"
+                                                      <mi>
+                                                        "A"
+                                                      <mo>
+                                                        ")"
+                                                      <mi>
+                                                        "x"
+                                                      <mo>
+                                                        "="
+                                                      <mi>
+                                                        "0"
+                                                    <annotation>
+                                                      "(\\lambda E-A)\\boldsymbol{x}=\\boldsymbol{0}"
+                                              <span .katex-html aria-hidden="true">
+                                                <span .base>
+                                                  <span .strut />
+                                                  <span .mopen>
+                                                    "("
+                                                  <span .mathnormal.mord>
+                                                    "λ"
+                                                  <span .mathnormal.mord>
+                                                    "E"
+                                                  <span .mspace />
+                                                  <span .mbin>
+                                                    "−"
+                                                  <span .mspace />
+                                                <span .base>
+                                                  <span .strut />
+                                                  <span .mathnormal.mord>
+                                                    "A"
+                                                  <span .mclose>
+                                                    ")"
+                                                  <span .mord>
+                                                    <span .mord>
+                                                      <span .boldsymbol.mord>
+                                                        "x"
+                                                  <span .mspace />
+                                                  <span .mrel>
+                                                    "="
+                                                  <span .mspace />
+                                                <span .base>
+                                                  <span .strut />
+                                                  <span .mord>
+                                                    <span .mord>
+                                                      <span .mathbf.mord>
+                                                        "0"
+                                            "的解空间"
+                                  <div .group-hover:pointer-events-auto.group-hover:visible.invisible.mm-node-actions.nodrag.nopan.pointer-events-none>
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--add.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="添加子节点" title="添加子节点 (Tab)" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--menu.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="打开节点菜单" title="更多操作" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].dark:hover:bg-red-900/20.disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-red-50.hover:text-foreground.hover:text-red-500.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--delete.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="删除" title="删除 (Del)" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                  <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-right.source data-handlepos="right" data-id="1-def-3-null-source" data-nodeid="def-3" />
+                              <div .draggable.nopan.react-flow__node.react-flow__node-branchNode.selectable aria-roledescription="node" data-id="diag" data-testid="rf__node-diag" role="group" tabindex="0">
+                                <div .flex.gap-1.group.items-center.justify-center.mm-branch-node.mm-node-origin-left data-node-chrome="box">
+                                  <div .group-hover:visible.h-5.invisible.mm-collapse-wrap.w-5.z-20>
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].bg-transparent.border.border-[color:var(--button-plain-border)].border-[var(--mm-border)].border-transparent.disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-5.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-[var(--mm-bg-hover)].hover:border-[var(--mm-border)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-collapse-btn.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-5.whitespace-nowrap aria-label="折叠" type="button">
+                                      <div .bg-[var(--mm-border-strong)].group-hover:bg-[var(--mm-text-secondary)].h-1.5.rounded-full.transition-colors.w-1.5 />
+                                  <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-left.target data-handlepos="left" data-id="1-diag-null-target" data-nodeid="diag" />
+                                  <div .flex.items-center>
+                                    <div .flex.flex-col.max-w-[600px].min-w-[20px].relative>
+                                      <div .flex.gap-1.items-center.relative>
+                                        <div .flex-1.min-w-0.relative>
+                                          <span .break-words.inline-block.min-h-[1.2em].mm-node-text.nodrag.nopan.px-1.rounded-sm.whitespace-pre-wrap>
+                                            <span .mm-blankable-text-segment>
+                                              "相似对角化"
+                                  <div .group-hover:pointer-events-auto.group-hover:visible.invisible.mm-node-actions.nodrag.nopan.pointer-events-none>
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--add.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="添加子节点" title="添加子节点 (Tab)" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--menu.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="打开节点菜单" title="更多操作" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].dark:hover:bg-red-900/20.disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-red-50.hover:text-foreground.hover:text-red-500.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--delete.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="删除" title="删除 (Del)" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                  <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-right.source data-handlepos="right" data-id="1-diag-null-source" data-nodeid="diag" />
+                              <div .draggable.nopan.react-flow__node.react-flow__node-branchNode.selectable aria-roledescription="node" data-id="diag-1" data-testid="rf__node-diag-1" role="group" tabindex="0">
+                                <div .flex.gap-1.group.items-center.justify-center.mindmap-node-underline.mm-node--underline.mm-node-origin-left data-node-chrome="underline">
+                                  <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-left.target data-handlepos="left" data-id="1-diag-1-null-target" data-nodeid="diag-1" />
+                                  <div .flex.items-center>
+                                    <div .flex.flex-col.max-w-[600px].min-w-[20px].relative>
+                                      <div .flex.gap-1.items-center.relative>
+                                        <div .flex-1.min-w-0.relative>
+                                          <span .break-words.inline-block.min-h-[1.2em].mm-node-text.nodrag.nopan.px-1.rounded-sm.whitespace-pre-wrap>
+                                            <span .mm-blankable-text-segment>
+                                              "充要条件：有"
+                                            <span .border-amber-500/70.border-b.border-dashed.px-0.5.rounded-sm title="n 个线性无关的特征向量">
+                                              "n 个线性无关的特征向量"
+                                  <div .group-hover:pointer-events-auto.group-hover:visible.invisible.mm-node-actions.nodrag.nopan.pointer-events-none>
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--add.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="添加子节点" title="添加子节点 (Tab)" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--menu.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="打开节点菜单" title="更多操作" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].dark:hover:bg-red-900/20.disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-red-50.hover:text-foreground.hover:text-red-500.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--delete.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="删除" title="删除 (Del)" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                  <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-right.source data-handlepos="right" data-id="1-diag-1-null-source" data-nodeid="diag-1" />
+                              <div .draggable.nopan.react-flow__node.react-flow__node-branchNode.selectable aria-roledescription="node" data-id="diag-2" data-testid="rf__node-diag-2" role="group" tabindex="0">
+                                <div .flex.gap-1.group.items-center.justify-center.mindmap-node-underline.mm-node--underline.mm-node-origin-left data-node-chrome="underline">
+                                  <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-left.target data-handlepos="left" data-id="1-diag-2-null-target" data-nodeid="diag-2" />
+                                  <div .flex.items-center>
+                                    <div .flex.flex-col.max-w-[600px].min-w-[20px].relative>
+                                      <div .flex.gap-1.items-center.relative>
+                                        <div .flex-1.min-w-0.relative>
+                                          <span .break-words.inline-block.min-h-[1.2em].mm-node-text.nodrag.nopan.px-1.rounded-sm.whitespace-pre-wrap>
+                                            <span .mm-blankable-text-segment>
+                                              "几何重数 ="
+                                            <span .border-amber-500/70.border-b.border-dashed.px-0.5.rounded-sm title="代数重数">
+                                              "代数重数"
+                                  <div .group-hover:pointer-events-auto.group-hover:visible.invisible.mm-node-actions.nodrag.nopan.pointer-events-none>
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--add.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="添加子节点" title="添加子节点 (Tab)" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--menu.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="打开节点菜单" title="更多操作" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].dark:hover:bg-red-900/20.disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-red-50.hover:text-foreground.hover:text-red-500.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--delete.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="删除" title="删除 (Del)" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                  <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-right.source data-handlepos="right" data-id="1-diag-2-null-source" data-nodeid="diag-2" />
+                              <div .draggable.nopan.react-flow__node.react-flow__node-branchNode.selectable aria-roledescription="node" data-id="diag-3" data-testid="rf__node-diag-3" role="group" tabindex="0">
+                                <div .flex.gap-1.group.items-center.justify-center.mindmap-node-underline.mm-node--underline.mm-node-origin-left data-node-chrome="underline">
+                                  <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-left.target data-handlepos="left" data-id="1-diag-3-null-target" data-nodeid="diag-3" />
+                                  <div .flex.items-center>
+                                    <div .flex.flex-col.max-w-[600px].min-w-[20px].relative>
+                                      <div .flex.gap-1.items-center.relative>
+                                        <div .flex-1.min-w-0.relative>
+                                          <span .break-words.inline-block.min-h-[1.2em].mm-node-text.nodrag.nopan.px-1.rounded-sm.whitespace-pre-wrap>
+                                            <span .mm-blankable-text-segment>
+                                              "实对称矩阵必可"
+                                            <span .border-amber-500/70.border-b.border-dashed.px-0.5.rounded-sm title="正交对角化">
+                                              "正交对角化"
+                                  <div .group-hover:pointer-events-auto.group-hover:visible.invisible.mm-node-actions.nodrag.nopan.pointer-events-none>
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--add.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="添加子节点" title="添加子节点 (Tab)" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--menu.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="打开节点菜单" title="更多操作" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].dark:hover:bg-red-900/20.disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-red-50.hover:text-foreground.hover:text-red-500.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-action-btn.mm-action-btn--delete.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="删除" title="删除 (Del)" type="button">
+                                      <svg .h-3.5.w-3.5 viewBox="0 0 256 256" />
+                                  <div .connectableend.connectablestart.mm-node-handle.nodrag.nopan.react-flow__handle.react-flow__handle-right.source data-handlepos="right" data-id="1-diag-3-null-source" data-nodeid="diag-3" />
+                            <div .react-flow__viewport-portal />
+                      <div .bottom.left.mm-canvas-controls.react-flow__controls.react-flow__panel.vertical aria-label="Control Panel" data-testid="rf__controls">
+                        <button .react-flow__controls-button.react-flow__controls-zoomin aria-label="Zoom In" title="Zoom In" type="button">
+                          <svg viewBox="0 0 32 32" />
+                        <button .react-flow__controls-button.react-flow__controls-zoomout aria-label="Zoom Out" title="Zoom Out" type="button">
+                          <svg viewBox="0 0 32 5" />
+                        <button .react-flow__controls-button.react-flow__controls-fitview aria-label="Fit View" title="Fit View" type="button">
+                          <svg viewBox="0 0 32 30" />
+                      <div .mm-canvas-mode-switch aria-label="画布拖拽模式" role="group">
+                        <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-canvas-mode-button.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-pressed="false" title="框选模式：拖拽空白框选（Space/中键/右键拖拽平移）" type="button">
+                          <svg viewBox="0 0 256 256" />
+                          <span>
+                            "框选"
+                        <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.is-active.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-canvas-mode-button.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-pressed="true" title="拖动画布模式：拖拽空白移动画布（Shift+拖拽框选）" type="button">
+                          <svg viewBox="0 0 256 256" />
+                          <span>
+                            "拖动画布"
+                        <span .mm-canvas-mode-divider aria-hidden="true" />
+                        <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-canvas-mode-button.mm-canvas-wheel-toggle.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-pressed="false" title="双指平移（默认）：滚轮/双指滑动平移，捏合或 Cmd/Ctrl+滚轮缩放；点击切换为滚轮缩放" type="button">
+                          <svg viewBox="0 0 256 256" />
+                          <span>
+                            "滚轮缩放"
+                        <span .mm-canvas-mode-divider aria-hidden="true" />
+                        <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].mm-canvas-mode-button.mm-canvas-zoom-indicator.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="缩放 85%，点击恢复 100%" type="button">
+                          <span>
+                            "85"
+                            "%"
+                      <div .bottom.mm-canvas-minimap.react-flow__minimap.react-flow__panel.right data-testid="rf__minimap">
+                        <svg .react-flow__minimap-svg aria-labelledby="@3" role="img" viewBox="-775.2923076923075 -713.<ts> 1862.584615384615 1274.4" />
+                      <svg .react-flow__background data-testid="rf__background" />
+                      <div id="@4">
+                        "Press enter or space to select a node. Press delete to remove it and escape to cancel."
+                      <div id="@5">
+                        "Press enter or space to select an edge. You can then press delete to remove it or escape to cancel."
+      <div .notification-container aria-label="通知" role="region" />
+  <div id="@6" />

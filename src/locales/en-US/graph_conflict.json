@@ -5,5 +5,27 @@
   "ignore": "Ignore",
   "wikilink": {
     "create_failed": "Failed to create note \"{{title}}\""
+  },
+  "mindmapGhost": {
+    "aiBadge": "AI Proposal",
+    "acceptBranch": "Accept Branch",
+    "rejectBranch": "Discard",
+    "acceptAll": "Accept All",
+    "revertAll": "Revert All",
+    "removeBadge": "Proposed Removal",
+    "removeSubtreeCount": "{{count}} nodes",
+    "moveBadge": "Move to \"{{target}}\"",
+    "toggleBranchList": "Branches ({{count}})",
+    "checkpointBanner": "Accepted {{count}} AI changes",
+    "checkpointSavedHint": "Version snapshot saved",
+    "dismissCheckpoint": "Dismiss",
+    "noteModified": "Note updated",
+    "styleModified": "Style updated",
+    "branchAddKind": "Add branch",
+    "branchModifyKind": "Modify node",
+    "branchRemoveKind": "Remove subtree",
+    "branchMoveKind": "Move branch",
+    "revertedToast": "Reverted AI changes to pre-accept version",
+    "revertFailedToast": "Revert failed: {{error}}"
   }
 }

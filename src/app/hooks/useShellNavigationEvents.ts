@@ -7,7 +7,6 @@ import {
 } from '@/events';
 import type { AppEventPayloads } from '@/events/app';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
-import { workbenchBus } from '@/features/workbench/core/workbenchBus';
 import {
   requestLearningHubIntent,
   type LearningHubIntentType,
@@ -19,7 +18,7 @@ import type { SetCurrentView } from '../navigation/viewRouting';
  * 新建会话 / 分组 / 笔记的桥接、Crepe demo（仅开发模式），以及 openInLearningHub
  * （切到学习资源页并经握手投递打开意图）。从 App.tsx 原样搬出；返回 openInLearningHub。
  */
-export function useShellNavigationEvents(setCurrentView: SetCurrentView) {
+export function useShellNavigationEvents(setCurrentView: SetCurrentView, workbenchActive: boolean) {
   // Milkdown / Notes / 新建桥接 / 知识库：壳层导航监听（owner: App）
   useAppEvent(APP_EVENTS.OPEN_MARKDOWN_EDITOR, () => {
     setCurrentView('learning-hub');
@@ -40,11 +39,23 @@ export function useShellNavigationEvents(setCurrentView: SetCurrentView) {
     setCurrentView('chat-v2');
   }, [setCurrentView]);
 
+  const handleNavigateToSessionBridge = useCallback((detail: { sessionId?: string; syncOnly?: boolean } | undefined) => {
+    if (!detail?.sessionId || detail?.syncOnly) {
+      return;
+    }
+    setCurrentView('chat-v2');
+  }, [setCurrentView]);
+
   useEventRegistry([
     {
       target: 'window',
       type: APP_EVENTS.CHAT_NEW_SESSION,
       listener: toAppEventListener(handleCreateChatSessionBridge),
+    },
+    {
+      target: 'window',
+      type: APP_EVENTS.NAVIGATE_TO_SESSION,
+      listener: toAppEventListener(handleNavigateToSessionBridge),
     },
     {
       target: 'window',
@@ -58,7 +69,7 @@ export function useShellNavigationEvents(setCurrentView: SetCurrentView) {
         setCurrentView('learning-hub');
       },
     },
-  ], [handleCreateChatSessionBridge, setCurrentView]);
+  ], [handleCreateChatSessionBridge, handleNavigateToSessionBridge, setCurrentView]);
 
   // Crepe minimal demo：用于排查编辑器性能的纯净示例（仅开发模式）
   useEffect(() => {
@@ -89,9 +100,9 @@ export function useShellNavigationEvents(setCurrentView: SetCurrentView) {
     detail: AppEventPayloads[K],
   ) => {
     setCurrentView('learning-hub');
-    if (workbenchBus.isEnabled()) return;
+    if (workbenchActive) return;
     requestLearningHubIntent(type, detail);
-  }, [setCurrentView]);
+  }, [setCurrentView, workbenchActive]);
 
   return { openInLearningHub };
 }

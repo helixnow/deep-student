@@ -13,6 +13,8 @@ import { Separator } from '../../components/ui/shad/Separator';
 import { Copy, Trash, Play, WarningCircle, CheckCircle, Warning, Database, ArrowClockwise } from '@phosphor-icons/react';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { dispatchTypedEvent } from '@/events';
+import { createPanelFeed } from '../panelFeed';
 
 // =============================================================================
 // 类型定义
@@ -54,6 +56,8 @@ interface StateSnapshot {
 
 const SESSION_LOAD_LOGS: LogEntry[] = [];
 const STATE_SNAPSHOTS: StateSnapshot[] = [];
+const logAdded = createPanelFeed<LogEntry>();
+const snapshotCaptured = createPanelFeed<StateSnapshot>();
 let LOG_ID_COUNTER = 0;
 
 // 全局日志函数
@@ -91,12 +95,12 @@ export function logSessionLoadFlow(
   }
   
   // 触发事件通知 UI 更新
-  window.dispatchEvent(new CustomEvent('SESSION_LOAD_LOG_ADDED', { detail: entry }));
+  logAdded.publish(entry);
 }
 
 export function captureStateSnapshot(snapshot: StateSnapshot) {
   STATE_SNAPSHOTS.push(snapshot);
-  window.dispatchEvent(new CustomEvent('SESSION_STATE_SNAPSHOT', { detail: snapshot }));
+  snapshotCaptured.publish(snapshot);
 }
 
 export function clearSessionLoadLogs() {
@@ -143,13 +147,11 @@ const SessionLoadFlowDebugPlugin: React.FC<DebugPanelPluginProps> = ({
   useEffect(() => {
     if (!isActive) return;
 
-    const handleLogAdded = (e: Event) => {
-      const entry = (e as CustomEvent<LogEntry>).detail;
+    const handleLogAdded = (entry: LogEntry) => {
       setLogs(prev => [...prev, entry]);
     };
 
-    const handleSnapshot = (e: Event) => {
-      const snapshot = (e as CustomEvent<StateSnapshot>).detail;
+    const handleSnapshot = (snapshot: StateSnapshot) => {
       setSnapshots(prev => [...prev, snapshot]);
     };
 
@@ -157,12 +159,12 @@ const SessionLoadFlowDebugPlugin: React.FC<DebugPanelPluginProps> = ({
     setLogs([...SESSION_LOAD_LOGS]);
     setSnapshots([...STATE_SNAPSHOTS]);
 
-    window.addEventListener('SESSION_LOAD_LOG_ADDED', handleLogAdded);
-    window.addEventListener('SESSION_STATE_SNAPSHOT', handleSnapshot);
+    const unsubscribeLogs = logAdded.subscribe(handleLogAdded);
+    const unsubscribeSnapshots = snapshotCaptured.subscribe(handleSnapshot);
 
     return () => {
-      window.removeEventListener('SESSION_LOAD_LOG_ADDED', handleLogAdded);
-      window.removeEventListener('SESSION_STATE_SNAPSHOT', handleSnapshot);
+      unsubscribeLogs();
+      unsubscribeSnapshots();
     };
   }, [isActive]);
 
@@ -212,7 +214,7 @@ const SessionLoadFlowDebugPlugin: React.FC<DebugPanelPluginProps> = ({
 
   const handleManualCapture = useCallback(() => {
     // 手动触发状态捕获
-    window.dispatchEvent(new CustomEvent('SESSION_LOAD_MANUAL_CAPTURE'));
+    dispatchTypedEvent('SESSION_LOAD_MANUAL_CAPTURE');
   }, []);
 
   if (!visible || !isActive) return null;

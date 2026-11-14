@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { readAppShellSource } from '@/app/__tests__/appShellSources';
 
 describe('mobile shell migration contract', () => {
-  const appSource = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf-8');
+  const appSource = readAppShellSource();
   const mobileShellSource = readFileSync(resolve(process.cwd(), 'src/app/shell/mobileShell.ts'), 'utf-8');
   const headerSource = readFileSync(resolve(process.cwd(), 'src/components/layout/UnifiedMobileHeader.tsx'), 'utf-8');
   const breakpointHookSource = readFileSync(resolve(process.cwd(), 'src/hooks/useBreakpoint.ts'), 'utf-8');

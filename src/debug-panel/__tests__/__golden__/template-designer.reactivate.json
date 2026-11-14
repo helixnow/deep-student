@@ -1,0 +1,69 @@
+{
+  "deactivatedHtml": "",
+  "reactivated": {
+    "counter": "日志 3/3",
+    "rows": [
+      {
+        "parts": [
+          "",
+          "10:00:00.000",
+          "[info]",
+          "[system]",
+          "模板设计师监听插件已激活"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.000",
+          "[info]",
+          "[tool:get]",
+          "→ template_get [preparing]",
+          "block=blk-x"
+        ]
+      },
+      {
+        "parts": [
+          "",
+          "10:00:01.000",
+          "[info]",
+          "[system]",
+          "模板设计师监听插件已激活"
+        ]
+      }
+    ]
+  },
+  "after61s": {
+    "counter": "日志 3/3",
+    "rows": [
+      {
+        "parts": [
+          "",
+          "10:00:00.000",
+          "[info]",
+          "[system]",
+          "模板设计师监听插件已激活"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.000",
+          "[info]",
+          "[tool:get]",
+          "→ template_get [preparing]",
+          "block=blk-x"
+        ]
+      },
+      {
+        "parts": [
+          "",
+          "10:00:01.000",
+          "[info]",
+          "[system]",
+          "模板设计师监听插件已激活"
+        ]
+      }
+    ]
+  }
+}

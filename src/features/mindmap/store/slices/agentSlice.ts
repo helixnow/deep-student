@@ -19,6 +19,9 @@ import {
   afterRemoveNodes,
 } from '../mindmapStoreHelpers';
 import type { MindMapSliceCreator } from '../mindmapStoreRuntime';
+import { reconcileSummariesWithTree } from '../../utils/summaryBraces';
+import { syncMindMapAnchorEdges } from '../../utils/excerptIngest';
+import { reconcileMindMapProjectedFlashcards } from '../../interop/mindmapCardProjection';
 
 export const createAgentSlice: MindMapSliceCreator<
   | 'markAgentEntering'
@@ -193,6 +196,9 @@ export const createAgentSlice: MindMapSliceCreator<
         removeNodesById(state.document.root, new Set(normalizedIds));
         afterRemoveNodes(state, removedIds, nextFocusedNodeId);
       }, { skipHistory: true });
+      const after = get();
+      syncMindMapAnchorEdges(after.mindmapId, after.document.root, { styleId: after.styleId });
+      reconcileMindMapProjectedFlashcards(after.mindmapId, after.document.root);
     },
 
     agentMoveNode: (nodeId: string, newParentId: string, index: number) => {
@@ -237,8 +243,12 @@ export const createAgentSlice: MindMapSliceCreator<
 
         const boundedIndex = Math.max(0, Math.min(targetIndex, nextParent.children.length));
         nextParent.children.splice(boundedIndex, 0, detachedNode);
+        reconcileSummariesWithTree(state.document);
         moved = true;
       }, { skipHistory: true });
+      const after = get();
+      syncMindMapAnchorEdges(after.mindmapId, after.document.root, { styleId: after.styleId });
+      reconcileMindMapProjectedFlashcards(after.mindmapId, after.document.root);
       return moved;
     },
 

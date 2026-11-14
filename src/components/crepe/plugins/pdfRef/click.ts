@@ -33,6 +33,6 @@ export function handlePdfRefLinkClick(
 
   event.preventDefault();
   event.stopPropagation();
-  dispatchOpenPdfRef(refTarget.sourceId, refTarget.page);
+  dispatchOpenPdfRef(refTarget.sourceId, refTarget.page, refTarget.quote);
   return true;
 }

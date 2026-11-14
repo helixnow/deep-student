@@ -82,7 +82,7 @@ describe('MemoryCurvePanel', () => {
     cleanup();
   });
 
-  it('shows the three memory figures and one row per recently reviewed card', async () => {
+  it('shows one card and its three markers by default, then allows comparison', async () => {
     const now = Date.now();
     invokeMock.mockImplementation(async (command: string) => {
       if (command === 'fsrs_get_memory_overview') return overviewPayload(now);
@@ -91,14 +91,20 @@ describe('MemoryCurvePanel', () => {
 
     render(<MemoryCurvePanel />);
 
-    expect(await screen.findByText('平均记忆保持率')).toBeInTheDocument();
+    expect(await screen.findByText('当前预计回忆率')).toBeInTheDocument();
     expect(invokeMock).toHaveBeenCalledWith('fsrs_get_memory_overview', { recentLimit: 5 });
     expect(screen.getByText('93%')).toBeInTheDocument();
     expect(screen.getByText('389 张已学卡片此刻的平均回忆概率')).toBeInTheDocument();
-    expect(screen.getByText('近 30 天实际保持率')).toBeInTheDocument();
+    expect(screen.getByText('近 30 天复习答对率')).toBeInTheDocument();
     expect(screen.getByText('91%')).toBeInTheDocument();
-    expect(screen.getByText('412 次到期复习中答对的比例')).toBeInTheDocument();
-    expect(screen.getByText('期望保留率 90%')).toBeInTheDocument();
+    expect(screen.getByText('答对 376 / 412 次 · 每张正式复习卡每天只计首次作答')).toBeInTheDocument();
+    expect(screen.getByText('排期目标 90%')).toBeInTheDocument();
+    expect(screen.getByText('理论交点 · 90%', { selector: 'dt' })).toBeInTheDocument();
+    expect(screen.getByText(/^实际学习步 · /)).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: '1 张卡的遗忘曲线' })).toBeInTheDocument();
+    fireEvent.change(screen.getByRole('combobox', { name: '最近复习的卡片' }), { target: { value: 'easy' } });
+    expect(screen.getByText(/^实际安排 · /, { selector: 'dt' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '比较最近卡片' }));
     expect(screen.getByText('最近复习的 3 张卡')).toBeInTheDocument();
 
     const rows = screen.getAllByRole('button', { name: /完整复习历史/ });
@@ -134,20 +140,21 @@ describe('MemoryCurvePanel', () => {
     });
 
     render(<MemoryCurvePanel />);
-    fireEvent.click(await screen.findByRole('button', { name: '查看「构造辅助函数 φ(x)」的完整复习历史' }));
+    fireEvent.change(await screen.findByRole('combobox', { name: '最近复习的卡片' }), { target: { value: 'easy' } });
+    fireEvent.click(screen.getByRole('button', { name: '查看「构造辅助函数 φ(x)」的完整复习历史' }));
 
     const history = await screen.findByTestId('fsrs-memory-history');
     expect(history).toHaveTextContent('复习 2 次 · 遗忘 0 次');
     expect(history).toHaveTextContent('首次学习');
     expect(history).toHaveTextContent('间隔 4 天');
     // R(4 天, S = 3.1262) = (1 + 19/81 · 4/3.1262)^-0.5 ≈ 0.877
-    expect(history).toHaveTextContent('复习前保持率 88%');
+    expect(history).toHaveTextContent('复习前预计回忆率 88%');
     expect(history).toHaveTextContent('稳定性 → 15 天');
     expect(screen.getByRole('img', { name: '2 次复习的记忆曲线' })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '最近复习' }));
     await waitFor(() => expect(screen.queryByTestId('fsrs-memory-history')).not.toBeInTheDocument());
-    expect(screen.getAllByRole('button', { name: /完整复习历史/ })).toHaveLength(3);
+    expect(screen.getByRole('combobox', { name: '最近复习的卡片' })).toHaveValue('easy');
   });
 
   it('explains empty and unavailable states instead of drawing fake curves', async () => {

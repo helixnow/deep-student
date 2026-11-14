@@ -1,0 +1,206 @@
+{
+  "domain": "qbank",
+  "commands": [
+    "qbank_get_source_images",
+    "qbank_crop_source_image",
+    "qbank_ai_generate_questions"
+  ],
+  "scenarios": [
+    {
+      "id": "qbank.g3.authgen.pending.source_images_and_crop_from_imported_page",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "wp228-g3-vlm",
+                "name": "WP228 G3 视觉模型",
+                "apiKey": "sk-wp228-local",
+                "baseUrl": "${provider.url}",
+                "model": "wp228-model",
+                "isMultimodal": true,
+                "isReasoning": false,
+                "isEmbedding": false,
+                "isReranker": false,
+                "enabled": true,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "import_question_bank",
+          "args": {
+            "request": {
+              "content": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+              "format": "png",
+              "name": "WP228 G3 图片题目集",
+              "folder_id": null,
+              "session_id": null,
+              "model_config_id": "wp228-g3-vlm",
+              "pdf_prefer_ocr": null,
+              "import_id": null,
+              "source_ranges": []
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_source_images",
+          "args": {
+            "examId": "${1.summary.id}"
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${1.summary.id}",
+              "content": "该页图为单页示例图（1×1 像素）。",
+              "question_type": "true_false",
+              "options": null,
+              "answer": "true",
+              "structured_data": null,
+              "explanation": "示例页图仅有一页。",
+              "difficulty": "easy",
+              "tags": [
+                "识图"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_crop_source_image",
+          "args": {
+            "request": {
+              "question_id": "${3.id}",
+              "blob_hash": "${2.0.blobHash}",
+              "crop_x": 0.0,
+              "crop_y": 0.0,
+              "crop_width": 1.0,
+              "crop_height": 1.0
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_source_images",
+          "args": {
+            "examId": "${1.summary.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.g3.authgen.pending.generate_completed_authoring_draft",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "WP228 G3 图片出题题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "wp228-g3-chat",
+                "name": "WP228 G3 对话模型",
+                "apiKey": "sk-wp228-local",
+                "baseUrl": "${provider.url}",
+                "model": "wp228-model",
+                "isMultimodal": false,
+                "isReasoning": false,
+                "isEmbedding": false,
+                "isReranker": false,
+                "enabled": true,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "qbank_ai_generate_questions",
+          "args": {
+            "request": {
+              "exam_id": "${0.id}",
+              "stream_session_id": "wp228g3genpending",
+              "model_config_id": "wp228-g3-chat",
+              "max_questions": 1,
+              "specs": [
+                {
+                  "question_type": "single_choice",
+                  "count": 1,
+                  "difficulty": "easy"
+                }
+              ],
+              "difficulty": "easy",
+              "topic_hint": "质数与合数",
+              "based_on_existing": false,
+              "language": "zh-CN",
+              "reference_file_ids": [],
+              "reference_files_base64": [],
+              "knowledge_points": [
+                "质数"
+              ]
+            }
+          },
+          "waitAfter": {
+            "channel": "qbank_generation_task_event",
+            "payload": {
+              "id": "${2.id}",
+              "status": ["completed", "failed", "cancelled"]
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_generation_task",
+          "args": {
+            "taskId": "${2.id}"
+          }
+        },
+        {
+          "cmd": "qbank_list_authoring_drafts",
+          "args": {
+            "examId": "${0.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

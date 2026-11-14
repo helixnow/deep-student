@@ -9,7 +9,7 @@ import React from 'react';
 import { AppIconImage } from '../../icons/appIcons';
 import { BrowserApiError } from '@/features/browser/browserApi';
 import { getBrowserSessionState } from '@/features/browser/sessionStore';
-import { appRegistry } from '../../core/appRegistry';
+import { contributeWorkbenchApp } from '../../core/appContributions';
 import type { ActivationContext, ActivationResult } from '../../core/types';
 import {
   BROWSER_FOCUS_ADDRESS_EVENT,
@@ -134,7 +134,7 @@ export function registerBrowserApp(): void {
   if (registered) return;
   registered = true;
 
-  appRegistry.register({
+  contributeWorkbenchApp({
     typeId: BROWSER_APP_TYPE_ID,
     nameKey: 'workbench:apps.browser',
     icon: <AppIconImage typeId="browser" className="h-8 w-8" />,

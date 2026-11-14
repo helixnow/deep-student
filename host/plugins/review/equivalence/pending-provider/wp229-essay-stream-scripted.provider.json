@@ -1,0 +1,29 @@
+{
+  "note": "Responses of the scripted local LLM per scenario id and per request order. Request bodies are recorded from A and compared to B; not pre-written here.",
+  "review.essay.scripted.stream-success-round-persisted": [
+    {
+      "status": 200,
+      "headers": {
+        "content-type": "text/event-stream"
+      },
+      "chunks": [
+        "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"立意明确，结构清晰。\"}}]}\n\n",
+        "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"<score total=\\\"52\\\" max=\\\"60\\\"><dim name=\\\"内容\\\" score=\\\"18\\\" max=\\\"20\\\">切题</dim><dim name=\\\"表达\\\" score=\\\"17\\\" max=\\\"20\\\">流畅</dim><dim name=\\\"发展等级\\\" score=\\\"17\\\" max=\\\"20\\\">有文采</dim></score>\"}}]}\n\n",
+        "data: [DONE]\n\n"
+      ]
+    }
+  ],
+  "review.essay.scripted.stream-success-missing-session-rejected": [
+    {
+      "status": 200,
+      "headers": {
+        "content-type": "text/event-stream"
+      },
+      "chunks": [
+        "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"内容完整。\"}}]}\n\n",
+        "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"<score total=\\\"52\\\" max=\\\"60\\\"><dim name=\\\"内容\\\" score=\\\"18\\\" max=\\\"20\\\">切题</dim><dim name=\\\"表达\\\" score=\\\"17\\\" max=\\\"20\\\">流畅</dim><dim name=\\\"发展等级\\\" score=\\\"17\\\" max=\\\"20\\\">有文采</dim></score>\"}}]}\n\n",
+        "data: [DONE]\n\n"
+      ]
+    }
+  ]
+}

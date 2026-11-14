@@ -1,0 +1,717 @@
+{
+  "domain": "review",
+  "commands": [
+    "insight_create_draft",
+    "insight_confirm",
+    "insight_delete",
+    "insight_correct",
+    "insight_record_feedback",
+    "insight_add_relation",
+    "study_time_add",
+    "study_time_range",
+    "fsrs_bury_card",
+    "fsrs_unbury_card"
+  ],
+  "scenarios": [
+    {
+      "id": "g3w.review.insight_create_draft.blank-title",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "insight_create_draft",
+          "args": {
+            "input": {
+              "title": "  ",
+              "situation": "求 ∫ x(x²+1)³ dx",
+              "stuck_point": "被积函数次数太高，展开不现实",
+              "turning_point": "观察到 x 是 (x²+1) 导数的倍数",
+              "rule": "识别被积函数中'一部分是另一部分导数'的结构 → 令其为 u",
+              "validity_conditions": "复合函数内层导数与外因子成比例",
+              "ownership": "self_reported",
+              "evidence": [
+                {
+                  "kind": "chat_message",
+                  "session_id": "sess_test",
+                  "message_id": "msg_1",
+                  "variant_id": null,
+                  "block_id": null,
+                  "text_start": 0,
+                  "text_end": 12,
+                  "speaker": "user",
+                  "resource_id": null,
+                  "quote_snapshot": "我当时发现 x 恰好是 x²+1 的导数的一半"
+                }
+              ]
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.review.insight_create_draft.turning-point-and-rule-both-blank",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "insight_create_draft",
+          "args": {
+            "input": {
+              "title": "导数结构识别 → 换元",
+              "situation": "求 ∫ x(x²+1)³ dx",
+              "stuck_point": "被积函数次数太高，展开不现实",
+              "turning_point": " ",
+              "rule": "",
+              "validity_conditions": "复合函数内层导数与外因子成比例",
+              "ownership": "self_reported",
+              "evidence": [
+                {
+                  "kind": "chat_message",
+                  "session_id": "sess_test",
+                  "message_id": "msg_1",
+                  "variant_id": null,
+                  "block_id": null,
+                  "text_start": 0,
+                  "text_end": 12,
+                  "speaker": "user",
+                  "resource_id": null,
+                  "quote_snapshot": "我当时发现 x 恰好是 x²+1 的导数的一半"
+                }
+              ]
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.review.insight_confirm.insight-not-found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "insight_confirm",
+          "args": {
+            "insightId": "ic_g3wmissing",
+            "edits": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.review.insight_confirm.deleted-insight",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "insight_create_draft",
+          "args": {
+            "input": {
+              "title": "导数结构识别 → 换元",
+              "situation": "求 ∫ x(x²+1)³ dx",
+              "stuck_point": "被积函数次数太高，展开不现实",
+              "turning_point": "观察到 x 是 (x²+1) 导数的倍数",
+              "rule": "识别被积函数中'一部分是另一部分导数'的结构 → 令其为 u",
+              "validity_conditions": "复合函数内层导数与外因子成比例",
+              "ownership": "self_reported",
+              "evidence": [
+                {
+                  "kind": "chat_message",
+                  "session_id": "sess_test",
+                  "message_id": "msg_1",
+                  "variant_id": null,
+                  "block_id": null,
+                  "text_start": 0,
+                  "text_end": 12,
+                  "speaker": "user",
+                  "resource_id": null,
+                  "quote_snapshot": "我当时发现 x 恰好是 x²+1 的导数的一半"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "insight_delete",
+          "args": {
+            "insightId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "insight_confirm",
+          "args": {
+            "insightId": "${0.id}",
+            "edits": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.review.insight_correct.insight-not-found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "insight_correct",
+          "args": {
+            "insightId": "ic_g3wmissing",
+            "input": {
+              "title": null,
+              "situation": null,
+              "stuck_point": null,
+              "turning_point": null,
+              "rule": "识别反向链式结构 → 换元（无论外层是多项式还是三角函数）",
+              "validity_conditions": null,
+              "edit_note": "确认时泛化规则"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.review.insight_record_feedback.unknown-feedback",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "insight_create_draft",
+          "args": {
+            "input": {
+              "title": "导数结构识别 → 换元",
+              "situation": "求 ∫ x(x²+1)³ dx",
+              "stuck_point": "被积函数次数太高，展开不现实",
+              "turning_point": "观察到 x 是 (x²+1) 导数的倍数",
+              "rule": "识别被积函数中'一部分是另一部分导数'的结构 → 令其为 u",
+              "validity_conditions": "复合函数内层导数与外因子成比例",
+              "ownership": "self_reported",
+              "evidence": [
+                {
+                  "kind": "chat_message",
+                  "session_id": "sess_test",
+                  "message_id": "msg_1",
+                  "variant_id": null,
+                  "block_id": null,
+                  "text_start": 0,
+                  "text_end": 12,
+                  "speaker": "user",
+                  "resource_id": null,
+                  "quote_snapshot": "我当时发现 x 恰好是 x²+1 的导数的一半"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "insight_record_feedback",
+          "args": {
+            "insightId": "${0.id}",
+            "feedback": "bogus",
+            "sessionId": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.review.insight_record_feedback.insight-fk-missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "insight_record_feedback",
+          "args": {
+            "insightId": "ic_g3wmissing",
+            "feedback": "not_applicable",
+            "sessionId": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.review.insight_add_relation.unknown-relation-type",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "insight_create_draft",
+          "args": {
+            "input": {
+              "title": "导数结构识别 → 换元",
+              "situation": "求 ∫ x(x²+1)³ dx",
+              "stuck_point": "被积函数次数太高，展开不现实",
+              "turning_point": "观察到 x 是 (x²+1) 导数的倍数",
+              "rule": "识别被积函数中'一部分是另一部分导数'的结构 → 令其为 u",
+              "validity_conditions": "复合函数内层导数与外因子成比例",
+              "ownership": "self_reported",
+              "evidence": [
+                {
+                  "kind": "chat_message",
+                  "session_id": "sess_test",
+                  "message_id": "msg_1",
+                  "variant_id": null,
+                  "block_id": null,
+                  "text_start": 0,
+                  "text_end": 12,
+                  "speaker": "user",
+                  "resource_id": null,
+                  "quote_snapshot": "我当时发现 x 恰好是 x²+1 的导数的一半"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "insight_create_draft",
+          "args": {
+            "input": {
+              "title": "sqrt(x²) 的化简",
+              "situation": "求 ∫ x(x²+1)³ dx",
+              "stuck_point": "被积函数次数太高，展开不现实",
+              "turning_point": "观察到 x 是 (x²+1) 导数的倍数",
+              "rule": "识别被积函数中'一部分是另一部分导数'的结构 → 令其为 u",
+              "validity_conditions": "复合函数内层导数与外因子成比例",
+              "ownership": "self_reported",
+              "evidence": [
+                {
+                  "kind": "chat_message",
+                  "session_id": "sess_test",
+                  "message_id": "msg_1",
+                  "variant_id": null,
+                  "block_id": null,
+                  "text_start": 0,
+                  "text_end": 12,
+                  "speaker": "user",
+                  "resource_id": null,
+                  "quote_snapshot": "我当时发现 x 恰好是 x²+1 的导数的一半"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "insight_add_relation",
+          "args": {
+            "fromId": "${0.id}",
+            "toId": "${1.id}",
+            "relationType": "bogus",
+            "scope": null,
+            "evidence": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.review.insight_add_relation.contradict-without-scope-evidence",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "insight_create_draft",
+          "args": {
+            "input": {
+              "title": "导数结构识别 → 换元",
+              "situation": "求 ∫ x(x²+1)³ dx",
+              "stuck_point": "被积函数次数太高，展开不现实",
+              "turning_point": "观察到 x 是 (x²+1) 导数的倍数",
+              "rule": "识别被积函数中'一部分是另一部分导数'的结构 → 令其为 u",
+              "validity_conditions": "复合函数内层导数与外因子成比例",
+              "ownership": "self_reported",
+              "evidence": [
+                {
+                  "kind": "chat_message",
+                  "session_id": "sess_test",
+                  "message_id": "msg_1",
+                  "variant_id": null,
+                  "block_id": null,
+                  "text_start": 0,
+                  "text_end": 12,
+                  "speaker": "user",
+                  "resource_id": null,
+                  "quote_snapshot": "我当时发现 x 恰好是 x²+1 的导数的一半"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "insight_create_draft",
+          "args": {
+            "input": {
+              "title": "sqrt(x²) 的化简",
+              "situation": "求 ∫ x(x²+1)³ dx",
+              "stuck_point": "被积函数次数太高，展开不现实",
+              "turning_point": "观察到 x 是 (x²+1) 导数的倍数",
+              "rule": "识别被积函数中'一部分是另一部分导数'的结构 → 令其为 u",
+              "validity_conditions": "复合函数内层导数与外因子成比例",
+              "ownership": "self_reported",
+              "evidence": [
+                {
+                  "kind": "chat_message",
+                  "session_id": "sess_test",
+                  "message_id": "msg_1",
+                  "variant_id": null,
+                  "block_id": null,
+                  "text_start": 0,
+                  "text_end": 12,
+                  "speaker": "user",
+                  "resource_id": null,
+                  "quote_snapshot": "我当时发现 x 恰好是 x²+1 的导数的一半"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "insight_add_relation",
+          "args": {
+            "fromId": "${0.id}",
+            "toId": "${1.id}",
+            "relationType": "contradict",
+            "scope": null,
+            "evidence": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.review.insight_add_relation.endpoint-not-found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "insight_create_draft",
+          "args": {
+            "input": {
+              "title": "导数结构识别 → 换元",
+              "situation": "求 ∫ x(x²+1)³ dx",
+              "stuck_point": "被积函数次数太高，展开不现实",
+              "turning_point": "观察到 x 是 (x²+1) 导数的倍数",
+              "rule": "识别被积函数中'一部分是另一部分导数'的结构 → 令其为 u",
+              "validity_conditions": "复合函数内层导数与外因子成比例",
+              "ownership": "self_reported",
+              "evidence": [
+                {
+                  "kind": "chat_message",
+                  "session_id": "sess_test",
+                  "message_id": "msg_1",
+                  "variant_id": null,
+                  "block_id": null,
+                  "text_start": 0,
+                  "text_end": 12,
+                  "speaker": "user",
+                  "resource_id": null,
+                  "quote_snapshot": "我当时发现 x 恰好是 x²+1 的导数的一半"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "insight_add_relation",
+          "args": {
+            "fromId": "${0.id}",
+            "toId": "ic_g3wmissing",
+            "relationType": "same_method",
+            "scope": null,
+            "evidence": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.review.study_time_add.bad-date-format",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "study_time_add",
+          "args": {
+            "seconds": 15,
+            "date": "2026/10/04"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.review.study_time_add.seconds-zero",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "study_time_add",
+          "args": {
+            "seconds": 0,
+            "date": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.review.study_time_add.date-too-far-from-today",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "study_time_add",
+          "args": {
+            "seconds": 15,
+            "date": "2000-01-01"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.review.study_time_range.bad-from",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "study_time_range",
+          "args": {
+            "from": "2026/10/01",
+            "to": "2026-10-05"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.review.study_time_range.bad-to",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "study_time_range",
+          "args": {
+            "from": "2026-10-01",
+            "to": "tomorrow"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.review.study_time_range.to-before-from",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "study_time_range",
+          "args": {
+            "from": "2026-10-05",
+            "to": "2026-10-01"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.review.study_time_range.span-over-3700-days",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "study_time_range",
+          "args": {
+            "from": "2000-01-01",
+            "to": "2026-10-05"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.review.fsrs_bury_card.blank-card-state-id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "fsrs_bury_card",
+          "args": {
+            "cardStateId": " "
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.review.fsrs_bury_card.card-state-not-found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "fsrs_bury_card",
+          "args": {
+            "cardStateId": "00000000-0000-4000-8000-000000000000"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.review.fsrs_unbury_card.blank-card-state-id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "fsrs_unbury_card",
+          "args": {
+            "cardStateId": ""
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.review.fsrs_unbury_card.card-state-not-found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "fsrs_unbury_card",
+          "args": {
+            "cardStateId": "00000000-0000-4000-8000-000000000000"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

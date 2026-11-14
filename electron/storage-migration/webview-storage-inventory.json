@@ -1,0 +1,3049 @@
+{
+ "generatedFrom": "src/** (static AST, per file)",
+ "summary": {
+  "filesWithLocalStorage": 152,
+  "prodFilesWithLocalStorage": 111,
+  "prodSites": 338,
+  "prodLocalStorageKeys": 113,
+  "prodLocalStoragePatterns": 8,
+  "prodLocalStorageUnresolvedSites": 42,
+  "prodSessionStorageSites": 8,
+  "prodModuleLevelSites": 5,
+  "prodUnguardedSites": 39,
+  "prodIndexedDbSites": 2,
+  "zustandPersist": 8
+ },
+ "keys": [
+  {
+   "area": "localStorage",
+   "key": "__WB_INTERACTION_TRACE__",
+   "keyKind": "literal",
+   "ops": [
+    "setItem"
+   ],
+   "owners": [
+    "features/workbench"
+   ],
+   "sites": [
+    "src/features/workbench/core/interactionTrace.ts:511"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "*::*",
+   "keyKind": "pattern",
+   "ops": [
+    "getItem",
+    "removeItem",
+    "setItem"
+   ],
+   "owners": [
+    "mcp/mcpService.ts"
+   ],
+   "sites": [
+    "src/mcp/mcpService.ts:338",
+    "src/mcp/mcpService.ts:345",
+    "src/mcp/mcpService.ts:352",
+    "src/mcp/mcpService.ts:383",
+    "src/mcp/mcpService.ts:399",
+    "src/mcp/mcpService.ts:402",
+    "src/mcp/mcpService.ts:405"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": null,
+   "keyKind": "unresolved",
+   "ops": [
+    "getItem"
+   ],
+   "owners": [
+    "App.tsx"
+   ],
+   "sites": [
+    "src/App.tsx:184 (module-level)"
+   ],
+   "expr": "WORKBENCH_MODE_CACHE_KEY"
+  },
+  {
+   "area": "localStorage",
+   "key": null,
+   "keyKind": "unresolved",
+   "ops": [
+    "getItem"
+   ],
+   "owners": [
+    "button-audit/ButtonAuditPage.tsx"
+   ],
+   "sites": [
+    "src/button-audit/ButtonAuditPage.tsx:15"
+   ],
+   "expr": "key"
+  },
+  {
+   "area": "localStorage",
+   "key": null,
+   "keyKind": "unresolved",
+   "ops": [
+    "setItem"
+   ],
+   "owners": [
+    "button-audit/ButtonAuditPage.tsx"
+   ],
+   "sites": [
+    "src/button-audit/ButtonAuditPage.tsx:39 (no try)"
+   ],
+   "expr": "storageKey"
+  },
+  {
+   "area": "localStorage",
+   "key": null,
+   "keyKind": "unresolved",
+   "ops": [
+    "removeItem"
+   ],
+   "owners": [
+    "components/EssayGradingWorkbench.tsx"
+   ],
+   "sites": [
+    "src/components/EssayGradingWorkbench.tsx:545"
+   ],
+   "expr": "draftKey"
+  },
+  {
+   "area": "localStorage",
+   "key": null,
+   "keyKind": "unresolved",
+   "ops": [
+    "setItem"
+   ],
+   "owners": [
+    "components/EssayGradingWorkbench.tsx"
+   ],
+   "sites": [
+    "src/components/EssayGradingWorkbench.tsx:547"
+   ],
+   "expr": "draftKey"
+  },
+  {
+   "area": "localStorage",
+   "key": null,
+   "keyKind": "unresolved",
+   "ops": [
+    "getItem"
+   ],
+   "owners": [
+    "components/EssayGradingWorkbench.tsx"
+   ],
+   "sites": [
+    "src/components/EssayGradingWorkbench.tsx:560 (no try)"
+   ],
+   "expr": "draftKey"
+  },
+  {
+   "area": "localStorage",
+   "key": null,
+   "keyKind": "unresolved",
+   "ops": [
+    "removeItem"
+   ],
+   "owners": [
+    "components/EssayGradingWorkbench.tsx"
+   ],
+   "sites": [
+    "src/components/EssayGradingWorkbench.tsx:622 (no try)"
+   ],
+   "expr": "draftKey"
+  },
+  {
+   "area": "localStorage",
+   "key": null,
+   "keyKind": "unresolved",
+   "ops": [
+    "setItem"
+   ],
+   "owners": [
+    "components/EssayGradingWorkbench.tsx"
+   ],
+   "sites": [
+    "src/components/EssayGradingWorkbench.tsx:624 (no try)"
+   ],
+   "expr": "draftKey"
+  },
+  {
+   "area": "localStorage",
+   "key": null,
+   "keyKind": "unresolved",
+   "ops": [
+    "removeItem"
+   ],
+   "owners": [
+    "components/EssayGradingWorkbench.tsx"
+   ],
+   "sites": [
+    "src/components/EssayGradingWorkbench.tsx:1514"
+   ],
+   "expr": "draftKey"
+  },
+  {
+   "area": "localStorage",
+   "key": null,
+   "keyKind": "unresolved",
+   "ops": [
+    "getItem"
+   ],
+   "owners": [
+    "components/shared"
+   ],
+   "sites": [
+    "src/components/shared/Resizable.tsx:9"
+   ],
+   "expr": "storageKey"
+  },
+  {
+   "area": "localStorage",
+   "key": null,
+   "keyKind": "unresolved",
+   "ops": [
+    "setItem"
+   ],
+   "owners": [
+    "components/shared"
+   ],
+   "sites": [
+    "src/components/shared/Resizable.tsx:21"
+   ],
+   "expr": "storageKey"
+  },
+  {
+   "area": "localStorage",
+   "key": null,
+   "keyKind": "unresolved",
+   "ops": [
+    "setItem"
+   ],
+   "owners": [
+    "demo/app"
+   ],
+   "sites": [
+    "src/demo/app/main.tsx:67"
+   ],
+   "expr": "key"
+  },
+  {
+   "area": "localStorage",
+   "key": null,
+   "keyKind": "unresolved",
+   "ops": [
+    "getItem"
+   ],
+   "owners": [
+    "features/chat"
+   ],
+   "sites": [
+    "src/features/chat/pages/useSessionLifecycle.ts:318"
+   ],
+   "expr": "LAST_SESSION_KEY"
+  },
+  {
+   "area": "localStorage",
+   "key": null,
+   "keyKind": "unresolved",
+   "ops": [
+    "removeItem"
+   ],
+   "owners": [
+    "features/chat"
+   ],
+   "sites": [
+    "src/features/chat/pages/useSessionLifecycle.ts:320"
+   ],
+   "expr": "LAST_SESSION_KEY"
+  },
+  {
+   "area": "localStorage",
+   "key": null,
+   "keyKind": "unresolved",
+   "ops": [
+    "getItem"
+   ],
+   "owners": [
+    "features/chat"
+   ],
+   "sites": [
+    "src/features/chat/skills/PersistentSetManager.ts:32"
+   ],
+   "expr": "this.storageKey"
+  },
+  {
+   "area": "localStorage",
+   "key": null,
+   "keyKind": "unresolved",
+   "ops": [
+    "setItem"
+   ],
+   "owners": [
+    "features/chat"
+   ],
+   "sites": [
+    "src/features/chat/skills/PersistentSetManager.ts:58"
+   ],
+   "expr": "this.storageKey"
+  },
+  {
+   "area": "localStorage",
+   "key": null,
+   "keyKind": "unresolved",
+   "ops": [
+    "setItem"
+   ],
+   "owners": [
+    "features/media-studio"
+   ],
+   "sites": [
+    "src/features/media-studio/components/MediaLibraryPage.tsx:125"
+   ],
+   "expr": "key"
+  },
+  {
+   "area": "localStorage",
+   "key": null,
+   "keyKind": "unresolved",
+   "ops": [
+    "getItem"
+   ],
+   "owners": [
+    "features/mindmap"
+   ],
+   "sites": [
+    "src/features/mindmap/hooks/useCanvasDragMode.ts:25"
+   ],
+   "expr": "storageKey"
+  },
+  {
+   "area": "localStorage",
+   "key": null,
+   "keyKind": "unresolved",
+   "ops": [
+    "setItem"
+   ],
+   "owners": [
+    "features/mindmap"
+   ],
+   "sites": [
+    "src/features/mindmap/hooks/useCanvasDragMode.ts:40"
+   ],
+   "expr": "storageKey"
+  },
+  {
+   "area": "localStorage",
+   "key": null,
+   "keyKind": "unresolved",
+   "ops": [
+    "setItem"
+   ],
+   "owners": [
+    "features/settings"
+   ],
+   "sites": [
+    "src/features/settings/components/CloudStorageSection.tsx:495 (no try)"
+   ],
+   "expr": "CONFIG_STORAGE_KEY"
+  },
+  {
+   "area": "localStorage",
+   "key": null,
+   "keyKind": "unresolved",
+   "ops": [
+    "setItem"
+   ],
+   "owners": [
+    "features/settings"
+   ],
+   "sites": [
+    "src/features/settings/components/CloudStorageSection.tsx:496 (no try)"
+   ],
+   "expr": "cloudApi.CLOUD_STORAGE_SSOT_MIGRATED_STORAGE_KEY"
+  },
+  {
+   "area": "localStorage",
+   "key": null,
+   "keyKind": "unresolved",
+   "ops": [
+    "removeItem"
+   ],
+   "owners": [
+    "features/settings"
+   ],
+   "sites": [
+    "src/features/settings/components/CloudStorageSection.tsx:646 (no try)"
+   ],
+   "expr": "CONFIG_STORAGE_KEY"
+  },
+  {
+   "area": "localStorage",
+   "key": null,
+   "keyKind": "unresolved",
+   "ops": [
+    "removeItem"
+   ],
+   "owners": [
+    "features/settings"
+   ],
+   "sites": [
+    "src/features/settings/components/CloudStorageSection.tsx:647 (no try)"
+   ],
+   "expr": "cloudApi.CLOUD_STORAGE_LEGACY_STORAGE_KEY"
+  },
+  {
+   "area": "localStorage",
+   "key": null,
+   "keyKind": "unresolved",
+   "ops": [
+    "setItem"
+   ],
+   "owners": [
+    "features/settings"
+   ],
+   "sites": [
+    "src/features/settings/components/CloudStorageSection.tsx:648 (no try)"
+   ],
+   "expr": "cloudApi.CLOUD_STORAGE_SSOT_MIGRATED_STORAGE_KEY"
+  },
+  {
+   "area": "localStorage",
+   "key": null,
+   "keyKind": "unresolved",
+   "ops": [
+    "getItem"
+   ],
+   "owners": [
+    "features/workbench"
+   ],
+   "sites": [
+    "src/features/workbench/apps/content/ResourceAppWorkspace.tsx:51"
+   ],
+   "expr": "sidebarPreferenceKey(type)"
+  },
+  {
+   "area": "localStorage",
+   "key": null,
+   "keyKind": "unresolved",
+   "ops": [
+    "setItem"
+   ],
+   "owners": [
+    "features/workbench"
+   ],
+   "sites": [
+    "src/features/workbench/apps/content/ResourceAppWorkspace.tsx:60"
+   ],
+   "expr": "sidebarPreferenceKey(type)"
+  },
+  {
+   "area": "localStorage",
+   "key": null,
+   "keyKind": "unresolved",
+   "ops": [
+    "getItem"
+   ],
+   "owners": [
+    "features/workbench"
+   ],
+   "sites": [
+    "src/features/workbench/components/DesktopContextMenu.tsx:78"
+   ],
+   "expr": "key"
+  },
+  {
+   "area": "localStorage",
+   "key": null,
+   "keyKind": "unresolved",
+   "ops": [
+    "setItem"
+   ],
+   "owners": [
+    "features/workbench"
+   ],
+   "sites": [
+    "src/features/workbench/components/DesktopContextMenu.tsx:95"
+   ],
+   "expr": "key"
+  },
+  {
+   "area": "localStorage",
+   "key": null,
+   "keyKind": "unresolved",
+   "ops": [
+    "setItem"
+   ],
+   "owners": [
+    "features/workbench"
+   ],
+   "sites": [
+    "src/features/workbench/components/WallpaperManagerDialog.tsx:61"
+   ],
+   "expr": "key"
+  },
+  {
+   "area": "localStorage",
+   "key": null,
+   "keyKind": "unresolved",
+   "ops": [
+    "getItem"
+   ],
+   "owners": [
+    "features/workbench"
+   ],
+   "sites": [
+    "src/features/workbench/components/WorkbenchDesktop.tsx:138"
+   ],
+   "expr": "key"
+  },
+  {
+   "area": "localStorage",
+   "key": null,
+   "keyKind": "unresolved",
+   "ops": [
+    "getItem"
+   ],
+   "owners": [
+    "features/workbench"
+   ],
+   "sites": [
+    "src/features/workbench/components/desktopNameStore.ts:46"
+   ],
+   "expr": "key"
+  },
+  {
+   "area": "localStorage",
+   "key": null,
+   "keyKind": "unresolved",
+   "ops": [
+    "getItem"
+   ],
+   "owners": [
+    "features/workbench"
+   ],
+   "sites": [
+    "src/features/workbench/core/snapshot.ts:83 (no try)"
+   ],
+   "expr": "key"
+  },
+  {
+   "area": "localStorage",
+   "key": null,
+   "keyKind": "unresolved",
+   "ops": [
+    "setItem"
+   ],
+   "owners": [
+    "features/workbench"
+   ],
+   "sites": [
+    "src/features/workbench/core/snapshot.ts:90 (no try)"
+   ],
+   "expr": "key"
+  },
+  {
+   "area": "localStorage",
+   "key": null,
+   "keyKind": "unresolved",
+   "ops": [
+    "removeItem"
+   ],
+   "owners": [
+    "mcp/mcpService.ts"
+   ],
+   "sites": [
+    "src/mcp/mcpService.ts:1197 (no try)"
+   ],
+   "expr": "key"
+  },
+  {
+   "area": "localStorage",
+   "key": null,
+   "keyKind": "unresolved",
+   "ops": [
+    "getItem"
+   ],
+   "owners": [
+    "utils/ensureNamedExam.ts"
+   ],
+   "sites": [
+    "src/utils/ensureNamedExam.ts:10"
+   ],
+   "expr": "storageKey"
+  },
+  {
+   "area": "localStorage",
+   "key": null,
+   "keyKind": "unresolved",
+   "ops": [
+    "setItem"
+   ],
+   "owners": [
+    "utils/ensureNamedExam.ts"
+   ],
+   "sites": [
+    "src/utils/ensureNamedExam.ts:22"
+   ],
+   "expr": "storageKey"
+  },
+  {
+   "area": "localStorage",
+   "key": null,
+   "keyKind": "unresolved",
+   "ops": [
+    "setItem"
+   ],
+   "owners": [
+    "utils/settingsApi.ts"
+   ],
+   "sites": [
+    "src/utils/settingsApi.ts:11"
+   ],
+   "expr": "key"
+  },
+  {
+   "area": "localStorage",
+   "key": null,
+   "keyKind": "unresolved",
+   "ops": [
+    "getItem"
+   ],
+   "owners": [
+    "utils/settingsApi.ts"
+   ],
+   "sites": [
+    "src/utils/settingsApi.ts:24 (no try)"
+   ],
+   "expr": "key"
+  },
+  {
+   "area": "localStorage",
+   "key": null,
+   "keyKind": "unresolved",
+   "ops": [
+    "getItem"
+   ],
+   "owners": [
+    "utils/settingsApi.ts"
+   ],
+   "sites": [
+    "src/utils/settingsApi.ts:34 (no try)"
+   ],
+   "expr": "key"
+  },
+  {
+   "area": "localStorage",
+   "key": null,
+   "keyKind": "unresolved",
+   "ops": [
+    "getItem"
+   ],
+   "owners": [
+    "utils/settingsApi.ts"
+   ],
+   "sites": [
+    "src/utils/settingsApi.ts:42 (no try)"
+   ],
+   "expr": "key"
+  },
+  {
+   "area": "localStorage",
+   "key": null,
+   "keyKind": "unresolved",
+   "ops": [
+    "removeItem"
+   ],
+   "owners": [
+    "utils/settingsApi.ts"
+   ],
+   "sites": [
+    "src/utils/settingsApi.ts:90 (no try)"
+   ],
+   "expr": "key"
+  },
+  {
+   "area": "localStorage",
+   "key": null,
+   "keyKind": "unresolved",
+   "ops": [
+    "getItem"
+   ],
+   "owners": [
+    "utils/systemApi.ts"
+   ],
+   "sites": [
+    "src/utils/systemApi.ts:127 (no try)"
+   ],
+   "expr": "key"
+  },
+  {
+   "area": "localStorage",
+   "key": "ai-mistake-manager-config",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "removeItem"
+   ],
+   "owners": [
+    "features/settings"
+   ],
+   "sites": [
+    "src/features/settings/components/useSettingsConfig.ts:317",
+    "src/features/settings/components/useSettingsConfig.ts:323"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "AIMM_TEST_CONFIG",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "removeItem"
+   ],
+   "owners": [
+    "utils/testMode.ts"
+   ],
+   "sites": [
+    "src/utils/testMode.ts:35",
+    "src/utils/testMode.ts:38"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "AIMM_TEST_MODE",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "removeItem"
+   ],
+   "owners": [
+    "utils/testMode.ts"
+   ],
+   "sites": [
+    "src/utils/testMode.ts:29",
+    "src/utils/testMode.ts:32"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "aimm-theme-mode",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "removeItem"
+   ],
+   "owners": [
+    "hooks/useTheme.ts"
+   ],
+   "sites": [
+    "src/hooks/useTheme.ts:176",
+    "src/hooks/useTheme.ts:179"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "aimm-theme-palette",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "removeItem"
+   ],
+   "owners": [
+    "hooks/useTheme.ts"
+   ],
+   "sites": [
+    "src/hooks/useTheme.ts:181",
+    "src/hooks/useTheme.ts:184"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "anki_cards_cache",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "services/ankiApiAdapter.ts"
+   ],
+   "sites": [
+    "src/services/ankiApiAdapter.ts:141",
+    "src/services/ankiApiAdapter.ts:145"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "CA_INTEGRATION_TEST_CONFIG",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "debug-panel/plugins"
+   ],
+   "sites": [
+    "src/debug-panel/plugins/ChatAnkiIntegrationTestPlugin.tsx:59",
+    "src/debug-panel/plugins/ChatAnkiIntegrationTestPlugin.tsx:60"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "chat-v2-group-collapsed",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "features/chat"
+   ],
+   "sites": [
+    "src/features/chat/hooks/useGroupCollapse.ts:7",
+    "src/features/chat/hooks/useGroupCollapse.ts:29",
+    "src/features/chat/hooks/useGroupCollapse.ts:42",
+    "src/features/chat/hooks/useGroupCollapse.ts:67"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "chat-v2-last-session-id",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "removeItem",
+    "setItem"
+   ],
+   "owners": [
+    "components/ModernSidebar.tsx",
+    "features/chat"
+   ],
+   "sites": [
+    "src/components/ModernSidebar.tsx:330",
+    "src/features/chat/hooks/useSessionManagement.ts:121",
+    "src/features/chat/hooks/useSessionManagement.ts:141",
+    "src/features/chat/hooks/useSessionManagement.ts:145",
+    "src/features/chat/hooks/useSessionManagement.ts:206",
+    "src/features/chat/hooks/useSessionManagement.ts:208",
+    "src/features/chat/pages/ChatV2Page.tsx:182"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "chat-v2-sidebar-expanded-folders",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "features/chat"
+   ],
+   "sites": [
+    "src/features/chat/pages/SessionSidebarContent.tsx:66",
+    "src/features/chat/pages/SessionSidebarContent.tsx:338"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "chat-v2:default-permission-preset",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "features/chat"
+   ],
+   "sites": [
+    "src/features/chat/core/session/permissionPresetDefaults.ts:26",
+    "src/features/chat/core/session/permissionPresetDefaults.ts:35"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "CITATION_TEST_CONFIG",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "debug-panel/plugins"
+   ],
+   "sites": [
+    "src/debug-panel/plugins/CitationTestPlugin.tsx:105",
+    "src/debug-panel/plugins/CitationTestPlugin.tsx:112"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "cloud_storage_ftp_risk_warning_v1",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "features/settings"
+   ],
+   "sites": [
+    "src/features/settings/components/CloudStorageSection.tsx:388 (no try)",
+    "src/features/settings/components/CloudStorageSection.tsx:391 (no try)"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "complex_templates_force_imported",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "removeItem",
+    "setItem"
+   ],
+   "owners": [
+    "utils/forceImportTemplates.ts"
+   ],
+   "sites": [
+    "src/utils/forceImportTemplates.ts:88",
+    "src/utils/forceImportTemplates.ts:140 (no try)",
+    "src/utils/forceImportTemplates.ts:150 (no try)"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "dataGovernance.backupVerification.v1",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "features/settings"
+   ],
+   "sites": [
+    "src/features/settings/components/DataGovernanceDashboard.tsx:632",
+    "src/features/settings/components/DataGovernanceDashboard.tsx:650"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "deep-student-config",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "features/settings"
+   ],
+   "sites": [
+    "src/features/settings/components/useSettingsConfig.ts:314",
+    "src/features/settings/components/useSettingsConfig.ts:321",
+    "src/features/settings/components/useSettingsConfig.ts:421"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "deep-student:chat:recent-models:v1",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "features/chat"
+   ],
+   "sites": [
+    "src/features/chat/hooks/useRecentChatModels.ts:12",
+    "src/features/chat/hooks/useRecentChatModels.ts:30"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "deep-student:mindmap-clipboard:v1",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "removeItem",
+    "setItem"
+   ],
+   "owners": [
+    "features/mindmap"
+   ],
+   "sites": [
+    "src/features/mindmap/utils/clipboardCodec.ts:284",
+    "src/features/mindmap/utils/clipboardCodec.ts:288",
+    "src/features/mindmap/utils/clipboardCodec.ts:297"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "deep-student:mindmap-preferences:v1",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "features/mindmap"
+   ],
+   "sites": [
+    "src/features/mindmap/utils/mindmapPreferences.ts:27",
+    "src/features/mindmap/utils/mindmapPreferences.ts:40",
+    "src/features/mindmap/utils/mindmapPreferences.ts:55"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "deep-student.pending-recovery-receipt",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "removeItem",
+    "setItem"
+   ],
+   "owners": [
+    "app/hooks",
+    "features/data-recovery"
+   ],
+   "sites": [
+    "src/app/hooks/useViewRedirects.ts:16",
+    "src/app/hooks/useViewRedirects.ts:18",
+    "src/features/data-recovery/RecoveryCenter.tsx:218",
+    "src/features/data-recovery/dataRecoveryApi.ts:173"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "deep-student.skill-enable-overrides",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "features/chat"
+   ],
+   "sites": [
+    "src/features/chat/skills/skillEnableStorage.ts:22",
+    "src/features/chat/skills/skillEnableStorage.ts:34 (no try)"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "deep-student.skill-trust-overrides",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "features/chat"
+   ],
+   "sites": [
+    "src/features/chat/skills/skillTrustStorage.ts:44",
+    "src/features/chat/skills/skillTrustStorage.ts:56 (no try)"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "desktop.acr.undoJournal.v3",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "removeItem",
+    "setItem"
+   ],
+   "owners": [
+    "features/workbench"
+   ],
+   "sites": [
+    "src/features/workbench/core/agentUndoJournal.ts:71",
+    "src/features/workbench/core/agentUndoJournal.ts:125",
+    "src/features/workbench/core/agentUndoJournal.ts:234"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "desktop.workbenchDesktopName",
+   "keyKind": "literal",
+   "ops": [
+    "setItem"
+   ],
+   "owners": [
+    "features/workbench"
+   ],
+   "sites": [
+    "src/features/workbench/components/desktopNameStore.ts:97"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "desktop.workbenchMode",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "removeItem",
+    "setItem"
+   ],
+   "owners": [
+    "app/hooks",
+    "demo/main.tsx"
+   ],
+   "sites": [
+    "src/app/hooks/useWorkbenchMode.ts:30",
+    "src/app/hooks/useWorkbenchMode.ts:40",
+    "src/demo/main.tsx:55 (module-level) (no try)",
+    "src/demo/main.tsx:56 (module-level) (no try)",
+    "src/demo/main.tsx:59 (no try)",
+    "src/demo/main.tsx:61 (no try)"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "ds-update-channel",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "hooks/useAppUpdater.ts"
+   ],
+   "sites": [
+    "src/hooks/useAppUpdater.ts:168",
+    "src/hooks/useAppUpdater.ts:173"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "ds-update-frequency",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "hooks/useAppUpdater.ts"
+   ],
+   "sites": [
+    "src/hooks/useAppUpdater.ts:92",
+    "src/hooks/useAppUpdater.ts:100"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "ds-update-frequency-days",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "hooks/useAppUpdater.ts"
+   ],
+   "sites": [
+    "src/hooks/useAppUpdater.ts:110",
+    "src/hooks/useAppUpdater.ts:116"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "ds-update-last-check",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "hooks/useAppUpdater.ts"
+   ],
+   "sites": [
+    "src/hooks/useAppUpdater.ts:143",
+    "src/hooks/useAppUpdater.ts:149"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "ds-update-no-remind",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "removeItem",
+    "setItem"
+   ],
+   "owners": [
+    "hooks/useAppUpdater.ts"
+   ],
+   "sites": [
+    "src/hooks/useAppUpdater.ts:103",
+    "src/hooks/useAppUpdater.ts:128",
+    "src/hooks/useAppUpdater.ts:134",
+    "src/hooks/useAppUpdater.ts:136"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "ds-update-skipped-version",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "hooks/useAppUpdater.ts"
+   ],
+   "sites": [
+    "src/hooks/useAppUpdater.ts:120",
+    "src/hooks/useAppUpdater.ts:124"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "ds.pdfjs.remoteAssetBase",
+   "keyKind": "literal",
+   "ops": [
+    "getItem"
+   ],
+   "owners": [
+    "utils/pdfAssets.ts"
+   ],
+   "sites": [
+    "src/utils/pdfAssets.ts:80"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "ds.superAgent.enabled",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "stores/superAgentEnabledStore.ts"
+   ],
+   "sites": [
+    "src/stores/superAgentEnabledStore.ts:46",
+    "src/stores/superAgentEnabledStore.ts:62"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "ds.superAgent.sessionId",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "removeItem",
+    "setItem"
+   ],
+   "owners": [
+    "stores/superAgentEnabledStore.ts"
+   ],
+   "sites": [
+    "src/stores/superAgentEnabledStore.ts:54",
+    "src/stores/superAgentEnabledStore.ts:63",
+    "src/stores/superAgentEnabledStore.ts:64"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "DSTU_DBG_DISPLAY_LIMIT",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "debug-panel/plugins"
+   ],
+   "sites": [
+    "src/debug-panel/plugins/StreamingDebuggerPlugin.tsx:144",
+    "src/debug-panel/plugins/StreamingDebuggerPlugin.tsx:151"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "DSTU_DBG_MAXBUF",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "debug-panel/plugins"
+   ],
+   "sites": [
+    "src/debug-panel/plugins/StreamingDebuggerPlugin.tsx:128",
+    "src/debug-panel/plugins/StreamingDebuggerPlugin.tsx:137"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "DSTU_DBG_POS",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "debug-panel/DebugPanelHost.tsx"
+   ],
+   "sites": [
+    "src/debug-panel/DebugPanelHost.tsx:570",
+    "src/debug-panel/DebugPanelHost.tsx:745"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "DSTU_DBG_SIZE",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "debug-panel/DebugPanelHost.tsx"
+   ],
+   "sites": [
+    "src/debug-panel/DebugPanelHost.tsx:584",
+    "src/debug-panel/DebugPanelHost.tsx:752"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "DSTU_DBG_VIEW",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "debug-panel/plugins"
+   ],
+   "sites": [
+    "src/debug-panel/plugins/StreamingDebuggerPlugin.tsx:175",
+    "src/debug-panel/plugins/StreamingDebuggerPlugin.tsx:183"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "DSTU_DEBUG_ACTIVATED",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "debug-panel/DebugPanelHost.tsx"
+   ],
+   "sites": [
+    "src/debug-panel/DebugPanelHost.tsx:619",
+    "src/debug-panel/DebugPanelHost.tsx:672"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "DSTU_DEBUG_ENABLED",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "debug-panel/plugins",
+    "utils/pdfDebug.ts"
+   ],
+   "sites": [
+    "src/debug-panel/plugins/TimelineSourceMonitorPlugin.tsx:132",
+    "src/debug-panel/plugins/TimelineSourceMonitorPlugin.tsx:139",
+    "src/utils/pdfDebug.ts:23 (module-level)"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "DSTU_DEBUG_FAVORITES",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "debug-panel/DebugPanelHost.tsx"
+   ],
+   "sites": [
+    "src/debug-panel/DebugPanelHost.tsx:605",
+    "src/debug-panel/DebugPanelHost.tsx:658"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "DSTU_DEBUG_MASTER_SWITCH",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "debug-panel/debugMasterSwitch.ts"
+   ],
+   "sites": [
+    "src/debug-panel/debugMasterSwitch.ts:19",
+    "src/debug-panel/debugMasterSwitch.ts:29"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "DSTU_DEBUG_PLUGIN",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "removeItem"
+   ],
+   "owners": [
+    "debug-panel/DebugPanelHost.tsx"
+   ],
+   "sites": [
+    "src/debug-panel/DebugPanelHost.tsx:683 (no try)",
+    "src/debug-panel/DebugPanelHost.tsx:691 (no try)"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "DSTU_TEST_CONFIG",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "utils/testMode.ts"
+   ],
+   "sites": [
+    "src/utils/testMode.ts:36",
+    "src/utils/testMode.ts:37",
+    "src/utils/testMode.ts:177",
+    "src/utils/testMode.ts:218"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "DSTU_TEST_MODE",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "removeItem",
+    "setItem"
+   ],
+   "owners": [
+    "utils/emitDebug.ts",
+    "utils/testMode.ts"
+   ],
+   "sites": [
+    "src/utils/emitDebug.ts:66",
+    "src/utils/testMode.ts:30",
+    "src/utils/testMode.ts:31",
+    "src/utils/testMode.ts:66",
+    "src/utils/testMode.ts:88",
+    "src/utils/testMode.ts:99"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "DSTU_UI_LAB_ENABLED",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "utils/uiLabToggle.ts"
+   ],
+   "sites": [
+    "src/utils/uiLabToggle.ts:9",
+    "src/utils/uiLabToggle.ts:17"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "dstu-command-favorites",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "command-palette/registry"
+   ],
+   "sites": [
+    "src/command-palette/registry/commandFavorites.ts:24",
+    "src/command-palette/registry/commandFavorites.ts:40"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "dstu-command-history",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "command-palette/registry"
+   ],
+   "sites": [
+    "src/command-palette/registry/commandHistory.ts:31",
+    "src/command-palette/registry/commandHistory.ts:46"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "dstu-custom-shortcuts",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "command-palette/registry"
+   ],
+   "sites": [
+    "src/command-palette/registry/shortcutManager.ts:39",
+    "src/command-palette/registry/shortcutManager.ts:54"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "dstu-debug-toggle-pos",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "components/dev"
+   ],
+   "sites": [
+    "src/components/dev/GlobalDebugPanel.tsx:43",
+    "src/components/dev/GlobalDebugPanel.tsx:239"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "dstu-dev-recovery-fab-pos",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "dev/DevMobileRecoveryFab.tsx"
+   ],
+   "sites": [
+    "src/dev/DevMobileRecoveryFab.tsx:25",
+    "src/dev/DevMobileRecoveryFab.tsx:87"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "dstu-media-player-rate",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "features/learning-hub"
+   ],
+   "sites": [
+    "src/features/learning-hub/apps/views/media/useMediaPlayback.ts:62",
+    "src/features/learning-hub/apps/views/media/useMediaPlayback.ts:75"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "dstu-media-player-volume",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "features/learning-hub"
+   ],
+   "sites": [
+    "src/features/learning-hub/apps/views/media/useMediaPlayback.ts:36",
+    "src/features/learning-hub/apps/views/media/useMediaPlayback.ts:54"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "dstu-theme-custom-color",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "hooks/useTheme.ts",
+    "quick-assistant/QuickAssistantWindow.tsx"
+   ],
+   "sites": [
+    "src/hooks/useTheme.ts:275 (no try)",
+    "src/hooks/useTheme.ts:372",
+    "src/quick-assistant/QuickAssistantWindow.tsx:131"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "dstu-theme-mode",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "components/shared",
+    "demo/app",
+    "demo/main.tsx",
+    "hooks/useSystemSettings.ts",
+    "hooks/useTheme.ts",
+    "quick-assistant/QuickAssistantWindow.tsx",
+    "utils/chatV2DomainEventBridge.ts"
+   ],
+   "sites": [
+    "src/components/shared/UnifiedCodeEditor.tsx:206",
+    "src/demo/app/main.tsx:66",
+    "src/demo/main.tsx:47 (module-level) (no try)",
+    "src/hooks/useSystemSettings.ts:105",
+    "src/hooks/useTheme.ts:177",
+    "src/hooks/useTheme.ts:178",
+    "src/hooks/useTheme.ts:266 (no try)",
+    "src/hooks/useTheme.ts:349",
+    "src/quick-assistant/QuickAssistantWindow.tsx:122",
+    "src/utils/chatV2DomainEventBridge.ts:52"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "dstu-theme-palette",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "hooks/useTheme.ts",
+    "quick-assistant/QuickAssistantWindow.tsx",
+    "utils/chatV2DomainEventBridge.ts"
+   ],
+   "sites": [
+    "src/hooks/useTheme.ts:182",
+    "src/hooks/useTheme.ts:183",
+    "src/hooks/useTheme.ts:267 (no try)",
+    "src/hooks/useTheme.ts:360",
+    "src/hooks/useTheme.ts:373",
+    "src/quick-assistant/QuickAssistantWindow.tsx:126",
+    "src/utils/chatV2DomainEventBridge.ts:55"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "epub-reader:*",
+   "keyKind": "pattern",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "features/learning-hub"
+   ],
+   "sites": [
+    "src/features/learning-hub/apps/views/EpubPreview.tsx:108 (no try)",
+    "src/features/learning-hub/apps/views/EpubPreview.tsx:285",
+    "src/features/learning-hub/apps/views/EpubPreview.tsx:307"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "essay_draft_*",
+   "keyKind": "pattern",
+   "ops": [
+    "removeItem",
+    "setItem"
+   ],
+   "owners": [
+    "components/EssayGradingWorkbench.tsx"
+   ],
+   "sites": [
+    "src/components/EssayGradingWorkbench.tsx:589",
+    "src/components/EssayGradingWorkbench.tsx:1116"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "essay_draft_new",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "removeItem"
+   ],
+   "owners": [
+    "components/EssayGradingWorkbench.tsx"
+   ],
+   "sites": [
+    "src/components/EssayGradingWorkbench.tsx:586 (no try)",
+    "src/components/EssayGradingWorkbench.tsx:590",
+    "src/components/EssayGradingWorkbench.tsx:1117"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "high_quality_templates_imported_v2",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "removeItem"
+   ],
+   "owners": [
+    "utils/forceImportTemplates.ts"
+   ],
+   "sites": [
+    "src/utils/forceImportTemplates.ts:87",
+    "src/utils/forceImportTemplates.ts:141 (no try)",
+    "src/utils/forceImportTemplates.ts:149 (no try)"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "i18nextLng",
+   "keyKind": "literal",
+   "ops": [
+    "getItem"
+   ],
+   "owners": [
+    "quick-assistant/QuickAssistantWindow.tsx"
+   ],
+   "sites": [
+    "src/quick-assistant/QuickAssistantWindow.tsx:135"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "imageViewer.blurEnabled",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "components/ImageViewer.tsx"
+   ],
+   "sites": [
+    "src/components/ImageViewer.tsx:44",
+    "src/components/ImageViewer.tsx:185"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "INTERACTION_TEST_CONFIG",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "debug-panel/plugins"
+   ],
+   "sites": [
+    "src/debug-panel/plugins/ChatInteractionTestPlugin.tsx:106",
+    "src/debug-panel/plugins/ChatInteractionTestPlugin.tsx:113"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "learning-daily-digest-date-v1",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "features/todo"
+   ],
+   "sites": [
+    "src/features/todo/reminderScheduler.ts:276",
+    "src/features/todo/reminderScheduler.ts:298"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "learning-hub-tabs-v1",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "features/learning-hub"
+   ],
+   "sites": [
+    "src/features/learning-hub/LearningHubPage.tsx:198",
+    "src/features/learning-hub/LearningHubPage.tsx:243"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "learningHub.examsView",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "features/learning-hub"
+   ],
+   "sites": [
+    "src/features/learning-hub/mistakeBook/mistakeBookNavigation.ts:44",
+    "src/features/learning-hub/mistakeBook/mistakeBookNavigation.ts:56",
+    "src/features/learning-hub/mistakeBook/mistakeBookNavigation.ts:61"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "learningHub.notesLearningView",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "features/learning-hub",
+    "features/learning-today"
+   ],
+   "sites": [
+    "src/features/learning-hub/components/finder/NotesLearningViewTabs.tsx:21",
+    "src/features/learning-hub/components/finder/NotesLearningViewTabs.tsx:27",
+    "src/features/learning-today/todayLearning.ts:61"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "learningToday.starterDismissed",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "features/learning-today"
+   ],
+   "sites": [
+    "src/features/learning-today/TodayReviewHint.tsx:20",
+    "src/features/learning-today/TodayReviewHint.tsx:46"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "mcp.performance.cache_max_size",
+   "keyKind": "literal",
+   "ops": [
+    "getItem"
+   ],
+   "owners": [
+    "mcp/mcpService.ts"
+   ],
+   "sites": [
+    "src/mcp/mcpService.ts:2074"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "mcp.performance.cache_ttl_ms",
+   "keyKind": "literal",
+   "ops": [
+    "getItem"
+   ],
+   "owners": [
+    "mcp/mcpService.ts"
+   ],
+   "sites": [
+    "src/mcp/mcpService.ts:2026"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "mcp.performance.rate_limit_per_second",
+   "keyKind": "literal",
+   "ops": [
+    "getItem"
+   ],
+   "owners": [
+    "mcp/mcpService.ts"
+   ],
+   "sites": [
+    "src/mcp/mcpService.ts:2073"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "mcp.performance.timeout_ms",
+   "keyKind": "literal",
+   "ops": [
+    "getItem"
+   ],
+   "owners": [
+    "mcp/mcpService.ts"
+   ],
+   "sites": [
+    "src/mcp/mcpService.ts:2072"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "mcp.tools.cache_ttl_ms",
+   "keyKind": "literal",
+   "ops": [
+    "getItem"
+   ],
+   "owners": [
+    "mcp/mcpService.ts"
+   ],
+   "sites": [
+    "src/mcp/mcpService.ts:2026"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "mcp.tools.list",
+   "keyKind": "literal",
+   "ops": [
+    "getItem"
+   ],
+   "owners": [
+    "mcp/mcpService.ts"
+   ],
+   "sites": [
+    "src/mcp/mcpService.ts:1993"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "media-study.pauseAtCheckpoints",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "features/learning-hub"
+   ],
+   "sites": [
+    "src/features/learning-hub/apps/views/media/MediaStudyView.tsx:110",
+    "src/features/learning-hub/apps/views/media/MediaStudyView.tsx:118"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "media-study.transcriptTextSize",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "features/learning-hub"
+   ],
+   "sites": [
+    "src/features/learning-hub/apps/views/media/TranscriptPanel.tsx:53",
+    "src/features/learning-hub/apps/views/media/TranscriptPanel.tsx:264"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "media.bilibili.preferredQn",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "features/learning-hub"
+   ],
+   "sites": [
+    "src/features/learning-hub/apps/views/media/bilibiliAccount.ts:211",
+    "src/features/learning-hub/apps/views/media/bilibiliAccount.ts:221"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "mediaStudio.library.collapsedGroups",
+   "keyKind": "literal",
+   "ops": [
+    "getItem"
+   ],
+   "owners": [
+    "features/media-studio"
+   ],
+   "sites": [
+    "src/features/media-studio/components/MediaLibraryPage.tsx:115"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "mediaStudio.library.view",
+   "keyKind": "literal",
+   "ops": [
+    "getItem"
+   ],
+   "owners": [
+    "features/media-studio"
+   ],
+   "sites": [
+    "src/features/media-studio/components/MediaLibraryPage.tsx:107"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "mindmap-recite-stats:*",
+   "keyKind": "pattern",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "features/mindmap"
+   ],
+   "sites": [
+    "src/features/mindmap/utils/reciteStats.ts:73",
+    "src/features/mindmap/utils/reciteStats.ts:84"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "MV_TEST_CONFIG",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "debug-panel/plugins"
+   ],
+   "sites": [
+    "src/debug-panel/plugins/MultiVariantTestPlugin.tsx:94",
+    "src/debug-panel/plugins/MultiVariantTestPlugin.tsx:95"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "notes-backlinks-panel:active-tab",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "features/workbench"
+   ],
+   "sites": [
+    "src/features/workbench/apps/notes/NotesBacklinksPanel.tsx:154",
+    "src/features/workbench/apps/notes/NotesBacklinksPanel.tsx:178"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "notes-backlinks-panel:more-context",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "features/workbench"
+   ],
+   "sites": [
+    "src/features/workbench/apps/notes/NotesBacklinksPanel.tsx:381",
+    "src/features/workbench/apps/notes/NotesBacklinksPanel.tsx:389"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "notes-backlinks-panel:section-collapse",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "features/workbench"
+   ],
+   "sites": [
+    "src/features/workbench/apps/notes/NotesBacklinksPanel.tsx:357",
+    "src/features/workbench/apps/notes/NotesBacklinksPanel.tsx:373"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "notes-local-graph:depth",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "features/workbench"
+   ],
+   "sites": [
+    "src/features/workbench/apps/notes/graph/NotesGraphTab.tsx:44",
+    "src/features/workbench/apps/notes/graph/NotesGraphTab.tsx:52"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "onboarding_completed_flows",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "components/onboarding"
+   ],
+   "sites": [
+    "src/components/onboarding/WelcomeOnboardingDialog.tsx:37",
+    "src/components/onboarding/WelcomeOnboardingDialog.tsx:52"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "onboarding_skipped",
+   "keyKind": "literal",
+   "ops": [
+    "getItem"
+   ],
+   "owners": [
+    "components/onboarding"
+   ],
+   "sites": [
+    "src/components/onboarding/WelcomeOnboardingDialog.tsx:75 (no try)"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "pdf:darkReading",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "features/pdf"
+   ],
+   "sites": [
+    "src/features/pdf/components/EnhancedPdfViewer.tsx:491",
+    "src/features/pdf/components/EnhancedPdfViewer.tsx:942"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "PIPELINE_TEST_CONFIG",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "debug-panel/plugins"
+   ],
+   "sites": [
+    "src/debug-panel/plugins/AttachmentPipelineTestPlugin.tsx:87",
+    "src/debug-panel/plugins/AttachmentPipelineTestPlugin.tsx:94"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "preview-prefs-*",
+   "keyKind": "pattern",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "features/learning-hub"
+   ],
+   "sites": [
+    "src/features/learning-hub/apps/views/previewUtils.ts:195",
+    "src/features/learning-hub/apps/views/previewUtils.ts:251"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "qbank:dailyTarget:*",
+   "keyKind": "pattern",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "components/practice"
+   ],
+   "sites": [
+    "src/components/practice/DailyPracticeMode.tsx:76",
+    "src/components/practice/DailyPracticeMode.tsx:87"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "qbank:lastQuestion:*",
+   "keyKind": "pattern",
+   "ops": [
+    "getItem",
+    "removeItem",
+    "setItem"
+   ],
+   "owners": [
+    "hooks/useQuestionBankSession.ts"
+   ],
+   "sites": [
+    "src/hooks/useQuestionBankSession.ts:207",
+    "src/hooks/useQuestionBankSession.ts:217",
+    "src/hooks/useQuestionBankSession.ts:219"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "qbank.listView.viewType",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "components/QuestionBankListView.tsx"
+   ],
+   "sites": [
+    "src/components/QuestionBankListView.tsx:135",
+    "src/components/QuestionBankListView.tsx:894"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "qbank.tagNav.viewMode",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "components/TagNavigationView.tsx"
+   ],
+   "sites": [
+    "src/components/TagNavigationView.tsx:80",
+    "src/components/TagNavigationView.tsx:451"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "siliconflow_api_key",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "removeItem"
+   ],
+   "owners": [
+    "features/settings"
+   ],
+   "sites": [
+    "src/features/settings/components/SiliconFlowSection.tsx:278",
+    "src/features/settings/components/SiliconFlowSection.tsx:312",
+    "src/features/settings/components/SiliconFlowSection.tsx:316"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "skills.bundles.v1",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "features/chat"
+   ],
+   "sites": [
+    "src/features/chat/skills/skillBundles.ts:26",
+    "src/features/chat/skills/skillBundles.ts:43"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "skills.tap.recent_sources",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "components/skills-management"
+   ],
+   "sites": [
+    "src/components/skills-management/SkillTapBrowser.tsx:71",
+    "src/components/skills-management/SkillTapBrowser.tsx:82"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "skills.usage.stats.v1",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "features/chat"
+   ],
+   "sites": [
+    "src/features/chat/skills/skillUsageStats.ts:60",
+    "src/features/chat/skills/skillUsageStats.ts:70"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "system-notification-policy",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "utils/systemNotification.ts"
+   ],
+   "sites": [
+    "src/utils/systemNotification.ts:37",
+    "src/utils/systemNotification.ts:45",
+    "src/utils/systemNotification.ts:70",
+    "src/utils/systemNotification.ts:77"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "template_debug_*_*",
+   "keyKind": "pattern",
+   "ops": [
+    "setItem"
+   ],
+   "owners": [
+    "components/SharedPreview.tsx"
+   ],
+   "sites": [
+    "src/components/SharedPreview.tsx:522 (no try)"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "template-management:view-mode",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "features/template-management"
+   ],
+   "sites": [
+    "src/features/template-management/lib/templateLibrary.ts:104",
+    "src/features/template-management/lib/templateLibrary.ts:113"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "todo-daily-digest-date-v1",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "features/todo"
+   ],
+   "sites": [
+    "src/features/todo/reminderScheduler.ts:239",
+    "src/features/todo/reminderScheduler.ts:252",
+    "src/features/todo/reminderScheduler.ts:262"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "todo-reminders-fired-v1",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "features/todo"
+   ],
+   "sites": [
+    "src/features/todo/reminderScheduler.ts:73",
+    "src/features/todo/reminderScheduler.ts:104"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "todo-sidebar-collapsed-sections",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "features/todo"
+   ],
+   "sites": [
+    "src/features/todo/components/TodoSidebar.tsx:182",
+    "src/features/todo/components/TodoSidebar.tsx:623",
+    "src/features/todo/components/TodoSidebar.tsx:635"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "todo-sort-by",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "features/todo"
+   ],
+   "sites": [
+    "src/features/todo/stores/useTodoStore.ts:196",
+    "src/features/todo/stores/useTodoStore.ts:1293"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "todo-window-sidebar-width",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "features/workbench"
+   ],
+   "sites": [
+    "src/features/workbench/apps/system/TodoAppWindow.tsx:49",
+    "src/features/workbench/apps/system/TodoAppWindow.tsx:59"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "todo.swipeHintShown",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "features/todo"
+   ],
+   "sites": [
+    "src/features/todo/components/main/TodoItemRow.tsx:124",
+    "src/features/todo/components/main/TodoItemRow.tsx:125"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "translation.promptTemplates.v1",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "components/translation"
+   ],
+   "sites": [
+    "src/components/translation/PromptPanel.tsx:76",
+    "src/components/translation/PromptPanel.tsx:91"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "translation.recentLanguages.v1",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "components/translation"
+   ],
+   "sites": [
+    "src/components/translation/LanguageSelect.tsx:74",
+    "src/components/translation/LanguageSelect.tsx:85"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "translation.workbench.layout",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "components/translation"
+   ],
+   "sites": [
+    "src/components/translation/TranslationMain.tsx:84",
+    "src/components/translation/TranslationMain.tsx:164"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "translation.workbench.prefs",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "components/TranslateWorkbench.tsx"
+   ],
+   "sites": [
+    "src/components/TranslateWorkbench.tsx:61",
+    "src/components/TranslateWorkbench.tsx:72"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "workbench.agentControl.discoverySeen.v1",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "features/workbench"
+   ],
+   "sites": [
+    "src/features/workbench/components/AgentControlCenter.tsx:113",
+    "src/features/workbench/components/AgentControlCenter.tsx:121"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "workbench.desktopWidgets.collapsed",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "features/workbench"
+   ],
+   "sites": [
+    "src/features/workbench/components/desktopWidgetCollapse.ts:19",
+    "src/features/workbench/components/desktopWidgetCollapse.ts:44"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "workbench.emptyDesktop.onboardingDismissed",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "removeItem",
+    "setItem"
+   ],
+   "owners": [
+    "features/workbench"
+   ],
+   "sites": [
+    "src/features/workbench/components/EmptyDesktop.tsx:58",
+    "src/features/workbench/components/EmptyDesktop.tsx:77",
+    "src/features/workbench/components/EmptyDesktop.tsx:85",
+    "src/features/workbench/components/EmptyDesktop.tsx:86"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "workbench.hud.collapsed",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "features/workbench"
+   ],
+   "sites": [
+    "src/features/workbench/components/WorkbenchDevPanel.tsx:574",
+    "src/features/workbench/components/WorkbenchDevPanel.tsx:812"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "workbench.hud.offset",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "features/workbench"
+   ],
+   "sites": [
+    "src/features/workbench/components/WorkbenchDevPanel.tsx:650",
+    "src/features/workbench/components/WorkbenchDevPanel.tsx:768"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "workbench.notesWorkspace.state.v1",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "features/workbench"
+   ],
+   "sites": [
+    "src/features/workbench/apps/notes/NotesWorkspaceApp.tsx:451",
+    "src/features/workbench/apps/notes/NotesWorkspaceApp.tsx:1832"
+   ]
+  },
+  {
+   "area": "localStorage",
+   "key": "WORKSPACE_ORCH_TEST_CONFIG",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "debug-panel/plugins"
+   ],
+   "sites": [
+    "src/debug-panel/plugins/WorkspaceOrchestrationTestPlugin.tsx:70",
+    "src/debug-panel/plugins/WorkspaceOrchestrationTestPlugin.tsx:79"
+   ]
+  },
+  {
+   "area": "sessionStorage",
+   "key": "__WB_DIAGNOSTICS__",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "setItem"
+   ],
+   "owners": [
+    "features/workbench"
+   ],
+   "sites": [
+    "src/features/workbench/core/workbenchDiagnosticsGate.ts:24",
+    "src/features/workbench/core/workbenchDiagnosticsGate.ts:33"
+   ]
+  },
+  {
+   "area": "sessionStorage",
+   "key": null,
+   "keyKind": "unresolved",
+   "ops": [
+    "getItem"
+   ],
+   "owners": [
+    "features/chat"
+   ],
+   "sites": [
+    "src/features/chat/components/input-bar/composerDraftStorage.ts:17"
+   ],
+   "expr": "key"
+  },
+  {
+   "area": "sessionStorage",
+   "key": null,
+   "keyKind": "unresolved",
+   "ops": [
+    "setItem"
+   ],
+   "owners": [
+    "features/chat"
+   ],
+   "sites": [
+    "src/features/chat/components/input-bar/composerDraftStorage.ts:28"
+   ],
+   "expr": "key"
+  },
+  {
+   "area": "sessionStorage",
+   "key": null,
+   "keyKind": "unresolved",
+   "ops": [
+    "removeItem"
+   ],
+   "owners": [
+    "features/chat"
+   ],
+   "sites": [
+    "src/features/chat/components/input-bar/composerDraftStorage.ts:30"
+   ],
+   "expr": "key"
+  },
+  {
+   "area": "sessionStorage",
+   "key": "deep-student.debug-recovery-scenario",
+   "keyKind": "literal",
+   "ops": [
+    "getItem",
+    "removeItem",
+    "setItem"
+   ],
+   "owners": [
+    "features/data-recovery"
+   ],
+   "sites": [
+    "src/features/data-recovery/debugRecoveryScenarios.ts:14",
+    "src/features/data-recovery/debugRecoveryScenarios.ts:23",
+    "src/features/data-recovery/debugRecoveryScenarios.ts:36"
+   ]
+  }
+ ],
+ "zustandPersist": [
+  {
+   "file": "src/features/chat/hooks/useSidebarFilterPrefs.ts",
+   "line": 30,
+   "key": "chat-v2-sidebar-filter-prefs",
+   "storage": "default(localStorage)",
+   "version": "1",
+   "test": false
+  },
+  {
+   "file": "src/features/learning-hub/stores/desktopStore.ts",
+   "line": 407,
+   "key": "learning-hub-desktop",
+   "storage": "default(localStorage)",
+   "version": "DESKTOP_STORE_VERSION",
+   "test": false
+  },
+  {
+   "file": "src/features/learning-hub/stores/finderStore.ts",
+   "line": 531,
+   "key": "finderPersistKey(bucketId)",
+   "storage": "default(localStorage)",
+   "version": null,
+   "test": false
+  },
+  {
+   "file": "src/features/learning-hub/stores/recentStore.ts",
+   "line": 74,
+   "key": "learning-hub-recent",
+   "storage": "default(localStorage)",
+   "version": null,
+   "test": false
+  },
+  {
+   "file": "src/features/pdf/stores/pdfSettingsStore.ts",
+   "line": 122,
+   "key": "pdf-settings",
+   "storage": "default(localStorage)",
+   "version": "2",
+   "test": false
+  },
+  {
+   "file": "src/features/pomodoro/stores/usePomodoroStore.ts",
+   "line": 210,
+   "key": "pomodoro-storage",
+   "storage": "default(localStorage)",
+   "version": null,
+   "test": false
+  },
+  {
+   "file": "src/stores/syncStatusStore.ts",
+   "line": 560,
+   "key": "dstu-auto-sync",
+   "storage": "createAutoSyncPersistStorage()",
+   "version": "2",
+   "test": false
+  },
+  {
+   "file": "src/stores/uiStore.ts",
+   "line": 42,
+   "key": "dstu-ui-store",
+   "storage": "default(localStorage)",
+   "version": "1",
+   "test": false
+  }
+ ],
+ "indexedDb": [
+  {
+   "file": "src/command-palette/modules/dev.commands.ts",
+   "line": 117,
+   "op": "databases",
+   "test": false
+  },
+  {
+   "file": "src/command-palette/modules/dev.commands.ts",
+   "line": 120,
+   "op": "deleteDatabase",
+   "test": false
+  }
+ ],
+ "enumerations": [
+  {
+   "file": "src/command-palette/modules/dev.commands.ts",
+   "line": 116,
+   "area": "localStorage",
+   "op": "clear",
+   "test": false
+  },
+  {
+   "file": "src/features/chat/hooks/__tests__/useSidebarFilterPrefs.test.ts",
+   "line": 67,
+   "area": "localStorage",
+   "op": "clear",
+   "test": true
+  },
+  {
+   "file": "src/features/chat/skills/__tests__/installTrustChain.test.ts",
+   "line": 34,
+   "area": "localStorage",
+   "op": "clear",
+   "test": true
+  },
+  {
+   "file": "src/features/chat/skills/__tests__/skillLifecycleBridge.test.ts",
+   "line": 90,
+   "area": "localStorage",
+   "op": "clear",
+   "test": true
+  },
+  {
+   "file": "src/features/chat/skills/__tests__/skillTrustStorage.test.ts",
+   "line": 31,
+   "area": "localStorage",
+   "op": "clear",
+   "test": true
+  },
+  {
+   "file": "src/features/learning-hub/__tests__/tabsPersistenceWriteThrough.test.ts",
+   "line": 98,
+   "area": "localStorage",
+   "op": "clear",
+   "test": true
+  },
+  {
+   "file": "src/features/learning-hub/apps/views/media/__tests__/bilibiliQuality.test.tsx",
+   "line": 150,
+   "area": "localStorage",
+   "op": "clear",
+   "test": true
+  },
+  {
+   "file": "src/features/learning-hub/components/finder/__tests__/NotesLearningViewTabs.test.tsx",
+   "line": 10,
+   "area": "localStorage",
+   "op": "clear",
+   "test": true
+  },
+  {
+   "file": "src/features/media-studio/__tests__/MediaLibrarySelection.test.tsx",
+   "line": 102,
+   "area": "localStorage",
+   "op": "clear",
+   "test": true
+  },
+  {
+   "file": "src/features/mindmap/utils/__tests__/mindmapPreferences.test.ts",
+   "line": 12,
+   "area": "localStorage",
+   "op": "clear",
+   "test": true
+  },
+  {
+   "file": "src/features/notes/components/__tests__/CreateLearningNoteDialog.test.tsx",
+   "line": 11,
+   "area": "localStorage",
+   "op": "clear",
+   "test": true
+  },
+  {
+   "file": "src/features/notes/components/__tests__/NotesTemplatePanel.test.tsx",
+   "line": 25,
+   "area": "localStorage",
+   "op": "clear",
+   "test": true
+  },
+  {
+   "file": "src/features/settings/components/__tests__/CloudStorageSection.cloudUi.test.tsx",
+   "line": 135,
+   "area": "localStorage",
+   "op": "clear",
+   "test": true
+  },
+  {
+   "file": "src/features/settings/components/__tests__/CloudStorageSection.draft-test.test.tsx",
+   "line": 162,
+   "area": "localStorage",
+   "op": "clear",
+   "test": true
+  },
+  {
+   "file": "src/features/settings/components/__tests__/SuperAgentSettingsSection.test.tsx",
+   "line": 29,
+   "area": "localStorage",
+   "op": "clear",
+   "test": true
+  },
+  {
+   "file": "src/features/settings/components/__tests__/apiKeyClearConfirmation.test.tsx",
+   "line": 53,
+   "area": "localStorage",
+   "op": "clear",
+   "test": true
+  },
+  {
+   "file": "src/features/todo/__tests__/learningDigest.test.ts",
+   "line": 18,
+   "area": "localStorage",
+   "op": "clear",
+   "test": true
+  },
+  {
+   "file": "src/features/todo/__tests__/learningDigest.test.ts",
+   "line": 36,
+   "area": "localStorage",
+   "op": "clear",
+   "test": true
+  },
+  {
+   "file": "src/features/todo/__tests__/reminderTargets.test.ts",
+   "line": 47,
+   "area": "localStorage",
+   "op": "clear",
+   "test": true
+  },
+  {
+   "file": "src/features/todo/__tests__/reminderTargets.test.ts",
+   "line": 84,
+   "area": "localStorage",
+   "op": "clear",
+   "test": true
+  },
+  {
+   "file": "src/features/workbench/apps/notes/__tests__/NotesBacklinksPanel.test.tsx",
+   "line": 125,
+   "area": "localStorage",
+   "op": "clear",
+   "test": true
+  },
+  {
+   "file": "src/features/workbench/apps/notes/__tests__/NotesGraphTab.test.tsx",
+   "line": 80,
+   "area": "localStorage",
+   "op": "clear",
+   "test": true
+  },
+  {
+   "file": "src/features/workbench/apps/notes/__tests__/NotesLearningViews.host.test.tsx",
+   "line": 52,
+   "area": "localStorage",
+   "op": "clear",
+   "test": true
+  },
+  {
+   "file": "src/features/workbench/apps/notes/__tests__/NotesWorkspaceApp.test.tsx",
+   "line": 186,
+   "area": "localStorage",
+   "op": "clear",
+   "test": true
+  },
+  {
+   "file": "src/features/workbench/components/__tests__/EmptyDesktop.test.tsx",
+   "line": 23,
+   "area": "localStorage",
+   "op": "clear",
+   "test": true
+  },
+  {
+   "file": "src/features/workbench/components/__tests__/WallpaperManagerDialog.test.tsx",
+   "line": 74,
+   "area": "localStorage",
+   "op": "clear",
+   "test": true
+  },
+  {
+   "file": "src/features/workbench/components/__tests__/desktopNameStore.test.ts",
+   "line": 27,
+   "area": "localStorage",
+   "op": "clear",
+   "test": true
+  },
+  {
+   "file": "src/features/workbench/components/__tests__/desktopNameStore.test.ts",
+   "line": 33,
+   "area": "localStorage",
+   "op": "clear",
+   "test": true
+  },
+  {
+   "file": "src/features/workbench/core/__tests__/snapshot.test.ts",
+   "line": 30,
+   "area": "localStorage",
+   "op": "clear",
+   "test": true
+  },
+  {
+   "file": "src/hooks/__tests__/useAppUpdater.i18n.test.ts",
+   "line": 45,
+   "area": "localStorage",
+   "op": "clear",
+   "test": true
+  },
+  {
+   "file": "src/mcp/mcpService.ts",
+   "line": 1192,
+   "area": "localStorage",
+   "op": "key",
+   "test": false
+  },
+  {
+   "file": "src/stores/__tests__/autoSyncStore.bootstrap.idempotent.test.ts",
+   "line": 59,
+   "area": "localStorage",
+   "op": "clear",
+   "test": true
+  },
+  {
+   "file": "src/stores/__tests__/autoSyncStore.bootstrap.test.ts",
+   "line": 66,
+   "area": "localStorage",
+   "op": "clear",
+   "test": true
+  },
+  {
+   "file": "src/utils/__tests__/settingsApi.test.ts",
+   "line": 16,
+   "area": "localStorage",
+   "op": "clear",
+   "test": true
+  },
+  {
+   "file": "src/utils/__tests__/systemNotificationTarget.test.ts",
+   "line": 25,
+   "area": "localStorage",
+   "op": "clear",
+   "test": true
+  }
+ ]
+}

@@ -63,3 +63,31 @@ export { TableBlockShell } from './ui/TableBlockShell';
 export type { TableBlockShellProps } from './ui/TableBlockShell';
 export { ThreadEmptyStateShell } from './ui/ThreadEmptyStateShell';
 export type { ThreadEmptyStateShellProps } from './ui/ThreadEmptyStateShell';
+
+// 单轮修改 Unified Diff 审阅与回滚组件
+export {
+  TurnDiffReviewCard,
+  TurnDiffLedger,
+  computeUnifiedDiffSummary,
+} from './TurnDiffReviewCard';
+export type {
+  TurnFileDiffEntry,
+  TurnDiffReviewCardProps,
+} from './TurnDiffReviewCard';
+
+// 项目知识与任务依赖拓扑（DAG）抽屉组件
+export {
+  ProjectKnowledgeDagDrawer,
+  ProjectKnowledgeDagStore,
+} from './ProjectKnowledgeDagDrawer';
+export type {
+  ProjectKnowledgeDagDrawerProps,
+} from './ProjectKnowledgeDagDrawer';
+
+// 上下文锚定伴读小窗组件
+export { ContextualMiniChat } from './ContextualMiniChat';
+export type {
+  ContextualMiniChatProps,
+  MiniChatContextAnchor,
+} from './ContextualMiniChat';
+

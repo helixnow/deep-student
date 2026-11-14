@@ -1,0 +1,15 @@
+[Unit]
+Description=预生成协调者摘要报告（进展、substance、修复检测、流水线体检），调度主循环只读结果
+
+[Service]
+Type=oneshot
+User=dsdev
+Group=dsdev
+Slice=dsdev.slice
+WorkingDirectory=/home/dsdev/dev/deep-student
+Environment=PATH=/opt/node26/bin:/home/dsdev/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=HOME=/home/dsdev
+Nice=10
+ExecStart=/opt/node26/bin/node /home/dsdev/dev/deep-student/scripts/electron-migration/coord-reports.mjs
+SuccessExitStatus=0 1
+TimeoutStartSec=10min

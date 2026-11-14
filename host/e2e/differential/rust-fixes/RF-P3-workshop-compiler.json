@@ -1,0 +1,11 @@
+{
+  "id": "RF-P3-workshop-compiler", "kind": "deliberate", "status": "proposed",
+  "title": "dstu 插件工坊内置 TypeScript/TSX 编译、托管草稿与可撤销安装准备",
+  "rust": { "file": "src-tauri/src/lib.rs", "line": 1, "behavior": "Rust 应用没有用户确认卡驱动的插件工坊和随安装包分发的 TS/TSX 编译器。" },
+  "fix": { "files": ["host/plugins/plugin-workshop/src/compiler.ts", "host/plugins/plugin-workshop/src/store.ts", "electron/electron-builder.config.cjs"], "behavior": "Host 为作品保留独立源码和不可变构建候选；内置 esbuild 编译 ESM，共享 UI 模块 external。包清单校验后使用独立真实 HostRuntime 装载并卸载。技能和模板随包发布、原生编译器解包。自检不是安全隔离，视觉未验证。" },
+  "evidence": "BRIEF P3.1–3/5；compiler.test.ts 使用实际 esbuild 编译两份出货模板，再通过真实 Host 内核 installEntry/unload。store/resources 测试使用临时目录而非用户数据。",
+  "userVisible": "无需安装本机工具即可创作 TS/TSX 插件；编译/装载错误返回确认卡，视觉未验证明确展示。",
+  "dataCompat": "新增 appData/dstu-workshop 目录，不改变现有数据库、profile 或同意账本格式。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [{ "file": "host/plugins/plugin-workshop/tests/compiler.test.ts", "name": "RF-P3-workshop-compiler: builds and really loads/unloads learning-tool" }, { "file": "host/plugins/plugin-workshop/tests/compiler.test.ts", "name": "RF-P3-workshop-compiler: builds and really loads/unloads host-tool" }]
+}

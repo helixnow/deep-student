@@ -1,0 +1,336 @@
+{
+  "domain": "notes",
+  "commands": [
+    "dstu_create",
+    "dstu_delete",
+    "notes_empty_trash",
+    "notes_hard_delete",
+    "notes_history_set_retention",
+    "notes_list_deleted",
+    "notes_restore"
+  ],
+  "scenarios": [
+    {
+      "id": "notes.trash.list_restore_hard_delete",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_history_set_retention",
+          "args": {
+            "policy": {
+              "edit_bucket_seconds": 0,
+              "max_edit_versions": null
+            }
+          }
+        },
+        {
+          "cmd": "notes_list_deleted",
+          "args": {
+            "subject": "_global",
+            "page": 0,
+            "page_size": 20
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "回收甲",
+              "content": "甲\n"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "回收乙",
+              "content": "乙\n"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "回收丙",
+              "content": "丙\n"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_delete",
+          "args": {
+            "path": "${2.path}"
+          }
+        },
+        {
+          "cmd": "dstu_delete",
+          "args": {
+            "path": "${3.path}"
+          }
+        },
+        {
+          "cmd": "dstu_delete",
+          "args": {
+            "path": "${4.path}"
+          }
+        },
+        {
+          "cmd": "notes_list_deleted",
+          "args": {
+            "subject": "_global",
+            "page": 0,
+            "page_size": 20
+          }
+        },
+        {
+          "cmd": "notes_list_deleted",
+          "args": {
+            "subject": "_global",
+            "page": 0,
+            "pageSize": 2
+          }
+        },
+        {
+          "cmd": "notes_list_deleted",
+          "args": {
+            "subject": "_global",
+            "page": 1,
+            "pageSize": 2
+          }
+        },
+        {
+          "cmd": "notes_list_deleted",
+          "args": {}
+        },
+        {
+          "cmd": "notes_list_deleted",
+          "args": {
+            "subject": "_global",
+            "page": -1,
+            "pageSize": 2
+          }
+        },
+        {
+          "cmd": "notes_list_deleted",
+          "args": {
+            "subject": "_global",
+            "page": 0,
+            "pageSize": -1
+          }
+        },
+        {
+          "cmd": "notes_list_deleted",
+          "args": {
+            "subject": "_global",
+            "page": "x"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_restore",
+          "args": {
+            "subject": "_global",
+            "id": "${2.id}"
+          }
+        },
+        {
+          "cmd": "notes_restore",
+          "args": {
+            "subject": "_global",
+            "id": "${2.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_restore",
+          "args": {
+            "subject": "_global",
+            "id": "note_missing_trash"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "回收乙",
+              "content": "同名新笔记\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_restore",
+          "args": {
+            "subject": "_global",
+            "id": "${3.id}"
+          }
+        },
+        {
+          "cmd": "notes_hard_delete",
+          "args": {
+            "subject": "_global",
+            "id": "${4.id}"
+          }
+        },
+        {
+          "cmd": "notes_hard_delete",
+          "args": {
+            "subject": "_global",
+            "id": "${4.id}"
+          }
+        },
+        {
+          "cmd": "notes_hard_delete",
+          "args": {
+            "subject": "_global",
+            "id": "note_missing_trash"
+          }
+        },
+        {
+          "cmd": "notes_hard_delete",
+          "args": {
+            "subject": "_global",
+            "id": "${2.id}"
+          }
+        },
+        {
+          "cmd": "notes_list_deleted",
+          "args": {
+            "subject": "_global",
+            "page": 0,
+            "page_size": 20
+          }
+        },
+        {
+          "cmd": "notes_restore",
+          "args": {
+            "subject": "_global"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_hard_delete",
+          "args": {
+            "subject": "_global"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "notes.trash.empty_trash",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_history_set_retention",
+          "args": {
+            "policy": {
+              "edit_bucket_seconds": 0,
+              "max_edit_versions": null
+            }
+          }
+        },
+        {
+          "cmd": "notes_empty_trash",
+          "args": {
+            "subject": "_global"
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "清空甲",
+              "content": "甲\n"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "清空乙",
+              "content": "乙\n"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "清空丙（保留）",
+              "content": "丙\n"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_delete",
+          "args": {
+            "path": "${2.path}"
+          }
+        },
+        {
+          "cmd": "dstu_delete",
+          "args": {
+            "path": "${3.path}"
+          }
+        },
+        {
+          "cmd": "notes_empty_trash",
+          "args": {
+            "subject": "_global"
+          }
+        },
+        {
+          "cmd": "notes_list_deleted",
+          "args": {
+            "subject": "_global",
+            "page": 0,
+            "page_size": 20
+          }
+        },
+        {
+          "cmd": "notes_empty_trash",
+          "args": {}
+        },
+        {
+          "cmd": "notes_empty_trash",
+          "args": {
+            "subject": 42
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

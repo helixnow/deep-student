@@ -1,0 +1,1402 @@
+{
+  "dockDefaultPinned": [
+    "chat",
+    "files",
+    "settings",
+    "todo"
+  ],
+  "registry": [
+    {
+      "index": 0,
+      "typeId": "chat",
+      "nameKey": "apps.chat.name",
+      "icon": {
+        "type": "AppIconImage",
+        "props": {
+          "typeId": "chat",
+          "className": "h-8 w-8"
+        }
+      },
+      "showInLauncher": null,
+      "instanceMode": "single",
+      "memoryWeight": 2,
+      "keepAliveWhenOccluded": null,
+      "defaultFrame": {
+        "w": 1080,
+        "h": 720
+      },
+      "minSize": {
+        "w": 640,
+        "h": 460
+      },
+      "render": "lazy",
+      "confirmUnsavedOnClose": null,
+      "handlesCloseShortcut": null,
+      "handlesTabCycleShortcut": null,
+      "hooks": {
+        "onActivation": true,
+        "badgeSource": false,
+        "canClose": false,
+        "canSuspend": false,
+        "prepareSuspend": false
+      },
+      "agentCapabilities": [
+        "setInput",
+        "focusInput",
+        "scrollToMessage"
+      ],
+      "otherKeys": [
+        "agentManifest",
+        "defaultFrame",
+        "icon",
+        "instanceMode",
+        "memoryWeight",
+        "minSize",
+        "nameKey",
+        "onActivation",
+        "render",
+        "typeId"
+      ]
+    },
+    {
+      "index": 1,
+      "typeId": "chat-session",
+      "nameKey": "apps.chatSession.name",
+      "icon": {
+        "type": "AppIconImage",
+        "props": {
+          "typeId": "chat",
+          "className": "h-8 w-8"
+        }
+      },
+      "showInLauncher": false,
+      "instanceMode": "multi",
+      "memoryWeight": 2,
+      "keepAliveWhenOccluded": null,
+      "defaultFrame": {
+        "w": 860,
+        "h": 640
+      },
+      "minSize": {
+        "w": 480,
+        "h": 400
+      },
+      "render": "lazy",
+      "confirmUnsavedOnClose": null,
+      "handlesCloseShortcut": null,
+      "handlesTabCycleShortcut": null,
+      "hooks": {
+        "onActivation": true,
+        "badgeSource": false,
+        "canClose": false,
+        "canSuspend": false,
+        "prepareSuspend": false
+      },
+      "agentCapabilities": null,
+      "otherKeys": [
+        "defaultFrame",
+        "icon",
+        "instanceMode",
+        "memoryWeight",
+        "minSize",
+        "nameKey",
+        "onActivation",
+        "render",
+        "showInLauncher",
+        "typeId"
+      ]
+    },
+    {
+      "index": 2,
+      "typeId": "textbook",
+      "nameKey": "workbench:apps.textbook",
+      "icon": {
+        "type": "AppIcon(textbook)",
+        "props": {
+          "className": "h-8 w-8"
+        }
+      },
+      "showInLauncher": false,
+      "instanceMode": "multi",
+      "memoryWeight": 3,
+      "keepAliveWhenOccluded": null,
+      "defaultFrame": {
+        "w": 920,
+        "h": 700
+      },
+      "minSize": {
+        "w": 420,
+        "h": 320
+      },
+      "render": "lazy",
+      "confirmUnsavedOnClose": null,
+      "handlesCloseShortcut": null,
+      "handlesTabCycleShortcut": null,
+      "hooks": {
+        "onActivation": true,
+        "badgeSource": false,
+        "canClose": false,
+        "canSuspend": true,
+        "prepareSuspend": false
+      },
+      "agentCapabilities": [
+        "gotoPage"
+      ],
+      "otherKeys": [
+        "agentManifest",
+        "canClose",
+        "canSuspend",
+        "defaultFrame",
+        "icon",
+        "instanceMode",
+        "memoryWeight",
+        "minSize",
+        "nameKey",
+        "onActivation",
+        "render",
+        "showInLauncher",
+        "typeId"
+      ]
+    },
+    {
+      "index": 3,
+      "typeId": "exam",
+      "nameKey": "workbench:apps.exam",
+      "icon": {
+        "type": "AppIcon(exam)",
+        "props": {
+          "className": "h-8 w-8"
+        }
+      },
+      "showInLauncher": null,
+      "instanceMode": "single",
+      "memoryWeight": 2,
+      "keepAliveWhenOccluded": null,
+      "defaultFrame": {
+        "w": 880,
+        "h": 660
+      },
+      "minSize": {
+        "w": 360,
+        "h": 280
+      },
+      "render": "lazy",
+      "confirmUnsavedOnClose": null,
+      "handlesCloseShortcut": null,
+      "handlesTabCycleShortcut": null,
+      "hooks": {
+        "onActivation": true,
+        "badgeSource": false,
+        "canClose": true,
+        "canSuspend": true,
+        "prepareSuspend": false
+      },
+      "agentCapabilities": [
+        "focusQuestion",
+        "nextQuestion",
+        "previousQuestion",
+        "setFilters",
+        "resetFilters",
+        "setPracticeMode",
+        "hydratePracticeSession",
+        "setFocusMode",
+        "showSettings"
+      ],
+      "otherKeys": [
+        "agentManifest",
+        "canClose",
+        "canSuspend",
+        "defaultFrame",
+        "icon",
+        "instanceMode",
+        "memoryWeight",
+        "minSize",
+        "nameKey",
+        "onActivation",
+        "render",
+        "showInLauncher",
+        "typeId"
+      ]
+    },
+    {
+      "index": 4,
+      "typeId": "translation",
+      "nameKey": "workbench:apps.translation",
+      "icon": {
+        "type": "AppIcon(translation)",
+        "props": {
+          "className": "h-8 w-8"
+        }
+      },
+      "showInLauncher": null,
+      "instanceMode": "single",
+      "memoryWeight": 2,
+      "keepAliveWhenOccluded": null,
+      "defaultFrame": {
+        "w": 880,
+        "h": 620
+      },
+      "minSize": {
+        "w": 360,
+        "h": 280
+      },
+      "render": "lazy",
+      "confirmUnsavedOnClose": null,
+      "handlesCloseShortcut": null,
+      "handlesTabCycleShortcut": null,
+      "hooks": {
+        "onActivation": true,
+        "badgeSource": false,
+        "canClose": true,
+        "canSuspend": true,
+        "prepareSuspend": false
+      },
+      "agentCapabilities": [],
+      "otherKeys": [
+        "agentManifest",
+        "canClose",
+        "canSuspend",
+        "defaultFrame",
+        "icon",
+        "instanceMode",
+        "memoryWeight",
+        "minSize",
+        "nameKey",
+        "onActivation",
+        "render",
+        "showInLauncher",
+        "typeId"
+      ]
+    },
+    {
+      "index": 5,
+      "typeId": "essay",
+      "nameKey": "workbench:apps.essay",
+      "icon": {
+        "type": "AppIcon(essay)",
+        "props": {
+          "className": "h-8 w-8"
+        }
+      },
+      "showInLauncher": null,
+      "instanceMode": "single",
+      "memoryWeight": 2,
+      "keepAliveWhenOccluded": null,
+      "defaultFrame": {
+        "w": 880,
+        "h": 620
+      },
+      "minSize": {
+        "w": 360,
+        "h": 280
+      },
+      "render": "lazy",
+      "confirmUnsavedOnClose": null,
+      "handlesCloseShortcut": null,
+      "handlesTabCycleShortcut": null,
+      "hooks": {
+        "onActivation": true,
+        "badgeSource": false,
+        "canClose": true,
+        "canSuspend": true,
+        "prepareSuspend": false
+      },
+      "agentCapabilities": [],
+      "otherKeys": [
+        "agentManifest",
+        "canClose",
+        "canSuspend",
+        "defaultFrame",
+        "icon",
+        "instanceMode",
+        "memoryWeight",
+        "minSize",
+        "nameKey",
+        "onActivation",
+        "render",
+        "showInLauncher",
+        "typeId"
+      ]
+    },
+    {
+      "index": 6,
+      "typeId": "image",
+      "nameKey": "workbench:apps.image",
+      "icon": {
+        "type": "AppIcon(image)",
+        "props": {
+          "className": "h-8 w-8"
+        }
+      },
+      "showInLauncher": false,
+      "instanceMode": "multi",
+      "memoryWeight": 1,
+      "keepAliveWhenOccluded": null,
+      "defaultFrame": {
+        "w": 720,
+        "h": 560
+      },
+      "minSize": {
+        "w": 360,
+        "h": 280
+      },
+      "render": "lazy",
+      "confirmUnsavedOnClose": null,
+      "handlesCloseShortcut": null,
+      "handlesTabCycleShortcut": null,
+      "hooks": {
+        "onActivation": true,
+        "badgeSource": false,
+        "canClose": false,
+        "canSuspend": true,
+        "prepareSuspend": false
+      },
+      "agentCapabilities": [
+        "setZoom",
+        "rotate"
+      ],
+      "otherKeys": [
+        "agentManifest",
+        "canClose",
+        "canSuspend",
+        "defaultFrame",
+        "icon",
+        "instanceMode",
+        "memoryWeight",
+        "minSize",
+        "nameKey",
+        "onActivation",
+        "render",
+        "showInLauncher",
+        "typeId"
+      ]
+    },
+    {
+      "index": 7,
+      "typeId": "file",
+      "nameKey": "workbench:apps.file",
+      "icon": {
+        "type": "AppIcon(file)",
+        "props": {
+          "className": "h-8 w-8"
+        }
+      },
+      "showInLauncher": false,
+      "instanceMode": "multi",
+      "memoryWeight": 1,
+      "keepAliveWhenOccluded": null,
+      "defaultFrame": {
+        "w": 780,
+        "h": 600
+      },
+      "minSize": {
+        "w": 360,
+        "h": 280
+      },
+      "render": "lazy",
+      "confirmUnsavedOnClose": null,
+      "handlesCloseShortcut": null,
+      "handlesTabCycleShortcut": null,
+      "hooks": {
+        "onActivation": true,
+        "badgeSource": false,
+        "canClose": false,
+        "canSuspend": true,
+        "prepareSuspend": false
+      },
+      "agentCapabilities": [
+        "gotoPage"
+      ],
+      "otherKeys": [
+        "agentManifest",
+        "canClose",
+        "canSuspend",
+        "defaultFrame",
+        "icon",
+        "instanceMode",
+        "memoryWeight",
+        "minSize",
+        "nameKey",
+        "onActivation",
+        "render",
+        "showInLauncher",
+        "typeId"
+      ]
+    },
+    {
+      "index": 8,
+      "typeId": "notes",
+      "nameKey": "workbench:apps.note",
+      "icon": {
+        "type": "AppIconImage",
+        "props": {
+          "typeId": "notes",
+          "className": "h-8 w-8"
+        }
+      },
+      "showInLauncher": null,
+      "instanceMode": "single",
+      "memoryWeight": 3,
+      "keepAliveWhenOccluded": null,
+      "defaultFrame": {
+        "w": 1240,
+        "h": 760
+      },
+      "minSize": {
+        "w": 480,
+        "h": 420
+      },
+      "render": "lazy",
+      "confirmUnsavedOnClose": null,
+      "handlesCloseShortcut": true,
+      "handlesTabCycleShortcut": true,
+      "hooks": {
+        "onActivation": true,
+        "badgeSource": false,
+        "canClose": true,
+        "canSuspend": true,
+        "prepareSuspend": false
+      },
+      "agentCapabilities": [
+        "openResource",
+        "scrollToHeading",
+        "focusNode",
+        "setView",
+        "search",
+        "nextSearchResult",
+        "previousSearchResult",
+        "clearSearch"
+      ],
+      "otherKeys": [
+        "agentManifest",
+        "canClose",
+        "canSuspend",
+        "defaultFrame",
+        "handlesCloseShortcut",
+        "handlesTabCycleShortcut",
+        "icon",
+        "instanceMode",
+        "memoryWeight",
+        "minSize",
+        "nameKey",
+        "onActivation",
+        "render",
+        "typeId"
+      ]
+    },
+    {
+      "index": 9,
+      "typeId": "files",
+      "nameKey": "workbench:apps.files",
+      "icon": {
+        "type": "AppIconImage",
+        "props": {
+          "typeId": "files",
+          "className": "h-8 w-8"
+        }
+      },
+      "showInLauncher": null,
+      "instanceMode": "single",
+      "memoryWeight": 1,
+      "keepAliveWhenOccluded": null,
+      "defaultFrame": {
+        "w": 980,
+        "h": 660
+      },
+      "minSize": {
+        "w": 480,
+        "h": 360
+      },
+      "render": "lazy",
+      "confirmUnsavedOnClose": null,
+      "handlesCloseShortcut": true,
+      "handlesTabCycleShortcut": null,
+      "hooks": {
+        "onActivation": true,
+        "badgeSource": false,
+        "canClose": false,
+        "canSuspend": false,
+        "prepareSuspend": false
+      },
+      "agentCapabilities": [
+        "openFolder",
+        "reveal",
+        "goBack",
+        "goForward",
+        "goUp",
+        "search",
+        "setViewMode",
+        "setSorting",
+        "select",
+        "selectAll",
+        "clearSelection",
+        "refresh"
+      ],
+      "otherKeys": [
+        "agentManifest",
+        "defaultFrame",
+        "handlesCloseShortcut",
+        "icon",
+        "instanceMode",
+        "memoryWeight",
+        "minSize",
+        "nameKey",
+        "onActivation",
+        "render",
+        "typeId"
+      ]
+    },
+    {
+      "index": 10,
+      "typeId": "file-preview",
+      "nameKey": "workbench:apps.filePreview",
+      "icon": {
+        "type": "AppIconImage",
+        "props": {
+          "typeId": "file-preview",
+          "className": "h-8 w-8"
+        }
+      },
+      "showInLauncher": false,
+      "instanceMode": "multi",
+      "memoryWeight": 3,
+      "keepAliveWhenOccluded": null,
+      "defaultFrame": {
+        "w": 920,
+        "h": 700
+      },
+      "minSize": {
+        "w": 420,
+        "h": 320
+      },
+      "render": "lazy",
+      "confirmUnsavedOnClose": null,
+      "handlesCloseShortcut": null,
+      "handlesTabCycleShortcut": null,
+      "hooks": {
+        "onActivation": true,
+        "badgeSource": false,
+        "canClose": false,
+        "canSuspend": false,
+        "prepareSuspend": false
+      },
+      "agentCapabilities": [
+        "gotoPage"
+      ],
+      "otherKeys": [
+        "agentManifest",
+        "defaultFrame",
+        "icon",
+        "instanceMode",
+        "memoryWeight",
+        "minSize",
+        "nameKey",
+        "onActivation",
+        "render",
+        "showInLauncher",
+        "typeId"
+      ]
+    },
+    {
+      "index": 11,
+      "typeId": "aiDashboard",
+      "nameKey": "workbench:apps.aiDashboard",
+      "icon": {
+        "type": "AppIconImage",
+        "props": {
+          "typeId": "aiDashboard",
+          "className": "h-8 w-8"
+        }
+      },
+      "showInLauncher": null,
+      "instanceMode": "single",
+      "memoryWeight": 1,
+      "keepAliveWhenOccluded": null,
+      "defaultFrame": {
+        "w": 480,
+        "h": 620
+      },
+      "minSize": {
+        "w": 360,
+        "h": 440
+      },
+      "render": "lazy",
+      "confirmUnsavedOnClose": null,
+      "handlesCloseShortcut": null,
+      "handlesTabCycleShortcut": null,
+      "hooks": {
+        "onActivation": false,
+        "badgeSource": false,
+        "canClose": false,
+        "canSuspend": false,
+        "prepareSuspend": false
+      },
+      "agentCapabilities": [
+        "startReview",
+        "openQbank",
+        "openTaskDashboard",
+        "refreshBriefing",
+        "launchAction"
+      ],
+      "otherKeys": [
+        "agentManifest",
+        "defaultFrame",
+        "icon",
+        "instanceMode",
+        "memoryWeight",
+        "minSize",
+        "nameKey",
+        "render",
+        "typeId"
+      ]
+    },
+    {
+      "index": 12,
+      "typeId": "todo",
+      "nameKey": "workbench:apps.todo",
+      "icon": {
+        "type": "AppIconImage",
+        "props": {
+          "typeId": "todo",
+          "className": "h-8 w-8"
+        }
+      },
+      "showInLauncher": null,
+      "instanceMode": "single",
+      "memoryWeight": 2,
+      "keepAliveWhenOccluded": null,
+      "defaultFrame": {
+        "w": 920,
+        "h": 660
+      },
+      "minSize": {
+        "w": 560,
+        "h": 420
+      },
+      "render": "lazy",
+      "confirmUnsavedOnClose": null,
+      "handlesCloseShortcut": null,
+      "handlesTabCycleShortcut": null,
+      "hooks": {
+        "onActivation": true,
+        "badgeSource": false,
+        "canClose": false,
+        "canSuspend": false,
+        "prepareSuspend": false
+      },
+      "agentCapabilities": [
+        "showList",
+        "focusItem",
+        "quickAdd",
+        "showView",
+        "search",
+        "setFilters"
+      ],
+      "otherKeys": [
+        "agentManifest",
+        "defaultFrame",
+        "icon",
+        "instanceMode",
+        "memoryWeight",
+        "minSize",
+        "nameKey",
+        "onActivation",
+        "render",
+        "typeId"
+      ]
+    },
+    {
+      "index": 13,
+      "typeId": "skills",
+      "nameKey": "workbench:apps.skills",
+      "icon": {
+        "type": "AppIconImage",
+        "props": {
+          "typeId": "skills",
+          "className": "h-8 w-8"
+        }
+      },
+      "showInLauncher": null,
+      "instanceMode": "single",
+      "memoryWeight": 2,
+      "keepAliveWhenOccluded": null,
+      "defaultFrame": {
+        "w": 980,
+        "h": 680
+      },
+      "minSize": {
+        "w": 640,
+        "h": 460
+      },
+      "render": "lazy",
+      "confirmUnsavedOnClose": null,
+      "handlesCloseShortcut": null,
+      "handlesTabCycleShortcut": null,
+      "hooks": {
+        "onActivation": false,
+        "badgeSource": false,
+        "canClose": false,
+        "canSuspend": false,
+        "prepareSuspend": false
+      },
+      "agentCapabilities": [
+        "search",
+        "focusSkill",
+        "openSkill",
+        "setEnabled"
+      ],
+      "otherKeys": [
+        "agentManifest",
+        "defaultFrame",
+        "icon",
+        "instanceMode",
+        "memoryWeight",
+        "minSize",
+        "nameKey",
+        "render",
+        "typeId"
+      ]
+    },
+    {
+      "index": 14,
+      "typeId": "templates",
+      "nameKey": "workbench:apps.templates",
+      "icon": {
+        "type": "AppIconImage",
+        "props": {
+          "typeId": "templates",
+          "className": "h-8 w-8"
+        }
+      },
+      "showInLauncher": null,
+      "instanceMode": "single",
+      "memoryWeight": 2,
+      "keepAliveWhenOccluded": null,
+      "defaultFrame": {
+        "w": 980,
+        "h": 680
+      },
+      "minSize": {
+        "w": 640,
+        "h": 460
+      },
+      "render": "lazy",
+      "confirmUnsavedOnClose": null,
+      "handlesCloseShortcut": null,
+      "handlesTabCycleShortcut": null,
+      "hooks": {
+        "onActivation": false,
+        "badgeSource": false,
+        "canClose": false,
+        "canSuspend": false,
+        "prepareSuspend": false
+      },
+      "agentCapabilities": [
+        "openTemplate",
+        "search",
+        "createTemplate",
+        "renameTemplate",
+        "updateTemplateContent",
+        "deleteTemplate"
+      ],
+      "otherKeys": [
+        "agentManifest",
+        "defaultFrame",
+        "icon",
+        "instanceMode",
+        "memoryWeight",
+        "minSize",
+        "nameKey",
+        "render",
+        "typeId"
+      ]
+    },
+    {
+      "index": 15,
+      "typeId": "taskDashboard",
+      "nameKey": "workbench:apps.taskDashboard",
+      "icon": {
+        "type": "AppIconImage",
+        "props": {
+          "typeId": "taskDashboard",
+          "className": "h-8 w-8"
+        }
+      },
+      "showInLauncher": null,
+      "instanceMode": "single",
+      "memoryWeight": 1,
+      "keepAliveWhenOccluded": null,
+      "defaultFrame": {
+        "w": 920,
+        "h": 660
+      },
+      "minSize": {
+        "w": 600,
+        "h": 440
+      },
+      "render": "lazy",
+      "confirmUnsavedOnClose": null,
+      "handlesCloseShortcut": null,
+      "handlesTabCycleShortcut": null,
+      "hooks": {
+        "onActivation": false,
+        "badgeSource": true,
+        "canClose": false,
+        "canSuspend": false,
+        "prepareSuspend": false
+      },
+      "agentCapabilities": [
+        "focusSession",
+        "filter",
+        "retryTask",
+        "retryFailedTasks",
+        "cancelSession"
+      ],
+      "otherKeys": [
+        "agentManifest",
+        "badgeSource",
+        "defaultFrame",
+        "icon",
+        "instanceMode",
+        "memoryWeight",
+        "minSize",
+        "nameKey",
+        "render",
+        "typeId"
+      ]
+    },
+    {
+      "index": 16,
+      "typeId": "flashcards",
+      "nameKey": "workbench:apps.flashcards",
+      "icon": {
+        "type": "AppIconImage",
+        "props": {
+          "typeId": "flashcards",
+          "className": "h-8 w-8"
+        }
+      },
+      "showInLauncher": null,
+      "instanceMode": "single",
+      "memoryWeight": 2,
+      "keepAliveWhenOccluded": null,
+      "defaultFrame": {
+        "w": 960,
+        "h": 680
+      },
+      "minSize": {
+        "w": 560,
+        "h": 440
+      },
+      "render": "lazy",
+      "confirmUnsavedOnClose": null,
+      "handlesCloseShortcut": null,
+      "handlesTabCycleShortcut": null,
+      "hooks": {
+        "onActivation": true,
+        "badgeSource": true,
+        "canClose": false,
+        "canSuspend": false,
+        "prepareSuspend": false
+      },
+      "agentCapabilities": [
+        "startReview",
+        "showScreen",
+        "startDueReview",
+        "flipCard",
+        "endReview",
+        "searchLibrary",
+        "setLibraryPage",
+        "editCard",
+        "enqueueCard",
+        "setSuspended",
+        "undoLastReview",
+        "deleteCard"
+      ],
+      "otherKeys": [
+        "agentManifest",
+        "badgeSource",
+        "defaultFrame",
+        "icon",
+        "instanceMode",
+        "memoryWeight",
+        "minSize",
+        "nameKey",
+        "onActivation",
+        "render",
+        "typeId"
+      ]
+    },
+    {
+      "index": 17,
+      "typeId": "media",
+      "nameKey": "workbench:apps.media",
+      "icon": {
+        "type": "AppIconImage",
+        "props": {
+          "typeId": "media",
+          "className": "h-8 w-8"
+        }
+      },
+      "showInLauncher": null,
+      "instanceMode": "single",
+      "memoryWeight": 2,
+      "keepAliveWhenOccluded": null,
+      "defaultFrame": {
+        "w": 1100,
+        "h": 700
+      },
+      "minSize": {
+        "w": 560,
+        "h": 440
+      },
+      "render": "lazy",
+      "confirmUnsavedOnClose": null,
+      "handlesCloseShortcut": null,
+      "handlesTabCycleShortcut": null,
+      "hooks": {
+        "onActivation": false,
+        "badgeSource": false,
+        "canClose": false,
+        "canSuspend": false,
+        "prepareSuspend": false
+      },
+      "agentCapabilities": null,
+      "otherKeys": [
+        "defaultFrame",
+        "icon",
+        "instanceMode",
+        "memoryWeight",
+        "minSize",
+        "nameKey",
+        "render",
+        "typeId"
+      ]
+    },
+    {
+      "index": 18,
+      "typeId": "settings",
+      "nameKey": "workbench:apps.settings",
+      "icon": {
+        "type": "AppIconImage",
+        "props": {
+          "typeId": "settings",
+          "className": "h-8 w-8"
+        }
+      },
+      "showInLauncher": null,
+      "instanceMode": "single",
+      "memoryWeight": 2,
+      "keepAliveWhenOccluded": null,
+      "defaultFrame": {
+        "w": 1020,
+        "h": 700
+      },
+      "minSize": {
+        "w": 720,
+        "h": 520
+      },
+      "render": "lazy",
+      "confirmUnsavedOnClose": null,
+      "handlesCloseShortcut": null,
+      "handlesTabCycleShortcut": null,
+      "hooks": {
+        "onActivation": false,
+        "badgeSource": false,
+        "canClose": false,
+        "canSuspend": false,
+        "prepareSuspend": false
+      },
+      "agentCapabilities": [
+        "openSection"
+      ],
+      "otherKeys": [
+        "agentManifest",
+        "defaultFrame",
+        "icon",
+        "instanceMode",
+        "memoryWeight",
+        "minSize",
+        "nameKey",
+        "render",
+        "typeId"
+      ]
+    },
+    {
+      "index": 19,
+      "typeId": "pomodoro",
+      "nameKey": "workbench:apps.pomodoro",
+      "icon": {
+        "type": "AppIconImage",
+        "props": {
+          "typeId": "pomodoro",
+          "className": "h-8 w-8"
+        }
+      },
+      "showInLauncher": null,
+      "instanceMode": "single",
+      "memoryWeight": 1,
+      "keepAliveWhenOccluded": null,
+      "defaultFrame": {
+        "w": 380,
+        "h": 560
+      },
+      "minSize": {
+        "w": 320,
+        "h": 440
+      },
+      "render": "lazy",
+      "confirmUnsavedOnClose": null,
+      "handlesCloseShortcut": null,
+      "handlesTabCycleShortcut": null,
+      "hooks": {
+        "onActivation": true,
+        "badgeSource": true,
+        "canClose": false,
+        "canSuspend": false,
+        "prepareSuspend": false
+      },
+      "agentCapabilities": [
+        "start",
+        "pause",
+        "resume",
+        "stop"
+      ],
+      "otherKeys": [
+        "agentManifest",
+        "badgeSource",
+        "defaultFrame",
+        "icon",
+        "instanceMode",
+        "memoryWeight",
+        "minSize",
+        "nameKey",
+        "onActivation",
+        "render",
+        "typeId"
+      ]
+    },
+    {
+      "index": 20,
+      "typeId": "sandbox",
+      "nameKey": "workbench:apps.sandbox",
+      "icon": {
+        "type": "AppIconImage",
+        "props": {
+          "typeId": "sandbox",
+          "className": "h-8 w-8"
+        }
+      },
+      "showInLauncher": false,
+      "instanceMode": "single",
+      "memoryWeight": 2,
+      "keepAliveWhenOccluded": null,
+      "defaultFrame": {
+        "w": 960,
+        "h": 680
+      },
+      "minSize": {
+        "w": 640,
+        "h": 420
+      },
+      "render": "lazy",
+      "confirmUnsavedOnClose": null,
+      "handlesCloseShortcut": null,
+      "handlesTabCycleShortcut": null,
+      "hooks": {
+        "onActivation": true,
+        "badgeSource": false,
+        "canClose": false,
+        "canSuspend": false,
+        "prepareSuspend": false
+      },
+      "agentCapabilities": [
+        "refresh",
+        "setViewport",
+        "setInspector",
+        "closeSession"
+      ],
+      "otherKeys": [
+        "agentManifest",
+        "defaultFrame",
+        "icon",
+        "instanceMode",
+        "memoryWeight",
+        "minSize",
+        "nameKey",
+        "onActivation",
+        "render",
+        "showInLauncher",
+        "typeId"
+      ]
+    },
+    {
+      "index": 21,
+      "typeId": "browser",
+      "nameKey": "workbench:apps.browser",
+      "icon": {
+        "type": "AppIconImage",
+        "props": {
+          "typeId": "browser",
+          "className": "h-8 w-8"
+        }
+      },
+      "showInLauncher": null,
+      "instanceMode": "single",
+      "memoryWeight": 2,
+      "keepAliveWhenOccluded": true,
+      "defaultFrame": {
+        "w": 920,
+        "h": 600
+      },
+      "minSize": {
+        "w": 640,
+        "h": 420
+      },
+      "render": "lazy",
+      "confirmUnsavedOnClose": null,
+      "handlesCloseShortcut": null,
+      "handlesTabCycleShortcut": null,
+      "hooks": {
+        "onActivation": true,
+        "badgeSource": false,
+        "canClose": true,
+        "canSuspend": false,
+        "prepareSuspend": false
+      },
+      "agentCapabilities": [
+        "navigate",
+        "goBack",
+        "goForward",
+        "reload",
+        "focusAddress",
+        "takeOver",
+        "showContent",
+        "hideContent"
+      ],
+      "otherKeys": [
+        "agentManifest",
+        "canClose",
+        "defaultFrame",
+        "icon",
+        "instanceMode",
+        "keepAliveWhenOccluded",
+        "memoryWeight",
+        "minSize",
+        "nameKey",
+        "onActivation",
+        "render",
+        "typeId"
+      ]
+    }
+  ],
+  "agentManifests": [
+    "chat",
+    "textbook",
+    "exam",
+    "translation",
+    "essay",
+    "image",
+    "file",
+    "notes",
+    "files",
+    "file-preview",
+    "aiDashboard",
+    "todo",
+    "skills",
+    "templates",
+    "taskDashboard",
+    "flashcards",
+    "settings",
+    "pomodoro",
+    "sandbox",
+    "browser"
+  ],
+  "launcher": {
+    "browserClosed": [
+      {
+        "testId": "wb-apps-item-aiDashboard",
+        "text": "aiDashboard",
+        "html": "<button type=\"button\" role=\"option\" id=\"wb-apps-option-app_aiDashboard\" class=\"wb-apps-item\" data-testid=\"wb-apps-item-aiDashboard\" data-wb-apps-index=\"0\" data-wb-apps-active=\"true\" data-wb-apps-kind=\"app\" aria-selected=\"true\"><span class=\"wb-apps-item-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 64 64\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\" aria-hidden=\"true\" data-workbench-app-icon=\"aiDashboard\"><defs><linearGradient id=\"wbai-aiDashboard-tile\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#ffffff\"></stop><stop offset=\"1\" stop-color=\"#eef1f5\"></stop></linearGradient></defs><rect x=\"1\" y=\"1\" width=\"62\" height=\"62\" rx=\"14.3\" fill=\"url(#wbai-aiDashboard-tile)\"></rect><rect x=\"1.25\" y=\"1.25\" width=\"61.5\" height=\"61.5\" rx=\"14.1\" fill=\"none\" stroke=\"#1f2937\" stroke-opacity=\".14\" stroke-width=\".5\"></rect><image href=\"data:image/svg+xml,%3csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20150%20150'%3e%3clinearGradient%20id='aid_panel'%20x1='75'%20x2='75'%20y1='22'%20y2='132'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%23F8FDFC'%20offset='0'/%3e%3cstop%20stop-color='%23D3E8E6'%20offset='1'/%3e%3c/linearGradient%3e%3crect%20x='16'%20y='26'%20width='112'%20height='106'%20rx='14'%20fill='url(%23aid_panel)'%20stroke='%23A6C4CB'%20stroke-width='3'/%3e%3ccircle%20cx='54'%20cy='72'%20r='20'%20fill='none'%20stroke='%23D3E8E6'%20stroke-width='10'/%3e%3clinearGradient%20id='aid_ring'%20x1='34'%20x2='74'%20y1='52'%20y2='92'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%232BB3A3'%20offset='0'/%3e%3cstop%20stop-color='%231D3F6E'%20offset='1'/%3e%3c/linearGradient%3e%3cpath%20d='M54%2052a20%2020%200%201%201-19.02%2026.18'%20fill='none'%20stroke='url(%23aid_ring)'%20stroke-width='10'%20stroke-linecap='round'/%3e%3crect%20x='86'%20y='58'%20width='30'%20height='8'%20rx='4'%20fill='%231D3F6E'/%3e%3crect%20x='86'%20y='74'%20width='20'%20height='8'%20rx='4'%20fill='%235FD0CB'/%3e%3clinearGradient%20id='aid_line'%20x1='30'%20x2='116'%20y1='112'%20y2='112'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%2314A5A0'%20offset='0'/%3e%3cstop%20stop-color='%23127487'%20offset='1'/%3e%3c/linearGradient%3e%3cpath%20d='m30%20116%2018-10%2016%206%2020-14%2016%208%2016-10'%20stroke='url(%23aid_line)'%20stroke-width='6'%20stroke-linecap='round'%20stroke-linejoin='round'%20fill='none'/%3e%3clinearGradient%20id='aid_spark'%20x1='118'%20x2='118'%20y1='8'%20y2='48'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%23F9AC33'%20offset='0'/%3e%3cstop%20stop-color='%23F0603C'%20offset='1'/%3e%3c/linearGradient%3e%3cpath%20d='M118%208c2.4%2010.8%206.2%2014.6%2017%2017-10.8%202.4-14.6%206.2-17%2017-2.4-10.8-6.2-14.6-17-17%2010.8-2.4%2014.6-6.2%2017-17z'%20fill='url(%23aid_spark)'%20stroke='%23fff'%20stroke-width='3'%20stroke-linejoin='round'/%3e%3c/svg%3e\" x=\"9\" y=\"9\" width=\"46\" height=\"46\" preserveAspectRatio=\"xMidYMid meet\"></image></svg></span><span class=\"wb-apps-item-name\">aiDashboard</span></button>"
+      },
+      {
+        "testId": "wb-apps-item-chat",
+        "text": "chat",
+        "html": "<button type=\"button\" role=\"option\" id=\"wb-apps-option-app_chat\" class=\"wb-apps-item\" data-testid=\"wb-apps-item-chat\" data-wb-apps-index=\"1\" data-wb-apps-kind=\"app\" aria-selected=\"false\"><span class=\"wb-apps-item-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 64 64\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\" aria-hidden=\"true\" data-workbench-app-icon=\"chat\"><defs><linearGradient id=\"wbai-chat-tile\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#ffffff\"></stop><stop offset=\"1\" stop-color=\"#eef1f5\"></stop></linearGradient></defs><rect x=\"1\" y=\"1\" width=\"62\" height=\"62\" rx=\"14.3\" fill=\"url(#wbai-chat-tile)\"></rect><rect x=\"1.25\" y=\"1.25\" width=\"61.5\" height=\"61.5\" rx=\"14.1\" fill=\"none\" stroke=\"#1f2937\" stroke-opacity=\".14\" stroke-width=\".5\"></rect><image href=\"data:image/svg+xml,%3csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20150%20150'%3e%3clinearGradient%20id='chat_warm'%20x1='101'%20x2='101'%20y1='16'%20y2='74'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%23F9AC33'%20offset='0'/%3e%3cstop%20stop-color='%23F0603C'%20offset='1'/%3e%3c/linearGradient%3e%3cpath%20d='M82%2016h38a16%2016%200%200%201%2016%2016v14a16%2016%200%200%201-16%2016h-2l6%2014-20-14H82a16%2016%200%200%201-16-16V32a16%2016%200%200%201%2016-16z'%20fill='url(%23chat_warm)'/%3e%3clinearGradient%20id='chat_cool'%20x1='66'%20x2='66'%20y1='38'%20y2='134'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%232BB3A3'%20offset='0'/%3e%3cstop%20stop-color='%231D3F6E'%20offset='1'/%3e%3c/linearGradient%3e%3cpath%20d='M34%2038h64a20%2020%200%200%201%2020%2020v34a20%2020%200%200%201-20%2020H56l-26%2020%208-20h-4a20%2020%200%200%201-20-20V58a20%2020%200%200%201%2020-20z'%20fill='url(%23chat_cool)'/%3e%3cpath%20d='M34%2044h64a14%2014%200%200%201%2014%2014v4a14%2014%200%200%200-14-14H34a14%2014%200%200%200-14%2014v-4a14%2014%200%200%201%2014-14z'%20fill='%23fff'%20opacity='.25'/%3e%3ccircle%20cx='45'%20cy='76'%20r='7'%20fill='%23fff'/%3e%3ccircle%20cx='66'%20cy='76'%20r='7'%20fill='%23fff'/%3e%3ccircle%20cx='87'%20cy='76'%20r='7'%20fill='%23fff'%20opacity='.75'/%3e%3c/svg%3e\" x=\"9\" y=\"9\" width=\"46\" height=\"46\" preserveAspectRatio=\"xMidYMid meet\"></image></svg></span><span class=\"wb-apps-item-name\">chat</span></button>"
+      },
+      {
+        "testId": "wb-apps-item-essay",
+        "text": "essay",
+        "html": "<button type=\"button\" role=\"option\" id=\"wb-apps-option-app_essay\" class=\"wb-apps-item\" data-testid=\"wb-apps-item-essay\" data-wb-apps-index=\"2\" data-wb-apps-kind=\"app\" aria-selected=\"false\"><span class=\"wb-apps-item-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 64 64\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\" aria-hidden=\"true\" data-workbench-app-icon=\"essay\"><defs><linearGradient id=\"wbai-essay-tile\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#ffffff\"></stop><stop offset=\"1\" stop-color=\"#eef1f5\"></stop></linearGradient></defs><rect x=\"1\" y=\"1\" width=\"62\" height=\"62\" rx=\"14.3\" fill=\"url(#wbai-essay-tile)\"></rect><rect x=\"1.25\" y=\"1.25\" width=\"61.5\" height=\"61.5\" rx=\"14.1\" fill=\"none\" stroke=\"#1f2937\" stroke-opacity=\".14\" stroke-width=\".5\"></rect><image href=\"/src/features/workbench/icons/app-icons/essay.svg\" x=\"9\" y=\"9\" width=\"46\" height=\"46\" preserveAspectRatio=\"xMidYMid meet\"></image></svg></span><span class=\"wb-apps-item-name\">essay</span></button>"
+      },
+      {
+        "testId": "wb-apps-item-exam",
+        "text": "exam",
+        "html": "<button type=\"button\" role=\"option\" id=\"wb-apps-option-app_exam\" class=\"wb-apps-item\" data-testid=\"wb-apps-item-exam\" data-wb-apps-index=\"3\" data-wb-apps-kind=\"app\" aria-selected=\"false\"><span class=\"wb-apps-item-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 64 64\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\" aria-hidden=\"true\" data-workbench-app-icon=\"exam\"><defs><linearGradient id=\"wbai-exam-tile\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#ffffff\"></stop><stop offset=\"1\" stop-color=\"#eef1f5\"></stop></linearGradient></defs><rect x=\"1\" y=\"1\" width=\"62\" height=\"62\" rx=\"14.3\" fill=\"url(#wbai-exam-tile)\"></rect><rect x=\"1.25\" y=\"1.25\" width=\"61.5\" height=\"61.5\" rx=\"14.1\" fill=\"none\" stroke=\"#1f2937\" stroke-opacity=\".14\" stroke-width=\".5\"></rect><image href=\"/src/features/workbench/icons/app-icons/exam.svg\" x=\"9\" y=\"9\" width=\"46\" height=\"46\" preserveAspectRatio=\"xMidYMid meet\"></image></svg></span><span class=\"wb-apps-item-name\">exam</span></button>"
+      },
+      {
+        "testId": "wb-apps-item-files",
+        "text": "files",
+        "html": "<button type=\"button\" role=\"option\" id=\"wb-apps-option-app_files\" class=\"wb-apps-item\" data-testid=\"wb-apps-item-files\" data-wb-apps-index=\"4\" data-wb-apps-kind=\"app\" aria-selected=\"false\"><span class=\"wb-apps-item-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 64 64\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\" aria-hidden=\"true\" data-workbench-app-icon=\"files\"><defs><linearGradient id=\"wbai-files-tile\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#ffffff\"></stop><stop offset=\"1\" stop-color=\"#eef1f5\"></stop></linearGradient></defs><rect x=\"1\" y=\"1\" width=\"62\" height=\"62\" rx=\"14.3\" fill=\"url(#wbai-files-tile)\"></rect><rect x=\"1.25\" y=\"1.25\" width=\"61.5\" height=\"61.5\" rx=\"14.1\" fill=\"none\" stroke=\"#1f2937\" stroke-opacity=\".14\" stroke-width=\".5\"></rect><image href=\"data:image/svg+xml,%3csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20150%20150'%3e%3clinearGradient%20id='fs_back'%20x1='75'%20x2='75'%20y1='24'%20y2='90'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%2314607E'%20offset='0'/%3e%3cstop%20stop-color='%231D3F6E'%20offset='1'/%3e%3c/linearGradient%3e%3cpath%20d='M22%2034a10%2010%200%200%201%2010-10h26l12%2012h48a10%2010%200%200%201%2010%2010v60H22V34z'%20fill='url(%23fs_back)'/%3e%3crect%20x='38'%20y='44'%20width='74'%20height='52'%20rx='6'%20fill='%23FDFFFE'/%3e%3crect%20x='46'%20y='54'%20width='36'%20height='6'%20rx='3'%20fill='%239BC3CE'/%3e%3crect%20x='46'%20y='66'%20width='46'%20height='6'%20rx='3'%20fill='%23B8D6DC'/%3e%3clinearGradient%20id='fs_front'%20x1='75'%20x2='75'%20y1='58'%20y2='126'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%232BB3A3'%20offset='0'/%3e%3cstop%20stop-color='%23127487'%20offset='1'/%3e%3c/linearGradient%3e%3cpath%20d='M14%2062a8%208%200%200%201%208-8h106a8%208%200%200%201%207.8%209.8l-11%2052a10%2010%200%200%201-9.8%208H26a10%2010%200%200%201-9.8-8l-11-52A8%208%200%200%201%2014%2062z'%20fill='url(%23fs_front)'/%3e%3cpath%20d='M22%2054h106a8%208%200%200%201%207.7%206H14.3a8%208%200%200%201%207.7-6z'%20fill='%23fff'%20opacity='.22'/%3e%3clinearGradient%20id='fs_badge'%20x1='118'%20x2='118'%20y1='96'%20y2='120'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%23F9AC33'%20offset='0'/%3e%3cstop%20stop-color='%23F0603C'%20offset='1'/%3e%3c/linearGradient%3e%3ccircle%20cx='118'%20cy='108'%20r='13'%20fill='url(%23fs_badge)'/%3e%3cpath%20d='M118%20102v12M112%20108h12'%20stroke='%23fff'%20stroke-width='4'%20stroke-linecap='round'/%3e%3c/svg%3e\" x=\"9\" y=\"9\" width=\"46\" height=\"46\" preserveAspectRatio=\"xMidYMid meet\"></image></svg></span><span class=\"wb-apps-item-name\">files</span></button>"
+      },
+      {
+        "testId": "wb-apps-item-flashcards",
+        "text": "flashcards",
+        "html": "<button type=\"button\" role=\"option\" id=\"wb-apps-option-app_flashcards\" class=\"wb-apps-item\" data-testid=\"wb-apps-item-flashcards\" data-wb-apps-index=\"5\" data-wb-apps-kind=\"app\" aria-selected=\"false\"><span class=\"wb-apps-item-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 64 64\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\" aria-hidden=\"true\" data-workbench-app-icon=\"flashcards\"><defs><linearGradient id=\"wbai-flashcards-tile\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#ffffff\"></stop><stop offset=\"1\" stop-color=\"#eef1f5\"></stop></linearGradient></defs><rect x=\"1\" y=\"1\" width=\"62\" height=\"62\" rx=\"14.3\" fill=\"url(#wbai-flashcards-tile)\"></rect><rect x=\"1.25\" y=\"1.25\" width=\"61.5\" height=\"61.5\" rx=\"14.1\" fill=\"none\" stroke=\"#1f2937\" stroke-opacity=\".14\" stroke-width=\".5\"></rect><image href=\"data:image/svg+xml,%3csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20150%20150'%3e%3clinearGradient%20id='fc_back'%20x1='82'%20x2='82'%20y1='16'%20y2='80'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%2314A5A0'%20offset='0'/%3e%3cstop%20stop-color='%23127487'%20offset='1'/%3e%3c/linearGradient%3e%3cg%20transform='rotate(7%2082%2048)'%3e%3crect%20x='40'%20y='16'%20width='84'%20height='64'%20rx='10'%20fill='url(%23fc_back)'/%3e%3crect%20x='52'%20y='30'%20width='40'%20height='7'%20rx='3.5'%20fill='%23fff'%20opacity='.7'/%3e%3crect%20x='52'%20y='44'%20width='28'%20height='7'%20rx='3.5'%20fill='%23fff'%20opacity='.4'/%3e%3c/g%3e%3clinearGradient%20id='fc_front'%20x1='66'%20x2='66'%20y1='56'%20y2='128'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%23F8FDFC'%20offset='0'/%3e%3cstop%20stop-color='%23D6EBE9'%20offset='1'/%3e%3c/linearGradient%3e%3crect%20x='22'%20y='56'%20width='88'%20height='72'%20rx='10'%20fill='url(%23fc_front)'%20stroke='%23A6C4CB'%20stroke-width='3'/%3e%3crect%20x='34'%20y='72'%20width='34'%20height='8'%20rx='4'%20fill='%2314A5A0'%20opacity='.75'/%3e%3crect%20x='34'%20y='88'%20width='26'%20height='8'%20rx='4'%20fill='%239BC3CE'/%3e%3crect%20x='34'%20y='104'%20width='30'%20height='8'%20rx='4'%20fill='%23B8D6DC'/%3e%3clinearGradient%20id='fc_bolt'%20x1='94'%20x2='94'%20y1='60'%20y2='124'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%23F9AC33'%20offset='0'/%3e%3cstop%20stop-color='%23F0603C'%20offset='1'/%3e%3c/linearGradient%3e%3cpath%20d='M100%2060%2082%2092h12l-8%2032%2022-38H96l10-26h-6z'%20fill='url(%23fc_bolt)'/%3e%3c/svg%3e\" x=\"9\" y=\"9\" width=\"46\" height=\"46\" preserveAspectRatio=\"xMidYMid meet\"></image></svg></span><span class=\"wb-apps-item-name\">flashcards</span></button>"
+      },
+      {
+        "testId": "wb-apps-item-media",
+        "text": "media",
+        "html": "<button type=\"button\" role=\"option\" id=\"wb-apps-option-app_media\" class=\"wb-apps-item\" data-testid=\"wb-apps-item-media\" data-wb-apps-index=\"6\" data-wb-apps-kind=\"app\" aria-selected=\"false\"><span class=\"wb-apps-item-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 64 64\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\" aria-hidden=\"true\" data-workbench-app-icon=\"media\"><defs><linearGradient id=\"wbai-media-tile\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#ffffff\"></stop><stop offset=\"1\" stop-color=\"#eef1f5\"></stop></linearGradient></defs><rect x=\"1\" y=\"1\" width=\"62\" height=\"62\" rx=\"14.3\" fill=\"url(#wbai-media-tile)\"></rect><rect x=\"1.25\" y=\"1.25\" width=\"61.5\" height=\"61.5\" rx=\"14.1\" fill=\"none\" stroke=\"#1f2937\" stroke-opacity=\".14\" stroke-width=\".5\"></rect><image href=\"data:image/svg+xml,%3csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20150%20150'%3e%3clinearGradient%20id='md_body'%20x1='75'%20x2='75'%20y1='24'%20y2='112'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%23F8FDFC'%20offset='0'/%3e%3cstop%20stop-color='%23D5EAE8'%20offset='1'/%3e%3c/linearGradient%3e%3crect%20x='16'%20y='24'%20width='118'%20height='84'%20rx='12'%20fill='url(%23md_body)'%20stroke='%23A6C4CB'%20stroke-width='3'/%3e%3clinearGradient%20id='md_screen'%20x1='75'%20x2='75'%20y1='34'%20y2='98'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%2314607E'%20offset='0'/%3e%3cstop%20stop-color='%231D3F6E'%20offset='1'/%3e%3c/linearGradient%3e%3crect%20x='26'%20y='34'%20width='98'%20height='64'%20rx='7'%20fill='url(%23md_screen)'/%3e%3clinearGradient%20id='md_play'%20x1='68'%20x2='88'%20y1='50'%20y2='82'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%23F9AC33'%20offset='0'/%3e%3cstop%20stop-color='%23F0603C'%20offset='1'/%3e%3c/linearGradient%3e%3cpath%20d='M66%2052.5v27a3%203%200%200%200%204.6%202.5l21.4-13.5a3%203%200%200%200%200-5L70.6%2050a3%203%200%200%200-4.6%202.5z'%20fill='url(%23md_play)'/%3e%3clinearGradient%20id='md_wave'%20x1='75'%20x2='75'%20y1='116'%20y2='136'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%235FD0CB'%20offset='0'/%3e%3cstop%20stop-color='%2314A5A0'%20offset='1'/%3e%3c/linearGradient%3e%3cg%20fill='url(%23md_wave)'%3e%3crect%20x='40'%20y='122'%20width='7'%20height='10'%20rx='3.5'/%3e%3crect%20x='52'%20y='117'%20width='7'%20height='20'%20rx='3.5'/%3e%3crect%20x='64'%20y='120'%20width='7'%20height='14'%20rx='3.5'/%3e%3crect%20x='76'%20y='115'%20width='7'%20height='24'%20rx='3.5'/%3e%3crect%20x='88'%20y='119'%20width='7'%20height='16'%20rx='3.5'/%3e%3crect%20x='100'%20y='123'%20width='7'%20height='8'%20rx='3.5'/%3e%3c/g%3e%3cpath%20d='M34%2042h22'%20stroke='%23fff'%20stroke-width='4'%20stroke-linecap='round'%20opacity='.35'/%3e%3c/svg%3e\" x=\"9\" y=\"9\" width=\"46\" height=\"46\" preserveAspectRatio=\"xMidYMid meet\"></image></svg></span><span class=\"wb-apps-item-name\">media</span></button>"
+      },
+      {
+        "testId": "wb-apps-item-notes",
+        "text": "notes",
+        "html": "<button type=\"button\" role=\"option\" id=\"wb-apps-option-app_notes\" class=\"wb-apps-item\" data-testid=\"wb-apps-item-notes\" data-wb-apps-index=\"7\" data-wb-apps-kind=\"app\" aria-selected=\"false\"><span class=\"wb-apps-item-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 64 64\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\" aria-hidden=\"true\" data-workbench-app-icon=\"notes\"><defs><linearGradient id=\"wbai-notes-tile\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#ffffff\"></stop><stop offset=\"1\" stop-color=\"#eef1f5\"></stop></linearGradient></defs><rect x=\"1\" y=\"1\" width=\"62\" height=\"62\" rx=\"14.3\" fill=\"url(#wbai-notes-tile)\"></rect><rect x=\"1.25\" y=\"1.25\" width=\"61.5\" height=\"61.5\" rx=\"14.1\" fill=\"none\" stroke=\"#1f2937\" stroke-opacity=\".14\" stroke-width=\".5\"></rect><image href=\"/src/features/workbench/icons/app-icons/notes.svg\" x=\"9\" y=\"9\" width=\"46\" height=\"46\" preserveAspectRatio=\"xMidYMid meet\"></image></svg></span><span class=\"wb-apps-item-name\">notes</span></button>"
+      },
+      {
+        "testId": "wb-apps-item-pomodoro",
+        "text": "pomodoro",
+        "html": "<button type=\"button\" role=\"option\" id=\"wb-apps-option-app_pomodoro\" class=\"wb-apps-item\" data-testid=\"wb-apps-item-pomodoro\" data-wb-apps-index=\"8\" data-wb-apps-kind=\"app\" aria-selected=\"false\"><span class=\"wb-apps-item-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 64 64\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\" aria-hidden=\"true\" data-workbench-app-icon=\"pomodoro\"><defs><linearGradient id=\"wbai-pomodoro-tile\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#ffffff\"></stop><stop offset=\"1\" stop-color=\"#eef1f5\"></stop></linearGradient></defs><rect x=\"1\" y=\"1\" width=\"62\" height=\"62\" rx=\"14.3\" fill=\"url(#wbai-pomodoro-tile)\"></rect><rect x=\"1.25\" y=\"1.25\" width=\"61.5\" height=\"61.5\" rx=\"14.1\" fill=\"none\" stroke=\"#1f2937\" stroke-opacity=\".14\" stroke-width=\".5\"></rect><image href=\"data:image/svg+xml,%3csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20150%20150'%3e%3c!--%20SVG%20created%20with%20Arrow,%20by%20QuiverAI%20(https://quiver.ai)%20--%3e%3cstyle%20type='text/css'%3e.cls-0%20{fill:%23E8422F;}%20.cls-1%20{fill:%23C1372B;}%20.cls-2%20{fill:%231B9C82;}%20.cls-3%20{fill:%23F0603C;}%20.cls-4%20{fill:%23F7A233;}%20.cls-5%20{fill:%23CB3A2C;}%20.cls-6%20{fill:%23C1372B;}%3c/style%3e%3cpath%20class='cls-0'%20d='m45.2%2040.2c-10.6%203.4-21.6%2010.5-27.1%2024.8-1.8%205.1-3%2010.6-3%2017.4%200.2%2010.4%202.9%2018.1%206.9%2025.2%208.6%2014.7%2024.7%2031%2053.2%2032.1v-90.9c-8.1%206.3-15.6%209.9-28.6%2013.1%201.4-3.9%205.2-11.4%209.7-16.9-3.2-1-7-2.5-11.1-4.8zm-6.8%2016.7c-2.2%202.2-7.3%207.3-10.6%2013.9-2.1%204.5-4%2010.7-4.7%2014.4-0.9-8.4%200-15.2%203.1-20.9%204.4-7.7%209.8-11.5%2012.5-13.5%203-1.7%205.4%201%202.8%203.3l-3.1%202.8z'/%3e%3cpath%20class='cls-1'%20d='m16.3%2093.7c4.3%2017.7%2020.5%2044.8%2058.9%2046v-18c-17.7%200.8-45.2-2.5-58.9-28z'/%3e%3cpath%20class='cls-2'%20d='m79.3%2010.5c-3.1%204.1-7%2011.4-8.2%2022.7-2.1-14.3-11.2-22.7-33.3-23.1-0.2%2013.4%204.6%2023.8%2017.8%2027.8l-6.7%200.9c4.6%202.8%207.9%203.7%2014.3%204.7-5.4%203-9.5%2010.4-11.4%2014.7%204.1-1%2016.5-5.4%2023.4-13.5v-6.6h1.5c-0.1-8.9%203.2-16.8%209.5-23.5l-6.7-4.5-0.2%200.4zm-13.1%2027.4c-4.1-5.4-9.6-11.8-17.8-18.3%206.2%202.3%2010.8%206.3%2015.7%2010.9%202.4%202.5%204.9%205.7%206.3%207.7l-4.2-0.3z'/%3e%3cpath%20class='cls-3'%20d='m78.8%20126.4v13.3c9.3-0.2%2019.2-2.9%2025.5-6.7l-6.4-11.6c-4.4%202.2-10.7%204.8-19.1%205z'/%3e%3cpath%20class='cls-3'%20d='m101.2%20119.4%206.5%2011.6c6.1-3.6%2013.2-10.1%2018.8-18.4l-11-6.9c-2.2%203.7-7.5%209.5-14.3%2013.7z'/%3e%3cpath%20class='cls-3'%20d='m117.3%20102.4%2011.3%206.6c3.2-6.3%206.4-14.6%206.6-25.3h-12.7c-0.2%206-1.9%2013-5.2%2018.7z'/%3e%3cpath%20class='cls-4'%20d='m127.7%2055.9z'/%3e%3cpath%20class='cls-4'%20d='m117.1%2061.8c2.6%204.8%204.9%2010.6%205.3%2018.2h12.5c-0.6-9.1-4.3-18.5-7.2-24.6l-10.6%206.4z'/%3e%3cpath%20class='cls-4'%20d='m102.2%2044.9c4.4%202.9%209.3%207.4%2013.2%2013.5l10.1-6.4c-3.6-5.3-9.8-12-17.5-16.3l-5.8%209.2z'/%3e%3cpath%20class='cls-4'%20d='m79.7%2038.1c6.4%200.2%2012.6%201.7%2019.4%205.1l5.6-9.3c-5.4-3-13-6-23.1-6.8-1.4%203.8-1.9%207.3-1.9%2011z'/%3e%3cpath%20class='cls-0'%20d='m75.2%2076.2v11.4c1%200.3%203.8%201.2%206.2-0.6%202.2-1.8%202.4-3.5%202.1-6.8l12.4-14.8v-0.3l-1.3-1.5c-8.7%206.6-15.5%2011.7-15.5%2012.3-1.1-0.2-2.5-0.4-3.9%200.3zm2.1%203.2c1.3-0.1%202.2%201.1%202.4%202%200.2%202.2-2%203.6-3.6%202.5-1.8-1-1.3-4.3%201.2-4.5z'/%3e%3cpath%20class='cls-5'%20d='m75.2%2042.4v10h4.5v-10h-4.5z'/%3e%3cpath%20class='cls-5'%20d='m75.2%20112.3v9.6h4.5v-9.6h-4.5z'/%3e%3cpath%20class='cls-6'%20d='m108%2067.6%205.5-3.4v-0.1l-0.2-2.9-8.4%203.9%201.7-0.4z'/%3e%3cpath%20class='cls-6'%20d='m95.4%2055%203.6-6.7-2.6-1.8-3.6%206.7z'/%3e%3cpath%20class='cls-6'%20d='m107.3%2096.4-1.8%202.8%206.1%204%201.9-3.3z'/%3e%3cpath%20class='cls-6'%20d='m92.5%20111.3%203.7%206.3%202.7-1.7-3.5-6.4z'/%3e%3cpath%20class='cls-6'%20d='m108.1%2079.4h9.8v4.8h-9.8z'/%3e%3cpath%20class='cls-5'%20d='m108.7%2079.4h9.2v4.8h-9.2z'/%3e%3cpath%20class='cls-5'%20d='m104.9%2064.9%206.9-3.9%201.7%203-6.9%203.6z'/%3e%3c/svg%3e\" x=\"9\" y=\"9\" width=\"46\" height=\"46\" preserveAspectRatio=\"xMidYMid meet\"></image></svg></span><span class=\"wb-apps-item-name\">pomodoro</span></button>"
+      },
+      {
+        "testId": "wb-apps-item-settings",
+        "text": "settings",
+        "html": "<button type=\"button\" role=\"option\" id=\"wb-apps-option-app_settings\" class=\"wb-apps-item\" data-testid=\"wb-apps-item-settings\" data-wb-apps-index=\"9\" data-wb-apps-kind=\"app\" aria-selected=\"false\"><span class=\"wb-apps-item-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 64 64\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\" aria-hidden=\"true\" data-workbench-app-icon=\"settings\"><defs><linearGradient id=\"wbai-settings-tile\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#ffffff\"></stop><stop offset=\"1\" stop-color=\"#eef1f5\"></stop></linearGradient></defs><rect x=\"1\" y=\"1\" width=\"62\" height=\"62\" rx=\"14.3\" fill=\"url(#wbai-settings-tile)\"></rect><rect x=\"1.25\" y=\"1.25\" width=\"61.5\" height=\"61.5\" rx=\"14.1\" fill=\"none\" stroke=\"#1f2937\" stroke-opacity=\".14\" stroke-width=\".5\"></rect><image href=\"data:image/svg+xml,%3csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20150%20150'%3e%3clinearGradient%20id='st_body'%20x1='70'%20x2='70'%20y1='24'%20y2='132'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%232BB3A3'%20offset='0'/%3e%3cstop%20stop-color='%2314607E'%20offset='.55'/%3e%3cstop%20stop-color='%231D3F6E'%20offset='1'/%3e%3c/linearGradient%3e%3cg%20fill='url(%23st_body)'%3e%3crect%20x='62.5'%20y='30'%20width='15'%20height='96'%20rx='7.5'/%3e%3crect%20x='62.5'%20y='30'%20width='15'%20height='96'%20rx='7.5'%20transform='rotate(45%2070%2078)'/%3e%3crect%20x='62.5'%20y='30'%20width='15'%20height='96'%20rx='7.5'%20transform='rotate(90%2070%2078)'/%3e%3crect%20x='62.5'%20y='30'%20width='15'%20height='96'%20rx='7.5'%20transform='rotate(135%2070%2078)'/%3e%3ccircle%20cx='70'%20cy='78'%20r='36'/%3e%3c/g%3e%3ccircle%20cx='70'%20cy='78'%20r='19'%20fill='%23EAF7F6'/%3e%3ccircle%20cx='70'%20cy='78'%20r='8.5'%20fill='%231D3F6E'/%3e%3clinearGradient%20id='st_mini'%20x1='119'%20x2='119'%20y1='14'%20y2='52'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%23F9AC33'%20offset='0'/%3e%3cstop%20stop-color='%23F0603C'%20offset='1'/%3e%3c/linearGradient%3e%3cg%20fill='url(%23st_mini)'%3e%3crect%20x='115'%20y='15'%20width='8'%20height='36'%20rx='4'/%3e%3crect%20x='115'%20y='15'%20width='8'%20height='36'%20rx='4'%20transform='rotate(60%20119%2033)'/%3e%3crect%20x='115'%20y='15'%20width='8'%20height='36'%20rx='4'%20transform='rotate(120%20119%2033)'/%3e%3ccircle%20cx='119'%20cy='33'%20r='12'/%3e%3c/g%3e%3ccircle%20cx='119'%20cy='33'%20r='5'%20fill='%23FFF4E4'/%3e%3c/svg%3e\" x=\"9\" y=\"9\" width=\"46\" height=\"46\" preserveAspectRatio=\"xMidYMid meet\"></image></svg></span><span class=\"wb-apps-item-name\">settings</span></button>"
+      },
+      {
+        "testId": "wb-apps-item-skills",
+        "text": "skills",
+        "html": "<button type=\"button\" role=\"option\" id=\"wb-apps-option-app_skills\" class=\"wb-apps-item\" data-testid=\"wb-apps-item-skills\" data-wb-apps-index=\"10\" data-wb-apps-kind=\"app\" aria-selected=\"false\"><span class=\"wb-apps-item-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 64 64\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\" aria-hidden=\"true\" data-workbench-app-icon=\"skills\"><defs><linearGradient id=\"wbai-skills-tile\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#ffffff\"></stop><stop offset=\"1\" stop-color=\"#eef1f5\"></stop></linearGradient></defs><rect x=\"1\" y=\"1\" width=\"62\" height=\"62\" rx=\"14.3\" fill=\"url(#wbai-skills-tile)\"></rect><rect x=\"1.25\" y=\"1.25\" width=\"61.5\" height=\"61.5\" rx=\"14.1\" fill=\"none\" stroke=\"#1f2937\" stroke-opacity=\".14\" stroke-width=\".5\"></rect><image href=\"/src/features/workbench/icons/app-icons/skills.svg\" x=\"9\" y=\"9\" width=\"46\" height=\"46\" preserveAspectRatio=\"xMidYMid meet\"></image></svg></span><span class=\"wb-apps-item-name\">skills</span></button>"
+      },
+      {
+        "testId": "wb-apps-item-taskDashboard",
+        "text": "taskDashboard",
+        "html": "<button type=\"button\" role=\"option\" id=\"wb-apps-option-app_taskDashboard\" class=\"wb-apps-item\" data-testid=\"wb-apps-item-taskDashboard\" data-wb-apps-index=\"11\" data-wb-apps-kind=\"app\" aria-selected=\"false\"><span class=\"wb-apps-item-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 64 64\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\" aria-hidden=\"true\" data-workbench-app-icon=\"taskDashboard\"><defs><linearGradient id=\"wbai-taskDashboard-tile\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#ffffff\"></stop><stop offset=\"1\" stop-color=\"#eef1f5\"></stop></linearGradient></defs><rect x=\"1\" y=\"1\" width=\"62\" height=\"62\" rx=\"14.3\" fill=\"url(#wbai-taskDashboard-tile)\"></rect><rect x=\"1.25\" y=\"1.25\" width=\"61.5\" height=\"61.5\" rx=\"14.1\" fill=\"none\" stroke=\"#1f2937\" stroke-opacity=\".14\" stroke-width=\".5\"></rect><image href=\"data:image/svg+xml,%3csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20150%20150'%3e%3clinearGradient%20id='td_panel'%20x1='75'%20x2='75'%20y1='18'%20y2='132'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%23F8FDFC'%20offset='0'/%3e%3cstop%20stop-color='%23D3E8E6'%20offset='1'/%3e%3c/linearGradient%3e%3crect%20x='18'%20y='18'%20width='114'%20height='114'%20rx='14'%20fill='url(%23td_panel)'%20stroke='%23A6C4CB'%20stroke-width='3'/%3e%3crect%20x='30'%20y='30'%20width='44'%20height='10'%20rx='5'%20fill='%231D3F6E'/%3e%3clinearGradient%20id='td_bar1'%20x1='42'%20x2='42'%20y1='86'%20y2='118'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%235FD0CB'%20offset='0'/%3e%3cstop%20stop-color='%232BB3A3'%20offset='1'/%3e%3c/linearGradient%3e%3crect%20x='32'%20y='86'%20width='20'%20height='32'%20rx='5'%20fill='url(%23td_bar1)'/%3e%3clinearGradient%20id='td_bar2'%20x1='70'%20x2='70'%20y1='68'%20y2='118'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%2314A5A0'%20offset='0'/%3e%3cstop%20stop-color='%23127487'%20offset='1'/%3e%3c/linearGradient%3e%3crect%20x='60'%20y='68'%20width='20'%20height='50'%20rx='5'%20fill='url(%23td_bar2)'/%3e%3clinearGradient%20id='td_bar3'%20x1='98'%20x2='98'%20y1='50'%20y2='118'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%23F9AC33'%20offset='0'/%3e%3cstop%20stop-color='%23F0603C'%20offset='1'/%3e%3c/linearGradient%3e%3crect%20x='88'%20y='50'%20width='20'%20height='68'%20rx='5'%20fill='url(%23td_bar3)'/%3e%3cpath%20d='m36%2074%2026-16%2024%208%2022-22'%20stroke='%231D3F6E'%20stroke-width='5'%20stroke-linecap='round'%20stroke-linejoin='round'%20fill='none'/%3e%3cpath%20d='M108%2040h6v6'%20stroke='%231D3F6E'%20stroke-width='5'%20stroke-linecap='round'%20stroke-linejoin='round'%20fill='none'/%3e%3c/svg%3e\" x=\"9\" y=\"9\" width=\"46\" height=\"46\" preserveAspectRatio=\"xMidYMid meet\"></image></svg></span><span class=\"wb-apps-item-name\">taskDashboard</span></button>"
+      },
+      {
+        "testId": "wb-apps-item-templates",
+        "text": "templates",
+        "html": "<button type=\"button\" role=\"option\" id=\"wb-apps-option-app_templates\" class=\"wb-apps-item\" data-testid=\"wb-apps-item-templates\" data-wb-apps-index=\"12\" data-wb-apps-kind=\"app\" aria-selected=\"false\"><span class=\"wb-apps-item-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 64 64\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\" aria-hidden=\"true\" data-workbench-app-icon=\"templates\"><defs><linearGradient id=\"wbai-templates-tile\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#ffffff\"></stop><stop offset=\"1\" stop-color=\"#eef1f5\"></stop></linearGradient></defs><rect x=\"1\" y=\"1\" width=\"62\" height=\"62\" rx=\"14.3\" fill=\"url(#wbai-templates-tile)\"></rect><rect x=\"1.25\" y=\"1.25\" width=\"61.5\" height=\"61.5\" rx=\"14.1\" fill=\"none\" stroke=\"#1f2937\" stroke-opacity=\".14\" stroke-width=\".5\"></rect><image href=\"data:image/svg+xml,%3csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20150%20150'%3e%3crect%20x='42'%20y='14'%20width='88'%20height='98'%20rx='10'%20fill='%235FD0CB'%20opacity='.55'/%3e%3clinearGradient%20id='tp_mid'%20x1='76'%20x2='76'%20y1='24'%20y2='122'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%2314A5A0'%20offset='0'/%3e%3cstop%20stop-color='%2314607E'%20offset='1'/%3e%3c/linearGradient%3e%3crect%20x='32'%20y='24'%20width='88'%20height='98'%20rx='10'%20fill='url(%23tp_mid)'/%3e%3clinearGradient%20id='tp_front'%20x1='66'%20x2='66'%20y1='36'%20y2='134'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%23F8FDFC'%20offset='0'/%3e%3cstop%20stop-color='%23D4EAE8'%20offset='1'/%3e%3c/linearGradient%3e%3crect%20x='22'%20y='36'%20width='88'%20height='98'%20rx='10'%20fill='url(%23tp_front)'%20stroke='%23A6C4CB'%20stroke-width='3'/%3e%3crect%20x='32'%20y='48'%20width='68'%20height='14'%20rx='5'%20fill='%231D3F6E'/%3e%3crect%20x='32'%20y='72'%20width='30'%20height='50'%20rx='5'%20fill='%2314A5A0'/%3e%3clinearGradient%20id='tp_accent'%20x1='86'%20x2='86'%20y1='100'%20y2='122'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%23F9AC33'%20offset='0'/%3e%3cstop%20stop-color='%23F0603C'%20offset='1'/%3e%3c/linearGradient%3e%3crect%20x='70'%20y='72'%20width='30'%20height='20'%20rx='5'%20fill='%239BD9D4'/%3e%3crect%20x='70'%20y='100'%20width='30'%20height='22'%20rx='5'%20fill='url(%23tp_accent)'/%3e%3c/svg%3e\" x=\"9\" y=\"9\" width=\"46\" height=\"46\" preserveAspectRatio=\"xMidYMid meet\"></image></svg></span><span class=\"wb-apps-item-name\">templates</span></button>"
+      },
+      {
+        "testId": "wb-apps-item-todo",
+        "text": "todo",
+        "html": "<button type=\"button\" role=\"option\" id=\"wb-apps-option-app_todo\" class=\"wb-apps-item\" data-testid=\"wb-apps-item-todo\" data-wb-apps-index=\"13\" data-wb-apps-kind=\"app\" aria-selected=\"false\"><span class=\"wb-apps-item-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 64 64\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\" aria-hidden=\"true\" data-workbench-app-icon=\"todo\"><defs><linearGradient id=\"wbai-todo-tile\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#ffffff\"></stop><stop offset=\"1\" stop-color=\"#eef1f5\"></stop></linearGradient></defs><rect x=\"1\" y=\"1\" width=\"62\" height=\"62\" rx=\"14.3\" fill=\"url(#wbai-todo-tile)\"></rect><rect x=\"1.25\" y=\"1.25\" width=\"61.5\" height=\"61.5\" rx=\"14.1\" fill=\"none\" stroke=\"#1f2937\" stroke-opacity=\".14\" stroke-width=\".5\"></rect><image href=\"/src/features/workbench/icons/app-icons/todo.svg\" x=\"9\" y=\"9\" width=\"46\" height=\"46\" preserveAspectRatio=\"xMidYMid meet\"></image></svg></span><span class=\"wb-apps-item-name\">todo</span></button>"
+      },
+      {
+        "testId": "wb-apps-item-translation",
+        "text": "translation",
+        "html": "<button type=\"button\" role=\"option\" id=\"wb-apps-option-app_translation\" class=\"wb-apps-item\" data-testid=\"wb-apps-item-translation\" data-wb-apps-index=\"14\" data-wb-apps-kind=\"app\" aria-selected=\"false\"><span class=\"wb-apps-item-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 64 64\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\" aria-hidden=\"true\" data-workbench-app-icon=\"translation\"><defs><linearGradient id=\"wbai-translation-tile\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#ffffff\"></stop><stop offset=\"1\" stop-color=\"#eef1f5\"></stop></linearGradient></defs><rect x=\"1\" y=\"1\" width=\"62\" height=\"62\" rx=\"14.3\" fill=\"url(#wbai-translation-tile)\"></rect><rect x=\"1.25\" y=\"1.25\" width=\"61.5\" height=\"61.5\" rx=\"14.1\" fill=\"none\" stroke=\"#1f2937\" stroke-opacity=\".14\" stroke-width=\".5\"></rect><image href=\"data:image/svg+xml,%3csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20150%20150'%3e%3clinearGradient%20id='tr_warm'%20x1='52'%20x2='52'%20y1='18'%20y2='84'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%23F9AC33'%20offset='0'/%3e%3cstop%20stop-color='%23F0603C'%20offset='1'/%3e%3c/linearGradient%3e%3cpath%20d='M30%2018h44a16%2016%200%200%201%2016%2016v20a16%2016%200%200%201-16%2016H52l-18%2014%205-14h-9a16%2016%200%200%201-16-16V34a16%2016%200%200%201%2016-16z'%20fill='url(%23tr_warm)'/%3e%3cg%20stroke='%23fff'%20stroke-width='7'%20stroke-linecap='round'%20stroke-linejoin='round'%20fill='none'%3e%3cpath%20d='M42%2056l10-26%2010%2026'/%3e%3cpath%20d='M46%2047h12'/%3e%3c/g%3e%3clinearGradient%20id='tr_cool'%20x1='98'%20x2='98'%20y1='66'%20y2='132'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%232BB3A3'%20offset='0'/%3e%3cstop%20stop-color='%231D3F6E'%20offset='1'/%3e%3c/linearGradient%3e%3cpath%20d='M120%20132H76a16%2016%200%200%201-16-16V96a16%2016%200%200%201%2016-16h22l18-14-5%2014h9a16%2016%200%200%201%2016%2016v20a16%2016%200%200%201-16%2016z'%20fill='url(%23tr_cool)'/%3e%3cpath%20d='M76%2080h44a16%2016%200%200%201%2016%2016v4a16%2016%200%200%200-16-16H76a16%2016%200%200%200-16%2016v-4a16%2016%200%200%201%2016-16z'%20fill='%23fff'%20opacity='.25'/%3e%3cg%20stroke='%23fff'%20stroke-width='7'%20stroke-linecap='round'%20stroke-linejoin='round'%20fill='none'%3e%3cpath%20d='M98%2085v4'/%3e%3cpath%20d='M81%2098h34'/%3e%3cpath%20d='M105%20102L87%20126'/%3e%3cpath%20d='M91%20102l18%2024'/%3e%3c/g%3e%3c/svg%3e\" x=\"9\" y=\"9\" width=\"46\" height=\"46\" preserveAspectRatio=\"xMidYMid meet\"></image></svg></span><span class=\"wb-apps-item-name\">translation</span></button>"
+      }
+    ],
+    "browserOpen": [
+      {
+        "testId": "wb-apps-item-aiDashboard",
+        "text": "aiDashboard",
+        "html": "<button type=\"button\" role=\"option\" id=\"wb-apps-option-app_aiDashboard\" class=\"wb-apps-item\" data-testid=\"wb-apps-item-aiDashboard\" data-wb-apps-index=\"0\" data-wb-apps-active=\"true\" data-wb-apps-kind=\"app\" aria-selected=\"true\"><span class=\"wb-apps-item-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 64 64\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\" aria-hidden=\"true\" data-workbench-app-icon=\"aiDashboard\"><defs><linearGradient id=\"wbai-aiDashboard-tile\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#ffffff\"></stop><stop offset=\"1\" stop-color=\"#eef1f5\"></stop></linearGradient></defs><rect x=\"1\" y=\"1\" width=\"62\" height=\"62\" rx=\"14.3\" fill=\"url(#wbai-aiDashboard-tile)\"></rect><rect x=\"1.25\" y=\"1.25\" width=\"61.5\" height=\"61.5\" rx=\"14.1\" fill=\"none\" stroke=\"#1f2937\" stroke-opacity=\".14\" stroke-width=\".5\"></rect><image href=\"data:image/svg+xml,%3csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20150%20150'%3e%3clinearGradient%20id='aid_panel'%20x1='75'%20x2='75'%20y1='22'%20y2='132'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%23F8FDFC'%20offset='0'/%3e%3cstop%20stop-color='%23D3E8E6'%20offset='1'/%3e%3c/linearGradient%3e%3crect%20x='16'%20y='26'%20width='112'%20height='106'%20rx='14'%20fill='url(%23aid_panel)'%20stroke='%23A6C4CB'%20stroke-width='3'/%3e%3ccircle%20cx='54'%20cy='72'%20r='20'%20fill='none'%20stroke='%23D3E8E6'%20stroke-width='10'/%3e%3clinearGradient%20id='aid_ring'%20x1='34'%20x2='74'%20y1='52'%20y2='92'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%232BB3A3'%20offset='0'/%3e%3cstop%20stop-color='%231D3F6E'%20offset='1'/%3e%3c/linearGradient%3e%3cpath%20d='M54%2052a20%2020%200%201%201-19.02%2026.18'%20fill='none'%20stroke='url(%23aid_ring)'%20stroke-width='10'%20stroke-linecap='round'/%3e%3crect%20x='86'%20y='58'%20width='30'%20height='8'%20rx='4'%20fill='%231D3F6E'/%3e%3crect%20x='86'%20y='74'%20width='20'%20height='8'%20rx='4'%20fill='%235FD0CB'/%3e%3clinearGradient%20id='aid_line'%20x1='30'%20x2='116'%20y1='112'%20y2='112'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%2314A5A0'%20offset='0'/%3e%3cstop%20stop-color='%23127487'%20offset='1'/%3e%3c/linearGradient%3e%3cpath%20d='m30%20116%2018-10%2016%206%2020-14%2016%208%2016-10'%20stroke='url(%23aid_line)'%20stroke-width='6'%20stroke-linecap='round'%20stroke-linejoin='round'%20fill='none'/%3e%3clinearGradient%20id='aid_spark'%20x1='118'%20x2='118'%20y1='8'%20y2='48'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%23F9AC33'%20offset='0'/%3e%3cstop%20stop-color='%23F0603C'%20offset='1'/%3e%3c/linearGradient%3e%3cpath%20d='M118%208c2.4%2010.8%206.2%2014.6%2017%2017-10.8%202.4-14.6%206.2-17%2017-2.4-10.8-6.2-14.6-17-17%2010.8-2.4%2014.6-6.2%2017-17z'%20fill='url(%23aid_spark)'%20stroke='%23fff'%20stroke-width='3'%20stroke-linejoin='round'/%3e%3c/svg%3e\" x=\"9\" y=\"9\" width=\"46\" height=\"46\" preserveAspectRatio=\"xMidYMid meet\"></image></svg></span><span class=\"wb-apps-item-name\">aiDashboard</span></button>"
+      },
+      {
+        "testId": "wb-apps-item-browser",
+        "text": "browser",
+        "html": "<button type=\"button\" role=\"option\" id=\"wb-apps-option-app_browser\" class=\"wb-apps-item\" data-testid=\"wb-apps-item-browser\" data-wb-apps-index=\"1\" data-wb-apps-kind=\"app\" aria-selected=\"false\"><span class=\"wb-apps-item-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 64 64\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\" aria-hidden=\"true\" data-workbench-app-icon=\"browser\"><defs><linearGradient id=\"wbai-browser-tile\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#ffffff\"></stop><stop offset=\"1\" stop-color=\"#eef1f5\"></stop></linearGradient></defs><rect x=\"1\" y=\"1\" width=\"62\" height=\"62\" rx=\"14.3\" fill=\"url(#wbai-browser-tile)\"></rect><rect x=\"1.25\" y=\"1.25\" width=\"61.5\" height=\"61.5\" rx=\"14.1\" fill=\"none\" stroke=\"#1f2937\" stroke-opacity=\".14\" stroke-width=\".5\"></rect><image href=\"data:image/svg+xml,%3csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20150%20150'%3e%3clinearGradient%20id='br_body'%20x1='75'%20x2='75'%20y1='16'%20y2='134'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%232BB3A3'%20offset='0'/%3e%3cstop%20stop-color='%2314607E'%20offset='.55'/%3e%3cstop%20stop-color='%231D3F6E'%20offset='1'/%3e%3c/linearGradient%3e%3ccircle%20cx='75'%20cy='75'%20r='59'%20fill='url(%23br_body)'/%3e%3ccircle%20cx='75'%20cy='75'%20r='48'%20fill='none'%20stroke='%23fff'%20stroke-opacity='.28'%20stroke-width='3'/%3e%3cpath%20d='M75%2022v10M75%20118v10M22%2075h10M118%2075h10'%20stroke='%23fff'%20stroke-opacity='.55'%20stroke-width='4'%20stroke-linecap='round'/%3e%3clinearGradient%20id='br_needle'%20x1='88'%20x2='66'%20y1='52'%20y2='74'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%23F9AC33'%20offset='0'/%3e%3cstop%20stop-color='%23F0603C'%20offset='1'/%3e%3c/linearGradient%3e%3cpolygon%20points='101,49%2086,86%2064,64'%20fill='url(%23br_needle)'/%3e%3cpolygon%20points='49,101%2064,64%2086,86'%20fill='%23EAF7F6'/%3e%3ccircle%20cx='75'%20cy='75'%20r='7'%20fill='%231D3F6E'/%3e%3ccircle%20cx='75'%20cy='75'%20r='3'%20fill='%235FD0CB'/%3e%3c/svg%3e\" x=\"9\" y=\"9\" width=\"46\" height=\"46\" preserveAspectRatio=\"xMidYMid meet\"></image></svg></span><span class=\"wb-apps-item-name\">browser</span></button>"
+      },
+      {
+        "testId": "wb-apps-item-chat",
+        "text": "chat",
+        "html": "<button type=\"button\" role=\"option\" id=\"wb-apps-option-app_chat\" class=\"wb-apps-item\" data-testid=\"wb-apps-item-chat\" data-wb-apps-index=\"2\" data-wb-apps-kind=\"app\" aria-selected=\"false\"><span class=\"wb-apps-item-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 64 64\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\" aria-hidden=\"true\" data-workbench-app-icon=\"chat\"><defs><linearGradient id=\"wbai-chat-tile\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#ffffff\"></stop><stop offset=\"1\" stop-color=\"#eef1f5\"></stop></linearGradient></defs><rect x=\"1\" y=\"1\" width=\"62\" height=\"62\" rx=\"14.3\" fill=\"url(#wbai-chat-tile)\"></rect><rect x=\"1.25\" y=\"1.25\" width=\"61.5\" height=\"61.5\" rx=\"14.1\" fill=\"none\" stroke=\"#1f2937\" stroke-opacity=\".14\" stroke-width=\".5\"></rect><image href=\"data:image/svg+xml,%3csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20150%20150'%3e%3clinearGradient%20id='chat_warm'%20x1='101'%20x2='101'%20y1='16'%20y2='74'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%23F9AC33'%20offset='0'/%3e%3cstop%20stop-color='%23F0603C'%20offset='1'/%3e%3c/linearGradient%3e%3cpath%20d='M82%2016h38a16%2016%200%200%201%2016%2016v14a16%2016%200%200%201-16%2016h-2l6%2014-20-14H82a16%2016%200%200%201-16-16V32a16%2016%200%200%201%2016-16z'%20fill='url(%23chat_warm)'/%3e%3clinearGradient%20id='chat_cool'%20x1='66'%20x2='66'%20y1='38'%20y2='134'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%232BB3A3'%20offset='0'/%3e%3cstop%20stop-color='%231D3F6E'%20offset='1'/%3e%3c/linearGradient%3e%3cpath%20d='M34%2038h64a20%2020%200%200%201%2020%2020v34a20%2020%200%200%201-20%2020H56l-26%2020%208-20h-4a20%2020%200%200%201-20-20V58a20%2020%200%200%201%2020-20z'%20fill='url(%23chat_cool)'/%3e%3cpath%20d='M34%2044h64a14%2014%200%200%201%2014%2014v4a14%2014%200%200%200-14-14H34a14%2014%200%200%200-14%2014v-4a14%2014%200%200%201%2014-14z'%20fill='%23fff'%20opacity='.25'/%3e%3ccircle%20cx='45'%20cy='76'%20r='7'%20fill='%23fff'/%3e%3ccircle%20cx='66'%20cy='76'%20r='7'%20fill='%23fff'/%3e%3ccircle%20cx='87'%20cy='76'%20r='7'%20fill='%23fff'%20opacity='.75'/%3e%3c/svg%3e\" x=\"9\" y=\"9\" width=\"46\" height=\"46\" preserveAspectRatio=\"xMidYMid meet\"></image></svg></span><span class=\"wb-apps-item-name\">chat</span></button>"
+      },
+      {
+        "testId": "wb-apps-item-essay",
+        "text": "essay",
+        "html": "<button type=\"button\" role=\"option\" id=\"wb-apps-option-app_essay\" class=\"wb-apps-item\" data-testid=\"wb-apps-item-essay\" data-wb-apps-index=\"3\" data-wb-apps-kind=\"app\" aria-selected=\"false\"><span class=\"wb-apps-item-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 64 64\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\" aria-hidden=\"true\" data-workbench-app-icon=\"essay\"><defs><linearGradient id=\"wbai-essay-tile\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#ffffff\"></stop><stop offset=\"1\" stop-color=\"#eef1f5\"></stop></linearGradient></defs><rect x=\"1\" y=\"1\" width=\"62\" height=\"62\" rx=\"14.3\" fill=\"url(#wbai-essay-tile)\"></rect><rect x=\"1.25\" y=\"1.25\" width=\"61.5\" height=\"61.5\" rx=\"14.1\" fill=\"none\" stroke=\"#1f2937\" stroke-opacity=\".14\" stroke-width=\".5\"></rect><image href=\"/src/features/workbench/icons/app-icons/essay.svg\" x=\"9\" y=\"9\" width=\"46\" height=\"46\" preserveAspectRatio=\"xMidYMid meet\"></image></svg></span><span class=\"wb-apps-item-name\">essay</span></button>"
+      },
+      {
+        "testId": "wb-apps-item-exam",
+        "text": "exam",
+        "html": "<button type=\"button\" role=\"option\" id=\"wb-apps-option-app_exam\" class=\"wb-apps-item\" data-testid=\"wb-apps-item-exam\" data-wb-apps-index=\"4\" data-wb-apps-kind=\"app\" aria-selected=\"false\"><span class=\"wb-apps-item-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 64 64\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\" aria-hidden=\"true\" data-workbench-app-icon=\"exam\"><defs><linearGradient id=\"wbai-exam-tile\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#ffffff\"></stop><stop offset=\"1\" stop-color=\"#eef1f5\"></stop></linearGradient></defs><rect x=\"1\" y=\"1\" width=\"62\" height=\"62\" rx=\"14.3\" fill=\"url(#wbai-exam-tile)\"></rect><rect x=\"1.25\" y=\"1.25\" width=\"61.5\" height=\"61.5\" rx=\"14.1\" fill=\"none\" stroke=\"#1f2937\" stroke-opacity=\".14\" stroke-width=\".5\"></rect><image href=\"/src/features/workbench/icons/app-icons/exam.svg\" x=\"9\" y=\"9\" width=\"46\" height=\"46\" preserveAspectRatio=\"xMidYMid meet\"></image></svg></span><span class=\"wb-apps-item-name\">exam</span></button>"
+      },
+      {
+        "testId": "wb-apps-item-files",
+        "text": "files",
+        "html": "<button type=\"button\" role=\"option\" id=\"wb-apps-option-app_files\" class=\"wb-apps-item\" data-testid=\"wb-apps-item-files\" data-wb-apps-index=\"5\" data-wb-apps-kind=\"app\" aria-selected=\"false\"><span class=\"wb-apps-item-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 64 64\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\" aria-hidden=\"true\" data-workbench-app-icon=\"files\"><defs><linearGradient id=\"wbai-files-tile\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#ffffff\"></stop><stop offset=\"1\" stop-color=\"#eef1f5\"></stop></linearGradient></defs><rect x=\"1\" y=\"1\" width=\"62\" height=\"62\" rx=\"14.3\" fill=\"url(#wbai-files-tile)\"></rect><rect x=\"1.25\" y=\"1.25\" width=\"61.5\" height=\"61.5\" rx=\"14.1\" fill=\"none\" stroke=\"#1f2937\" stroke-opacity=\".14\" stroke-width=\".5\"></rect><image href=\"data:image/svg+xml,%3csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20150%20150'%3e%3clinearGradient%20id='fs_back'%20x1='75'%20x2='75'%20y1='24'%20y2='90'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%2314607E'%20offset='0'/%3e%3cstop%20stop-color='%231D3F6E'%20offset='1'/%3e%3c/linearGradient%3e%3cpath%20d='M22%2034a10%2010%200%200%201%2010-10h26l12%2012h48a10%2010%200%200%201%2010%2010v60H22V34z'%20fill='url(%23fs_back)'/%3e%3crect%20x='38'%20y='44'%20width='74'%20height='52'%20rx='6'%20fill='%23FDFFFE'/%3e%3crect%20x='46'%20y='54'%20width='36'%20height='6'%20rx='3'%20fill='%239BC3CE'/%3e%3crect%20x='46'%20y='66'%20width='46'%20height='6'%20rx='3'%20fill='%23B8D6DC'/%3e%3clinearGradient%20id='fs_front'%20x1='75'%20x2='75'%20y1='58'%20y2='126'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%232BB3A3'%20offset='0'/%3e%3cstop%20stop-color='%23127487'%20offset='1'/%3e%3c/linearGradient%3e%3cpath%20d='M14%2062a8%208%200%200%201%208-8h106a8%208%200%200%201%207.8%209.8l-11%2052a10%2010%200%200%201-9.8%208H26a10%2010%200%200%201-9.8-8l-11-52A8%208%200%200%201%2014%2062z'%20fill='url(%23fs_front)'/%3e%3cpath%20d='M22%2054h106a8%208%200%200%201%207.7%206H14.3a8%208%200%200%201%207.7-6z'%20fill='%23fff'%20opacity='.22'/%3e%3clinearGradient%20id='fs_badge'%20x1='118'%20x2='118'%20y1='96'%20y2='120'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%23F9AC33'%20offset='0'/%3e%3cstop%20stop-color='%23F0603C'%20offset='1'/%3e%3c/linearGradient%3e%3ccircle%20cx='118'%20cy='108'%20r='13'%20fill='url(%23fs_badge)'/%3e%3cpath%20d='M118%20102v12M112%20108h12'%20stroke='%23fff'%20stroke-width='4'%20stroke-linecap='round'/%3e%3c/svg%3e\" x=\"9\" y=\"9\" width=\"46\" height=\"46\" preserveAspectRatio=\"xMidYMid meet\"></image></svg></span><span class=\"wb-apps-item-name\">files</span></button>"
+      },
+      {
+        "testId": "wb-apps-item-flashcards",
+        "text": "flashcards",
+        "html": "<button type=\"button\" role=\"option\" id=\"wb-apps-option-app_flashcards\" class=\"wb-apps-item\" data-testid=\"wb-apps-item-flashcards\" data-wb-apps-index=\"6\" data-wb-apps-kind=\"app\" aria-selected=\"false\"><span class=\"wb-apps-item-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 64 64\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\" aria-hidden=\"true\" data-workbench-app-icon=\"flashcards\"><defs><linearGradient id=\"wbai-flashcards-tile\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#ffffff\"></stop><stop offset=\"1\" stop-color=\"#eef1f5\"></stop></linearGradient></defs><rect x=\"1\" y=\"1\" width=\"62\" height=\"62\" rx=\"14.3\" fill=\"url(#wbai-flashcards-tile)\"></rect><rect x=\"1.25\" y=\"1.25\" width=\"61.5\" height=\"61.5\" rx=\"14.1\" fill=\"none\" stroke=\"#1f2937\" stroke-opacity=\".14\" stroke-width=\".5\"></rect><image href=\"data:image/svg+xml,%3csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20150%20150'%3e%3clinearGradient%20id='fc_back'%20x1='82'%20x2='82'%20y1='16'%20y2='80'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%2314A5A0'%20offset='0'/%3e%3cstop%20stop-color='%23127487'%20offset='1'/%3e%3c/linearGradient%3e%3cg%20transform='rotate(7%2082%2048)'%3e%3crect%20x='40'%20y='16'%20width='84'%20height='64'%20rx='10'%20fill='url(%23fc_back)'/%3e%3crect%20x='52'%20y='30'%20width='40'%20height='7'%20rx='3.5'%20fill='%23fff'%20opacity='.7'/%3e%3crect%20x='52'%20y='44'%20width='28'%20height='7'%20rx='3.5'%20fill='%23fff'%20opacity='.4'/%3e%3c/g%3e%3clinearGradient%20id='fc_front'%20x1='66'%20x2='66'%20y1='56'%20y2='128'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%23F8FDFC'%20offset='0'/%3e%3cstop%20stop-color='%23D6EBE9'%20offset='1'/%3e%3c/linearGradient%3e%3crect%20x='22'%20y='56'%20width='88'%20height='72'%20rx='10'%20fill='url(%23fc_front)'%20stroke='%23A6C4CB'%20stroke-width='3'/%3e%3crect%20x='34'%20y='72'%20width='34'%20height='8'%20rx='4'%20fill='%2314A5A0'%20opacity='.75'/%3e%3crect%20x='34'%20y='88'%20width='26'%20height='8'%20rx='4'%20fill='%239BC3CE'/%3e%3crect%20x='34'%20y='104'%20width='30'%20height='8'%20rx='4'%20fill='%23B8D6DC'/%3e%3clinearGradient%20id='fc_bolt'%20x1='94'%20x2='94'%20y1='60'%20y2='124'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%23F9AC33'%20offset='0'/%3e%3cstop%20stop-color='%23F0603C'%20offset='1'/%3e%3c/linearGradient%3e%3cpath%20d='M100%2060%2082%2092h12l-8%2032%2022-38H96l10-26h-6z'%20fill='url(%23fc_bolt)'/%3e%3c/svg%3e\" x=\"9\" y=\"9\" width=\"46\" height=\"46\" preserveAspectRatio=\"xMidYMid meet\"></image></svg></span><span class=\"wb-apps-item-name\">flashcards</span></button>"
+      },
+      {
+        "testId": "wb-apps-item-media",
+        "text": "media",
+        "html": "<button type=\"button\" role=\"option\" id=\"wb-apps-option-app_media\" class=\"wb-apps-item\" data-testid=\"wb-apps-item-media\" data-wb-apps-index=\"7\" data-wb-apps-kind=\"app\" aria-selected=\"false\"><span class=\"wb-apps-item-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 64 64\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\" aria-hidden=\"true\" data-workbench-app-icon=\"media\"><defs><linearGradient id=\"wbai-media-tile\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#ffffff\"></stop><stop offset=\"1\" stop-color=\"#eef1f5\"></stop></linearGradient></defs><rect x=\"1\" y=\"1\" width=\"62\" height=\"62\" rx=\"14.3\" fill=\"url(#wbai-media-tile)\"></rect><rect x=\"1.25\" y=\"1.25\" width=\"61.5\" height=\"61.5\" rx=\"14.1\" fill=\"none\" stroke=\"#1f2937\" stroke-opacity=\".14\" stroke-width=\".5\"></rect><image href=\"data:image/svg+xml,%3csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20150%20150'%3e%3clinearGradient%20id='md_body'%20x1='75'%20x2='75'%20y1='24'%20y2='112'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%23F8FDFC'%20offset='0'/%3e%3cstop%20stop-color='%23D5EAE8'%20offset='1'/%3e%3c/linearGradient%3e%3crect%20x='16'%20y='24'%20width='118'%20height='84'%20rx='12'%20fill='url(%23md_body)'%20stroke='%23A6C4CB'%20stroke-width='3'/%3e%3clinearGradient%20id='md_screen'%20x1='75'%20x2='75'%20y1='34'%20y2='98'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%2314607E'%20offset='0'/%3e%3cstop%20stop-color='%231D3F6E'%20offset='1'/%3e%3c/linearGradient%3e%3crect%20x='26'%20y='34'%20width='98'%20height='64'%20rx='7'%20fill='url(%23md_screen)'/%3e%3clinearGradient%20id='md_play'%20x1='68'%20x2='88'%20y1='50'%20y2='82'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%23F9AC33'%20offset='0'/%3e%3cstop%20stop-color='%23F0603C'%20offset='1'/%3e%3c/linearGradient%3e%3cpath%20d='M66%2052.5v27a3%203%200%200%200%204.6%202.5l21.4-13.5a3%203%200%200%200%200-5L70.6%2050a3%203%200%200%200-4.6%202.5z'%20fill='url(%23md_play)'/%3e%3clinearGradient%20id='md_wave'%20x1='75'%20x2='75'%20y1='116'%20y2='136'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%235FD0CB'%20offset='0'/%3e%3cstop%20stop-color='%2314A5A0'%20offset='1'/%3e%3c/linearGradient%3e%3cg%20fill='url(%23md_wave)'%3e%3crect%20x='40'%20y='122'%20width='7'%20height='10'%20rx='3.5'/%3e%3crect%20x='52'%20y='117'%20width='7'%20height='20'%20rx='3.5'/%3e%3crect%20x='64'%20y='120'%20width='7'%20height='14'%20rx='3.5'/%3e%3crect%20x='76'%20y='115'%20width='7'%20height='24'%20rx='3.5'/%3e%3crect%20x='88'%20y='119'%20width='7'%20height='16'%20rx='3.5'/%3e%3crect%20x='100'%20y='123'%20width='7'%20height='8'%20rx='3.5'/%3e%3c/g%3e%3cpath%20d='M34%2042h22'%20stroke='%23fff'%20stroke-width='4'%20stroke-linecap='round'%20opacity='.35'/%3e%3c/svg%3e\" x=\"9\" y=\"9\" width=\"46\" height=\"46\" preserveAspectRatio=\"xMidYMid meet\"></image></svg></span><span class=\"wb-apps-item-name\">media</span></button>"
+      },
+      {
+        "testId": "wb-apps-item-notes",
+        "text": "notes",
+        "html": "<button type=\"button\" role=\"option\" id=\"wb-apps-option-app_notes\" class=\"wb-apps-item\" data-testid=\"wb-apps-item-notes\" data-wb-apps-index=\"8\" data-wb-apps-kind=\"app\" aria-selected=\"false\"><span class=\"wb-apps-item-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 64 64\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\" aria-hidden=\"true\" data-workbench-app-icon=\"notes\"><defs><linearGradient id=\"wbai-notes-tile\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#ffffff\"></stop><stop offset=\"1\" stop-color=\"#eef1f5\"></stop></linearGradient></defs><rect x=\"1\" y=\"1\" width=\"62\" height=\"62\" rx=\"14.3\" fill=\"url(#wbai-notes-tile)\"></rect><rect x=\"1.25\" y=\"1.25\" width=\"61.5\" height=\"61.5\" rx=\"14.1\" fill=\"none\" stroke=\"#1f2937\" stroke-opacity=\".14\" stroke-width=\".5\"></rect><image href=\"/src/features/workbench/icons/app-icons/notes.svg\" x=\"9\" y=\"9\" width=\"46\" height=\"46\" preserveAspectRatio=\"xMidYMid meet\"></image></svg></span><span class=\"wb-apps-item-name\">notes</span></button>"
+      },
+      {
+        "testId": "wb-apps-item-pomodoro",
+        "text": "pomodoro",
+        "html": "<button type=\"button\" role=\"option\" id=\"wb-apps-option-app_pomodoro\" class=\"wb-apps-item\" data-testid=\"wb-apps-item-pomodoro\" data-wb-apps-index=\"9\" data-wb-apps-kind=\"app\" aria-selected=\"false\"><span class=\"wb-apps-item-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 64 64\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\" aria-hidden=\"true\" data-workbench-app-icon=\"pomodoro\"><defs><linearGradient id=\"wbai-pomodoro-tile\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#ffffff\"></stop><stop offset=\"1\" stop-color=\"#eef1f5\"></stop></linearGradient></defs><rect x=\"1\" y=\"1\" width=\"62\" height=\"62\" rx=\"14.3\" fill=\"url(#wbai-pomodoro-tile)\"></rect><rect x=\"1.25\" y=\"1.25\" width=\"61.5\" height=\"61.5\" rx=\"14.1\" fill=\"none\" stroke=\"#1f2937\" stroke-opacity=\".14\" stroke-width=\".5\"></rect><image href=\"data:image/svg+xml,%3csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20150%20150'%3e%3c!--%20SVG%20created%20with%20Arrow,%20by%20QuiverAI%20(https://quiver.ai)%20--%3e%3cstyle%20type='text/css'%3e.cls-0%20{fill:%23E8422F;}%20.cls-1%20{fill:%23C1372B;}%20.cls-2%20{fill:%231B9C82;}%20.cls-3%20{fill:%23F0603C;}%20.cls-4%20{fill:%23F7A233;}%20.cls-5%20{fill:%23CB3A2C;}%20.cls-6%20{fill:%23C1372B;}%3c/style%3e%3cpath%20class='cls-0'%20d='m45.2%2040.2c-10.6%203.4-21.6%2010.5-27.1%2024.8-1.8%205.1-3%2010.6-3%2017.4%200.2%2010.4%202.9%2018.1%206.9%2025.2%208.6%2014.7%2024.7%2031%2053.2%2032.1v-90.9c-8.1%206.3-15.6%209.9-28.6%2013.1%201.4-3.9%205.2-11.4%209.7-16.9-3.2-1-7-2.5-11.1-4.8zm-6.8%2016.7c-2.2%202.2-7.3%207.3-10.6%2013.9-2.1%204.5-4%2010.7-4.7%2014.4-0.9-8.4%200-15.2%203.1-20.9%204.4-7.7%209.8-11.5%2012.5-13.5%203-1.7%205.4%201%202.8%203.3l-3.1%202.8z'/%3e%3cpath%20class='cls-1'%20d='m16.3%2093.7c4.3%2017.7%2020.5%2044.8%2058.9%2046v-18c-17.7%200.8-45.2-2.5-58.9-28z'/%3e%3cpath%20class='cls-2'%20d='m79.3%2010.5c-3.1%204.1-7%2011.4-8.2%2022.7-2.1-14.3-11.2-22.7-33.3-23.1-0.2%2013.4%204.6%2023.8%2017.8%2027.8l-6.7%200.9c4.6%202.8%207.9%203.7%2014.3%204.7-5.4%203-9.5%2010.4-11.4%2014.7%204.1-1%2016.5-5.4%2023.4-13.5v-6.6h1.5c-0.1-8.9%203.2-16.8%209.5-23.5l-6.7-4.5-0.2%200.4zm-13.1%2027.4c-4.1-5.4-9.6-11.8-17.8-18.3%206.2%202.3%2010.8%206.3%2015.7%2010.9%202.4%202.5%204.9%205.7%206.3%207.7l-4.2-0.3z'/%3e%3cpath%20class='cls-3'%20d='m78.8%20126.4v13.3c9.3-0.2%2019.2-2.9%2025.5-6.7l-6.4-11.6c-4.4%202.2-10.7%204.8-19.1%205z'/%3e%3cpath%20class='cls-3'%20d='m101.2%20119.4%206.5%2011.6c6.1-3.6%2013.2-10.1%2018.8-18.4l-11-6.9c-2.2%203.7-7.5%209.5-14.3%2013.7z'/%3e%3cpath%20class='cls-3'%20d='m117.3%20102.4%2011.3%206.6c3.2-6.3%206.4-14.6%206.6-25.3h-12.7c-0.2%206-1.9%2013-5.2%2018.7z'/%3e%3cpath%20class='cls-4'%20d='m127.7%2055.9z'/%3e%3cpath%20class='cls-4'%20d='m117.1%2061.8c2.6%204.8%204.9%2010.6%205.3%2018.2h12.5c-0.6-9.1-4.3-18.5-7.2-24.6l-10.6%206.4z'/%3e%3cpath%20class='cls-4'%20d='m102.2%2044.9c4.4%202.9%209.3%207.4%2013.2%2013.5l10.1-6.4c-3.6-5.3-9.8-12-17.5-16.3l-5.8%209.2z'/%3e%3cpath%20class='cls-4'%20d='m79.7%2038.1c6.4%200.2%2012.6%201.7%2019.4%205.1l5.6-9.3c-5.4-3-13-6-23.1-6.8-1.4%203.8-1.9%207.3-1.9%2011z'/%3e%3cpath%20class='cls-0'%20d='m75.2%2076.2v11.4c1%200.3%203.8%201.2%206.2-0.6%202.2-1.8%202.4-3.5%202.1-6.8l12.4-14.8v-0.3l-1.3-1.5c-8.7%206.6-15.5%2011.7-15.5%2012.3-1.1-0.2-2.5-0.4-3.9%200.3zm2.1%203.2c1.3-0.1%202.2%201.1%202.4%202%200.2%202.2-2%203.6-3.6%202.5-1.8-1-1.3-4.3%201.2-4.5z'/%3e%3cpath%20class='cls-5'%20d='m75.2%2042.4v10h4.5v-10h-4.5z'/%3e%3cpath%20class='cls-5'%20d='m75.2%20112.3v9.6h4.5v-9.6h-4.5z'/%3e%3cpath%20class='cls-6'%20d='m108%2067.6%205.5-3.4v-0.1l-0.2-2.9-8.4%203.9%201.7-0.4z'/%3e%3cpath%20class='cls-6'%20d='m95.4%2055%203.6-6.7-2.6-1.8-3.6%206.7z'/%3e%3cpath%20class='cls-6'%20d='m107.3%2096.4-1.8%202.8%206.1%204%201.9-3.3z'/%3e%3cpath%20class='cls-6'%20d='m92.5%20111.3%203.7%206.3%202.7-1.7-3.5-6.4z'/%3e%3cpath%20class='cls-6'%20d='m108.1%2079.4h9.8v4.8h-9.8z'/%3e%3cpath%20class='cls-5'%20d='m108.7%2079.4h9.2v4.8h-9.2z'/%3e%3cpath%20class='cls-5'%20d='m104.9%2064.9%206.9-3.9%201.7%203-6.9%203.6z'/%3e%3c/svg%3e\" x=\"9\" y=\"9\" width=\"46\" height=\"46\" preserveAspectRatio=\"xMidYMid meet\"></image></svg></span><span class=\"wb-apps-item-name\">pomodoro</span></button>"
+      },
+      {
+        "testId": "wb-apps-item-settings",
+        "text": "settings",
+        "html": "<button type=\"button\" role=\"option\" id=\"wb-apps-option-app_settings\" class=\"wb-apps-item\" data-testid=\"wb-apps-item-settings\" data-wb-apps-index=\"10\" data-wb-apps-kind=\"app\" aria-selected=\"false\"><span class=\"wb-apps-item-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 64 64\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\" aria-hidden=\"true\" data-workbench-app-icon=\"settings\"><defs><linearGradient id=\"wbai-settings-tile\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#ffffff\"></stop><stop offset=\"1\" stop-color=\"#eef1f5\"></stop></linearGradient></defs><rect x=\"1\" y=\"1\" width=\"62\" height=\"62\" rx=\"14.3\" fill=\"url(#wbai-settings-tile)\"></rect><rect x=\"1.25\" y=\"1.25\" width=\"61.5\" height=\"61.5\" rx=\"14.1\" fill=\"none\" stroke=\"#1f2937\" stroke-opacity=\".14\" stroke-width=\".5\"></rect><image href=\"data:image/svg+xml,%3csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20150%20150'%3e%3clinearGradient%20id='st_body'%20x1='70'%20x2='70'%20y1='24'%20y2='132'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%232BB3A3'%20offset='0'/%3e%3cstop%20stop-color='%2314607E'%20offset='.55'/%3e%3cstop%20stop-color='%231D3F6E'%20offset='1'/%3e%3c/linearGradient%3e%3cg%20fill='url(%23st_body)'%3e%3crect%20x='62.5'%20y='30'%20width='15'%20height='96'%20rx='7.5'/%3e%3crect%20x='62.5'%20y='30'%20width='15'%20height='96'%20rx='7.5'%20transform='rotate(45%2070%2078)'/%3e%3crect%20x='62.5'%20y='30'%20width='15'%20height='96'%20rx='7.5'%20transform='rotate(90%2070%2078)'/%3e%3crect%20x='62.5'%20y='30'%20width='15'%20height='96'%20rx='7.5'%20transform='rotate(135%2070%2078)'/%3e%3ccircle%20cx='70'%20cy='78'%20r='36'/%3e%3c/g%3e%3ccircle%20cx='70'%20cy='78'%20r='19'%20fill='%23EAF7F6'/%3e%3ccircle%20cx='70'%20cy='78'%20r='8.5'%20fill='%231D3F6E'/%3e%3clinearGradient%20id='st_mini'%20x1='119'%20x2='119'%20y1='14'%20y2='52'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%23F9AC33'%20offset='0'/%3e%3cstop%20stop-color='%23F0603C'%20offset='1'/%3e%3c/linearGradient%3e%3cg%20fill='url(%23st_mini)'%3e%3crect%20x='115'%20y='15'%20width='8'%20height='36'%20rx='4'/%3e%3crect%20x='115'%20y='15'%20width='8'%20height='36'%20rx='4'%20transform='rotate(60%20119%2033)'/%3e%3crect%20x='115'%20y='15'%20width='8'%20height='36'%20rx='4'%20transform='rotate(120%20119%2033)'/%3e%3ccircle%20cx='119'%20cy='33'%20r='12'/%3e%3c/g%3e%3ccircle%20cx='119'%20cy='33'%20r='5'%20fill='%23FFF4E4'/%3e%3c/svg%3e\" x=\"9\" y=\"9\" width=\"46\" height=\"46\" preserveAspectRatio=\"xMidYMid meet\"></image></svg></span><span class=\"wb-apps-item-name\">settings</span></button>"
+      },
+      {
+        "testId": "wb-apps-item-skills",
+        "text": "skills",
+        "html": "<button type=\"button\" role=\"option\" id=\"wb-apps-option-app_skills\" class=\"wb-apps-item\" data-testid=\"wb-apps-item-skills\" data-wb-apps-index=\"11\" data-wb-apps-kind=\"app\" aria-selected=\"false\"><span class=\"wb-apps-item-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 64 64\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\" aria-hidden=\"true\" data-workbench-app-icon=\"skills\"><defs><linearGradient id=\"wbai-skills-tile\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#ffffff\"></stop><stop offset=\"1\" stop-color=\"#eef1f5\"></stop></linearGradient></defs><rect x=\"1\" y=\"1\" width=\"62\" height=\"62\" rx=\"14.3\" fill=\"url(#wbai-skills-tile)\"></rect><rect x=\"1.25\" y=\"1.25\" width=\"61.5\" height=\"61.5\" rx=\"14.1\" fill=\"none\" stroke=\"#1f2937\" stroke-opacity=\".14\" stroke-width=\".5\"></rect><image href=\"/src/features/workbench/icons/app-icons/skills.svg\" x=\"9\" y=\"9\" width=\"46\" height=\"46\" preserveAspectRatio=\"xMidYMid meet\"></image></svg></span><span class=\"wb-apps-item-name\">skills</span></button>"
+      },
+      {
+        "testId": "wb-apps-item-taskDashboard",
+        "text": "taskDashboard",
+        "html": "<button type=\"button\" role=\"option\" id=\"wb-apps-option-app_taskDashboard\" class=\"wb-apps-item\" data-testid=\"wb-apps-item-taskDashboard\" data-wb-apps-index=\"12\" data-wb-apps-kind=\"app\" aria-selected=\"false\"><span class=\"wb-apps-item-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 64 64\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\" aria-hidden=\"true\" data-workbench-app-icon=\"taskDashboard\"><defs><linearGradient id=\"wbai-taskDashboard-tile\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#ffffff\"></stop><stop offset=\"1\" stop-color=\"#eef1f5\"></stop></linearGradient></defs><rect x=\"1\" y=\"1\" width=\"62\" height=\"62\" rx=\"14.3\" fill=\"url(#wbai-taskDashboard-tile)\"></rect><rect x=\"1.25\" y=\"1.25\" width=\"61.5\" height=\"61.5\" rx=\"14.1\" fill=\"none\" stroke=\"#1f2937\" stroke-opacity=\".14\" stroke-width=\".5\"></rect><image href=\"data:image/svg+xml,%3csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20150%20150'%3e%3clinearGradient%20id='td_panel'%20x1='75'%20x2='75'%20y1='18'%20y2='132'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%23F8FDFC'%20offset='0'/%3e%3cstop%20stop-color='%23D3E8E6'%20offset='1'/%3e%3c/linearGradient%3e%3crect%20x='18'%20y='18'%20width='114'%20height='114'%20rx='14'%20fill='url(%23td_panel)'%20stroke='%23A6C4CB'%20stroke-width='3'/%3e%3crect%20x='30'%20y='30'%20width='44'%20height='10'%20rx='5'%20fill='%231D3F6E'/%3e%3clinearGradient%20id='td_bar1'%20x1='42'%20x2='42'%20y1='86'%20y2='118'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%235FD0CB'%20offset='0'/%3e%3cstop%20stop-color='%232BB3A3'%20offset='1'/%3e%3c/linearGradient%3e%3crect%20x='32'%20y='86'%20width='20'%20height='32'%20rx='5'%20fill='url(%23td_bar1)'/%3e%3clinearGradient%20id='td_bar2'%20x1='70'%20x2='70'%20y1='68'%20y2='118'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%2314A5A0'%20offset='0'/%3e%3cstop%20stop-color='%23127487'%20offset='1'/%3e%3c/linearGradient%3e%3crect%20x='60'%20y='68'%20width='20'%20height='50'%20rx='5'%20fill='url(%23td_bar2)'/%3e%3clinearGradient%20id='td_bar3'%20x1='98'%20x2='98'%20y1='50'%20y2='118'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%23F9AC33'%20offset='0'/%3e%3cstop%20stop-color='%23F0603C'%20offset='1'/%3e%3c/linearGradient%3e%3crect%20x='88'%20y='50'%20width='20'%20height='68'%20rx='5'%20fill='url(%23td_bar3)'/%3e%3cpath%20d='m36%2074%2026-16%2024%208%2022-22'%20stroke='%231D3F6E'%20stroke-width='5'%20stroke-linecap='round'%20stroke-linejoin='round'%20fill='none'/%3e%3cpath%20d='M108%2040h6v6'%20stroke='%231D3F6E'%20stroke-width='5'%20stroke-linecap='round'%20stroke-linejoin='round'%20fill='none'/%3e%3c/svg%3e\" x=\"9\" y=\"9\" width=\"46\" height=\"46\" preserveAspectRatio=\"xMidYMid meet\"></image></svg></span><span class=\"wb-apps-item-name\">taskDashboard</span></button>"
+      },
+      {
+        "testId": "wb-apps-item-templates",
+        "text": "templates",
+        "html": "<button type=\"button\" role=\"option\" id=\"wb-apps-option-app_templates\" class=\"wb-apps-item\" data-testid=\"wb-apps-item-templates\" data-wb-apps-index=\"13\" data-wb-apps-kind=\"app\" aria-selected=\"false\"><span class=\"wb-apps-item-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 64 64\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\" aria-hidden=\"true\" data-workbench-app-icon=\"templates\"><defs><linearGradient id=\"wbai-templates-tile\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#ffffff\"></stop><stop offset=\"1\" stop-color=\"#eef1f5\"></stop></linearGradient></defs><rect x=\"1\" y=\"1\" width=\"62\" height=\"62\" rx=\"14.3\" fill=\"url(#wbai-templates-tile)\"></rect><rect x=\"1.25\" y=\"1.25\" width=\"61.5\" height=\"61.5\" rx=\"14.1\" fill=\"none\" stroke=\"#1f2937\" stroke-opacity=\".14\" stroke-width=\".5\"></rect><image href=\"data:image/svg+xml,%3csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20150%20150'%3e%3crect%20x='42'%20y='14'%20width='88'%20height='98'%20rx='10'%20fill='%235FD0CB'%20opacity='.55'/%3e%3clinearGradient%20id='tp_mid'%20x1='76'%20x2='76'%20y1='24'%20y2='122'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%2314A5A0'%20offset='0'/%3e%3cstop%20stop-color='%2314607E'%20offset='1'/%3e%3c/linearGradient%3e%3crect%20x='32'%20y='24'%20width='88'%20height='98'%20rx='10'%20fill='url(%23tp_mid)'/%3e%3clinearGradient%20id='tp_front'%20x1='66'%20x2='66'%20y1='36'%20y2='134'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%23F8FDFC'%20offset='0'/%3e%3cstop%20stop-color='%23D4EAE8'%20offset='1'/%3e%3c/linearGradient%3e%3crect%20x='22'%20y='36'%20width='88'%20height='98'%20rx='10'%20fill='url(%23tp_front)'%20stroke='%23A6C4CB'%20stroke-width='3'/%3e%3crect%20x='32'%20y='48'%20width='68'%20height='14'%20rx='5'%20fill='%231D3F6E'/%3e%3crect%20x='32'%20y='72'%20width='30'%20height='50'%20rx='5'%20fill='%2314A5A0'/%3e%3clinearGradient%20id='tp_accent'%20x1='86'%20x2='86'%20y1='100'%20y2='122'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%23F9AC33'%20offset='0'/%3e%3cstop%20stop-color='%23F0603C'%20offset='1'/%3e%3c/linearGradient%3e%3crect%20x='70'%20y='72'%20width='30'%20height='20'%20rx='5'%20fill='%239BD9D4'/%3e%3crect%20x='70'%20y='100'%20width='30'%20height='22'%20rx='5'%20fill='url(%23tp_accent)'/%3e%3c/svg%3e\" x=\"9\" y=\"9\" width=\"46\" height=\"46\" preserveAspectRatio=\"xMidYMid meet\"></image></svg></span><span class=\"wb-apps-item-name\">templates</span></button>"
+      },
+      {
+        "testId": "wb-apps-item-todo",
+        "text": "todo",
+        "html": "<button type=\"button\" role=\"option\" id=\"wb-apps-option-app_todo\" class=\"wb-apps-item\" data-testid=\"wb-apps-item-todo\" data-wb-apps-index=\"14\" data-wb-apps-kind=\"app\" aria-selected=\"false\"><span class=\"wb-apps-item-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 64 64\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\" aria-hidden=\"true\" data-workbench-app-icon=\"todo\"><defs><linearGradient id=\"wbai-todo-tile\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#ffffff\"></stop><stop offset=\"1\" stop-color=\"#eef1f5\"></stop></linearGradient></defs><rect x=\"1\" y=\"1\" width=\"62\" height=\"62\" rx=\"14.3\" fill=\"url(#wbai-todo-tile)\"></rect><rect x=\"1.25\" y=\"1.25\" width=\"61.5\" height=\"61.5\" rx=\"14.1\" fill=\"none\" stroke=\"#1f2937\" stroke-opacity=\".14\" stroke-width=\".5\"></rect><image href=\"/src/features/workbench/icons/app-icons/todo.svg\" x=\"9\" y=\"9\" width=\"46\" height=\"46\" preserveAspectRatio=\"xMidYMid meet\"></image></svg></span><span class=\"wb-apps-item-name\">todo</span></button>"
+      },
+      {
+        "testId": "wb-apps-item-translation",
+        "text": "translation",
+        "html": "<button type=\"button\" role=\"option\" id=\"wb-apps-option-app_translation\" class=\"wb-apps-item\" data-testid=\"wb-apps-item-translation\" data-wb-apps-index=\"15\" data-wb-apps-kind=\"app\" aria-selected=\"false\"><span class=\"wb-apps-item-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 64 64\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\" aria-hidden=\"true\" data-workbench-app-icon=\"translation\"><defs><linearGradient id=\"wbai-translation-tile\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#ffffff\"></stop><stop offset=\"1\" stop-color=\"#eef1f5\"></stop></linearGradient></defs><rect x=\"1\" y=\"1\" width=\"62\" height=\"62\" rx=\"14.3\" fill=\"url(#wbai-translation-tile)\"></rect><rect x=\"1.25\" y=\"1.25\" width=\"61.5\" height=\"61.5\" rx=\"14.1\" fill=\"none\" stroke=\"#1f2937\" stroke-opacity=\".14\" stroke-width=\".5\"></rect><image href=\"data:image/svg+xml,%3csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20150%20150'%3e%3clinearGradient%20id='tr_warm'%20x1='52'%20x2='52'%20y1='18'%20y2='84'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%23F9AC33'%20offset='0'/%3e%3cstop%20stop-color='%23F0603C'%20offset='1'/%3e%3c/linearGradient%3e%3cpath%20d='M30%2018h44a16%2016%200%200%201%2016%2016v20a16%2016%200%200%201-16%2016H52l-18%2014%205-14h-9a16%2016%200%200%201-16-16V34a16%2016%200%200%201%2016-16z'%20fill='url(%23tr_warm)'/%3e%3cg%20stroke='%23fff'%20stroke-width='7'%20stroke-linecap='round'%20stroke-linejoin='round'%20fill='none'%3e%3cpath%20d='M42%2056l10-26%2010%2026'/%3e%3cpath%20d='M46%2047h12'/%3e%3c/g%3e%3clinearGradient%20id='tr_cool'%20x1='98'%20x2='98'%20y1='66'%20y2='132'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%232BB3A3'%20offset='0'/%3e%3cstop%20stop-color='%231D3F6E'%20offset='1'/%3e%3c/linearGradient%3e%3cpath%20d='M120%20132H76a16%2016%200%200%201-16-16V96a16%2016%200%200%201%2016-16h22l18-14-5%2014h9a16%2016%200%200%201%2016%2016v20a16%2016%200%200%201-16%2016z'%20fill='url(%23tr_cool)'/%3e%3cpath%20d='M76%2080h44a16%2016%200%200%201%2016%2016v4a16%2016%200%200%200-16-16H76a16%2016%200%200%200-16%2016v-4a16%2016%200%200%201%2016-16z'%20fill='%23fff'%20opacity='.25'/%3e%3cg%20stroke='%23fff'%20stroke-width='7'%20stroke-linecap='round'%20stroke-linejoin='round'%20fill='none'%3e%3cpath%20d='M98%2085v4'/%3e%3cpath%20d='M81%2098h34'/%3e%3cpath%20d='M105%20102L87%20126'/%3e%3cpath%20d='M91%20102l18%2024'/%3e%3c/g%3e%3c/svg%3e\" x=\"9\" y=\"9\" width=\"46\" height=\"46\" preserveAspectRatio=\"xMidYMid meet\"></image></svg></span><span class=\"wb-apps-item-name\">translation</span></button>"
+      }
+    ]
+  },
+  "dock": [
+    {
+      "testId": "wb-dock-item-chat",
+      "html": "<div data-testid=\"wb-dock-item-chat\" data-wb-dock-item-wrap=\"\" class=\"wb-dock-item-wrap relative flex flex-col items-center app-menu-trigger\" id=\":r0:-trigger\" aria-haspopup=\"menu\" aria-expanded=\"false\" data-wb-dock-pinned-id=\"chat\"><div class=\"wb-dock-mag\" data-wb-dock-mag-item=\"chat\"><div class=\"wb-dock-bounce\" data-testid=\"wb-dock-bounce-chat\"><button type=\"button\" data-type-id=\"chat\" class=\"wb-dock-item group relative flex h-11 w-11 items-center justify-center rounded-xl outline-none\" aria-label=\"chat\" tabindex=\"0\"><span aria-hidden=\"true\" class=\"wb-dock-item-icon pointer-events-none flex h-full w-full items-center justify-center\"><span aria-hidden=\"true\" data-app-icon=\"chat\" class=\"pointer-events-none inline-flex aspect-square select-none items-center justify-center h-8 w-8\" style=\"border-radius: 22.5%; background: linear-gradient(180deg, #ffffff, #eef1f5); box-shadow: inset 0 0 0 0.5px rgba(31, 41, 55, 0.16), 0 1px 2px rgba(15, 23, 42, 0.25);\"><img src=\"data:image/svg+xml,%3csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20150%20150'%3e%3clinearGradient%20id='chat_warm'%20x1='101'%20x2='101'%20y1='16'%20y2='74'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%23F9AC33'%20offset='0'/%3e%3cstop%20stop-color='%23F0603C'%20offset='1'/%3e%3c/linearGradient%3e%3cpath%20d='M82%2016h38a16%2016%200%200%201%2016%2016v14a16%2016%200%200%201-16%2016h-2l6%2014-20-14H82a16%2016%200%200%201-16-16V32a16%2016%200%200%201%2016-16z'%20fill='url(%23chat_warm)'/%3e%3clinearGradient%20id='chat_cool'%20x1='66'%20x2='66'%20y1='38'%20y2='134'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%232BB3A3'%20offset='0'/%3e%3cstop%20stop-color='%231D3F6E'%20offset='1'/%3e%3c/linearGradient%3e%3cpath%20d='M34%2038h64a20%2020%200%200%201%2020%2020v34a20%2020%200%200%201-20%2020H56l-26%2020%208-20h-4a20%2020%200%200%201-20-20V58a20%2020%200%200%201%2020-20z'%20fill='url(%23chat_cool)'/%3e%3cpath%20d='M34%2044h64a14%2014%200%200%201%2014%2014v4a14%2014%200%200%200-14-14H34a14%2014%200%200%200-14%2014v-4a14%2014%200%200%201%2014-14z'%20fill='%23fff'%20opacity='.25'/%3e%3ccircle%20cx='45'%20cy='76'%20r='7'%20fill='%23fff'/%3e%3ccircle%20cx='66'%20cy='76'%20r='7'%20fill='%23fff'/%3e%3ccircle%20cx='87'%20cy='76'%20r='7'%20fill='%23fff'%20opacity='.75'/%3e%3c/svg%3e\" alt=\"\" draggable=\"false\" class=\"pointer-events-none select-none object-contain\" style=\"width: 76%; height: 76%;\"></span></span></button></div></div><span aria-hidden=\"true\" data-testid=\"wb-dock-tip-chat\" class=\"wb-dock-tip\">chat</span></div>"
+    },
+    {
+      "testId": "wb-dock-item-files",
+      "html": "<div data-testid=\"wb-dock-item-files\" data-wb-dock-item-wrap=\"\" class=\"wb-dock-item-wrap relative flex flex-col items-center app-menu-trigger\" id=\":r1:-trigger\" aria-haspopup=\"menu\" aria-expanded=\"false\" data-wb-dock-pinned-id=\"files\"><div class=\"wb-dock-mag\" data-wb-dock-mag-item=\"files\"><div class=\"wb-dock-bounce\" data-testid=\"wb-dock-bounce-files\"><button type=\"button\" data-type-id=\"files\" class=\"wb-dock-item group relative flex h-11 w-11 items-center justify-center rounded-xl outline-none\" aria-label=\"files\" tabindex=\"-1\"><span aria-hidden=\"true\" class=\"wb-dock-item-icon pointer-events-none flex h-full w-full items-center justify-center\"><span aria-hidden=\"true\" data-app-icon=\"files\" class=\"pointer-events-none inline-flex aspect-square select-none items-center justify-center h-8 w-8\" style=\"border-radius: 22.5%; background: linear-gradient(180deg, #ffffff, #eef1f5); box-shadow: inset 0 0 0 0.5px rgba(31, 41, 55, 0.16), 0 1px 2px rgba(15, 23, 42, 0.25);\"><img src=\"data:image/svg+xml,%3csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20150%20150'%3e%3clinearGradient%20id='fs_back'%20x1='75'%20x2='75'%20y1='24'%20y2='90'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%2314607E'%20offset='0'/%3e%3cstop%20stop-color='%231D3F6E'%20offset='1'/%3e%3c/linearGradient%3e%3cpath%20d='M22%2034a10%2010%200%200%201%2010-10h26l12%2012h48a10%2010%200%200%201%2010%2010v60H22V34z'%20fill='url(%23fs_back)'/%3e%3crect%20x='38'%20y='44'%20width='74'%20height='52'%20rx='6'%20fill='%23FDFFFE'/%3e%3crect%20x='46'%20y='54'%20width='36'%20height='6'%20rx='3'%20fill='%239BC3CE'/%3e%3crect%20x='46'%20y='66'%20width='46'%20height='6'%20rx='3'%20fill='%23B8D6DC'/%3e%3clinearGradient%20id='fs_front'%20x1='75'%20x2='75'%20y1='58'%20y2='126'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%232BB3A3'%20offset='0'/%3e%3cstop%20stop-color='%23127487'%20offset='1'/%3e%3c/linearGradient%3e%3cpath%20d='M14%2062a8%208%200%200%201%208-8h106a8%208%200%200%201%207.8%209.8l-11%2052a10%2010%200%200%201-9.8%208H26a10%2010%200%200%201-9.8-8l-11-52A8%208%200%200%201%2014%2062z'%20fill='url(%23fs_front)'/%3e%3cpath%20d='M22%2054h106a8%208%200%200%201%207.7%206H14.3a8%208%200%200%201%207.7-6z'%20fill='%23fff'%20opacity='.22'/%3e%3clinearGradient%20id='fs_badge'%20x1='118'%20x2='118'%20y1='96'%20y2='120'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%23F9AC33'%20offset='0'/%3e%3cstop%20stop-color='%23F0603C'%20offset='1'/%3e%3c/linearGradient%3e%3ccircle%20cx='118'%20cy='108'%20r='13'%20fill='url(%23fs_badge)'/%3e%3cpath%20d='M118%20102v12M112%20108h12'%20stroke='%23fff'%20stroke-width='4'%20stroke-linecap='round'/%3e%3c/svg%3e\" alt=\"\" draggable=\"false\" class=\"pointer-events-none select-none object-contain\" style=\"width: 76%; height: 76%;\"></span></span></button></div></div><span aria-hidden=\"true\" data-testid=\"wb-dock-tip-files\" class=\"wb-dock-tip\">files</span></div>"
+    },
+    {
+      "testId": "wb-dock-item-settings",
+      "html": "<div data-testid=\"wb-dock-item-settings\" data-wb-dock-item-wrap=\"\" class=\"wb-dock-item-wrap relative flex flex-col items-center app-menu-trigger\" id=\":r2:-trigger\" aria-haspopup=\"menu\" aria-expanded=\"false\" data-wb-dock-pinned-id=\"settings\"><div class=\"wb-dock-mag\" data-wb-dock-mag-item=\"settings\"><div class=\"wb-dock-bounce\" data-testid=\"wb-dock-bounce-settings\"><button type=\"button\" data-type-id=\"settings\" class=\"wb-dock-item group relative flex h-11 w-11 items-center justify-center rounded-xl outline-none\" aria-label=\"settings\" tabindex=\"-1\"><span aria-hidden=\"true\" class=\"wb-dock-item-icon pointer-events-none flex h-full w-full items-center justify-center\"><span aria-hidden=\"true\" data-app-icon=\"settings\" class=\"pointer-events-none inline-flex aspect-square select-none items-center justify-center h-8 w-8\" style=\"border-radius: 22.5%; background: linear-gradient(180deg, #ffffff, #eef1f5); box-shadow: inset 0 0 0 0.5px rgba(31, 41, 55, 0.16), 0 1px 2px rgba(15, 23, 42, 0.25);\"><img src=\"data:image/svg+xml,%3csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20150%20150'%3e%3clinearGradient%20id='st_body'%20x1='70'%20x2='70'%20y1='24'%20y2='132'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%232BB3A3'%20offset='0'/%3e%3cstop%20stop-color='%2314607E'%20offset='.55'/%3e%3cstop%20stop-color='%231D3F6E'%20offset='1'/%3e%3c/linearGradient%3e%3cg%20fill='url(%23st_body)'%3e%3crect%20x='62.5'%20y='30'%20width='15'%20height='96'%20rx='7.5'/%3e%3crect%20x='62.5'%20y='30'%20width='15'%20height='96'%20rx='7.5'%20transform='rotate(45%2070%2078)'/%3e%3crect%20x='62.5'%20y='30'%20width='15'%20height='96'%20rx='7.5'%20transform='rotate(90%2070%2078)'/%3e%3crect%20x='62.5'%20y='30'%20width='15'%20height='96'%20rx='7.5'%20transform='rotate(135%2070%2078)'/%3e%3ccircle%20cx='70'%20cy='78'%20r='36'/%3e%3c/g%3e%3ccircle%20cx='70'%20cy='78'%20r='19'%20fill='%23EAF7F6'/%3e%3ccircle%20cx='70'%20cy='78'%20r='8.5'%20fill='%231D3F6E'/%3e%3clinearGradient%20id='st_mini'%20x1='119'%20x2='119'%20y1='14'%20y2='52'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20stop-color='%23F9AC33'%20offset='0'/%3e%3cstop%20stop-color='%23F0603C'%20offset='1'/%3e%3c/linearGradient%3e%3cg%20fill='url(%23st_mini)'%3e%3crect%20x='115'%20y='15'%20width='8'%20height='36'%20rx='4'/%3e%3crect%20x='115'%20y='15'%20width='8'%20height='36'%20rx='4'%20transform='rotate(60%20119%2033)'/%3e%3crect%20x='115'%20y='15'%20width='8'%20height='36'%20rx='4'%20transform='rotate(120%20119%2033)'/%3e%3ccircle%20cx='119'%20cy='33'%20r='12'/%3e%3c/g%3e%3ccircle%20cx='119'%20cy='33'%20r='5'%20fill='%23FFF4E4'/%3e%3c/svg%3e\" alt=\"\" draggable=\"false\" class=\"pointer-events-none select-none object-contain\" style=\"width: 76%; height: 76%;\"></span></span></button></div></div><span aria-hidden=\"true\" data-testid=\"wb-dock-tip-settings\" class=\"wb-dock-tip\">settings</span></div>"
+    },
+    {
+      "testId": "wb-dock-item-todo",
+      "html": "<div data-testid=\"wb-dock-item-todo\" data-wb-dock-item-wrap=\"\" class=\"wb-dock-item-wrap relative flex flex-col items-center app-menu-trigger\" id=\":r3:-trigger\" aria-haspopup=\"menu\" aria-expanded=\"false\" data-wb-dock-pinned-id=\"todo\"><div class=\"wb-dock-mag\" data-wb-dock-mag-item=\"todo\"><div class=\"wb-dock-bounce\" data-testid=\"wb-dock-bounce-todo\"><button type=\"button\" data-type-id=\"todo\" class=\"wb-dock-item group relative flex h-11 w-11 items-center justify-center rounded-xl outline-none\" aria-label=\"todo\" tabindex=\"-1\"><span aria-hidden=\"true\" class=\"wb-dock-item-icon pointer-events-none flex h-full w-full items-center justify-center\"><span aria-hidden=\"true\" data-app-icon=\"todo\" class=\"pointer-events-none inline-flex aspect-square select-none items-center justify-center h-8 w-8\" style=\"border-radius: 22.5%; background: linear-gradient(180deg, #ffffff, #eef1f5); box-shadow: inset 0 0 0 0.5px rgba(31, 41, 55, 0.16), 0 1px 2px rgba(15, 23, 42, 0.25);\"><img src=\"/src/features/workbench/icons/app-icons/todo.svg\" alt=\"\" draggable=\"false\" class=\"pointer-events-none select-none object-contain\" style=\"width: 76%; height: 76%;\"></span></span></button></div></div><span aria-hidden=\"true\" data-testid=\"wb-dock-tip-todo\" class=\"wb-dock-tip\">todo</span></div>"
+    },
+    {
+      "testId": "wb-dock-item-__apps__",
+      "html": "<div data-testid=\"wb-dock-item-__apps__\" data-wb-dock-item-wrap=\"\" class=\"wb-dock-item-wrap relative flex flex-col items-center\"><div class=\"wb-dock-mag\" data-wb-dock-mag-item=\"__apps__\"><div class=\"wb-dock-bounce\"><button type=\"button\" data-type-id=\"__apps__\" data-testid=\"wb-dock-apps-button\" class=\"wb-dock-item group relative flex h-11 w-11 items-center justify-center rounded-xl outline-none\" aria-label=\"全部应用\" aria-expanded=\"false\" tabindex=\"-1\"><span aria-hidden=\"true\" class=\"wb-dock-item-icon pointer-events-none flex h-full w-full items-center justify-center\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"26\" height=\"26\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M112,56v48a8,8,0,0,1-8,8H56a8,8,0,0,1-8-8V56a8,8,0,0,1,8-8h48A8,8,0,0,1,112,56Zm88-8H152a8,8,0,0,0-8,8v48a8,8,0,0,0,8,8h48a8,8,0,0,0,8-8V56A8,8,0,0,0,200,48Zm-96,96H56a8,8,0,0,0-8,8v48a8,8,0,0,0,8,8h48a8,8,0,0,0,8-8V152A8,8,0,0,0,104,144Zm96,0H152a8,8,0,0,0-8,8v48a8,8,0,0,0,8,8h48a8,8,0,0,0,8-8V152A8,8,0,0,0,200,144Z\" opacity=\"0.2\"></path><path d=\"M200,136H152a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V152A16,16,0,0,0,200,136Zm0,64H152V152h48v48ZM104,40H56A16,16,0,0,0,40,56v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V56A16,16,0,0,0,104,40Zm0,64H56V56h48v48Zm96-64H152a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V56A16,16,0,0,0,200,40Zm0,64H152V56h48v48Zm-96,32H56a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V152A16,16,0,0,0,104,136Zm0,64H56V152h48v48Z\"></path></svg></span></button></div></div><span aria-hidden=\"true\" data-testid=\"wb-dock-tip-__apps__\" class=\"wb-dock-tip\">全部应用</span></div>"
+    },
+    {
+      "testId": "wb-dock-item-__agent_control__",
+      "html": "<div data-testid=\"wb-dock-item-__agent_control__\" data-wb-dock-item-wrap=\"\" class=\"wb-dock-item-wrap relative flex flex-col items-center\"><div class=\"wb-dock-mag\" data-wb-dock-mag-item=\"__agent_control__\"><div class=\"wb-dock-bounce\"><div class=\"relative inline-flex\"><button type=\"button\" data-type-id=\"__agent_control__\" data-testid=\"wb-dock-agent-control-button\" data-mode=\"follow\" data-unseen=\"true\" class=\"wb-dock-item group relative flex h-11 w-11 items-center justify-center rounded-xl outline-none\" aria-label=\"AI 桌面操控，当前：跟随\" tabindex=\"-1\" aria-expanded=\"false\"><span aria-hidden=\"true\" class=\"wb-dock-item-icon pointer-events-none flex h-full w-full items-center justify-center\"><img src=\"/app-icon.png\" alt=\"\" class=\"wb-agent-control-app-icon\"></span></button></div></div></div><span aria-hidden=\"true\" data-testid=\"wb-dock-tip-agent-control\" class=\"wb-dock-tip\">AI 桌面操控</span></div>"
+    }
+  ]
+}

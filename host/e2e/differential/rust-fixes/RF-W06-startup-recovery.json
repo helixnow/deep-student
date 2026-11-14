@@ -1,0 +1,61 @@
+{
+  "id": "RF-W06-startup-recovery",
+  "kind": "deliberate",
+  "status": "proposed",
+  "title": "启动就绪台账：连续两次未就绪崩溃后停止自动重启并弹原生恢复对话框，可备份 user.profile.json 后以安全模式重启",
+  "rust": {
+    "file": "src-tauri/src/main.rs",
+    "line": 4,
+    "behavior": "启动失败时进程直接退出；下次启动照旧加载同一份用户插件配置，没有就绪台账、连续失败计数、恢复对话框或备份配置后以安全模式重启的入口。崩溃只由 crash_logger 记录"
+  },
+  "fix": {
+    "files": [
+      "electron/shell/safe-mode.ts",
+      "electron/shell/host.ts",
+      "electron/shell-requests.ts",
+      "electron/startup-gate.ts",
+      "electron/index.ts",
+      "electron/main.ts"
+    ],
+    "behavior": "main 在 <Electron userData>/plugin-startup-state.json（plugins 之外）记 failures/pending：打包版上次遗留 pending 在下次启动计一次（开发态不计）；每次 HostSupervisor.start 前置 pending；dstu.shell startupGate 首次 markStartupReady 经 Host 私有 MessagePort 发 app.startupReady（{}，只发一次）后清零；正常退出经 shutdownHost 的 finally 清 pending 且不计失败；Host 未就绪自行退出时计一次并返回 false，到两次后不再自动重启、弹原生对话框：默认/取消保留配置并停止恢复，显式选择则把 <appDataDir>/plugins/user.profile.json 复制为唯一 .safe-mode-<时间戳>-<uuid>.bak（保留原文件）后以 --safe-mode relaunch，复制失败弹错误且不重启。就绪后的崩溃仍走既有 60 秒内 3 次退避重启；安全模式会话不再弹恢复对话框"
+  },
+  "evidence": "electron/tests/safe-mode.test.ts 17 例覆盖：打包遗留 pending 计一次/开发态不计、两次遗留达到阈值、正常退出不误计、未就绪退出只在 pending 时计、损坏台账报错、备份唯一且保留原文件、缺失/复制失败、低于阈值不弹框、就绪后崩溃不进恢复、两次后弹框且默认不备份不重启、显式恢复的备份与重启参数、安全模式不再弹框、成功启动清零。electron/tests/safe-mode-host.test.ts 用真实 Electron 断言台账先 pending、Host 私有端口的 app.startupReady 到达后为 {failures:0,pending:false}。electron/tests/host-readiness.test.ts 断言每次启动尝试（含自动重启）都回调、退出时携带是否就绪、false 时不再重启并报告 unavailable；electron/tests/shell-requests.test.ts 断言 app.startupReady 只在 main 的 shell-request 路由生效。electron/tests/host-failure-log-host.test.ts 改为在同一真实入口上断言连续两次未就绪后出现 startup recovery required（不再跑到 3 次上限）",
+  "userVisible": "只有 Host 连续两次在到达就绪前崩溃时才有区别：不再无限自动重启，而是弹一次原生对话框让用户选择；选择恢复会先备份 user.profile.json 再以安全模式重启（只加载官方插件），选择保留则停在不可用状态。正常启动、正常退出、就绪后的偶发崩溃与现有重启退避行为不变",
+  "dataCompat": "新增 <Electron userData>/plugin-startup-state.json（JSON，0600，原子替换），不同步、不进备份、不在 plugins 目录内；恢复时在 <appDataDir>/plugins 下生成 user.profile.json.safe-mode-<timestamp>-<uuid>.bak 副本，原文件保留不删除。不改变数据库、同步载荷与备份格式；Rust 版不读这两个文件",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "electron/tests/safe-mode.test.ts",
+      "name": "RF-W06-startup-recovery: a pending ledger left by packaged launch counts once, while a dev abandonment does not"
+    },
+    {
+      "file": "electron/tests/safe-mode.test.ts",
+      "name": "RF-W06-startup-recovery: a normal quit clears pending without counting a failure"
+    },
+    {
+      "file": "electron/tests/safe-mode.test.ts",
+      "name": "RF-W06-startup-recovery: asks only after two consecutive pre-ready exits, and keeping the profile neither backs up nor restarts"
+    },
+    {
+      "file": "electron/tests/safe-mode.test.ts",
+      "name": "RF-W06-startup-recovery: an explicit recovery backs up user.profile.json and relaunches with exactly one --safe-mode"
+    },
+    {
+      "file": "electron/tests/safe-mode.test.ts",
+      "name": "RF-W06-startup-recovery: a safe-mode session never offers recovery again and does not count pre-ready exits"
+    },
+    {
+      "file": "electron/tests/safe-mode-host.test.ts",
+      "name": "RF-W06-startup-recovery: the startup ledger starts pending and is reset by the Host-only app.startupReady request"
+    },
+    {
+      "file": "electron/tests/host-readiness.test.ts",
+      "name": "RF-W06-startup-recovery: reports every start attempt (including automatic restarts) and the readiness of the exiting Host"
+    },
+    {
+      "file": "electron/tests/host-failure-log-host.test.ts",
+      "name": "RF-W06-startup-recovery: HostFatal: message, stack, exit code and the stderr tail"
+    }
+  ],
+  "notes": "就绪定义为 dstu.shell startupGate 的首次 markStartupReady（真实启动 finalizer 之后），不是 HostReady/握手/首帧。Host 先发 fatal 再以 1 退出时同样按未就绪退出计数；正常退出（含用户在不可用状态下 Cmd+Q）通过 shutdownHost 的 finally 清 pending。原生对话框没有自动化覆盖：纯模块测对话框选择/备份/重启参数，真实 Electron 测台账与就绪信号；dialog.showMessageBox 本身由 Electron 提供，测试入口可注入替身。"
+}

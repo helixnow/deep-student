@@ -1,0 +1,26 @@
+{
+  "id": "RF-W21-windows-stdio-kill-tree",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T16:30:00+08:00",
+  "title": "Windows 上关闭 stdio MCP 服务器时用 taskkill /T /F 结束整棵进程树，不再只结束 cmd.exe 包装进程而留下真正的服务器",
+  "rust": {
+    "file": "src-tauri/crates/dstu-mcp/src/mcp/global.rs",
+    "line": 473,
+    "behavior": "create_stdio_transport 用 Command::new(command).kill_on_drop(true) 启动子进程；close()/drop 在 Windows 上只对直接子进程调用 TerminateProcess。命令是 .cmd/.bat（Rust std ≥1.77.2 经 <system dir>\\cmd.exe 启动）或 npx.cmd 这类包装脚本时，直接子进程是 cmd.exe，真正的 MCP 服务器（node 等）是孙进程，cmd.exe 被结束后它成为孤儿继续运行，占着端口、文件锁和内存，直到用户手动结束。"
+  },
+  "fix": {
+    "files": ["host/plugins/mcp/src/stdio-proxy.ts", "host/plugins/mcp/src/spawn-plan.ts"],
+    "behavior": "close() 的强制结束阶段在 win32 上先执行 <SystemRoot>\\System32\\taskkill.exe /PID <pid> /T /F（超时取 sigkillMs），结束整棵树；taskkill 失败时记 warn 并退回原来的 child.kill('SIGKILL')（TerminateProcess 直接子进程），结果不比原来差。stdin EOF → 等待 3 秒的优雅退出阶段不变，非 Windows 平台不变。"
+  },
+  "evidence": "V10 跨平台审计 P3-1（.reports/reviews/V10-cross-platform.md:240-251）：npx.cmd 经 cmd.exe 拉起 node，child.kill 只结束 cmd.exe，孙进程留下；Rust 的 kill_on_drop 同样只结束直接子进程，属于对等缺陷。V10-P1-1 修复后 .cmd/.bat 一律经 cmd.exe 启动，这条路径成为所有批处理型 MCP 服务器的默认关闭路径。用户可见后果：在设置里停用/重连 MCP 服务器或退出应用后，服务器进程仍在后台运行，再次启动时端口被占用。本机无 Windows，用注入的 platform 与 killTree 运行器固定行为（修复前 close() 在 win32 下从不调用 taskkill）。",
+  "userVisible": "Windows 上停用、重连 MCP 服务器或退出应用后，经 .cmd/.bat/npx 启动的服务器进程会被一并结束，不再残留在任务管理器里。",
+  "dataCompat": "无：不涉及落库数据、同步载荷或备份格式。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    { "file": "host/plugins/mcp/tests/stdio-kill-tree.test.ts", "name": "RF-W21-windows-stdio-kill-tree: buildKillTreePlan asks taskkill from the system directory for the whole tree, on win32 only" },
+    { "file": "host/plugins/mcp/tests/stdio-kill-tree.test.ts", "name": "RF-W21-windows-stdio-kill-tree: close() on win32 ends the tree through taskkill (Rust kill_on_drop only terminates the cmd.exe wrapper and orphans the server)" },
+    { "file": "host/plugins/mcp/tests/stdio-kill-tree.test.ts", "name": "RF-W21-windows-stdio-kill-tree: if taskkill fails, close() still terminates the direct child and says why" }
+  ]
+}

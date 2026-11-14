@@ -1,0 +1,35 @@
+{
+  "id": "RF-W23-fs-win32-verbatim-parent-segment",
+  "kind": "deliberate",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T14:25:00+08:00",
+  "title": "Windows：plugin:fs 的路径参数里只要有一段是 ..（按 \\ 与 / 都拆），一律按 SafeFilePath 拒绝，包括藏在 \\\\?\\UNC\\srv\\share/..、\\\\?\\GLOBALROOT/..、\\\\.\\C:/.. 这类前缀里的",
+  "rust": {
+    "file": "src-tauri/Cargo.toml",
+    "line": 97,
+    "behavior": "tauri-plugin-fs 的路径参数是 SafeFilePath，into_path 时经 tauri-2.11.5 src/path/mod.rs SafePathBuf::new：Path::components() 里有 ParentDir 才拒绝。Rust 在 verbatim 前缀（\\\\?\\UNC\\server\\share、\\\\?\\X）里只按 \\ 拆，/ 是普通字符，所以 \\\\?\\UNC\\srv\\share/../other\\f 的 ParentDir 被吞进前缀，校验通过；随后交给系统时这段 share 名非法，打开失败，不会落到别处"
+  },
+  "fix": {
+    "files": ["electron/shell/plugins/fs.ts"],
+    "behavior": "traversesParent(path, platform)：保留 Rust 的组件判定；Windows 上再按 \\ 与 / 拆段，任一段恰为 .. 即拒绝，错误与 Rust 的 Unsafe PathBuf 相同（invalid args … cannot traverse directory）。原因：Node 的 fs 在 Windows 上先经 path.win32.toNamespacedPath（内部 win32.resolve），把上面这些路径规范化成 \\\\?\\UNC\\srv\\other\\f、\\\\?\\C:\\Windows\\f 等别处再打开，Rust 里“系统拒收”的路径在 Electron 里会读写到作用域判定之外的位置。作用域本身对已存在的路径会 canonicalize，对不存在的路径（新建文件、mkdir）只按字面匹配，一旦作用域里有 verbatim 形态的模式（Rust canonicalize 的结果都是 verbatim 形态，对话框加入的网络共享目录即是），这条就是唯一的拦截。macOS / Linux 不变"
+  },
+  "evidence": "Node v26 path.win32：win32.resolve('\\\\\\\\?\\\\UNC\\\\srv\\\\share/../other\\\\f.txt') === '\\\\\\\\?\\\\UNC\\\\srv\\\\other\\\\f.txt'，win32.resolve('\\\\\\\\?\\\\GLOBALROOT/../C:\\\\Windows\\\\f.txt') === '\\\\\\\\?\\\\C:\\\\Windows\\\\f.txt'；electron/shell/path-ops.ts components() 与 Rust 一样把这些 .. 留在前缀里，不报 ParentDir。复现（Windows）：用户经对话框授予 \\\\fileserver\\share\\notes 后，页面 writeTextFile('\\\\\\\\?\\\\UNC\\\\fileserver\\\\share/../other\\\\x', …)：Rust 失败（os error 123）；修复前 Electron 写入 \\\\fileserver\\other\\x",
+  "userVisible": "Windows 上这类路径原本在 Rust 版也打不开（系统报文件名语法不正确），现在提前以“不能用 ../ 穿越目录”的参数错误拒绝；正常路径（包括名字里带点的文件，如 notes..md、...）不受影响。",
+  "dataCompat": "不改变落库数据、同步载荷与备份格式。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "electron/tests/fs-safe-path-win32.test.ts",
+      "name": "RF-W23-fs-win32-verbatim-parent-segment: `..` hidden inside a verbatim or device prefix is rejected, because Node fs would resolve it somewhere else"
+    },
+    {
+      "file": "electron/tests/fs-safe-path-win32.test.ts",
+      "name": "RF-W23-fs-win32-verbatim-parent-segment: everything Rust rejects is still rejected, and names that only contain dots are not"
+    },
+    {
+      "file": "electron/tests/fs-safe-path-win32.test.ts",
+      "name": "RF-W23-fs-win32-verbatim-parent-segment: Unix keeps Rust semantics (`\\` is an ordinary character)"
+    }
+  ]
+}

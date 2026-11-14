@@ -41,6 +41,7 @@ import {
 } from "@/components/ui/shad/Table";
 import { AppSelect } from "@/components/ui/app-menu";
 import { CloudStorageSection } from "../CloudStorageSection";
+import { DevicePairingSection } from "../DevicePairingSection";
 import {
   classifySyncE2eeError,
   SYNC_E2EE_ERROR_I18N_KEYS,
@@ -50,6 +51,7 @@ import { SyncQuarantinePanel } from "./SyncQuarantinePanel";
 import { UnsyncedItemsPanel } from "./UnsyncedItemsPanel";
 import { SyncIndicator } from "./SyncIndicator";
 import { settingsQuietTableRowClassName } from "../SettingsCommon";
+import { GroupTitle } from "../settingsTabPrimitives";
 import type {
   SyncStatusResponse,
   ConflictDetectionResponse,
@@ -234,7 +236,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
             <Cloud size={16} />
             {t("data:governance.pending_changes")}
           </div>
-          <div className="text-2xl font-semibold text-foreground">
+          <div className="text-2xl font-semibold tabular-nums text-foreground">
             {syncStatus?.total_pending_changes ?? 0}
           </div>
         </div>
@@ -244,7 +246,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
             <CheckCircle size={16} />
             {t("data:governance.synced_changes")}
           </div>
-          <div className="text-2xl font-semibold text-foreground">
+          <div className="text-2xl font-semibold tabular-nums text-foreground">
             {syncStatus?.total_synced_changes ?? 0}
           </div>
         </div>
@@ -268,46 +270,34 @@ export const SyncTab: React.FC<SyncTabProps> = ({
         </div>
       </div>
 
-      <div className="border-t border-border/40" />
-
       {/* 数据库同步状态 */}
-      <div className="space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <h3 className="text-base font-semibold text-foreground">
-              {t("data:governance.database_sync_status")}
-            </h3>
-            <span
-              className="inline-flex items-center rounded-full bg-warning/10 px-2 py-0.5 text-2xs font-medium text-warning ring-1 ring-inset ring-warning/20"
-              title={t("sync:experimentalBadgeTooltip")}
-            >
-              {t("data:governance.experimental_badge")}
+      <section className="min-w-0">
+        <GroupTitle
+          title={
+            <span className="inline-flex flex-wrap items-center gap-2">
+              <span>{t("data:governance.database_sync_status")}</span>
+              <span
+                className="inline-flex items-center rounded-full bg-warning/10 px-2 py-0.5 text-2xs font-medium text-warning ring-1 ring-inset ring-warning/20"
+                title={t("sync:experimentalBadgeTooltip")}
+              >
+                {t("data:governance.experimental_badge")}
+              </span>
             </span>
-          </div>
-          <div className="flex gap-2">
-            <DsButton
-              variant="outline"
-              size="sm"
-              onClick={onRefresh}
-              disabled={loading}
-            >
-              <ArrowClockwise
-                size={14}
-                className={`mr-1.5 ${loading ? "animate-spin" : ""}`}
-              />
-              {t("common:actions.refresh")}
-            </DsButton>
-            <DsButton
-              variant="outline"
-              size="sm"
-              onClick={onDetectConflicts}
-              disabled={loading}
-            >
-              <MagnifyingGlass size={14} className="mr-1.5" />
-              {t("data:governance.detect_conflicts")}
-            </DsButton>
-          </div>
-        </div>
+          }
+          actions={
+            <>
+              <DsButton
+                variant="outline"
+                size="sm"
+                onClick={onDetectConflicts}
+                disabled={loading}
+              >
+                <MagnifyingGlass size={14} className="mr-1.5" />
+                {t("data:governance.detect_conflicts")}
+              </DsButton>
+            </>
+          }
+        />
 
         <div className="hidden md:block">
           <CustomScrollArea
@@ -389,7 +379,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
           </CustomScrollArea>
         </div>
 
-        <div className="space-y-2 md:hidden">
+        <div className="space-y-2 rounded-2xl bg-muted p-4 md:hidden">
           {syncDatabases.map((db) => (
             <div key={db.id} className="space-y-3 rounded-md border border-border/40 bg-background/50 p-3">
               <div className="flex min-w-0 items-center justify-between gap-3">
@@ -438,33 +428,34 @@ export const SyncTab: React.FC<SyncTabProps> = ({
             </div>
           )}
         </div>
-      </div>
-
-      <div className="border-t border-border/40" />
+      </section>
 
       {/* 云端同步 */}
-      <div className="space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <h3 className="text-base font-semibold text-foreground">
-              {t("data:governance.cloud_sync_title")}
-            </h3>
-            <span
-              className="inline-flex items-center rounded-full bg-warning/10 px-2 py-0.5 text-2xs font-medium text-warning ring-1 ring-inset ring-warning/20"
-              title={t("sync:experimentalBadgeTooltip")}
-            >
-              {t("data:governance.experimental_badge")}
+      <section className="min-w-0">
+        <GroupTitle
+          title={
+            <span className="inline-flex flex-wrap items-center gap-2">
+              <span>{t("data:governance.cloud_sync_title")}</span>
+              <span
+                className="inline-flex items-center rounded-full bg-warning/10 px-2 py-0.5 text-2xs font-medium text-warning ring-1 ring-inset ring-warning/20"
+                title={t("sync:experimentalBadgeTooltip")}
+              >
+                {t("data:governance.experimental_badge")}
+              </span>
             </span>
-          </div>
-          <DsButton
-            variant="outline"
-            size="sm"
-            onClick={onToggleCloudSettingsEditor}
-          >
-            <Cloud size={14} className="mr-1.5" />
-            {t("data:governance.open_cloud_settings")}
-          </DsButton>
-        </div>
+          }
+          actions={
+            <DsButton
+              variant="outline"
+              size="sm"
+              onClick={onToggleCloudSettingsEditor}
+            >
+              <Cloud size={14} className="mr-1.5" />
+              {t("data:governance.open_cloud_settings")}
+            </DsButton>
+          }
+        />
+        <div className="space-y-4">
 
         {!cloudSyncConfigured ? (
           <div className="rounded-2xl bg-muted p-4 space-y-2">
@@ -703,15 +694,26 @@ export const SyncTab: React.FC<SyncTabProps> = ({
           </div>
         )}
 
-        {showCloudSettingsEditor && (
-          <div className="rounded-2xl bg-muted p-4">
-            <CloudStorageSection
-              isDialog
-              onConfigChanged={onCloudConfigChanged}
-            />
-          </div>
-        )}
-      </div>
+          {showCloudSettingsEditor && (
+            <div className="rounded-2xl bg-muted p-4">
+              <CloudStorageSection
+                isDialog
+                onConfigChanged={onCloudConfigChanged}
+              />
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* 扫码同步与跨设备快传中心（直接常驻展示，无需展开云存储配置） */}
+      <DevicePairingSection
+        cloudConfigured={cloudSyncConfigured}
+        onApplied={() => {
+          onCloudConfigChanged();
+          onRefresh();
+        }}
+        onRunSync={(direction) => onRunSync(direction, syncStrategy)}
+      />
 
       {/* 冲突信息 */}
       {conflicts && conflicts.has_conflicts && (

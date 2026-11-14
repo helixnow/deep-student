@@ -27,7 +27,7 @@ const trustedHashes = Array.from(frameDocument.querySelectorAll('script')).map((
   `'sha256-${createHash('sha256').update(script.textContent ?? '').digest('base64')}'`,
 );
 
-for (const configPath of ['src-tauri/tauri.conf.json', 'config/dev-phone-window.json']) {
+for (const configPath of ['resources/app/tauri.conf.json', 'config/dev-phone-window.json']) {
   describe(`card sandbox helpers under ${configPath}`, () => {
     const config = JSON.parse(readFileSync(resolve(process.cwd(), configPath), 'utf8'));
     const scripts = directive(config.app.security.csp, 'script-src');

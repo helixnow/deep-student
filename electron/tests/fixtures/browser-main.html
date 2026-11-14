@@ -1,0 +1,10 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>browser surface main</title></head>
+<body style="margin:0;background:#fff">
+<script>
+(async () => {
+  try { await window.__TAURI_INTERNALS__.invoke('browser_surface_probe'); }
+  catch (error) { document.title = 'browser surface probe failed: ' + String(error); }
+})();
+</script>
+</body></html>

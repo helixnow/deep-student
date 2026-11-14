@@ -1,0 +1,32 @@
+{
+  "id": "RF-W02-super-closed-worker-revival",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T09:20+08:00",
+  "title": "super_message_worker 不再向 Router 已关闭的 Worker 投递消息（关闭状态被 run 收尾覆盖后仍按 closed_by_router 判定）",
+  "rust": {
+    "file": "src-tauri/crates/dstu-agent/src/chat_v2/tools/super_session_executor.rs",
+    "line": 407,
+    "behavior": "只检查 agent.status == Closed。super_close_worker 先 cancel_workspace_agent_backend（只发取消信号），再置 Closed；随后 worker run 收尾无条件写回 Cancelled（workspace_handlers.rs:2015）或 Completed（:1966），Closed 被覆盖。此后 super_message_worker 接受消息并重新派发，被 Router 关闭的 Worker 又活过来。"
+  },
+  "fix": {
+    "files": ["host/plugins/agent-orchestration/src/super-session-executor.ts"],
+    "behavior": "status 为 closed 或 metadata super_agent.closed_by_router 为 true 时都拒绝，错误文本与 Rust 相同（Worker … was closed; dispatch a new worker instead）。closed_by_router 由 close 在状态写入后落库，run 收尾不会改它。"
+  },
+  "evidence": "与 Rust 自身意图矛盾：close_worker_core 的注释写明关闭后由 closed_by_router 吞掉取消回执、Worker 不再参与；message_worker 的错误文本要求“dispatch a new worker instead”。后果是用户可见的错误结果：Router 关闭的 Worker 会继续运行并消耗模型调用，结果再次回流到 Super 会话。复现：dispatch → close（run 仍在收尾）→ run 收尾把状态写成 cancelled/completed → message_worker 成功。测试里用 updateAgentStatus 模拟收尾写入，使竞态可确定复现。",
+  "g3": {
+    "affects": true,
+    "selectors": [
+      { "scenario": "super.*", "surface": "event", "event": "chat_v2_event_*", "jsonPath": "$.payload.phase" },
+      { "scenario": "super.*", "surface": "event", "event": "chat_v2_event_*", "jsonPath": "$.payload.result" },
+      { "scenario": "super.*", "surface": "event", "event": "chat_v2_event_*", "jsonPath": "$.payload.error" }
+    ]
+  },
+  "tests": [
+    {
+      "file": "host/plugins/chat-pipeline/tests/workspace-tools-real-runtime.test.ts",
+      "name": "RF-W02-super-closed-worker-revival: Super-agent worker tools drive the worker lifecycle and a closed worker stays closed"
+    }
+  ]
+}

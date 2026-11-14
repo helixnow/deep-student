@@ -1,0 +1,1625 @@
+{
+  "lane": "L05-agent-workspace",
+  "generator": "deep-student/contracts-extract@1.6.0",
+  "commands": [
+    {
+      "name": "chat_v2_authorize_runtime_root",
+      "lane": "L05-agent-workspace",
+      "rust": {
+        "file": "crates/dstu-agent/src/chat_v2/runtime_roots.rs",
+        "line": 1871,
+        "fn": "chat_v2_authorize_runtime_root"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "path",
+          "rustName": "path",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "label",
+          "rustName": "label",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "sessionId",
+          "rustName": "session_id",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_storage::database::Database>"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/RuntimeRoot"
+        }
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "chat_v2_delete_artifact",
+      "lane": "L05-agent-workspace",
+      "rust": {
+        "file": "crates/dstu-agent/src/chat_v2/runtime_roots.rs",
+        "line": 1965,
+        "fn": "chat_v2_delete_artifact"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "sessionId",
+          "rustName": "session_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "relativePath",
+          "rustName": "relative_path",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_storage::database::Database>"
+        }
+      ],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "chat_v2_list_runtime_directory",
+      "lane": "L05-agent-workspace",
+      "rust": {
+        "file": "crates/dstu-agent/src/chat_v2/runtime_roots.rs",
+        "line": 1785,
+        "fn": "chat_v2_list_runtime_directory"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "sessionId",
+          "rustName": "session_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "rootId",
+          "rustName": "root_id",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "relativePath",
+          "rustName": "relative_path",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "cursor",
+          "rustName": "cursor",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "limit",
+          "rustName": "limit",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "usize",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_storage::database::Database>"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/RuntimeDirectoryPage"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "chat_v2_list_runtime_roots",
+      "lane": "L05-agent-workspace",
+      "rust": {
+        "file": "crates/dstu-agent/src/chat_v2/runtime_roots.rs",
+        "line": 1673,
+        "fn": "chat_v2_list_runtime_roots"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "sessionId",
+          "rustName": "session_id",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_storage::database::Database>"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/RuntimeRoot"
+        }
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "chat_v2_read_runtime_file",
+      "lane": "L05-agent-workspace",
+      "rust": {
+        "file": "crates/dstu-agent/src/chat_v2/runtime_roots.rs",
+        "line": 2551,
+        "fn": "chat_v2_read_runtime_file"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "sessionId",
+          "rustName": "session_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "rootId",
+          "rustName": "root_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "relativePath",
+          "rustName": "relative_path",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "maxBytes",
+          "rustName": "max_bytes",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u64",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_storage::database::Database>"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/RuntimeFilePreview"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "chat_v2_reset_workspace_root",
+      "lane": "L05-agent-workspace",
+      "rust": {
+        "file": "crates/dstu-agent/src/chat_v2/runtime_roots.rs",
+        "line": 1854,
+        "fn": "chat_v2_reset_workspace_root"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "sessionId",
+          "rustName": "session_id",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_storage::database::Database>"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/RuntimeRoot"
+        }
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "chat_v2_resolve_runtime_path",
+      "lane": "L05-agent-workspace",
+      "rust": {
+        "file": "crates/dstu-agent/src/chat_v2/runtime_roots.rs",
+        "line": 1941,
+        "fn": "chat_v2_resolve_runtime_path"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "sessionId",
+          "rustName": "session_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "rootId",
+          "rustName": "root_id",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "relativePath",
+          "rustName": "relative_path",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_storage::database::Database>"
+        }
+      ],
+      "result": {
+        "type": "string"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "chat_v2_revert_artifact_write",
+      "lane": "L05-agent-workspace",
+      "rust": {
+        "file": "crates/dstu-agent/src/chat_v2/runtime_roots.rs",
+        "line": 2454,
+        "fn": "chat_v2_revert_artifact_write"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "sessionId",
+          "rustName": "session_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "relativePath",
+          "rustName": "relative_path",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "backupRef",
+          "rustName": "backup_ref",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "expectedAfterHash",
+          "rustName": "expected_after_hash",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "chat_v2_revert_workspace_change",
+      "lane": "L05-agent-workspace",
+      "rust": {
+        "file": "crates/dstu-agent/src/chat_v2/runtime_roots.rs",
+        "line": 2510,
+        "fn": "chat_v2_revert_workspace_change"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "sessionId",
+          "rustName": "session_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "receipt",
+          "rustName": "receipt",
+          "schema": {
+            "x-rust": "serde_json::Value"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_storage::database::Database>"
+        }
+      ],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "chat_v2_revoke_runtime_root",
+      "lane": "L05-agent-workspace",
+      "rust": {
+        "file": "crates/dstu-agent/src/chat_v2/runtime_roots.rs",
+        "line": 1884,
+        "fn": "chat_v2_revoke_runtime_root"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "rootId",
+          "rustName": "root_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "sessionId",
+          "rustName": "session_id",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_storage::database::Database>"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/RuntimeRoot"
+        }
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "chat_v2_set_skill_trust",
+      "lane": "L05-agent-workspace",
+      "rust": {
+        "file": "crates/dstu-agent/src/chat_v2/runtime_roots.rs",
+        "line": 1601,
+        "fn": "chat_v2_set_skill_trust"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "skillId",
+          "rustName": "skill_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "packageRoot",
+          "rustName": "package_root",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "trusted",
+          "rustName": "trusted",
+          "schema": {
+            "type": "boolean"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_storage::database::Database>"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/SkillTrustState"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "chat_v2_set_workspace_root",
+      "lane": "L05-agent-workspace",
+      "rust": {
+        "file": "crates/dstu-agent/src/chat_v2/runtime_roots.rs",
+        "line": 1813,
+        "fn": "chat_v2_set_workspace_root"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "path",
+          "rustName": "path",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "label",
+          "rustName": "label",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "access",
+          "rustName": "access",
+          "schema": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/RuntimeRootAccess__De"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "sessionId",
+          "rustName": "session_id",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_storage::database::Database>"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/RuntimeRoot"
+        }
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    }
+  ],
+  "events": [
+    {
+      "name": "workspace_agent_joined",
+      "dynamic": false,
+      "payload": {
+        "$ref": "#/$defs/WorkspaceAgentEvent"
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-agent/src/chat_v2/workspace/emitter.rs",
+          "line": 184,
+          "fn": "emit_agent_joined",
+          "lane": "L05-agent-workspace",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "workspace_agent_left",
+      "dynamic": false,
+      "payload": {
+        "$ref": "#/$defs/WorkspaceAgentEvent"
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-agent/src/chat_v2/workspace/emitter.rs",
+          "line": 204,
+          "fn": "emit_agent_left",
+          "lane": "L05-agent-workspace",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "workspace_agent_status_changed",
+      "dynamic": false,
+      "payload": {
+        "$ref": "#/$defs/AgentStatusEvent"
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-agent/src/chat_v2/workspace/emitter.rs",
+          "line": 218,
+          "fn": "emit_agent_status_changed",
+          "lane": "L05-agent-workspace",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "workspace_closed",
+      "dynamic": false,
+      "payload": {
+        "$ref": "#/$defs/WorkspaceClosedEvent"
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-agent/src/chat_v2/workspace/emitter.rs",
+          "line": 246,
+          "fn": "emit_workspace_closed",
+          "lane": "L05-agent-workspace",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "workspace_coordinator_awakened",
+      "dynamic": false,
+      "payload": {
+        "$ref": "#/$defs/CoordinatorAwakenedEvent"
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-agent/src/chat_v2/workspace/emitter.rs",
+          "line": 279,
+          "fn": "emit_coordinator_awakened",
+          "lane": "L05-agent-workspace",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "workspace_document_updated",
+      "dynamic": false,
+      "payload": {
+        "$ref": "#/$defs/WorkspaceDocumentEvent"
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-agent/src/chat_v2/workspace/emitter.rs",
+          "line": 234,
+          "fn": "emit_document_updated",
+          "lane": "L05-agent-workspace",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "workspace_message_received",
+      "dynamic": false,
+      "payload": {
+        "$ref": "#/$defs/WorkspaceMessageEvent"
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-agent/src/chat_v2/workspace/emitter.rs",
+          "line": 171,
+          "fn": "emit_message_received",
+          "lane": "L05-agent-workspace",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "workspace_warning",
+      "dynamic": false,
+      "payload": {
+        "$ref": "#/$defs/WorkspaceWarningEvent"
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-agent/src/chat_v2/workspace/emitter.rs",
+          "line": 293,
+          "fn": "emit_warning",
+          "lane": "L05-agent-workspace",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "workspace_worker_ready",
+      "dynamic": false,
+      "payload": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "workspace_id": {
+                "type": "string"
+              },
+              "agent_session_id": {
+                "type": "string"
+              },
+              "skill_id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "x-option": "null"
+              },
+              "restored": {
+                "type": "boolean"
+              },
+              "reminder": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "x-option": "null"
+              },
+              "runtime_managed": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "workspace_id",
+              "agent_session_id",
+              "skill_id",
+              "restored",
+              "reminder",
+              "runtime_managed"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "workspace_id": {
+                "type": "string"
+              },
+              "agent_session_id": {
+                "type": "string"
+              },
+              "skill_id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "x-option": "null"
+              },
+              "run_id": {
+                "type": "string"
+              },
+              "runtime_managed": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "workspace_id",
+              "agent_session_id",
+              "skill_id",
+              "run_id",
+              "runtime_managed"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "workspace_id": {
+                "type": "string"
+              },
+              "agent_session_id": {
+                "type": "string"
+              },
+              "skill_id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "x-option": "null"
+              },
+              "runtime_managed": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "workspace_id",
+              "agent_session_id",
+              "skill_id",
+              "runtime_managed"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "workspace_id": {
+                "type": "string"
+              },
+              "agent_session_id": {
+                "type": "string"
+              },
+              "skill_id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "x-option": "null"
+              }
+            },
+            "required": [
+              "workspace_id",
+              "agent_session_id",
+              "skill_id"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "x-note": "emitters send different payload shapes"
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-agent/src/chat_v2/handlers/workspace_handlers.rs",
+          "line": 840,
+          "fn": "workspace_create_agent",
+          "lane": "L04-chat-session",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-agent/src/chat_v2/handlers/workspace_handlers.rs",
+          "line": 2001,
+          "fn": "run_workspace_agent_backend",
+          "lane": "L04-chat-session",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-agent/src/chat_v2/handlers/workspace_handlers.rs",
+          "line": 2545,
+          "fn": "workspace_restore_executions",
+          "lane": "L04-chat-session",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-agent/src/chat_v2/tools/subagent_executor.rs",
+          "line": 712,
+          "fn": "execute_subagent_call_with_args",
+          "lane": "L06-agent-orchestration",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-agent/src/chat_v2/tools/workspace_executor.rs",
+          "line": 373,
+          "fn": "execute_create_agent",
+          "lane": "L05-agent-workspace",
+          "method": "emit"
+        }
+      ]
+    }
+  ],
+  "$defs": {
+    "AgentPayload": {
+      "type": "object",
+      "properties": {
+        "session_id": {
+          "type": "string"
+        },
+        "role": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "skill_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "joined_at": {
+          "type": "string"
+        },
+        "last_active_at": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id",
+        "role",
+        "status",
+        "skill_id",
+        "joined_at",
+        "last_active_at"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_agent::chat_v2::workspace::emitter::AgentPayload"
+    },
+    "AgentStatusEvent": {
+      "type": "object",
+      "properties": {
+        "workspace_id": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "workspace_id",
+        "session_id",
+        "status"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_agent::chat_v2::workspace::emitter::AgentStatusEvent"
+    },
+    "CoordinatorAwakenedEvent": {
+      "type": "object",
+      "properties": {
+        "workspace_id": {
+          "type": "string"
+        },
+        "coordinator_session_id": {
+          "type": "string"
+        },
+        "sleep_id": {
+          "type": "string"
+        },
+        "awakened_by": {
+          "type": "string"
+        },
+        "awaken_message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "wake_reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "workspace_id",
+        "coordinator_session_id",
+        "sleep_id",
+        "awakened_by",
+        "awaken_message",
+        "wake_reason"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_agent::chat_v2::workspace::emitter::CoordinatorAwakenedEvent"
+    },
+    "DocumentPayload": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "doc_type": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "version": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "updated_by": {
+          "type": "string"
+        },
+        "updated_at": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "doc_type",
+        "title",
+        "version",
+        "updated_by",
+        "updated_at"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_agent::chat_v2::workspace::emitter::DocumentPayload"
+    },
+    "MessagePayload": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "sender_session_id": {
+          "type": "string"
+        },
+        "target_session_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "message_type": {
+          "type": "string"
+        },
+        "content": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "sender_session_id",
+        "target_session_id",
+        "message_type",
+        "content",
+        "status",
+        "created_at"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_agent::chat_v2::workspace::emitter::MessagePayload"
+    },
+    "RuntimeDirectoryEntry": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "relativePath": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "sizeBytes": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u64",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "name",
+        "relativePath",
+        "kind",
+        "sizeBytes"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_agent::chat_v2::runtime_roots::RuntimeDirectoryEntry"
+    },
+    "RuntimeDirectoryPage": {
+      "type": "object",
+      "properties": {
+        "rootId": {
+          "type": "string"
+        },
+        "relativePath": {
+          "type": "string"
+        },
+        "entries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RuntimeDirectoryEntry"
+          }
+        },
+        "nextCursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "scanned": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "rootId",
+        "relativePath",
+        "entries",
+        "nextCursor",
+        "truncated",
+        "scanned"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_agent::chat_v2::runtime_roots::RuntimeDirectoryPage"
+    },
+    "RuntimeFilePreview": {
+      "type": "object",
+      "properties": {
+        "content": {
+          "type": "string"
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "content",
+        "truncated"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_agent::chat_v2::runtime_roots::RuntimeFilePreview"
+    },
+    "RuntimeRoot": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/RuntimeRootKind"
+        },
+        "path": {
+          "type": "string",
+          "x-rust": "std::path::PathBuf"
+        },
+        "access": {
+          "$ref": "#/$defs/RuntimeRootAccess"
+        },
+        "label": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "session_scoped": {
+          "type": "boolean"
+        },
+        "configured": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "path",
+        "access",
+        "label",
+        "description",
+        "session_scoped",
+        "configured"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_agent::chat_v2::runtime_roots::RuntimeRoot"
+    },
+    "RuntimeRootAccess": {
+      "type": "string",
+      "enum": [
+        "read_only",
+        "read_write"
+      ],
+      "x-rust": "dstu_agent::chat_v2::runtime_roots::RuntimeRootAccess"
+    },
+    "RuntimeRootAccess__De": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "read_only",
+            "read_write"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "read_only": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "read_only"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "read_write": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "read_write"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "x-also-accepts": "externally tagged map form {\"<Variant>\": null}",
+      "x-rust": "dstu_agent::chat_v2::runtime_roots::RuntimeRootAccess"
+    },
+    "RuntimeRootKind": {
+      "type": "string",
+      "enum": [
+        "workspace",
+        "authorized",
+        "skill_package",
+        "artifact",
+        "temp",
+        "host"
+      ],
+      "x-rust": "dstu_agent::chat_v2::runtime_roots::RuntimeRootKind"
+    },
+    "SkillTrustState": {
+      "type": "object",
+      "properties": {
+        "skill_id": {
+          "type": "string"
+        },
+        "trusted": {
+          "type": "boolean"
+        },
+        "package_sha256": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "skill_id",
+        "trusted",
+        "package_sha256"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_agent::chat_v2::runtime_roots::SkillTrustState"
+    },
+    "WorkspaceAgentEvent": {
+      "type": "object",
+      "properties": {
+        "workspace_id": {
+          "type": "string"
+        },
+        "agent": {
+          "$ref": "#/$defs/AgentPayload"
+        }
+      },
+      "required": [
+        "workspace_id",
+        "agent"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_agent::chat_v2::workspace::emitter::WorkspaceAgentEvent"
+    },
+    "WorkspaceClosedEvent": {
+      "type": "object",
+      "properties": {
+        "workspace_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "workspace_id"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_agent::chat_v2::workspace::emitter::WorkspaceClosedEvent"
+    },
+    "WorkspaceDocumentEvent": {
+      "type": "object",
+      "properties": {
+        "workspace_id": {
+          "type": "string"
+        },
+        "document": {
+          "$ref": "#/$defs/DocumentPayload"
+        }
+      },
+      "required": [
+        "workspace_id",
+        "document"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_agent::chat_v2::workspace::emitter::WorkspaceDocumentEvent"
+    },
+    "WorkspaceMessageEvent": {
+      "type": "object",
+      "properties": {
+        "workspace_id": {
+          "type": "string"
+        },
+        "message": {
+          "$ref": "#/$defs/MessagePayload"
+        }
+      },
+      "required": [
+        "workspace_id",
+        "message"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_agent::chat_v2::workspace::emitter::WorkspaceMessageEvent"
+    },
+    "WorkspaceWarningEvent": {
+      "type": "object",
+      "properties": {
+        "workspace_id": {
+          "type": "string"
+        },
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "agent_session_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "message_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "retry_count": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "max_retries": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "workspace_id",
+        "code",
+        "message",
+        "agent_session_id",
+        "message_id",
+        "retry_count",
+        "max_retries"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_agent::chat_v2::workspace::emitter::WorkspaceWarningEvent"
+    }
+  }
+}

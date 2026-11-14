@@ -628,7 +628,7 @@ export function AutomationRunHistory({
   return (
     <section aria-label={t('todo:automation.history.title')} className="min-w-0">
       {/* 顶部工具行：任务过滤 + 状态过滤 */}
-      <div className="mb-2 flex min-w-0 flex-wrap items-center gap-2 px-3">
+      <div className="mb-2 flex min-w-0 flex-wrap items-center gap-2 px-4 sm:px-6">
         {automationOptions.length > 0 ? (
           <select
             value={automationFilter}
@@ -681,7 +681,7 @@ export function AutomationRunHistory({
       ) : filteredRuns.length === 0 ? (
         runs.length > 0 ? (
           // 筛选无结果 ≠ 真无历史：给出可一键清除筛选的差异化文案
-          <div className="flex flex-col items-center justify-center gap-2 px-3 py-10 text-center">
+          <div className="flex flex-col items-center justify-center gap-1.5 px-4 py-6 text-center">
             <Clock size={28} weight="duotone" className="text-muted-foreground/60" aria-hidden />
             <p className="text-sm text-muted-foreground">{t('todo:automation.history.filteredEmpty')}</p>
             <DsButton
@@ -697,7 +697,7 @@ export function AutomationRunHistory({
             </DsButton>
           </div>
         ) : (
-          <div className="flex flex-col items-center justify-center gap-2 px-3 py-10 text-center">
+          <div className="flex flex-col items-center justify-center gap-1.5 px-4 py-6 text-center">
             <Clock size={28} weight="duotone" className="text-muted-foreground/60" aria-hidden />
             <p className="text-sm text-muted-foreground">{t('todo:automation.history.empty')}</p>
             <p className="text-xs text-muted-foreground/70">{t('todo:automation.history.emptyHint')}</p>

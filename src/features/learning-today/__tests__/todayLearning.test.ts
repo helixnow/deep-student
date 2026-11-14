@@ -1,9 +1,14 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { invoke, list } = vi.hoisted(() => ({ invoke: vi.fn(), list: vi.fn() }));
+const { invoke, list, requestLearningHubQuickAccess } = vi.hoisted(() => ({
+  invoke: vi.fn(),
+  list: vi.fn(),
+  requestLearningHubQuickAccess: vi.fn(),
+}));
 vi.mock('@tauri-apps/api/core', () => ({ invoke }));
 vi.mock('@/dstu', () => ({ dstu: { list } }));
-import { loadTodayLearning } from '../todayLearning';
+vi.mock('@/features/learning-hub/navigation/quickAccessRequest', () => ({ requestLearningHubQuickAccess }));
+import { loadTodayLearning, openDueNotesReview } from '../todayLearning';
 
 const note = (id: string, reviewDate?: string) => ({
   id, name: id, type: 'note', metadata: reviewDate ? { props: { study_review_date: reviewDate } } : {},
@@ -33,5 +38,38 @@ describe('loadTodayLearning', () => {
     invoke.mockImplementation(async (cmd: string) => { if (cmd === 'fsrs_get_stats') throw new Error('x'); return { due_today: 1 }; });
     list.mockResolvedValue({ ok: false });
     expect(await loadTodayLearning(new Date('2026-10-01T12:00:00'))).toMatchObject({ cards: 0, mistakes: 1, notes: 0 });
+  });
+});
+
+describe('openDueNotesReview', () => {
+  const EVENTS = ['learningHub:notes-learning-view', 'NAVIGATE_TO_VIEW'];
+  const received: unknown[] = [];
+  const record = (event: Event) => received.push([event.type, event.constructor.name, (event as CustomEvent).detail]);
+
+  beforeEach(() => {
+    received.length = 0;
+    requestLearningHubQuickAccess.mockClear();
+    localStorage.clear();
+    for (const type of EVENTS) window.addEventListener(type, record);
+  });
+  afterEach(() => {
+    for (const type of EVENTS) window.removeEventListener(type, record);
+  });
+
+  it('selects the recent-review notes view and navigates the classic shell to the learning hub', () => {
+    openDueNotesReview();
+    expect(localStorage.getItem('learningHub.notesLearningView')).toBe('review');
+    expect(requestLearningHubQuickAccess).toHaveBeenCalledWith('notes');
+    expect(received).toEqual([
+      ['learningHub:notes-learning-view', 'CustomEvent', { view: 'review' }],
+      ['NAVIGATE_TO_VIEW', 'CustomEvent', { view: 'learning-hub' }],
+    ]);
+  });
+
+  it('lets the caller open the learning hub its own way', () => {
+    const openLearningHub = vi.fn();
+    openDueNotesReview(openLearningHub);
+    expect(openLearningHub).toHaveBeenCalledTimes(1);
+    expect(received).toEqual([['learningHub:notes-learning-view', 'CustomEvent', { view: 'review' }]]);
   });
 });

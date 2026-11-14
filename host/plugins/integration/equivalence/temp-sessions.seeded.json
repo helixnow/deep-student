@@ -1,0 +1,233 @@
+{
+  "domain": "integration",
+  "commands": ["pin_images", "unpin_images", "get_setting"],
+  "scenarios": [
+    {
+      "id": "integration.temp_session.seeded.pin.restore_full_then_memory_hit",
+      "seed": "l22-temp-sessions-w0",
+      "steps": [
+        { "cmd": "pin_images", "args": { "tempId": "tmp_full", "images": ["N1", "N2"] } },
+        { "cmd": "get_setting", "args": { "key": "pinned_images:tmp_full" } },
+        { "cmd": "pin_images", "args": { "tempId": "tmp_full", "images": ["N3"] } },
+        { "cmd": "get_setting", "args": { "key": "pinned_images:tmp_full" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "integration.temp_session.seeded.pin.restore_minimal_alias_defaults",
+      "seed": "l22-temp-sessions-w0",
+      "steps": [
+        { "cmd": "pin_images", "args": { "tempId": "tmp_min", "images": ["M"] } },
+        { "cmd": "get_setting", "args": { "key": "pinned_images:tmp_min" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "integration.temp_session.seeded.pin.empty_images_clears_existing",
+      "seed": "l22-temp-sessions-w0",
+      "steps": [
+        { "cmd": "pin_images", "args": { "tempId": "tmp_pinned", "images": [] } },
+        { "cmd": "get_setting", "args": { "key": "pinned_images:tmp_pinned" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "integration.temp_session.seeded.pin.same_images_twice",
+      "seed": "l22-temp-sessions-w0",
+      "steps": [
+        { "cmd": "pin_images", "args": { "tempId": "tmp_min", "images": ["S"] } },
+        { "cmd": "pin_images", "args": { "tempId": "tmp_min", "images": ["S"] } },
+        { "cmd": "get_setting", "args": { "key": "pinned_images:tmp_min" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "integration.temp_session.seeded.unpin.restore_clears_existing",
+      "seed": "l22-temp-sessions-w0",
+      "steps": [
+        { "cmd": "unpin_images", "args": { "tempId": "tmp_pinned" } },
+        { "cmd": "get_setting", "args": { "key": "pinned_images:tmp_pinned" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "integration.temp_session.seeded.unpin.memory_hit_after_pin",
+      "seed": "l22-temp-sessions-w0",
+      "steps": [
+        { "cmd": "pin_images", "args": { "tempId": "tmp_full", "images": ["N1"] } },
+        { "cmd": "unpin_images", "args": { "tempId": "tmp_full" } },
+        { "cmd": "get_setting", "args": { "key": "pinned_images:tmp_full" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "integration.temp_session.seeded.unpin.no_setting_row",
+      "seed": "l22-temp-sessions-w0",
+      "steps": [
+        { "cmd": "unpin_images", "args": { "tempId": "tmp_min" } },
+        { "cmd": "get_setting", "args": { "key": "pinned_images:tmp_min" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "integration.temp_session.seeded.pin.row_key_mismatch",
+      "seed": "l22-temp-sessions-w0",
+      "steps": [
+        { "cmd": "pin_images", "args": { "tempId": "tmp_mismatch_outer", "images": ["X"] } },
+        { "cmd": "pin_images", "args": { "tempId": "tmp_mismatch_outer", "images": ["Y"] } },
+        { "cmd": "unpin_images", "args": { "tempId": "tmp_mismatch_inner" } },
+        { "cmd": "get_setting", "args": { "key": "pinned_images:tmp_mismatch_outer" } },
+        { "cmd": "get_setting", "args": { "key": "pinned_images:tmp_mismatch_inner" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "integration.temp_session.seeded.pin.persist_failure_restore_then_memory",
+      "seed": "l22-temp-sessions-w0",
+      "steps": [
+        { "cmd": "pin_images", "args": { "tempId": "tmp_readonly", "images": ["N"] }, "expect": "error" },
+        { "cmd": "get_setting", "args": { "key": "pinned_images:tmp_readonly" } },
+        { "cmd": "unpin_images", "args": { "tempId": "tmp_readonly" }, "expect": "error" },
+        { "cmd": "pin_images", "args": { "tempId": "tmp_readonly", "images": [] }, "expect": "error" },
+        { "cmd": "get_setting", "args": { "key": "pinned_images:tmp_readonly" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "integration.temp_session.seeded.unpin.persist_failure_restore",
+      "seed": "l22-temp-sessions-w0",
+      "steps": [
+        { "cmd": "unpin_images", "args": { "tempId": "tmp_readonly" }, "expect": "error" },
+        { "cmd": "get_setting", "args": { "key": "pinned_images:tmp_readonly" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "integration.temp_session.seeded.read_failure.empty_object",
+      "seed": "l22-temp-sessions-w0",
+      "steps": [
+        { "cmd": "pin_images", "args": { "tempId": "tmp_bad_empty_obj", "images": ["A"] }, "expect": "error" },
+        { "cmd": "unpin_images", "args": { "tempId": "tmp_bad_empty_obj" }, "expect": "error" },
+        { "cmd": "get_setting", "args": { "key": "pinned_images:tmp_bad_empty_obj" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "integration.temp_session.seeded.read_failure.not_json",
+      "seed": "l22-temp-sessions-w0",
+      "steps": [
+        { "cmd": "pin_images", "args": { "tempId": "tmp_bad_not_json", "images": ["A"] }, "expect": "error" },
+        { "cmd": "unpin_images", "args": { "tempId": "tmp_bad_not_json" }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "integration.temp_session.seeded.read_failure.blob_column",
+      "seed": "l22-temp-sessions-w0",
+      "steps": [
+        { "cmd": "pin_images", "args": { "tempId": "tmp_bad_blob", "images": ["A"] }, "expect": "error" },
+        { "cmd": "unpin_images", "args": { "tempId": "tmp_bad_blob" }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "integration.temp_session.seeded.read_failure.negative_usize",
+      "seed": "l22-temp-sessions-w0",
+      "steps": [
+        { "cmd": "pin_images", "args": { "tempId": "tmp_bad_negative_usize", "images": ["A"] }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "integration.temp_session.seeded.read_failure.usize_overflow",
+      "seed": "l22-temp-sessions-w0",
+      "steps": [
+        { "cmd": "pin_images", "args": { "tempId": "tmp_bad_usize_overflow", "images": ["A"] }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "integration.temp_session.seeded.read_failure.unknown_stream_state",
+      "seed": "l22-temp-sessions-w0",
+      "steps": [
+        { "cmd": "pin_images", "args": { "tempId": "tmp_bad_state", "images": ["A"] }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "integration.temp_session.seeded.read_failure.duplicate_struct_field",
+      "seed": "l22-temp-sessions-w0",
+      "steps": [
+        { "cmd": "pin_images", "args": { "tempId": "tmp_bad_dup_field", "images": ["A"] }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "integration.temp_session.seeded.read_failure.lone_surrogate",
+      "seed": "l22-temp-sessions-w0",
+      "steps": [
+        { "cmd": "pin_images", "args": { "tempId": "tmp_bad_lone_surrogate", "images": ["A"] }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "integration.temp_session.seeded.read_failure.invalid_created_at",
+      "seed": "l22-temp-sessions-w0",
+      "steps": [
+        { "cmd": "pin_images", "args": { "tempId": "tmp_bad_created_at", "images": ["A"] }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "integration.temp_session.seeded.pin.f32_out_of_range",
+      "seed": "l22-temp-sessions-w0",
+      "steps": [
+        { "cmd": "pin_images", "args": { "tempId": "tmp_f32_overflow", "images": ["F"] } },
+        { "cmd": "unpin_images", "args": { "tempId": "tmp_f32_overflow" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "integration.temp_session.seeded.pin.eviction_over_cap",
+      "seed": "l22-temp-sessions-w0",
+      "steps": [
+        { "cmd": "pin_images", "args": { "tempId": "tmp_evict_1", "images": ["E"] } },
+        { "cmd": "pin_images", "args": { "tempId": "tmp_evict_2", "images": ["E"] } },
+        { "cmd": "pin_images", "args": { "tempId": "tmp_evict_3", "images": ["E"] } },
+        { "cmd": "pin_images", "args": { "tempId": "tmp_evict_4", "images": ["E"] } },
+        { "cmd": "pin_images", "args": { "tempId": "tmp_evict_5", "images": ["E"] } },
+        { "cmd": "pin_images", "args": { "tempId": "tmp_evict_6", "images": ["E"] } },
+        { "cmd": "pin_images", "args": { "tempId": "tmp_evict_7", "images": ["E"] } },
+        { "cmd": "pin_images", "args": { "tempId": "tmp_evict_8", "images": ["E"] } },
+        { "cmd": "pin_images", "args": { "tempId": "tmp_evict_9", "images": ["E"] } },
+        { "cmd": "pin_images", "args": { "tempId": "tmp_evict_1", "images": ["E2"] } },
+        { "cmd": "pin_images", "args": { "tempId": "tmp_evict_2", "images": ["E2"] } },
+        { "cmd": "unpin_images", "args": { "tempId": "tmp_evict_9" } },
+        { "cmd": "get_setting", "args": { "key": "pinned_images:tmp_evict_1" } },
+        { "cmd": "get_setting", "args": { "key": "pinned_images:tmp_evict_9" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    }
+  ]
+}

@@ -1,0 +1,5775 @@
+{
+  "lane": "L16-anki",
+  "generator": "deep-student/contracts-extract@1.6.0",
+  "commands": [
+    {
+      "name": "add_cards_to_anki_connect",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/cmd/anki_connect.rs",
+        "line": 226,
+        "fn": "add_cards_to_anki_connect"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "selectedCards",
+          "rustName": "selected_cards",
+          "schema": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/AnkiCard__De"
+            }
+          },
+          "optional": false
+        },
+        {
+          "key": "deckName",
+          "rustName": "deck_name",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "noteType",
+          "rustName": "note_type",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/AnkiSyncReport"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "anki_get_deck_names",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/cmd/anki_connect.rs",
+        "line": 198,
+        "fn": "anki_get_deck_names"
+      },
+      "async": true,
+      "args": [],
+      "injected": [],
+      "result": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "batch_export_cards",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/cmd/anki_connect.rs",
+        "line": 1323,
+        "fn": "batch_export_cards"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "notes",
+          "rustName": "notes",
+          "schema": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/BatchExportNote"
+            }
+          },
+          "optional": false
+        },
+        {
+          "key": "format",
+          "rustName": "format",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "options",
+          "rustName": "options",
+          "schema": {
+            "$ref": "#/$defs/BatchExportOptions"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "string"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "cancel_document_processing",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/cmd/enhanced_anki.rs",
+        "line": 140,
+        "fn": "cancel_document_processing"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "documentId",
+          "rustName": "documentId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "window"
+        },
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "boolean"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "check_anki_connect_availability",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "crates/dstu-anki/src/anki_connect_service.rs",
+        "line": 308,
+        "fn": "check_anki_connect_availability"
+      },
+      "async": true,
+      "args": [],
+      "injected": [],
+      "result": {
+        "type": "boolean"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "none",
+      "x-rust-registered": false
+    },
+    {
+      "name": "check_anki_connect_status",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/cmd/anki_connect.rs",
+        "line": 180,
+        "fn": "check_anki_connect_status"
+      },
+      "async": true,
+      "args": [],
+      "injected": [],
+      "result": {
+        "type": "boolean"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "count_custom_template_references",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 4465,
+        "fn": "count_custom_template_references"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "templateId",
+          "rustName": "template_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "integer",
+        "x-int": "i64"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "create_anki_deck",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/cmd/anki_connect.rs",
+        "line": 213,
+        "fn": "create_anki_deck"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "deckName",
+          "rustName": "deck_name",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "create_custom_template",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 4303,
+        "fn": "create_custom_template"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "request",
+          "rustName": "request",
+          "schema": {
+            "$ref": "#/$defs/CreateTemplateRequest"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "string"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "delete_anki_card",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/cmd/enhanced_anki.rs",
+        "line": 287,
+        "fn": "delete_anki_card"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "cardId",
+          "rustName": "card_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "boolean"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "delete_custom_template",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 4402,
+        "fn": "delete_custom_template"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "templateId",
+          "rustName": "template_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "delete_document_session",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/cmd/enhanced_anki.rs",
+        "line": 325,
+        "fn": "delete_document_session"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "documentId",
+          "rustName": "documentId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "boolean"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "delete_document_task",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/cmd/enhanced_anki.rs",
+        "line": 306,
+        "fn": "delete_document_task"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "taskId",
+          "rustName": "task_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "boolean"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "dismiss_pending_memory_candidates",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/cmd/enhanced_anki.rs",
+        "line": 786,
+        "fn": "dismiss_pending_memory_candidates"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "conversationId",
+          "rustName": "conversation_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "integer",
+        "x-int": "u32",
+        "minimum": 0,
+        "maximum": 4294967295
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "export_anki_cards",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/cmd/enhanced_anki.rs",
+        "line": 646,
+        "fn": "export_anki_cards"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "request",
+          "rustName": "request",
+          "schema": {
+            "$ref": "#/$defs/ExportAnkiCardsRequest"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/ExportAnkiCardsResponse"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "export_apkg_for_selection",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/cmd/enhanced_anki.rs",
+        "line": 347,
+        "fn": "export_apkg_for_selection"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "documentId",
+          "rustName": "documentId",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "taskIds",
+          "rustName": "taskIds",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "cardIds",
+          "rustName": "cardIds",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "options",
+          "rustName": "options",
+          "schema": {
+            "$ref": "#/$defs/AnkiGenerationOptions"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "string"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "export_cards_as_apkg",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/cmd/anki_connect.rs",
+        "line": 947,
+        "fn": "export_cards_as_apkg"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "selectedCards",
+          "rustName": "selected_cards",
+          "schema": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/AnkiCard__De"
+            }
+          },
+          "optional": false
+        },
+        {
+          "key": "deckName",
+          "rustName": "deck_name",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "noteType",
+          "rustName": "note_type",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "string"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "export_cards_as_apkg_with_template",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/cmd/anki_connect.rs",
+        "line": 977,
+        "fn": "export_cards_as_apkg_with_template"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "selectedCards",
+          "rustName": "selected_cards",
+          "schema": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/AnkiCard__De"
+            }
+          },
+          "optional": false
+        },
+        {
+          "key": "deckName",
+          "rustName": "deck_name",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "noteType",
+          "rustName": "note_type",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "templateId",
+          "rustName": "template_id",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "string"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "export_multi_template_apkg",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/cmd/anki_connect.rs",
+        "line": 1123,
+        "fn": "export_multi_template_apkg"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "cards",
+          "rustName": "cards",
+          "schema": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/AnkiCard__De"
+            }
+          },
+          "optional": false
+        },
+        {
+          "key": "deckName",
+          "rustName": "deck_name",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "outputPath",
+          "rustName": "output_path",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        },
+        {
+          "kind": "window"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/ExportMultiTemplateApkgResult"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "export_template",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 4476,
+        "fn": "export_template"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "templateId",
+          "rustName": "template_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/TemplateExportResponse"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "generate_anki_cards_from_document",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 3911,
+        "fn": "generate_anki_cards_from_document"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "request",
+          "rustName": "request",
+          "schema": {
+            "$ref": "#/$defs/AnkiDocumentGenerationRequest"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/AnkiDocumentGenerationResponse"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "generate_anki_cards_from_document_base64",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 3998,
+        "fn": "generate_anki_cards_from_document_base64"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "fileName",
+          "rustName": "file_name",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "base64Content",
+          "rustName": "base64_content",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "options",
+          "rustName": "options",
+          "schema": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/AnkiGenerationOptions"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/AnkiDocumentGenerationResponse"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "generate_anki_cards_from_document_file",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 3950,
+        "fn": "generate_anki_cards_from_document_file"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "filePath",
+          "rustName": "file_path",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "options",
+          "rustName": "options",
+          "schema": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/AnkiGenerationOptions"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/AnkiDocumentGenerationResponse"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "get_all_custom_templates",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 4279,
+        "fn": "get_all_custom_templates"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/CustomAnkiTemplate"
+        }
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "get_all_recent_cards",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 7075,
+        "fn": "get_all_recent_cards"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "limit",
+          "rustName": "limit",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "_shared.json#/$defs/AnkiCard"
+        }
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "get_anki_deck_names",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/cmd/anki_connect.rs",
+        "line": 189,
+        "fn": "get_anki_deck_names"
+      },
+      "async": true,
+      "args": [],
+      "injected": [],
+      "result": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "get_anki_library_card_content",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/cmd/enhanced_anki.rs",
+        "line": 460,
+        "fn": "get_anki_library_card_content"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "cardId",
+          "rustName": "card_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "get_anki_model_names",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/cmd/anki_connect.rs",
+        "line": 204,
+        "fn": "get_anki_model_names"
+      },
+      "async": true,
+      "args": [],
+      "injected": [],
+      "result": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "get_anki_stats",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/cmd/enhanced_anki.rs",
+        "line": 612,
+        "fn": "get_anki_stats"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "get_custom_template_by_id",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 4291,
+        "fn": "get_custom_template_by_id"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "templateId",
+          "rustName": "template_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/CustomAnkiTemplate"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "x-option": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "get_default_template_id",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 6239,
+        "fn": "get_default_template_id"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "x-option": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "get_document_cards",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/cmd/enhanced_anki.rs",
+        "line": 379,
+        "fn": "get_document_cards"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "documentId",
+          "rustName": "documentId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "_shared.json#/$defs/AnkiCard"
+        }
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "get_document_processing_state",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/cmd/enhanced_anki.rs",
+        "line": 181,
+        "fn": "get_document_processing_state"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "documentId",
+          "rustName": "documentId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/DocumentStateDto"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "get_document_task_counts",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/cmd/enhanced_anki.rs",
+        "line": 195,
+        "fn": "get_document_task_counts"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "documentId",
+          "rustName": "documentId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/DocumentTaskCountsDto"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "get_document_tasks",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/cmd/enhanced_anki.rs",
+        "line": 229,
+        "fn": "get_document_tasks"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "documentId",
+          "rustName": "documentId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "_shared.json#/$defs/DocumentTask"
+        }
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "get_model_adapter_options",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/cmd/anki_cards.rs",
+        "line": 19,
+        "fn": "get_model_adapter_options"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "x-rust": "serde_json::Value"
+        }
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "get_pending_memory_candidates",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/cmd/enhanced_anki.rs",
+        "line": 725,
+        "fn": "get_pending_memory_candidates"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "conversationId",
+          "rustName": "conversation_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/PendingMemoryCandidatesResponse"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "x-option": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "get_task_cards",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/cmd/enhanced_anki.rs",
+        "line": 247,
+        "fn": "get_task_cards"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "taskId",
+          "rustName": "task_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "_shared.json#/$defs/AnkiCard"
+        }
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "import_anki_package",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/cmd/anki_connect.rs",
+        "line": 413,
+        "fn": "import_anki_package"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "path",
+          "rustName": "path",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "deleteAfter",
+          "rustName": "delete_after",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [],
+      "result": {
+        "type": "boolean"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "import_apkg_to_library",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/cmd/apkg_import.rs",
+        "line": 81,
+        "fn": "import_apkg_to_library"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "path",
+          "rustName": "path",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        },
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/ApkgImportResult"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "import_builtin_templates",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 4898,
+        "fn": "import_builtin_templates"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "string"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "import_custom_templates_bulk",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 4579,
+        "fn": "import_custom_templates_bulk"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "request",
+          "rustName": "request",
+          "schema": {
+            "$ref": "#/$defs/TemplateBulkImportRequest"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "string"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "import_template",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 4504,
+        "fn": "import_template"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "request",
+          "rustName": "request",
+          "schema": {
+            "$ref": "#/$defs/TemplateImportRequest"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "string"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "list_anki_library_cards",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/cmd/enhanced_anki.rs",
+        "line": 477,
+        "fn": "list_anki_library_cards"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "request",
+          "rustName": "request",
+          "schema": {
+            "$ref": "#/$defs/ListAnkiCardsRequest"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "list_document_sessions",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/cmd/enhanced_anki.rs",
+        "line": 559,
+        "fn": "list_document_sessions"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "limit",
+          "rustName": "limit",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "x-rust": "serde_json::Value"
+        }
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "mark_pending_memory_candidates_saved",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/cmd/enhanced_anki.rs",
+        "line": 814,
+        "fn": "mark_pending_memory_candidates_saved"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "conversationId",
+          "rustName": "conversation_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "integer",
+        "x-int": "u32",
+        "minimum": 0,
+        "maximum": 4294967295
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "pause_document_processing",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/cmd/enhanced_anki.rs",
+        "line": 121,
+        "fn": "pause_document_processing"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "documentId",
+          "rustName": "documentId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "window"
+        },
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "boolean"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "read_anki_media",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/cmd/apkg_import.rs",
+        "line": 306,
+        "fn": "read_anki_media"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "path",
+          "rustName": "path",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "string"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "recover_stuck_document_tasks",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/cmd/enhanced_anki.rs",
+        "line": 547,
+        "fn": "recover_stuck_document_tasks"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "integer",
+        "x-int": "u32",
+        "minimum": 0,
+        "maximum": 4294967295
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "reset_model_adapter_options",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/cmd/anki_cards.rs",
+        "line": 57,
+        "fn": "reset_model_adapter_options"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "x-rust": "serde_json::Value"
+        }
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "resume_document_processing",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/cmd/enhanced_anki.rs",
+        "line": 162,
+        "fn": "resume_document_processing"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "documentId",
+          "rustName": "documentId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "window"
+        },
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "boolean"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "save_anki_cards",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/cmd/anki_connect.rs",
+        "line": 925,
+        "fn": "save_anki_cards"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "request",
+          "rustName": "request",
+          "schema": {
+            "$ref": "#/$defs/SaveAnkiCardsRequest"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        },
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/SaveAnkiCardsResponse"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "save_json_file",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/cmd/anki_connect.rs",
+        "line": 2145,
+        "fn": "save_json_file"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "content",
+          "rustName": "content",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "suggestedName",
+          "rustName": "suggested_name",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [],
+      "result": {
+        "type": "string"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "save_model_adapter_options",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/cmd/anki_cards.rs",
+        "line": 28,
+        "fn": "save_model_adapter_options"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "options",
+          "rustName": "options",
+          "schema": {
+            "type": "array",
+            "items": {
+              "x-rust": "serde_json::Value"
+            }
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "save_template_debug_data",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 6856,
+        "fn": "save_template_debug_data"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "debugData",
+          "rustName": "debug_data",
+          "schema": {
+            "x-rust": "serde_json::Value"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "string"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "set_default_template",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 6230,
+        "fn": "set_default_template"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "templateId",
+          "rustName": "template_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "set_document_session_source",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/cmd/enhanced_anki.rs",
+        "line": 623,
+        "fn": "set_document_session_source"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "documentId",
+          "rustName": "documentId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "sessionId",
+          "rustName": "sessionId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "start_enhanced_document_processing",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/cmd/enhanced_anki.rs",
+        "line": 85,
+        "fn": "start_enhanced_document_processing"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "documentContent",
+          "rustName": "document_content",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "originalDocumentName",
+          "rustName": "original_document_name",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "options",
+          "rustName": "options",
+          "schema": {
+            "$ref": "#/$defs/AnkiGenerationOptions"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "window"
+        },
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "string"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "trigger_task_processing",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/cmd/enhanced_anki.rs",
+        "line": 209,
+        "fn": "trigger_task_processing"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "taskId",
+          "rustName": "task_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "window"
+        },
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "update_anki_card",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/cmd/enhanced_anki.rs",
+        "line": 266,
+        "fn": "update_anki_card"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "card",
+          "rustName": "card",
+          "schema": {
+            "$ref": "#/$defs/AnkiCard__De"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "update_custom_template",
+      "lane": "L16-anki",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 4320,
+        "fn": "update_custom_template"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "templateId",
+          "rustName": "template_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "request",
+          "rustName": "request",
+          "schema": {
+            "$ref": "#/$defs/UpdateTemplateRequest"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    }
+  ],
+  "events": [
+    {
+      "name": "anki_generation_event",
+      "dynamic": false,
+      "payload": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/StreamedCardPayload"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "GenerationStats": {
+                "type": "object",
+                "properties": {
+                  "task_id": {
+                    "type": "string"
+                  },
+                  "document_id": {
+                    "type": "string"
+                  },
+                  "cards_generated": {
+                    "type": "integer",
+                    "x-int": "u32",
+                    "minimum": 0,
+                    "maximum": 4294967295
+                  },
+                  "failed_cards": {
+                    "type": "integer",
+                    "x-int": "u32",
+                    "minimum": 0,
+                    "maximum": 4294967295
+                  },
+                  "duplicate_cards": {
+                    "type": "integer",
+                    "x-int": "u32",
+                    "minimum": 0,
+                    "maximum": 4294967295
+                  },
+                  "dropped_fragments": {
+                    "type": "integer",
+                    "x-int": "u32",
+                    "minimum": 0,
+                    "maximum": 4294967295
+                  },
+                  "flagged_cards": {
+                    "type": "integer",
+                    "x-int": "u32",
+                    "minimum": 0,
+                    "maximum": 4294967295
+                  }
+                },
+                "required": [
+                  "task_id",
+                  "document_id",
+                  "cards_generated",
+                  "failed_cards",
+                  "duplicate_cards",
+                  "dropped_fragments",
+                  "flagged_cards"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "GenerationStats"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "GenerationWarning": {
+                "type": "object",
+                "properties": {
+                  "task_id": {
+                    "type": "string"
+                  },
+                  "document_id": {
+                    "type": "string"
+                  },
+                  "reason": {
+                    "type": "string"
+                  },
+                  "fragment_preview": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "task_id",
+                  "document_id",
+                  "reason",
+                  "fragment_preview"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "GenerationWarning"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "x-rust": "serde_json::Value"
+          }
+        ],
+        "x-note": "emitters send different payload shapes"
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-anki/src/enhanced_anki_service.rs",
+          "line": 237,
+          "fn": "start_document_processing_inner",
+          "lane": "L16-anki",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-anki/src/enhanced_anki_service.rs",
+          "line": 479,
+          "fn": "process_all_tasks_async",
+          "lane": "L16-anki",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-anki/src/enhanced_anki_service.rs",
+          "line": 600,
+          "fn": "pause_document_processing",
+          "lane": "L16-anki",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-anki/src/enhanced_anki_service.rs",
+          "line": 609,
+          "fn": "pause_document_processing",
+          "lane": "L16-anki",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-anki/src/enhanced_anki_service.rs",
+          "line": 672,
+          "fn": "resume_document_processing",
+          "lane": "L16-anki",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-anki/src/enhanced_anki_service.rs",
+          "line": 882,
+          "fn": "cancel_document_processing",
+          "lane": "L16-anki",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-anki/src/enhanced_anki_service.rs",
+          "line": 893,
+          "fn": "cancel_document_processing",
+          "lane": "L16-anki",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-anki/src/streaming_anki_service.rs",
+          "line": 3286,
+          "fn": "update_task_status",
+          "lane": "L16-anki",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-anki/src/streaming_anki_service.rs",
+          "line": 3301,
+          "fn": "emit_new_card",
+          "lane": "L16-anki",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-anki/src/streaming_anki_service.rs",
+          "line": 3314,
+          "fn": "emit_error_card",
+          "lane": "L16-anki",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-anki/src/streaming_anki_service.rs",
+          "line": 3339,
+          "fn": "emit_generation_stats",
+          "lane": "L16-anki",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-anki/src/streaming_anki_service.rs",
+          "line": 3356,
+          "fn": "emit_critic_summary",
+          "lane": "L16-anki",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-anki/src/streaming_anki_service.rs",
+          "line": 3381,
+          "fn": "emit_generation_warning",
+          "lane": "L16-anki",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-anki/src/streaming_anki_service.rs",
+          "line": 3410,
+          "fn": "complete_task_successfully",
+          "lane": "L16-anki",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-anki/src/streaming_anki_service.rs",
+          "line": 3462,
+          "fn": "handle_task_error",
+          "lane": "L16-anki",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "fsrs://changed",
+      "dynamic": false,
+      "payload": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "source": {
+                "type": "string"
+              },
+              "action": {
+                "type": "string"
+              },
+              "entityIds": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "runId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "source",
+              "action",
+              "entityIds",
+              "runId"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "x-rust": "serde_json::Value"
+          }
+        ],
+        "x-note": "emitters send different payload shapes"
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-anki/src/fsrs_review_service.rs",
+          "line": 5496,
+          "fn": "emit_fsrs_enqueue_changed",
+          "lane": "L15-review-analytics",
+          "method": "emit"
+        },
+        {
+          "file": "src/chat_v2/tools/chatanki_executor.rs",
+          "line": 8757,
+          "fn": "run_chatanki_pipeline_background",
+          "lane": "L24-chatanki",
+          "method": "emit"
+        },
+        {
+          "file": "src/chat_v2/tools/chatanki_executor.rs",
+          "line": 12230,
+          "fn": "emit_enqueue_review_changed",
+          "lane": "L24-chatanki",
+          "method": "emit"
+        },
+        {
+          "file": "src/chat_v2/tools/chatanki_executor.rs",
+          "line": 12467,
+          "fn": "emit_agent_review_changed",
+          "lane": "L24-chatanki",
+          "method": "emit"
+        },
+        {
+          "file": "src/chat_v2/tools/chatanki_executor.rs",
+          "line": 13719,
+          "fn": "emit_fsrs_cards_changed_with_cards",
+          "lane": "L24-chatanki",
+          "method": "emit"
+        },
+        {
+          "file": "src/chat_v2/tools/chatanki_executor.rs",
+          "line": 13730,
+          "fn": "emit_fsrs_import_changed",
+          "lane": "L24-chatanki",
+          "method": "emit"
+        },
+        {
+          "file": "src/cmd/anki_connect.rs",
+          "line": 938,
+          "fn": "save_anki_cards",
+          "lane": "L16-anki",
+          "method": "emit"
+        },
+        {
+          "file": "src/cmd/apkg_import.rs",
+          "line": 71,
+          "fn": "emit_import_changed",
+          "lane": "L16-anki",
+          "method": "emit"
+        },
+        {
+          "file": "src/cmd/fsrs_review.rs",
+          "line": 101,
+          "fn": "emit_fsrs_changed",
+          "lane": "L15-review-analytics",
+          "method": "emit"
+        },
+        {
+          "file": "src/cmd/fsrs_review.rs",
+          "line": 291,
+          "fn": "fsrs_rate",
+          "lane": "L15-review-analytics",
+          "method": "emit"
+        }
+      ]
+    }
+  ],
+  "$defs": {
+    "AnkiCard__De": {
+      "type": "object",
+      "properties": {
+        "front": {
+          "type": "string"
+        },
+        "back": {
+          "type": "string"
+        },
+        "text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "images": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "id": {
+          "type": "string"
+        },
+        "task_id": {
+          "type": "string"
+        },
+        "is_error_card": {
+          "type": "boolean"
+        },
+        "error_content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "updated_at": {
+          "type": "string"
+        },
+        "extra_fields": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "x-key-order": "unspecified"
+        },
+        "template_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "x-rust": "dstu_core::models::AnkiCard"
+    },
+    "AnkiDocumentGenerationRequest": {
+      "type": "object",
+      "properties": {
+        "document_content": {
+          "type": "string"
+        },
+        "original_document_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "options": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AnkiGenerationOptions"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "document_content"
+      ],
+      "x-rust": "dstu_core::models::AnkiDocumentGenerationRequest"
+    },
+    "AnkiDocumentGenerationResponse": {
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "cards": {
+          "type": "array",
+          "items": {
+            "$ref": "_shared.json#/$defs/AnkiCard"
+          }
+        },
+        "error_message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "success",
+        "cards",
+        "error_message"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_core::models::AnkiDocumentGenerationResponse"
+    },
+    "AnkiGenerationOptions": {
+      "type": "object",
+      "properties": {
+        "source_ref": {
+          "anyOf": [
+            {
+              "x-rust": "serde_json::Value"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "deck_name": {
+          "type": "string"
+        },
+        "note_type": {
+          "type": "string"
+        },
+        "enable_images": {
+          "type": "boolean"
+        },
+        "max_cards_per_mistake": {
+          "type": "integer",
+          "x-int": "i32",
+          "minimum": -2147483648,
+          "maximum": 2147483647
+        },
+        "max_cards_total": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "i32",
+              "minimum": -2147483648,
+              "maximum": 2147483647
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "max_tokens": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "temperature": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f32"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "max_output_tokens_override": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "temperature_override": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f32"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "template_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "custom_anki_prompt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "template_fields": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "field_extraction_rules": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/FieldExtractionRule__De"
+              },
+              "x-key-order": "unspecified"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "template_fields_by_id": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "x-key-order": "unspecified"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "field_extraction_rules_by_id": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "additionalProperties": {
+                  "$ref": "#/$defs/FieldExtractionRule__De"
+                },
+                "x-key-order": "unspecified"
+              },
+              "x-key-order": "unspecified"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "custom_requirements": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "segment_overlap_size": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "system_prompt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "template_ids": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "template_descriptions": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/TemplateDescription"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "enable_llm_boundary_detection": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "fsrs_feedback": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "user_review_profile": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "output_protocol": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "enable_qa_pass": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "enable_critic_pass": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "enable_llm_critic": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "critic_token_budget": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "sidekick_model_routing": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "deck_name",
+        "note_type",
+        "enable_images",
+        "max_cards_per_mistake"
+      ],
+      "x-rust": "dstu_core::models::AnkiGenerationOptions"
+    },
+    "AnkiSyncModelError": {
+      "type": "object",
+      "properties": {
+        "model": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "model",
+        "error"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_anki::anki_connect_service::AnkiSyncModelError"
+    },
+    "AnkiSyncReport": {
+      "type": "object",
+      "properties": {
+        "noteIds": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u64",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          }
+        },
+        "added": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "duplicates": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "failed": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "createdModels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "modelErrors": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/AnkiSyncModelError"
+          },
+          "x-skip-serializing-if": "Vec::is_empty"
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "x-skip-serializing-if": "Vec::is_empty"
+        }
+      },
+      "required": [
+        "noteIds",
+        "added",
+        "duplicates",
+        "failed",
+        "createdModels"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_anki::anki_connect_service::AnkiSyncReport"
+    },
+    "ApkgExportReport": {
+      "type": "object",
+      "properties": {
+        "exportedMedia": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "missingMedia": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "x-skip-serializing-if": "Vec::is_empty"
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "x-skip-serializing-if": "Vec::is_empty"
+        }
+      },
+      "required": [
+        "exportedMedia"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_anki::apkg_exporter_service::ApkgExportReport"
+    },
+    "ApkgImportResult": {
+      "type": "object",
+      "properties": {
+        "documentId": {
+          "type": "string"
+        },
+        "importedCards": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "importedTemplates": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "mediaSkipped": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "mediaImported": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "mediaReport": {
+          "$ref": "#/$defs/ApkgMediaReport",
+          "x-skip-serializing-if": "ApkgMediaReport::is_empty"
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "x-skip-serializing-if": "Vec::is_empty"
+        },
+        "reviewEnqueue": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ApkgReviewEnqueueReport"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        }
+      },
+      "required": [
+        "documentId",
+        "importedCards",
+        "importedTemplates",
+        "mediaSkipped",
+        "mediaImported"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_anki::apkg_importer_service::ApkgImportResult"
+    },
+    "ApkgMediaReport": {
+      "type": "object",
+      "properties": {
+        "declared": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "imported": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "skipped": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "skips": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ApkgMediaSkip"
+          },
+          "x-skip-serializing-if": "Vec::is_empty"
+        },
+        "mediaDir": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        }
+      },
+      "required": [
+        "declared",
+        "imported",
+        "skipped"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_anki::apkg_importer_service::ApkgMediaReport"
+    },
+    "ApkgMediaSkip": {
+      "type": "object",
+      "properties": {
+        "reason": {
+          "type": "string"
+        },
+        "count": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "filenames": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "x-skip-serializing-if": "Vec::is_empty"
+        }
+      },
+      "required": [
+        "reason",
+        "count"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_anki::apkg_importer_service::ApkgMediaSkip"
+    },
+    "ApkgReviewEnqueueReport": {
+      "type": "object",
+      "properties": {
+        "enqueued": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "withHistory": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "suspended": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "enqueued",
+        "withHistory",
+        "suspended"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_anki::apkg_importer_service::ApkgReviewEnqueueReport"
+    },
+    "BatchExportNote": {
+      "type": "object",
+      "properties": {
+        "fields": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "x-key-order": "unspecified"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "images": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "fields"
+      ],
+      "x-rust": "deep_student_lib::cmd::anki_connect::BatchExportNote"
+    },
+    "BatchExportOptions": {
+      "type": "object",
+      "properties": {
+        "deckName": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null",
+          "x-aliases": [
+            "deckName"
+          ]
+        },
+        "deck_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null",
+          "x-aliases": [
+            "deckName"
+          ]
+        },
+        "noteType": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null",
+          "x-aliases": [
+            "noteType"
+          ]
+        },
+        "note_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null",
+          "x-aliases": [
+            "noteType"
+          ]
+        },
+        "templateId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null",
+          "x-aliases": [
+            "templateId"
+          ]
+        },
+        "template_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null",
+          "x-aliases": [
+            "templateId"
+          ]
+        }
+      },
+      "x-rust": "deep_student_lib::cmd::anki_connect::BatchExportOptions"
+    },
+    "CreateTemplateRequest": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "author": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "preview_front": {
+          "type": "string"
+        },
+        "preview_back": {
+          "type": "string"
+        },
+        "note_type": {
+          "type": "string"
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "generation_prompt": {
+          "type": "string"
+        },
+        "front_template": {
+          "type": "string"
+        },
+        "back_template": {
+          "type": "string"
+        },
+        "css_style": {
+          "type": "string"
+        },
+        "field_extraction_rules": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/FieldExtractionRule__De"
+          },
+          "x-key-order": "unspecified"
+        },
+        "preview_data_json": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "is_active": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "is_built_in": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "name",
+        "description",
+        "preview_front",
+        "preview_back",
+        "note_type",
+        "fields",
+        "generation_prompt",
+        "front_template",
+        "back_template",
+        "css_style",
+        "field_extraction_rules"
+      ],
+      "x-rust": "dstu_core::models::CreateTemplateRequest"
+    },
+    "CustomAnkiTemplate": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "author": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "version": {
+          "type": "string"
+        },
+        "preview_front": {
+          "type": "string"
+        },
+        "preview_back": {
+          "type": "string"
+        },
+        "note_type": {
+          "type": "string"
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "generation_prompt": {
+          "type": "string"
+        },
+        "front_template": {
+          "type": "string"
+        },
+        "back_template": {
+          "type": "string"
+        },
+        "css_style": {
+          "type": "string"
+        },
+        "field_extraction_rules": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/FieldExtractionRule"
+          },
+          "x-key-order": "unspecified"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time",
+          "x-rust": "chrono::DateTime<chrono::Utc>",
+          "x-format": "RFC 3339, SecondsFormat::AutoSi, Z for UTC"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time",
+          "x-rust": "chrono::DateTime<chrono::Utc>",
+          "x-format": "RFC 3339, SecondsFormat::AutoSi, Z for UTC"
+        },
+        "is_active": {
+          "type": "boolean"
+        },
+        "is_built_in": {
+          "type": "boolean"
+        },
+        "preview_data_json": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "description",
+        "author",
+        "version",
+        "preview_front",
+        "preview_back",
+        "note_type",
+        "fields",
+        "generation_prompt",
+        "front_template",
+        "back_template",
+        "css_style",
+        "field_extraction_rules",
+        "created_at",
+        "updated_at",
+        "is_active",
+        "is_built_in",
+        "preview_data_json"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_core::models::CustomAnkiTemplate"
+    },
+    "DocumentStateDto": {
+      "type": "object",
+      "properties": {
+        "paused": {
+          "type": "boolean"
+        },
+        "current_task_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "paused",
+        "current_task_id"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_anki::enhanced_anki_service::DocumentStateDto"
+    },
+    "DocumentTaskCountsDto": {
+      "type": "object",
+      "properties": {
+        "pending": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "processing": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "streaming": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "paused": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "completed": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "failed": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "truncated": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "cancelled": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "total": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        }
+      },
+      "required": [
+        "pending",
+        "processing",
+        "streaming",
+        "paused",
+        "completed",
+        "failed",
+        "truncated",
+        "cancelled",
+        "total"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_anki::enhanced_anki_service::DocumentTaskCountsDto"
+    },
+    "ExportAnkiCardsRequest": {
+      "type": "object",
+      "properties": {
+        "ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "format": {
+          "type": "string"
+        },
+        "deckName": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "noteType": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "templateId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "ids",
+        "format"
+      ],
+      "x-rust": "dstu_core::models::ExportAnkiCardsRequest"
+    },
+    "ExportAnkiCardsResponse": {
+      "type": "object",
+      "properties": {
+        "filePath": {
+          "type": "string"
+        },
+        "sizeBytes": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "format": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "filePath",
+        "sizeBytes",
+        "format"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_core::models::ExportAnkiCardsResponse"
+    },
+    "ExportMultiTemplateApkgResult": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "report": {
+          "$ref": "#/$defs/ApkgExportReport"
+        }
+      },
+      "required": [
+        "path",
+        "report"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::cmd::anki_connect::ExportMultiTemplateApkgResult"
+    },
+    "FieldExtractionRule": {
+      "type": "object",
+      "properties": {
+        "field_type": {
+          "$ref": "#/$defs/FieldType"
+        },
+        "is_required": {
+          "type": "boolean"
+        },
+        "default_value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "validation_pattern": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "description": {
+          "type": "string"
+        },
+        "validation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ValidationRule"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "transform": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TransformRule"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "schema": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ObjectSchema"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "item_schema": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ObjectSchema"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "display_format": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "ai_hint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "max_length": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "min_length": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "allowed_values": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "x-rust": "serde_json::Value"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "depends_on": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "compute_function": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        }
+      },
+      "required": [
+        "field_type",
+        "is_required",
+        "default_value",
+        "validation_pattern",
+        "description"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_core::models::FieldExtractionRule"
+    },
+    "FieldExtractionRule__De": {
+      "type": "object",
+      "properties": {
+        "field_type": {
+          "$ref": "#/$defs/FieldType__De"
+        },
+        "is_required": {
+          "type": "boolean"
+        },
+        "default_value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "validation_pattern": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "description": {
+          "type": "string"
+        },
+        "validation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ValidationRule__De"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "transform": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TransformRule__De"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "schema": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ObjectSchema__De"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "item_schema": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ObjectSchema__De"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "display_format": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "ai_hint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "max_length": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "min_length": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "allowed_values": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "x-rust": "serde_json::Value"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "depends_on": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "compute_function": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "field_type",
+        "is_required",
+        "description"
+      ],
+      "x-rust": "dstu_core::models::FieldExtractionRule"
+    },
+    "FieldType": {
+      "type": "string",
+      "enum": [
+        "Text",
+        "Array",
+        "Number",
+        "Boolean",
+        "Date",
+        "RichText",
+        "Formula"
+      ],
+      "x-rust": "dstu_core::models::FieldType"
+    },
+    "FieldType__De": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "Text",
+            "Array",
+            "Number",
+            "Boolean",
+            "Date",
+            "RichText",
+            "Formula"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "Text": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "Text"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "Array": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "Array"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "Number": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "Number"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "Boolean": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "Boolean"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "Date": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "Date"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "RichText": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "RichText"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "Formula": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "Formula"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "x-also-accepts": "externally tagged map form {\"<Variant>\": null}",
+      "x-rust": "dstu_core::models::FieldType"
+    },
+    "ListAnkiCardsRequest": {
+      "type": "object",
+      "properties": {
+        "templateId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "search": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "page": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "pageSize": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "sort": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "sortDesc": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "deck": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "includeDecks": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "x-rust": "dstu_core::models::ListAnkiCardsRequest"
+    },
+    "MemoryCandidate": {
+      "type": "object",
+      "properties": {
+        "content": {
+          "type": "string"
+        },
+        "category": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "content",
+        "category"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_core::models::MemoryCandidate"
+    },
+    "ObjectSchema": {
+      "type": "object",
+      "properties": {
+        "properties": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/FieldExtractionRule"
+          },
+          "x-key-order": "unspecified"
+        },
+        "required": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "properties",
+        "required"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_core::models::ObjectSchema"
+    },
+    "ObjectSchema__De": {
+      "type": "object",
+      "properties": {
+        "properties": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/FieldExtractionRule__De"
+          },
+          "x-key-order": "unspecified"
+        },
+        "required": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "properties"
+      ],
+      "x-rust": "dstu_core::models::ObjectSchema"
+    },
+    "PendingMemoryCandidatesResponse": {
+      "type": "object",
+      "properties": {
+        "conversation_id": {
+          "type": "string"
+        },
+        "subject": {
+          "type": "string"
+        },
+        "candidates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/MemoryCandidate"
+          }
+        },
+        "created_at": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "conversation_id",
+        "subject",
+        "candidates",
+        "created_at"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::cmd::enhanced_anki::PendingMemoryCandidatesResponse"
+    },
+    "SaveAnkiCardFailure": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "error"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::cmd::anki_connect::SaveAnkiCardFailure"
+    },
+    "SaveAnkiCardIdMapping": {
+      "type": "object",
+      "properties": {
+        "inputIndex": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "inputId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "persistedId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "inputIndex",
+        "inputId",
+        "persistedId"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::cmd::anki_connect::SaveAnkiCardIdMapping"
+    },
+    "SaveAnkiCardPayload": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "front": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "back": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "tags": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "images": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "fields": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              },
+              "x-key-order": "unspecified"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "template_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "x-rust": "deep_student_lib::cmd::anki_connect::SaveAnkiCardPayload"
+    },
+    "SaveAnkiCardsRequest": {
+      "type": "object",
+      "properties": {
+        "document_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "business_session_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "message_stable_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "block_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "template_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "cards": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SaveAnkiCardPayload"
+          }
+        },
+        "options": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AnkiGenerationOptions"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "cards"
+      ],
+      "x-rust": "deep_student_lib::cmd::anki_connect::SaveAnkiCardsRequest"
+    },
+    "SaveAnkiCardsResponse": {
+      "type": "object",
+      "properties": {
+        "savedIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "taskId": {
+          "type": "string"
+        },
+        "cardIdMappings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SaveAnkiCardIdMapping"
+          }
+        },
+        "skippedIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "duplicatedIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "failed": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SaveAnkiCardFailure"
+          }
+        }
+      },
+      "required": [
+        "savedIds",
+        "taskId",
+        "cardIdMappings",
+        "skippedIds",
+        "duplicatedIds",
+        "failed"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::cmd::anki_connect::SaveAnkiCardsResponse"
+    },
+    "StreamedCardPayload": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "NewCard": {
+              "type": "object",
+              "properties": {
+                "card": {
+                  "$ref": "_shared.json#/$defs/AnkiCard"
+                },
+                "document_id": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "card",
+                "document_id"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "NewCard"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "NewErrorCard": {
+              "type": "object",
+              "properties": {
+                "card": {
+                  "$ref": "_shared.json#/$defs/AnkiCard"
+                },
+                "document_id": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "card",
+                "document_id"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "NewErrorCard"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "TaskStatusUpdate": {
+              "type": "object",
+              "properties": {
+                "task_id": {
+                  "type": "string"
+                },
+                "status": {
+                  "$ref": "_shared.json#/$defs/TaskStatus"
+                },
+                "message": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "x-option": "null"
+                },
+                "segment_index": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "x-int": "u32",
+                      "minimum": 0,
+                      "maximum": 4294967295
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "x-option": "null"
+                },
+                "document_id": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "x-option": "null"
+                }
+              },
+              "required": [
+                "task_id",
+                "status",
+                "message",
+                "segment_index",
+                "document_id"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "TaskStatusUpdate"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "TaskProcessingError": {
+              "type": "object",
+              "properties": {
+                "task_id": {
+                  "type": "string"
+                },
+                "error_message": {
+                  "type": "string"
+                },
+                "document_id": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "x-option": "null"
+                }
+              },
+              "required": [
+                "task_id",
+                "error_message",
+                "document_id"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "TaskProcessingError"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "TaskCompleted": {
+              "type": "object",
+              "properties": {
+                "task_id": {
+                  "type": "string"
+                },
+                "final_status": {
+                  "$ref": "_shared.json#/$defs/TaskStatus"
+                },
+                "total_cards_generated": {
+                  "type": "integer",
+                  "x-int": "u32",
+                  "minimum": 0,
+                  "maximum": 4294967295
+                },
+                "document_id": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "x-option": "null"
+                }
+              },
+              "required": [
+                "task_id",
+                "final_status",
+                "total_cards_generated",
+                "document_id"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "TaskCompleted"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "DocumentProcessingStarted": {
+              "type": "object",
+              "properties": {
+                "document_id": {
+                  "type": "string"
+                },
+                "total_segments": {
+                  "type": "integer",
+                  "x-int": "u32",
+                  "minimum": 0,
+                  "maximum": 4294967295
+                }
+              },
+              "required": [
+                "document_id",
+                "total_segments"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "DocumentProcessingStarted"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "DocumentProcessingPaused": {
+              "type": "object",
+              "properties": {
+                "document_id": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "document_id"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "DocumentProcessingPaused"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "DocumentProcessingCompleted": {
+              "type": "object",
+              "properties": {
+                "document_id": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "document_id"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "DocumentProcessingCompleted"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "DocumentProcessingCancelled": {
+              "type": "object",
+              "properties": {
+                "document_id": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "document_id"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "DocumentProcessingCancelled"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "RateLimitWarning": {
+              "type": "object",
+              "properties": {
+                "message": {
+                  "type": "string"
+                },
+                "retry_after_seconds": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "x-int": "u32",
+                      "minimum": 0,
+                      "maximum": 4294967295
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "x-option": "null"
+                }
+              },
+              "required": [
+                "message",
+                "retry_after_seconds"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "RateLimitWarning"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "WorkflowFailed": {
+              "type": "object",
+              "properties": {
+                "workflow_type": {
+                  "type": "string"
+                },
+                "error_message": {
+                  "type": "string"
+                },
+                "fallback_used": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "workflow_type",
+                "error_message",
+                "fallback_used"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "WorkflowFailed"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "x-rust": "dstu_core::models::StreamedCardPayload"
+    },
+    "TemplateBulkImportRequest": {
+      "type": "object",
+      "properties": {
+        "templateData": {
+          "type": "string",
+          "x-aliases": [
+            "templateData"
+          ]
+        },
+        "template_data": {
+          "type": "string",
+          "x-aliases": [
+            "templateData"
+          ]
+        },
+        "overwriteExisting": {
+          "type": "boolean",
+          "x-aliases": [
+            "overwriteExisting"
+          ]
+        },
+        "overwrite_existing": {
+          "type": "boolean",
+          "x-aliases": [
+            "overwriteExisting"
+          ]
+        },
+        "strictBuiltin": {
+          "type": "boolean",
+          "x-aliases": [
+            "strictBuiltin"
+          ]
+        },
+        "strict_builtin": {
+          "type": "boolean",
+          "x-aliases": [
+            "strictBuiltin"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "anyOf": [
+            {
+              "required": [
+                "template_data"
+              ]
+            },
+            {
+              "required": [
+                "templateData"
+              ]
+            }
+          ]
+        },
+        {
+          "anyOf": [
+            {
+              "required": [
+                "overwrite_existing"
+              ]
+            },
+            {
+              "required": [
+                "overwriteExisting"
+              ]
+            }
+          ]
+        }
+      ],
+      "x-rust": "dstu_core::models::TemplateBulkImportRequest"
+    },
+    "TemplateDescription": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "generation_prompt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "description",
+        "fields"
+      ],
+      "x-rust": "dstu_core::models::TemplateDescription"
+    },
+    "TemplateExportResponse": {
+      "type": "object",
+      "properties": {
+        "template_data": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "template_data"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_core::models::TemplateExportResponse"
+    },
+    "TemplateImportRequest": {
+      "type": "object",
+      "properties": {
+        "template_data": {
+          "type": "string"
+        },
+        "overwrite_existing": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "template_data",
+        "overwrite_existing"
+      ],
+      "x-rust": "dstu_core::models::TemplateImportRequest"
+    },
+    "TransformRule": {
+      "type": "object",
+      "properties": {
+        "transform_type": {
+          "type": "string"
+        },
+        "format": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "custom_function": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "transform_type",
+        "format",
+        "custom_function"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_core::models::TransformRule"
+    },
+    "TransformRule__De": {
+      "type": "object",
+      "properties": {
+        "transform_type": {
+          "type": "string"
+        },
+        "format": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "custom_function": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "transform_type"
+      ],
+      "x-rust": "dstu_core::models::TransformRule"
+    },
+    "UpdateTemplateRequest": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "author": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "expected_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "preview_front": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "preview_back": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "note_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "fields": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "generation_prompt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "front_template": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "back_template": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "css_style": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "field_extraction_rules": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/FieldExtractionRule__De"
+              },
+              "x-key-order": "unspecified"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "is_active": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "preview_data_json": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "is_built_in": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "x-rust": "dstu_core::models::UpdateTemplateRequest"
+    },
+    "ValidationRule": {
+      "type": "object",
+      "properties": {
+        "pattern": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "min": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "max": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "enum_values": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "x-rust": "serde_json::Value"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "custom": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "error_message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "pattern",
+        "min",
+        "max",
+        "enum_values",
+        "custom",
+        "error_message"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_core::models::ValidationRule"
+    },
+    "ValidationRule__De": {
+      "type": "object",
+      "properties": {
+        "pattern": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "min": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "max": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "enum_values": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "x-rust": "serde_json::Value"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "custom": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "error_message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "x-rust": "dstu_core::models::ValidationRule"
+    }
+  }
+}

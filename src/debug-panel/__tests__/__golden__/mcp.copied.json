@@ -1,0 +1,672 @@
+{
+  "notices": [
+    "success: 已复制 15 条日志到剪贴板",
+    "success: 日志已复制到剪贴板"
+  ],
+  "copiedAll": [
+    {
+      "keys": [
+        "timestamp",
+        "type",
+        "level",
+        "message",
+        "details"
+      ],
+      "at": 41,
+      "type": "config_init",
+      "level": "info",
+      "message": "MCP配置初始化，共 2 个服务器",
+      "details": {
+        "servers": [
+          {
+            "id": "fs",
+            "type": "stdio",
+            "namespace": "files"
+          },
+          {
+            "id": "search",
+            "type": "sse",
+            "namespace": "web"
+          }
+        ]
+      }
+    },
+    {
+      "keys": [
+        "timestamp",
+        "type",
+        "level",
+        "message",
+        "details"
+      ],
+      "at": 82,
+      "type": "config_change",
+      "level": "info",
+      "message": "MCP配置已更新",
+      "details": "[对象过大: 664 字符, 已截断]"
+    },
+    {
+      "keys": [
+        "timestamp",
+        "serverId",
+        "type",
+        "level",
+        "message",
+        "details"
+      ],
+      "at": 123,
+      "serverId": "fs",
+      "type": "connect_start",
+      "level": "info",
+      "message": "开始连接服务器: fs (stdio)",
+      "details": {
+        "transport": "stdio"
+      }
+    },
+    {
+      "keys": [
+        "timestamp",
+        "serverId",
+        "type",
+        "level",
+        "message",
+        "details"
+      ],
+      "at": 164,
+      "serverId": "fs",
+      "type": "connect_success",
+      "level": "success",
+      "message": "连接成功: fs",
+      "details": {
+        "transport": "stdio"
+      }
+    },
+    {
+      "keys": [
+        "timestamp",
+        "serverId",
+        "type",
+        "level",
+        "message",
+        "details"
+      ],
+      "at": 205,
+      "serverId": "search",
+      "type": "connect_start",
+      "level": "info",
+      "message": "开始连接服务器: search (sse)",
+      "details": {
+        "transport": "sse"
+      }
+    },
+    {
+      "keys": [
+        "timestamp",
+        "serverId",
+        "type",
+        "level",
+        "message",
+        "details"
+      ],
+      "at": 246,
+      "serverId": "search",
+      "type": "connect_fail",
+      "level": "error",
+      "message": "连接失败: search",
+      "details": {
+        "transport": "sse",
+        "error": "TypeError: fetch failed: ECONNREFUSED\n    at connectSse (mcp/transport.ts:42:7)"
+      }
+    },
+    {
+      "keys": [
+        "timestamp",
+        "serverId",
+        "sessionId",
+        "type",
+        "level",
+        "message",
+        "details"
+      ],
+      "at": 287,
+      "serverId": "fs",
+      "sessionId": "session-0123456789",
+      "type": "stdio_message_send",
+      "level": "debug",
+      "message": "Stdio发送消息",
+      "details": {
+        "payload": {
+          "jsonrpc": "2.0",
+          "id": 1,
+          "method": "tools/list"
+        }
+      }
+    },
+    {
+      "keys": [
+        "timestamp",
+        "serverId",
+        "sessionId",
+        "type",
+        "level",
+        "message",
+        "details"
+      ],
+      "at": 369,
+      "serverId": "fs",
+      "sessionId": "session-0123456789",
+      "type": "stdio_message_recv",
+      "level": "debug",
+      "message": "Stdio接收消息",
+      "details": {
+        "payload": "rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr... [截断 40 字符]"
+      }
+    },
+    {
+      "keys": [
+        "timestamp",
+        "serverId",
+        "sessionId",
+        "type",
+        "level",
+        "message",
+        "details"
+      ],
+      "at": 489,
+      "serverId": "fs",
+      "sessionId": "session-0123456789",
+      "type": "stdio_message_send",
+      "level": "debug",
+      "message": "Stdio发送消息",
+      "details": {
+        "payload": {
+          "id": 3,
+          "method": "tools/call"
+        }
+      }
+    },
+    {
+      "keys": [
+        "timestamp",
+        "serverId",
+        "type",
+        "level",
+        "message",
+        "details"
+      ],
+      "at": 530,
+      "serverId": "fs",
+      "type": "tool_call_start",
+      "level": "info",
+      "message": "调用工具: read_file",
+      "details": {
+        "toolName": "read_file",
+        "toolArgs": {
+          "path": "/notes/a.md",
+          "apiKey": "***0123 [已脱敏]",
+          "auth": {
+            "bearerToken": "***5678 [已脱敏]"
+          },
+          "list": [
+            "ABCDEF***WXYZ [已脱敏]",
+            "short"
+          ]
+        },
+        "callId": "call-1"
+      }
+    },
+    {
+      "keys": [
+        "timestamp",
+        "serverId",
+        "type",
+        "level",
+        "message",
+        "details"
+      ],
+      "at": 571,
+      "serverId": "fs",
+      "type": "tool_call_success",
+      "level": "success",
+      "message": "工具成功: read_file (87ms)",
+      "details": {
+        "toolName": "read_file",
+        "toolResult": "[对象过大: 714 字符, 已截断]",
+        "duration": 87,
+        "callId": "call-1"
+      }
+    },
+    {
+      "keys": [
+        "timestamp",
+        "serverId",
+        "type",
+        "level",
+        "message",
+        "details"
+      ],
+      "at": 612,
+      "serverId": "fs",
+      "type": "tool_call_error",
+      "level": "error",
+      "message": "工具错误: write_file",
+      "details": {
+        "toolName": "write_file",
+        "error": "EACCES: permission denied",
+        "duration": 12,
+        "callId": "call-2"
+      }
+    },
+    {
+      "keys": [
+        "timestamp",
+        "serverId",
+        "sessionId",
+        "type",
+        "level",
+        "message",
+        "details"
+      ],
+      "at": 653,
+      "serverId": "fs",
+      "sessionId": "session-0123456789",
+      "type": "stdio_error",
+      "level": "error",
+      "message": "Stdio错误",
+      "details": {
+        "error": "broken pipe"
+      }
+    },
+    {
+      "keys": [
+        "timestamp",
+        "serverId",
+        "sessionId",
+        "type",
+        "level",
+        "message"
+      ],
+      "at": 694,
+      "serverId": "fs",
+      "sessionId": "session-0123456789",
+      "type": "stdio_closed",
+      "level": "warning",
+      "message": "Stdio连接关闭"
+    },
+    {
+      "keys": [
+        "timestamp",
+        "serverId",
+        "type",
+        "level",
+        "message"
+      ],
+      "at": 735,
+      "serverId": "search",
+      "type": "disconnect",
+      "level": "warning",
+      "message": "断开连接: search"
+    }
+  ],
+  "copiedOne": {
+    "keys": [
+      "timestamp",
+      "serverId",
+      "type",
+      "level",
+      "message",
+      "details"
+    ],
+    "at": 571,
+    "serverId": "fs",
+    "type": "tool_call_success",
+    "level": "success",
+    "message": "工具成功: read_file (87ms)",
+    "details": {
+      "toolName": "read_file",
+      "toolResult": "[对象过大: 714 字符, 已截断]",
+      "duration": 87,
+      "callId": "call-1"
+    }
+  },
+  "exportFile": {
+    "download": "mcp-debug-<now>.json",
+    "href": "blob:mcp-export",
+    "type": "application/json",
+    "entries": [
+      {
+        "keys": [
+          "ts",
+          "type",
+          "level",
+          "message",
+          "details",
+          "id",
+          "timestamp"
+        ],
+        "at": 41,
+        "type": "config_init",
+        "level": "info",
+        "message": "MCP配置初始化，共 2 个服务器",
+        "details": {
+          "servers": [
+            {
+              "id": "fs",
+              "type": "stdio",
+              "namespace": "files"
+            },
+            {
+              "id": "search",
+              "type": "sse",
+              "namespace": "web"
+            }
+          ]
+        }
+      },
+      {
+        "keys": [
+          "ts",
+          "type",
+          "level",
+          "message",
+          "details",
+          "id",
+          "timestamp"
+        ],
+        "at": 82,
+        "type": "config_change",
+        "level": "info",
+        "message": "MCP配置已更新",
+        "details": "[对象过大: 664 字符, 已截断]"
+      },
+      {
+        "keys": [
+          "ts",
+          "serverId",
+          "type",
+          "level",
+          "message",
+          "details",
+          "id",
+          "timestamp"
+        ],
+        "at": 123,
+        "serverId": "fs",
+        "type": "connect_start",
+        "level": "info",
+        "message": "开始连接服务器: fs (stdio)",
+        "details": {
+          "transport": "stdio"
+        }
+      },
+      {
+        "keys": [
+          "ts",
+          "serverId",
+          "type",
+          "level",
+          "message",
+          "details",
+          "id",
+          "timestamp"
+        ],
+        "at": 164,
+        "serverId": "fs",
+        "type": "connect_success",
+        "level": "success",
+        "message": "连接成功: fs",
+        "details": {
+          "transport": "stdio"
+        }
+      },
+      {
+        "keys": [
+          "ts",
+          "serverId",
+          "type",
+          "level",
+          "message",
+          "details",
+          "id",
+          "timestamp"
+        ],
+        "at": 205,
+        "serverId": "search",
+        "type": "connect_start",
+        "level": "info",
+        "message": "开始连接服务器: search (sse)",
+        "details": {
+          "transport": "sse"
+        }
+      },
+      {
+        "keys": [
+          "ts",
+          "serverId",
+          "type",
+          "level",
+          "message",
+          "details",
+          "id",
+          "timestamp"
+        ],
+        "at": 246,
+        "serverId": "search",
+        "type": "connect_fail",
+        "level": "error",
+        "message": "连接失败: search",
+        "details": {
+          "transport": "sse",
+          "error": "TypeError: fetch failed: ECONNREFUSED\n    at connectSse (mcp/transport.ts:42:7)"
+        }
+      },
+      {
+        "keys": [
+          "ts",
+          "serverId",
+          "sessionId",
+          "type",
+          "level",
+          "message",
+          "details",
+          "id",
+          "timestamp"
+        ],
+        "at": 287,
+        "serverId": "fs",
+        "sessionId": "session-0123456789",
+        "type": "stdio_message_send",
+        "level": "debug",
+        "message": "Stdio发送消息",
+        "details": {
+          "payload": {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/list"
+          }
+        }
+      },
+      {
+        "keys": [
+          "ts",
+          "serverId",
+          "sessionId",
+          "type",
+          "level",
+          "message",
+          "details",
+          "id",
+          "timestamp"
+        ],
+        "at": 369,
+        "serverId": "fs",
+        "sessionId": "session-0123456789",
+        "type": "stdio_message_recv",
+        "level": "debug",
+        "message": "Stdio接收消息",
+        "details": {
+          "payload": "rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr... [截断 40 字符]"
+        }
+      },
+      {
+        "keys": [
+          "ts",
+          "serverId",
+          "sessionId",
+          "type",
+          "level",
+          "message",
+          "details",
+          "id",
+          "timestamp"
+        ],
+        "at": 489,
+        "serverId": "fs",
+        "sessionId": "session-0123456789",
+        "type": "stdio_message_send",
+        "level": "debug",
+        "message": "Stdio发送消息",
+        "details": {
+          "payload": {
+            "id": 3,
+            "method": "tools/call"
+          }
+        }
+      },
+      {
+        "keys": [
+          "ts",
+          "serverId",
+          "type",
+          "level",
+          "message",
+          "details",
+          "id",
+          "timestamp"
+        ],
+        "at": 530,
+        "serverId": "fs",
+        "type": "tool_call_start",
+        "level": "info",
+        "message": "调用工具: read_file",
+        "details": {
+          "toolName": "read_file",
+          "toolArgs": {
+            "path": "/notes/a.md",
+            "apiKey": "***0123 [已脱敏]",
+            "auth": {
+              "bearerToken": "***5678 [已脱敏]"
+            },
+            "list": [
+              "ABCDEF***WXYZ [已脱敏]",
+              "short"
+            ]
+          },
+          "callId": "call-1"
+        }
+      },
+      {
+        "keys": [
+          "ts",
+          "serverId",
+          "type",
+          "level",
+          "message",
+          "details",
+          "id",
+          "timestamp"
+        ],
+        "at": 571,
+        "serverId": "fs",
+        "type": "tool_call_success",
+        "level": "success",
+        "message": "工具成功: read_file (87ms)",
+        "details": {
+          "toolName": "read_file",
+          "toolResult": "[对象过大: 714 字符, 已截断]",
+          "duration": 87,
+          "callId": "call-1"
+        }
+      },
+      {
+        "keys": [
+          "ts",
+          "serverId",
+          "type",
+          "level",
+          "message",
+          "details",
+          "id",
+          "timestamp"
+        ],
+        "at": 612,
+        "serverId": "fs",
+        "type": "tool_call_error",
+        "level": "error",
+        "message": "工具错误: write_file",
+        "details": {
+          "toolName": "write_file",
+          "error": "EACCES: permission denied",
+          "duration": 12,
+          "callId": "call-2"
+        }
+      },
+      {
+        "keys": [
+          "ts",
+          "serverId",
+          "sessionId",
+          "type",
+          "level",
+          "message",
+          "details",
+          "id",
+          "timestamp"
+        ],
+        "at": 653,
+        "serverId": "fs",
+        "sessionId": "session-0123456789",
+        "type": "stdio_error",
+        "level": "error",
+        "message": "Stdio错误",
+        "details": {
+          "error": "broken pipe"
+        }
+      },
+      {
+        "keys": [
+          "ts",
+          "serverId",
+          "sessionId",
+          "type",
+          "level",
+          "message",
+          "id",
+          "timestamp"
+        ],
+        "at": 694,
+        "serverId": "fs",
+        "sessionId": "session-0123456789",
+        "type": "stdio_closed",
+        "level": "warning",
+        "message": "Stdio连接关闭"
+      },
+      {
+        "keys": [
+          "ts",
+          "serverId",
+          "type",
+          "level",
+          "message",
+          "id",
+          "timestamp"
+        ],
+        "at": 735,
+        "serverId": "search",
+        "type": "disconnect",
+        "level": "warning",
+        "message": "断开连接: search"
+      }
+    ]
+  }
+}

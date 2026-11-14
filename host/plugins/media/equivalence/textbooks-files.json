@@ -1,0 +1,1146 @@
+{
+  "domain": "media-docs",
+  "commands": [
+    "textbooks_add",
+    "textbooks_relink",
+    "textbooks_update_bookmarks",
+    "vfs_get_file_blob_path",
+    "get_image_as_base64",
+    "notes_export_docx"
+  ],
+  "scenarios": [
+    {
+      "id": "textbooks.add_text.relink_bookmarks_blob",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_app_data_dir",
+          "args": {}
+        },
+        {
+          "cmd": "save_text_to_file",
+          "args": {
+            "path": "${0}/w0-src/lecture.txt",
+            "content": "第一讲 函数与极限\n\n1. 定义\n2. 例题\n"
+          }
+        },
+        {
+          "cmd": "textbooks_add",
+          "args": {
+            "sources": [
+              "${0}/w0-src/lecture.txt"
+            ],
+            "folderId": null
+          }
+        },
+        {
+          "cmd": "vfs_get_file_blob_path",
+          "args": {
+            "id": "${2.0.id}"
+          }
+        },
+        {
+          "cmd": "textbooks_update_bookmarks",
+          "args": {
+            "id": "${2.0.id}",
+            "bookmarks": [
+              {
+                "page": 1,
+                "title": "定义",
+                "createdAt": 1767225600000
+              },
+              {
+                "page": 2,
+                "title": "例题",
+                "note": null,
+                "color": "#ff0",
+                "nested": {
+                  "k": [
+                    1,
+                    2.5
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "textbooks_update_bookmarks",
+          "args": {
+            "id": "${2.0.id}",
+            "bookmarks": []
+          }
+        },
+        {
+          "cmd": "textbooks_update_bookmarks",
+          "args": {
+            "id": "${2.0.id}",
+            "bookmarks": [
+              3,
+              "s",
+              null,
+              true
+            ]
+          }
+        },
+        {
+          "cmd": "textbooks_relink",
+          "args": {
+            "id": "${2.0.id}",
+            "newPath": "${0}/w0-src/lecture.txt"
+          }
+        },
+        {
+          "cmd": "save_text_to_file",
+          "args": {
+            "path": "${0}/w0-moved/lecture-copy.txt",
+            "content": "第一讲 函数与极限\n\n1. 定义\n2. 例题\n"
+          }
+        },
+        {
+          "cmd": "textbooks_relink",
+          "args": {
+            "id": "${2.0.id}",
+            "newPath": "${0}/w0-moved/lecture-copy.txt"
+          }
+        },
+        {
+          "cmd": "save_text_to_file",
+          "args": {
+            "path": "${0}/w0-moved/other.txt",
+            "content": "第一讲 函数与极限\n\n1. 定义\n2. 例题\nchanged"
+          }
+        },
+        {
+          "cmd": "textbooks_relink",
+          "args": {
+            "id": "${2.0.id}",
+            "newPath": "${0}/w0-moved/other.txt"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "textbooks_relink",
+          "args": {
+            "id": "${2.0.id}",
+            "newPath": "${0}/w0-moved/missing.txt"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "textbooks_add",
+          "args": {
+            "sources": [
+              "${0}/w0-moved/lecture-copy.txt"
+            ]
+          }
+        },
+        {
+          "cmd": "get_image_as_base64",
+          "args": {
+            "relativePath": "${3}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "textbooks.missing_ids",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "textbooks_relink",
+          "args": {
+            "id": "file_w0missing",
+            "newPath": "/w0-nonexistent/x.txt"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "textbooks_update_bookmarks",
+          "args": {
+            "id": "file_w0missing",
+            "bookmarks": [
+              {
+                "page": 1
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "vfs_get_file_blob_path",
+          "args": {
+            "id": "file_w0missing"
+          }
+        },
+        {
+          "cmd": "vfs_get_file_blob_path",
+          "args": {
+            "id": ""
+          }
+        },
+        {
+          "cmd": "textbooks_update_bookmarks",
+          "args": {
+            "id": "file_w0missing",
+            "bookmarks": "not-an-array"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "textbooks_update_bookmarks",
+          "args": {
+            "id": "file_w0missing"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "textbooks_relink",
+          "args": {
+            "id": "file_w0missing"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "textbooks.add.empty_and_unsupported",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_app_data_dir",
+          "args": {}
+        },
+        {
+          "cmd": "textbooks_add",
+          "args": {
+            "sources": []
+          }
+        },
+        {
+          "cmd": "textbooks_add",
+          "args": {
+            "sources": [],
+            "folderId": null
+          }
+        },
+        {
+          "cmd": "save_text_to_file",
+          "args": {
+            "path": "${0}/w0-src/tool.exe",
+            "content": "MZ fake"
+          }
+        },
+        {
+          "cmd": "save_text_to_file",
+          "args": {
+            "path": "${0}/w0-src/LICENSE",
+            "content": "MIT License\n\nPermission is hereby granted"
+          }
+        },
+        {
+          "cmd": "save_text_to_file",
+          "args": {
+            "path": "${0}/w0-src/tiny",
+            "content": "ab"
+          }
+        },
+        {
+          "cmd": "textbooks_add",
+          "args": {
+            "sources": [
+              "${0}/w0-src/tool.exe"
+            ]
+          }
+        },
+        {
+          "cmd": "textbooks_add",
+          "args": {
+            "sources": [
+              "${0}/w0-src/LICENSE"
+            ]
+          }
+        },
+        {
+          "cmd": "textbooks_add",
+          "args": {
+            "sources": [
+              "${0}/w0-src/tiny"
+            ]
+          }
+        },
+        {
+          "cmd": "textbooks_add",
+          "args": {
+            "sources": [
+              "${0}/w0-src/does-not-exist.txt"
+            ]
+          }
+        },
+        {
+          "cmd": "textbooks_add",
+          "args": {
+            "sources": [
+              "/w0-nonexistent-dir/book.pdf"
+            ]
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "textbooks.add.pdf_validation",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_app_data_dir",
+          "args": {}
+        },
+        {
+          "cmd": "save_text_to_file",
+          "args": {
+            "path": "${0}/w0-src/fake.pdf",
+            "content": "plain text pretending to be pdf"
+          }
+        },
+        {
+          "cmd": "save_text_to_file",
+          "args": {
+            "path": "${0}/w0-src/locked.pdf",
+            "content": "%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n4 0 obj\n<< /Length 36 >>\nstream\nBT /F1 18 Tf 20 50 Td (Locked) Tj ET\nendstream\nendobj\n5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\nxref\n0 6\n0000000000 65535 f \n0000000009 00000 n \n0000000058 00000 n \n0000000115 00000 n \n0000000241 00000 n \n0000000327 00000 n \ntrailer\n<< /Size 6 /Root 1 0 R /Encrypt << /Filter /Standard >> >>\nstartxref\n397\n%%EOF\n"
+          }
+        },
+        {
+          "cmd": "textbooks_add",
+          "args": {
+            "sources": [
+              "${0}/w0-src/fake.pdf"
+            ]
+          }
+        },
+        {
+          "cmd": "textbooks_add",
+          "args": {
+            "sources": [
+              "${0}/w0-src/locked.pdf"
+            ]
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "textbooks.add.pdf_render_success",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_app_data_dir",
+          "args": {}
+        },
+        {
+          "cmd": "save_text_to_file",
+          "args": {
+            "path": "${0}/w0-src/tiny.pdf",
+            "content": "%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n4 0 obj\n<< /Length 39 >>\nstream\nBT /F1 18 Tf 20 50 Td (Hello PDF) Tj ET\nendstream\nendobj\n5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\nxref\n0 6\n0000000000 65535 f \n0000000009 00000 n \n0000000058 00000 n \n0000000115 00000 n \n0000000241 00000 n \n0000000330 00000 n \ntrailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n400\n%%EOF\n"
+          }
+        },
+        {
+          "cmd": "textbooks_add",
+          "args": {
+            "sources": [
+              "${0}/w0-src/tiny.pdf"
+            ]
+          }
+        },
+        {
+          "cmd": "vfs_get_file_blob_path",
+          "args": {
+            "id": "${2.0.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "textbooks.add.pdf_render_error_recorded",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_app_data_dir",
+          "args": {}
+        },
+        {
+          "cmd": "save_text_to_file",
+          "args": {
+            "path": "${0}/w0-src/corrupt.pdf",
+            "content": "%PDF-1.4\n1 0 obj\n<< /Type /Catalog broken\n%%EOF\n"
+          }
+        },
+        {
+          "cmd": "textbooks_add",
+          "args": {
+            "sources": [
+              "${0}/w0-src/corrupt.pdf"
+            ]
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "textbooks.add.parse_failures_and_partial_batch",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_app_data_dir",
+          "args": {}
+        },
+        {
+          "cmd": "save_text_to_file",
+          "args": {
+            "path": "${0}/w0-src/fake.docx",
+            "content": "plain text, not a zip"
+          }
+        },
+        {
+          "cmd": "save_text_to_file",
+          "args": {
+            "path": "${0}/w0-src/fake.epub",
+            "content": "plain text, not an epub"
+          }
+        },
+        {
+          "cmd": "save_text_to_file",
+          "args": {
+            "path": "${0}/w0-src/good.md",
+            "content": "# Good\n\ncontent"
+          }
+        },
+        {
+          "cmd": "textbooks_add",
+          "args": {
+            "sources": [
+              "${0}/w0-src/fake.docx"
+            ]
+          }
+        },
+        {
+          "cmd": "textbooks_add",
+          "args": {
+            "sources": [
+              "${0}/w0-src/fake.epub"
+            ]
+          }
+        },
+        {
+          "cmd": "textbooks_add",
+          "args": {
+            "sources": [
+              "${0}/w0-src/fake.docx",
+              "${0}/w0-src/good.md",
+              "${0}/w0-src/tool.bin"
+            ]
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "textbooks.add.text_format_batch",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_app_data_dir",
+          "args": {}
+        },
+        {
+          "cmd": "save_text_to_file",
+          "args": {
+            "path": "${0}/w0-fmt/a.csv",
+            "content": "h1,h2\n1,2\n"
+          }
+        },
+        {
+          "cmd": "save_text_to_file",
+          "args": {
+            "path": "${0}/w0-fmt/b.html",
+            "content": "<html><body><p>Hi</p></body></html>"
+          }
+        },
+        {
+          "cmd": "save_text_to_file",
+          "args": {
+            "path": "${0}/w0-fmt/c.json",
+            "content": "{\"k\":[1,2]}"
+          }
+        },
+        {
+          "cmd": "save_text_to_file",
+          "args": {
+            "path": "${0}/w0-fmt/d.xml",
+            "content": "<r><x>t</x></r>"
+          }
+        },
+        {
+          "cmd": "save_text_to_file",
+          "args": {
+            "path": "${0}/w0-fmt/e.rtf",
+            "content": "{\\rtf1\\ansi Hello RTF\\par}"
+          }
+        },
+        {
+          "cmd": "save_text_to_file",
+          "args": {
+            "path": "${0}/w0-fmt/f.py",
+            "content": "print('x')\n"
+          }
+        },
+        {
+          "cmd": "save_text_to_file",
+          "args": {
+            "path": "${0}/w0-fmt/g.markdown",
+            "content": "## M\n"
+          }
+        },
+        {
+          "cmd": "save_text_to_file",
+          "args": {
+            "path": "${0}/w0-fmt/H.TXT",
+            "content": "upper"
+          }
+        },
+        {
+          "cmd": "textbooks_add",
+          "args": {
+            "sources": [
+              "${0}/w0-fmt/a.csv",
+              "${0}/w0-fmt/b.html",
+              "${0}/w0-fmt/c.json",
+              "${0}/w0-fmt/d.xml",
+              "${0}/w0-fmt/e.rtf",
+              "${0}/w0-fmt/f.py",
+              "${0}/w0-fmt/g.markdown",
+              "${0}/w0-fmt/H.TXT"
+            ]
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "textbooks.add.folder_id_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_app_data_dir",
+          "args": {}
+        },
+        {
+          "cmd": "save_text_to_file",
+          "args": {
+            "path": "${0}/w0-src/folder.txt",
+            "content": "goes into a folder"
+          }
+        },
+        {
+          "cmd": "textbooks_add",
+          "args": {
+            "sources": [
+              "${0}/w0-src/folder.txt"
+            ],
+            "folderId": "fld_w0missing"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "textbooks.add.opaque_numeric_name",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_app_data_dir",
+          "args": {}
+        },
+        {
+          "cmd": "save_text_to_file",
+          "args": {
+            "path": "${0}/w0-src/446",
+            "content": "<html><body>opaque id html</body></html>"
+          }
+        },
+        {
+          "cmd": "textbooks_add",
+          "args": {
+            "sources": [
+              "${0}/w0-src/446"
+            ]
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "image_b64.path_forms_and_mime",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_app_data_dir",
+          "args": {}
+        },
+        {
+          "cmd": "save_text_to_file",
+          "args": {
+            "path": "${0}/notes_assets/w0/a.png",
+            "content": "png-ish bytes"
+          }
+        },
+        {
+          "cmd": "save_text_to_file",
+          "args": {
+            "path": "${0}/notes_assets/w0/b.GIF",
+            "content": "gif-ish"
+          }
+        },
+        {
+          "cmd": "save_text_to_file",
+          "args": {
+            "path": "${0}/notes_assets/w0/c.webp",
+            "content": "webp-ish"
+          }
+        },
+        {
+          "cmd": "save_text_to_file",
+          "args": {
+            "path": "${0}/notes_assets/w0/d.bmp",
+            "content": "bmp-ish"
+          }
+        },
+        {
+          "cmd": "save_text_to_file",
+          "args": {
+            "path": "${0}/notes_assets/w0/e.heic",
+            "content": "heic-ish"
+          }
+        },
+        {
+          "cmd": "save_text_to_file",
+          "args": {
+            "path": "${0}/notes_assets/w0/f.heif",
+            "content": "heif-ish"
+          }
+        },
+        {
+          "cmd": "save_text_to_file",
+          "args": {
+            "path": "${0}/notes_assets/w0/g.jpeg",
+            "content": "jpeg-ish"
+          }
+        },
+        {
+          "cmd": "save_text_to_file",
+          "args": {
+            "path": "${0}/notes_assets/w0/h.txt",
+            "content": "text"
+          }
+        },
+        {
+          "cmd": "save_text_to_file",
+          "args": {
+            "path": "${0}/notes_assets/w0/sp ace.png",
+            "content": "space name"
+          }
+        },
+        {
+          "cmd": "get_image_as_base64",
+          "args": {
+            "relativePath": "notes_assets/w0/a.png"
+          }
+        },
+        {
+          "cmd": "get_image_as_base64",
+          "args": {
+            "relativePath": "${0}/notes_assets/w0/a.png"
+          }
+        },
+        {
+          "cmd": "get_image_as_base64",
+          "args": {
+            "relativePath": "file://${0}/notes_assets/w0/a.png"
+          }
+        },
+        {
+          "cmd": "get_image_as_base64",
+          "args": {
+            "relativePath": "asset://localhost/${0}/notes_assets/w0/a.png"
+          }
+        },
+        {
+          "cmd": "get_image_as_base64",
+          "args": {
+            "relativePath": "tauri://localhost/${0}/notes_assets/w0/a.png"
+          }
+        },
+        {
+          "cmd": "get_image_as_base64",
+          "args": {
+            "relativePath": "notes_assets/w0/b.GIF"
+          }
+        },
+        {
+          "cmd": "get_image_as_base64",
+          "args": {
+            "relativePath": "notes_assets/w0/c.webp"
+          }
+        },
+        {
+          "cmd": "get_image_as_base64",
+          "args": {
+            "relativePath": "notes_assets/w0/d.bmp"
+          }
+        },
+        {
+          "cmd": "get_image_as_base64",
+          "args": {
+            "relativePath": "notes_assets/w0/e.heic"
+          }
+        },
+        {
+          "cmd": "get_image_as_base64",
+          "args": {
+            "relativePath": "notes_assets/w0/f.heif"
+          }
+        },
+        {
+          "cmd": "get_image_as_base64",
+          "args": {
+            "relativePath": "notes_assets/w0/g.jpeg"
+          }
+        },
+        {
+          "cmd": "get_image_as_base64",
+          "args": {
+            "relativePath": "notes_assets/w0/h.txt"
+          }
+        },
+        {
+          "cmd": "get_image_as_base64",
+          "args": {
+            "relativePath": "notes_assets/w0/sp%20ace.png"
+          }
+        },
+        {
+          "cmd": "get_image_as_base64",
+          "args": {
+            "relativePath": "notes_assets/w0/sp ace.png"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "image_b64.rejections",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_app_data_dir",
+          "args": {}
+        },
+        {
+          "cmd": "save_text_to_file",
+          "args": {
+            "path": "${0}/notes_assets/w0/dir/keep.png",
+            "content": "x"
+          }
+        },
+        {
+          "cmd": "get_image_as_base64",
+          "args": {
+            "relativePath": "/etc/hostname"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "get_image_as_base64",
+          "args": {
+            "relativePath": "file:///etc/hostname"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "get_image_as_base64",
+          "args": {
+            "relativePath": "/w0-nonexistent-outside/x.png"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "get_image_as_base64",
+          "args": {
+            "relativePath": "C:/w0/x.png"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "get_image_as_base64",
+          "args": {
+            "relativePath": "notes_assets/w0/missing.png"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "get_image_as_base64",
+          "args": {
+            "relativePath": "${0}/notes_assets/w0/missing.png"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "get_image_as_base64",
+          "args": {
+            "relativePath": "notes_assets/../../w0-escape.png"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "get_image_as_base64",
+          "args": {
+            "relativePath": "notes_assets/w0/dir"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "get_image_as_base64",
+          "args": {
+            "relativePath": ""
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "notes_docx.spec_shapes",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_export_docx",
+          "args": {
+            "spec": {}
+          }
+        },
+        {
+          "cmd": "notes_export_docx",
+          "args": {
+            "spec": {
+              "title": "笔记标题",
+              "blocks": [
+                {
+                  "type": "heading",
+                  "level": 2,
+                  "text": "小节"
+                },
+                {
+                  "type": "paragraph",
+                  "text": "正文 paragraph"
+                },
+                {
+                  "type": "paragraph",
+                  "role": "note",
+                  "text": "注释"
+                },
+                {
+                  "type": "list",
+                  "ordered": true,
+                  "items": [
+                    "一",
+                    "二"
+                  ]
+                },
+                {
+                  "type": "list",
+                  "ordered": false,
+                  "items": []
+                },
+                {
+                  "type": "table",
+                  "rows": [
+                    [
+                      "a",
+                      "b"
+                    ],
+                    [
+                      "1",
+                      "2"
+                    ]
+                  ],
+                  "header": true,
+                  "caption": "表1"
+                },
+                {
+                  "type": "code",
+                  "text": "fn main() {}\nlet x = 1;"
+                },
+                {
+                  "type": "unknown_kind",
+                  "text": "falls back to paragraph"
+                },
+                {
+                  "type": "unknown_no_text"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "notes_export_docx",
+          "args": {
+            "spec": {
+              "title": "讲义",
+              "template": "handout",
+              "subtitle": "副标题",
+              "date": "2026年1月1日",
+              "blocks": [
+                {
+                  "type": "heading",
+                  "level": 1,
+                  "text": "一、概述"
+                },
+                {
+                  "type": "paragraph",
+                  "text": "内容"
+                },
+                {
+                  "type": "code",
+                  "text": "line1\nline2"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "notes_export_docx",
+          "args": {
+            "spec": {
+              "template": "official",
+              "blocks": []
+            }
+          }
+        },
+        {
+          "cmd": "notes_export_docx",
+          "args": {
+            "spec": null
+          }
+        },
+        {
+          "cmd": "notes_export_docx",
+          "args": {
+            "spec": "not an object"
+          }
+        },
+        {
+          "cmd": "notes_export_docx",
+          "args": {
+            "spec": [
+              1,
+              2
+            ]
+          }
+        },
+        {
+          "cmd": "notes_export_docx",
+          "args": {
+            "spec": {
+              "blocks": "not an array"
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": []
+      },
+      "normalize": []
+    },
+    {
+      "id": "notes_docx.image_resolution",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_app_data_dir",
+          "args": {}
+        },
+        {
+          "cmd": "save_text_to_file",
+          "args": {
+            "path": "${0}/notes_assets/w0/fake.png",
+            "content": "not really png"
+          }
+        },
+        {
+          "cmd": "notes_export_docx",
+          "args": {
+            "spec": {
+              "title": "图片",
+              "blocks": [
+                {
+                  "type": "image",
+                  "src": "notes_assets/w0/fake.png",
+                  "caption": "本地伪图"
+                },
+                {
+                  "type": "image",
+                  "src": "notes_assets/w0/missing.png",
+                  "caption": "缺失"
+                },
+                {
+                  "type": "image",
+                  "src": "https://example.invalid/x.png",
+                  "caption": "远程不取"
+                },
+                {
+                  "type": "image",
+                  "src": "http://example.invalid/x.png"
+                },
+                {
+                  "type": "image",
+                  "src": "/etc/hostname",
+                  "alt": "越界"
+                },
+                {
+                  "type": "image",
+                  "data": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR42mP4z8AAAAMBAQD3A0FDAAAAAElFTkSuQmCC",
+                  "src": "notes_assets/w0/missing.png",
+                  "caption": "已有 data"
+                },
+                {
+                  "type": "image",
+                  "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR42mP4z8AAAAMBAQD3A0FDAAAAAElFTkSuQmCC"
+                },
+                {
+                  "type": "image",
+                  "data": "",
+                  "src": "notes_assets/w0/fake.png"
+                },
+                {
+                  "type": "image",
+                  "data": "@@@bad"
+                },
+                {
+                  "type": "image",
+                  "src": 42
+                },
+                {
+                  "type": "image"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "notes_export_docx",
+          "args": {
+            "spec": {
+              "title": "讲义图",
+              "template": "handout",
+              "blocks": [
+                {
+                  "type": "image",
+                  "src": "notes_assets/w0/fake.png",
+                  "caption": "图 1"
+                },
+                {
+                  "type": "image",
+                  "data": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR42mP4z8AAAAMBAQD3A0FDAAAAAElFTkSuQmCC",
+                  "caption": "图 2"
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

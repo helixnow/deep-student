@@ -1,0 +1,1 @@
+{"id":"20261106155051-0fc0d3","cwd":"/home/dsdev/dev/ds-mig/F7-native","cmd":["npx","vitest","run","-c","vitest.host.config.ts","host/platform/native/","--reporter=default","--reporter=json","--outputFile.json=/home/dsdev/dev/deep-student/.oc-runs/selfgate/F7-native.tests.vitest.json"],"from":"F7-native","submittedAt":"2026-11-06T15:50:51.794Z"}

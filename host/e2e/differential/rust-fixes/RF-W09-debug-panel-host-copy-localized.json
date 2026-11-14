@@ -1,0 +1,27 @@
+{
+  "id": "RF-W09-debug-panel-host-copy-localized",
+  "kind": "deliberate",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T14:25:00+08:00",
+  "title": "调试面板（Analysis Panel）标题栏与缩放手柄的文案走 common.debug_panel.*，英文界面显示英文",
+  "rust": {
+    "file": "src/debug-panel/DebugPanelHost.tsx",
+    "line": 888,
+    "behavior": "Rust 快照 21c9d808 的 DebugPanelHost.tsx 把标题“Analysis Panel”（888）、LLM Playground 按钮及其提示“LLM 输出模拟游乐场”（906）、DevTools 提示“打开/关闭 WebView DevTools (F12)”、UI Lab 开关的提示“样式调试已开启/关闭，点击…”与按钮文字“UI Lab 开/关”（955）、缩放手柄提示“拖动以调整大小”（1175）写死在组件里；同一标题栏的“日志开/关”、首页、最小化、关闭等已走 common.debug_panel.*，英文界面里这几处仍是中文"
+  },
+  "fix": {
+    "files": ["src/debug-panel/DebugPanelHost.tsx"],
+    "behavior": "在 zh-CN/en-US common.json 新增 common.debug_panel.{title,llm_playground,llm_playground_hint,devtools_hint,ui_lab_on,ui_lab_off,ui_lab_on_hint,ui_lab_off_hint,resize_hint}。zh-CN 逐字照搬原文（调试面板 golden 以 zh-CN 录制，无差异）；en-US 写英文：Analysis Panel、LLM Playground、LLM output simulation playground、Open/close WebView DevTools (F12)、UI Lab On/Off、Style debugging enabled/disabled, click to disable/enable、Drag to resize（与同栏已有的 Logs On/Off、Logging enabled, click to disable 同一写法）"
+  },
+  "evidence": "W19 交接（.reports/agent-final/W19-1225-acbe3452.md:74），主代理 12:45 裁定 en-US 写真实英文。同一标题栏其余按钮已本地化，只剩这几处在英文界面显示中文。",
+  "userVisible": "只在开发构建可见：调试面板只在 import.meta.env.DEV 下装配（dstu.ui.debug 为 devOnly，生产构建连同 ./panels 一起被消除）。英文界面下标题栏的 LLM Playground 提示、DevTools 提示、UI Lab 开关文字与提示、缩放手柄提示变为英文；中文界面不变。",
+  "dataCompat": "只改前端显示；不改 IPC 载荷、落库数据、同步载荷与备份格式。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "tests/vitest/debug-panel/debugPanelHostCopy.test.tsx",
+      "name": "RF-W09-debug-panel-host-copy-localized: %s header, UI Lab toggle and resize handle"
+    }
+  ]
+}

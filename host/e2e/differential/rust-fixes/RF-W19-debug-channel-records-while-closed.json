@@ -1,0 +1,33 @@
+{
+  "id": "RF-W19-debug-channel-records-while-closed",
+  "kind": "deliberate",
+  "status": "proposed",
+  "title": "模板设计师与 ChatAnki 调试面板经调试通道收到的上报：模块加载前的排队回放、面板关闭时照记、调试总开关关闭时丢弃",
+  "rust": {
+    "file": "src/debug-panel/plugins/TemplateDesignerWorkflowDebugPlugin.tsx",
+    "line": 333,
+    "behavior": "Rust 快照 21c9d808：TemplateDesignerWorkflowDebugPlugin.tsx 只在面板激活时挂 template-designer-debug-tool-block / template-designer-debug-lifecycle 的 window 监听（333 及其后的生命周期 effect），进行中表放在组件 ref 里、停用时清空；ChatAnkiWorkflowDebugPlugin.tsx 同样只在激活时监听 chatanki-debug-lifecycle（456）。面板模块加载前或面板关闭期间派发的事件直接丢失，打开面板后看不到；调试总开关不参与（关着时宿主不渲染面板，事件也就没人听）。"
+  },
+  "fix": {
+    "files": [
+      "src/debug-panel/plugins/TemplateDesignerWorkflowDebugPlugin.tsx",
+      "src/debug-panel/plugins/ChatAnkiWorkflowDebugPlugin.tsx"
+    ],
+    "behavior": "两个面板模块经 serveDebugChannel 提供 template-designer / chatanki 通道（emitTemplateDesignerToolEvent、emitTemplateDesignerLifecycle、emitChatAnkiLifecycle），由模块自己记录：模块加载前的上报由通道排队（每通道最多 500 条）、开始服务时回放；面板关闭期间的上报照记，打开时在列表里；模板设计师的进行中表改为模块级，关闭期间记下的调用按首次出现的真实时间计龄，打开后第一次 1 s 扫描就可能给出超时警告（停用时照旧清空进行中表）；调试总开关关闭时通道上报直接丢弃，与宿主不渲染面板时一致。window 事件路径不变（仍只在激活时监听）。生产构建里通道为空操作。"
+  },
+  "evidence": "通道入口是把发送端从 window CustomEvent 迁到调试通道（ui-boundaries 的 bare-custom-event 清理）的前提：W19 交接一（template designer 发送端，归 W09）和交接三 / AL-12（chatanki-debug-lifecycle 发送端）落地后，这两个面板就只经通道收上报。按 Tauri 语义（只在激活时听）实现通道会让面板打开前的上报全部丢失，而 Crepe、多智能体、题目导入等经模块函数上报的面板一直是关闭时照记、打开可见，两类面板的行为应当一致。L04 复核 W19 f75f7963 的 F4 建议登记。目前通道没有发送端（发送端仍派发 window 事件），运行时无差异。复现：src/debug-panel/__tests__/debugChannelWhileClosed.test.tsx（把任一通道处理函数改回丢弃，对应用例变红；去掉 ChatAnki 的总开关判断，ChatAnki 用例变红），templateDesignerChannel.test.tsx 另有回放、关闭时照记、总开关、生产构建四例。",
+  "userVisible": "只在开发构建可见：调试面板只在 import.meta.env.DEV 下装配。发送端迁到通道之后，开发者打开模板设计师或 ChatAnki 调试面板时能看到打开之前发生的上报；模板设计师面板打开时若有关闭期间开始且已超时的调用，打开后约 1 s 出现一条超时警告；调试总开关关着时不记录。",
+  "dataCompat": "只改开发构建里调试面板的日志记录时机；不改 IPC 载荷、落库数据、同步载荷与备份格式。",
+  "g3": { "affects": false, "selectors": [] },
+  "commits": ["f6b5d8c9", "7719acc4", "77e63eec"],
+  "tests": [
+    {
+      "file": "src/debug-panel/__tests__/debugChannelWhileClosed.test.tsx",
+      "name": "RF-W19-debug-channel-records-while-closed: template designer lists a call reported while closed when it opens and warns on the first scan if it is past its timeout"
+    },
+    {
+      "file": "src/debug-panel/__tests__/debugChannelWhileClosed.test.tsx",
+      "name": "RF-W19-debug-channel-records-while-closed: ChatAnki lists lifecycle reports sent before its module loads or while it is closed, and drops them while the master switch is off"
+    }
+  ]
+}

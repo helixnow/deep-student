@@ -1,10 +1,56 @@
 import type { ChatStoreState, SetState, GetState } from './types';
-import { addToSet, removeFromSet } from './immerHelpers';
+import type { Block } from '../types/block';
+import type { Message } from '../types/message';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { chunkBuffer } from '../middleware/chunkBuffer';
 import { resetTransientRuntimes } from './transientRuntimeRegistry';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
+
+function collectMessageAndVariantBlockIds(message: Message | null | undefined): string[] {
+  if (!message) return [];
+  const seen = new Set<string>(message.blockIds);
+  if (message.variants) {
+    for (const variant of message.variants) {
+      for (const id of variant.blockIds) {
+        seen.add(id);
+      }
+    }
+  }
+  return Array.from(seen);
+}
+
+function findLatestAssistantMessageId(state: ChatStoreState): string | null {
+  const order = state.messageOrder;
+  if (!order) return null;
+  for (let i = order.length - 1; i >= 0; i--) {
+    const id = order[i];
+    const msg = state.messageMap.get(id);
+    if (msg?.role === 'assistant') return id;
+  }
+  return null;
+}
+
+function hasResidualLiveBlocks(
+  blocks: Map<string, Block>,
+  activeBlockIds: Set<string>,
+  messageBlockIds: string[],
+  message: Message | null | undefined,
+): boolean {
+  for (const id of activeBlockIds) {
+    const b = blocks.get(id);
+    if (b && (b.isPreparing || b.status === 'running' || b.status === 'pending')) {
+      return true;
+    }
+  }
+  for (const id of messageBlockIds) {
+    const b = blocks.get(id);
+    if (b && (b.isPreparing || b.status === 'running')) {
+      return true;
+    }
+  }
+  return Boolean(message?._meta?.preparingToolCall);
+}
 
 export function createStreamActions(
   set: SetState,
@@ -22,43 +68,48 @@ export function createStreamActions(
           if (state.sessionId) {
             chunkBuffer.flushAndCleanupSession(state.sessionId);
           }
+
+          const targetMessageId =
+            state.currentStreamingMessageId ??
+            (state.sessionStatus === 'idle' ? findLatestAssistantMessageId(state) : null);
+          const targetMessage = targetMessageId ? state.messageMap.get(targetMessageId) : null;
+          const allMessageBlockIds = collectMessageAndVariantBlockIds(targetMessage);
+
           // 🔧 P0修复：支持 streaming 和 aborting 状态
           // aborting 状态时，后端可能仍然发送 stream_complete/stream_error
           // 需要正确处理以重置状态
           if (state.sessionStatus !== 'streaming' && state.sessionStatus !== 'aborting') {
-            // 🔧 Bug修复：即使状态已经是 idle，也要确保清空 activeBlockIds
-            // 防止因其他地方的 bug 导致 isStreaming 状态残留
+            // 🔧 Bug修复：即使状态已经是 idle，只要仍有活跃块、流式消息 ID、或残留的
+            // isPreparing/running 块（含 variants 分支内），仍走收口清理而不是早退跳过。
             if (state.sessionStatus === 'idle') {
-              // Defensive cleanup for a terminal event that arrived after a
-              // status race. Leaving currentStreamingMessageId behind causes
-              // subsequent autonomous streams to be rejected as conflicts.
-              if (state.activeBlockIds.size > 0 || state.currentStreamingMessageId !== null) {
-                console.warn(
-                  '[ChatStore] completeStream: Found stale stream state while idle, cleaning up:',
-                  {
-                    activeBlockIds: Array.from(state.activeBlockIds),
-                    currentStreamingMessageId: state.currentStreamingMessageId,
-                  }
-                );
-                set({
-                  activeBlockIds: new Set(),
-                  currentStreamingMessageId: null,
-                });
+              const hasStaleState =
+                state.activeBlockIds.size > 0 ||
+                state.currentStreamingMessageId !== null ||
+                hasResidualLiveBlocks(state.blocks, state.activeBlockIds, allMessageBlockIds, targetMessage);
+              if (!hasStaleState) {
+                return;
               }
+              console.warn(
+                '[ChatStore] completeStream: Found stale stream state while idle, cleaning up:',
+                {
+                  activeBlockIds: Array.from(state.activeBlockIds),
+                  currentStreamingMessageId: state.currentStreamingMessageId,
+                  targetMessageId,
+                }
+              );
+            } else {
+              console.warn(
+                '[ChatStore] completeStream called but sessionStatus is unexpected:',
+                state.sessionStatus
+              );
               return;
             }
-            console.warn(
-              '[ChatStore] completeStream called but sessionStatus is unexpected:',
-              state.sessionStatus
-            );
-            return;
           }
 
-          // 🔧 2026-01-11 修复：不仅更新 activeBlockIds 中的块，还要更新当前流式消息的所有 running 块
-          // 解决 Gemini 思维链一直显示"思考中"的问题（thinking 块可能没有收到 thinking/end 事件）
-          const currentMessageId = state.currentStreamingMessageId;
-          const currentMessage = currentMessageId ? state.messageMap.get(currentMessageId) : null;
-          const messageBlockIds = currentMessage?.blockIds || [];
+          // 🔧 2026-01-11 修复：不仅更新 activeBlockIds 中的块，还要更新当前流式消息（含 variants）的所有 running/preparing 块
+          // 解决 Gemini 思维链一直显示"思考中"或工具块停在"正在准备"的问题
+          const currentMessageId = targetMessageId;
+          const messageBlockIds = allMessageBlockIds;
 
           // 流终止（成功/错误/取消）时收掉未决审批栏：pipeline 等待审批期间不可能
           // 发出 stream_complete，pending 审批与流终止并存即意味着审批已随流死亡；
@@ -101,11 +152,11 @@ export function createStreamActions(
               }
             });
 
-            // 2. 🔧 额外安全措施：遍历当前流式消息的所有块，确保 running 状态的块被更新
+            // 2. 🔧 额外安全措施：遍历当前流式消息的所有块（含 variants 分支），确保 running 状态的块被更新
             // 这可以捕获那些因某种原因没有在 activeBlockIds 中但仍处于 running 状态的块（如 thinking 块）
             for (const blockId of messageBlockIds) {
               const block = newBlocks.get(blockId);
-              if (block && block.status === 'running') {
+              if (block && !block.isPreparing && block.status === 'running') {
                 console.warn(
                   '[ChatStore] completeStream: Found running block not in activeBlockIds, fixing:',
                   blockId,
@@ -139,12 +190,12 @@ export function createStreamActions(
                 ? normalizedTerminalError || 'Stream ended with error before tool execution'
                 : 'Stream cancelled before tool execution';
             const removedPreparingIds: string[] = [];
-            // 候选：当前消息的 blockIds ∪ 活跃集合中属于当前消息的块（占位块可能尚未登记进
+            // 候选：当前消息及 variants 的 blockIds ∪ 活跃集合中属于当前消息的块（占位块可能尚未登记进
             // message.blockIds，例如后端换了 block_id），避免漏网的 preparing 块残留。
             const preparingCandidates = new Set<string>(messageBlockIds);
             s.activeBlockIds.forEach((blockId) => {
               const block = newBlocks.get(blockId);
-              if (block?.isPreparing && (!currentMessageId || block.messageId === currentMessageId)) {
+              if (block?.isPreparing && (!currentMessageId || block.messageId === currentMessageId || s.activeBlockIds.has(blockId))) {
                 preparingCandidates.add(blockId);
               }
             });
@@ -178,23 +229,33 @@ export function createStreamActions(
               console.log('[ChatStore] completeStream: Updated', updatedCount, 'blocks to', reason);
             }
 
-            // 清除 preparingToolCall；若 success 移除了孤儿 preparing，同步修剪 message.blockIds
+            // 清除 preparingToolCall；若 success 移除了孤儿 preparing，同步修剪 message.blockIds 及 variants[].blockIds
             let newMessageMap = s.messageMap;
             if (currentMessageId) {
               const msg = s.messageMap.get(currentMessageId);
               if (msg) {
+                const removedSet = removedPreparingIds.length > 0 ? new Set(removedPreparingIds) : null;
                 const dropPreparingMeta = Boolean(msg._meta?.preparingToolCall);
                 const dropBlockIds =
-                  removedPreparingIds.length > 0
-                    ? msg.blockIds.filter((id) => !removedPreparingIds.includes(id))
+                  removedSet && msg.blockIds.some((id) => removedSet.has(id))
+                    ? msg.blockIds.filter((id) => !removedSet.has(id))
                     : null;
-                if (dropPreparingMeta || dropBlockIds) {
+                const dropVariantBlockIds =
+                  removedSet && msg.variants?.some((v) => v.blockIds.some((id) => removedSet.has(id)))
+                    ? msg.variants.map((v) =>
+                        v.blockIds.some((id) => removedSet.has(id))
+                          ? { ...v, blockIds: v.blockIds.filter((id) => !removedSet.has(id)) }
+                          : v
+                      )
+                    : null;
+                if (dropPreparingMeta || dropBlockIds || dropVariantBlockIds) {
                   newMessageMap = new Map(s.messageMap);
                   const newMeta = { ...msg._meta };
                   delete newMeta.preparingToolCall;
                   newMessageMap.set(currentMessageId, {
                     ...msg,
                     ...(dropBlockIds ? { blockIds: dropBlockIds } : {}),
+                    ...(dropVariantBlockIds ? { variants: dropVariantBlockIds } : {}),
                     _meta: newMeta,
                   });
                 }

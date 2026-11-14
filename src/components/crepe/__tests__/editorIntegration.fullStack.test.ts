@@ -16,6 +16,9 @@ import { exportColumnsPlainMarkdown } from '../plugins/columns';
 import { copyBlockWithFreshIdentity } from '../plugins/blockIdentity';
 import { wireCrepeCommandMenu } from '../commandMenus';
 import { resolveCrepeBlockDrop } from '../blockDrop';
+import { setupMilkdownTimers } from './milkdownTimers';
+
+setupMilkdownTimers();
 
 beforeAll(() => {
   Range.prototype.getClientRects = () => [] as unknown as DOMRectList;
@@ -35,7 +38,7 @@ async function mount(markdown: string, initialGrant = false) {
   await crepe.create();
   const view = crepe.editor.ctx.get(editorViewCtx);
   return { crepe, view, root, grant(value: boolean) { granted = value; },
-    destroy: async () => { await crepe.destroy(); root.remove(); } };
+    destroy: async () => { await crepe.destroy(); root.remove(); await vi.runOnlyPendingTimersAsync(); } };
 }
 const mark = (id: string, text: string) => `<!-- ds:block-id=${id} -->\n\n${text}\n`;
 const layout = `:::ds-columns{version=1 layout=equal}\n\n:::column\n\nLeft **bold**\n\n:::end-column\n\n:::column\n\nRight\n\n:::end-column\n\n:::end-ds-columns`;

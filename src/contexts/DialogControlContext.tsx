@@ -41,6 +41,7 @@ interface DialogControlState {
   availableSearchEngines: SearchEngine[];
   selectedSearchEngines: string[];
   setSelectedSearchEngines: (ids: string[]) => void;
+  saveSelectedSearchEngines: (ids: string[]) => Promise<void>;
 
   reloadAvailability: () => Promise<void>;
   clearSelections: () => Promise<void>;
@@ -55,6 +56,8 @@ export const useDialogControl = (): DialogControlState => {
   if (!ctx) throw new Error('useDialogControl must be used within DialogControlProvider');
   return ctx;
 };
+
+export const useOptionalDialogControl = () => React.useContext(DialogControlContext);
 
 export const DialogControlProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const RELOAD_COOLDOWN_MS = 1200;
@@ -96,7 +99,7 @@ export const DialogControlProvider: React.FC<{ children: React.ReactNode }> = ({
           // 首次安装默认选择内置免费源；空字符串表示用户主动取消选择。
           setSelectedSearchEngines(['bing_rss']);
           await TauriAPI.saveSetting('session.selected_search_engines', 'bing_rss');
-        }
+        } else setSelectedSearchEngines([]);
       } catch (e: unknown) {
         // 加载搜索引擎选择失败（已禁用日志）
       }
@@ -119,18 +122,17 @@ export const DialogControlProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   }, []);
 
-  // 保存搜索引擎选择
-  const persistentSetSelectedSearchEngines = React.useCallback(async (engines: string[]) => {
+  const saveSelectedSearchEngines = React.useCallback(async (engines: string[], optimistic = false) => {
     const normalized = sanitizeIdList(engines);
-    setSelectedSearchEngines(normalized);
-    try {
-      const { TauriAPI } = await import('../utils/tauriApi');
-      const selection = normalized.join(',');
-      await TauriAPI.saveSetting('session.selected_search_engines', selection);
-    } catch (e: unknown) {
-      // 保存搜索引擎选择失败（已禁用日志）
-    }
-  }, [selectedSearchEngines]);
+    if (optimistic) setSelectedSearchEngines(normalized);
+    const { TauriAPI } = await import('../utils/tauriApi');
+    await TauriAPI.saveSetting('session.selected_search_engines', normalized.join(','));
+    if (!optimistic) setSelectedSearchEngines(normalized);
+  }, []);
+
+  const persistentSetSelectedSearchEngines = React.useCallback((engines: string[]) => {
+    void saveSelectedSearchEngines(engines, true).catch(e => debugLog.warn('保存搜索引擎选择失败:', e));
+  }, [saveSelectedSearchEngines]);
 
   // 清空所有选择
   const clearSelections = React.useCallback(async () => {
@@ -393,7 +395,7 @@ export const DialogControlProvider: React.FC<{ children: React.ReactNode }> = ({
       // Search engines availability by keys/endpoints
       try {
         // 使用Promise.allSettled确保单个配置项失败不会影响其他配置
-        const settingsResults = await Promise.allSettled([
+        const [settingsResults, vendors] = await Promise.all([Promise.allSettled([
           TauriAPI.getSetting('web_search.api_key.bing'),
           TauriAPI.getSetting('web_search.api_key.google_cse'),
           TauriAPI.getSetting('web_search.google_cse.cx'),
@@ -404,12 +406,13 @@ export const DialogControlProvider: React.FC<{ children: React.ReactNode }> = ({
           TauriAPI.getSetting('web_search.api_key.zhipu'),
           TauriAPI.getSetting('web_search.api_key.bocha'),
           TauriAPI.getSetting('web_search.api_key.deepseek'),
-        ]);
+        ]), TauriAPI.getVendorConfigs().catch(() => [])]);
         
         // 提取设置值，失败的设置返回null
         const [bing, gkey, gcx, serp, tav, brave, sxEndpoint, zhipu, bocha, deepseek] = settingsResults.map(result => 
           result.status === 'fulfilled' ? result.value : null
         );
+        const deepseekProvider = vendors.some(vendor => vendor.id === 'builtin-deepseek' && Boolean(vendor.apiKey?.trim()));
         const engines: SearchEngine[] = [
           { id: 'bing_rss', label: i18n.t('common:search_engines.bing_rss', 'Bing RSS (Free)') },
         ];
@@ -420,7 +423,7 @@ export const DialogControlProvider: React.FC<{ children: React.ReactNode }> = ({
         if ((sxEndpoint || '').trim()) engines.push({ id: 'searxng', label: 'SearXNG' });
         if ((zhipu || '').trim()) engines.push({ id: 'zhipu', label: i18n.t('common:search_engines.zhipu', 'Zhipu AI Search') });
         if ((bocha || '').trim()) engines.push({ id: 'bocha', label: i18n.t('common:search_engines.bocha', 'Bocha AI Search') });
-        if ((deepseek || '').trim()) engines.push({ id: 'deepseek', label: i18n.t('common:search_engines.deepseek', 'DeepSeek Search') });
+        if (deepseek?.trim() || deepseekProvider) engines.push({ id: 'deepseek', label: i18n.t('common:search_engines.deepseek', 'DeepSeek Search') });
         setAvailableSearchEngines(engines);
         // 🔧 同步更新搜索引擎缓存，让 TauriAdapter 能获取可用引擎列表
         updateSearchEngineCache(engines.map(e => e.id));
@@ -651,6 +654,7 @@ export const DialogControlProvider: React.FC<{ children: React.ReactNode }> = ({
     availableSearchEngines,
     selectedSearchEngines,
     setSelectedSearchEngines: persistentSetSelectedSearchEngines,
+    saveSelectedSearchEngines,
     reloadAvailability,
     clearSelections,
     ready,

@@ -1,8 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { getErrorMessage } from './errorUtils';
-import { debugLogger } from './debugLogger';
-import { withGraphId, invokeWithDebug } from './shared';
-import type { GraphQueryParams, ForceGraphData } from './shared';
+import { invokeWithDebug } from './shared';
 import type {
   AnkiLibraryCard,
   AnkiLibraryCardPatch,
@@ -19,48 +17,6 @@ import {
   type ReviewEditTemplate,
 } from '@/features/flashcards/reviewCardEditFields';
 import { getAppDataDir } from './systemApi';
-
-// ★ irec 向量索引缓存已移除（灵感图谱废弃，2025-01 清理）
-/**
- * 统一搜索接口封装
- */
-// ★ 图谱模块已废弃 - SearchRequest 本地占位类型
-export async function unifiedSearchCards(
-  req: Record<string, unknown>,
-  graphId: string = 'default'
-): Promise<any> {
-  try {
-    const args: any = { ...req };
-    if (args.learningMode && !args.learning_mode) args.learning_mode = args.learningMode;
-    // 后端签名为 unified_search_cards(request: SearchRequest, ...)
-    return await invoke('unified_search_cards', { ...withGraphId(graphId), request: args });
-  } catch (error) {
-    console.error('Unified search failed:', error);
-    throw error;
-  }
-}
-
-/**
- * 获取力导图数据（统一API）
- */
-export async function unifiedGetForceGraphData(
-  params: Partial<GraphQueryParams> = {},
-  graphId: string = 'default'
-): Promise<ForceGraphData> {
-  const p: any = {
-    include_cards: params.include_cards ?? true,
-    include_orphans: params.include_orphans ?? false,
-    max_depth: params.max_depth ?? null,
-    root_tag_id: params.root_tag_id ?? null,
-    tag_types: params.tag_types ?? null,
-    card_limit: params.card_limit ?? null,
-    min_confidence: params.min_confidence ?? null,
-    node_ids: params.node_ids ?? null,
-  };
-  // 兼容 camel
-  p.rootTagId = p.root_tag_id; p.tagTypes = p.tag_types; p.maxDepth = p.max_depth; p.includeCards = p.include_cards; p.cardLimit = p.card_limit; p.minConfidence = p.min_confidence; p.nodeIds = p.node_ids; p.includeOrphans = p.include_orphans;
-  return invoke<ForceGraphData>('unified_get_force_graph_data', { ...withGraphId(graphId), params: p });
-}
 // 通用转发：允许组件通过 TauriAPI.invoke 调用任意后端命令（带调试埋点）
 export async function tauriInvoke<T = any>(cmd: string, args?: any): Promise<T> {
   return await invokeWithDebug<T>(cmd, args);
@@ -82,8 +38,7 @@ export async function readFileAsText(path: string): Promise<string> {
  */
 export async function copyFile(sourcePath: string, destPath: string): Promise<void> {
   try {
-    // 统一走后端命令（同时传两种命名以兼容）
-    await invoke<void>('copy_file', { sourcePath, destPath, source_path: sourcePath, dest_path: destPath });
+    await invoke<void>('copy_file', { sourcePath, destPath });
   } catch (error) {
     console.error('Failed to copy file:', error);
     throw new Error(`Failed to copy file: ${getErrorMessage(error)}`);
@@ -395,79 +350,6 @@ export async function backfillUserMessageEmbeddings(_params: Record<string, unkn
   ) as Error & { code: string };
   error.code = 'NOT_IMPLEMENTED';
   throw error;
-}
-
-export async function searchChatFulltext(params: { query: string; role?: 'user'|'assistant'; limit?: number }): Promise<Array<{message_id:number; mistake_id:string; role:string; timestamp:string; text:string; score:number}>> {
-  const { query, role, limit } = params;
-  try {
-    console.info('[TauriAPI] searchChatFulltext start', { role, limit, query });
-    const r = await invoke<Array<{message_id:number; mistake_id:string; role:string; timestamp:string; text:string; score:number}>>('search_chat_fulltext', { request: { query, role: role || null, limit: typeof limit === 'number' ? limit : null } });
-    console.info('[TauriAPI] searchChatFulltext done', { count: r?.length || 0, sample: (r || []).slice(0, 3) });
-    return r;
-  } catch (error) {
-    const message = getErrorMessage(error);
-    console.error('[TauriAPI] searchChatFulltext error', { error: message, raw: error });
-    throw new Error(message);
-  }
-}
-
-export async function searchChatBasic(params: { query: string; role?: 'user'|'assistant'; limit?: number }): Promise<Array<{message_id:number; mistake_id:string; role:string; timestamp:string; text:string; score:number}>> {
-  const { query, role, limit } = params;
-  try {
-    console.info('[TauriAPI] searchChatBasic start', { role, limit, query });
-    const r = await invoke<Array<{message_id:number; mistake_id:string; role:string; timestamp:string; text:string; score:number}>>('search_chat_basic', { request: { query, role: role || null, limit: typeof limit === 'number' ? limit : null } });
-    console.info('[TauriAPI] searchChatBasic done', { count: r?.length || 0, sample: (r || []).slice(0, 3) });
-    return r;
-  } catch (error) {
-    const message = getErrorMessage(error);
-    console.error('[TauriAPI] searchChatBasic error', { error: message, raw: error });
-    throw new Error(message);
-  }
-}
-
-export async function searchChatSemantic(params: { query: string; topK?: number; ftsPrefilter?: boolean }): Promise<Array<{message_id:number; mistake_id:string; role:string; timestamp:string; text:string; score:number}>> {
-  const { query, topK, ftsPrefilter } = params;
-  try {
-    console.info('[TauriAPI] searchChatSemantic start', { topK, ftsPrefilter, query });
-    const r = await invoke<Array<{message_id:number; mistake_id:string; role:string; timestamp:string; text:string; score:number}>>('search_user_messages_semantic', {
-      request: {
-        query_text: query,
-        top_k: typeof topK === 'number' ? topK : null,
-        fts_prefilter: typeof ftsPrefilter === 'boolean' ? ftsPrefilter : null,
-      },
-    });
-    console.info('[TauriAPI] searchChatSemantic done', { count: r?.length || 0 });
-    return r;
-  } catch (e) {
-    console.error('[TauriAPI] searchChatSemantic error', { e });
-    throw e;
-  }
-}
-
-export async function searchChatCombined(params: { query: string; top_k?: number }): Promise<{ fts: Array<{message_id:number; mistake_id:string; role:string; timestamp:string; text:string; score:number}>, semantic: Array<{message_id:number; mistake_id:string; role:string; timestamp:string; text:string; score:number}> }> {
-  const { query, top_k } = params;
-  try {
-    console.info('[TauriAPI] searchChatCombined start', { top_k, query });
-    const r = await invoke<{ fts: Array<any>, semantic: Array<any> }>('search_chat_combined', { request: { query, top_k: typeof top_k === 'number' ? top_k : null } });
-    console.info('[TauriAPI] searchChatCombined done', { fts: r?.fts?.length || 0, sem: r?.semantic?.length || 0, ftsSample: r?.fts?.slice(0,3), semSample: r?.semantic?.slice(0,3) });
-    return r;
-  } catch (e) {
-    console.error('[TauriAPI] searchChatCombined error', { e });
-    throw e;
-  }
-}
-
-export async function getChatIndexStats(): Promise<{ total_fts: number; total_vectors: number; missing_user_embeddings: number }>{
-  try {
-    // 降低日志噪声：移除高频 info，改为调试级别
-    await debugLogger.log('DEBUG', 'TAURI_API', 'getChatIndexStats.start', {});
-    const s = await invoke<{ total_fts: number; total_vectors: number; missing_user_embeddings: number }>('get_chat_index_stats', { request: {} });
-    await debugLogger.log('DEBUG', 'TAURI_API', 'getChatIndexStats.done', { stats: s });
-    return s;
-  } catch (e) {
-    console.error('[TauriAPI] getChatIndexStats error', { e });
-    throw e;
-  }
 }
 
 // ★ 2026-06-13（round 2）：research_* 报告类死包装已删除（后端命令未注册、前端无调用方）

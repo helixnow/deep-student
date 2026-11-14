@@ -1,0 +1,223 @@
+{
+  "domain": "vfs-index",
+  "commands": ["optimize_chat_embeddings_table", "save_setting", "get_setting"],
+  "scenarios": [
+    {
+      "id": "vfs_index.optimize_chat.frontend_snake_keys",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "optimize_chat_embeddings_table", "args": { "older_than_days": 7, "delete_unverified": false, "force": true } },
+        { "cmd": "get_setting", "args": { "key": "lance.optimize.last.chat" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs_index.optimize_chat.frontend_days_omitted",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "optimize_chat_embeddings_table", "args": { "delete_unverified": true, "force": true } },
+        { "cmd": "get_setting", "args": { "key": "lance.optimize.last.chat" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs_index.optimize_chat.no_args_default_force",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "optimize_chat_embeddings_table", "args": {} },
+        { "cmd": "get_setting", "args": { "key": "lance.optimize.last.chat" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs_index.optimize_chat.camel_all_null",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "optimize_chat_embeddings_table", "args": { "olderThanDays": null, "deleteUnverified": null, "force": null } },
+        { "cmd": "get_setting", "args": { "key": "lance.optimize.last.chat" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs_index.optimize_chat.camel_days_zero_delete_true",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "optimize_chat_embeddings_table", "args": { "olderThanDays": 0, "deleteUnverified": true, "force": true } },
+        { "cmd": "get_setting", "args": { "key": "lance.optimize.last.chat" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs_index.optimize_chat.camel_days_max_safe",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "optimize_chat_embeddings_table", "args": { "olderThanDays": 9007199254740991, "deleteUnverified": false, "force": true } },
+        { "cmd": "get_setting", "args": { "key": "lance.optimize.last.chat" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs_index.optimize_chat.throttle_skip_second_call",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "optimize_chat_embeddings_table", "args": { "force": false } },
+        { "cmd": "get_setting", "args": { "key": "lance.optimize.last.chat" } },
+        { "cmd": "optimize_chat_embeddings_table", "args": { "force": false } },
+        { "cmd": "get_setting", "args": { "key": "lance.optimize.last.chat" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs_index.optimize_chat.force_bypasses_throttle",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "optimize_chat_embeddings_table", "args": { "force": true } },
+        { "cmd": "get_setting", "args": { "key": "lance.optimize.last.chat" } },
+        { "cmd": "optimize_chat_embeddings_table", "args": { "force": true } },
+        { "cmd": "get_setting", "args": { "key": "lance.optimize.last.chat" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs_index.optimize_chat.throttle_future_timestamp_skips",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "save_setting", "args": { "key": "lance.optimize.last.chat", "value": "2999-01-01T00:00:00+00:00" } },
+        { "cmd": "optimize_chat_embeddings_table", "args": { "force": false } },
+        { "cmd": "get_setting", "args": { "key": "lance.optimize.last.chat" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs_index.optimize_chat.throttle_future_offset_fraction_skips",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "save_setting", "args": { "key": "lance.optimize.last.chat", "value": "2999-01-01T08:00:00.123456789+08:00" } },
+        { "cmd": "optimize_chat_embeddings_table", "args": { "force": false } },
+        { "cmd": "get_setting", "args": { "key": "lance.optimize.last.chat" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs_index.optimize_chat.throttle_past_timestamp_runs",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "save_setting", "args": { "key": "lance.optimize.last.chat", "value": "2000-01-01T00:00:00Z" } },
+        { "cmd": "optimize_chat_embeddings_table", "args": { "force": false } },
+        { "cmd": "get_setting", "args": { "key": "lance.optimize.last.chat" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs_index.optimize_chat.throttle_unparseable_timestamp_runs",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "save_setting", "args": { "key": "lance.optimize.last.chat", "value": "2999-01-01 00:00:00" } },
+        { "cmd": "optimize_chat_embeddings_table", "args": { "force": false } },
+        { "cmd": "get_setting", "args": { "key": "lance.optimize.last.chat" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs_index.optimize_chat.setting_delete_unverified_no_override",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "save_setting", "args": { "key": "lance.optimize.delete_unverified", "value": " YES " } },
+        { "cmd": "optimize_chat_embeddings_table", "args": { "force": true } },
+        { "cmd": "get_setting", "args": { "key": "lance.optimize.delete_unverified" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs_index.optimize_chat.lance_path_relative_fallback",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "save_setting", "args": { "key": "rag.lance.path", "value": "relative/lance-dir" } },
+        { "cmd": "optimize_chat_embeddings_table", "args": { "force": true } },
+        { "cmd": "get_setting", "args": { "key": "rag.lance.path" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs_index.optimize_chat.lance_path_absolute_mkdir_fails",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "save_setting", "args": { "key": "rag.lance.path", "value": "/proc/w0-l12-lance-denied" } },
+        { "cmd": "optimize_chat_embeddings_table", "args": { "force": true } },
+        { "cmd": "get_setting", "args": { "key": "rag.lance.path" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs_index.optimize_chat.lance_path_blank_ignored",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "save_setting", "args": { "key": "rag.lance.path", "value": " \t " } },
+        { "cmd": "optimize_chat_embeddings_table", "args": { "force": true } },
+        { "cmd": "get_setting", "args": { "key": "rag.lance.path" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs_index.optimize_chat.decode_days_negative",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "optimize_chat_embeddings_table", "args": { "olderThanDays": -1, "force": true }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs_index.optimize_chat.decode_days_fraction",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "optimize_chat_embeddings_table", "args": { "olderThanDays": 1.5, "force": true }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs_index.optimize_chat.decode_days_string",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "optimize_chat_embeddings_table", "args": { "olderThanDays": "7", "force": true }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs_index.optimize_chat.decode_force_string",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "optimize_chat_embeddings_table", "args": { "force": "true" }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs_index.optimize_chat.decode_delete_unverified_number",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "optimize_chat_embeddings_table", "args": { "deleteUnverified": 1, "force": true }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    }
+  ]
+}

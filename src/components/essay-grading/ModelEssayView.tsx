@@ -100,8 +100,8 @@ export const ModelEssayView: React.FC<ModelEssayViewProps> = ({ essay, className
         </DsButton>
       </div>
 
-      {/* 正文：首行缩进 + 段间距，可选 serif */}
-      <div className="rounded-xl border border-border/40 bg-card/50 px-6 py-5">
+      {/* 正文：纸感阅读表面 + 首行缩进 + 段间距，可选 serif */}
+      <div className="rounded-xl border border-border/35 bg-foreground/[0.015] px-6 py-5">
         <div
           className={cn(
             'text-[15px] leading-[1.9] text-foreground/85 space-y-3',

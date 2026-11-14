@@ -1,0 +1,1479 @@
+{
+ "domain": "sync-support",
+ "commands": [
+  "cloud_config_ssot_save",
+  "secure_save_cloud_credentials",
+  "data_governance_mark_blob_deleted",
+  "data_governance_mark_asset_deleted",
+  "data_governance_detect_prune_gap",
+  "data_governance_run_sync",
+  "data_governance_run_sync_with_progress"
+ ],
+ "scenarios": [
+  {
+   "id": "sync_support.tombstone.blob.no_ssot_ignores_ipc_config",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "data_governance_mark_blob_deleted",
+     "args": {
+      "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "relativePath": "aa/a.pdf",
+      "size": 10,
+      "cloudConfig": {
+       "provider": "webdav",
+       "webdav": {
+        "endpoint": "${mock.webdav.endpoint}",
+        "username": "${mock.webdav.username}",
+        "password": "${mock.webdav.password}"
+       },
+       "root": "wp065"
+      }
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_mark_blob_deleted",
+     "args": {
+      "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "cloudConfig": {
+       "provider": "webdav",
+       "webdav": {
+        "endpoint": "${mock.webdav.endpoint}",
+        "username": "${mock.webdav.username}",
+        "password": ""
+       },
+       "root": "wp065"
+      }
+     },
+     "expect": "error"
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  },
+  {
+   "id": "sync_support.tombstone.blob.ssot_without_password",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "cloud_config_ssot_save",
+     "args": {
+      "config": {
+       "provider": "webdav",
+       "webdav": {
+        "endpoint": "${mock.webdav.endpoint}",
+        "username": "${mock.webdav.username}"
+       },
+       "root": "wp065"
+      }
+     }
+    },
+    {
+     "cmd": "data_governance_mark_blob_deleted",
+     "args": {
+      "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "relativePath": "aa/a.pdf",
+      "size": 10,
+      "cloudConfig": {
+       "provider": "webdav",
+       "webdav": {
+        "endpoint": "${mock.webdav.endpoint}",
+        "username": "${mock.webdav.username}",
+        "password": "${mock.webdav.password}"
+       },
+       "root": "wp065"
+      }
+     },
+     "expect": "error"
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  },
+  {
+   "id": "sync_support.tombstone.blob.publish_seq_order",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "cloud_config_ssot_save",
+     "args": {
+      "config": {
+       "provider": "webdav",
+       "webdav": {
+        "endpoint": "${mock.webdav.endpoint}",
+        "username": "${mock.webdav.username}"
+       },
+       "root": "wp065"
+      }
+     }
+    },
+    {
+     "cmd": "secure_save_cloud_credentials",
+     "args": {
+      "credentials": {
+       "webdavPassword": "${mock.webdav.password}"
+      },
+      "encryptionPasswordIsPreexisting": false
+     }
+    },
+    {
+     "cmd": "data_governance_mark_blob_deleted",
+     "args": {
+      "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "relativePath": "aa/a.pdf",
+      "size": 1024,
+      "cloudConfig": {
+       "provider": "webdav",
+       "webdav": {
+        "endpoint": "${mock.webdav.endpoint}",
+        "username": "${mock.webdav.username}",
+        "password": ""
+       },
+       "root": "wp065"
+      }
+     }
+    },
+    {
+     "cmd": "data_governance_mark_blob_deleted",
+     "args": {
+      "hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "relativePath": null,
+      "size": null,
+      "cloudConfig": {
+       "provider": "webdav",
+       "webdav": {
+        "endpoint": "${mock.webdav.endpoint}",
+        "username": "${mock.webdav.username}",
+        "password": ""
+       },
+       "root": "wp065"
+      }
+     }
+    },
+    {
+     "cmd": "data_governance_mark_blob_deleted",
+     "args": {
+      "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "relativePath": "aa/a.pdf",
+      "size": 1024,
+      "cloudConfig": {
+       "provider": "webdav",
+       "webdav": {
+        "endpoint": "${mock.webdav.endpoint}",
+        "username": "${mock.webdav.username}",
+        "password": ""
+       },
+       "root": "wp065"
+      }
+     }
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  },
+  {
+   "id": "sync_support.tombstone.blob.size_boundaries",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "cloud_config_ssot_save",
+     "args": {
+      "config": {
+       "provider": "webdav",
+       "webdav": {
+        "endpoint": "${mock.webdav.endpoint}",
+        "username": "${mock.webdav.username}"
+       },
+       "root": "wp065"
+      }
+     }
+    },
+    {
+     "cmd": "secure_save_cloud_credentials",
+     "args": {
+      "credentials": {
+       "webdavPassword": "${mock.webdav.password}"
+      },
+      "encryptionPasswordIsPreexisting": false
+     }
+    },
+    {
+     "cmd": "data_governance_mark_blob_deleted",
+     "args": {
+      "hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "relativePath": "cc/zero.bin",
+      "size": 0,
+      "cloudConfig": {
+       "provider": "webdav",
+       "webdav": {
+        "endpoint": "${mock.webdav.endpoint}",
+        "username": "${mock.webdav.username}",
+        "password": ""
+       },
+       "root": "wp065"
+      }
+     }
+    },
+    {
+     "cmd": "data_governance_mark_blob_deleted",
+     "args": {
+      "hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "relativePath": "dd/safe.bin",
+      "size": 9007199254740993,
+      "cloudConfig": {
+       "provider": "webdav",
+       "webdav": {
+        "endpoint": "${mock.webdav.endpoint}",
+        "username": "${mock.webdav.username}",
+        "password": ""
+       },
+       "root": "wp065"
+      }
+     }
+    },
+    {
+     "cmd": "data_governance_mark_blob_deleted",
+     "args": {
+      "hash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "relativePath": "ee/max.bin",
+      "size": 18446744073709551615,
+      "cloudConfig": {
+       "provider": "webdav",
+       "webdav": {
+        "endpoint": "${mock.webdav.endpoint}",
+        "username": "${mock.webdav.username}",
+        "password": ""
+       },
+       "root": "wp065"
+      }
+     }
+    },
+    {
+     "cmd": "data_governance_mark_blob_deleted",
+     "args": {
+      "hash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "relativePath": "ff/over.bin",
+      "size": 18446744073709551616,
+      "cloudConfig": {
+       "provider": "webdav",
+       "webdav": {
+        "endpoint": "${mock.webdav.endpoint}",
+        "username": "${mock.webdav.username}",
+        "password": ""
+       },
+       "root": "wp065"
+      }
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_mark_blob_deleted",
+     "args": {
+      "hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "relativePath": "00/neg.bin",
+      "size": -1,
+      "cloudConfig": {
+       "provider": "webdav",
+       "webdav": {
+        "endpoint": "${mock.webdav.endpoint}",
+        "username": "${mock.webdav.username}",
+        "password": ""
+       },
+       "root": "wp065"
+      }
+     },
+     "expect": "error"
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  },
+  {
+   "id": "sync_support.tombstone.blob.empty_hash_and_path",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "cloud_config_ssot_save",
+     "args": {
+      "config": {
+       "provider": "webdav",
+       "webdav": {
+        "endpoint": "${mock.webdav.endpoint}",
+        "username": "${mock.webdav.username}"
+       },
+       "root": "wp065"
+      }
+     }
+    },
+    {
+     "cmd": "secure_save_cloud_credentials",
+     "args": {
+      "credentials": {
+       "webdavPassword": "${mock.webdav.password}"
+      },
+      "encryptionPasswordIsPreexisting": false
+     }
+    },
+    {
+     "cmd": "data_governance_mark_blob_deleted",
+     "args": {
+      "hash": "",
+      "relativePath": "",
+      "cloudConfig": {
+       "provider": "webdav",
+       "webdav": {
+        "endpoint": "${mock.webdav.endpoint}",
+        "username": "${mock.webdav.username}",
+        "password": ""
+       },
+       "root": "wp065"
+      }
+     }
+    },
+    {
+     "cmd": "data_governance_mark_blob_deleted",
+     "args": {
+      "hash": "",
+      "relativePath": "",
+      "cloudConfig": {
+       "provider": "webdav",
+       "webdav": {
+        "endpoint": "${mock.webdav.endpoint}",
+        "username": "${mock.webdav.username}",
+        "password": ""
+       },
+       "root": "wp065"
+      }
+     }
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  },
+  {
+   "id": "sync_support.tombstone.asset.no_ssot",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "data_governance_mark_asset_deleted",
+     "args": {
+      "key": "active/images/foo.png",
+      "size": 5,
+      "cloudConfig": {
+       "provider": "webdav",
+       "webdav": {
+        "endpoint": "${mock.webdav.endpoint}",
+        "username": "${mock.webdav.username}",
+        "password": "${mock.webdav.password}"
+       },
+       "root": "wp065"
+      }
+     },
+     "expect": "error"
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  },
+  {
+   "id": "sync_support.tombstone.asset.ssot_without_password",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "cloud_config_ssot_save",
+     "args": {
+      "config": {
+       "provider": "webdav",
+       "webdav": {
+        "endpoint": "${mock.webdav.endpoint}",
+        "username": "${mock.webdav.username}"
+       },
+       "root": "wp065"
+      }
+     }
+    },
+    {
+     "cmd": "data_governance_mark_asset_deleted",
+     "args": {
+      "key": "active/images/foo.png",
+      "size": 5,
+      "cloudConfig": {
+       "provider": "webdav",
+       "webdav": {
+        "endpoint": "${mock.webdav.endpoint}",
+        "username": "${mock.webdav.username}",
+        "password": ""
+       },
+       "root": "wp065"
+      }
+     },
+     "expect": "error"
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  },
+  {
+   "id": "sync_support.tombstone.asset.publish_seq_per_kind",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "cloud_config_ssot_save",
+     "args": {
+      "config": {
+       "provider": "webdav",
+       "webdav": {
+        "endpoint": "${mock.webdav.endpoint}",
+        "username": "${mock.webdav.username}"
+       },
+       "root": "wp065"
+      }
+     }
+    },
+    {
+     "cmd": "secure_save_cloud_credentials",
+     "args": {
+      "credentials": {
+       "webdavPassword": "${mock.webdav.password}"
+      },
+      "encryptionPasswordIsPreexisting": false
+     }
+    },
+    {
+     "cmd": "data_governance_mark_blob_deleted",
+     "args": {
+      "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "relativePath": "aa/a.pdf",
+      "size": 1,
+      "cloudConfig": {
+       "provider": "webdav",
+       "webdav": {
+        "endpoint": "${mock.webdav.endpoint}",
+        "username": "${mock.webdav.username}",
+        "password": ""
+       },
+       "root": "wp065"
+      }
+     }
+    },
+    {
+     "cmd": "data_governance_mark_asset_deleted",
+     "args": {
+      "key": "active/images/foo.png",
+      "size": 2048,
+      "cloudConfig": {
+       "provider": "webdav",
+       "webdav": {
+        "endpoint": "${mock.webdav.endpoint}",
+        "username": "${mock.webdav.username}",
+        "password": ""
+       },
+       "root": "wp065"
+      }
+     }
+    },
+    {
+     "cmd": "data_governance_mark_asset_deleted",
+     "args": {
+      "key": "app_data/pdf_ocr_sessions/s1.json",
+      "cloudConfig": {
+       "provider": "webdav",
+       "webdav": {
+        "endpoint": "${mock.webdav.endpoint}",
+        "username": "${mock.webdav.username}",
+        "password": ""
+       },
+       "root": "wp065"
+      }
+     }
+    },
+    {
+     "cmd": "data_governance_mark_asset_deleted",
+     "args": {
+      "key": "active/images/foo.png",
+      "size": null,
+      "cloudConfig": {
+       "provider": "webdav",
+       "webdav": {
+        "endpoint": "${mock.webdav.endpoint}",
+        "username": "${mock.webdav.username}",
+        "password": ""
+       },
+       "root": "wp065"
+      }
+     }
+    },
+    {
+     "cmd": "data_governance_mark_asset_deleted",
+     "args": {
+      "key": "big/u64.bin",
+      "size": 18446744073709551615,
+      "cloudConfig": {
+       "provider": "webdav",
+       "webdav": {
+        "endpoint": "${mock.webdav.endpoint}",
+        "username": "${mock.webdav.username}",
+        "password": ""
+       },
+       "root": "wp065"
+      }
+     }
+    },
+    {
+     "cmd": "data_governance_mark_asset_deleted",
+     "args": {
+      "key": "",
+      "size": null,
+      "cloudConfig": {
+       "provider": "webdav",
+       "webdav": {
+        "endpoint": "${mock.webdav.endpoint}",
+        "username": "${mock.webdav.username}",
+        "password": ""
+       },
+       "root": "wp065"
+      }
+     }
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  },
+  {
+   "id": "sync_support.prune_gap.no_ssot",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "data_governance_detect_prune_gap",
+     "args": {
+      "cloudConfig": {
+       "provider": "webdav",
+       "webdav": {
+        "endpoint": "${mock.webdav.endpoint}",
+        "username": "${mock.webdav.username}",
+        "password": "${mock.webdav.password}"
+       },
+       "root": "wp065"
+      }
+     },
+     "expect": "error"
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  },
+  {
+   "id": "sync_support.prune_gap.ssot_without_password",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "cloud_config_ssot_save",
+     "args": {
+      "config": {
+       "provider": "webdav",
+       "webdav": {
+        "endpoint": "${mock.webdav.endpoint}",
+        "username": "${mock.webdav.username}"
+       },
+       "root": "wp065"
+      }
+     }
+    },
+    {
+     "cmd": "data_governance_detect_prune_gap",
+     "args": {
+      "cloudConfig": {
+       "provider": "webdav",
+       "webdav": {
+        "endpoint": "${mock.webdav.endpoint}",
+        "username": "${mock.webdav.username}",
+        "password": ""
+       },
+       "root": "wp065"
+      }
+     },
+     "expect": "error"
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  },
+  {
+   "id": "sync_support.prune_gap.empty_remote_no_binding",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "cloud_config_ssot_save",
+     "args": {
+      "config": {
+       "provider": "webdav",
+       "webdav": {
+        "endpoint": "${mock.webdav.endpoint}",
+        "username": "${mock.webdav.username}"
+       },
+       "root": "wp065"
+      }
+     }
+    },
+    {
+     "cmd": "secure_save_cloud_credentials",
+     "args": {
+      "credentials": {
+       "webdavPassword": "${mock.webdav.password}"
+      },
+      "encryptionPasswordIsPreexisting": false
+     }
+    },
+    {
+     "cmd": "data_governance_detect_prune_gap",
+     "args": {
+      "cloudConfig": {
+       "provider": "webdav",
+       "webdav": {
+        "endpoint": "${mock.webdav.endpoint}",
+        "username": "${mock.webdav.username}",
+        "password": ""
+       },
+       "root": "wp065"
+      }
+     }
+    },
+    {
+     "cmd": "data_governance_detect_prune_gap",
+     "args": {
+      "cloudConfig": {
+       "provider": "webdav",
+       "webdav": {
+        "endpoint": "${mock.webdav.endpoint}",
+        "username": "${mock.webdav.username}",
+        "password": ""
+       },
+       "root": "wp065"
+      }
+     }
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  },
+  {
+   "id": "sync_support.prune_gap.binds_after_upload",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "cloud_config_ssot_save",
+     "args": {
+      "config": {
+       "provider": "webdav",
+       "webdav": {
+        "endpoint": "${mock.webdav.endpoint}",
+        "username": "${mock.webdav.username}"
+       },
+       "root": "wp065"
+      }
+     }
+    },
+    {
+     "cmd": "secure_save_cloud_credentials",
+     "args": {
+      "credentials": {
+       "webdavPassword": "${mock.webdav.password}"
+      },
+      "encryptionPasswordIsPreexisting": false
+     }
+    },
+    {
+     "cmd": "data_governance_run_sync",
+     "args": {
+      "direction": "upload",
+      "cloudConfig": null
+     }
+    },
+    {
+     "cmd": "data_governance_detect_prune_gap",
+     "args": {
+      "cloudConfig": {
+       "provider": "webdav",
+       "webdav": {
+        "endpoint": "${mock.webdav.endpoint}",
+        "username": "${mock.webdav.username}",
+        "password": ""
+       },
+       "root": "wp065"
+      }
+     }
+    },
+    {
+     "cmd": "data_governance_detect_prune_gap",
+     "args": {
+      "cloudConfig": {
+       "provider": "webdav",
+       "webdav": {
+        "endpoint": "${mock.webdav.endpoint}",
+        "username": "${mock.webdav.username}",
+        "password": ""
+       },
+       "root": "wp065"
+      }
+     }
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  },
+  {
+   "id": "sync_support.prune_gap.instance_binding_mismatch",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "cloud_config_ssot_save",
+     "args": {
+      "config": {
+       "provider": "webdav",
+       "webdav": {
+        "endpoint": "${mock.webdav.endpoint}",
+        "username": "${mock.webdav.username}"
+       },
+       "root": "wp065"
+      }
+     }
+    },
+    {
+     "cmd": "secure_save_cloud_credentials",
+     "args": {
+      "credentials": {
+       "webdavPassword": "${mock.webdav.password}"
+      },
+      "encryptionPasswordIsPreexisting": false
+     }
+    },
+    {
+     "cmd": "data_governance_run_sync",
+     "args": {
+      "direction": "upload",
+      "cloudConfig": null
+     }
+    },
+    {
+     "cmd": "cloud_config_ssot_save",
+     "args": {
+      "config": {
+       "provider": "webdav",
+       "webdav": {
+        "endpoint": "${mock.webdav.endpointAlias}",
+        "username": "${mock.webdav.username}"
+       },
+       "root": "wp065"
+      }
+     }
+    },
+    {
+     "cmd": "data_governance_detect_prune_gap",
+     "args": {
+      "cloudConfig": {
+       "provider": "webdav",
+       "webdav": {
+        "endpoint": "${mock.webdav.endpoint}",
+        "username": "${mock.webdav.username}",
+        "password": ""
+       },
+       "root": "wp065"
+      }
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_run_sync",
+     "args": {
+      "direction": "upload",
+      "cloudConfig": null
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "cloud_config_ssot_save",
+     "args": {
+      "config": {
+       "provider": "webdav",
+       "webdav": {
+        "endpoint": "${mock.webdav.endpoint}",
+        "username": "${mock.webdav.username}"
+       },
+       "root": "wp065"
+      }
+     }
+    },
+    {
+     "cmd": "data_governance_detect_prune_gap",
+     "args": {
+      "cloudConfig": {
+       "provider": "webdav",
+       "webdav": {
+        "endpoint": "${mock.webdav.endpoint}",
+        "username": "${mock.webdav.username}",
+        "password": ""
+       },
+       "root": "wp065"
+      }
+     }
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  },
+  {
+   "id": "sync_support.run_sync.invalid_direction",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "data_governance_run_sync",
+     "args": {
+      "direction": "sideways"
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_run_sync",
+     "args": {
+      "direction": ""
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_run_sync",
+     "args": {
+      "direction": "UPLOAD"
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_run_sync",
+     "args": {
+      "direction": "both"
+     },
+     "expect": "error"
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  },
+  {
+   "id": "sync_support.run_sync.invalid_strategy",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "data_governance_run_sync",
+     "args": {
+      "direction": "upload",
+      "strategy": "Keep_Local"
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_run_sync",
+     "args": {
+      "direction": "upload",
+      "strategy": ""
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_run_sync",
+     "args": {
+      "direction": "upload",
+      "strategy": null
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_run_sync",
+     "args": {
+      "direction": "download",
+      "strategy": "manual"
+     },
+     "expect": "error"
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  },
+  {
+   "id": "sync_support.run_sync.not_configured",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "data_governance_run_sync",
+     "args": {
+      "direction": "upload"
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_run_sync",
+     "args": {
+      "direction": "upload",
+      "cloudConfig": null
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_run_sync",
+     "args": {
+      "direction": "upload",
+      "cloudConfig": {
+       "provider": "webdav",
+       "webdav": {
+        "endpoint": "${mock.webdav.endpoint}",
+        "username": "${mock.webdav.username}",
+        "password": "${mock.webdav.password}"
+       },
+       "root": "wp065"
+      }
+     },
+     "expect": "error"
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  },
+  {
+   "id": "sync_support.run_sync.ssot_without_password",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "cloud_config_ssot_save",
+     "args": {
+      "config": {
+       "provider": "webdav",
+       "webdav": {
+        "endpoint": "${mock.webdav.endpoint}",
+        "username": "${mock.webdav.username}"
+       },
+       "root": "wp065"
+      }
+     }
+    },
+    {
+     "cmd": "data_governance_run_sync",
+     "args": {
+      "direction": "upload",
+      "cloudConfig": null
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_run_sync",
+     "args": {
+      "direction": "bidirectional",
+      "cloudConfig": {
+       "provider": "webdav",
+       "webdav": {
+        "endpoint": "${mock.webdav.endpoint}",
+        "username": "${mock.webdav.username}",
+        "password": ""
+       },
+       "root": "wp065"
+      }
+     },
+     "expect": "error"
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  },
+  {
+   "id": "sync_support.run_sync.upload_download_bidirectional",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "cloud_config_ssot_save",
+     "args": {
+      "config": {
+       "provider": "webdav",
+       "webdav": {
+        "endpoint": "${mock.webdav.endpoint}",
+        "username": "${mock.webdav.username}"
+       },
+       "root": "wp065"
+      }
+     }
+    },
+    {
+     "cmd": "secure_save_cloud_credentials",
+     "args": {
+      "credentials": {
+       "webdavPassword": "${mock.webdav.password}"
+      },
+      "encryptionPasswordIsPreexisting": false
+     }
+    },
+    {
+     "cmd": "data_governance_run_sync",
+     "args": {
+      "direction": "upload",
+      "cloudConfig": null,
+      "strategy": "keep_latest"
+     }
+    },
+    {
+     "cmd": "data_governance_run_sync",
+     "args": {
+      "direction": "download",
+      "cloudConfig": null
+     }
+    },
+    {
+     "cmd": "data_governance_run_sync",
+     "args": {
+      "direction": "bidirectional",
+      "cloudConfig": {
+       "provider": "webdav",
+       "webdav": {
+        "endpoint": "${mock.webdav.endpoint}",
+        "username": "${mock.webdav.username}",
+        "password": ""
+       },
+       "root": "wp065"
+      },
+      "strategy": "keep_local"
+     }
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  },
+  {
+   "id": "sync_support.run_sync_progress.invalid_direction",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "data_governance_run_sync_with_progress",
+     "args": {
+      "direction": "sideways"
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_run_sync_with_progress",
+     "args": {
+      "direction": ""
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_run_sync_with_progress",
+     "args": {
+      "direction": "UPLOAD"
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_run_sync_with_progress",
+     "args": {
+      "direction": "both"
+     },
+     "expect": "error"
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  },
+  {
+   "id": "sync_support.run_sync_progress.invalid_strategy",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "data_governance_run_sync_with_progress",
+     "args": {
+      "direction": "upload",
+      "strategy": "Keep_Local"
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_run_sync_with_progress",
+     "args": {
+      "direction": "upload",
+      "strategy": ""
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_run_sync_with_progress",
+     "args": {
+      "direction": "upload",
+      "strategy": null
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_run_sync_with_progress",
+     "args": {
+      "direction": "download",
+      "strategy": "manual"
+     },
+     "expect": "error"
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  },
+  {
+   "id": "sync_support.run_sync_progress.not_configured",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "data_governance_run_sync_with_progress",
+     "args": {
+      "direction": "upload"
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_run_sync_with_progress",
+     "args": {
+      "direction": "upload",
+      "cloudConfig": null
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_run_sync_with_progress",
+     "args": {
+      "direction": "upload",
+      "cloudConfig": {
+       "provider": "webdav",
+       "webdav": {
+        "endpoint": "${mock.webdav.endpoint}",
+        "username": "${mock.webdav.username}",
+        "password": "${mock.webdav.password}"
+       },
+       "root": "wp065"
+      }
+     },
+     "expect": "error"
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  },
+  {
+   "id": "sync_support.run_sync_progress.ssot_without_password",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "cloud_config_ssot_save",
+     "args": {
+      "config": {
+       "provider": "webdav",
+       "webdav": {
+        "endpoint": "${mock.webdav.endpoint}",
+        "username": "${mock.webdav.username}"
+       },
+       "root": "wp065"
+      }
+     }
+    },
+    {
+     "cmd": "data_governance_run_sync_with_progress",
+     "args": {
+      "direction": "upload",
+      "cloudConfig": null
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_run_sync_with_progress",
+     "args": {
+      "direction": "bidirectional",
+      "cloudConfig": {
+       "provider": "webdav",
+       "webdav": {
+        "endpoint": "${mock.webdav.endpoint}",
+        "username": "${mock.webdav.username}",
+        "password": ""
+       },
+       "root": "wp065"
+      }
+     },
+     "expect": "error"
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  },
+  {
+   "id": "sync_support.run_sync_progress.upload_download_bidirectional",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "cloud_config_ssot_save",
+     "args": {
+      "config": {
+       "provider": "webdav",
+       "webdav": {
+        "endpoint": "${mock.webdav.endpoint}",
+        "username": "${mock.webdav.username}"
+       },
+       "root": "wp065"
+      }
+     }
+    },
+    {
+     "cmd": "secure_save_cloud_credentials",
+     "args": {
+      "credentials": {
+       "webdavPassword": "${mock.webdav.password}"
+      },
+      "encryptionPasswordIsPreexisting": false
+     }
+    },
+    {
+     "cmd": "data_governance_run_sync_with_progress",
+     "args": {
+      "direction": "upload",
+      "cloudConfig": null,
+      "strategy": "keep_latest"
+     }
+    },
+    {
+     "cmd": "data_governance_run_sync_with_progress",
+     "args": {
+      "direction": "download",
+      "cloudConfig": null
+     }
+    },
+    {
+     "cmd": "data_governance_run_sync_with_progress",
+     "args": {
+      "direction": "bidirectional",
+      "cloudConfig": {
+       "provider": "webdav",
+       "webdav": {
+        "endpoint": "${mock.webdav.endpoint}",
+        "username": "${mock.webdav.username}",
+        "password": ""
+       },
+       "root": "wp065"
+      },
+      "strategy": "keep_local"
+     }
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  },
+  {
+   "id": "sync_support.run_sync_progress.after_tombstones",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "cloud_config_ssot_save",
+     "args": {
+      "config": {
+       "provider": "webdav",
+       "webdav": {
+        "endpoint": "${mock.webdav.endpoint}",
+        "username": "${mock.webdav.username}"
+       },
+       "root": "wp065"
+      }
+     }
+    },
+    {
+     "cmd": "secure_save_cloud_credentials",
+     "args": {
+      "credentials": {
+       "webdavPassword": "${mock.webdav.password}"
+      },
+      "encryptionPasswordIsPreexisting": false
+     }
+    },
+    {
+     "cmd": "data_governance_mark_blob_deleted",
+     "args": {
+      "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "relativePath": "aa/a.pdf",
+      "size": 1024,
+      "cloudConfig": {
+       "provider": "webdav",
+       "webdav": {
+        "endpoint": "${mock.webdav.endpoint}",
+        "username": "${mock.webdav.username}",
+        "password": ""
+       },
+       "root": "wp065"
+      }
+     }
+    },
+    {
+     "cmd": "data_governance_mark_asset_deleted",
+     "args": {
+      "key": "active/images/foo.png",
+      "size": 2048,
+      "cloudConfig": {
+       "provider": "webdav",
+       "webdav": {
+        "endpoint": "${mock.webdav.endpoint}",
+        "username": "${mock.webdav.username}",
+        "password": ""
+       },
+       "root": "wp065"
+      }
+     }
+    },
+    {
+     "cmd": "data_governance_run_sync_with_progress",
+     "args": {
+      "direction": "bidirectional",
+      "cloudConfig": null
+     }
+    },
+    {
+     "cmd": "data_governance_run_sync_with_progress",
+     "args": {
+      "direction": "bidirectional",
+      "cloudConfig": null
+     }
+    },
+    {
+     "cmd": "data_governance_detect_prune_gap",
+     "args": {
+      "cloudConfig": {
+       "provider": "webdav",
+       "webdav": {
+        "endpoint": "${mock.webdav.endpoint}",
+        "username": "${mock.webdav.username}",
+        "password": ""
+       },
+       "root": "wp065"
+      }
+     }
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  }
+ ]
+}

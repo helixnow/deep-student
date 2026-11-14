@@ -11,31 +11,43 @@
 
 .mb-head {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
-  justify-content: space-between;
-  gap: 4px 8px;
-  padding: 8px 12px 4px;
+  gap: 8px;
+  padding: 6px 12px;
+  border-bottom: 1px solid color-mix(in hsl, hsl(var(--border)) 35%, transparent 65%);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.mb-head::-webkit-scrollbar {
+  display: none;
 }
 
 .mb-summary {
   margin: 0;
+  flex-shrink: 0;
   color: hsl(var(--muted-foreground));
   font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .mb-head-actions {
   display: flex;
   align-items: center;
   gap: 2px;
+  margin-left: auto;
+  flex-shrink: 0;
 }
 
 .mb-filters {
-  display: flex;
-  flex-wrap: wrap;
+  display: inline-flex;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 6px;
-  padding: 2px 12px 6px;
+  padding: 0;
+  flex-shrink: 0;
 }
 
 .mb-select-wrap {

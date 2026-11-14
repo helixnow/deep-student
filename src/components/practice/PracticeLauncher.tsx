@@ -11,7 +11,6 @@ import React, { lazy, Suspense, useState, useCallback, useMemo, useEffect } from
 import { cn } from '@/lib/utils';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { DsButton } from '@/components/ui/DsButton';
-import { Badge } from '@/components/ui/shad/Badge';
 import {
   ListNumbers,
   Shuffle,
@@ -376,112 +375,12 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
   return (
     <CustomScrollArea
       className={cn('h-full', className)}
-      viewportClassName="space-y-4 p-3 pb-[calc(0.75rem+var(--mobile-safe-area-bottom,0px))]"
+      viewportClassName="space-y-4 p-3 sm:p-4 pb-[calc(0.75rem+var(--mobile-safe-area-bottom,0px))]"
     >
-      {onOpenPractice && <PracticeRecords scopeId={examId} onOpen={onOpenPractice} />}
-      {onStartDrill && <section className="border-b border-border/50 pb-3">
-        <DsButton variant="outline" size="sm" aria-expanded={drillOpen} onClick={() => setDrillOpen(v => !v)}><Play size={16} />{t('batch.drill')}</DsButton>
-        {drillOpen && <div className="mt-3 flex flex-wrap items-center gap-2">
-          {(['sequential', 'random', 'review_first', 'review_only'] as PracticeMode[]).map(mode => <DsButton key={mode} variant="outline" size="sm" onClick={() => onStartDrill(mode)}>{modes.find(m => m.key === mode)?.label}</DsButton>)}
-          {!!tagOptions.length && <select className="min-h-9 max-w-full rounded-md border bg-background px-2 text-sm" aria-label={t('practice:tagPicker.title')} defaultValue="" onChange={e => { if (e.target.value) onStartDrill('by_tag', e.target.value); }}><option value="" disabled>{t('practice:tagPicker.title')}</option>{tagOptions.map(({ tag }) => <option key={tag} value={tag}>{tag === '__untagged__' ? t('practice:tagPicker.untagged') : tag}</option>)}</select>}
-        </div>}
-      </section>}
-      {/* 快速统计 */}
-      {stats && (
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-1">
-          <div className="flex items-center gap-2">
-            <div className="relative h-8 w-8">
-              <svg className="w-full h-full transform -rotate-90" viewBox="0 0 40 40">
-                <circle cx="20" cy="20" r="16" fill="none" stroke="currentColor" strokeWidth="3" className="text-muted/30" />
-                <circle
-                  cx="20" cy="20" r="16"
-                  fill="none" stroke="currentColor" strokeWidth="3"
-                  strokeDasharray={`${stats.total > 0 ? (stats.mastered / stats.total) * 100.5 : 0} 100.5`}
-                  className="text-success"
-                  strokeLinecap="round"
-/>
-              </svg>
-              <div className="absolute inset-0 flex items-center justify-center">
-                <span className="text-[10px] font-semibold tabular-nums">
-                  {stats.total > 0 ? Math.round((stats.mastered / stats.total) * 100) : 0}%
-                </span>
-              </div>
-            </div>
-            <div className="text-sm whitespace-nowrap">
-              <span className="text-muted-foreground">{t('practice:questionBank.stats.mastered')} </span>
-              <span className="font-medium">{stats.mastered}</span>
-              <span className="text-muted-foreground">/ {stats.total}</span>
-            </div>
-          </div>
-          {stats.review > 0 && (
-            <div className="flex items-center gap-1.5 text-sm text-warning">
-              <span className="h-1.5 w-1.5 rounded-full bg-warning" />
-              <span>{stats.review} {t('practice:questionBank.stats.toReview')}</span>
-            </div>
-          )}
-          <div className="text-sm text-muted-foreground">
-            {t('practice:questionBank.stats.correctRate')}{' '}
-            <span className="font-medium text-foreground tabular-nums">
-              {ratioToPercent(stats.correctRate)}%
-            </span>
-          </div>
-        </div>
-      )}
-
-      {/* 选择练习模式 */}
-      <div>
-        <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-1.5">
-          <Play size={14} />
-          {t('practice:questionBank.practice.chooseMode')}
-        </h3>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          {modes.map(({ key, icon: Icon, label, desc, isAdvanced }) => {
-            const isActive = activeAdvanced === key || (key === 'by_tag' && isTagPickerOpen);
-            return (
-              <DsButton
-                key={key}
-                variant="ghost" size="sm"
-                onClick={() => handleModeClick(key, isAdvanced)}
-                aria-expanded={isActive}
-                className={cn(
-                  '!relative !h-auto !min-h-[76px] !flex-col !items-start !justify-start !rounded-md !border !p-3 !text-left',
-                  'ui-press ui-state-colors',
-                  !isActive && 'border-border/60 bg-transparent hover:border-border hover:bg-accent',
-                  isActive && 'border-primary/50 bg-primary/10 text-foreground'
-                )}
-              >
-                <div className={cn('rounded-md p-1.5 transition-colors', isActive ? 'bg-primary/10' : 'bg-muted')}>
-                  <Icon className={cn('h-4 w-4 transition-colors', isActive ? 'text-primary' : 'text-muted-foreground')} />
-                </div>
-                <div>
-                  <div className="text-sm font-medium">{label}</div>
-                  <div className="text-[11px] text-muted-foreground mt-0.5">{desc}</div>
-                  {/* 上次成绩 / 进行中摘要 */}
-                  {modeSummaries[key] && (
-                    <div className="mt-1 text-[10px] leading-tight">{modeSummaries[key]}</div>
-                  )}
-                </div>
-                {/* 错题数量 badge */}
-                {key === 'review_first' && stats && stats.review > 0 && (
-                  <Badge variant="secondary" className="absolute right-2 top-2 h-5 bg-warning/10 text-[10px] text-warning">
-                    {stats.review}
-                  </Badge>
-                )}
-              </DsButton>
-            );
-          })}
-        </div>
-      </div>
-
-      {isTagPickerOpen && (
-        <section className="ui-rise-in border-t border-border/50 pt-3" aria-label={t('practice:tagPicker.title')}>
-          <div className="mb-2 flex items-center justify-between gap-3">
-            <div>
-              <h3 className="text-sm font-medium">{t('practice:tagPicker.title')}</h3>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                {t('practice:tagPicker.description')}
-              </p>
-            </div>
+      {/* 按标签练习：原位切换为主面板（不再叠在 9 个模式卡片下方） */}
+      {isTagPickerOpen ? (
+        <section className="ui-rise-in space-y-3" aria-label={t('practice:tagPicker.title')}>
+          <div className="flex items-center gap-2 border-b border-border/35 pb-2.5">
             <DsButton
               variant="ghost"
               size="icon"
@@ -489,10 +388,16 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
               aria-label={t('common:back')}
               title={t('common:back')}
               onClick={() => setIsTagPickerOpen(false)}
-              className="[@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
+              className="!h-8 !w-8 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
             >
               <CaretLeft size={16} />
             </DsButton>
+            <div>
+              <h3 className="text-sm font-medium">{t('practice:tagPicker.title')}</h3>
+              <p className="text-xs text-muted-foreground">
+                {t('practice:tagPicker.description')}
+              </p>
+            </div>
           </div>
           <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 md:grid-cols-3">
             {tagOptions.map(({ tag, count }) => {
@@ -505,11 +410,11 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
                   variant="ghost"
                   size="sm"
                   onClick={() => handleStartPracticeByTag(tag)}
-                  className="ui-press !h-auto !justify-start !rounded-md !border !border-border/60 !px-2.5 !py-2 !text-left hover:border-primary/40 hover:bg-primary/10 [@media(pointer:coarse)]:!min-h-11"
+                  className="ui-press !h-auto !justify-start !rounded-lg !border !border-border/45 !px-3 !py-2.5 !text-left hover:border-primary/40 hover:bg-primary/[0.06] [@media(pointer:coarse)]:!min-h-11"
                 >
                   <Tag size={14} className="shrink-0 text-primary" />
                   <span className="min-w-0 flex-1 truncate text-sm text-foreground">{label}</span>
-                  <span className="text-xs tabular-nums text-muted-foreground">
+                  <span className="font-mono text-xs tabular-nums text-muted-foreground">
                     {t('practice:tagPicker.questionCount', { count })}
                   </span>
                 </DsButton>
@@ -517,12 +422,10 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
             })}
           </div>
         </section>
-      )}
-
-      {/* 高级模式配置面板 */}
-      {activeAdvanced && (
-        <div key={activeAdvanced} className="ui-rise-in border-t border-border/40 pt-4">
-          <div className="mb-3 flex min-h-11 items-center gap-2">
+      ) : activeAdvanced ? (
+        /* 高级模式配置面板：原位切换为主舞台（不再塞在 9 个模式卡片底部让用户滚屏找） */
+        <div key={activeAdvanced} className="ui-rise-in space-y-3">
+          <div className="flex min-h-9 items-center gap-2 border-b border-border/35 pb-2.5">
             <DsButton
               variant="ghost"
               size="icon"
@@ -530,7 +433,7 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
               aria-label={t('common:back')}
               title={t('common:back')}
               onClick={() => setActiveAdvanced(null)}
-              className="[@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
+              className="!h-8 !w-8 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
             >
               <CaretLeft size={16} />
             </DsButton>
@@ -585,6 +488,148 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
             )}
           </Suspense>
         </div>
+      ) : (
+        <>
+          {onOpenPractice && <PracticeRecords scopeId={examId} onOpen={onOpenPractice} />}
+          {/* 单行紧凑顶栏：统计指标 + 专项训练内联入口 */}
+          {(stats || onStartDrill) && (
+            <div className="space-y-2.5 border-b border-border/35 pb-3">
+              <div className="flex flex-wrap items-center justify-between gap-3 px-0.5">
+                {stats && (
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs sm:text-sm">
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="h-1.5 w-1.5 rounded-full bg-success" aria-hidden="true" />
+                      <span className="text-muted-foreground">{t('practice:questionBank.stats.mastered')}</span>
+                      <span className="font-mono font-medium tabular-nums text-foreground">{stats.mastered}/{stats.total}</span>
+                    </span>
+                    {stats.review > 0 && (
+                      <span className="inline-flex items-center gap-1.5 text-warning">
+                        <span className="h-1.5 w-1.5 rounded-full bg-warning" aria-hidden="true" />
+                        <span className="font-mono tabular-nums">{stats.review} {t('practice:questionBank.stats.toReview')}</span>
+                      </span>
+                    )}
+                    <span className="text-muted-foreground">
+                      {t('practice:questionBank.stats.correctRate')}{' '}
+                      <span className="font-mono font-medium text-foreground tabular-nums">
+                        {ratioToPercent(stats.correctRate)}%
+                      </span>
+                    </span>
+                  </div>
+                )}
+                {onStartDrill && (
+                  <DsButton
+                    variant="ghost"
+                    size="sm"
+                    aria-expanded={drillOpen}
+                    onClick={() => setDrillOpen(v => !v)}
+                    className="!h-7 !px-2.5 text-xs text-primary hover:bg-primary/10"
+                  >
+                    <Play size={13} weight="fill" />
+                    {t('batch.drill')}
+                  </DsButton>
+                )}
+              </div>
+              {onStartDrill && drillOpen && (
+                <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                  {(['sequential', 'random', 'review_first', 'review_only'] as PracticeMode[]).map(mode => (
+                    <DsButton key={mode} variant="outline" size="sm" className="!h-7 !px-2.5 text-xs" onClick={() => onStartDrill(mode)}>
+                      {modes.find(m => m.key === mode)?.label}
+                    </DsButton>
+                  ))}
+                  {!!tagOptions.length && (
+                    <select
+                      className="h-7 max-w-full rounded-md border border-border/50 bg-background px-2 text-xs"
+                      aria-label={t('practice:tagPicker.title')}
+                      defaultValue=""
+                      onChange={e => { if (e.target.value) onStartDrill('by_tag', e.target.value); }}
+                    >
+                      <option value="" disabled>{t('practice:tagPicker.title')}</option>
+                      {tagOptions.map(({ tag }) => (
+                        <option key={tag} value={tag}>{tag === '__untagged__' ? t('practice:tagPicker.untagged') : tag}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 选择练习模式：按「即时刷题」与「模拟与专项」两个扁平分组规整 */}
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1.5">
+                <Play size={13} />
+                {t('practice:questionBank.practice.chooseMode')}
+              </h3>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+                {modes.filter((m) => !m.isAdvanced).map(({ key, icon: Icon, label, desc, isAdvanced }) => {
+                  const isModeActive = key === 'by_tag' && isTagPickerOpen;
+                  return (
+                    <DsButton
+                      key={key}
+                      variant="ghost" size="sm"
+                      onClick={() => handleModeClick(key, isAdvanced)}
+                      aria-expanded={isModeActive}
+                      className={cn(
+                        '!relative !h-auto !min-h-[68px] !flex-col !items-start !justify-start !rounded-xl !border !p-2.5 !text-left',
+                        'ui-press ui-state-colors',
+                        !isModeActive && 'border-border/45 bg-transparent hover:border-border/75 hover:bg-foreground/[0.03]',
+                        isModeActive && 'border-primary/45 bg-primary/[0.06] text-foreground'
+                      )}
+                    >
+                      <div className="flex w-full items-center gap-2">
+                        <div className={cn('rounded-md p-1.5 transition-colors', isModeActive ? 'bg-primary/10' : 'bg-foreground/[0.04]')}>
+                          <Icon className={cn('h-4 w-4 transition-colors', isModeActive ? 'text-primary' : 'text-muted-foreground')} />
+                        </div>
+                        <div className="text-sm font-medium">{label}</div>
+                      </div>
+                      <div className="mt-1 text-xs text-muted-foreground">{desc}</div>
+                      {key === 'review_first' && stats && stats.review > 0 && (
+                        <span className="absolute right-2.5 top-2.5 inline-flex items-center gap-1 text-xs font-medium tabular-nums text-muted-foreground">
+                          <span className="h-1.5 w-1.5 rounded-full bg-warning" aria-hidden="true" />
+                          {stats.review}
+                        </span>
+                      )}
+                    </DsButton>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {modes.filter((m) => m.isAdvanced).map(({ key, icon: Icon, label, desc, isAdvanced }) => {
+                  const isModeActive = activeAdvanced === key;
+                  return (
+                    <DsButton
+                      key={key}
+                      variant="ghost" size="sm"
+                      onClick={() => handleModeClick(key, isAdvanced)}
+                      aria-expanded={isModeActive}
+                      className={cn(
+                        '!relative !h-auto !min-h-[68px] !flex-col !items-start !justify-start !rounded-xl !border !p-2.5 !text-left',
+                        'ui-press ui-state-colors',
+                        !isModeActive && 'border-border/45 bg-transparent hover:border-border/75 hover:bg-foreground/[0.03]',
+                        isModeActive && 'border-primary/45 bg-primary/[0.06] text-foreground'
+                      )}
+                    >
+                      <div className="flex w-full items-center gap-2">
+                        <div className={cn('rounded-md p-1.5 transition-colors', isModeActive ? 'bg-primary/10' : 'bg-foreground/[0.04]')}>
+                          <Icon className={cn('h-4 w-4 transition-colors', isModeActive ? 'text-primary' : 'text-muted-foreground')} />
+                        </div>
+                        <div className="text-sm font-medium">{label}</div>
+                      </div>
+                      <div className="mt-1 text-xs text-muted-foreground">{desc}</div>
+                      {modeSummaries[key] && (
+                        <div className="mt-1 text-xs leading-tight">{modeSummaries[key]}</div>
+                      )}
+                    </DsButton>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </>
       )}
     </CustomScrollArea>
   );

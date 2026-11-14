@@ -1,0 +1,2382 @@
+{
+  "domain": "vfs",
+  "commands": [
+    "pomodoro_daily_stats",
+    "pomodoro_delete_record",
+    "pomodoro_get_record",
+    "pomodoro_list_by_todo",
+    "pomodoro_list_range",
+    "pomodoro_list_today",
+    "pomodoro_stats_overview",
+    "pomodoro_today_stats",
+    "pomodoro_todo_focus_summary",
+    "pomodoro_create_record"
+  ],
+  "scenarios": [
+    {
+      "id": "vfs.pomodoro.create_record.linked_work_completed_recounts",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "番茄清单"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "写报告"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 1500,
+              "type": "work",
+              "status": "completed",
+              "todoItemId": "${1.id}"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 600,
+              "type": "work",
+              "status": "interrupted",
+              "todoItemId": "${1.id}"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": 300,
+              "actualDuration": 300,
+              "type": "short_break",
+              "status": "completed",
+              "todoItemId": "${1.id}"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T09:00:00.000Z",
+              "endTime": "2026-11-06T09:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 1500,
+              "type": "work",
+              "status": "completed",
+              "todoItemId": "${1.id}"
+            }
+          }
+        },
+        {
+          "cmd": "todo_get_item",
+          "args": {
+            "itemId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "pomodoro_get_record",
+          "args": {
+            "recordId": "${5.id}"
+          }
+        },
+        {
+          "cmd": "pomodoro_list_by_todo",
+          "args": {
+            "todoItemId": "${1.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.pomodoro.create_record.defaults_and_unvalidated_fields",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T10:00:00.000Z",
+              "duration": 1500,
+              "actualDuration": 1500
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "todoItemId": null,
+              "startTime": "2026-11-06T10:30:00.000Z",
+              "endTime": null,
+              "duration": 0,
+              "actualDuration": 0,
+              "type": "long_break",
+              "status": "interrupted"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "not-a-time",
+              "endTime": "2026-11-06T07:00:00.000Z",
+              "duration": 60,
+              "actualDuration": 99999,
+              "type": "work",
+              "status": "completed"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "",
+              "duration": 2147483647,
+              "actualDuration": 0,
+              "type": "short_break",
+              "status": "completed"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_get_record",
+          "args": {
+            "recordId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "pomodoro_get_record",
+          "args": {
+            "recordId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "pomodoro_get_record",
+          "args": {
+            "recordId": "${2.id}"
+          }
+        },
+        {
+          "cmd": "pomodoro_list_range",
+          "args": {
+            "startDate": "2000-01-01",
+            "endDate": "2099-12-31"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.pomodoro.create_record.invalid_enums_and_durations",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 1500,
+              "type": "Work",
+              "status": "completed"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 1500,
+              "type": "",
+              "status": "completed"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 1500,
+              "type": "break",
+              "status": "completed"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 1500,
+              "type": "work",
+              "status": "abandoned"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 1500,
+              "type": "work",
+              "status": "COMPLETED"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 1500,
+              "type": "work",
+              "status": ""
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 1500,
+              "type": "nap",
+              "status": "abandoned"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": -1,
+              "actualDuration": 1500,
+              "type": "nap",
+              "status": "completed"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": -1,
+              "actualDuration": 1500,
+              "type": "work",
+              "status": "abandoned"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": -1,
+              "actualDuration": 1500,
+              "type": "work",
+              "status": "completed"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": -1,
+              "type": "work",
+              "status": "completed"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": -5,
+              "actualDuration": -5,
+              "type": "work",
+              "status": "completed"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "pomodoro_list_range",
+          "args": {
+            "startDate": "2000-01-01",
+            "endDate": "2099-12-31"
+          }
+        },
+        {
+          "cmd": "pomodoro_today_stats",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.pomodoro.create_record.todo_item_fk",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 1500,
+              "type": "work",
+              "status": "completed",
+              "todoItemId": "ti_missing0000"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 1500,
+              "type": "short_break",
+              "status": "interrupted",
+              "todoItemId": "00000000-0000-4000-8000-000000000000"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 1500,
+              "type": "work",
+              "status": "completed",
+              "todoItemId": ""
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "外键清单"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 1500,
+              "type": "work",
+              "status": "completed",
+              "todoItemId": "${3.id}"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "pomodoro_list_range",
+          "args": {
+            "startDate": "2000-01-01",
+            "endDate": "2099-12-31"
+          }
+        },
+        {
+          "cmd": "pomodoro_list_by_todo",
+          "args": {
+            "todoItemId": "ti_missing0000"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.pomodoro.create_record.soft_deleted_todo_item",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "软删清单"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "将被软删"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 1500,
+              "type": "work",
+              "status": "completed",
+              "todoItemId": "${1.id}"
+            }
+          }
+        },
+        {
+          "cmd": "todo_delete_item",
+          "args": {
+            "itemId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T09:00:00.000Z",
+              "endTime": "2026-11-06T09:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 1500,
+              "type": "work",
+              "status": "completed",
+              "todoItemId": "${1.id}"
+            }
+          }
+        },
+        {
+          "cmd": "todo_get_item",
+          "args": {
+            "itemId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "pomodoro_list_by_todo",
+          "args": {
+            "todoItemId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "pomodoro_todo_focus_summary",
+          "args": {
+            "todoItemId": "${1.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.pomodoro.create_record.serde_rejects",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "duration": 1500,
+              "actualDuration": 1500
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "actualDuration": 1500
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "duration": 1500
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": 1.5,
+              "actualDuration": 1500,
+              "type": "work",
+              "status": "completed"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": 2147483648,
+              "actualDuration": 1500,
+              "type": "work",
+              "status": "completed"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": "1500",
+              "actualDuration": 1500,
+              "type": "work",
+              "status": "completed"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 1500,
+              "type": null,
+              "status": "completed"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 1500,
+              "type": "work",
+              "status": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": null,
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 1500,
+              "type": "work",
+              "status": "completed"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 1500,
+              "type": "work",
+              "status": "completed",
+              "todoItemId": 123
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "pomodoro_list_range",
+          "args": {
+            "startDate": "2000-01-01",
+            "endDate": "2099-12-31"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.pomodoro.get_record.existing_missing_and_deleted",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "读取清单"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "读取任务"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 1500,
+              "type": "work",
+              "status": "completed",
+              "todoItemId": "${1.id}"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "duration": 300,
+              "actualDuration": 300,
+              "type": "short_break",
+              "status": "completed"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_get_record",
+          "args": {
+            "recordId": "${2.id}"
+          }
+        },
+        {
+          "cmd": "pomodoro_get_record",
+          "args": {
+            "recordId": "${3.id}"
+          }
+        },
+        {
+          "cmd": "pomodoro_get_record",
+          "args": {
+            "recordId": "pd_missing0000"
+          }
+        },
+        {
+          "cmd": "pomodoro_get_record",
+          "args": {
+            "recordId": ""
+          }
+        },
+        {
+          "cmd": "pomodoro_delete_record",
+          "args": {
+            "recordId": "${3.id}"
+          }
+        },
+        {
+          "cmd": "pomodoro_get_record",
+          "args": {
+            "recordId": "${3.id}"
+          }
+        },
+        {
+          "cmd": "pomodoro_get_record",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "pomodoro_get_record",
+          "args": {
+            "recordId": 123
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.pomodoro.list_by_todo.filters_by_item_excludes_deleted",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "按任务清单"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "任务A"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "任务B"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 1500,
+              "type": "work",
+              "status": "completed",
+              "todoItemId": "${1.id}"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T09:00:00.000Z",
+              "endTime": "2026-11-06T09:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 600,
+              "type": "work",
+              "status": "interrupted",
+              "todoItemId": "${1.id}"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": 900,
+              "actualDuration": 900,
+              "type": "long_break",
+              "status": "completed",
+              "todoItemId": "${1.id}"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 1500,
+              "type": "work",
+              "status": "completed",
+              "todoItemId": "${2.id}"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 1500,
+              "type": "work",
+              "status": "completed"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_delete_record",
+          "args": {
+            "recordId": "${4.id}"
+          }
+        },
+        {
+          "cmd": "pomodoro_list_by_todo",
+          "args": {
+            "todoItemId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "pomodoro_list_by_todo",
+          "args": {
+            "todoItemId": "${2.id}"
+          }
+        },
+        {
+          "cmd": "pomodoro_list_by_todo",
+          "args": {
+            "todoItemId": "ti_missing0000"
+          }
+        },
+        {
+          "cmd": "pomodoro_list_by_todo",
+          "args": {
+            "todoItemId": ""
+          }
+        },
+        {
+          "cmd": "pomodoro_list_by_todo",
+          "args": {
+            "todoItemId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "pomodoro_list_by_todo",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "pomodoro_list_by_todo",
+          "args": {
+            "todoItemId": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.pomodoro.today_stats.empty",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "pomodoro_today_stats",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.pomodoro.today_stats.mixed_records",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 1500,
+              "type": "work",
+              "status": "completed"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 1200,
+              "type": "work",
+              "status": "completed"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 600,
+              "type": "work",
+              "status": "interrupted"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": 300,
+              "actualDuration": 300,
+              "type": "short_break",
+              "status": "completed"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": 900,
+              "actualDuration": 100,
+              "type": "long_break",
+              "status": "interrupted"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 900,
+              "type": "work",
+              "status": "completed"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_delete_record",
+          "args": {
+            "recordId": "${5.id}"
+          }
+        },
+        {
+          "cmd": "pomodoro_today_stats",
+          "args": {}
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2020-01-01T08:00:00.000Z",
+              "endTime": "2020-01-01T08:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 500,
+              "type": "work",
+              "status": "completed"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_today_stats",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.pomodoro.list_today.empty",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "pomodoro_list_today",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.pomodoro.list_today.records_desc_excludes_deleted",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "今日清单"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "今日任务"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 1500,
+              "type": "work",
+              "status": "completed",
+              "todoItemId": "${1.id}"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2020-01-01T08:00:00.000Z",
+              "endTime": "2020-01-01T08:25:00.000Z",
+              "duration": 300,
+              "actualDuration": 300,
+              "type": "short_break",
+              "status": "completed"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 600,
+              "type": "work",
+              "status": "interrupted"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_delete_record",
+          "args": {
+            "recordId": "${4.id}"
+          }
+        },
+        {
+          "cmd": "pomodoro_list_today",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.pomodoro.daily_stats.empty_days_clamp",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "pomodoro_daily_stats",
+          "args": {}
+        },
+        {
+          "cmd": "pomodoro_daily_stats",
+          "args": {
+            "days": null
+          }
+        },
+        {
+          "cmd": "pomodoro_daily_stats",
+          "args": {
+            "days": 0
+          }
+        },
+        {
+          "cmd": "pomodoro_daily_stats",
+          "args": {
+            "days": 1
+          }
+        },
+        {
+          "cmd": "pomodoro_daily_stats",
+          "args": {
+            "days": 14
+          }
+        },
+        {
+          "cmd": "pomodoro_daily_stats",
+          "args": {
+            "days": 366
+          }
+        },
+        {
+          "cmd": "pomodoro_daily_stats",
+          "args": {
+            "days": 367
+          }
+        },
+        {
+          "cmd": "pomodoro_daily_stats",
+          "args": {
+            "days": 4294967295
+          }
+        },
+        {
+          "cmd": "pomodoro_daily_stats",
+          "args": {
+            "days": -1
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "pomodoro_daily_stats",
+          "args": {
+            "days": 1.5
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "pomodoro_daily_stats",
+          "args": {
+            "days": "7"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "pomodoro_daily_stats",
+          "args": {
+            "days": 4294967296
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.pomodoro.daily_stats.with_records",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 1500,
+              "type": "work",
+              "status": "completed"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 600,
+              "type": "work",
+              "status": "interrupted"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": 300,
+              "actualDuration": 300,
+              "type": "short_break",
+              "status": "completed"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2020-01-01T08:00:00.000Z",
+              "endTime": "2020-01-01T08:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 900,
+              "type": "work",
+              "status": "completed"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 100,
+              "type": "work",
+              "status": "completed"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_delete_record",
+          "args": {
+            "recordId": "${4.id}"
+          }
+        },
+        {
+          "cmd": "pomodoro_daily_stats",
+          "args": {
+            "days": 7
+          }
+        },
+        {
+          "cmd": "pomodoro_daily_stats",
+          "args": {
+            "days": 0
+          }
+        },
+        {
+          "cmd": "pomodoro_daily_stats",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.pomodoro.list_range.wide_range_with_records",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "区间清单"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "区间任务"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2020-01-01T08:00:00.000Z",
+              "endTime": "2020-01-01T08:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 1500,
+              "type": "work",
+              "status": "completed",
+              "todoItemId": "${1.id}"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": 300,
+              "actualDuration": 300,
+              "type": "short_break",
+              "status": "completed"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 600,
+              "type": "work",
+              "status": "interrupted"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_delete_record",
+          "args": {
+            "recordId": "${4.id}"
+          }
+        },
+        {
+          "cmd": "pomodoro_list_range",
+          "args": {
+            "startDate": "2000-01-01",
+            "endDate": "2099-12-31"
+          }
+        },
+        {
+          "cmd": "pomodoro_list_range",
+          "args": {
+            "startDate": "2020-01-01",
+            "endDate": "2020-01-01"
+          }
+        },
+        {
+          "cmd": "pomodoro_list_range",
+          "args": {
+            "startDate": "2000-01-01",
+            "endDate": "2000-01-01"
+          }
+        },
+        {
+          "cmd": "pomodoro_list_range",
+          "args": {
+            "startDate": "2099-12-31",
+            "endDate": "2099-12-31"
+          }
+        },
+        {
+          "cmd": "pomodoro_list_range",
+          "args": {
+            "startDate": "2026-1-1",
+            "endDate": "2099-12-31"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.pomodoro.list_range.invalid_input",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "pomodoro_list_range",
+          "args": {
+            "startDate": "2026/11/06",
+            "endDate": "2026-11-06"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "pomodoro_list_range",
+          "args": {
+            "startDate": "",
+            "endDate": "2026-11-06"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "pomodoro_list_range",
+          "args": {
+            "startDate": "20261106",
+            "endDate": "2026-11-06"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "pomodoro_list_range",
+          "args": {
+            "startDate": "2026-02-30",
+            "endDate": "2026-11-06"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "pomodoro_list_range",
+          "args": {
+            "startDate": "2026-13-01",
+            "endDate": "2026-11-06"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "pomodoro_list_range",
+          "args": {
+            "startDate": "2026-11-06T00:00:00Z",
+            "endDate": "2026-11-06"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "pomodoro_list_range",
+          "args": {
+            "startDate": "2026-11-06",
+            "endDate": "bad"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "pomodoro_list_range",
+          "args": {
+            "startDate": "2026-11-06",
+            "endDate": "2026-11-31"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "pomodoro_list_range",
+          "args": {
+            "startDate": "x",
+            "endDate": "y"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "pomodoro_list_range",
+          "args": {
+            "startDate": "2026-11-07",
+            "endDate": "2026-11-06"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "pomodoro_list_range",
+          "args": {
+            "startDate": "2099-12-31",
+            "endDate": "2000-01-01"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "pomodoro_list_range",
+          "args": {
+            "startDate": "2026-11-06",
+            "endDate": "2026-11-06"
+          }
+        },
+        {
+          "cmd": "pomodoro_list_range",
+          "args": {
+            "startDate": "2026-11-06"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "pomodoro_list_range",
+          "args": {
+            "startDate": null,
+            "endDate": "2026-11-06"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "pomodoro_list_range",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.pomodoro.delete_record.linked_completed_recounts",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "删除清单"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "删除任务"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 1500,
+              "type": "work",
+              "status": "completed",
+              "todoItemId": "${1.id}"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T09:00:00.000Z",
+              "endTime": "2026-11-06T09:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 1500,
+              "type": "work",
+              "status": "completed",
+              "todoItemId": "${1.id}"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 600,
+              "type": "work",
+              "status": "interrupted",
+              "todoItemId": "${1.id}"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": 300,
+              "actualDuration": 300,
+              "type": "short_break",
+              "status": "completed",
+              "todoItemId": "${1.id}"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 1500,
+              "type": "work",
+              "status": "completed"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_delete_record",
+          "args": {
+            "recordId": "${2.id}"
+          }
+        },
+        {
+          "cmd": "todo_get_item",
+          "args": {
+            "itemId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "pomodoro_delete_record",
+          "args": {
+            "recordId": "${4.id}"
+          }
+        },
+        {
+          "cmd": "pomodoro_delete_record",
+          "args": {
+            "recordId": "${5.id}"
+          }
+        },
+        {
+          "cmd": "pomodoro_delete_record",
+          "args": {
+            "recordId": "${6.id}"
+          }
+        },
+        {
+          "cmd": "todo_get_item",
+          "args": {
+            "itemId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "pomodoro_get_record",
+          "args": {
+            "recordId": "${2.id}"
+          }
+        },
+        {
+          "cmd": "pomodoro_list_by_todo",
+          "args": {
+            "todoItemId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "pomodoro_list_today",
+          "args": {}
+        },
+        {
+          "cmd": "pomodoro_delete_record",
+          "args": {
+            "recordId": "${3.id}"
+          }
+        },
+        {
+          "cmd": "todo_get_item",
+          "args": {
+            "itemId": "${1.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.pomodoro.delete_record.not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 1500,
+              "type": "work",
+              "status": "completed"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_delete_record",
+          "args": {
+            "recordId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "pomodoro_delete_record",
+          "args": {
+            "recordId": "${0.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "pomodoro_delete_record",
+          "args": {
+            "recordId": "pd_missing0000"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "pomodoro_delete_record",
+          "args": {
+            "recordId": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "pomodoro_delete_record",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "pomodoro_delete_record",
+          "args": {
+            "recordId": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "pomodoro_list_range",
+          "args": {
+            "startDate": "2000-01-01",
+            "endDate": "2099-12-31"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.pomodoro.delete_record.linked_todo_soft_deleted",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "删后清单"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "先删任务"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 1500,
+              "type": "work",
+              "status": "completed",
+              "todoItemId": "${1.id}"
+            }
+          }
+        },
+        {
+          "cmd": "todo_delete_item",
+          "args": {
+            "itemId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "pomodoro_delete_record",
+          "args": {
+            "recordId": "${2.id}"
+          }
+        },
+        {
+          "cmd": "pomodoro_list_by_todo",
+          "args": {
+            "todoItemId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "pomodoro_todo_focus_summary",
+          "args": {
+            "todoItemId": "${1.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.pomodoro.stats_overview.empty_days_clamp",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "pomodoro_stats_overview",
+          "args": {}
+        },
+        {
+          "cmd": "pomodoro_stats_overview",
+          "args": {
+            "days": null
+          }
+        },
+        {
+          "cmd": "pomodoro_stats_overview",
+          "args": {
+            "days": 14
+          }
+        },
+        {
+          "cmd": "pomodoro_stats_overview",
+          "args": {
+            "days": 0
+          }
+        },
+        {
+          "cmd": "pomodoro_stats_overview",
+          "args": {
+            "days": 366
+          }
+        },
+        {
+          "cmd": "pomodoro_stats_overview",
+          "args": {
+            "days": 1000
+          }
+        },
+        {
+          "cmd": "pomodoro_stats_overview",
+          "args": {
+            "days": -1
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "pomodoro_stats_overview",
+          "args": {
+            "days": "14"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "pomodoro_stats_overview",
+          "args": {
+            "days": 4294967296
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.pomodoro.stats_overview.with_records",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "总览清单"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "总览任务"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 1500,
+              "type": "work",
+              "status": "completed",
+              "todoItemId": "${1.id}"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 600,
+              "type": "work",
+              "status": "interrupted"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": 300,
+              "actualDuration": 300,
+              "type": "short_break",
+              "status": "completed"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 900,
+              "type": "work",
+              "status": "completed"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_delete_record",
+          "args": {
+            "recordId": "${5.id}"
+          }
+        },
+        {
+          "cmd": "pomodoro_stats_overview",
+          "args": {
+            "days": 14
+          }
+        },
+        {
+          "cmd": "pomodoro_stats_overview",
+          "args": {}
+        },
+        {
+          "cmd": "pomodoro_stats_overview",
+          "args": {
+            "days": 1
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.pomodoro.todo_focus_summary.linked_records",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "专注清单"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "专注A"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "专注B"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 1500,
+              "type": "work",
+              "status": "completed",
+              "todoItemId": "${1.id}"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-05T20:00:00.000Z",
+              "endTime": "2026-11-05T20:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 600,
+              "type": "work",
+              "status": "interrupted",
+              "todoItemId": "${1.id}"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-04T08:00:00.000Z",
+              "endTime": "2026-11-04T08:05:00.000Z",
+              "duration": 300,
+              "actualDuration": 300,
+              "type": "short_break",
+              "status": "completed",
+              "todoItemId": "${1.id}"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-07T08:00:00.000Z",
+              "endTime": "2026-11-07T08:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 900,
+              "type": "work",
+              "status": "completed",
+              "todoItemId": "${1.id}"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 1200,
+              "type": "work",
+              "status": "completed",
+              "todoItemId": "${2.id}"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 1500,
+              "type": "work",
+              "status": "completed"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_delete_record",
+          "args": {
+            "recordId": "${6.id}"
+          }
+        },
+        {
+          "cmd": "pomodoro_todo_focus_summary",
+          "args": {
+            "todoItemId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "pomodoro_todo_focus_summary",
+          "args": {
+            "todoItemId": "${2.id}"
+          }
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "zzz",
+              "duration": 1500,
+              "actualDuration": 60,
+              "type": "work",
+              "status": "completed",
+              "todoItemId": "${1.id}"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_todo_focus_summary",
+          "args": {
+            "todoItemId": "${1.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.pomodoro.todo_focus_summary.missing_and_soft_deleted",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "pomodoro_todo_focus_summary",
+          "args": {
+            "todoItemId": "ti_missing0000"
+          }
+        },
+        {
+          "cmd": "pomodoro_todo_focus_summary",
+          "args": {
+            "todoItemId": ""
+          }
+        },
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "悬挂清单"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${2.id}",
+              "title": "悬挂任务"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_todo_focus_summary",
+          "args": {
+            "todoItemId": "${3.id}"
+          }
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 1500,
+              "type": "work",
+              "status": "completed",
+              "todoItemId": "${3.id}"
+            }
+          }
+        },
+        {
+          "cmd": "todo_delete_item",
+          "args": {
+            "itemId": "${3.id}"
+          }
+        },
+        {
+          "cmd": "pomodoro_todo_focus_summary",
+          "args": {
+            "todoItemId": "${3.id}"
+          }
+        },
+        {
+          "cmd": "pomodoro_todo_focus_summary",
+          "args": {
+            "todoItemId": "${2.id}"
+          }
+        },
+        {
+          "cmd": "pomodoro_todo_focus_summary",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "pomodoro_todo_focus_summary",
+          "args": {
+            "todoItemId": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "id": "RF-W07-secure-store-temp-fallback",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T08:52+08:00",
+  "title": "SecureStore 静态回退目录建不出来时报错，不再把主密钥种子落到系统临时目录",
+  "rust": {
+    "file": "src-tauri/crates/dstu-security/src/secure_store.rs",
+    "line": 676,
+    "behavior": "get_secure_dir_fallback：<data_local_dir>/deep-student/.secure 创建失败时改用 <temp_dir>/deep-student/.secure，.key_seed 与加密凭据写在那里"
+  },
+  "fix": {
+    "files": ["host/platform/secrets/secure-store.ts"],
+    "behavior": "data_local 下的 .secure 无法创建或收紧权限时抛 SecureStoreError(Other, \"创建安全目录失败: <路径>: <原因>\")，不写临时目录"
+  },
+  "evidence": "临时目录会被系统清理（Linux tmpfs 重启清空、macOS 定期清理 /var/folders/*/T），.key_seed 是这些加密凭据的唯一密钥，被清掉后已保存的 API Key、云存储凭据全部无法解密，与 get_or_create_master_seed 文档里『稳定存储在 .key_seed』相矛盾；Linux 的 /tmp 为多用户共享，其他用户可以抢先创建 /tmp/deep-student 并成为种子目录父目录的属主，restrict_permissions 只收紧 .secure 本身，挡不住父目录被替换。复现：把 data_local 指向一个普通文件后调用 saveSecret，Rust 成功写入 <temp>/deep-student/.secure。TS 生产代码目前只经 openStore(<appData>) 打开，回退分支只在 openFallbackStore 上，影响面限于错误路径。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "host/platform/secrets/tests/fallback-no-temp.test.ts",
+      "name": "RF-W07-secure-store-temp-fallback: an uncreatable data_local secure dir is an error, never <temp>/deep-student/.secure"
+    }
+  ]
+}

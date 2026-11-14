@@ -1,0 +1,30 @@
+{
+  "id": "RF-W04-docx-onoff-false-headers",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T09:12+08:00",
+  "title": "docx 编辑预检把显式关闭的 evenAndOddHeaders/titlePg 当作复杂页眉，拒绝编辑",
+  "rust": {
+    "file": "src-tauri/src/chat_v2/tools/office_fidelity_executor.rs",
+    "line": 388,
+    "behavior": "只按 '<w:evenAndOddHeaders' / '<w:titlePg' 标签字节匹配，<w:evenAndOddHeaders w:val=\"false\"/> 也被判为 critical 的 complex_headers_footers，docx_replace_text 等编辑被拒"
+  },
+  "fix": {
+    "files": [
+      "host/plugins/media/src/office-fidelity.ts"
+    ],
+    "behavior": "按 ST_OnOff 语义判断：w:val 为 false/0/off 视为关闭，不计入 complex_headers_footers；开启的开关仍然拦截"
+  },
+  "evidence": "特征名与注释（office_fidelity_executor.rs:1133“titlePg / evenAndOddHeaders → 页眉页脚关系复杂”）针对的是开启的开关；显式关闭的开关不产生奇偶页/首页页眉。F7 docx 写入器自身输出 <w:evenAndOddHeaders w:val=\"false\"/>，Rust 规则下 docx_create 的产物无法再 docx_replace_text，用户可见为编辑失败。 差异只出现在 agent 工具输出中，当前没有 G3 场景执行 docx 编辑预检。",
+  "g3": {
+    "affects": false,
+    "selectors": []
+  },
+  "tests": [
+    {
+      "file": "host/plugins/media/tests/office-fidelity.test.ts",
+      "name": "RF-W04-docx-onoff-false-headers: docx_preflight_explicitly_disabled_on_off_header_switches_are_not_complex_headers"
+    }
+  ]
+}

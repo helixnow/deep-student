@@ -25,7 +25,7 @@ export function isSubagentSession(opts: {
   mode?: string | null;
   metadata?: Record<string, unknown> | null;
 }): boolean {
-  return opts.metadata?.is_subagent === true
+  return opts.metadata?.is_subagent === true || Boolean(opts.metadata?.workshopId && opts.metadata?.parentSessionId)
     || opts.mode === 'subagent'
     || isSubagentSessionId(opts.sessionId);
 }

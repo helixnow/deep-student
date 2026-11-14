@@ -1,0 +1,51 @@
+{
+  "id": "RF-W09-note-metadata-conflict-retry",
+  "kind": "rust-bug",
+  "status": "proposed",
+  "title": "正文自动保存在途时修改笔记标题或标签，不再被乐观锁冲突拒绝并回滚（W12 冒烟 #34）",
+  "rust": {
+    "file": "src/features/learning-hub/apps/views/NoteContentView.tsx",
+    "line": 740,
+    "behavior": "参照仓 deep-student（快照 21c9d808）的 NoteContentView handleTitleChange（:740-744）与 handleTagsChange（:795-799）用 lastKnownUpdatedAtRef 作 dstu_set_metadata 的 expectedUpdatedAt。正文自动保存已写入后端、响应尚未返回时，这个基线已过期，元数据写回必然 CONFLICT，NotesEditorHeader 随之把标题输入框回滚，用户输入的标题或标签丢失。正文一侧遇到同类冲突会比对磁盘内容后以新基线重试（:623-650），标题和标签一侧没有"
+  },
+  "fix": {
+    "files": [
+      "src/features/learning-hub/apps/views/NoteContentView.tsx"
+    ],
+    "behavior": "标题和标签写回遇到 CONFLICT 时读一次最新节点：磁盘上的标题（或标签）仍是本次修改前的值，说明冲突来自正文或另一字段，以最新 updated_at 重试一次（只一次；重读失败照常报冲突）；标题或标签已被别处改过则照常报冲突并回滚，不覆盖别处的修改。其他错误不重试。重试成功后不推进正文的乐观锁基线（成功后读 updated_at 刷新基线的 C13 逻辑只在第一次就成功时执行）：重试只核对了这一个字段，越过的那次写入可能是别处的正文，交给下一次正文保存的冲突路径比对磁盘正文——与本窗口已落盘的正文相同就以新基线重试，不同就走原有的真实冲突（刷新为外部版本并提供“恢复我的版本”）"
+  },
+  "evidence": "W12 r8 冒烟 ③ 首例（.reports/agent-final/W12-1354-1e89caaf.md:40，时序相关）。tests/vitest/learning-hub/NoteContentView.metadataConflict.test.tsx 用按 updated_at 校验的假后端复现：正文保存已推进 updated_at、响应未回时提交标题或标签，修复前两条用例以 CONFLICT 失败（界面回滚），别处改过标题或标签的两条用例修复前后都通过（仍是冲突、只请求一次）。A06 复核（.reports/audit/reviews/W09-4c6190f0.md 必须修 1）指出初版重试成功后会把正文基线推进到越过别处正文的版本：新增用例“after a retried tags write…”在初版上失败（第二次正文保存直接成功，别处正文被覆盖），修正后通过",
+  "userVisible": "能：正文自动保存期间改标题或标签，修改会保存下来，不再弹冲突提示、输入框不再跳回旧值。标题或标签确实被别处改过时，行为与原来相同",
+  "dataCompat": "不涉及存储格式。重试仍走 dstu_set_metadata 的乐观锁，只是换成最新基线，不会覆盖别处对同一字段的修改；正文一侧的基线不因重试前进，别处写入的正文仍由下一次正文保存的乐观锁拦下，不会被静默覆盖（A06 复核必须修 1）",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "tests/vitest/learning-hub/NoteContentView.metadataConflict.test.tsx",
+      "name": "RF-W09-note-metadata-conflict-retry: a title saved while the body autosave is in flight is kept"
+    },
+    {
+      "file": "tests/vitest/learning-hub/NoteContentView.metadataConflict.test.tsx",
+      "name": "RF-W09-note-metadata-conflict-retry: tags saved while the body autosave is in flight are kept"
+    },
+    {
+      "file": "tests/vitest/learning-hub/NoteContentView.metadataConflict.test.tsx",
+      "name": "RF-W09-note-metadata-conflict-retry: after a retried tags write, the next autosave does not overwrite a body written elsewhere"
+    },
+    {
+      "file": "tests/vitest/learning-hub/NoteContentView.metadataConflict.test.tsx",
+      "name": "RF-W09-note-metadata-conflict-retry: after a retried title write, the next autosave does not overwrite a body written elsewhere"
+    },
+    {
+      "file": "tests/vitest/learning-hub/NoteContentView.metadataConflict.test.tsx",
+      "name": "RF-W09-note-metadata-conflict-retry: after a retry that raced its own body save, the next autosave still lands without a conflict"
+    },
+    {
+      "file": "tests/vitest/learning-hub/NoteContentView.metadataConflict.test.tsx",
+      "name": "RF-W09-note-metadata-conflict-retry: retries once only, even if the body keeps landing in between"
+    },
+    {
+      "file": "tests/vitest/learning-hub/NoteContentView.metadataConflict.test.tsx",
+      "name": "RF-W09-note-metadata-conflict-retry: a failed re-read reports the conflict without retrying"
+    }
+  ]
+}

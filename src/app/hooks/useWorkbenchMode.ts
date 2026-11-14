@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 import type { i18n as I18n } from 'i18next';
-import { installLegacyNavigationFallback } from '@/features/workbench/core/legacyNavigationMap';
-// 停用事务（缝一）：模式开关 / 应用退出统一逐窗 canClose 预检；轻依赖，可深路径引入
+// 停用事务（缝一）：模式开关 / 应用退出统一逐窗 canClose 预检。
+// W38：这些模块属于桌面工作台；经宿主桥动态加载，移动端产物不包含它们。
 import {
+  flushWorkbenchSnapshot,
   hasDirtyWorkbenchWindows,
+  installLegacyWorkbenchNavigation,
   runWorkbenchDeactivationTransaction,
-} from '@/features/workbench/core/deactivationTransaction';
-import { flushSnapshot } from '@/features/workbench/core/snapshot';
+} from '@/shared/workbenchHost';
+import { loadWorkbenchHost } from '../workbench/load';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { APP_EVENTS, addAppEventListener } from '@/events';
 import { isMobilePlatform } from '@/utils/platform';
@@ -33,7 +35,8 @@ export function useWorkbenchMode(i18n: I18n) {
     }
   });
   useEffect(() => {
-    installLegacyNavigationFallback();
+    // 桌面端宿主桥：先加载再安装 legacy 导航兜底（移动端 load 立即 resolve、桥为空）。
+    void loadWorkbenchHost().then(() => installLegacyWorkbenchNavigation());
     let cancelled = false;
     const cacheMode = (enabled: boolean) => {
       try {
@@ -109,7 +112,7 @@ export function useWorkbenchMode(i18n: I18n) {
             target: 'window' as const,
             type: 'pagehide',
             listener: () => {
-              void flushSnapshot();
+              void flushWorkbenchSnapshot();
             },
           },
         ]

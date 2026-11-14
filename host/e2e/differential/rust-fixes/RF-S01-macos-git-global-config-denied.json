@@ -1,0 +1,34 @@
+{
+  "id": "RF-S01-macos-git-global-config-denied",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T09:20+08:00",
+  "title": "macOS 上只要存在 ~/.gitconfig，所有 git_* 语义工具都会失败",
+  "rust": {
+    "file": "src-tauri/crates/dstu-agent/src/chat_v2/tools/shell_sandbox.rs",
+    "line": 128,
+    "behavior": "MacOsSandboxBackend 沿用默认 command_for_git = command：Seatbelt 配置以 (deny default) 起步，不放行 $HOME 下任何文件；最小环境又保留 HOME，git 读 ~/.gitconfig 得到 EPERM 后直接 fatal: unable to access '~/.gitconfig': Operation not permitted，git_status/diff/log/branch/commit 全部报错"
+  },
+  "fix": {
+    "files": ["host/plugins/agent-workspace/src/tools/shell-sandbox.ts"],
+    "behavior": "仅 Git 专用配置（commandForGit，命令由 GitToolExecutor 固定拼装，不接受模型自由命令）在策略末尾追加只读 literal 规则，放行存在的 ~/.gitconfig、~/.config/git/config、$XDG_CONFIG_HOME/git/config 三个文件本身；~/.config 其余内容和 $HOME 其他文件仍拒绝读取，通用 local_shell_execute 配置不变"
+  },
+  "evidence": "后果是用户可见的功能失效：开发者机器几乎都有 ~/.gitconfig，Rust 版 macOS 上语义 Git 工具无法使用，与 Git 工具“在沙箱内安全执行 git”的设计意图矛盾（Linux bwrap 以只读 / 起步，同样的命令可以读到 ~/.gitconfig）。复现：HOME 下放 .gitconfig，用通用 Seatbelt 配置（即 Rust 的 Git 配置）执行 git config --global --get user.name，stderr 为 fatal: unable to access '…/.gitconfig': Operation not permitted；修复后的 Git 配置输出 user.name，且读 $HOME/secret.txt 仍被拒绝。",
+  "userVisible": "能感知：macOS 上 git_status/git_diff/git_log/git_branch/git_commit 从报错变为正常执行，并使用用户全局 git 配置（如 user.name/email）",
+  "dataCompat": "不改变落库数据、同步载荷或备份格式",
+  "g3": {
+    "affects": false,
+    "selectors": []
+  },
+  "tests": [
+    {
+      "file": "host/plugins/agent-workspace/tests/macos-git-global-config.test.ts",
+      "name": "RF-S01-macos-git-global-config-denied: git reads the global config under the Git profile; general shell stays denied"
+    },
+    {
+      "file": "host/plugins/agent-workspace/tests/macos-git-global-config.test.ts",
+      "name": "RF-S01-macos-git-global-config-denied: only existing global git config files become read literals"
+    }
+  ]
+}

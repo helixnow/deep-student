@@ -1,0 +1,111 @@
+#!/bin/bash
+# 迁移工作区定时备份（root 运行，由 ds-backup.timer 每 30 分钟触发）。备份到工作区之外的 /var/backups/ds-migration。
+# 每份快照：
+#   repo.bundle            main + 全部 lane/协调分支（git bundle，已校验）
+#   worktrees/<lane>.patch 各 lane 工作树中尚未提交的改动（检查点之间的进行中编辑）
+#   oc-runs.tar.zst        调度状态（sessions.json、accounts.json、日志、面板密码等）
+#   opencode.db.zst        opencode 会话库（SQLite VACUUM INTO，一致快照）
+#   MANIFEST               各文件 sha256 与来源提交
+# 保留：最近 12 份全部保留（6 小时）；更早的每天保留最早一份，最多 5 天。
+# 恢复要点见 ops/oc-orchestrator/README.md。
+set -euo pipefail
+SRC=/home/dsdev/dev/deep-student
+WT=/home/dsdev/dev/ds-mig
+OCDB=/home/dsdev/.local/share/opencode/opencode.db
+DEST=/var/backups/ds-migration
+KEEP_RECENT=12
+KEEP_DAYS=5
+TS=$(date -u +%Y%m%dT%H%M%SZ)
+TMP="$DEST/.tmp-$TS"
+# 仓库、工作树、.oc-runs 与会话库都可被 dsdev 身份的 agent 改写，root 不在其中运行任何程序：
+# git 会执行仓库配置里的命令（core.fsmonitor、diff.*.command 等），sqlite3 会在库目录建 -wal/-shm，
+# git diff 会把 index 写回成 root 属主。所有读取都以 dsdev 身份执行并写到 stdout，root 只负责重定向进
+# 自己的 0700 目录、计算校验和与轮换。
+AS="runuser -u dsdev -- env HOME=/home/dsdev"
+GITU="$AS git"
+export GIT_OPTIONAL_LOCKS=0
+STAGE=""
+# 单份输出上限（dsdev 能让 bundle/tar/库/patch 任意大，不能让它写满 /var/backups）：写入进程继承的 RLIMIT_FSIZE，
+# 超限即被 SIGXFSZ 终止，本次快照作废；patch 超限只丢弃该 lane 的 patch。另要求备份盘至少留 MIN_FREE_GB。
+MAX_OUTPUT_KB=$(( ${DS_BACKUP_MAX_OUTPUT_MB:-8192} * 1024 ))
+MAX_PATCH_KB=$(( ${DS_BACKUP_MAX_PATCH_MB:-512} * 1024 ))
+MIN_FREE_GB=${DS_BACKUP_MIN_FREE_GB:-20}
+capped() { local kb=$1; shift; ( ulimit -f "$kb"; "$@" ); }
+too_big() { [ "$(stat -c %s "$2")" -ge $(( $1 * 1024 )) ]; }
+
+mkdir -p "$DEST/snapshots"
+free_gb=$(( $(df --output=avail -k "$DEST" | tail -1) / 1024 / 1024 ))
+if [ "$free_gb" -lt "$MIN_FREE_GB" ]; then
+  echo "$(date -u +%FT%TZ) 备份跳过：$DEST 仅剩 ${free_gb}GiB（下限 ${MIN_FREE_GB}GiB）" >&2
+  exit 1
+fi
+
+mkdir -p "$TMP/worktrees"
+chmod 700 "$DEST"
+trap 'rm -rf "$TMP"; [ -n "$STAGE" ] && $AS rm -rf "$STAGE"' ERR
+
+# 1) 仓库全部分支（dsdev 写 stdout；校验也由 dsdev 从管道读取）
+capped $MAX_OUTPUT_KB $GITU -C "$SRC" bundle create - --all > "$TMP/repo.bundle" 2>/dev/null
+$GITU -C "$SRC" bundle verify /dev/stdin < <(cat "$TMP/repo.bundle") >/dev/null 2>&1
+
+# 2) 各工作树未提交改动（含未跟踪的源码文件，排除 node_modules 与构建缓存）
+for d in "$WT"/*/; do
+  lane=$(basename "$d")
+  [ -e "$d/.git" ] || continue
+  patch="$TMP/worktrees/$lane.patch"
+  capped $MAX_PATCH_KB bash -c '
+    $1 -C "$2" diff --binary HEAD 2>/dev/null
+    $1 -C "$2" ls-files --others --exclude-standard -z 2>/dev/null | grep -zv -E "^(node_modules|dist|\.integration|.*\.tsbuildinfo$)" | \
+      xargs -0 -r -I{} $1 -C "$2" diff --binary --no-index /dev/null {} 2>/dev/null || true
+  ' _ "$GITU" "$d" > "$patch" || true
+  if [ -s "$patch" ] && too_big $MAX_PATCH_KB "$patch"; then
+    rm -f "$patch"; echo "patch 超过 ${MAX_PATCH_KB}KiB 上限，已丢弃" > "$TMP/worktrees/$lane.TOO-LARGE"
+  fi
+  [ -s "$patch" ] || rm -f "$patch"
+done
+
+# 3) 调度状态
+capped $MAX_OUTPUT_KB $AS tar -C "$SRC" --zstd --warning=no-file-changed --warning=no-file-shrank -cf - .oc-runs > "$TMP/oc-runs.tar.zst" 2>/dev/null || [ $? -eq 1 ]  # 日志在写入中，"文件已变化"（退出码 1）可接受
+
+# 4) opencode 会话库（在线一致备份；dsdev 在自己的暂存目录里 VACUUM INTO，root 只接收压缩流）
+STAGE=$($AS mktemp -d /home/dsdev/.ds-backup-stage.XXXXXX)
+$AS sqlite3 "$OCDB" ".timeout 30000" "VACUUM INTO '$STAGE/opencode.db';"  # .backup 在库被持续写入时会反复重启
+capped $MAX_OUTPUT_KB $AS zstd -q -T0 -c "$STAGE/opencode.db" > "$TMP/opencode.db.zst"
+$AS rm -rf "$STAGE"
+STAGE=""
+
+# 5) 清单
+{
+  echo "snapshot $TS"
+  echo "main $($GITU -C "$SRC" rev-parse main)"
+  (cd "$TMP" && find . -type f ! -name MANIFEST -print0 | sort -z | xargs -0 sha256sum)
+} > "$TMP/MANIFEST"
+# rlimit 被 PAM 重置等情况下的兜底：任何单份输出超过上限都作废本次快照
+for f in "$TMP/repo.bundle" "$TMP/oc-runs.tar.zst" "$TMP/opencode.db.zst"; do
+  if too_big $MAX_OUTPUT_KB "$f"; then echo "$f 超过 ${MAX_OUTPUT_KB}KiB 上限，本次快照作废" >&2; false; fi
+done
+
+mv "$TMP" "$DEST/snapshots/$TS"
+trap - ERR
+
+# 6) 轮换
+cd "$DEST/snapshots"
+mapfile -t ALL < <(ls -1d */ 2>/dev/null | sed 's#/$##' | sort -r)
+declare -A DAY_KEPT=()
+cutoff=$(date -u -d "-$KEEP_DAYS days" +%Y%m%d)
+i=0
+for s in "${ALL[@]}"; do
+  i=$((i + 1))
+  [ $i -le $KEEP_RECENT ] && continue
+  day=${s:0:8}
+  if [[ "$day" < "$cutoff" ]]; then rm -rf "$s"; continue; fi
+  # 每天保留最早一份（ALL 按新到旧排序，遍历到同日更早的会覆盖；先记录全部同日，再删除非最早的）
+  DAY_KEPT[$day]+="$s "
+done
+for day in "${!DAY_KEPT[@]}"; do
+  read -ra list <<< "${DAY_KEPT[$day]}"
+  # list 为新到旧；保留最后一个（最早）
+  for ((j = 0; j < ${#list[@]} - 1; j++)); do rm -rf "${list[$j]}"; done
+done
+
+echo "$(date -u +%FT%TZ) 备份完成 $TS（$(du -sh "$DEST/snapshots/$TS" | cut -f1)），共 $(ls -1d "$DEST"/snapshots/*/ | wc -l) 份，总计 $(du -sh "$DEST" | cut -f1)"

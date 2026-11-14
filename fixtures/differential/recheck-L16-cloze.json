@@ -1,0 +1,106 @@
+{
+  "kind": "static-source-plus-production-recheck-not-C",
+  "rustBaseline": "2ee9a9cbeb2bff3d31748afdc3d951c166228f74",
+  "originalEvidenceRevision": "fe0ec5137fed580524c2d2bb7ccc258789bc48a7",
+  "tsRevision": "49b3392670bba46fc99fe988a7275cb03f209e7a",
+  "scope": "production validateSpec/buildCardFields helpers; no IPC bypass asserted; no Rust execution",
+  "results": [
+    {
+      "id": "X7-L16-OCCLUSION-IMAGE-TRIM",
+      "lane": "L16-anki",
+      "rust": "src-tauri/crates/dstu-anki/src/anki_image_occlusion.rs:219-223",
+      "input": {
+        "id": "boundary:cloze:1",
+        "lane": "L16-anki",
+        "fn": "cloze.fields",
+        "args": {
+          "spec": {
+            "imageRef": "",
+            "boxes": [
+              {
+                "x": 0.1,
+                "y": 0.1,
+                "w": 0.2,
+                "h": 0.2,
+                "label": "fixture"
+              }
+            ]
+          },
+          "imageFileName": null,
+          "extraNote": null
+        }
+      },
+      "expected": {
+        "ok": false,
+        "issueCode": "empty_image_ref"
+      },
+      "actual": {
+        "ok": false,
+        "issueCode": "empty_image_ref"
+      },
+      "response": {
+        "ok": true,
+        "value": {
+          "ok": false,
+          "issues": [
+            {
+              "code": "empty_image_ref",
+              "message": "图片引用为空：遮挡卡必须绑定一张图片"
+            }
+          ]
+        }
+      },
+      "status": "matches-static-expectation",
+      "difference": null
+    },
+    {
+      "id": "X7-L16-OCCLUSION-LABEL-TRIM",
+      "lane": "L16-anki",
+      "rust": "src-tauri/crates/dstu-anki/src/anki_image_occlusion.rs:332-336,439-465",
+      "input": {
+        "id": "boundary:cloze:18",
+        "lane": "L16-anki",
+        "fn": "cloze.fields",
+        "args": {
+          "spec": {
+            "imageRef": "vfs://fixture",
+            "boxes": [
+              {
+                "x": 0.1,
+                "y": 0.1,
+                "w": 0.2,
+                "h": 0.2,
+                "label": ""
+              }
+            ]
+          },
+          "imageFileName": null,
+          "extraNote": null
+        }
+      },
+      "expected": {
+        "text": "{{c1::区域 1}}"
+      },
+      "actual": {
+        "text": "{{c1::区域 1}}"
+      },
+      "response": {
+        "ok": true,
+        "value": {
+          "ok": true,
+          "value": {
+            "text": "{{c1::区域 1}}",
+            "extraFields": {
+              "_occlusion": "{\"imageRef\":\"vfs://fixture\",\"boxes\":[{\"x\":0.1,\"y\":0.1,\"w\":0.2,\"h\":0.2,\"label\":\"区域 1\",\"clozeIndex\":1}]}"
+            },
+            "tags": [
+              "image-occlusion"
+            ]
+          }
+        }
+      },
+      "status": "matches-static-expectation",
+      "difference": null
+    }
+  ]
+}

@@ -128,41 +128,34 @@ const TagStatsSummary: React.FC<{
   const overallProgress = questions.length > 0 ? (totalMastered / questions.length) * 100 : 0;
 
   return (
-    // 允许换行：窄屏下统计项 + 未分类提示单行放不下时折行而非横向溢出
-    <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 px-1">
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
-        {/* 知识点数量 */}
-        <div className="flex items-center gap-2">
-          <div className="rounded-md bg-primary/10 p-1.5">
-            <Stack size={16} className="text-primary" />
-          </div>
-          <div className="text-sm">
-            <span className="font-semibold">{totalTags}</span>
-            <span className="text-muted-foreground ml-1">{t('tagNav.knowledgePoints')}</span>
-          </div>
-        </div>
-        
-        {/* 题目数 */}
-        <div className="text-sm">
-          <span className="font-medium">{questions.length}</span>
-          <span className="text-muted-foreground ml-1">{t('tagNav.totalQuestions')}</span>
-        </div>
-        
-        {/* 均题数 */}
-        <div className="text-sm text-muted-foreground hidden sm:block">
-          {t('tagNav.avgPerPoint', { count: avgQuestionsPerTag })}
-        </div>
-        
-        {/* 掌握率 */}
-        <div className="text-sm">
-          <span className="font-medium text-success">{Math.round(overallProgress)}%</span>
-          <span className="text-muted-foreground ml-1">{t('tagNav.masteryRate')}</span>
-        </div>
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+      {/* 知识点数量 */}
+      <div className="flex items-center gap-1.5">
+        <Stack size={14} className="text-primary shrink-0" />
+        <span className="font-mono font-semibold tabular-nums text-foreground">{totalTags}</span>
+        <span className="text-muted-foreground">{t('tagNav.knowledgePoints')}</span>
       </div>
-      
+
+      {/* 题目数 */}
+      <div className="flex items-center gap-1">
+        <span className="font-mono font-medium tabular-nums text-foreground">{questions.length}</span>
+        <span className="text-muted-foreground">{t('tagNav.totalQuestions')}</span>
+      </div>
+
+      {/* 均题数 */}
+      <div className="hidden sm:block text-muted-foreground font-mono tabular-nums">
+        {t('tagNav.avgPerPoint', { count: avgQuestionsPerTag })}
+      </div>
+
+      {/* 掌握率 */}
+      <div className="flex items-center gap-1">
+        <span className="font-mono font-medium tabular-nums text-success">{Math.round(overallProgress)}%</span>
+        <span className="text-muted-foreground">{t('tagNav.masteryRate')}</span>
+      </div>
+
       {/* 未分类提示 */}
       {untaggedCount > 0 && (
-        <div className="text-xs text-warning">
+        <div className="text-warning font-mono tabular-nums">
           {t('tagNav.untagged', { count: untaggedCount })}
         </div>
       )}
@@ -293,7 +286,7 @@ const TagGroupCard: React.FC<{
               ? t('practice:tagPicker.untagged')
               : <HighlightText text={group.tag} query={highlight} />}
           </span>
-          <span className="text-xs text-muted-foreground ml-1">{group.totalCount}</span>
+          <span className="font-mono text-xs tabular-nums text-muted-foreground ml-1">{group.totalCount}</span>
           {/* 重命名入口：hover 浮现（触屏常显弱化） */}
           {onRenameStart && (
             <DsButton
@@ -313,7 +306,7 @@ const TagGroupCard: React.FC<{
         {/* 进度指示 - 更紧凑 */}
         <div className="flex items-center gap-2 flex-shrink-0">
           {/* 状态分布 - 简化 */}
-          <div className="hidden sm:flex items-center gap-1 text-[11px]">
+          <div className="hidden sm:flex items-center gap-1 font-mono text-[11px] tabular-nums">
             {group.masteredCount > 0 && (
               <span className="text-success">
                 <Check size={12} className="inline" />{group.masteredCount}
@@ -333,7 +326,7 @@ const TagGroupCard: React.FC<{
               style={{ width: `${group.progressPercent}%` }}
 />
           </div>
-          <span className="text-[11px] text-muted-foreground w-7 text-right">
+          <span className="font-mono text-[11px] tabular-nums text-muted-foreground w-7 text-right">
             {Math.round(group.progressPercent)}%
           </span>
         </div>
@@ -379,7 +372,7 @@ const TagGroupCard: React.FC<{
                   <div className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', statusConfig.bg)} />
                   
                   {/* 题号 */}
-                  <span className="text-[11px] text-muted-foreground w-6 flex-shrink-0">
+                  <span className="font-mono text-[11px] tabular-nums text-muted-foreground w-6 flex-shrink-0">
                     {q.questionLabel || `${originalIndex + 1}`}
                   </span>
 
@@ -643,82 +636,81 @@ export const TagNavigationView: React.FC<TagNavigationViewProps> = ({
 
   return (
     <div className={cn('flex flex-col h-full', className)}>
-      {/* 统计摘要 + 搜索框 合并行 */}
-      <div className="flex-shrink-0 px-4 py-3 border-b border-border/40">
+      {/* 搜索框 + 视图切换 + 展开控制 + 内联统计摘要（单层控制栏） */}
+      <div className="flex-shrink-0 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-2 border-b border-border/35">
         <TagStatsSummary
           tagGroups={tagGroups}
           questions={questions}
-/>
-      </div>
+        />
 
-      {/* 搜索框 + 视图切换 + 展开控制 */}
-      <div className="flex-shrink-0 flex items-center gap-2 px-4 py-2">
-        <div className="relative flex-1 min-w-0">
-          <MagnifyingGlass size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60" />
-          <Input
-            type="search"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder={t('tagNav.searchPlaceholder')}
-            className={cn(
-              'pl-9 h-8 [@media(pointer:coarse)]:h-11 text-sm [@media(pointer:coarse)]:text-base bg-muted/30 border-transparent focus:border-border focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors',
-              '[&::-webkit-search-cancel-button]:hidden',
-              searchQuery && 'pr-8'
+        <div className="flex items-center gap-2 min-w-[200px] flex-1 sm:max-w-xs ml-auto">
+          <div className="relative flex-1 min-w-0">
+            <MagnifyingGlass size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/60" />
+            <Input
+              type="search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder={t('tagNav.searchPlaceholder')}
+              className={cn(
+                'pl-8 h-8 [@media(pointer:coarse)]:h-11 text-sm [@media(pointer:coarse)]:text-base bg-muted/30 border-transparent focus:border-border/35 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors',
+                '[&::-webkit-search-cancel-button]:hidden',
+                searchQuery && 'pr-8'
+              )}
+            />
+            {searchQuery && (
+              <DsButton
+                variant="ghost"
+                size="icon"
+                iconOnly
+                onClick={() => setSearchQuery('')}
+                className="!absolute !right-1.5 !top-1/2 !-translate-y-1/2 !h-5 !w-5 !p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!right-0 text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
+                aria-label={t('learningHub:exam.library.clearSearch')}
+                title={t('learningHub:exam.library.clearSearch')}
+              >
+                <X size={12} />
+              </DsButton>
             )}
-/>
-          {searchQuery && (
+          </div>
+
+          {/* 树形 / 标签云 切换 */}
+          <div className="flex items-center p-0.5 rounded-md bg-muted/30 flex-shrink-0">
+            <DsButton
+              variant="ghost"
+              size="sm"
+              onClick={() => handleViewModeChange('tree')}
+              className={cn('ui-state-colors !h-7 !w-7 !p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11', viewMode === 'tree' && 'bg-background shadow-sm')}
+              aria-label={t('learningHub:exam.library.treeView')}
+              title={t('learningHub:exam.library.treeView')}
+            >
+              <TreeStructure size={14} />
+            </DsButton>
+            <DsButton
+              variant="ghost"
+              size="sm"
+              onClick={() => handleViewModeChange('cloud')}
+              className={cn('ui-state-colors !h-7 !w-7 !p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11', viewMode === 'cloud' && 'bg-background shadow-sm')}
+              aria-label={t('learningHub:exam.library.cloudView')}
+              title={t('learningHub:exam.library.cloudView')}
+            >
+              <CloudFog size={14} />
+            </DsButton>
+          </div>
+
+          {/* 全部展开/收起（仅树形模式） */}
+          {viewMode === 'tree' && (
             <DsButton
               variant="ghost"
               size="icon"
               iconOnly
-              onClick={() => setSearchQuery('')}
-              className="!absolute !right-1.5 !top-1/2 !-translate-y-1/2 !h-5 !w-5 !p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!right-0 text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
-              aria-label={t('learningHub:exam.library.clearSearch')}
-              title={t('learningHub:exam.library.clearSearch')}
+              onClick={toggleExpandAll}
+              className="!h-7 !w-7 !p-1.5 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 flex-shrink-0 text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
+              aria-label={allExpanded ? t('learningHub:exam.library.collapseAll') : t('learningHub:exam.library.expandAll')}
+              title={allExpanded ? t('learningHub:exam.library.collapseAll') : t('learningHub:exam.library.expandAll')}
             >
-              <X size={12} />
+              {allExpanded ? <ArrowsInLineVertical size={14} /> : <ArrowsOutLineVertical size={14} />}
             </DsButton>
           )}
         </div>
-
-        {/* 树形 / 标签云 切换 */}
-        <div className="flex items-center p-0.5 rounded-md bg-muted/30 flex-shrink-0">
-          <DsButton
-            variant="ghost"
-            size="sm"
-            onClick={() => handleViewModeChange('tree')}
-            className={cn('ui-state-colors !h-7 !w-7 !p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11', viewMode === 'tree' && 'bg-background shadow-sm')}
-            aria-label={t('learningHub:exam.library.treeView')}
-            title={t('learningHub:exam.library.treeView')}
-          >
-            <TreeStructure size={14} />
-          </DsButton>
-          <DsButton
-            variant="ghost"
-            size="sm"
-            onClick={() => handleViewModeChange('cloud')}
-            className={cn('ui-state-colors !h-7 !w-7 !p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11', viewMode === 'cloud' && 'bg-background shadow-sm')}
-            aria-label={t('learningHub:exam.library.cloudView')}
-            title={t('learningHub:exam.library.cloudView')}
-          >
-            <CloudFog size={14} />
-          </DsButton>
-        </div>
-
-        {/* 全部展开/收起（仅树形模式） */}
-        {viewMode === 'tree' && (
-          <DsButton
-            variant="ghost"
-            size="icon"
-            iconOnly
-            onClick={toggleExpandAll}
-            className="!h-7 !w-7 !p-1.5 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 flex-shrink-0 text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
-            aria-label={allExpanded ? t('learningHub:exam.library.collapseAll') : t('learningHub:exam.library.expandAll')}
-            title={allExpanded ? t('learningHub:exam.library.collapseAll') : t('learningHub:exam.library.expandAll')}
-          >
-            {allExpanded ? <ArrowsInLineVertical size={14} /> : <ArrowsOutLineVertical size={14} />}
-          </DsButton>
-        )}
       </div>
 
       {/* 标签列表 / 标签云 */}

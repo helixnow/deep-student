@@ -1,10 +1,13 @@
 import i18next from 'i18next';
 import { SlashProvider } from '@milkdown/kit/plugin/slash';
 import type { EditorView } from '@milkdown/prose/view';
+import type { EditorBlockMenuSurface, EditorBlockMenuRow } from '@/ui-sdk';
 import { crepeBlockCommands } from './blockMenuCommands';
-import { isBlockTargetCurrent, resolveBlockSelection } from './blockTarget';
+import { isBlockTargetCurrent, resolveBlockSelection, type BlockTarget } from './blockTarget';
 import { canEditCrepeView, canExecuteCrepeCommand, executeCrepeCommand, LAYOUT_COMMANDS, isLayoutCommand } from './commandRegistry';
 import { layoutCommandLabel } from './commandMenus';
+import { officialBlockMenuEntries, blockMenuContributions, contractBlockMenuTarget } from './blockMenuContributions';
+import { collectEditorBlockMenuRows, mergeEditorEntries } from '@/ui-plugins/official/editor/editorSlots';
 import { showGlobalNotification } from '../UnifiedNotification';
 
 const openMenus = new WeakMap<EditorView, () => void>();
@@ -26,6 +29,53 @@ const labels: Record<keyof typeof crepeBlockCommands, [string, string]> = {
   duplicate: ['duplicate', '复制块'],
   delete: ['delete', '删除块'],
 };
+
+// RUST-FIX(RF-W18-block-menu-contributions): mobile segments merge before render; old entries cannot run after unload.
+/** Official segments and community rows share slot ordering; official commands retain their original focus timing. */
+function appendContributedRows(
+  view: EditorView,
+  target: BlockTarget,
+  buttons: HTMLButtonElement[],
+  menu: HTMLElement,
+  close: () => void,
+  surface: EditorBlockMenuSurface,
+  officialRows: readonly EditorBlockMenuRow[],
+): void {
+  const host = blockMenuContributions(view);
+  const segmentOf = (id: string) => isLayoutCommand(id) ? 'layout' : id === 'duplicate' || id === 'delete' ? 'actions'
+    : id in crepeBlockCommands ? 'turn-into' : 'insert';
+  const entries = mergeEditorEntries(officialBlockMenuEntries(segment => officialRows.filter(row => segmentOf(row.id) === segment)), host?.entries);
+  const onError = host?.onError ?? ((_entry, error) => showGlobalNotification('error', String(error)));
+  const rows = collectEditorBlockMenuRows(entries, contractBlockMenuTarget(view, target, surface), host?.editor ?? { options: {} }, onError);
+  for (const { entry, row } of rows) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.role = 'menuitem';
+    button.dataset.command = row.id;
+    if (row.destructive) button.dataset.destructive = 'true';
+    button.textContent = row.label;
+    button.disabled = row.disabled === true;
+    button.addEventListener('pointerdown', (event) => event.preventDefault());
+    button.addEventListener('click', () => {
+      if (row.disabled || !canEditCrepeView(view)) return;
+      if (entry.origin !== 'builtin' && !blockMenuContributions(view)?.entries.includes(entry)) return;
+      if (entry.origin === 'builtin') { row.run(view); return; }
+      close();
+      if (!isBlockTargetCurrent(view, target)) return;
+      if (!view.isDestroyed) view.focus();
+      try {
+        const result = row.run(view);
+        if (result && typeof (result as Promise<void>).catch === 'function') {
+          (result as Promise<void>).catch(error => onError(entry, error));
+        }
+      } catch (error) {
+        onError(entry, error);
+      }
+    });
+    buttons.push(button);
+    menu.appendChild(button);
+  }
+}
 
 /** Programmatic menu using the pinned SlashProvider, without a slash/query in the
  * document. Crepe's built-in items clearTextInCurrentBlock and are unsafe here. */
@@ -64,6 +114,7 @@ export function openCrepeBlockCommandMenu(view: EditorView, actions = false): bo
     if (!menu.contains(event.target as Node)) close();
   };
   const buttons: HTMLButtonElement[] = [];
+  const officialRows: EditorBlockMenuRow[] = [];
   const keydown = (event: KeyboardEvent) => {
     if (event.key === 'Escape' || event.key === 'Tab') {
       if (event.key === 'Escape') event.preventDefault();
@@ -92,41 +143,25 @@ export function openCrepeBlockCommandMenu(view: EditorView, actions = false): bo
     'insert-toggle': ['notes:toggle.slashLabel', 'Toggle list'],
   };
   for (const id of insertIds) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.role = 'menuitem';
-    button.dataset.command = id;
-    button.textContent = i18next.t(insertLabels[id][0], { defaultValue: insertLabels[id][1] });
-    button.disabled = !canExecuteCrepeCommand(view, id);
-    button.addEventListener('pointerdown', (event) => event.preventDefault());
-    button.addEventListener('click', () => {
+    officialRows.push({ id, label: i18next.t(insertLabels[id][0], { defaultValue: insertLabels[id][1] }),
+      disabled: !canExecuteCrepeCommand(view, id), run: () => {
       close();
       void executeCrepeCommand(view, id).catch(error => showGlobalNotification('error', String(error)));
       if (!view.isDestroyed) view.focus();
-    });
-    buttons.push(button);
-    menu.appendChild(button);
+    } });
   }
   for (const id of [...Object.keys(crepeBlockCommands) as (keyof typeof crepeBlockCommands)[], ...LAYOUT_COMMANDS]) {
     if (!actions && (id === 'duplicate' || id === 'delete')) continue;
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.role = 'menuitem';
-    button.dataset.command = id;
-    if (id === 'delete') button.dataset.destructive = 'true';
-    button.textContent = isLayoutCommand(id) ? layoutCommandLabel(id)
-      : i18next.t(`notes:blockMenu.${labels[id][0]}`, { defaultValue: labels[id][1] });
-    button.disabled = !canExecuteCrepeCommand(view, id, { target });
-    button.addEventListener('pointerdown', (event) => event.preventDefault());
-    button.addEventListener('click', () => {
+    officialRows.push({ id, destructive: id === 'delete', label: isLayoutCommand(id) ? layoutCommandLabel(id)
+      : i18next.t(`notes:blockMenu.${labels[id][0]}`, { defaultValue: labels[id][1] }),
+      disabled: !canExecuteCrepeCommand(view, id, { target }), run: () => {
       close();
       // The captured target stays bound to its instance/document even after focus changes.
       void executeCrepeCommand(view, id, { target }).catch(error => showGlobalNotification('error', String(error)));
       if (!view.isDestroyed) view.focus();
-    });
-    buttons.push(button);
-    menu.appendChild(button);
+    } });
   }
+  appendContributedRows(view, target, buttons, menu, () => close(), actions ? 'mobile-block' : 'mobile-insert', officialRows);
   // Close on edits, note switches or unmount, including programmatic changes.
   const observer = new MutationObserver(() => {
     if (!view.dom.isConnected || !isBlockTargetCurrent(view, target)) close();

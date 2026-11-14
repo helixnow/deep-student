@@ -7,7 +7,7 @@ const readSource = (path: string) => readFileSync(resolve(process.cwd(), path), 
 
 describe('settings quiet hover contract', () => {
   it('centralizes quiet hover tokens for settings navigation and data tables', () => {
-    const settingsCommon = readSource('src/features/settings/components/SettingsCommon.tsx');
+    const settingsCommon = readSource('src/components/settings/SettingsCommon.tsx');
 
     expect(settingsCommon).toContain('settingsQuietHoverClassName');
     expect(settingsCommon).toContain('settingsQuietRowBaseClassName');

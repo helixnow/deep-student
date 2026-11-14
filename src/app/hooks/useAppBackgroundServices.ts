@@ -1,6 +1,5 @@
 import { useEffect } from 'react';
 import type { i18n as I18n } from 'i18next';
-import { registerBuiltinCommands } from '@/command-palette/registry/builtinCommands';
 import { initReminderScheduler } from '@/features/todo/reminderScheduler';
 import {
   ensureAutoSyncSchedulerStarted,
@@ -9,28 +8,11 @@ import {
 } from '@/stores/syncStatusStore';
 
 /**
- * App 壳层：应用级后台服务的启动与清理——命令面板内置命令注册（语言切换后重注册）、
- * 待办提醒调度器、云同步进度监听、自动同步调度器（等 persist hydration）、制卡完成通知。
- * 从 App.tsx 原样搬出。
+ * App 壳层：应用级后台服务的启动与清理——待办提醒调度器、云同步进度监听、
+ * 自动同步调度器（等 persist hydration）、制卡完成通知。从 App.tsx 原样搬出。
+ * 命令面板的内置命令由各功能的官方 UI 插件在内核装配时贡献（src/ui-plugins/official/*）。
  */
-export function useAppBackgroundServices(i18n: I18n) {
-  // 🎯 命令面板：注册内置命令
-  // ★ 2026-06-12：命令名在注册时经 i18next.t() 一次性求值,运行时切换语言后必须
-  //   重新注册一遍,否则面板里仍显示旧语言文案
-  useEffect(() => {
-    let unregister = registerBuiltinCommands();
-    const refreshOnLanguageChange = () => {
-      unregister();
-      unregister = registerBuiltinCommands();
-    };
-    i18n.on('languageChanged', refreshOnLanguageChange);
-    return () => {
-      i18n.off('languageChanged', refreshOnLanguageChange);
-      unregister();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- i18n 为模块级单例,引用稳定
-  }, []);
-
+export function useAppBackgroundServices(_i18n: I18n) {
   // ⏰ 待办提醒调度器（应用级，到点弹系统通知）
   useEffect(() => initReminderScheduler(), []);
 

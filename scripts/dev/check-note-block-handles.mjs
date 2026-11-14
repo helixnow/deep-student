@@ -1,4 +1,4 @@
-/** Run against an open note in the real `npm run tauri dev` UI bridge session. */
+/** Run against an open note in the real `npm run dev:electron` UI bridge session. */
 import assert from 'node:assert/strict';
 import { evalJs } from './ui-drive-core.mjs';
 

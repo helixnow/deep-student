@@ -1,0 +1,221 @@
+{
+  "head": "5f806c95eb2ef7cee7c08579a7fbdbb615acd1cb",
+  "at": "2026-11-06T13:11:03.680Z",
+  "numTotalTests": 13670,
+  "numPassedTests": 13586,
+  "numFailedTests": 9,
+  "numPendingTests": 75,
+  "numTotalTestSuites": 2848,
+  "numFailedTestSuites": 4,
+  "ok": false,
+  "success": false,
+  "testResults": [
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [],
+          "fullName": "L05 published bwrap policy isolates writes and the network namespace on real Linux",
+          "status": "passed",
+          "title": "L05 published bwrap policy isolates writes and the network namespace on real Linux",
+          "duration": 31.9460569999992,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "merged F7 Context provider enforces limits, env whitelist and cancellation through L05",
+          "status": "failed",
+          "title": "merged F7 Context provider enforces limits, env whitelist and cancellation through L05",
+          "duration": 1263.6138370000008,
+          "failureMessages": [
+            "AssertionError: expected { available: false, …(1) } to deeply equal { available: true }\n    at /home/dsdev/dev/ds-fulltest/host/plugins/agent-workspace/tests/transform-sandbox-linux.test.ts:48:40\n    at processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at file:///home/dsdev/dev/deep-student/node_modules/@vitest/runner/dist/chunk-hooks.js:752:20"
+          ],
+          "meta": {}
+        }
+      ],
+      "startTime": 1793969972715,
+      "endTime": 1793969974010.6138,
+      "status": "failed",
+      "message": "",
+      "name": "host/plugins/agent-workspace/tests/transform-sandbox-linux.test.ts"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [
+            "L24 real Linux sandbox e2e (candidate providers)"
+          ],
+          "fullName": "L24 real Linux sandbox e2e (candidate providers) capability and contract come from the real L05 + F7 candidates",
+          "status": "failed",
+          "title": "capability and contract come from the real L05 + F7 candidates",
+          "duration": 39.425414000000046,
+          "failureMessages": [
+            "AssertionError: expected { available: false, …(1) } to deeply equal { available: true }\n    at /home/dsdev/dev/ds-fulltest/host/plugins/chatanki/tests/candidates/l05-linux-sandbox.test.ts:66:40\n    at processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at file:///home/dsdev/dev/deep-student/node_modules/@vitest/runner/dist/chunk-hooks.js:752:20"
+          ],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": [
+            "L24 real Linux sandbox e2e (candidate providers)"
+          ],
+          "fullName": "L24 real Linux sandbox e2e (candidate providers) python script reads input and writes output in sandbox",
+          "status": "failed",
+          "title": "python script reads input and writes output in sandbox",
+          "duration": 50.0077940000001,
+          "failureMessages": [
+            "TransformScriptRunError: bwrap: Creating new namespace failed: Resource temporarily unavailable\n\n    at runTransformScript (/home/dsdev/dev/ds-fulltest/host/plugins/chatanki/src/transform-script.ts:354:11)\n    at processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at /home/dsdev/dev/ds-fulltest/host/plugins/chatanki/tests/candidates/l05-linux-sandbox.test.ts:91:22\n    at withTempDir (/home/dsdev/dev/ds-fulltest/host/plugins/chatanki/tests/candidates/l05-linux-sandbox.test.ts:48:12)\n    at /home/dsdev/dev/ds-fulltest/host/plugins/chatanki/tests/candidates/l05-linux-sandbox.test.ts:74:5\n    at file:///home/dsdev/dev/deep-student/node_modules/@vitest/runner/dist/chunk-hooks.js:752:20"
+          ],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": [
+            "L24 real Linux sandbox e2e (candidate providers)"
+          ],
+          "fullName": "L24 real Linux sandbox e2e (candidate providers) network is always denied inside the sandbox",
+          "status": "failed",
+          "title": "network is always denied inside the sandbox",
+          "duration": 12.783453000000009,
+          "failureMessages": [
+            "TransformScriptRunError: bwrap: Creating new namespace failed: Resource temporarily unavailable\n\n    at runTransformScript (/home/dsdev/dev/ds-fulltest/host/plugins/chatanki/src/transform-script.ts:354:11)\n    at processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at /home/dsdev/dev/ds-fulltest/host/plugins/chatanki/tests/candidates/l05-linux-sandbox.test.ts:121:22\n    at withTempDir (/home/dsdev/dev/ds-fulltest/host/plugins/chatanki/tests/candidates/l05-linux-sandbox.test.ts:48:12)\n    at /home/dsdev/dev/ds-fulltest/host/plugins/chatanki/tests/candidates/l05-linux-sandbox.test.ts:105:5\n    at file:///home/dsdev/dev/deep-student/node_modules/@vitest/runner/dist/chunk-hooks.js:752:20"
+          ],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": [
+            "L24 real Linux sandbox e2e (candidate providers)"
+          ],
+          "fullName": "L24 real Linux sandbox e2e (candidate providers) host files outside the job directory are unreadable",
+          "status": "failed",
+          "title": "host files outside the job directory are unreadable",
+          "duration": 9.844761000000062,
+          "failureMessages": [
+            "TransformScriptRunError: bwrap: Creating new namespace failed: Resource temporarily unavailable\n\n    at runTransformScript (/home/dsdev/dev/ds-fulltest/host/plugins/chatanki/src/transform-script.ts:354:11)\n    at processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at /home/dsdev/dev/ds-fulltest/host/plugins/chatanki/tests/candidates/l05-linux-sandbox.test.ts:148:22\n    at withTempDir (/home/dsdev/dev/ds-fulltest/host/plugins/chatanki/tests/candidates/l05-linux-sandbox.test.ts:48:12)\n    at /home/dsdev/dev/ds-fulltest/host/plugins/chatanki/tests/candidates/l05-linux-sandbox.test.ts:130:5\n    at file:///home/dsdev/dev/deep-student/node_modules/@vitest/runner/dist/chunk-hooks.js:752:20"
+          ],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": [
+            "L24 real Linux sandbox e2e (candidate providers)"
+          ],
+          "fullName": "L24 real Linux sandbox e2e (candidate providers) timeout terminates the process group structurally",
+          "status": "failed",
+          "title": "timeout terminates the process group structurally",
+          "duration": 18.83062599999994,
+          "failureMessages": [
+            "AssertionError: expected 'sandbox_unavailable' to be 'timed_out' // Object.is equality\n    at /home/dsdev/dev/ds-fulltest/host/plugins/chatanki/tests/candidates/l05-linux-sandbox.test.ts:170:29\n    at processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at withTempDir (/home/dsdev/dev/ds-fulltest/host/plugins/chatanki/tests/candidates/l05-linux-sandbox.test.ts:48:12)\n    at /home/dsdev/dev/ds-fulltest/host/plugins/chatanki/tests/candidates/l05-linux-sandbox.test.ts:157:5\n    at file:///home/dsdev/dev/deep-student/node_modules/@vitest/runner/dist/chunk-hooks.js:752:20"
+          ],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": [
+            "L24 real Linux sandbox e2e (candidate providers)"
+          ],
+          "fullName": "L24 real Linux sandbox e2e (candidate providers) nonzero exit and missing output are structured failures",
+          "status": "failed",
+          "title": "nonzero exit and missing output are structured failures",
+          "duration": 12.466858000000002,
+          "failureMessages": [
+            "AssertionError: expected 'sandbox_unavailable' to be 'non_zero_exit' // Object.is equality\n    at /home/dsdev/dev/ds-fulltest/host/plugins/chatanki/tests/candidates/l05-linux-sandbox.test.ts:190:57\n    at processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at withTempDir (/home/dsdev/dev/ds-fulltest/host/plugins/chatanki/tests/candidates/l05-linux-sandbox.test.ts:48:12)\n    at /home/dsdev/dev/ds-fulltest/host/plugins/chatanki/tests/candidates/l05-linux-sandbox.test.ts:178:5\n    at file:///home/dsdev/dev/deep-student/node_modules/@vitest/runner/dist/chunk-hooks.js:752:20"
+          ],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": [
+            "L24 real Linux sandbox e2e (candidate providers)"
+          ],
+          "fullName": "L24 real Linux sandbox e2e (candidate providers) node script honours the same contract",
+          "status": "failed",
+          "title": "node script honours the same contract",
+          "duration": 10.604047000000037,
+          "failureMessages": [
+            "TransformScriptRunError: bwrap: Creating new namespace failed: Resource temporarily unavailable\n\n    at runTransformScript (/home/dsdev/dev/ds-fulltest/host/plugins/chatanki/src/transform-script.ts:354:11)\n    at processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at /home/dsdev/dev/ds-fulltest/host/plugins/chatanki/tests/candidates/l05-linux-sandbox.test.ts:222:22\n    at withTempDir (/home/dsdev/dev/ds-fulltest/host/plugins/chatanki/tests/candidates/l05-linux-sandbox.test.ts:48:12)\n    at /home/dsdev/dev/ds-fulltest/host/plugins/chatanki/tests/candidates/l05-linux-sandbox.test.ts:210:5\n    at file:///home/dsdev/dev/deep-student/node_modules/@vitest/runner/dist/chunk-hooks.js:752:20"
+          ],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": [
+            "L24 real Linux sandbox e2e (candidate providers)"
+          ],
+          "fullName": "L24 real Linux sandbox e2e (candidate providers) symlink output is rejected without following the target",
+          "status": "failed",
+          "title": "symlink output is rejected without following the target",
+          "duration": 35.55831499999999,
+          "failureMessages": [
+            "AssertionError: expected 'sandbox_unavailable' to be 'setup' // Object.is equality\n    at /home/dsdev/dev/ds-fulltest/host/plugins/chatanki/tests/candidates/l05-linux-sandbox.test.ts:248:29\n    at processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at withTempDir (/home/dsdev/dev/ds-fulltest/host/plugins/chatanki/tests/candidates/l05-linux-sandbox.test.ts:48:12)\n    at /home/dsdev/dev/ds-fulltest/host/plugins/chatanki/tests/candidates/l05-linux-sandbox.test.ts:233:5\n    at file:///home/dsdev/dev/deep-student/node_modules/@vitest/runner/dist/chunk-hooks.js:752:20"
+          ],
+          "meta": {}
+        }
+      ],
+      "startTime": 1793970031824,
+      "endTime": 1793970032014.5583,
+      "status": "failed",
+      "message": "",
+      "name": "host/plugins/chatanki/tests/candidates/l05-linux-sandbox.test.ts"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [],
+          "fullName": "e2e_python_script_reads_input_and_writes_output_in_sandbox",
+          "status": "skipped",
+          "title": "e2e_python_script_reads_input_and_writes_output_in_sandbox",
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "e2e_network_is_always_denied_inside_the_sandbox",
+          "status": "skipped",
+          "title": "e2e_network_is_always_denied_inside_the_sandbox",
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "e2e_host_files_outside_job_are_unreadable",
+          "status": "skipped",
+          "title": "e2e_host_files_outside_job_are_unreadable",
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "e2e_timeout_terminates_the_process_group_structurally",
+          "status": "skipped",
+          "title": "e2e_timeout_terminates_the_process_group_structurally",
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "e2e_nonzero_exit_and_missing_output_are_structured_failures",
+          "status": "skipped",
+          "title": "e2e_nonzero_exit_and_missing_output_are_structured_failures",
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "e2e_node_script_honours_the_same_contract",
+          "status": "skipped",
+          "title": "e2e_node_script_honours_the_same_contract",
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "e2e_symlink_output_is_rejected_without_following",
+          "status": "skipped",
+          "title": "e2e_symlink_output_is_rejected_without_following",
+          "failureMessages": [],
+          "meta": {}
+        }
+      ],
+      "startTime": 1793969536638,
+      "endTime": 1793969536638,
+      "status": "failed",
+      "message": "expected { available: false, …(1) } to deeply equal { available: true }",
+      "name": "host/plugins/chatanki/tests/transform-script-real-sandbox.test.ts"
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "id": "RF-W07-windows-rename-retry",
+  "kind": "deliberate",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T15:42:00+08:00",
+  "title": "Windows 上 rename 遇到 EPERM/EACCES/EBUSY 时退避重试（合计约 1.3 秒），补上 Node 缺少的 Rust POSIX rename 语义",
+  "rust": {
+    "file": "src-tauri/crates/dstu-storage/src/data_space.rs",
+    "line": 1583,
+    "behavior": "state.json（atomic_write_state_file 的 NamedTempFile::persist）、旧版根目录迁移（:1134）、恢复移动（:921/:947）、槽内备份迁移（:1268）以及 file_deletion_queue.rs 的隔离改名都直接调用 std::fs::rename，不重试。Rust 1.98 的 std::fs::rename 在 Windows 上先用 SetFileInformationByHandle(FileRenameInfoEx, REPLACE_IF_EXISTS | POSIX_SEMANTICS)：目标被杀毒、索引、云盘客户端以共享删除方式打开时也能替换"
+  },
+  "fix": {
+    "files": ["host/platform/paths/rename-retry.ts"],
+    "behavior": "W07 路径内 9 个文件的 rename 改走 renameWithRetry / renameSyncWithRetry：仅 win32、仅 EPERM/EACCES/EBUSY，按 10、20、40…640 ms 退避最多 7 次后抛最后一次的错误；其他平台、其他错误码调用一次原样抛出（与 Rust 相同）"
+  },
+  "evidence": "V10 P2-4（.reports/reviews/V10-cross-platform.md:190）：libuv 的 uv_fs_rename 在 Windows 上只用 MoveFileExW(MOVEFILE_REPLACE_EXISTING)，目标正被其他句柄打开时返回 ERROR_ACCESS_DENIED（EPERM），即使对方带 FILE_SHARE_DELETE；同样场景 Rust 的 POSIX 语义 rename 成功。Node 没有对应入口，写 state.json、device_id、主密钥目录记忆、数据空间迁移与删除队列隔离在 Windows 上会比 Rust 多出一类失败（state.json 写失败会让切槽或启动失败）。graceful-fs、write-file-atomic 在 win32 上对同样错误码退避重试。对占用方不带共享删除、且在 1.3 秒内释放的情形（Defender 扫描），Rust 立即失败而这里会成功，属于有意的稳健性改进。本机无 Windows：测试以 process.platform='win32' 加注入的 fs 错误验证。",
+  "userVisible": "仅 Windows：文件被杀毒或索引短暂占用时，切换数据空间、保存设备 ID 等操作不再报“拒绝访问”，最多多等约 1.3 秒；占用不释放时报错文本与原来相同",
+  "dataCompat": "不改变任何落盘格式、同步载荷或备份格式；旧 Rust 版与新版互相读取不受影响",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "host/platform/paths/tests/rename-retry.test.ts",
+      "name": "RF-W07-windows-rename-retry: on win32 a briefly held target (EPERM, EACCES, EBUSY) is replaced once the holder lets go"
+    },
+    {
+      "file": "host/platform/paths/tests/rename-retry.test.ts",
+      "name": "RF-W07-windows-rename-retry: a holder that never lets go fails after the backoff budget with the last error"
+    },
+    {
+      "file": "host/platform/paths/tests/rename-retry.test.ts",
+      "name": "RF-W07-windows-rename-retry: other platforms and non-transient codes fail on the first attempt, like Rust"
+    },
+    {
+      "file": "host/platform/paths/tests/rename-retry.test.ts",
+      "name": "RF-W07-windows-rename-retry: slots/state.json, data-space atomic files and paths atomicWriteFile survive a briefly held target on win32"
+    }
+  ]
+}

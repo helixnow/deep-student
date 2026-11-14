@@ -1,0 +1,90 @@
+{
+  "domain": "backup",
+  "commands": [
+    "data_governance_get_backup_list",
+    "data_governance_verify_backup",
+    "data_governance_check_disk_space_for_restore",
+    "data_governance_auto_verify_latest_backup",
+    "data_governance_delete_backup"
+  ],
+  "scenarios": [
+    {
+      "id": "backup.inventory.seeded.empty_backups_dir",
+      "seed": "l21-backups-empty-dir",
+      "steps": [
+        {
+          "cmd": "data_governance_get_backup_list",
+          "args": {}
+        },
+        {
+          "cmd": "data_governance_verify_backup",
+          "args": {
+            "backupId": "x1"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_check_disk_space_for_restore",
+          "args": {
+            "backupId": "x1"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_auto_verify_latest_backup",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_delete_backup",
+          "args": {
+            "backupId": "x1"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_get_backup_list",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "backup.inventory.seeded.size_overflow_fails_whole_list",
+      "seed": "l21-backups-size-overflow",
+      "steps": [
+        {
+          "cmd": "data_governance_get_backup_list",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_check_disk_space_for_restore",
+          "args": {
+            "backupId": "20260106_000000_size_overflow"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_verify_backup",
+          "args": {
+            "backupId": "20260106_000000_size_overflow"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

@@ -8,9 +8,10 @@ describe('StyleDebugPage transitions lab', () => {
     render(<StyleDebugPage />);
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole('button', { name: 'Token 校对' }));
+    await user.click(screen.getByRole('tab', { name: 'Token 校对' }));
 
-    expect(screen.getByRole('button', { name: 'Token 校对' })).toHaveAttribute('data-state', 'active');
+    expect(screen.getByRole('tab', { name: 'Token 校对' })).toHaveAttribute('data-state', 'active');
+    expect(screen.getByRole('tab', { name: 'Token 校对' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByPlaceholderText('搜索 token 名称…')).toBeInTheDocument();
     expect(screen.getByText('Surface 层级')).toBeInTheDocument();
     expect(screen.getByText('阴影')).toBeInTheDocument();

@@ -1,0 +1,24 @@
+{
+  "id": "RF-W04-media-ledger-missing-vfs",
+  "kind": "deliberate",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T09:12+08:00",
+  "title": "media_checkpoints / media_study_ledger 在没有 VFS 数据库时显式报错，而不是返回空结果",
+  "rust": {
+    "file": "src-tauri/crates/dstu-media/src/media/ledger.rs",
+    "line": 248,
+    "behavior": "vfs_db 为 None 时返回 Ok(Vec::new())，与“这个资源没有检查点/学习记录”无法区分"
+  },
+  "fix": {
+    "files": ["host/plugins/media/src/register-media.ts"],
+    "behavior": "缺少 vfsDatabase 服务时命令以 'VFS database not configured' 失败；空白 id 仍返回空数组"
+  },
+  "evidence": "Rust 用 Option<VfsDatabase> 是因为 Tauri 状态可能未注入；Host 中缺少 vfsDatabase 只会出现在 profile 配置错误时，返回空数组会把配置错误伪装成“没有数据”。前一轮已作为有意偏离写入 INTEGRATION-NOTES.md:57。",
+  "userVisible": "仅在 Host 缺少 VFS 数据库（配置错误）时可见：媒体检查点/学习台账从静默空列表变为错误提示；正常运行时无差异。",
+  "dataCompat": "不改变任何落库数据、同步载荷或备份格式；旧 Rust 版与新版数据互读不受影响。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    { "file": "host/plugins/media/tests/media-ledger.test.ts", "name": "RF-W04-media-ledger-missing-vfs: ledger commands report a missing VFS database instead of returning silently empty results" }
+  ]
+}

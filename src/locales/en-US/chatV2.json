@@ -100,7 +100,9 @@
     "expandPreview": "Expand preview",
     "collapsePreview": "Collapse preview",
     "scriptsDisabled": "Scripts not run",
-    "scriptsDisabledHint": "In-chat previews run in a secure sandbox: no scripts and no network; external links open in your system browser. Download the HTML and open it in a browser for interactive behavior."
+    "scriptsDisabledHint": "In-chat previews run in a secure sandbox: no scripts and no network; external links open in your system browser. Download the HTML and open it in a browser for interactive behavior.",
+    "runInlineInteractive": "Run inline",
+    "exitInlineInteractive": "Static preview"
   },
   "common": {
     "close": "Close",
@@ -210,6 +212,7 @@
   "messageItem": {
     "actions": {
       "notePageRef": "p. {{page}}",
+      "noteSourceBacklink": "Source: {{link}}",
       "copy": "Copy",
       "copySuccess": "Copied to clipboard",
       "copyFailed": "Copy failed",
@@ -239,6 +242,8 @@
       "saveAsNoteSuccessAtRoot": "Saved as note: {{title}} (in the library root)",
       "saveAsNoteFailed": "Failed to save note",
       "exportMarkdown": "Export as Markdown",
+      "readAloud": "Read aloud",
+      "stopReading": "Stop reading",
       "exportMarkdownSuccess": "Markdown file exported",
       "exportMarkdownFailed": "Export failed",
       "noContentToExport": "No content to export",
@@ -435,8 +440,12 @@
       "connectorsHint": "Choose MCP / external tool connections",
       "modeDefaultDescription": "Tools follow the selected execution preset.",
       "knowledgeBase": "Knowledge base",
+      "rag": "Knowledge retrieval",
+      "ragHint": "Allow the model to search your local knowledge base and course materials",
       "kbProactive": "Proactive retrieval",
       "kbProactiveHint": "When on, the model is asked to search your notes, textbooks and other local materials before answering",
+      "webSearch": "Web search",
+      "webSearchHint": "Allow the model to search the web for up-to-date information",
       "kbScopePick": "Choose retrieval scope (course / folder)",
       "kbScopeSet": "Knowledge base now searches only the selected folder",
       "kbScopeCleared": "Knowledge base searches all materials",
@@ -447,7 +456,11 @@
       "compactionComplete": "Context compaction complete",
       "compactionNotNeeded": "Nothing eligible to compact",
       "compactionSkipped": "Compaction skipped",
-      "compactionFailed": "Compaction failed, try again"
+      "compactionFailed": "Compaction failed, try again",
+      "pluginWorkshop": "Plugin Workshop",
+      "pluginWorkshopHint": "Enable Plugin Workshop mode to create or modify plugins with AI in this chat",
+      "pluginWorkshopActive": "Plugin Workshop",
+      "pluginWorkshopExitHint": "Plugin Workshop mode active (click to exit)"
     },
     "retryStarted": "Processing restarted",
     "retryFailed": "Retry failed: {{error}}",
@@ -702,6 +715,7 @@
       "executing": "Executing...",
       "streamingOutput": "Live Output",
       "executionFailed": "Execution Failed",
+      "shellEnvironmentFailure": "The local command environment failed; the command did not run and nothing was changed. Retrying it unchanged usually fails the same way.",
       "unknownError": "Unknown error",
       "retry": "Retry",
       "retryDisabled": "Retry unavailable: {{reason}}",
@@ -1355,6 +1369,9 @@
     "groupSaveFailed": "Failed to save group",
     "openNoteFailed": "Failed to open note",
     "openInLearningHub": "Open in Learning Hub",
+    "readAlong": "Read alongside chat",
+    "backToChatLayout": "Restore chat layout",
+    "resizeReadingLayout": "Resize document and conversation panes",
     "collapseSandboxWorkbench": "Collapse Sandbox Workbench",
     "expandSandboxWorkbench": "Expand Sandbox Workbench",
     "emptyPage": {
@@ -1650,6 +1667,9 @@
       "progress": "{{done}} / {{total}} tasks done",
       "allDone": "All tasks completed",
       "inProgress": "In progress"
+    },
+    "blockLine": {
+      "collapse": "Collapse block"
     }
   },
   "contextRefs": {
@@ -1801,7 +1821,23 @@
   },
   "explainPopover": {
     "thinking": "Thinking...",
-    "prompt": "Explain the following content in clear, concise language. If it is a technical term, provide a definition and a plain-language explanation; if it is a passage, summarize its core meaning. Answer in English.\n\n\"{{text}}\""
+    "prompt": "Explain the following content in clear, concise language. If it is a technical term, provide a definition and a plain-language explanation; if it is a passage, summarize its core meaning. Answer in English.\n\n\"{{text}}\"",
+    "saveToAnnotation": "Pin to note",
+    "savedToAnnotation": "Pinned",
+    "lensAriaLabel": "Academic reading lens",
+    "lenses": {
+      "intuition": "Intuition",
+      "formula": "Formula & Symbols",
+      "critique": "Method & Critique",
+      "prereq": "Prerequisites"
+    },
+    "academicPrompts": {
+      "contextBlock": "[Surrounding context (for disambiguation only)]\n{{before}} … {{after}}\n\n",
+      "intuition": "You are assisting with reading an academic paper. Explain the core intuition and role of the following excerpt in clear, precise language without hollow paraphrasing. Answer in English.\n\n{{context}}[Selected excerpt]\n\"{{text}}\"",
+      "formula": "You are assisting with reading an academic paper. Break down every mathematical symbol, variable, dimension/shape relationship, and overall physical or statistical intuition in the following excerpt. If no explicit equation is present, unpack its formal definitions and quantitative metrics. Answer in English.\n\n{{context}}[Selected excerpt]\n\"{{text}}\"",
+      "critique": "You are assisting with reading an academic paper. Analyze the design motivation, underlying assumptions, trade-offs, and potential limitations of the following excerpt, and suggest 1-2 sharp reviewer-style questions. Answer in English.\n\n{{context}}[Selected excerpt]\n\"{{text}}\"",
+      "prereq": "You are assisting with reading an academic paper. List and concisely explain the prerequisite concepts and background knowledge needed to fully grasp the following excerpt. Answer in English.\n\n{{context}}[Selected excerpt]\n\"{{text}}\""
+    }
   },
   "browser": {
     "title": "Session Browser",
@@ -1960,7 +1996,8 @@
     "scopeCollapse": "Hide details",
     "scope": {
       "sandboxOn": "Sandboxed",
-      "sandboxOff": "No sandbox · direct host exec"
+      "sandboxOff": "No sandbox · direct host exec",
+      "externalMcpUnenforced": "external MCP / local sandbox not enforced"
     },
     "countdownPaused": "Paused",
     "aria": {
@@ -2394,6 +2431,7 @@
   "readiness": {
     "not_ready": "The current chat is not ready",
     "model2_missing": "Please configure a chat model in Settings → Model Assignment before sending messages.",
+    "retry_after_setup": "No chat model is configured. Set up a model in Settings, then retry this message.",
     "model2_auto_assigned": "Auto-assigned {{count}} models: {{models}}. You can review or change this in Settings → Model Assignment.",
     "model2_auto_assigned_single": "Auto-assigned \"{{model}}\" as the default chat model. You can review or change this in Settings → Model Assignment.",
     "noModelAssigned": "(none)"
@@ -2438,6 +2476,8 @@
     "mindmapTitle": "Mind Map: {{title}}"
   },
   "documentViewer": {
+    "expand": "Expand view",
+    "collapse": "Exit expanded view",
     "defaultTitle": "Document Preview",
     "search": "Search",
     "previewHint": "Hint: Press ESC to close, +/- to adjust font size",
@@ -2508,7 +2548,10 @@
     "submit": "Submit",
     "send": "Send answer",
     "submitFailed": "Failed to submit response",
-    "submitRetryHint": "Please choose or submit again."
+    "submitRetryHint": "Please choose or submit again.",
+    "sandboxCandidateHint": "Canvas filled a candidate answer. Please review and confirm to submit",
+    "sandboxContinueEditing": "Continue editing",
+    "sandboxConfirmAnswer": "Confirm answer"
   },
   "pageRef": {
     "clearAll": "Clear all page references",
@@ -2621,6 +2664,111 @@
       "viewWorkerAria": "View the full session of worker \"{{title}}\"",
       "showRaw": "Show original",
       "hideRaw": "Hide original"
+    }
+  },
+  "contextUsage": {
+    "tooltip": "Context usage {{summary}}",
+    "dangerHint": "Context usage {{summary}} · Consider starting a new chat",
+    "title": "Context Usage Details",
+    "usedLabel": "Estimated used",
+    "tokenCount": "≈{{count}} tokens",
+    "windowLabel": "Context window",
+    "windowCount": "{{count}} tokens",
+    "remainingLabel": "Remaining",
+    "dangerSuggestion": "This session is approaching the context limit. Consider starting a new chat or compacting history.",
+    "compressing": "Compacting context...",
+    "compressAction": "Compact context"
+  },
+  "reasoningEffort": {
+    "title": "Reasoning Effort",
+    "levels": {
+      "none": "Off",
+      "minimal": "Minimal",
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High",
+      "xhigh": "Max"
+    }
+  },
+  "replyCommand": {
+    "stopTitle": "Stop command",
+    "runTitle": "Run command"
+  },
+  "secretRequest": {
+    "collapsedDeclined": "Declined secret request: {{label}}",
+    "collapsedEnvSubmitted": "Injected controlled environment variable: {{label}}",
+    "collapsedFileSaved": "Saved to isolated temporary file: {{label}}",
+    "hideSecret": "Hide secret",
+    "showSecret": "Show secret",
+    "placeholder": "Enter temporary secret",
+    "inputLabel": "Temporary secret input",
+    "save": "Save",
+    "remember10m": "Remember in session memory for 10 minutes",
+    "privacy": "Secrets never enter message history or model context",
+    "decline": "Decline"
+  },
+  "openuiLang": {
+    "lineChartAria": "Line chart",
+    "generating": "Generating UI…",
+    "empty": "Empty OpenUI block",
+    "notePlaceholder": "Add a note (optional)",
+    "confirm": "Confirm"
+  },
+  "studySpace": {
+    "title": "Study Space",
+    "createSpace": "New Study Space",
+    "editSpace": "Edit Study Space",
+    "inbox": "Inbox",
+    "inboxHint": "Ungrouped conversations and quick captures",
+    "tabs": {
+      "general": "General & Prompt",
+      "goals": "Goals & FSRS",
+      "workspace": "Mounts & Workbench"
+    },
+    "fields": {
+      "rootFolder": "Root Folder",
+      "openInHub": "Open in Library",
+      "examDate": "Target Exam Date",
+      "examDateClear": "Clear Date",
+      "dailyBudget": "Daily Budget (min)",
+      "targetRetention": "Target Retention",
+      "defaultDeck": "Default Flashcard Deck",
+      "defaultDeckGlobal": "Global Due Queue (All Decks)",
+      "memoryScope": "Memory Scope",
+      "workbenchPreset": "Workbench Layout Preset",
+      "nameRequired": "Enter a space name"
+    },
+    "memoryScopes": {
+      "space_and_global": "Space Priority + Global",
+      "space_isolated": "Space Isolated Only",
+      "global_only": "Global Memory Only"
+    },
+    "presets": {
+      "chat_focus": "Chat Focus",
+      "split_reader_chat": "Split Reader & Chat",
+      "split_notes_chat": "Split Notes & Chat",
+      "practice_review": "Practice & Flashcards",
+      "freeform_desktop": "Keep Freeform Layout"
+    },
+    "mounts": {
+      "title": "Cross-Space Mounts",
+      "empty": "No cross-space mounts yet. Right-click any item in Library to mount it here.",
+      "add": "Mount Resource",
+      "remove": "Unmount",
+      "zeroCopyBadge": "Zero-Copy Ref",
+      "missingSource": "Source file deleted or unavailable",
+      "missingHint": "Safe to unmount"
+    },
+    "badges": {
+      "kbAutoScoped": "Scoped to Space KB",
+      "countdownDays": "D-{{days}}",
+      "countdownToday": "D-Day",
+      "countdownPassed": "D+{{days}}",
+      "budgetMinutes": "{{minutes}}m/d"
+    },
+    "actions": {
+      "reviewDeck": "Review Space Cards",
+      "enterSpace": "Enter Space"
     }
   }
 }

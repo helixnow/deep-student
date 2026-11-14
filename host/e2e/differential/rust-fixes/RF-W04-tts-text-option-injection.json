@@ -1,0 +1,28 @@
+{
+  "id": "RF-W04-tts-text-option-injection",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T14:41:00+08:00",
+  "title": "tts_speak 把朗读文本直接作为 say/espeak 的参数：以 - 开头的文本被当成选项，可让 say -o / espeak -w 写任意路径",
+  "rust": {
+    "file": "src-tauri/src/tts.rs",
+    "line": 153,
+    "behavior": "macOS 分支 Command::new(\"say\")（:134）依次加 -v voice、-r wpm，最后 cmd.arg(&text)（:153）；Linux 分支 espeak（:185）同样最后 cmd.arg(&text)（:204）。文本前没有 --，所以 say/espeak 的 getopt 会把以 - 开头的文本当作选项解析：'-o/路径' 让 say 把 AIFF 写到该路径，'-w/路径' 让 espeak 写 WAV。"
+  },
+  "fix": {
+    "files": ["host/plugins/media/src/tts.ts"],
+    "behavior": "ttsArgs 在文本前加 --（args.push('--', text)），say 与 espeak 都把 -- 之后的参数当作朗读文本。-v/-r/-s 的取值、Windows 与不支持平台的报错、执行失败与非零退出的报错均不变。"
+  },
+  "evidence": "S01 安全复审第二轮 L4（reviews/S01-security-r2.md:254-275，分派 W04）。朗读文本来自笔记或模型输出，可被 prompt injection 控制；文本 '-o/Users/<u>/Documents/x.docx 内容' 会让 say 覆盖该文件。审计已在 macOS 上验证 say '-o/tmp/S01-say.aiff' 会生成文件，而 say -o out -- '-o/tmp/x' 不会；W04 在 macOS 上复核 say -o <tmp> -- '-o<另一 tmp>' 只写前者。espeak/espeak-ng 用 getopt_long 解析参数，-- 结束选项解析。",
+  "userVisible": "正常朗读无变化（-- 不改变非 - 开头文本的读法）。以 - 开头的文本现在按原文朗读，不再被当作选项（Rust 下会报错、改变语音参数或写文件）。",
+  "dataCompat": "不涉及落库数据、同步载荷与备份格式。",
+  "notes": "未实测 Linux espeak 的 -- 行为（本机无 espeak）；espeak 与 espeak-ng 的参数解析都是 getopt_long，-- 为标准的选项终止符。G3：没有场景调用 tts_speak，不登记选择器。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "host/plugins/media/tests/tts.test.ts",
+      "name": "RF-W04-tts-text-option-injection: speech text that starts with a dash is never parsed as an option"
+    }
+  ]
+}

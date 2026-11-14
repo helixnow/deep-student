@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "dstu:plugin-manifest:v1",
+  "title": "DeepStudent 插件包清单 v1（package.json#deepStudent）",
+  "description": "插件包 manifest 的唯一权威定义（decisions/2026-11-07-plugin-ecosystem-v1.md）。一个包 = 一个 id = 一个版本：Host 半与 UI 半同包、同 id、同版本发布；plugin.json 废弃。校验对象是整个 package.json：npm 顶层字段只约束 name、version、engines，其余顶层字段（scripts、type、private 等）照 npm 自由；deepStudent 键内严格校验，不认识的字段一律报错。装载顺序：先读 deepStudent.manifestVersion（高于装载方支持的版本就拒绝并提示升级应用），再按 engines.deepStudent 检查应用版本，两项通过后再做本 schema 的完整校验。安装时不兼容就拒绝；启动时不兼容只降级该插件，不阻断启动。新增可选字段只能随应用 minor 版本引入，用到新字段的插件必须把 engines.deepStudent 下限提到该版本，使旧应用先因 engines 拒绝而不是报未知字段；manifestVersion 只在结构性变化时递增。",
+  "type": "object",
+  "required": ["name", "version", "engines", "deepStudent"],
+  "properties": {
+    "name": {
+      "description": "npm 包名，不是插件身份（身份是 deepStudent.id）。建议 deepstudent-plugin-<name> 或 @<scope>/deepstudent-plugin-<name>。",
+      "type": "string",
+      "maxLength": 214,
+      "pattern": "^(?:@[a-z0-9-~][a-z0-9-._~]*/)?[a-z0-9-~][a-z0-9-._~]*$"
+    },
+    "version": {
+      "description": "插件版本（SemVer 2.0 完整三段，可带预发布与构建元数据）。Host 半 meta.version 与 UI 半 meta.version 必须等于它；不一致时降级该插件。",
+      "$ref": "#/$defs/version"
+    },
+    "engines": {
+      "description": "deepStudent 声明应用版本要求；可选的 deepStudentPluginApi 声明独立插件 API 版本。其他 npm engines 键由装载方忽略。",
+      "type": "object",
+      "required": ["deepStudent"],
+      "properties": {
+        "deepStudent": {
+          "description": "兼容的应用版本范围，针对应用 package.json#version（当前 0.11.0），不是独立的插件 API 版本号。0.x 阶段 ^0.11 不包含 0.12.0。语法见 $defs/range。",
+          "$ref": "#/$defs/range"
+        },
+        "deepStudentPluginApi": {
+          "description": "插件依赖的 API 主版本（当前支持 1），不随应用小版本变化。",
+          "type": "string",
+          "pattern": "^[1-9][0-9]*$"
+        }
+      },
+      "additionalProperties": { "type": "string" }
+    },
+    "deepStudent": {
+      "description": "DeepStudent 专用字段，严格校验。",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["manifestVersion", "id", "platforms"],
+      "anyOf": [{ "required": ["host"] }, { "required": ["ui"] }],
+      "properties": {
+        "displayName": { "type": "string", "minLength": 1 },
+        "icon": { "type": "string", "minLength": 1 },
+        "author": { "type": "string", "minLength": 1 },
+        "description": { "type": "string" },
+        "category": { "type": "string", "minLength": 1 },
+        "homepage": { "type": "string", "pattern": "^https?://" },
+        "manifestVersion": {
+          "description": "manifest 结构版本，v1 固定为整数 1。装载方先读这个字段：高于自身支持的版本就拒绝装载并提示升级应用。",
+          "const": 1
+        },
+        "id": {
+          "description": "插件 id，发布后不可修改（改名等于新插件）。服务名、槽位贡献 id（<id>/<localId>）、存储前缀（ds:plugin:<id>:）、i18n 命名空间、设置命名空间、数据目录（<数据目录>/plugins/<id>/）、自定义事件名（<id>:<event>）都由它派生。形式：官方插件 dstu.<段>[.<段>…]（可多段，如 dstu.platform.crypto）；其他插件固定两段 <publisher>.<name>，publisher 2–39 字符、name 2–63 字符，均为小写字母开头的 [a-z0-9-]。保留 publisher 见 $defs/reservedPublishers：forbidden 中的一律拒绝（本 schema 强制）；assigned 中的只能用于指定场合（dstu 仅官方内置、example 仅示例插件、local 仅本地开发且不得进入索引、test 仅测试夹具），由装载方与门禁按来源强制，schema 不区分来源。",
+          "$ref": "#/$defs/id"
+        },
+        "platforms": {
+          "description": "整个插件（两半）可装配的平台，包级别声明，取值即 host/kernel/platforms.ts 的 PLUGIN_PLATFORMS。当前平台不在列表内时跳过装载。",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "enum": ["desktop", "mobile"] }
+        },
+        "host": {
+          "description": "Host 半入口，相对包目录，以 ./ 开头、不得含 .. 段。Host 以 Node 类型擦除运行，可直接指向 .ts。有此字段即表示 UI 半需要同包 Host 半（替代旧的 requiresHost）。",
+          "type": "string",
+          "pattern": "^\\./[^\\\\]+\\.(?:ts|mts|js|mjs)$",
+          "not": { "pattern": "(?:^|/)\\.\\.(?:/|$)" }
+        },
+        "ui": {
+          "description": "UI 半入口，相对包目录，以 ./ 开头、不得含 .. 段。社区插件必须指向构建后的 ESM（.js/.mjs）；.ts/.tsx 只适用于随应用一起构建的官方插件。",
+          "type": "string",
+          "pattern": "^\\./[^\\\\]+\\.(?:ts|tsx|js|mjs)$",
+          "not": { "pattern": "(?:^|/)\\.\\.(?:/|$)" }
+        },
+        "requires": {
+          "description": "依赖的其他插件包：插件 id → 版本范围（语法见 $defs/range，针对对方的 package.json#version）。安装与装载时检查；缺失或版本不满足时拒绝安装、启动时降级。不得依赖自己。",
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/id" },
+          "additionalProperties": { "$ref": "#/$defs/range" }
+        },
+        "permissions": {
+          "description": "权限，每项 <kind>:<target>。kind 是封闭集合，v1 只有 service；未知 kind 拒绝装载（不能忽略，否则旧应用会把新权限当成没有）。service:<服务名> 允许 Host 半注入该服务、或 UI 半经 ctx.ui.host 调用该服务 meta.remote 声明的方法；声明之外的服务一律不注入；平台核心服务中只有 log 隐式授予、无需声明；按插件隔离的存储也要声明 service:storage（host/kernel/API.md §16.4）。服务名为 lowerCamelCase。权限只在版本增加时随之重新征得用户同意。进程隔离落地前，权限对同进程的 Host 半只是“声明加审查”，对 sandboxed UI 才是强制的。",
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "allOf": [
+              { "description": "语法：<kind>:<target>", "pattern": "^[a-z][a-z0-9-]*:\\S+$" },
+              { "description": "kind 封闭集合：v1 只有 service", "pattern": "^service:" },
+              { "description": "service 的 target 是 lowerCamelCase 服务名", "pattern": "^service:[a-z][A-Za-z0-9]*$" }
+            ]
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "version": {
+      "type": "string",
+      "pattern": "^(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$"
+    },
+    "range": {
+      "description": "版本范围：npm semver 范围语法的严格子集，任何被接受的字符串也是合法的 npm semver 范围、语义与 npm 相同。只接受四种形式：^X.Y 或 ^X.Y.Z（npm caret：主版本非 0 时到下一主版本，0.Y 时到 0.(Y+1).0，0.0.Z 时只含 0.0.Z）；~X.Y 或 ~X.Y.Z（到 X.(Y+1).0）；精确版本 X.Y.Z；>=X.Y.Z 或 >=X.Y.Z <A.B.C（单个空格分隔，上界须大于下界）。不接受 ||、通配、连字符区间、预发布标签。被检查的版本（应用版本或被依赖插件的版本）带预发布标签时按 npm semver 7 的 includePrerelease 求值：X.Y.Z-pre 低于 X.Y.Z；省略补丁号的 ^X.Y、~X.Y 含 X.Y.0 的预发布，其余下界不含；^、~、精确版本的上界不含上界版本的预发布，显式 <A.B.C 含（Host 与 gate 一致，见 host/kernel/API.md“预发布版本”）。",
+      "type": "string",
+      "pattern": "^(?:[\\^~](?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)(?:\\.(?:0|[1-9][0-9]*))?|(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)|>=(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)(?: <(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*))?)$"
+    },
+    "id": {
+      "type": "string",
+      "maxLength": 128,
+      "pattern": "^(?:dstu(?:\\.[a-z][a-z0-9-]*)+|[a-z][a-z0-9-]{1,38}\\.[a-z][a-z0-9-]{1,62})$",
+      "not": { "pattern": "^(?:ds|deepstudent|deep-student|official|builtin|system|community)\\." }
+    },
+    "reservedPublishers": {
+      "description": "保留的 publisher（id 第一段）。forbidden：任何插件都不得使用；assigned：只能用于指定场合。",
+      "const": {
+        "forbidden": ["ds", "deepstudent", "deep-student", "official", "builtin", "system", "community"],
+        "assigned": { "dstu": "官方内置插件", "example": "仓库内示例插件", "local": "本地开发，不得进入索引", "test": "测试夹具" }
+      }
+    }
+  }
+}

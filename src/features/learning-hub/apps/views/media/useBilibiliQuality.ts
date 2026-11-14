@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { getErrorMessage } from '@/utils/errorUtils';
-import { isAndroid, isLinux } from '@/utils/platform';
+import { isAndroid, isLinux, isWebUiShell } from '@/utils/platform';
 import { useBilibiliTransport } from './bilibiliTransport';
 import {
   BILIBILI_DEFAULT_QN,
@@ -106,8 +106,18 @@ export function useBilibiliQuality(fileId: string | null): BilibiliQualityState 
   const streamUrl = useMemo(
     () => {
       if (!fileId) return null;
-      if (info?.key === key && info.value.streamUrl) return info.value.streamUrl;
-      if (isLinux() && !isAndroid()) return null;
+      if (info?.key === key && info.value.streamUrl) {
+        // WebUI 里后端报回的 `bilistream://localhost/...` 浏览器根本加载不了（自定义协议只在
+        // 原生外壳里注册）；换成本域 HTTP 端点 `/api/protocol/bilistream/<fileId>`。
+        const reported = info.value.streamUrl;
+        if (isWebUiShell() && reported.startsWith('bilistream://')) {
+          return buildBilibiliStreamUrl(fileId, requested, epoch, attempt);
+        }
+        return reported;
+      }
+      // Linux 的 WebKit 原生外壳无法加载自定义协议，只能等后端给回环 HTTP 地址；
+      // WebUI 的地址本身就是 HTTP，不受这条限制。
+      if (isLinux() && !isAndroid() && !isWebUiShell()) return null;
       return buildBilibiliStreamUrl(fileId, requested, epoch, attempt);
     },
     [fileId, requested, epoch, attempt, info, key],

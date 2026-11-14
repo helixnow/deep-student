@@ -1,0 +1,137 @@
+[阶段] 选候选
+作用域拒绝规则 2 条：src-tauri/**, docs/dev/electron-migration/dispatch/**
+S0: 已停放，跳过
+X4: 无新提交
+候选 43 条，其中自检通过 38 条
+[阶段] 门禁
+    原件：C1 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/01-C1
+C1: 未合入（门禁未过：
+    gate-runner: node:internal/modules/esm/resolve:275 |     throw new ERR_MODULE_NOT_FOUND( | Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/dsdev/wt/_integration-p0/scripts/electron-migration/lib/gate-checks/index.mjs'（原件 /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/01-C1））
+    原件：C2 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/02-C2
+C2: 未合入（门禁未过：
+    gate-runner: node:internal/modules/esm/resolve:275 |     throw new ERR_MODULE_NOT_FOUND( | Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/dsdev/wt/_integration-p1/scripts/electron-migration/lib/gate-checks/index.mjs'（原件 /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/02-C2））
+    原件：F1 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/03-F1
+F1: 未合入（门禁未过：
+    gate-runner: node:internal/modules/esm/resolve:275 |     throw new ERR_MODULE_NOT_FOUND( | Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/dsdev/wt/_integration-p2/scripts/electron-migration/lib/gate-checks/index.mjs'（原件 /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/03-F1））
+    原件：F2 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/04-F2
+F2: 未合入（门禁未过：
+    gate-runner: node:internal/modules/esm/resolve:275 |     throw new ERR_MODULE_NOT_FOUND( | Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/dsdev/wt/_integration-p3/scripts/electron-migration/lib/gate-checks/index.mjs'（原件 /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/04-F2））
+    原件：F3 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/05-F3
+F3: 未合入（门禁未过：
+    gate-runner: node:internal/modules/esm/resolve:275 |     throw new ERR_MODULE_NOT_FOUND( | Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/dsdev/wt/_integration-p0/scripts/electron-migration/lib/gate-checks/index.mjs'（原件 /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/05-F3））
+    原件：F4 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/06-F4
+F4: 未合入（门禁未过：
+    gate-runner: node:internal/modules/esm/resolve:275 |     throw new ERR_MODULE_NOT_FOUND( | Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/dsdev/wt/_integration-p1/scripts/electron-migration/lib/gate-checks/index.mjs'（原件 /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/06-F4））
+    原件：F5 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/07-F5
+F5: 未合入（门禁未过：
+    gate-runner: node:internal/modules/esm/resolve:275 |     throw new ERR_MODULE_NOT_FOUND( | Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/dsdev/wt/_integration-p2/scripts/electron-migration/lib/gate-checks/index.mjs'（原件 /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/07-F5））
+    原件：F7 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/08-F7
+F7: 未合入（门禁未过：
+    gate-runner: node:internal/modules/esm/resolve:275 |     throw new ERR_MODULE_NOT_FOUND( | Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/dsdev/wt/_integration-p3/scripts/electron-migration/lib/gate-checks/index.mjs'（原件 /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/08-F7））
+    原件：L01 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/09-L01
+L01: 未合入（门禁未过：
+    gate-runner: node:internal/modules/esm/resolve:275 |     throw new ERR_MODULE_NOT_FOUND( | Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/dsdev/wt/_integration-p0/scripts/electron-migration/lib/gate-checks/index.mjs'（原件 /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/09-L01））
+    原件：L02 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/10-L02
+L02: 未合入（门禁未过：
+    gate-runner: node:internal/modules/esm/resolve:275 |     throw new ERR_MODULE_NOT_FOUND( | Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/dsdev/wt/_integration-p1/scripts/electron-migration/lib/gate-checks/index.mjs'（原件 /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/10-L02））
+    原件：L03 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/11-L03
+L03: 未合入（门禁未过：
+    gate-runner: node:internal/modules/esm/resolve:275 |     throw new ERR_MODULE_NOT_FOUND( | Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/dsdev/wt/_integration-p2/scripts/electron-migration/lib/gate-checks/index.mjs'（原件 /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/11-L03））
+    原件：L04 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/12-L04
+L04: 未合入（门禁未过：
+    gate-runner: node:internal/modules/esm/resolve:275 |     throw new ERR_MODULE_NOT_FOUND( | Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/dsdev/wt/_integration-p3/scripts/electron-migration/lib/gate-checks/index.mjs'（原件 /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/12-L04））
+    原件：L05 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/13-L05
+L05: 未合入（门禁未过：
+    gate-runner: node:internal/modules/esm/resolve:275 |     throw new ERR_MODULE_NOT_FOUND( | Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/dsdev/wt/_integration-p0/scripts/electron-migration/lib/gate-checks/index.mjs'（原件 /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/13-L05））
+    原件：L06 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/14-L06
+L06: 未合入（门禁未过：
+    gate-runner: node:internal/modules/esm/resolve:275 |     throw new ERR_MODULE_NOT_FOUND( | Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/dsdev/wt/_integration-p1/scripts/electron-migration/lib/gate-checks/index.mjs'（原件 /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/14-L06））
+    原件：L07 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/15-L07
+L07: 未合入（门禁未过：
+    gate-runner: node:internal/modules/esm/resolve:275 |     throw new ERR_MODULE_NOT_FOUND( | Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/dsdev/wt/_integration-p2/scripts/electron-migration/lib/gate-checks/index.mjs'（原件 /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/15-L07））
+    原件：L10 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/16-L10
+L10: 未合入（门禁未过：
+    gate-runner: node:internal/modules/esm/resolve:275 |     throw new ERR_MODULE_NOT_FOUND( | Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/dsdev/wt/_integration-p3/scripts/electron-migration/lib/gate-checks/index.mjs'（原件 /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/16-L10））
+    原件：L11 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/17-L11
+L11: 未合入（门禁未过：
+    gate-runner: node:internal/modules/esm/resolve:275 |     throw new ERR_MODULE_NOT_FOUND( | Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/dsdev/wt/_integration-p0/scripts/electron-migration/lib/gate-checks/index.mjs'（原件 /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/17-L11））
+    原件：L12 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/18-L12
+L12: 未合入（门禁未过：
+    gate-runner: node:internal/modules/esm/resolve:275 |     throw new ERR_MODULE_NOT_FOUND( | Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/dsdev/wt/_integration-p1/scripts/electron-migration/lib/gate-checks/index.mjs'（原件 /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/18-L12））
+    原件：L13 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/19-L13
+L13: 未合入（门禁未过：
+    gate-runner: node:internal/modules/esm/resolve:275 |     throw new ERR_MODULE_NOT_FOUND( | Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/dsdev/wt/_integration-p2/scripts/electron-migration/lib/gate-checks/index.mjs'（原件 /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/19-L13））
+    原件：L13b 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/20-L13b
+L13b: 未合入（门禁未过：
+    gate-runner: node:internal/modules/esm/resolve:275 |     throw new ERR_MODULE_NOT_FOUND( | Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/dsdev/wt/_integration-p3/scripts/electron-migration/lib/gate-checks/index.mjs'（原件 /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/20-L13b））
+    原件：L14 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/21-L14
+L14: 未合入（门禁未过：
+    gate-runner: node:internal/modules/esm/resolve:275 |     throw new ERR_MODULE_NOT_FOUND( | Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/dsdev/wt/_integration-p0/scripts/electron-migration/lib/gate-checks/index.mjs'（原件 /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/21-L14））
+    原件：L15 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/22-L15
+L15: 未合入（门禁未过：
+    gate-runner: node:internal/modules/esm/resolve:275 |     throw new ERR_MODULE_NOT_FOUND( | Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/dsdev/wt/_integration-p1/scripts/electron-migration/lib/gate-checks/index.mjs'（原件 /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/22-L15））
+    原件：L16 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/23-L16
+L16: 未合入（门禁未过：
+    gate-runner: node:internal/modules/esm/resolve:275 |     throw new ERR_MODULE_NOT_FOUND( | Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/dsdev/wt/_integration-p2/scripts/electron-migration/lib/gate-checks/index.mjs'（原件 /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/23-L16））
+    原件：L17 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/24-L17
+L17: 未合入（门禁未过：
+    gate-runner: node:internal/modules/esm/resolve:275 |     throw new ERR_MODULE_NOT_FOUND( | Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/dsdev/wt/_integration-p3/scripts/electron-migration/lib/gate-checks/index.mjs'（原件 /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/24-L17））
+    原件：L18 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/25-L18
+L18: 未合入（门禁未过：
+    gate-runner: node:internal/modules/esm/resolve:275 |     throw new ERR_MODULE_NOT_FOUND( | Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/dsdev/wt/_integration-p0/scripts/electron-migration/lib/gate-checks/index.mjs'（原件 /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/25-L18））
+    原件：L19 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/26-L19
+L19: 未合入（门禁未过：
+    gate-runner: node:internal/modules/esm/resolve:275 |     throw new ERR_MODULE_NOT_FOUND( | Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/dsdev/wt/_integration-p1/scripts/electron-migration/lib/gate-checks/index.mjs'（原件 /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/26-L19））
+    原件：L20 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/27-L20
+L20: 未合入（门禁未过：
+    gate-runner: node:internal/modules/esm/resolve:275 |     throw new ERR_MODULE_NOT_FOUND( | Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/dsdev/wt/_integration-p2/scripts/electron-migration/lib/gate-checks/index.mjs'（原件 /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/27-L20））
+    原件：L20b 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/28-L20b
+L20b: 未合入（门禁未过：
+    gate-runner: node:internal/modules/esm/resolve:275 |     throw new ERR_MODULE_NOT_FOUND( | Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/dsdev/wt/_integration-p3/scripts/electron-migration/lib/gate-checks/index.mjs'（原件 /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/28-L20b））
+    原件：L21 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/29-L21
+L21: 未合入（门禁未过：
+    gate-runner: node:internal/modules/esm/resolve:275 |     throw new ERR_MODULE_NOT_FOUND( | Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/dsdev/wt/_integration-p0/scripts/electron-migration/lib/gate-checks/index.mjs'（原件 /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/29-L21））
+    原件：L22 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/30-L22
+L22: 未合入（门禁未过：
+    gate-runner: node:internal/modules/esm/resolve:275 |     throw new ERR_MODULE_NOT_FOUND( | Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/dsdev/wt/_integration-p1/scripts/electron-migration/lib/gate-checks/index.mjs'（原件 /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/30-L22））
+    原件：L23 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/31-L23
+L23: 未合入（门禁未过：
+    gate-runner: node:internal/modules/esm/resolve:275 |     throw new ERR_MODULE_NOT_FOUND( | Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/dsdev/wt/_integration-p2/scripts/electron-migration/lib/gate-checks/index.mjs'（原件 /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/31-L23））
+    原件：L24 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/32-L24
+L24: 未合入（门禁未过：
+    gate-runner: node:internal/modules/esm/resolve:275 |     throw new ERR_MODULE_NOT_FOUND( | Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/dsdev/wt/_integration-p3/scripts/electron-migration/lib/gate-checks/index.mjs'（原件 /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/32-L24））
+    原件：R3 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/33-R3
+R3: 未合入（门禁未过：
+    gate-runner: node:internal/modules/esm/resolve:275 |     throw new ERR_MODULE_NOT_FOUND( | Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/dsdev/wt/_integration-p0/scripts/electron-migration/lib/gate-checks/index.mjs'（原件 /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/33-R3））
+    原件：R6 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/34-R6
+R6: 未合入（门禁未过：
+    gate-runner: node:internal/modules/esm/resolve:275 |     throw new ERR_MODULE_NOT_FOUND( | Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/dsdev/wt/_integration-p1/scripts/electron-migration/lib/gate-checks/index.mjs'（原件 /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/34-R6））
+    原件：U1 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/35-U1
+U1: 未合入（门禁未过：
+    gate-runner: node:internal/modules/esm/resolve:275 |     throw new ERR_MODULE_NOT_FOUND( | Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/dsdev/wt/_integration-p2/scripts/electron-migration/lib/gate-checks/index.mjs'（原件 /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/35-U1））
+    原件：U2 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/36-U2
+U2: 未合入（门禁未过：
+    gate-runner: node:internal/modules/esm/resolve:275 |     throw new ERR_MODULE_NOT_FOUND( | Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/dsdev/wt/_integration-p3/scripts/electron-migration/lib/gate-checks/index.mjs'（原件 /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/36-U2））
+    原件：U3 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/37-U3
+U3: 未合入（门禁未过：
+    gate-runner: node:internal/modules/esm/resolve:275 |     throw new ERR_MODULE_NOT_FOUND( | Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/dsdev/wt/_integration-p0/scripts/electron-migration/lib/gate-checks/index.mjs'（原件 /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/37-U3））
+    原件：U4 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/38-U4
+U4: 未合入（门禁未过：
+    gate-runner: node:internal/modules/esm/resolve:275 |     throw new ERR_MODULE_NOT_FOUND( | Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/dsdev/wt/_integration-p1/scripts/electron-migration/lib/gate-checks/index.mjs'（原件 /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/38-U4））
+    原件：X1 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/39-X1
+X1: 未合入（门禁未过：
+    gate-runner: node:internal/modules/esm/resolve:275 |     throw new ERR_MODULE_NOT_FOUND( | Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/dsdev/wt/_integration-p2/scripts/electron-migration/lib/gate-checks/index.mjs'（原件 /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/39-X1））
+    原件：X2 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/40-X2
+X2: 未合入（门禁未过：
+    gate-runner: node:internal/modules/esm/resolve:275 |     throw new ERR_MODULE_NOT_FOUND( | Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/dsdev/wt/_integration-p3/scripts/electron-migration/lib/gate-checks/index.mjs'（原件 /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/40-X2））
+    原件：X3 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/41-X3
+X3: 未合入（门禁未过：
+    gate-runner: node:internal/modules/esm/resolve:275 |     throw new ERR_MODULE_NOT_FOUND( | Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/dsdev/wt/_integration-p0/scripts/electron-migration/lib/gate-checks/index.mjs'（原件 /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/41-X3））
+    原件：X5 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/42-X5
+X5: 未合入（门禁未过：
+    gate-runner: node:internal/modules/esm/resolve:275 |     throw new ERR_MODULE_NOT_FOUND( | Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/dsdev/wt/_integration-p1/scripts/electron-migration/lib/gate-checks/index.mjs'（原件 /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/42-X5））
+    原件：X7 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/43-X7
+X7: 未合入（门禁未过：
+    gate-runner: node:internal/modules/esm/resolve:275 |     throw new ERR_MODULE_NOT_FOUND( | Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/dsdev/wt/_integration-p2/scripts/electron-migration/lib/gate-checks/index.mjs'（原件 /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T220002123Z/43-X7））
+[阶段] 快进 main
+并行集成完成：候选 43，门禁通过 0，并行度 4

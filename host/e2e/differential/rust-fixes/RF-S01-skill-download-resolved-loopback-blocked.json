@@ -1,0 +1,38 @@
+{
+  "id": "RF-S01-skill-download-resolved-loopback-blocked",
+  "kind": "deliberate",
+  "status": "approved",
+  "approvedBy": "main-agent",
+  "approvedAt": "2026-11-07T13:00:00+08:00",
+  "title": "技能包下载：域名解析到回环地址、或公网 URL 重定向进回环一律拦截，只有 URL 本身写本机时才允许连本机",
+  "rust": {
+    "file": "src-tauri/crates/dstu-agent/src/chat_v2/tools/fetch_executor.rs",
+    "line": 680,
+    "behavior": "download_https_bytes 首跳（:680）和重定向策略（:630）都用 is_blocked_internal_ip，它对任何主机名都豁免 loopback。因此 127.0.0.1.nip.io 这类解析到 127.0.0.1 的公网域名、[公网, ::1] 混合应答、以及公网 URL 302 到 https://127.0.0.1:port/ 都会连到本机服务"
+  },
+  "fix": {
+    "files": ["host/plugins/agent-skills/src/http.ts"],
+    "behavior": "是否允许回环只看用户可见的原始 URL：主机是回环字面量（经 WHATWG 解析，含 127.1、[::1]）或 localhost/*.localhost 时，各跳允许落到回环；否则任何一个解析结果是回环就按内网拦截（首跳报 'Blocked: URL resolves to internal IP address'，重定向停在该 3xx，报 'Download failed with HTTP 30x … for <原 URL>'），且不发起连接。私网、链路本地、元数据的拦截规则不变，错误文本仍是 Rust 原文"
+  },
+  "evidence": "skill_scan 为 Low（免审批），source.url 经 skill-install-chat-executor.ts:69 走 downloadHttpsBytes；扫描结果和错误文本都回给模型。被提示注入的模型可以用任意解析到 127.0.0.1 的域名让 Host 连本机 HTTPS 服务，从 'Download failed with HTTP 404 Not Found'、'connect ECONNREFUSED' 与 TLS 证书错误的区别里探测本机端口和服务。web_fetch 的同一缺口已由 RF-S01-web-fetch-resolved-loopback-blocked（已批准）补上，这里与它保持一致。Rust 想支持的本地来源（开发者在本机起的技能包服务）一般直接写 localhost/127.0.0.1，仍可用。复现：resolve('127.0.0.1.nip.io') = ['127.0.0.1']，skill_scan {source:{url:'https://127.0.0.1.nip.io:8443/x.zip'}} 在 Rust 中会连到本机 8443；修复后直接拒绝。另：skill_scan 对 localhost 字面量 URL 仍免审批，是否像 web_fetch 一样升为 High 属于 skill-install-chat-executor.ts（W02），已写进交接。",
+  "userVisible": "能感知：技能包 URL（skill_scan/skill_install、技能更新检查与一键更新、tap 下载）如果是解析到本机的非本机域名，报 'Blocked: URL resolves to internal IP address'；公网地址重定向进本机时报该 3xx 的 'Download failed with HTTP 30x …'。直接写 localhost/127.0.0.1/[::1] 的 URL 不受影响",
+  "dataCompat": "不改变落库数据、同步载荷或备份格式",
+  "g3": {
+    "affects": false,
+    "selectors": []
+  },
+  "tests": [
+    {
+      "file": "host/plugins/agent-skills/tests/http.test.ts",
+      "name": "RF-S01-skill-download-resolved-loopback-blocked: a name that resolves to loopback is refused before any connection"
+    },
+    {
+      "file": "host/plugins/agent-skills/tests/http.test.ts",
+      "name": "RF-S01-skill-download-resolved-loopback-blocked: URLs that name this machine still reach it"
+    },
+    {
+      "file": "host/plugins/agent-skills/tests/http.test.ts",
+      "name": "RF-S01-skill-download-resolved-loopback-blocked: a redirect from a public URL into loopback stops on the 3xx"
+    }
+  ]
+}

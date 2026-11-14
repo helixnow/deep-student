@@ -8,7 +8,8 @@
 import { invoke } from '@tauri-apps/api/core';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { clearAdapterErrorFlag } from '../errors/adapterErrorChannel';
-import type { LoadSessionResponseType, SessionRestoreBaseline } from '../../core/types';
+import type { LoadSessionResponseType } from '../../core/types';
+import type { SessionRestoreBaseline } from '../../core/store/restoreActions';
 import { sessionSwitchPerf } from '../../debug/sessionSwitchPerf';
 import {
   AVAILABLE_SKILLS_SNAPSHOT_METADATA_KEY,
@@ -30,6 +31,8 @@ import {
   readAvailableSkillsSnapshotPendingGeneration,
 } from './availableSkillsSnapshot';
 
+const sessionLoadTokens = new WeakMap<TauriAdapterHost, symbol>();
+
 export function captureRestoreBaseline(host: TauriAdapterHost): SessionRestoreBaseline {
   const state = host.getCurrentState();
   let oldestMessageTimestamp: number | undefined;
@@ -42,6 +45,9 @@ export function captureRestoreBaseline(host: TauriAdapterHost): SessionRestoreBa
     }
   }
   return {
+    messageMap: state.messageMap,
+    blocks: state.blocks,
+    inputValue: state.inputValue,
     messageIds: new Set(state.messageMap.keys()),
     blockIds: new Set(state.blocks.keys()),
     oldestMessageTimestamp,
@@ -51,6 +57,8 @@ export function captureRestoreBaseline(host: TauriAdapterHost): SessionRestoreBa
 }
 
 export async function loadSession(host: TauriAdapterHost): Promise<void> {
+  const loadToken = Symbol();
+  sessionLoadTokens.set(host, loadToken);
   console.log(LOG_PREFIX, 'Loading session:', host.sessionId);
 
   // 📊 性能打点：backend_load_start
@@ -66,6 +74,7 @@ export async function loadSession(host: TauriAdapterHost): Promise<void> {
       sessionId: host.sessionId,
       tailLimit: LOAD_SESSION_TAIL_LIMIT,
     });
+    if (sessionLoadTokens.get(host) !== loadToken || !host.isSessionRuntimeOwner()) return;
     const invokeMs = performance.now() - t0;
 
     // 📊 细粒度打点：invoke 返回
@@ -163,18 +172,23 @@ export async function loadSession(host: TauriAdapterHost): Promise<void> {
 
     host.reconcileLoadedAnkiBlocks();
 
+    // 🚀 WAN 优化：先放行 UI（退出骨架屏、渲染已恢复的消息），再回填默认模型元数据。
+    // hydrateDefaultChatModelIfMissing 仍需读取模型配置和全局分配，
+    // 即使这些 IPC 已并行，公网下也不必让消息渲染等待；它只回写 model2OverrideId / 显示名，
+    // 不参与消息渲染。回调本身幂等（AdapterManager 只在 !isReady 时置位并广播），
+    // 因此这里提前调用不会重复触发 ready 事件。
+    if (host.onDataRestored) {
+      host.onDataRestored();
+    }
+
+    // 仍然 await：调用方（含测试）等 loadSession 返回时，模型元数据已就位。
     await host.hydrateDefaultChatModelIfMissing();
+    if (sessionLoadTokens.get(host) !== loadToken || !host.isSessionRuntimeOwner()) return;
 
     // 📊 性能打点：restore_end
     const totalMs = performance.now() - t0;
     sessionSwitchPerf.mark('restore_end', { totalMs });
     console.log(LOG_PREFIX, 'Session restore finished', { totalMs });
-    
-    // 🚀 性能优化：在 restoreFromBackend 后立即触发回调，不等待 await
-    // 这允许 AdapterManager 立即标记 isReady，避免 React 渲染阻塞微任务队列
-    if (host.onDataRestored) {
-      host.onDataRestored();
-    }
 
     // 第二阶段：还有更早历史时，首帧后空闲期分批回填并合并到头部。
     // 🚀 长会话内存窗口化：回填有页数上限（HISTORY_BACKFILL_MAX_PAGES），
@@ -189,6 +203,7 @@ export async function loadSession(host: TauriAdapterHost): Promise<void> {
       host.historyWindowStartOffset = 0;
     }
   } catch (error) {
+    if (sessionLoadTokens.get(host) !== loadToken || !host.isSessionRuntimeOwner()) return;
     console.error(LOG_PREFIX, 'Load session failed:', getErrorMessage(error));
     throw error;
   }

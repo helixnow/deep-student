@@ -1,0 +1,722 @@
+[
+  {
+    "id": "session-load-flow",
+    "panels": [
+      {
+        "component": "SessionLoadFlowDebugPlugin",
+        "shown": true,
+        "props": {
+          "visible": true,
+          "isActive": true,
+          "isActivated": true,
+          "currentStreamId": "stream-1",
+          "onClose": "function"
+        }
+      }
+    ]
+  },
+  {
+    "id": "session-switch-perf",
+    "panels": [
+      {
+        "component": "SessionSwitchPerfDebugPlugin",
+        "shown": true,
+        "props": {
+          "visible": true,
+          "isActive": true,
+          "isActivated": true,
+          "currentStreamId": "stream-1",
+          "onClose": "function"
+        }
+      }
+    ]
+  },
+  {
+    "id": "multi-variant-debug",
+    "panels": [
+      {
+        "component": "MultiVariantDebugPlugin",
+        "shown": true,
+        "props": {
+          "visible": true,
+          "isActive": true,
+          "isActivated": true,
+          "currentStreamId": "stream-1",
+          "onClose": "function"
+        }
+      }
+    ]
+  },
+  {
+    "id": "multi-agent-debug",
+    "panels": [
+      {
+        "component": "MultiAgentDebugPlugin",
+        "shown": true,
+        "props": {
+          "visible": true,
+          "isActive": true,
+          "isActivated": true,
+          "currentStreamId": "stream-1",
+          "onClose": "function"
+        }
+      }
+    ]
+  },
+  {
+    "id": "subagent-test",
+    "panels": [
+      {
+        "component": "SubagentTestPlugin",
+        "shown": true,
+        "props": {
+          "visible": true,
+          "isActive": true,
+          "isActivated": true,
+          "currentStreamId": "stream-1",
+          "onClose": "function"
+        }
+      }
+    ]
+  },
+  {
+    "id": "subagent-message-flow-debug",
+    "panels": [
+      {
+        "component": "SubagentMessageFlowDebugPlugin",
+        "shown": true,
+        "props": {
+          "visible": true,
+          "isActive": true,
+          "isActivated": true,
+          "currentStreamId": "stream-1",
+          "onClose": "function"
+        }
+      }
+    ]
+  },
+  {
+    "id": "workspace-orchestration-test",
+    "panels": [
+      {
+        "component": "WorkspaceOrchestrationTestPlugin",
+        "shown": true,
+        "props": {
+          "visible": true,
+          "isActive": true,
+          "isActivated": true,
+          "currentStreamId": "stream-1",
+          "onClose": "function"
+        }
+      }
+    ]
+  },
+  {
+    "id": "thinking-block-debug",
+    "panels": [
+      {
+        "component": "ThinkingBlockDebugPlugin",
+        "shown": true,
+        "props": {
+          "visible": true,
+          "isActive": true,
+          "isActivated": true,
+          "currentStreamId": "stream-1",
+          "onClose": "function"
+        }
+      }
+    ]
+  },
+  {
+    "id": "markdown-streaming-profiler",
+    "panels": [
+      {
+        "component": "MarkdownStreamingProfilerPlugin",
+        "shown": true,
+        "props": {
+          "visible": true,
+          "isActive": true,
+          "isActivated": true,
+          "currentStreamId": "stream-1",
+          "onClose": "function"
+        }
+      }
+    ]
+  },
+  {
+    "id": "attachment-injection-debug",
+    "panels": [
+      {
+        "component": "AttachmentInjectionDebugPlugin",
+        "shown": true,
+        "props": {
+          "visible": true,
+          "isActive": true,
+          "isActivated": true,
+          "currentStreamId": "stream-1",
+          "onClose": "function"
+        }
+      }
+    ]
+  },
+  {
+    "id": "attachment-ocr-request-audit",
+    "panels": [
+      {
+        "component": "AttachmentOcrRequestAuditPlugin",
+        "shown": true,
+        "props": {
+          "visible": true,
+          "isActive": true,
+          "isActivated": true,
+          "currentStreamId": "stream-1",
+          "onClose": "function"
+        }
+      }
+    ]
+  },
+  {
+    "id": "pdf-multimodal-debug",
+    "panels": [
+      {
+        "component": "PdfMultimodalDebugPlugin",
+        "shown": true,
+        "props": {
+          "visible": true,
+          "isActive": true,
+          "isActivated": true,
+          "currentStreamId": "stream-1",
+          "onClose": "function"
+        }
+      }
+    ]
+  },
+  {
+    "id": "media-processing-debug",
+    "panels": [
+      {
+        "component": "MediaProcessingDebugPlugin",
+        "shown": true,
+        "props": {
+          "visible": true,
+          "isActive": true,
+          "isActivated": true,
+          "currentStreamId": "stream-1",
+          "onClose": "function"
+        }
+      }
+    ]
+  },
+  {
+    "id": "edit-retry-debug",
+    "panels": [
+      {
+        "component": "EditRetryDebugPlugin",
+        "shown": true,
+        "props": {
+          "visible": true,
+          "isActive": true,
+          "isActivated": true,
+          "currentStreamId": "stream-1",
+          "onClose": "function"
+        }
+      }
+    ]
+  },
+  {
+    "id": "deepseek-ocr-debug",
+    "panels": [
+      {
+        "component": "DeepSeekOcrDebugPlugin",
+        "shown": true,
+        "props": {
+          "visible": true,
+          "isActive": true,
+          "isActivated": true,
+          "currentStreamId": "stream-1",
+          "onClose": "function"
+        }
+      }
+    ]
+  },
+  {
+    "id": "web-search-debug",
+    "panels": [
+      {
+        "component": "WebSearchDebugPlugin",
+        "shown": true,
+        "props": {
+          "visible": true,
+          "isActive": true,
+          "isActivated": true,
+          "currentStreamId": "stream-1",
+          "onClose": "function"
+        }
+      }
+    ]
+  },
+  {
+    "id": "unified-drag-drop",
+    "panels": [
+      {
+        "component": "UnifiedDragDropDebugPlugin",
+        "shown": true,
+        "props": {
+          "visible": true,
+          "isActive": true,
+          "isActivated": true,
+          "currentStreamId": "stream-1",
+          "onClose": "function"
+        }
+      }
+    ]
+  },
+  {
+    "id": "finder-drag-drop",
+    "panels": [
+      {
+        "component": "FinderDragDropDebugPlugin",
+        "shown": true,
+        "props": {
+          "visible": true,
+          "isActive": true,
+          "isActivated": true,
+          "currentStreamId": "stream-1",
+          "onClose": "function"
+        }
+      }
+    ]
+  },
+  {
+    "id": "selection-box-debug",
+    "panels": [
+      {
+        "component": "SelectionBoxDebugPlugin",
+        "shown": true,
+        "props": {
+          "visible": true,
+          "isActive": true,
+          "isActivated": true,
+          "currentStreamId": "stream-1",
+          "onClose": "function"
+        }
+      }
+    ]
+  },
+  {
+    "id": "anki-generation-debug",
+    "panels": [
+      {
+        "component": "AnkiGenerationDebugPlugin",
+        "shown": true,
+        "props": {
+          "visible": true,
+          "isActive": true,
+          "isActivated": true,
+          "currentStreamId": "stream-1",
+          "onClose": "function"
+        }
+      }
+    ]
+  },
+  {
+    "id": "chatanki-workflow-debug",
+    "panels": [
+      {
+        "component": "ChatAnkiWorkflowDebugPlugin",
+        "shown": true,
+        "props": {
+          "visible": true,
+          "isActive": true,
+          "isActivated": true,
+          "currentStreamId": "stream-1",
+          "onClose": "function"
+        }
+      }
+    ]
+  },
+  {
+    "id": "chatanki-integration-test",
+    "panels": [
+      {
+        "component": "ChatAnkiIntegrationTestPlugin",
+        "shown": true,
+        "props": {
+          "visible": true,
+          "isActive": true,
+          "isActivated": true,
+          "currentStreamId": "stream-1",
+          "onClose": "function"
+        }
+      }
+    ]
+  },
+  {
+    "id": "template-designer-workflow-debug",
+    "panels": [
+      {
+        "component": "TemplateDesignerWorkflowDebugPlugin",
+        "shown": true,
+        "props": {
+          "visible": true,
+          "isActive": true,
+          "isActivated": true,
+          "currentStreamId": "stream-1",
+          "onClose": "function"
+        }
+      }
+    ]
+  },
+  {
+    "id": "mcp-debug",
+    "panels": [
+      {
+        "component": "McpDebugPlugin",
+        "shown": true,
+        "props": {
+          "visible": true,
+          "isActive": true,
+          "isActivated": true,
+          "currentStreamId": "stream-1",
+          "onClose": "function"
+        }
+      }
+    ]
+  },
+  {
+    "id": "image-attachment-inspector",
+    "panels": [
+      {
+        "component": "ImageAttachmentInspectorPlugin",
+        "shown": true,
+        "props": {
+          "visible": true,
+          "isActive": true,
+          "isActivated": true,
+          "currentStreamId": "stream-1",
+          "onClose": "function"
+        }
+      }
+    ]
+  },
+  {
+    "id": "image-preview-debug",
+    "panels": [
+      {
+        "component": "ImagePreviewDebugPlugin",
+        "shown": true,
+        "props": {
+          "visible": true,
+          "isActive": true,
+          "isActivated": true,
+          "currentStreamId": "stream-1",
+          "onClose": "function"
+        }
+      }
+    ]
+  },
+  {
+    "id": "chatv2-image-preview-debug",
+    "panels": [
+      {
+        "component": "ChatV2ImagePreviewDebugPlugin",
+        "shown": true,
+        "props": {
+          "visible": true,
+          "isActive": true,
+          "isActivated": true,
+          "currentStreamId": "stream-1",
+          "onClose": "function"
+        }
+      }
+    ]
+  },
+  {
+    "id": "page-lifecycle-debug",
+    "panels": [
+      {
+        "component": "PageLifecycleDebugPlugin",
+        "shown": true,
+        "props": {
+          "visible": true,
+          "isActive": true,
+          "isActivated": true,
+          "currentStreamId": "stream-1",
+          "onClose": "function"
+        }
+      }
+    ]
+  },
+  {
+    "id": "layout-debug",
+    "panels": [
+      {
+        "component": "LayoutDebugPlugin",
+        "shown": true,
+        "props": {
+          "visible": true,
+          "isActive": true,
+          "isActivated": true,
+          "currentStreamId": "stream-1",
+          "onClose": "function"
+        }
+      }
+    ]
+  },
+  {
+    "id": "floating-panel-debug",
+    "panels": [
+      {
+        "component": "FloatingPanelDebugPlugin",
+        "shown": true,
+        "props": {
+          "visible": true,
+          "isActive": true,
+          "isActivated": true,
+          "currentStreamId": "stream-1",
+          "onClose": "function"
+        }
+      }
+    ]
+  },
+  {
+    "id": "notes-typography-debug",
+    "panels": [
+      {
+        "component": "NotesTypographyDebugPlugin",
+        "shown": true,
+        "props": {
+          "visible": true,
+          "isActive": true,
+          "isActivated": true,
+          "currentStreamId": "stream-1",
+          "onClose": "function"
+        }
+      }
+    ]
+  },
+  {
+    "id": "notes-outline-debug",
+    "panels": [
+      {
+        "component": "NotesOutlineDebugPlugin",
+        "shown": true,
+        "props": {
+          "visible": true,
+          "isActive": true,
+          "isActivated": true,
+          "currentStreamId": "stream-1",
+          "onClose": "function"
+        }
+      }
+    ]
+  },
+  {
+    "id": "crepe-editor-debug",
+    "panels": [
+      {
+        "component": "CrepeEditorDebugPlugin",
+        "shown": true,
+        "props": {
+          "visible": true,
+          "isActive": true,
+          "isActivated": true,
+          "currentStreamId": "stream-1",
+          "onClose": "function"
+        }
+      }
+    ]
+  },
+  {
+    "id": "crepe-drag-drop-debug",
+    "panels": [
+      {
+        "component": "CrepeDragDropDebugPlugin",
+        "shown": true,
+        "props": {
+          "visible": true,
+          "isActive": true,
+          "isActivated": true,
+          "currentStreamId": "stream-1",
+          "onClose": "function"
+        }
+      }
+    ]
+  },
+  {
+    "id": "crepe-image-upload-debug",
+    "panels": [
+      {
+        "component": "CrepeImageUploadDebugPlugin",
+        "shown": true,
+        "props": {
+          "visible": true,
+          "isActive": true,
+          "isActivated": true,
+          "currentStreamId": "stream-1",
+          "onClose": "function"
+        }
+      }
+    ]
+  },
+  {
+    "id": "essay-grading-tooltip-debug",
+    "panels": [
+      {
+        "component": "EssayGradingTooltipDebugPlugin",
+        "shown": true,
+        "props": {
+          "visible": true,
+          "isActive": true,
+          "isActivated": true,
+          "currentStreamId": "stream-1",
+          "onClose": "function"
+        }
+      }
+    ]
+  },
+  {
+    "id": "dstu-debug",
+    "panels": [
+      {
+        "component": "DstuDebugPlugin",
+        "shown": true,
+        "props": {
+          "visible": true,
+          "isActive": true,
+          "isActivated": true,
+          "currentStreamId": "stream-1",
+          "onClose": "function"
+        }
+      }
+    ]
+  },
+  {
+    "id": "mindmap-blur-hover-debug",
+    "panels": [
+      {
+        "component": "MindMapBlurHoverDebugPlugin",
+        "shown": true,
+        "props": {
+          "visible": true,
+          "isActive": true,
+          "isActivated": true,
+          "currentStreamId": "stream-1",
+          "onClose": "function"
+        }
+      }
+    ]
+  },
+  {
+    "id": "attachment-pipeline-test",
+    "panels": [
+      {
+        "component": "AttachmentPipelineTestPlugin",
+        "shown": true,
+        "props": {
+          "visible": true,
+          "isActive": true,
+          "isActivated": true,
+          "currentStreamId": "stream-1",
+          "onClose": "function"
+        }
+      }
+    ]
+  },
+  {
+    "id": "chat-interaction-test",
+    "panels": [
+      {
+        "component": "ChatInteractionTestPlugin",
+        "shown": true,
+        "props": {
+          "visible": true,
+          "isActive": true,
+          "isActivated": true,
+          "currentStreamId": "stream-1",
+          "onClose": "function"
+        }
+      }
+    ]
+  },
+  {
+    "id": "citation-test",
+    "panels": [
+      {
+        "component": "CitationTestPlugin",
+        "shown": true,
+        "props": {
+          "visible": true,
+          "isActive": true,
+          "isActivated": true,
+          "currentStreamId": "stream-1",
+          "onClose": "function"
+        }
+      }
+    ]
+  },
+  {
+    "id": "multi-variant-test",
+    "panels": [
+      {
+        "component": "MultiVariantTestPlugin",
+        "shown": true,
+        "props": {
+          "visible": true,
+          "isActive": true,
+          "isActivated": true,
+          "currentStreamId": "stream-1",
+          "onClose": "function"
+        }
+      }
+    ]
+  },
+  {
+    "id": "tool-call-lifecycle-debug",
+    "panels": [
+      {
+        "component": "ToolCallLifecycleDebugPlugin",
+        "shown": true,
+        "props": {
+          "visible": true,
+          "isActive": true,
+          "isActivated": true,
+          "currentStreamId": "stream-1",
+          "onClose": "function"
+        }
+      }
+    ]
+  },
+  {
+    "id": "exam-sheet-processing-debug",
+    "panels": [
+      {
+        "component": "ExamSheetProcessingDebugPlugin",
+        "shown": true,
+        "props": {
+          "visible": true,
+          "isActive": true,
+          "isActivated": true,
+          "currentStreamId": "stream-1",
+          "onClose": "function"
+        }
+      }
+    ]
+  },
+  {
+    "id": "question-import-debug",
+    "panels": [
+      {
+        "component": "QuestionImportDebugPlugin",
+        "shown": true,
+        "props": {
+          "visible": true,
+          "isActive": true,
+          "isActivated": true,
+          "currentStreamId": "stream-1",
+          "onClose": "function"
+        }
+      }
+    ]
+  }
+]

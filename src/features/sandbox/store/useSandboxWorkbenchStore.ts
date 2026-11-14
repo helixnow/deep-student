@@ -1,5 +1,9 @@
 import { create } from 'zustand';
 
+import {
+  registerPinnedArtifactHostLauncher,
+  usePinnedArtifactStore,
+} from '@/stores/pinnedArtifactStore';
 import type {
   SandboxOwnerKey,
   SandboxSession,
@@ -31,6 +35,14 @@ export function createChatSandboxOwnerKey(sessionId: string): SandboxOwnerKey {
   return `sandbox:chat:${sessionId}`;
 }
 
+export function findSandboxOwnerFromActiveElement(): SandboxOwnerKey | undefined {
+  if (typeof document === 'undefined') return undefined;
+  const activeElement = document.activeElement;
+  if (!(activeElement instanceof Element)) return undefined;
+  const ownerHost = activeElement.closest(`[${SANDBOX_OWNER_ATTRIBUTE}]`);
+  return ownerHost?.getAttribute(SANDBOX_OWNER_ATTRIBUTE)?.trim() || undefined;
+}
+
 export interface SandboxWorkbenchStore extends SandboxWorkbenchOwnerState {
   ownerStates: Record<SandboxOwnerKey, SandboxWorkbenchOwnerState>;
   activeOwnerKey: SandboxOwnerKey;
@@ -49,10 +61,12 @@ export interface SandboxWorkbenchStore extends SandboxWorkbenchOwnerState {
 function createSandboxSession(input: SandboxSessionInput): SandboxSession {
   const now = Date.now();
   sessionSequence += 1;
+  const resolvedMode: SandboxWorkbenchMode =
+    input.initialMode ?? (input.artifactKind === 'html' ? 'sandbox-run' : 'safe-preview');
   return {
     ...input,
     id: `sandbox_${now}_${sessionSequence}`,
-    mode: 'safe-preview',
+    mode: resolvedMode,
     createdAt: now,
     updatedAt: now,
   };
@@ -68,6 +82,25 @@ function resolveOwnerKey(
   ownerKey: SandboxOwnerKey | undefined,
 ): SandboxOwnerKey {
   return normalizeOwnerKey(ownerKey) ?? state.activeOwnerKey;
+}
+
+export function resolveTargetSandboxOwnerKey(
+  state: Pick<SandboxWorkbenchStore, 'activeOwnerKey'>,
+  ownerKey?: SandboxOwnerKey,
+  sessionId?: string,
+): SandboxOwnerKey {
+  const explicit = normalizeOwnerKey(ownerKey);
+  if (explicit) return explicit;
+  if (state.activeOwnerKey !== LEGACY_SANDBOX_OWNER_KEY) {
+    return state.activeOwnerKey;
+  }
+  const fromDom = findSandboxOwnerFromActiveElement();
+  if (fromDom) return fromDom;
+  const trimmedSession = sessionId?.trim();
+  if (trimmedSession) {
+    return createChatSandboxOwnerKey(trimmedSession);
+  }
+  return LEGACY_SANDBOX_OWNER_KEY;
 }
 
 export function selectSandboxWorkbenchOwnerState(
@@ -100,7 +133,7 @@ function disposeOwnerState(
 
 // ownerStates is authoritative. The top-level fields mirror activeOwnerKey so
 // existing single-window selectors and no-argument actions keep their behavior.
-export const useSandboxWorkbenchStore = create<SandboxWorkbenchStore>((set) => ({
+export const useSandboxWorkbenchStore = create<SandboxWorkbenchStore>((set, get) => ({
   ...EMPTY_OWNER_STATE,
   ownerStates: {},
   activeOwnerKey: LEGACY_SANDBOX_OWNER_KEY,
@@ -140,8 +173,10 @@ export const useSandboxWorkbenchStore = create<SandboxWorkbenchStore>((set) => (
   },
 
   openWorkbench: (ownerKey) => {
+    const currentState = get();
+    const resolvedOwnerKey = resolveOwnerKey(currentState, ownerKey);
+    const prevOwnerState = selectSandboxWorkbenchOwnerState(currentState, resolvedOwnerKey);
     set((state) => {
-      const resolvedOwnerKey = resolveOwnerKey(state, ownerKey);
       const current = selectSandboxWorkbenchOwnerState(state, resolvedOwnerKey);
       if (current.isOpen) return state;
       const ownerState = { ...current, isOpen: true };
@@ -150,11 +185,22 @@ export const useSandboxWorkbenchStore = create<SandboxWorkbenchStore>((set) => (
         ...(state.activeOwnerKey === resolvedOwnerKey ? ownerState : {}),
       };
     });
+    if (prevOwnerState.activeSession?.artifactId) {
+      usePinnedArtifactStore
+        .getState()
+        .reactivateOwnerArtifact(
+          resolvedOwnerKey,
+          prevOwnerState.activeSession.artifactId,
+          prevOwnerState.activeSession.sessionId,
+        );
+    }
   },
 
   closeWorkbench: (ownerKey) => {
+    const currentState = get();
+    const resolvedOwnerKey = resolveOwnerKey(currentState, ownerKey);
+    const prevSession = selectSandboxWorkbenchOwnerState(currentState, resolvedOwnerKey).activeSession;
     set((state) => {
-      const resolvedOwnerKey = resolveOwnerKey(state, ownerKey);
       const current = selectSandboxWorkbenchOwnerState(state, resolvedOwnerKey);
       if (!current.isOpen) return state;
       const ownerState = { ...current, isOpen: false };
@@ -163,19 +209,29 @@ export const useSandboxWorkbenchStore = create<SandboxWorkbenchStore>((set) => (
         ...(state.activeOwnerKey === resolvedOwnerKey ? ownerState : {}),
       };
     });
+    usePinnedArtifactStore
+      .getState()
+      .deactivateOwnerArtifacts(resolvedOwnerKey, prevSession?.sessionId);
   },
 
   closeSession: (ownerKey) => {
-    set((state) => {
-      const resolvedOwnerKey = resolveOwnerKey(state, ownerKey);
-      return disposeOwnerState(state, resolvedOwnerKey);
-    });
+    const currentState = get();
+    const resolvedOwnerKey = resolveOwnerKey(currentState, ownerKey);
+    const prevSession = selectSandboxWorkbenchOwnerState(currentState, resolvedOwnerKey).activeSession;
+    set((state) => disposeOwnerState(state, resolvedOwnerKey));
+    usePinnedArtifactStore
+      .getState()
+      .deactivateOwnerArtifacts(resolvedOwnerKey, prevSession?.sessionId);
   },
 
   disposeOwner: (ownerKey) => {
     const normalized = normalizeOwnerKey(ownerKey);
     if (!normalized) return;
+    const prevSession = selectSandboxWorkbenchOwnerState(get(), normalized).activeSession;
     set((state) => disposeOwnerState(state, normalized));
+    usePinnedArtifactStore
+      .getState()
+      .deactivateOwnerArtifacts(normalized, prevSession?.sessionId);
   },
 
   refreshSession: (ownerKey) => {
@@ -249,3 +305,36 @@ export const useSandboxWorkbenchStore = create<SandboxWorkbenchStore>((set) => (
     });
   },
 }));
+
+registerPinnedArtifactHostLauncher((input) => {
+  const workbenchState = useSandboxWorkbenchStore.getState();
+  const resolvedOwnerKey = resolveTargetSandboxOwnerKey(
+    workbenchState,
+    input.ownerKey,
+    input.sessionId,
+  );
+  const record = usePinnedArtifactStore.getState().upsertPinnedArtifact({
+    ...input,
+    ownerKey: resolvedOwnerKey,
+  });
+  const activeRev =
+    record.revisions.find((r) => r.version === record.activeVersion) ??
+    record.revisions[record.revisions.length - 1];
+  workbenchState.openSession(
+    {
+      sourceType: input.kind === 'generative-ui' ? 'chat-generative-ui' : 'chat-code-block',
+      sourceMessageId: record.sourceMessageId,
+      language: record.language,
+      title: record.title,
+      content: activeRev?.content ?? input.content,
+      artifactKind: record.kind,
+      widgetId: record.widgetId,
+      sessionId: record.sessionId,
+      groupId: record.groupId,
+      artifactId: record.artifactId,
+      initialMode: record.kind === 'html' ? 'sandbox-run' : 'safe-preview',
+    },
+    resolvedOwnerKey,
+  );
+  return record;
+});

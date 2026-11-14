@@ -1,0 +1,17 @@
+{
+  "scene": "skills-mcp",
+  "steps": [
+    {
+      "name": "boot",
+      "order": "sequence",
+      "calls": [
+        "get_setting(key)",
+        "save_setting(key,value)",
+        "skill_list_directories(path)",
+        "skill_read_file(path)",
+        "skill_list_package_files(path)",
+        "chat_v2_list_runtime_roots()"
+      ]
+    }
+  ]
+}

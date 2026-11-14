@@ -92,4 +92,26 @@ describe('shared SelectionToolbar', () => {
     const { container } = renderToolbar({ className: 'z-[150]' });
     expect(container.querySelector('[data-selection-toolbar]')?.className).toContain('z-[150]');
   });
+
+  it('renders host extra actions and clears the selection after they run', () => {
+    const onClear = vi.fn();
+    const run = vi.fn();
+    const { action } = renderToolbar({
+      onClear,
+      hideUnavailableActions: true,
+      extraActions: [{
+        key: 'excerpt-to-mindmap',
+        label: '摘录到导图',
+        icon: () => <span data-testid="excerpt-icon" />,
+        run,
+      }],
+    });
+
+    const button = action('摘录到导图');
+    expect(button).not.toBeNull();
+    expect(button?.disabled).toBe(false);
+    button?.click();
+    expect(run).toHaveBeenCalledWith('选中的一段话');
+    expect(onClear).toHaveBeenCalled();
+  });
 });

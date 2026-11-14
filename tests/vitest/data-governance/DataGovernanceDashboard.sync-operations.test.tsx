@@ -266,7 +266,7 @@ function setupDefaultMocks(opts?: { cloudConfigured?: boolean }) {
 
 /** 导航到同步 Tab 的辅助函数 */
 async function navigateToSyncTab() {
-  const syncTab = await screen.findByRole('button', {
+  const syncTab = await screen.findByRole('tab', {
     name: /^(?:同步|data:governance\.tab_sync)$/i,
   });
   fireEvent.click(syncTab);

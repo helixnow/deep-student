@@ -8,18 +8,27 @@ function lookupHint(card: ReviewCard): string {
 }
 
 /**
- * 复习中点「查看出处」：到期卡不带来源字段，点的那一刻按卡片 id 回查卡片库补齐，
- * 再按统一优先级打开。没有任何出处时返回 false，由界面提示。
+ * 复习中点「查看出处」：若卡片自身已带 `_source_anchor` 语义锚点则直接跳转；
+ * 否则按卡片 id 回查卡片库补齐，再按统一优先级打开。没有任何出处时返回 false，由界面提示。
  */
 export async function openReviewCardSource(card: ReviewCard): Promise<boolean> {
+  const directAnchor = resolveCardSource({ extraFields: card.extraFields });
+  if (directAnchor?.kind === 'anchor') {
+    await openCardSourceTarget(directAnchor, 'flashcards-review');
+    return true;
+  }
+
   const libraryCard = card.ankiCardId
     ? await findLibraryCard(card.ankiCardId, lookupHint(card)).catch(() => null)
     : null;
   const texts = cardMediaSourceTexts(
     libraryCard ?? { back: card.back, front: card.front, text: card.text, extra_fields: card.extraFields },
   );
-  const target = resolveCardSource(libraryCard, texts);
+  const target = resolveCardSource(
+    libraryCard ? { ...libraryCard, extraFields: card.extraFields } : { extraFields: card.extraFields },
+    texts,
+  );
   if (!target) return false;
-  openCardSourceTarget(target, 'flashcards-review');
+  await openCardSourceTarget(target, 'flashcards-review');
   return true;
 }

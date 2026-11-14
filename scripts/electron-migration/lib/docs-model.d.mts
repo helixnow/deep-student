@@ -1,0 +1,10 @@
+export const STATUS_RE: RegExp;
+export const SPEC_CHECKLIST: string[];
+export const EVENT_CHECKLIST: string[];
+export const GLOBAL_CHECKLIST: string[];
+export function escapeCell(s: string): string;
+export function unescapeCell(s: string): string;
+export function parseTestmapStatuses(text: string): Map<string, string>;
+export function testmapTable(rows: { id: string; kind: string; line: number }[], statuses: Map<string, string>): string;
+export function parseSpecSections(text: string): Map<string, { checked: number; total: number }>;
+export function checklist(items: string[]): string;

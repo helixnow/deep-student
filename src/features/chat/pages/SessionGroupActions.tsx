@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { Archive, PencilSimple, DotsThree, PushPin, Gear } from '@phosphor-icons/react';
+import { Archive, Cards, DotsThree, FolderOpen, Gear, PencilSimple, PushPin } from '@phosphor-icons/react';
 import {
   AppMenu,
   AppMenuContent,
@@ -17,11 +17,13 @@ type SessionGroupActionLabels = {
   groupActions: string;
   newSession: string;
   newSessionInGroup: string;
-  pinGroup?: string;
-  unpinGroup?: string;
+  pinGroup: string;
+  unpinGroup: string;
   renameGroup: string;
   editGroup: string;
   archiveGroup: string;
+  enterSpace?: string;
+  reviewDeck?: string;
 };
 
 type SessionGroupActionsRenderProps = {
@@ -38,6 +40,8 @@ interface SessionGroupActionsProps {
   onRenameGroup: (group: SessionGroup) => void;
   onEditGroup: (group: SessionGroup) => void;
   onArchiveGroup: (group: SessionGroup) => void;
+  onEnterSpace?: (group: SessionGroup) => void;
+  onReviewDeck?: (group: SessionGroup) => void | Promise<void>;
   children: (props: SessionGroupActionsRenderProps) => React.ReactNode;
 }
 
@@ -50,6 +54,8 @@ export function SessionGroupActions({
   onRenameGroup,
   onEditGroup,
   onArchiveGroup,
+  onEnterSpace,
+  onReviewDeck,
   children,
 }: SessionGroupActionsProps) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -91,9 +97,7 @@ export function SessionGroupActions({
                   icon={<PushPin size={16} />}
                   onClick={() => onTogglePinGroup(group, !isPinned)}
                 >
-                  {isPinned
-                    ? labels.unpinGroup ?? 'Unpin Group'
-                    : labels.pinGroup ?? 'Pin Group'}
+                  {isPinned ? labels.unpinGroup : labels.pinGroup}
                 </AppMenuItem>
               ) : null}
               <AppMenuItem
@@ -108,6 +112,22 @@ export function SessionGroupActions({
               >
                 {labels.editGroup}
               </AppMenuItem>
+              {onEnterSpace && labels.enterSpace ? (
+                <AppMenuItem
+                  icon={<FolderOpen size={16} />}
+                  onClick={() => onEnterSpace(group)}
+                >
+                  {labels.enterSpace}
+                </AppMenuItem>
+              ) : null}
+              {onReviewDeck && labels.reviewDeck ? (
+                <AppMenuItem
+                  icon={<Cards size={16} />}
+                  onClick={() => void onReviewDeck(group)}
+                >
+                  {labels.reviewDeck}
+                </AppMenuItem>
+              ) : null}
               <AppMenuSeparator />
               <AppMenuItem
                 icon={<Archive size={16} />}

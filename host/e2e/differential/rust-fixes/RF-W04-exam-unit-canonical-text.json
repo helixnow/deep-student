@@ -1,0 +1,35 @@
+{
+  "id": "RF-W04-exam-unit-canonical-text",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T09:12+08:00",
+  "title": "题目集资源的索引单元写入规范题目文本（Rust 生成了自身解析器读不了的格式，单元文本为 NULL）",
+  "rust": {
+    "file": "src-tauri/crates/dstu-vfs/src/vfs/indexing.rs",
+    "line": 2149,
+    "behavior": "sync_resource_to_units 为 exam 构造 ocr_pages_json = [{\"page_index\":0,\"text\":…}]，但 ExamBuilder 用的 parse_ocr_pages_json（ocr_utils.rs:44）只接受 string[] / {\"pages\":[…]}，结果为空数组；exam 单元 text_content、text_source、content_hash 只含空文本，text_required=0"
+  },
+  "fix": {
+    "files": [
+      "host/plugins/vfs-index/repository/unit-sync.ts",
+      "host/plugins/vfs-index/src/full-indexing.ts"
+    ],
+    "behavior": "以 string[] 形式传入同一规范文本，exam 单元得到 text_content=规范题目文本、text_source='ocr'；因为 Rust 的 exam 单元从不“有效”而每次 re-sync，TS 对 exam 资源同样每次 re-sync，避免文本过期并保持 resources pending 写入次序"
+  },
+  "evidence": "indexing.rs:2142-2149 专门把 qbank_read::context_text 写进 ocr_pages_json 交给 ExamBuilder，意图是让单元带上题目文本；但格式与 parse_ocr_pages_json 不符，ocr_utils.rs:79 打出 'ocr_pages_json has no pages array' 警告后返回空。后果：unified_retriever.rs:912 的 u.text_content 词法路由永远匹配不到题目集。复现：host/plugins/vfs-index/tests/index-service.test.ts 中 parseOcrPagesJson 对 Rust 形状返回 []。",
+  "g3": {
+    "affects": true,
+    "selectors": [
+      { "scenario": "qbank.*", "surface": "db", "table": "vfs_index_units", "column": "text_content" },
+      { "scenario": "qbank.*", "surface": "db", "table": "vfs_index_units", "column": "text_source" },
+      { "scenario": "qbank.*", "surface": "db", "table": "vfs_index_units", "column": "content_hash" },
+      { "scenario": "qbank.*", "surface": "db", "table": "vfs_index_units", "column": "text_required" },
+      { "scenario": "qbank.*", "surface": "db", "table": "vfs_index_units", "column": "text_state" }
+    ]
+  },
+  "tests": [
+    { "file": "host/plugins/vfs-index/tests/index-service.test.ts", "name": "RF-W04-exam-unit-canonical-text: exam units carry the canonical question text Rust drops" },
+    { "file": "host/plugins/vfs-index/tests/index-service.test.ts", "name": "RF-W04-exam-unit-canonical-text: exam units re-sync on every index like Rust, even when the hash is unchanged" }
+  ]
+}

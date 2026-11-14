@@ -1,4 +1,22 @@
-import React from 'react';
+import React, { useLayoutEffect, useRef } from 'react';
+
+/** 与 public/boot.css 的 --boot-shimmer-dur / --boot-shimmer-delay 保持一致。 */
+export const BOOT_SHIMMER_DURATION_MS = 2800;
+export const BOOT_SHIMMER_DELAY_MS = 650;
+
+/**
+ * 计算与文档时钟（performance.now()）对齐的扫光 animation-delay（ms）。
+ * 静态占位符在文档时间 ≈ 0 挂载并等待 BOOT_SHIMMER_DELAY_MS 后开始循环扫光；
+ * React 接管重挂载时按同一时钟延续相位，避免扫光跳回起点。
+ */
+export function computeBootShimmerDelayMs(nowMs: number): number {
+  if (!Number.isFinite(nowMs) || nowMs < 0) return BOOT_SHIMMER_DELAY_MS;
+  if (nowMs < BOOT_SHIMMER_DELAY_MS) {
+    return Math.round(BOOT_SHIMMER_DELAY_MS - nowMs);
+  }
+  const phase = (nowMs - BOOT_SHIMMER_DELAY_MS) % BOOT_SHIMMER_DURATION_MS;
+  return phase === 0 ? 0 : -Math.round(phase);
+}
 
 /**
  * 启动面（boot surface）。
@@ -17,26 +35,38 @@ import React from 'react';
  *
  * @see tests/vitest/startup/bootSurface.contract.test.ts
  */
-export const BootShell: React.FC = () => (
-  <div className="boot-loading" role="status" aria-label="Deep Student loading">
-    <div className="boot-loading__logo-wrap">
-      <img
-        className="boot-loading__logo"
-        src="/logo-black.svg"
-        alt="Deep Student"
-        width={60}
-        height={60}
-      />
-      <img
-        className="boot-loading__logo boot-loading__logo--shine"
-        src="/logo-black.svg"
-        alt=""
-        aria-hidden="true"
-        width={60}
-        height={60}
-      />
+export const BootShell: React.FC = () => {
+  const shineRef = useRef<HTMLImageElement>(null);
+
+  useLayoutEffect(() => {
+    const shine = shineRef.current;
+    if (shine && typeof performance !== 'undefined') {
+      shine.style.animationDelay = `${computeBootShimmerDelayMs(performance.now())}ms`;
+    }
+  }, []);
+
+  return (
+    <div className="boot-loading" role="status" aria-label="Deep Student loading">
+      <div className="boot-loading__logo-wrap">
+        <img
+          className="boot-loading__logo"
+          src="/logo-black.svg"
+          alt="Deep Student"
+          width={60}
+          height={60}
+        />
+        <img
+          ref={shineRef}
+          className="boot-loading__logo boot-loading__logo--shine"
+          src="/logo-black.svg"
+          alt=""
+          aria-hidden="true"
+          width={60}
+          height={60}
+        />
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 export default BootShell;

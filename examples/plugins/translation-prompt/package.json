@@ -1,0 +1,15 @@
+{
+  "name": "deepstudent-plugin-translation-prompt",
+  "version": "1.0.0",
+  "private": true,
+  "description": "示例插件：只有 Host 半，经声明的 service:translation 权限注入官方翻译服务，用自己的提示词转发翻译请求（examples/README.md）",
+  "type": "module",
+  "engines": { "deepStudent": "^0.20" },
+  "deepStudent": {
+    "manifestVersion": 1,
+    "id": "example.translation-prompt",
+    "platforms": ["desktop"],
+    "permissions": ["service:translation"],
+    "host": "./index.ts"
+  }
+}

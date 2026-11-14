@@ -1,0 +1,2107 @@
+{
+  "domain": "anki",
+  "commands": [
+    "create_custom_template",
+    "get_all_custom_templates",
+    "export_template",
+    "update_custom_template",
+    "delete_custom_template",
+    "count_custom_template_references",
+    "set_default_template",
+    "get_default_template_id"
+  ],
+  "scenarios": [
+    {
+      "id": "anki.template.create-list-export-update-delete",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_all_custom_templates",
+          "args": {}
+        },
+        {
+          "cmd": "create_custom_template",
+          "args": {
+            "request": {
+              "name": "W0 基础模板",
+              "description": "WP-076 基础问答模板",
+              "author": "wp076",
+              "version": null,
+              "preview_front": "什么是 TCP 三次握手？",
+              "preview_back": "SYN → SYN-ACK → ACK",
+              "note_type": "Basic",
+              "fields": [
+                "Front",
+                "Back"
+              ],
+              "generation_prompt": "根据材料生成问答卡，正面提问，背面作答。",
+              "front_template": "<div class=\"q\">{{Front}}</div>",
+              "back_template": "{{FrontSide}}<hr id=\"answer\">{{Back}}",
+              "css_style": ".card { font-size: 18px; }",
+              "field_extraction_rules": {
+                "Front": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "问题"
+                },
+                "Back": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "答案"
+                }
+              },
+              "preview_data_json": null,
+              "is_active": null,
+              "is_built_in": null
+            }
+          }
+        },
+        {
+          "cmd": "get_all_custom_templates",
+          "args": {}
+        },
+        {
+          "cmd": "export_template",
+          "args": {
+            "templateId": "${1}"
+          }
+        },
+        {
+          "cmd": "count_custom_template_references",
+          "args": {
+            "templateId": "${1}"
+          }
+        },
+        {
+          "cmd": "update_custom_template",
+          "args": {
+            "templateId": "${1}",
+            "request": {
+              "description": "改过的描述",
+              "css_style": ".card { color: #333; }",
+              "expected_version": "${2.0.version}"
+            }
+          }
+        },
+        {
+          "cmd": "get_all_custom_templates",
+          "args": {}
+        },
+        {
+          "cmd": "export_template",
+          "args": {
+            "templateId": "${1}"
+          }
+        },
+        {
+          "cmd": "delete_custom_template",
+          "args": {
+            "templateId": "${1}"
+          }
+        },
+        {
+          "cmd": "get_all_custom_templates",
+          "args": {}
+        },
+        {
+          "cmd": "export_template",
+          "args": {
+            "templateId": "${1}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.template.create-defaults-and-explicit-flags",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "create_custom_template",
+          "args": {
+            "request": {
+              "name": "W0 默认标志",
+              "description": "WP-076 基础问答模板",
+              "author": "wp076",
+              "version": null,
+              "preview_front": "什么是 TCP 三次握手？",
+              "preview_back": "SYN → SYN-ACK → ACK",
+              "note_type": "Basic",
+              "fields": [
+                "Front",
+                "Back"
+              ],
+              "generation_prompt": "根据材料生成问答卡，正面提问，背面作答。",
+              "front_template": "<div class=\"q\">{{Front}}</div>",
+              "back_template": "{{FrontSide}}<hr id=\"answer\">{{Back}}",
+              "css_style": ".card { font-size: 18px; }",
+              "field_extraction_rules": {
+                "Front": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "问题"
+                },
+                "Back": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "答案"
+                }
+              },
+              "preview_data_json": null,
+              "is_active": null,
+              "is_built_in": null
+            }
+          }
+        },
+        {
+          "cmd": "create_custom_template",
+          "args": {
+            "request": {
+              "name": "W0 显式标志",
+              "description": "WP-076 基础问答模板",
+              "author": null,
+              "version": "7.3.1",
+              "preview_front": "什么是 TCP 三次握手？",
+              "preview_back": "SYN → SYN-ACK → ACK",
+              "note_type": "Basic",
+              "fields": [
+                "Front",
+                "Back"
+              ],
+              "generation_prompt": "根据材料生成问答卡，正面提问，背面作答。",
+              "front_template": "<div class=\"q\">{{Front}}</div>",
+              "back_template": "{{FrontSide}}<hr id=\"answer\">{{Back}}",
+              "css_style": ".card { font-size: 18px; }",
+              "field_extraction_rules": {
+                "Front": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "问题"
+                },
+                "Back": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "答案"
+                }
+              },
+              "preview_data_json": "{\"Front\":\"预览正面\",\"Back\":\"预览背面\"}",
+              "is_active": false,
+              "is_built_in": false
+            }
+          }
+        },
+        {
+          "cmd": "create_custom_template",
+          "args": {
+            "request": {
+              "name": "W0 创建即内置",
+              "description": "WP-076 基础问答模板",
+              "author": "wp076",
+              "version": "",
+              "preview_front": "什么是 TCP 三次握手？",
+              "preview_back": "SYN → SYN-ACK → ACK",
+              "note_type": "Basic",
+              "fields": [
+                "Front",
+                "Back"
+              ],
+              "generation_prompt": "根据材料生成问答卡，正面提问，背面作答。",
+              "front_template": "<div class=\"q\">{{Front}}</div>",
+              "back_template": "{{FrontSide}}<hr id=\"answer\">{{Back}}",
+              "css_style": ".card { font-size: 18px; }",
+              "field_extraction_rules": {
+                "Front": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "问题"
+                },
+                "Back": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "答案"
+                }
+              },
+              "preview_data_json": null,
+              "is_active": null,
+              "is_built_in": true
+            }
+          }
+        },
+        {
+          "cmd": "export_template",
+          "args": {
+            "templateId": "${0}"
+          }
+        },
+        {
+          "cmd": "export_template",
+          "args": {
+            "templateId": "${1}"
+          }
+        },
+        {
+          "cmd": "export_template",
+          "args": {
+            "templateId": "${2}"
+          }
+        },
+        {
+          "cmd": "get_all_custom_templates",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.template.create-validation-errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "create_custom_template",
+          "args": {
+            "request": {
+              "name": "   ",
+              "description": "WP-076 基础问答模板",
+              "author": "wp076",
+              "version": null,
+              "preview_front": "什么是 TCP 三次握手？",
+              "preview_back": "SYN → SYN-ACK → ACK",
+              "note_type": "Basic",
+              "fields": [
+                "Front",
+                "Back"
+              ],
+              "generation_prompt": "根据材料生成问答卡，正面提问，背面作答。",
+              "front_template": "<div class=\"q\">{{Front}}</div>",
+              "back_template": "{{FrontSide}}<hr id=\"answer\">{{Back}}",
+              "css_style": ".card { font-size: 18px; }",
+              "field_extraction_rules": {
+                "Front": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "问题"
+                },
+                "Back": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "答案"
+                }
+              },
+              "preview_data_json": null,
+              "is_active": null,
+              "is_built_in": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "create_custom_template",
+          "args": {
+            "request": {
+              "name": "W0 无字段",
+              "description": "WP-076 基础问答模板",
+              "author": "wp076",
+              "version": null,
+              "preview_front": "什么是 TCP 三次握手？",
+              "preview_back": "SYN → SYN-ACK → ACK",
+              "note_type": "Basic",
+              "fields": [],
+              "generation_prompt": "根据材料生成问答卡，正面提问，背面作答。",
+              "front_template": "<div class=\"q\">{{Front}}</div>",
+              "back_template": "{{FrontSide}}<hr id=\"answer\">{{Back}}",
+              "css_style": ".card { font-size: 18px; }",
+              "field_extraction_rules": {},
+              "preview_data_json": null,
+              "is_active": null,
+              "is_built_in": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "create_custom_template",
+          "args": {
+            "request": {
+              "name": "W0 空正面",
+              "description": "WP-076 基础问答模板",
+              "author": "wp076",
+              "version": null,
+              "preview_front": "什么是 TCP 三次握手？",
+              "preview_back": "SYN → SYN-ACK → ACK",
+              "note_type": "Basic",
+              "fields": [
+                "Front",
+                "Back"
+              ],
+              "generation_prompt": "根据材料生成问答卡，正面提问，背面作答。",
+              "front_template": "  \n",
+              "back_template": "{{FrontSide}}<hr id=\"answer\">{{Back}}",
+              "css_style": ".card { font-size: 18px; }",
+              "field_extraction_rules": {
+                "Front": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "问题"
+                },
+                "Back": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "答案"
+                }
+              },
+              "preview_data_json": null,
+              "is_active": null,
+              "is_built_in": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "create_custom_template",
+          "args": {
+            "request": {
+              "name": "W0 空背面",
+              "description": "WP-076 基础问答模板",
+              "author": "wp076",
+              "version": null,
+              "preview_front": "什么是 TCP 三次握手？",
+              "preview_back": "SYN → SYN-ACK → ACK",
+              "note_type": "Basic",
+              "fields": [
+                "Front",
+                "Back"
+              ],
+              "generation_prompt": "根据材料生成问答卡，正面提问，背面作答。",
+              "front_template": "<div class=\"q\">{{Front}}</div>",
+              "back_template": "",
+              "css_style": ".card { font-size: 18px; }",
+              "field_extraction_rules": {
+                "Front": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "问题"
+                },
+                "Back": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "答案"
+                }
+              },
+              "preview_data_json": null,
+              "is_active": null,
+              "is_built_in": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "create_custom_template",
+          "args": {
+            "request": {
+              "name": "W0 空提示词",
+              "description": "WP-076 基础问答模板",
+              "author": "wp076",
+              "version": null,
+              "preview_front": "什么是 TCP 三次握手？",
+              "preview_back": "SYN → SYN-ACK → ACK",
+              "note_type": "Basic",
+              "fields": [
+                "Front",
+                "Back"
+              ],
+              "generation_prompt": " ",
+              "front_template": "<div class=\"q\">{{Front}}</div>",
+              "back_template": "{{FrontSide}}<hr id=\"answer\">{{Back}}",
+              "css_style": ".card { font-size: 18px; }",
+              "field_extraction_rules": {
+                "Front": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "问题"
+                },
+                "Back": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "答案"
+                }
+              },
+              "preview_data_json": null,
+              "is_active": null,
+              "is_built_in": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "create_custom_template",
+          "args": {
+            "request": {
+              "name": "W0 缺规则",
+              "description": "WP-076 基础问答模板",
+              "author": "wp076",
+              "version": null,
+              "preview_front": "什么是 TCP 三次握手？",
+              "preview_back": "SYN → SYN-ACK → ACK",
+              "note_type": "Basic",
+              "fields": [
+                "Front",
+                "Back"
+              ],
+              "generation_prompt": "根据材料生成问答卡，正面提问，背面作答。",
+              "front_template": "<div class=\"q\">{{Front}}</div>",
+              "back_template": "{{FrontSide}}<hr id=\"answer\">{{Back}}",
+              "css_style": ".card { font-size: 18px; }",
+              "field_extraction_rules": {
+                "Front": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "问题"
+                }
+              },
+              "preview_data_json": null,
+              "is_active": null,
+              "is_built_in": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "create_custom_template",
+          "args": {
+            "request": {
+              "name": "W0 多余规则",
+              "description": "WP-076 基础问答模板",
+              "author": "wp076",
+              "version": null,
+              "preview_front": "什么是 TCP 三次握手？",
+              "preview_back": "SYN → SYN-ACK → ACK",
+              "note_type": "Basic",
+              "fields": [
+                "Front",
+                "Back"
+              ],
+              "generation_prompt": "根据材料生成问答卡，正面提问，背面作答。",
+              "front_template": "<div class=\"q\">{{Front}}</div>",
+              "back_template": "{{FrontSide}}<hr id=\"answer\">{{Back}}",
+              "css_style": ".card { font-size: 18px; }",
+              "field_extraction_rules": {
+                "Front": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "问题"
+                },
+                "Back": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "答案"
+                },
+                "Zeta": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "z"
+                },
+                "Alpha": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "a"
+                }
+              },
+              "preview_data_json": null,
+              "is_active": null,
+              "is_built_in": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "create_custom_template",
+          "args": {
+            "request": {
+              "name": "W0 缺 cloze 占位",
+              "description": "WP-076 填空模板",
+              "author": "wp076",
+              "version": null,
+              "preview_front": "什么是 TCP 三次握手？",
+              "preview_back": "SYN → SYN-ACK → ACK",
+              "note_type": "Cloze",
+              "fields": [
+                "Text",
+                "Extra"
+              ],
+              "generation_prompt": "根据材料生成问答卡，正面提问，背面作答。",
+              "front_template": "{{Text}}",
+              "back_template": "{{cloze:Text}}<br>{{Extra}}",
+              "css_style": ".card { font-size: 18px; }",
+              "field_extraction_rules": {
+                "Text": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "含 {{c1::...}} 的正文"
+                },
+                "Extra": {
+                  "field_type": "Text",
+                  "is_required": false,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "补充"
+                }
+              },
+              "preview_data_json": null,
+              "is_active": null,
+              "is_built_in": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "create_custom_template",
+          "args": {
+            "request": {
+              "name": "W0 小写 cloze 类型",
+              "description": "WP-076 基础问答模板",
+              "author": "wp076",
+              "version": null,
+              "preview_front": "什么是 TCP 三次握手？",
+              "preview_back": "SYN → SYN-ACK → ACK",
+              "note_type": "my-cloze-v2",
+              "fields": [
+                "Front",
+                "Back"
+              ],
+              "generation_prompt": "根据材料生成问答卡，正面提问，背面作答。",
+              "front_template": "<div class=\"q\">{{Front}}</div>",
+              "back_template": "{{FrontSide}}<hr id=\"answer\">{{Back}}",
+              "css_style": ".card { font-size: 18px; }",
+              "field_extraction_rules": {
+                "Front": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "问题"
+                },
+                "Back": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "答案"
+                }
+              },
+              "preview_data_json": null,
+              "is_active": null,
+              "is_built_in": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "get_all_custom_templates",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.template.create-warn-unknown-refs-and-cloze-success",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "create_custom_template",
+          "args": {
+            "request": {
+              "name": "W0 未声明字段引用",
+              "description": "WP-076 基础问答模板",
+              "author": "wp076",
+              "version": null,
+              "preview_front": "什么是 TCP 三次握手？",
+              "preview_back": "SYN → SYN-ACK → ACK",
+              "note_type": "Basic",
+              "fields": [
+                "Front",
+                "Back"
+              ],
+              "generation_prompt": "根据材料生成问答卡，正面提问，背面作答。",
+              "front_template": "{{#Hint}}{{Hint}}{{/Hint}}{{Front}}{{Deck}}{{Tags}}",
+              "back_template": "{{FrontSide}}{{type:Back}}{{^Missing}}无{{/Missing}}{{Source}}",
+              "css_style": ".card { font-size: 18px; }",
+              "field_extraction_rules": {
+                "Front": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "问题"
+                },
+                "Back": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "答案"
+                }
+              },
+              "preview_data_json": null,
+              "is_active": null,
+              "is_built_in": null
+            }
+          }
+        },
+        {
+          "cmd": "create_custom_template",
+          "args": {
+            "request": {
+              "name": "W0 填空",
+              "description": "WP-076 填空模板",
+              "author": "wp076",
+              "version": null,
+              "preview_front": "什么是 TCP 三次握手？",
+              "preview_back": "SYN → SYN-ACK → ACK",
+              "note_type": "Cloze",
+              "fields": [
+                "Text",
+                "Extra"
+              ],
+              "generation_prompt": "根据材料生成问答卡，正面提问，背面作答。",
+              "front_template": "{{cloze:Text}}",
+              "back_template": "{{cloze:Text}}<br>{{Extra}}",
+              "css_style": ".card { font-size: 18px; }",
+              "field_extraction_rules": {
+                "Text": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "含 {{c1::...}} 的正文"
+                },
+                "Extra": {
+                  "field_type": "Text",
+                  "is_required": false,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "补充"
+                }
+              },
+              "preview_data_json": null,
+              "is_active": null,
+              "is_built_in": null
+            }
+          }
+        },
+        {
+          "cmd": "export_template",
+          "args": {
+            "templateId": "${0}"
+          }
+        },
+        {
+          "cmd": "export_template",
+          "args": {
+            "templateId": "${1}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.template.create-duplicate-name-db-error",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "create_custom_template",
+          "args": {
+            "request": {
+              "name": "W0 重名",
+              "description": "WP-076 基础问答模板",
+              "author": "wp076",
+              "version": null,
+              "preview_front": "什么是 TCP 三次握手？",
+              "preview_back": "SYN → SYN-ACK → ACK",
+              "note_type": "Basic",
+              "fields": [
+                "Front",
+                "Back"
+              ],
+              "generation_prompt": "根据材料生成问答卡，正面提问，背面作答。",
+              "front_template": "<div class=\"q\">{{Front}}</div>",
+              "back_template": "{{FrontSide}}<hr id=\"answer\">{{Back}}",
+              "css_style": ".card { font-size: 18px; }",
+              "field_extraction_rules": {
+                "Front": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "问题"
+                },
+                "Back": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "答案"
+                }
+              },
+              "preview_data_json": null,
+              "is_active": null,
+              "is_built_in": null
+            }
+          }
+        },
+        {
+          "cmd": "create_custom_template",
+          "args": {
+            "request": {
+              "name": "W0 重名",
+              "description": "第二个",
+              "author": "wp076",
+              "version": null,
+              "preview_front": "什么是 TCP 三次握手？",
+              "preview_back": "SYN → SYN-ACK → ACK",
+              "note_type": "Basic",
+              "fields": [
+                "Front",
+                "Back"
+              ],
+              "generation_prompt": "根据材料生成问答卡，正面提问，背面作答。",
+              "front_template": "<div class=\"q\">{{Front}}</div>",
+              "back_template": "{{FrontSide}}<hr id=\"answer\">{{Back}}",
+              "css_style": ".card { font-size: 18px; }",
+              "field_extraction_rules": {
+                "Front": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "问题"
+                },
+                "Back": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "答案"
+                }
+              },
+              "preview_data_json": null,
+              "is_active": null,
+              "is_built_in": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "create_custom_template",
+          "args": {
+            "request": {
+              "name": "W0 重名 ",
+              "description": "WP-076 基础问答模板",
+              "author": "wp076",
+              "version": null,
+              "preview_front": "什么是 TCP 三次握手？",
+              "preview_back": "SYN → SYN-ACK → ACK",
+              "note_type": "Basic",
+              "fields": [
+                "Front",
+                "Back"
+              ],
+              "generation_prompt": "根据材料生成问答卡，正面提问，背面作答。",
+              "front_template": "<div class=\"q\">{{Front}}</div>",
+              "back_template": "{{FrontSide}}<hr id=\"answer\">{{Back}}",
+              "css_style": ".card { font-size: 18px; }",
+              "field_extraction_rules": {
+                "Front": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "问题"
+                },
+                "Back": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "答案"
+                }
+              },
+              "preview_data_json": null,
+              "is_active": null,
+              "is_built_in": null
+            }
+          }
+        },
+        {
+          "cmd": "get_all_custom_templates",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.template.create-serde-errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "create_custom_template",
+          "args": {
+            "request": {
+              "description": "WP-076 基础问答模板",
+              "author": "wp076",
+              "version": null,
+              "preview_front": "什么是 TCP 三次握手？",
+              "preview_back": "SYN → SYN-ACK → ACK",
+              "note_type": "Basic",
+              "fields": [
+                "Front",
+                "Back"
+              ],
+              "generation_prompt": "根据材料生成问答卡，正面提问，背面作答。",
+              "front_template": "<div class=\"q\">{{Front}}</div>",
+              "back_template": "{{FrontSide}}<hr id=\"answer\">{{Back}}",
+              "css_style": ".card { font-size: 18px; }",
+              "field_extraction_rules": {
+                "Front": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "问题"
+                },
+                "Back": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "答案"
+                }
+              },
+              "preview_data_json": null,
+              "is_active": null,
+              "is_built_in": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "create_custom_template",
+          "args": {
+            "request": {
+              "name": "W0 字段类型错",
+              "description": "WP-076 基础问答模板",
+              "author": "wp076",
+              "version": null,
+              "preview_front": "什么是 TCP 三次握手？",
+              "preview_back": "SYN → SYN-ACK → ACK",
+              "note_type": "Basic",
+              "fields": "Front",
+              "generation_prompt": "根据材料生成问答卡，正面提问，背面作答。",
+              "front_template": "<div class=\"q\">{{Front}}</div>",
+              "back_template": "{{FrontSide}}<hr id=\"answer\">{{Back}}",
+              "css_style": ".card { font-size: 18px; }",
+              "field_extraction_rules": {
+                "Front": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "问题"
+                },
+                "Back": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "答案"
+                }
+              },
+              "preview_data_json": null,
+              "is_active": null,
+              "is_built_in": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "create_custom_template",
+          "args": {
+            "request": {
+              "name": "W0 规则枚举错",
+              "description": "WP-076 基础问答模板",
+              "author": "wp076",
+              "version": null,
+              "preview_front": "什么是 TCP 三次握手？",
+              "preview_back": "SYN → SYN-ACK → ACK",
+              "note_type": "Basic",
+              "fields": [
+                "Front",
+                "Back"
+              ],
+              "generation_prompt": "根据材料生成问答卡，正面提问，背面作答。",
+              "front_template": "<div class=\"q\">{{Front}}</div>",
+              "back_template": "{{FrontSide}}<hr id=\"answer\">{{Back}}",
+              "css_style": ".card { font-size: 18px; }",
+              "field_extraction_rules": {
+                "Front": {
+                  "field_type": "text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "问题"
+                },
+                "Back": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "答案"
+                }
+              },
+              "preview_data_json": null,
+              "is_active": null,
+              "is_built_in": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "create_custom_template",
+          "args": {
+            "request": {
+              "name": "W0 规则缺描述",
+              "description": "WP-076 基础问答模板",
+              "author": "wp076",
+              "version": null,
+              "preview_front": "什么是 TCP 三次握手？",
+              "preview_back": "SYN → SYN-ACK → ACK",
+              "note_type": "Basic",
+              "fields": [
+                "Front",
+                "Back"
+              ],
+              "generation_prompt": "根据材料生成问答卡，正面提问，背面作答。",
+              "front_template": "<div class=\"q\">{{Front}}</div>",
+              "back_template": "{{FrontSide}}<hr id=\"answer\">{{Back}}",
+              "css_style": ".card { font-size: 18px; }",
+              "field_extraction_rules": {
+                "Front": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null
+                },
+                "Back": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "答案"
+                }
+              },
+              "preview_data_json": null,
+              "is_active": null,
+              "is_built_in": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "create_custom_template",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "get_all_custom_templates",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.template.update-version-sequence",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "create_custom_template",
+          "args": {
+            "request": {
+              "name": "W0 版本序列",
+              "description": "WP-076 基础问答模板",
+              "author": "wp076",
+              "version": null,
+              "preview_front": "什么是 TCP 三次握手？",
+              "preview_back": "SYN → SYN-ACK → ACK",
+              "note_type": "Basic",
+              "fields": [
+                "Front",
+                "Back"
+              ],
+              "generation_prompt": "根据材料生成问答卡，正面提问，背面作答。",
+              "front_template": "<div class=\"q\">{{Front}}</div>",
+              "back_template": "{{FrontSide}}<hr id=\"answer\">{{Back}}",
+              "css_style": ".card { font-size: 18px; }",
+              "field_extraction_rules": {
+                "Front": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "问题"
+                },
+                "Back": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "答案"
+                }
+              },
+              "preview_data_json": null,
+              "is_active": null,
+              "is_built_in": null
+            }
+          }
+        },
+        {
+          "cmd": "get_all_custom_templates",
+          "args": {}
+        },
+        {
+          "cmd": "update_custom_template",
+          "args": {
+            "templateId": "${0}",
+            "request": {
+              "version": "${1.0.version}",
+              "expected_version": "${1.0.version}",
+              "description": "v→1.0.1"
+            }
+          }
+        },
+        {
+          "cmd": "get_all_custom_templates",
+          "args": {}
+        },
+        {
+          "cmd": "update_custom_template",
+          "args": {
+            "templateId": "${0}",
+            "request": {
+              "version": "4.5.6",
+              "expected_version": "${3.0.version}"
+            }
+          }
+        },
+        {
+          "cmd": "get_all_custom_templates",
+          "args": {}
+        },
+        {
+          "cmd": "update_custom_template",
+          "args": {
+            "templateId": "${0}",
+            "request": {
+              "version": "beta",
+              "expected_version": "${5.0.version}"
+            }
+          }
+        },
+        {
+          "cmd": "get_all_custom_templates",
+          "args": {}
+        },
+        {
+          "cmd": "update_custom_template",
+          "args": {
+            "templateId": "${0}",
+            "request": {
+              "expected_version": "${7.0.version}"
+            }
+          }
+        },
+        {
+          "cmd": "get_all_custom_templates",
+          "args": {}
+        },
+        {
+          "cmd": "update_custom_template",
+          "args": {
+            "templateId": "${0}",
+            "request": {
+              "expected_version": "${9.0.version}",
+              "name": null,
+              "fields": null,
+              "author": null,
+              "preview_data_json": "{\"Front\":\"p\"}"
+            }
+          }
+        },
+        {
+          "cmd": "export_template",
+          "args": {
+            "templateId": "${0}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.template.update-missing-template-and-version-guards",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "create_custom_template",
+          "args": {
+            "request": {
+              "name": "W0 版本守卫",
+              "description": "WP-076 基础问答模板",
+              "author": "wp076",
+              "version": null,
+              "preview_front": "什么是 TCP 三次握手？",
+              "preview_back": "SYN → SYN-ACK → ACK",
+              "note_type": "Basic",
+              "fields": [
+                "Front",
+                "Back"
+              ],
+              "generation_prompt": "根据材料生成问答卡，正面提问，背面作答。",
+              "front_template": "<div class=\"q\">{{Front}}</div>",
+              "back_template": "{{FrontSide}}<hr id=\"answer\">{{Back}}",
+              "css_style": ".card { font-size: 18px; }",
+              "field_extraction_rules": {
+                "Front": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "问题"
+                },
+                "Back": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "答案"
+                }
+              },
+              "preview_data_json": null,
+              "is_active": null,
+              "is_built_in": null
+            }
+          }
+        },
+        {
+          "cmd": "update_custom_template",
+          "args": {
+            "templateId": "${0}",
+            "request": {
+              "description": "缺版本"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "update_custom_template",
+          "args": {
+            "templateId": "${0}",
+            "request": {
+              "description": "null 版本",
+              "expected_version": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "update_custom_template",
+          "args": {
+            "templateId": "${0}",
+            "request": {
+              "description": "旧版本",
+              "expected_version": "0.9.9"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "update_custom_template",
+          "args": {
+            "templateId": "${0}",
+            "request": {
+              "description": "空版本",
+              "expected_version": ""
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "update_custom_template",
+          "args": {
+            "templateId": "w0-missing-template",
+            "request": {
+              "expected_version": "1.0.0"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "update_custom_template",
+          "args": {
+            "templateId": "w0-missing-template",
+            "request": {}
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "update_custom_template",
+          "args": {
+            "templateId": "",
+            "request": {
+              "expected_version": "1.0.0"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "get_all_custom_templates",
+          "args": {}
+        },
+        {
+          "cmd": "update_custom_template",
+          "args": {
+            "templateId": "${0}",
+            "request": {
+              "description": "首次成功",
+              "expected_version": "${8.0.version}"
+            }
+          }
+        },
+        {
+          "cmd": "update_custom_template",
+          "args": {
+            "templateId": "${0}",
+            "request": {
+              "description": "重放旧版本",
+              "expected_version": "${8.0.version}"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "update_custom_template",
+          "args": {
+            "templateId": "${0}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "export_template",
+          "args": {
+            "templateId": "${0}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.template.update-merged-validation-errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "create_custom_template",
+          "args": {
+            "request": {
+              "name": "W0 合并校验",
+              "description": "WP-076 基础问答模板",
+              "author": "wp076",
+              "version": null,
+              "preview_front": "什么是 TCP 三次握手？",
+              "preview_back": "SYN → SYN-ACK → ACK",
+              "note_type": "Basic",
+              "fields": [
+                "Front",
+                "Back"
+              ],
+              "generation_prompt": "根据材料生成问答卡，正面提问，背面作答。",
+              "front_template": "<div class=\"q\">{{Front}}</div>",
+              "back_template": "{{FrontSide}}<hr id=\"answer\">{{Back}}",
+              "css_style": ".card { font-size: 18px; }",
+              "field_extraction_rules": {
+                "Front": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "问题"
+                },
+                "Back": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "答案"
+                }
+              },
+              "preview_data_json": null,
+              "is_active": null,
+              "is_built_in": null
+            }
+          }
+        },
+        {
+          "cmd": "update_custom_template",
+          "args": {
+            "templateId": "${0}",
+            "request": {
+              "expected_version": "1.0.0",
+              "name": " "
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "update_custom_template",
+          "args": {
+            "templateId": "${0}",
+            "request": {
+              "expected_version": "1.0.0",
+              "fields": [
+                "Front",
+                "Back",
+                "Extra"
+              ]
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "update_custom_template",
+          "args": {
+            "templateId": "${0}",
+            "request": {
+              "expected_version": "1.0.0",
+              "field_extraction_rules": {
+                "Front": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "问题"
+                },
+                "Back": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "答案"
+                },
+                "Extra": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "多"
+                }
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "update_custom_template",
+          "args": {
+            "templateId": "${0}",
+            "request": {
+              "expected_version": "1.0.0",
+              "fields": []
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "update_custom_template",
+          "args": {
+            "templateId": "${0}",
+            "request": {
+              "expected_version": "1.0.0",
+              "note_type": "Cloze"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "update_custom_template",
+          "args": {
+            "templateId": "${0}",
+            "request": {
+              "expected_version": "1.0.0",
+              "front_template": ""
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "update_custom_template",
+          "args": {
+            "templateId": "${0}",
+            "request": {
+              "expected_version": "1.0.0",
+              "back_template": " "
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "update_custom_template",
+          "args": {
+            "templateId": "${0}",
+            "request": {
+              "expected_version": "1.0.0",
+              "generation_prompt": ""
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "export_template",
+          "args": {
+            "templateId": "${0}"
+          }
+        },
+        {
+          "cmd": "update_custom_template",
+          "args": {
+            "templateId": "${0}",
+            "request": {
+              "expected_version": "1.0.0",
+              "fields": [
+                "Front",
+                "Back",
+                "Extra"
+              ],
+              "field_extraction_rules": {
+                "Front": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "问题"
+                },
+                "Back": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "答案"
+                },
+                "Extra": {
+                  "field_type": "Text",
+                  "is_required": false,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "补充"
+                }
+              },
+              "back_template": "{{FrontSide}}<hr>{{Back}}<br>{{Extra}}"
+            }
+          }
+        },
+        {
+          "cmd": "export_template",
+          "args": {
+            "templateId": "${0}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.template.update-rename-collision-db-error",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "create_custom_template",
+          "args": {
+            "request": {
+              "name": "W0 改名甲",
+              "description": "WP-076 基础问答模板",
+              "author": "wp076",
+              "version": null,
+              "preview_front": "什么是 TCP 三次握手？",
+              "preview_back": "SYN → SYN-ACK → ACK",
+              "note_type": "Basic",
+              "fields": [
+                "Front",
+                "Back"
+              ],
+              "generation_prompt": "根据材料生成问答卡，正面提问，背面作答。",
+              "front_template": "<div class=\"q\">{{Front}}</div>",
+              "back_template": "{{FrontSide}}<hr id=\"answer\">{{Back}}",
+              "css_style": ".card { font-size: 18px; }",
+              "field_extraction_rules": {
+                "Front": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "问题"
+                },
+                "Back": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "答案"
+                }
+              },
+              "preview_data_json": null,
+              "is_active": null,
+              "is_built_in": null
+            }
+          }
+        },
+        {
+          "cmd": "create_custom_template",
+          "args": {
+            "request": {
+              "name": "W0 改名乙",
+              "description": "WP-076 基础问答模板",
+              "author": "wp076",
+              "version": null,
+              "preview_front": "什么是 TCP 三次握手？",
+              "preview_back": "SYN → SYN-ACK → ACK",
+              "note_type": "Basic",
+              "fields": [
+                "Front",
+                "Back"
+              ],
+              "generation_prompt": "根据材料生成问答卡，正面提问，背面作答。",
+              "front_template": "<div class=\"q\">{{Front}}</div>",
+              "back_template": "{{FrontSide}}<hr id=\"answer\">{{Back}}",
+              "css_style": ".card { font-size: 18px; }",
+              "field_extraction_rules": {
+                "Front": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "问题"
+                },
+                "Back": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "答案"
+                }
+              },
+              "preview_data_json": null,
+              "is_active": null,
+              "is_built_in": null
+            }
+          }
+        },
+        {
+          "cmd": "update_custom_template",
+          "args": {
+            "templateId": "${0}",
+            "request": {
+              "name": "W0 改名乙",
+              "expected_version": "1.0.0"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "export_template",
+          "args": {
+            "templateId": "${0}"
+          }
+        },
+        {
+          "cmd": "update_custom_template",
+          "args": {
+            "templateId": "${0}",
+            "request": {
+              "name": "W0 改名丙",
+              "expected_version": "1.0.0"
+            }
+          }
+        },
+        {
+          "cmd": "get_all_custom_templates",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.template.update-is-active-and-builtin-flag-then-tombstone",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "create_custom_template",
+          "args": {
+            "request": {
+              "name": "W0 标志切换",
+              "description": "WP-076 基础问答模板",
+              "author": "wp076",
+              "version": null,
+              "preview_front": "什么是 TCP 三次握手？",
+              "preview_back": "SYN → SYN-ACK → ACK",
+              "note_type": "Basic",
+              "fields": [
+                "Front",
+                "Back"
+              ],
+              "generation_prompt": "根据材料生成问答卡，正面提问，背面作答。",
+              "front_template": "<div class=\"q\">{{Front}}</div>",
+              "back_template": "{{FrontSide}}<hr id=\"answer\">{{Back}}",
+              "css_style": ".card { font-size: 18px; }",
+              "field_extraction_rules": {
+                "Front": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "问题"
+                },
+                "Back": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "答案"
+                }
+              },
+              "preview_data_json": null,
+              "is_active": null,
+              "is_built_in": null
+            }
+          }
+        },
+        {
+          "cmd": "update_custom_template",
+          "args": {
+            "templateId": "${0}",
+            "request": {
+              "is_active": false,
+              "expected_version": "1.0.0"
+            }
+          }
+        },
+        {
+          "cmd": "export_template",
+          "args": {
+            "templateId": "${0}"
+          }
+        },
+        {
+          "cmd": "update_custom_template",
+          "args": {
+            "templateId": "${0}",
+            "request": {
+              "is_built_in": true,
+              "is_active": true,
+              "expected_version": "1.0.1"
+            }
+          }
+        },
+        {
+          "cmd": "update_custom_template",
+          "args": {
+            "templateId": "${0}",
+            "request": {
+              "description": "内置后再改",
+              "expected_version": "1.0.2"
+            }
+          }
+        },
+        {
+          "cmd": "delete_custom_template",
+          "args": {
+            "templateId": "${0}"
+          }
+        },
+        {
+          "cmd": "delete_custom_template",
+          "args": {
+            "templateId": "${0}"
+          }
+        },
+        {
+          "cmd": "export_template",
+          "args": {
+            "templateId": "${0}"
+          }
+        },
+        {
+          "cmd": "get_all_custom_templates",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.template.delete-missing-and-empty-ids",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "delete_custom_template",
+          "args": {
+            "templateId": "w0-missing-template"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "delete_custom_template",
+          "args": {
+            "templateId": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "delete_custom_template",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "export_template",
+          "args": {
+            "templateId": "w0-missing-template"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "export_template",
+          "args": {
+            "templateId": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "export_template",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "count_custom_template_references",
+          "args": {
+            "templateId": "w0-missing-template"
+          }
+        },
+        {
+          "cmd": "count_custom_template_references",
+          "args": {
+            "templateId": ""
+          }
+        },
+        {
+          "cmd": "count_custom_template_references",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "create_custom_template",
+          "args": {
+            "request": {
+              "name": "W0 删两次",
+              "description": "WP-076 基础问答模板",
+              "author": "wp076",
+              "version": null,
+              "preview_front": "什么是 TCP 三次握手？",
+              "preview_back": "SYN → SYN-ACK → ACK",
+              "note_type": "Basic",
+              "fields": [
+                "Front",
+                "Back"
+              ],
+              "generation_prompt": "根据材料生成问答卡，正面提问，背面作答。",
+              "front_template": "<div class=\"q\">{{Front}}</div>",
+              "back_template": "{{FrontSide}}<hr id=\"answer\">{{Back}}",
+              "css_style": ".card { font-size: 18px; }",
+              "field_extraction_rules": {
+                "Front": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "问题"
+                },
+                "Back": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "答案"
+                }
+              },
+              "preview_data_json": null,
+              "is_active": null,
+              "is_built_in": null
+            }
+          }
+        },
+        {
+          "cmd": "delete_custom_template",
+          "args": {
+            "templateId": "${9}"
+          }
+        },
+        {
+          "cmd": "delete_custom_template",
+          "args": {
+            "templateId": "${9}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.template.default-template-set-get",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_default_template_id",
+          "args": {}
+        },
+        {
+          "cmd": "create_custom_template",
+          "args": {
+            "request": {
+              "name": "W0 默认模板",
+              "description": "WP-076 基础问答模板",
+              "author": "wp076",
+              "version": null,
+              "preview_front": "什么是 TCP 三次握手？",
+              "preview_back": "SYN → SYN-ACK → ACK",
+              "note_type": "Basic",
+              "fields": [
+                "Front",
+                "Back"
+              ],
+              "generation_prompt": "根据材料生成问答卡，正面提问，背面作答。",
+              "front_template": "<div class=\"q\">{{Front}}</div>",
+              "back_template": "{{FrontSide}}<hr id=\"answer\">{{Back}}",
+              "css_style": ".card { font-size: 18px; }",
+              "field_extraction_rules": {
+                "Front": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "问题"
+                },
+                "Back": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "答案"
+                }
+              },
+              "preview_data_json": null,
+              "is_active": null,
+              "is_built_in": null
+            }
+          }
+        },
+        {
+          "cmd": "set_default_template",
+          "args": {
+            "templateId": "${1}"
+          }
+        },
+        {
+          "cmd": "get_default_template_id",
+          "args": {}
+        },
+        {
+          "cmd": "set_default_template",
+          "args": {
+            "templateId": "${1}"
+          }
+        },
+        {
+          "cmd": "get_default_template_id",
+          "args": {}
+        },
+        {
+          "cmd": "set_default_template",
+          "args": {
+            "templateId": "w0-not-a-template"
+          }
+        },
+        {
+          "cmd": "get_default_template_id",
+          "args": {}
+        },
+        {
+          "cmd": "set_default_template",
+          "args": {
+            "templateId": ""
+          }
+        },
+        {
+          "cmd": "get_default_template_id",
+          "args": {}
+        },
+        {
+          "cmd": "set_default_template",
+          "args": {
+            "templateId": "${1}"
+          }
+        },
+        {
+          "cmd": "delete_custom_template",
+          "args": {
+            "templateId": "${1}"
+          }
+        },
+        {
+          "cmd": "get_default_template_id",
+          "args": {}
+        },
+        {
+          "cmd": "set_default_template",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "set_default_template",
+          "args": {
+            "templateId": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "get_default_template_id",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

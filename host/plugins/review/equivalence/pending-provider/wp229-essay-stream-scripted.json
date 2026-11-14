@@ -1,0 +1,189 @@
+{
+  "domain": "review",
+  "commands": [
+    "essay_grading_create_session",
+    "save_api_configurations",
+    "essay_grading_stream",
+    "essay_grading_get_rounds",
+    "essay_grading_get_round",
+    "essay_grading_get_latest_round_number",
+    "essay_grading_get_session",
+    "essay_grading_list_sessions",
+    "essay_grading_delete_session"
+  ],
+  "scenarios": [
+    {
+      "id": "review.essay.scripted.stream-success-round-persisted",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "essay_grading_create_session",
+          "args": {
+            "title": "春天的校园",
+            "essayType": "narrative",
+            "gradeLevel": "high",
+            "customPrompt": null
+          }
+        },
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "wp229-mock",
+                "name": "WP229 wp229-mock",
+                "apiKey": "sk-wp229-local",
+                "baseUrl": "${provider.url}",
+                "model": "wp229-model",
+                "isMultimodal": false,
+                "isReasoning": false,
+                "isEmbedding": false,
+                "isReranker": false,
+                "enabled": true,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "essay_grading_stream",
+          "args": {
+            "request": {
+              "session_id": "${0.id}",
+              "stream_session_id": "wp229-stream-1",
+              "round_number": 1,
+              "input_text": "春天来了，校园里的花都开了。我和同学们在操场上奔跑，感受到了生命的力量。",
+              "topic": "以“春天”为题写一篇记叙文",
+              "mode_id": "gaokao",
+              "model_config_id": "wp229-mock",
+              "essay_type": "narrative",
+              "grade_level": "high",
+              "custom_prompt": null,
+              "previous_result": null,
+              "previous_input": null,
+              "image_base64_list": null,
+              "topic_image_base64_list": null,
+              "response_language": null
+            }
+          }
+        },
+        {
+          "cmd": "essay_grading_get_rounds",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "essay_grading_get_round",
+          "args": {
+            "sessionId": "${0.id}",
+            "roundNumber": 1
+          }
+        },
+        {
+          "cmd": "essay_grading_get_latest_round_number",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "essay_grading_get_session",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "essay_grading_list_sessions",
+          "args": {
+            "offset": null,
+            "limit": null,
+            "query": null
+          }
+        },
+        {
+          "cmd": "essay_grading_delete_session",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "essay_grading_get_rounds",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "review.essay.scripted.stream-success-missing-session-rejected",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "wp229-mock",
+                "name": "WP229 wp229-mock",
+                "apiKey": "sk-wp229-local",
+                "baseUrl": "${provider.url}",
+                "model": "wp229-model",
+                "isMultimodal": false,
+                "isReasoning": false,
+                "isEmbedding": false,
+                "isReranker": false,
+                "enabled": true,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "essay_grading_stream",
+          "args": {
+            "request": {
+              "session_id": "essay_session_missing",
+              "stream_session_id": "wp229-stream-1",
+              "round_number": 1,
+              "input_text": "春天来了，校园里的花都开了。我和同学们在操场上奔跑，感受到了生命的力量。",
+              "topic": "以“春天”为题写一篇记叙文",
+              "mode_id": "gaokao",
+              "model_config_id": "wp229-mock",
+              "essay_type": "narrative",
+              "grade_level": "high",
+              "custom_prompt": null,
+              "previous_result": null,
+              "previous_input": null,
+              "image_base64_list": null,
+              "topic_image_base64_list": null,
+              "response_language": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "essay_grading_list_sessions",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

@@ -8,8 +8,11 @@
 
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { ArrowClockwise, Warning, CheckCircle, XCircle } from '@phosphor-icons/react';
+import { ArrowClockwise, CheckCircle, MinusCircle, WarningCircle } from '@phosphor-icons/react';
 import { cn } from '@/utils/cn';
+import { PulseDot } from '@/components/ui/PulseDot';
+import { TextShimmer } from '../../components/ui/TextShimmer';
+import { ToolActivitySweep } from '../../components/ui/ToolActivitySweep';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
 import { useWorkspaceStore } from '../../workspace/workspaceStore';
 
@@ -83,87 +86,86 @@ const SubagentRetryBlockComponent: React.FC<BlockComponentProps> = React.memo(({
     && (output?.resolved === true || block.status === 'success' || isSelfHealedResolved);
   const isRunning = !isFailed && !isCancelled && !isResolved && block.status === 'running';
 
+  const titleText = isFailed
+    ? isExhausted
+      ? t('chatV2:workspace.subagentRetryExhaustedTitle')
+      : t('chatV2:workspace.subagentRetryFailed')
+    : isCancelled
+      ? t('workspace:subagentRetry.finalCancelled')
+      : isResolved
+        ? t('chatV2:workspace.subagentRetryResolved')
+        : t('chatV2:workspace.subagentRetryTitle');
+
+  const statusIndicator = isFailed ? (
+    <WarningCircle size={16} className="w-4 h-4 text-destructive shrink-0" />
+  ) : isCancelled ? (
+    <MinusCircle size={16} className="w-4 h-4 text-muted-foreground shrink-0" />
+  ) : isResolved ? (
+    <CheckCircle size={16} weight="fill" className="w-4 h-4 text-success shrink-0" />
+  ) : isRunning ? (
+    <PulseDot className="w-1.5 h-1.5 text-warning shrink-0" />
+  ) : null;
+
   return (
     <div
       className={cn(
-        'rounded-lg border p-3 my-2',
-        'transition-colors duration-200',
-        isFailed
-          ? 'bg-destructive/5 border-destructive/30'
-          : isCancelled
-            ? 'bg-muted/30 border-border/50'
-            : isResolved
-              ? 'bg-success/5 border-success/30'
-              : 'bg-warning/5 border-warning/30'
+        'rounded-lg border overflow-hidden bg-card dark:bg-card/80',
+        isFailed ? 'border-destructive/30' : 'border-border/50'
       )}
     >
-      <div className="flex items-start gap-3">
-        {/* 图标 */}
-        <div
-          className={cn(
-            'flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center',
-            isFailed
-              ? 'bg-destructive/10 text-destructive'
-              : isCancelled
-                ? 'bg-muted/50 text-muted-foreground'
-                : isResolved
-                  ? 'bg-success/10 text-success'
-                  : 'bg-warning/10 text-warning'
-          )}
-        >
-          {isFailed ? (
-            <Warning size={16} />
-          ) : isCancelled ? (
-            <XCircle size={16} />
-          ) : isResolved ? (
-            <CheckCircle size={16} />
-          ) : isRunning ? (
-            <ArrowClockwise size={16} className="animate-spin" />
-          ) : (
-            <Warning size={16} />
-          )}
-        </div>
+      <div className="flex items-center justify-between gap-2 px-3 py-2.5">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <ToolActivitySweep
+            active={isRunning}
+            className="h-7 w-7 shrink-0 justify-center rounded-md bg-muted/70 dark:bg-muted/40"
+          >
+            <ArrowClockwise size={16} className="text-muted-foreground" />
+          </ToolActivitySweep>
 
-        {/* 内容 */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
-            <span
-              className={cn(
-                'text-sm font-medium',
-                isFailed
-                  ? 'text-destructive'
-                  : isCancelled
-                    ? 'text-muted-foreground'
-                    : isResolved
-                      ? 'text-success'
-                      : 'text-warning'
-              )}
-            >
-              {isFailed
-                ? isExhausted
-                  ? t('chatV2:workspace.subagentRetryExhaustedTitle')
-                  : t('chatV2:workspace.subagentRetryFailed')
-                : isCancelled
-                  ? t('workspace:subagentRetry.finalCancelled')
-                  : isResolved
-                    ? t('chatV2:workspace.subagentRetryResolved')
-                    : t('chatV2:workspace.subagentRetryTitle')}
-            </span>
-            <span className="text-xs text-muted-foreground font-mono">
-              {shortAgentId}
-            </span>
+          <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
+            <div className="flex min-w-0 items-center gap-1.5">
+              <ToolActivitySweep active={isRunning} className="min-w-0 max-w-full leading-4">
+                {isRunning ? (
+                  <TextShimmer
+                    className="text-xs font-medium leading-4 text-muted-foreground"
+                    duration={1.5}
+                    spread={3}
+                  >
+                    {titleText}
+                  </TextShimmer>
+                ) : (
+                  <span
+                    className={cn(
+                      'block truncate text-xs font-medium leading-4',
+                      isFailed ? 'text-destructive' : 'text-muted-foreground'
+                    )}
+                  >
+                    {titleText}
+                  </span>
+                )}
+              </ToolActivitySweep>
+              <span className="shrink-0 rounded bg-muted/60 px-1.5 py-0.5 text-2xs font-mono leading-none text-muted-foreground">
+                {shortAgentId}
+              </span>
+            </div>
+
+            {output?.timestamp && (
+              <span className="text-2xs leading-4 text-muted-foreground/70 tabular-nums">
+                {new Date(output.timestamp).toLocaleString(locale)}
+              </span>
+            )}
           </div>
-
-          <p className="text-sm text-muted-foreground">
-            {message}
-          </p>
-
-          {output?.timestamp && (
-            <p className="text-xs text-muted-foreground/70 mt-1">
-              {new Date(output.timestamp).toLocaleString(locale)}
-            </p>
-          )}
         </div>
+
+        {statusIndicator && (
+          <div className="flex shrink-0 items-center gap-1.5">
+            {statusIndicator}
+          </div>
+        )}
+      </div>
+
+      <div className="border-t border-border/30 px-3 py-2 text-xs text-muted-foreground whitespace-pre-wrap break-words">
+        {message}
       </div>
     </div>
   );

@@ -1,0 +1,47 @@
+{
+  "id": "RF-W23-fs-scope-missing-path-canonical-ancestor",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T14:05:00+08:00",
+  "title": "fs / asset 作用域判定尚不存在的路径（新建文件、mkdir 目标）时，先 canonicalize 最近的已存在祖先再拼回其余部分；换大小写、8.3 短名或经符号链接 / junction 的父目录不能再在 deny 目录里或作用域外新建文件",
+  "rust": {
+    "file": "src-tauri/Cargo.toml",
+    "line": 156,
+    "behavior": "tauri-2.11.5 src/scope/fs.rs:471-483 try_resolve_symlink_and_canonicalize：路径不存在就原样返回，is_allowed / is_forbidden 用 glob（区分大小写）按字面匹配；模式那一侧却有 canonicalize_parent 的规范形态。于是在大小写不敏感的文件系统（Windows NTFS、macOS 默认 APFS）上，default.json 授予 $APPDATA/**、deny $APPDATA/plugins/** 时，writeTextFile('$APPDATA/PLUGINS/x.js') 不匹配 deny、匹配 allow，文件落进 plugins/；Windows 上 8.3 短名（C:\\PROGRA~1\\…）同理。作用域目录里有指向外面的符号链接 / junction 时，link/new 按字面落在 allow 内，实际写到链接目标处。Tauri 自己的测试 windows_root_paths 也注明“不存在的文件无法 canonicalize 成 verbatim UNC 形态，所以匹配失败”"
+  },
+  "fix": {
+    "files": ["electron/shell/scope.ts"],
+    "behavior": "FsScope.resolveForMatch：路径不存在时用与模式相同的 canonicalizeParent（逐级上溯到第一个能 canonicalize 的祖先，再拼回其余组件）得到规范形态，allow 与 deny 都按它判定；同时字面形态仍参与 deny 判定，所以 Rust 拒绝的请求一律仍拒绝。连盘符根都不存在（Q:\\…）时退回字面形态。已存在的路径照旧 canonicalize"
+  },
+  "evidence": "复现（macOS，默认大小写不敏感）：Rust 版主窗口页面执行 writeTextFile(await join(await appDataDir(), 'PLUGINS', 'evil.js'), …) 成功，文件出现在 $APPDATA/plugins/evil.js——正是 RF-W23-fs-deny-host-plugin-dir 要挡住的 Host 插件目录（社区插件模块）。Electron 修复前同样成功（scope.ts 逐行移植了 Rust 的字面匹配）。Windows 上 $APPDATA\\Plugins\\… 与 C:\\PROGRA~1\\… 同理；Linux 的大小写敏感文件系统上大小写形态本来就是别的目录，不受影响，但符号链接父目录的问题三平台都有",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "electron/tests/fs-scope-missing-path.test.ts",
+      "name": "RF-W23-fs-scope-missing-path-canonical-ancestor: on a case-insensitive filesystem (Windows, macOS) a new file under a denied directory is denied in any case"
+    },
+    {
+      "file": "electron/tests/fs-scope-missing-path.test.ts",
+      "name": "RF-W23-fs-scope-missing-path-canonical-ancestor: an 8.3 short name or a forbidden directory spelled in another case does not reopen it on Windows"
+    },
+    {
+      "file": "electron/tests/fs-scope-missing-path.test.ts",
+      "name": "RF-W23-fs-scope-missing-path-canonical-ancestor: a new file behind a symlink or junction is judged where it would land"
+    },
+    {
+      "file": "electron/tests/fs-scope-missing-path.test.ts",
+      "name": "RF-W23-fs-scope-missing-path-canonical-ancestor: on the real filesystem a new file behind a symlink out of the allowed directory is denied"
+    },
+    {
+      "file": "electron/tests/fs-scope-missing-path.test.ts",
+      "name": "RF-W23-fs-scope-missing-path-canonical-ancestor: a new file under an allowed directory is allowed in any spelling the filesystem resolves there"
+    },
+    {
+      "file": "electron/tests/fs-scope-missing-path.test.ts",
+      "name": "RF-W23-fs-scope-missing-path-canonical-ancestor: never forbids less than Tauri: the literal request is still checked against deny after a symlink appears under it"
+    }
+  ],
+  "userVisible": "大小写不敏感的系统（macOS、Windows）上，受保护目录（Host 插件目录、内置浏览器会话、WebView 数据）已经存在时，页面不能再靠换大小写（Windows 上还包括 8.3 短名）在其中新建文件；目录尚不存在、或在之后以另一种大小写建出的情况由 RF-W23-fs-deny-case-insensitive 处理。经符号链接 / junction 的父目录新建文件时按实际落点判定，落在作用域外或受保护目录里时拒绝（forbidden path）。在授权目录里新建文件时，路径的盘符或目录大小写与磁盘不同也能写入（Rust 版会报 forbidden path）。",
+  "dataCompat": "不改变落库数据、同步载荷与备份格式。"
+}

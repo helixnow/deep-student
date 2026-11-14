@@ -1,0 +1,53 @@
+{
+  "domain": "backup",
+  "commands": [
+    "data_governance_get_migration_status",
+    "data_governance_run_health_check",
+    "data_governance_get_database_status",
+    "data_governance_get_migration_diagnostic_report"
+  ],
+  "scenarios": [
+    {
+      "id": "backup.diagnostics.seeded.live_vfs_not_sqlite",
+      "seed": "l21-live-vfs-not-sqlite",
+      "steps": [
+        {
+          "cmd": "data_governance_get_migration_status",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_run_health_check",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_get_database_status",
+          "args": {
+            "databaseId": "bogus"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_get_database_status",
+          "args": {
+            "databaseId": "vfs"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_get_migration_diagnostic_report",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

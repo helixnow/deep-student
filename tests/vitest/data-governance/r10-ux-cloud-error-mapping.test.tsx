@@ -115,7 +115,7 @@ import * as cloudApi from '@/utils/cloudStorageApi';
 // ============================================================================
 
 const backendSource = readFileSync(
-  resolve(process.cwd(), 'src-tauri/crates/dstu-sync/src/cloud_config_commands.rs'),
+  resolve(process.cwd(), 'host/plugins/sync-providers/src/config.ts'),
   'utf-8',
 );
 const componentSource = readFileSync(
@@ -139,7 +139,7 @@ const enLocale = JSON.parse(
 /** 从 Rust 源码提取常量字面量，保证测试跟随后端文案而非凭空复述 */
 function extractRustStringConst(name: string): string {
   const match = backendSource.match(
-    new RegExp(`${name}:\\s*&str\\s*=\\s*"([^"]+)"`),
+    new RegExp(`export const ${name} = '([^']+)'`),
   );
   if (!match) throw new Error(`constant ${name} not found in cloud_config_commands.rs`);
   return match[1];

@@ -9,6 +9,7 @@
  */
 import i18n from '@/i18n';
 import { getPracticeRuntimes } from '@/components/practice/practiceRuntime';
+import { isQbankAgentModifyPayload } from '@/stores/qbankAgentDiffStore';
 import { useQuestionBankStore } from '@/stores/questionBankStore';
 import { collectDomainEntityIds, registerDomainListener } from '../domainEvents';
 import { listTickCost } from '../pacing';
@@ -80,17 +81,87 @@ let deferredRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 let pendingDeferredPayload: DomainChangePayload | null = null;
 let domainUnlisten: (() => void) | null = null;
 
+function collectQbankPayloadEntityIds(payload: DomainChangePayload | undefined): string[] {
+  if (!payload || typeof payload !== 'object') return [];
+  const base = collectDomainEntityIds(payload);
+  const out = [...base];
+  const push = (val: unknown) => {
+    if (typeof val === 'string' && val.trim().length > 0) {
+      const trimmed = val.trim();
+      if (!out.includes(trimmed)) out.push(trimmed);
+    }
+  };
+  const raw = payload as Record<string, unknown>;
+  for (const arrKey of ['questionIds', 'question_ids'] as const) {
+    const arr = raw[arrKey];
+    if (Array.isArray(arr)) {
+      for (const item of arr) push(item);
+    }
+  }
+  push(raw.questionId);
+  push(raw.question_id);
+  return out;
+}
+
+function extractPayloadRunId(payload: DomainChangePayload | undefined): string | undefined {
+  if (!payload || typeof payload !== 'object') return undefined;
+  if (typeof payload.runId === 'string' && payload.runId.trim().length > 0) {
+    return payload.runId.trim();
+  }
+  const rawRunId = (payload as Record<string, unknown>).run_id;
+  if (typeof rawRunId === 'string' && rawRunId.trim().length > 0) {
+    return rawRunId.trim();
+  }
+  return undefined;
+}
+
+export function normalizeQbankRefreshPayload(
+  payload?: DomainChangePayload,
+): DomainChangePayload {
+  if (!payload) {
+    return { source: 'agent', action: 'changed', entityIds: [] };
+  }
+  const entityIds = collectQbankPayloadEntityIds(payload);
+  const runId = extractPayloadRunId(payload);
+  if (isQbankAgentModifyPayload(payload)) {
+    return {
+      ...payload,
+      source: 'agent',
+      action: typeof payload.action === 'string' && payload.action ? payload.action : 'changed',
+      entityIds,
+      ...(runId ? { runId } : {}),
+    };
+  }
+  return {
+    ...payload,
+    ...(entityIds.length > 0 || Array.isArray(payload.entityIds) ? { entityIds } : {}),
+    ...(runId ? { runId } : {}),
+  };
+}
+
 function mergeDeferredPayloads(
   previous: DomainChangePayload | null,
   next: DomainChangePayload | undefined,
 ): DomainChangePayload | null {
   if (!next) return previous;
-  if (!previous) return next;
+  if (!previous) return normalizeQbankRefreshPayload(next);
   const mergedIds = [
-    ...(previous.entityIds ?? []),
-    ...(next.entityIds ?? []),
+    ...collectQbankPayloadEntityIds(previous),
+    ...collectQbankPayloadEntityIds(next),
   ].filter((id, index, ids) => typeof id === 'string' && !!id && ids.indexOf(id) === index);
-  return { ...previous, ...next, entityIds: mergedIds };
+  const preserveAgentModify =
+    isQbankAgentModifyPayload(previous) || isQbankAgentModifyPayload(next);
+  const runId = extractPayloadRunId(next) ?? extractPayloadRunId(previous);
+  return {
+    ...previous,
+    ...next,
+    ...(preserveAgentModify ? { source: 'agent' as const } : {}),
+    ...(preserveAgentModify && !isQbankAgentModifyPayload(next)
+      ? { action: previous.action }
+      : {}),
+    entityIds: mergedIds,
+    ...(runId ? { runId } : {}),
+  };
 }
 
 function emptyReceipt(
@@ -250,12 +321,9 @@ export async function refreshQbankPreservingCurrent(
     console.warn('[qbankDriver] refreshQuestions failed after domain change:', error);
   }
 
-  const entityIds = payload
-    ? collectDomainEntityIds(payload)
-    : [];
-  dispatchRefreshEvent(
-    payload ?? { source: 'agent', action: 'changed', entityIds: [] },
-  );
+  const normalizedPayload = normalizeQbankRefreshPayload(payload);
+  const entityIds = normalizedPayload.entityIds ?? [];
+  dispatchRefreshEvent(normalizedPayload);
   flashEntityIds(entityIds.length > 0 ? entityIds : payload?.entityIds);
 }
 

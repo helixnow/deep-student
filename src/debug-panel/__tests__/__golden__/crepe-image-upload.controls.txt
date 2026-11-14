@@ -1,0 +1,194 @@
+## selector test, uploader present
+<div style="margin-bottom: 8px; padding: 8px 10px; background: rgb(239, 246, 255); border-left: 3px solid rgb(59, 130, 246); border-radius: 4px; font-size: 11px;">
+  <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+    <span style="display: flex; align-items: center; gap: 4px; padding: 2px 6px; background: rgb(139, 92, 246); color: white; border-radius: 3px; font-size: 10px;">
+      <svg size=10 icon="M168,132.69,214.08,115l.">
+      "点击检测"
+    <span style="color: var(--muted-foreground); font-size: 10px;">
+      "10:00:00 AM"
+      "."
+      "368"
+  <div style="color: rgb(59, 130, 246); font-weight: 500; margin-bottom: 6px;">
+    "模拟点击测试 - 找到 .uploader 元素"
+  <div style="margin-top: 4px; padding: 6px 8px; background: var(--background); border-radius: 3px; font-family: monospace; font-size: 10px; white-space: pre-wrap; word-break: break-all;">
+    "{ \"found\": true }"
+  <div style="margin-top: 4px; padding: 6px 8px; background: var(--background); border-radius: 3px; font-size: 10px;">
+    <div style="font-weight: bold; margin-bottom: 4px;">
+      "DOM Info:"
+    <code style="font-size: 10px;">
+      "<"
+      "label"
+      "class=\"uploader\""
+      ">"
+  <div style="margin-top: 4px; padding: 6px 8px; background: var(--background); border-radius: 3px; font-size: 10px;">
+    <div style="font-weight: bold; margin-bottom: 4px;">
+      "选择器匹配:"
+    <div style="display: flex; flex-wrap: wrap; gap: 4px;">
+      <span style="padding: 2px 6px; border-radius: 3px; background: rgb(220, 252, 231); color: rgb(22, 101, 52); font-size: 10px;">
+        "label.uploader"
+        ":"
+        "✓"
+      <span style="padding: 2px 6px; border-radius: 3px; background: rgb(220, 252, 231); color: rgb(22, 101, 52); font-size: 10px;">
+        ".uploader"
+        ":"
+        "✓"
+      <span style="padding: 2px 6px; border-radius: 3px; background: rgb(220, 252, 231); color: rgb(22, 101, 52); font-size: 10px;">
+        ".placeholder"
+        ":"
+        "✓"
+      <span style="padding: 2px 6px; border-radius: 3px; background: rgb(220, 252, 231); color: rgb(22, 101, 52); font-size: 10px;">
+        ".image-edit"
+        ":"
+        "✓"
+      <span style="padding: 2px 6px; border-radius: 3px; background: rgb(254, 226, 226); color: rgb(153, 27, 27); font-size: 10px;">
+        ".link-importer"
+        ":"
+        "✗"
+      <span style="padding: 2px 6px; border-radius: 3px; background: rgb(220, 252, 231); color: rgb(22, 101, 52); font-size: 10px;">
+        ".milkdown-image-block"
+        ":"
+        "✓"
+      <span style="padding: 2px 6px; border-radius: 3px; background: rgb(254, 226, 226); color: rgb(153, 27, 27); font-size: 10px;">
+        ".milkdown-image-inline"
+        ":"
+        "✗"
+      <span style="padding: 2px 6px; border-radius: 3px; background: rgb(254, 226, 226); color: rgb(153, 27, 27); font-size: 10px;">
+        "input[type=\"file\"]"
+        ":"
+        "✗"
+
+## selector test and snapshot, no editor
+模拟点击测试 - 未找到 .uploader 元素
+手动触发 DOM 快照
+<div style="display: flex; align-items: center; gap: 16px; padding: 8px 12px; background: var(--muted); border-bottom: 1px solid var(--border); font-size: 11px;">
+  <div style="display: flex; align-items: center; gap: 4px;">
+    <svg size=12 icon="M215.79,118.17a8,8,0,0,0">
+    <span>
+      "Tauri:"
+    <span style="color: rgb(239, 68, 68); font-weight: bold;">
+      "否"
+  <div style="display: flex; align-items: center; gap: 4px;">
+    <svg size=12 icon="M216,40H40A16,16,0,0,0,2">
+    <span>
+      "ImageBlock:"
+    <span style="color: rgb(239, 68, 68);">
+      "✗"
+  <div style="display: flex; align-items: center; gap: 4px;">
+    <svg size=12 icon="M240,136v64a16,16,0,0,1-">
+    <span>
+      "Uploader:"
+    <span style="color: rgb(239, 68, 68);">
+      "✗"
+  <div style="display: flex; align-items: center; gap: 4px;">
+    <svg size=12 icon="M110.66,147.56a8,8,0,0,0">
+    <span>
+      "HiddenInput:"
+    <span style="color: rgb(239, 68, 68);">
+      "✗"
+
+## Tauri present
+<div style="display: flex; align-items: center; gap: 16px; padding: 8px 12px; background: var(--muted); border-bottom: 1px solid var(--border); font-size: 11px;">
+  <div style="display: flex; align-items: center; gap: 4px;">
+    <svg size=12 icon="M215.79,118.17a8,8,0,0,0">
+    <span>
+      "Tauri:"
+    <span style="color: rgb(34, 197, 94); font-weight: bold;">
+      "是"
+  <div style="display: flex; align-items: center; gap: 4px;">
+    <svg size=12 icon="M216,40H40A16,16,0,0,0,2">
+    <span>
+      "ImageBlock:"
+    <span style="color: rgb(239, 68, 68);">
+      "✗"
+  <div style="display: flex; align-items: center; gap: 4px;">
+    <svg size=12 icon="M240,136v64a16,16,0,0,1-">
+    <span>
+      "Uploader:"
+    <span style="color: rgb(239, 68, 68);">
+      "✗"
+  <div style="display: flex; align-items: center; gap: 4px;">
+    <svg size=12 icon="M110.66,147.56a8,8,0,0,0">
+    <span>
+      "HiddenInput:"
+    <span style="color: rgb(239, 68, 68);">
+      "✗"
+
+## filter debug
+5 / 20 条
+选择器检查
+Tauri 环境检测
+proxyDomURL 被调用
+查找节点
+点击普通文本
+## filter info
+7 / 20 条
+点击图片上传区域
+打开文件对话框
+调用 notes_save_asset
+插入节点
+DOM 快照
+模拟点击测试 - 找到 .uploader 元素
+手动触发 DOM 快照
+## filter warning
+3 / 20 条
+用户取消选择
+图片渲染
+模拟点击测试 - 未找到 .uploader 元素
+## filter error
+1 / 20 条
+图片保存失败
+## filter success
+4 / 20 条
+Base64 转换成功
+notes_save_asset 返回成功
+更新节点
+Tauri 环境
+## filter all
+20 / 20 条
+点击图片上传区域
+选择器检查
+Tauri 环境检测
+打开文件对话框
+用户取消选择
+proxyDomURL 被调用
+Base64 转换成功
+调用 notes_save_asset
+notes_save_asset 返回成功
+查找节点
+更新节点
+插入节点
+图片渲染
+点击普通文本
+DOM 快照
+图片保存失败
+模拟点击测试 - 找到 .uploader 元素
+模拟点击测试 - 未找到 .uploader 元素
+手动触发 DOM 快照
+Tauri 环境
+## paused
+<button class="[@media(pointer:coarse)]:min-h-11" style="display: flex; align-items: center; gap: 4px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--muted); color: var(--foreground); cursor: pointer; font-size: 11px;">
+  <svg size=12 icon="M165.66,101.66,139.31,12">
+  "已暂停"
+20 / 20 条
+## resumed
+21 / 21 条
+恢复后的报告
+## cleared
+<div style="display: flex; align-items: center; gap: 16px; padding: 8px 12px; background: var(--muted); border-bottom: 1px solid var(--border); font-size: 11px;">
+  <div style="display: flex; align-items: center; gap: 4px;">
+    <svg size=12 icon="M215.79,118.17a8,8,0,0,0">
+    <span>
+      "Tauri:"
+    <span style="color: rgb(239, 68, 68); font-weight: bold;">
+      "否"
+<div style="flex: 1 1 0%; overflow: auto; padding: 8px;">
+  <div style="text-align: center; color: var(--muted-foreground); padding: 40px 20px;">
+    <svg size=32 icon="M216,40H40A16,16,0,0,0,2" style="margin-bottom: 12px; opacity: 0.5;">
+    <div>
+      "暂无日志"
+    <div style="font-size: 11px; margin-top: 8px;">
+      "请在笔记编辑器中点击图片上传区域触发事件"
+  <div>
+
+## scrollIntoView
+22 calls, ["[{\"behavior\":\"smooth\"}]"]

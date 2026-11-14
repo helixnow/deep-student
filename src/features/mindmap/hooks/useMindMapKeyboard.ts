@@ -127,7 +127,7 @@ export function useMindMapKeyboard(options?: UseMindMapKeyboardOptions): void {
     if (e.key === 'Escape') {
       // 编辑态 Esc：交给 NodeContent / 备注 textarea 就地恢复 draft（capture 下
       // 本 listener 先于 target，不得在此清 editingNodeId 抢跑）。
-      if (editingNodeId || editingNoteNodeId) return;
+      if (isTextInputContext || editingNodeId || editingNoteNodeId) return;
       // 无背诵/选中/焦点时导图对 Esc 无事可做：放行给外层
       // （工作台窗口、命令系统等），不得 preventDefault/stopPropagation 吞掉。
       // 背诵 Esc 优先由 MindMapContentView window capture 处理；此处作兜底。

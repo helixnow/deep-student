@@ -16,12 +16,12 @@ import {
 } from '@/utils/cloudStorageApi';
 
 const rustSource = readFileSync(
-  resolve(process.cwd(), 'src-tauri/crates/dstu-sync/src/cloud_config_commands.rs'),
+  resolve(process.cwd(), 'host/plugins/sync-providers/src/config.ts'),
   'utf-8',
 );
 
 function rustStringConst(name: string): string {
-  const match = rustSource.match(new RegExp(`${name}:\\s*&str\\s*=\\s*"([^"]+)"`));
+  const match = rustSource.match(new RegExp(`export const ${name} = '([^']+)'`));
   if (!match) throw new Error(`missing Rust string const ${name}`);
   return match[1];
 }

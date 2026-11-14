@@ -1,0 +1,63 @@
+{
+  "domain": "backup",
+  "commands": [
+    "data_governance_get_schema_registry",
+    "data_governance_get_maintenance_status"
+  ],
+  "scenarios": [
+    {
+      "id": "backup.metadata.empty.registry_and_maintenance",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "data_governance_get_maintenance_status",
+          "args": {}
+        },
+        {
+          "cmd": "data_governance_get_schema_registry",
+          "args": {}
+        },
+        {
+          "cmd": "data_governance_get_schema_registry",
+          "args": {}
+        },
+        {
+          "cmd": "data_governance_get_maintenance_status",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "backup.metadata.ipc_args",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "data_governance_get_schema_registry",
+          "args": {
+            "unexpected": true
+          }
+        },
+        {
+          "cmd": "data_governance_get_maintenance_status",
+          "args": {
+            "unexpected": true
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

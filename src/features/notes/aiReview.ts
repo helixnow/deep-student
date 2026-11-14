@@ -7,7 +7,7 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { registerNoteAIEditControl } from './aiEditControlRegistry';
 import { assertFullDocumentBaseline, assertNoteContentSize, FullDocumentSaveError, type FullDocumentApi } from './fullDocument';
 import { computeDiffLines, computeProposedContent, type AIEditState, type CanvasAIEditRequest, type CanvasAIEditResult } from './hooks/useAIEditState';
-import type { AIEditCheckpoint } from './hooks/useCanvasAIEditHandler';
+import { MAX_AI_EDIT_CHECKPOINTS, type AIEditCheckpoint } from './hooks/useCanvasAIEditHandler';
 import {
   aiReviewSessionKey, createAIReviewSession,
   readAIReviewSession, storeAIReviewSession, type AIReviewDecision, type AIReviewSession,
@@ -197,7 +197,7 @@ export function useAIReview({ noteId, editorApi, enabled = true, windowId, host 
 
   const receive = useCallback(async (request: LocalRequest) => {
     const owner = current.current;
-    if (!owner.enabled || request.noteId !== owner.noteId || (request.targetWindowId && request.targetWindowId !== owner.windowId)) return;
+    if (!mounted.current || !owner.enabled || request.noteId !== owner.noteId || (request.targetWindowId && request.targetWindowId !== owner.windowId)) return;
     const pending = readAIReviewSession(owner.key);
     if (pending) {
       request.onLocalDisposition?.({ accepted: false, reason: aiReviewError('pending_review', '已有建议等待审阅，请先完成或明确丢弃。') });
@@ -219,6 +219,31 @@ export function useAIReview({ noteId, editorApi, enabled = true, windowId, host 
       try { assertNoteContentSize(candidate); } catch (error) { session.error = message(error); }
       update(owner.key, session);
       request.onLocalDisposition?.({ accepted: true });
+      if (owner.noteId) {
+        try {
+          const historyPage = await invoke<{
+            items?: Array<{ id?: string; versionId?: string; version_id?: string; pinned?: boolean }>;
+          }>('notes_history_list', {
+            noteId: owner.noteId,
+            cursor: null,
+            limit: 1,
+            pinnedOnly: false,
+          });
+          const firstItem = historyPage?.items?.[0];
+          const latestVersionId = firstItem?.version_id ?? firstItem?.versionId ?? firstItem?.id;
+          if (latestVersionId && mounted.current && current.current.key === owner.key
+            && current.current.editorApi === api && readAIReviewSession(owner.key)?.request === session.request
+            && api.getFullDocument().markdown === baseline.markdown) {
+            await invoke('notes_history_set_pinned', {
+              noteId: owner.noteId,
+              versionId: latestVersionId,
+              pinned: true,
+            });
+          }
+        } catch (error) {
+          console.debug('[aiReview] baseline history pin unavailable', error);
+        }
+      }
       try { await invoke('chat_v2_canvas_edit_ack', { requestId: request.requestId }); }
       catch (error) { console.debug('[aiReview] ACK unavailable', error); }
     } catch (error) {
@@ -273,6 +298,9 @@ export function useAIReview({ noteId, editorApi, enabled = true, windowId, host 
       // recoverable by comparing the exact proposed full document on reopen.
       const intent = { ...session, retryDecision: decision };
       if (!await persist(owner.key, intent)) throw new Error(aiReviewError('state_not_saved', '审阅状态尚未保存，请重试。'));
+      if (!mounted.current || current.current.key !== owner.key || current.current.editorApi !== api
+        || !current.current.enabled) throw new Error(aiReviewError('window_changed', '笔记窗口已变化，审阅结果已保留供恢复。'));
+      assertFullDocumentBaseline(api.getFullDocument(), baseline);
       if (decision.action === 'accept') {
         assertNoteContentSize(decision.after);
         if (session.request.landing === 'save-as') {
@@ -304,7 +332,9 @@ export function useAIReview({ noteId, editorApi, enabled = true, windowId, host 
         originalContent: checkpointBefore, resultContent: checkpointAfter, appliedAt: Date.now(),
         operation: session.request.operation, diffLines: computeDiffLines(checkpointBefore, checkpointAfter),
       };
-      const accepted = decision.action === 'accept' && checkpointBefore !== checkpointAfter ? [...session.accepted, checkpoint] : session.accepted;
+      const accepted = decision.action === 'accept' && checkpointBefore !== checkpointAfter
+        ? [...session.accepted, checkpoint].slice(-MAX_AI_EDIT_CHECKPOINTS)
+        : session.accepted;
       const resolved: AIReviewSession = { ...session, baseline: appliedDocument, savedAs, target: decision.target,
         generation: session.retryDecision ? session.generation + 1 : session.generation,
         decisions: [...session.decisions, decision], accepted, error: undefined,
@@ -429,14 +459,15 @@ export function useAIReview({ noteId, editorApi, enabled = true, windowId, host 
     const owner = current.current;
     const top = checkpointsRef.current.at(-1);
     const api = owner.editorApi as FullDocumentApi | null;
-    if (!api || !top || top.noteId !== owner.noteId || applying.current.has(owner.key)) return;
+    if (!mounted.current || !owner.enabled || !api || !top || top.noteId !== owner.noteId || applying.current.has(owner.key)) return;
     applying.current.add(owner.key);
     setIsApplying(true);
     try {
       const baseline = api.getFullDocument();
       if (baseline.markdown !== top.resultContent) throw new Error(aiReviewError('checkpoint_changed', '检查点之后正文已改变。'));
       const applied = await api.replaceFullDocument(top.originalContent, baseline);
-      if (current.current.key === owner.key && mounted.current) {
+      assertFullDocumentBaseline(api.getFullDocument(), applied);
+      if (current.current.key === owner.key && current.current.editorApi === api && mounted.current) {
         checkpointsRef.current = checkpointsRef.current.filter((entry) => entry !== top);
         setCheckpoints(checkpointsRef.current);
         const session = readAIReviewSession(owner.key);
@@ -455,7 +486,34 @@ export function useAIReview({ noteId, editorApi, enabled = true, windowId, host 
       if (current.current.key === owner.key && mounted.current) setIsApplying(false);
     }
   }, [update]);
-  const dismissCheckpoint = useCallback(() => setCheckpoints([]), []);
+  const applyComposedContent = useCallback(async (composedMarkdown: string) => {
+    const owner = current.current;
+    const session = readAIReviewSession(owner.key);
+    if (!session || applying.current.has(owner.key)) return;
+    try {
+      if (session.resolution) {
+        await persist(owner.key, session);
+        return;
+      }
+      const baseline = session.retryBaseline ?? session.baseline;
+      await handleOfficialDecision({
+        action: 'accept',
+        before: baseline.markdown,
+        after: composedMarkdown,
+        target: composedMarkdown,
+        remaining: 0,
+      });
+    } catch (error) {
+      const latest = readAIReviewSession(owner.key);
+      if (latest) update(owner.key, { ...latest, error: message(error) }, false);
+    }
+  }, [handleOfficialDecision, persist, update]);
+
+  const rollbackLatestCheckpoint = useCallback(async () => {
+    await rollbackCheckpoint();
+  }, [rollbackCheckpoint]);
+
+  const dismissCheckpoint = useCallback(() => { checkpointsRef.current = []; setCheckpoints([]); }, []);
   useEffect(() => {
     if (!noteId || !enabled) return;
     return registerNoteAIEditControl(noteId, {
@@ -476,14 +534,23 @@ export function useAIReview({ noteId, editorApi, enabled = true, windowId, host 
   const session = storedSession && persistence.error
     ? { ...storedSession, error: [storedSession.error, persistence.error].filter(Boolean).join('\n') }
     : storedSession;
+  const latestSessionCheckpoint = storedSession ? (storedSession.accepted.at(-1) ?? null) : (checkpoints.at(-1) ?? null);
   const aiEditState: AIEditState = useMemo(() => session ? {
     isActive: true, request: session.request, originalContent: session.baseline.markdown,
     proposedContent: session.candidate, diffLines: computeDiffLines(session.baseline.markdown, session.candidate),
   } : emptyState, [session?.request, session?.baseline.markdown, session?.candidate]);
   return {
     session, aiEditState, handleAccept, handleReject, isApplying,
+    applyComposedContent, rollbackLatestCheckpoint,
     submitReview: receive,
-    officialReviewProps: { onReviewDecision: handleOfficialDecision, onReviewReady, onReviewError },
+    officialReviewProps: {
+      onReviewDecision: handleOfficialDecision,
+      onReviewReady,
+      onReviewError,
+      onApplyComposedContent: applyComposedContent,
+      latestCheckpoint: latestSessionCheckpoint,
+      onRollbackCheckpoint: rollbackLatestCheckpoint,
+    },
     scopeProps: {
       onScopeChange: (kind: AIReviewScope['kind']) => changeReviewProjection(kind),
       onLandingChange: (landing: AIReviewLanding) => changeReviewProjection(undefined, landing),

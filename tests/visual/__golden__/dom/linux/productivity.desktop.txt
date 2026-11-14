@@ -1,0 +1,590 @@
+<body .light-theme>
+  <div data-demo-app="productivity" id="@1">
+    <div .demo-app-frame data-demo-app-frame="true">
+      <div .bg-background.h-full.min-h-0.min-w-0.overflow-hidden.relative.w-full data-wb-sys-app="todo">
+        <div .-z-10.absolute.inset-0.pointer-events-none aria-hidden="true" data-wb-sys-h="tall" data-wb-sys-size="wide" />
+        <div .wb-sys-fade>
+          <div .wb-sys-split data-wb-sys-drawer-mode="false" data-wb-sys-sidebar-collapsed="false">
+            <div .wb-sys-aside aria-hidden="false">
+              <div .h-full.min-w-0.relative.w-full>
+                <aside .bg-[color:var(--shell-navigation-panel)].bg-[color:var(--shell-navigation-surface)].border-[color:var(--shell-navigation-border)].border-r.flex.flex-col.font-sidebar-study-ui.h-full.min-h-0.min-w-0.overflow-hidden.relative.study-shell-sidebar-frame.text-[color:var(--shell-navigation-foreground)].w-full aria-label="待办导航" data-shell-layer="navigation" data-shell-surface="navigation" data-todo-shell-sidebar="true" data-workbench-sidebar="true" role="navigation">
+                  <div .px-2.py-1.shrink-0.space-y-0.5 />
+                  <div .flex-1.min-h-0.overflow-hidden>
+                    <aside .duration-300.flex.flex-col.flex-shrink-0.font-sidebar-study-ui.h-full.min-h-0.min-w-0.overflow-hidden.relative.text-[color:var(--shell-navigation-foreground)].transition-colors.w-full data-shell-layer="navigation" data-todo-shell-sidebar="true" role="navigation">
+                      <div .pb-2.pt-3.px-2.shrink-0>
+                        <div .relative>
+                          <svg .-translate-y-1/2.absolute.left-2.5.pointer-events-none.text-[color:var(--shell-navigation-muted)].top-1/2 viewBox="0 0 256 256" />
+                          <input .[@media(pointer:coarse)]:!min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:h-11.[@media(pointer:coarse)]:pr-11.[@media(pointer:coarse)]:text-lg.bg-[color:var(--input-shell-surface)].bg-[color:var(--interactive-hover)]/60.border.border-[color:var(--input-shell-border)].border-transparent.disabled:cursor-not-allowed.disabled:opacity-50.ds-search-input.file:bg-transparent.file:border-0.file:font-medium.file:text-sm.flex.focus-visible:bg-background.focus-visible:border-[color:var(--border)].focus-visible:outline-none.focus-visible:ring-0.focus:bg-[color:var(--interactive-hover)].focus:bg-background.focus:border-[color:var(--border)].focus:border-[color:var(--shell-navigation-border)].focus:outline-none.focus:ring-0.h-8.hover:bg-[color:var(--surface-panel-strong)].lg:min-h-[var(--button-height)].min-h-[var(--touch-target-size)].outline-none.pl-8.placeholder:text-[color:var(--shell-navigation-muted)].placeholder:text-muted-foreground/50.pr-8.px-3.py-2.rounded-[var(--radius-shell-control)].text-[color:var(--shell-navigation-foreground)].text-foreground.text-sm.text-ui.transition-colors.w-full placeholder="搜索列表..." type="search" value />
+                      <div .pb-1.px-2.shrink-0>
+                        <div .flex.group/todo-section.items-center.justify-between.px-2.py-1>
+                          <button .[@media(pointer:coarse)]:min-h-[2.75rem].duration-150.flex.flex-1.focus-visible:ring-2.focus-visible:ring-ring.gap-1.items-center.min-w-0.outline-none.rounded-md.text-left.transition-colors aria-controls="@2" aria-expanded="true" type="button">
+                            <span .desktop-shell-nav-section-label.min-w-0.truncate>
+                              "智能视图"
+                            <svg .[@media(pointer:coarse)]:opacity-100.duration-200.ease-[cubic-bezier(0.22,1,0.36,1)].group-focus-within/todo-section:opacity-100.group-hover/todo-section:opacity-100.motion-reduce:transition-none.opacity-0.rotate-90.shrink-0.text-[color:var(--shell-navigation-muted)].transition-[transform,opacity] aria-hidden="true" viewBox="0 0 256 256" />
+                        <div .duration-200.ease-[cubic-bezier(0.22,1,0.36,1)].grid.grid-rows-[1fr].motion-reduce:transition-none.transition-[grid-template-rows] id="@2">
+                          <div .min-h-0.overflow-hidden>
+                            <div .space-y-0.5>
+                              <button .!justify-start.!px-2.5.!py-1.5.!w-full.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.active:bg-[color:var(--sidebar-quiet-active)].appearance-none.bg-transparent.border-transparent.desktop-shell-nav-row.desktop-shell-sidebar-row.disabled:opacity-50.disabled:pointer-events-none.flex.focus-visible:ring-2.focus-visible:ring-ring.font-normal.gap-2.gap-2.5.hover:bg-[color:var(--sidebar-quiet-hover)].hover:text-[color:var(--shell-navigation-foreground)].inline-flex.items-center.justify-start.leading-none.lg:min-h-9.min-h-[2.75rem].min-w-0.outline-none.overflow-hidden.px-2.5.py-1.5.rounded-2xl.select-none.shrink-0.text-[color:var(--shell-navigation-muted)].text-left.text-sm.text-ui.ui-press-coarse.w-full.whitespace-nowrap data-todo-nav-row data-workbench-sidebar-row="nav" title="收件箱 ⌘1" type="button">
+                                <span .flex.flex-1.gap-2.5.items-center.min-w-0>
+                                  <span .flex.items-center.justify-center.shrink-0.text-[color:var(--shell-navigation-foreground)].w-4>
+                                    <svg viewBox="0 0 256 256" />
+                                  <span .flex-1.min-w-0>
+                                    <span .block.desktop-shell-sidebar-row-title.flex-1.leading-4.min-w-0.truncate>
+                                      "收件箱"
+                                  <span .flex.gap-0.5.items-center.justify-end.min-w-[24px].shrink-0>
+                                    <span .font-medium.leading-none.tabular-nums.text-[color:var(--shell-navigation-muted)].text-xs aria-label="3 个未完成待办">
+                                      "3"
+                              <button .!justify-start.!px-2.5.!py-1.5.!w-full.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.active:bg-[color:var(--sidebar-quiet-active)].appearance-none.bg-transparent.border-transparent.desktop-shell-nav-row.desktop-shell-nav-row--active.desktop-shell-sidebar-row.disabled:opacity-50.disabled:pointer-events-none.flex.focus-visible:ring-2.focus-visible:ring-ring.font-normal.gap-2.gap-2.5.hover:bg-[color:var(--sidebar-quiet-hover)].hover:text-[color:var(--shell-navigation-foreground)].inline-flex.items-center.justify-start.leading-none.lg:min-h-9.min-h-[2.75rem].min-w-0.outline-none.overflow-hidden.px-2.5.py-1.5.rounded-2xl.select-none.shrink-0.text-[color:var(--shell-navigation-muted)].text-left.text-sm.text-ui.ui-press-coarse.w-full.whitespace-nowrap aria-current="page" data-todo-nav-row data-workbench-sidebar-row="nav" title="今日 ⌘2" type="button">
+                                <span .flex.flex-1.gap-2.5.items-center.min-w-0>
+                                  <span .flex.items-center.justify-center.shrink-0.text-[color:var(--shell-navigation-foreground)].w-4>
+                                    <svg viewBox="0 0 256 256" />
+                                  <span .flex-1.min-w-0>
+                                    <span .block.desktop-shell-sidebar-row-title.flex-1.leading-4.min-w-0.truncate>
+                                      "今日"
+                                  <span .flex.gap-0.5.items-center.justify-end.min-w-[24px].shrink-0>
+                                    <span .font-medium.leading-none.tabular-nums.text-[color:var(--shell-navigation-muted)].text-xs aria-label="5 个未完成待办">
+                                      "5"
+                              <button .!justify-start.!px-2.5.!py-1.5.!w-full.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.active:bg-[color:var(--sidebar-quiet-active)].appearance-none.bg-transparent.border-transparent.desktop-shell-nav-row.desktop-shell-sidebar-row.disabled:opacity-50.disabled:pointer-events-none.flex.focus-visible:ring-2.focus-visible:ring-ring.font-normal.gap-2.gap-2.5.hover:bg-[color:var(--sidebar-quiet-hover)].hover:text-[color:var(--shell-navigation-foreground)].inline-flex.items-center.justify-start.leading-none.lg:min-h-9.min-h-[2.75rem].min-w-0.outline-none.overflow-hidden.px-2.5.py-1.5.rounded-2xl.select-none.shrink-0.text-[color:var(--shell-navigation-muted)].text-left.text-sm.text-ui.ui-press-coarse.w-full.whitespace-nowrap data-todo-nav-row data-workbench-sidebar-row="nav" title="即将到期 ⌘3" type="button">
+                                <span .flex.flex-1.gap-2.5.items-center.min-w-0>
+                                  <span .flex.items-center.justify-center.shrink-0.text-[color:var(--shell-navigation-foreground)].w-4>
+                                    <svg viewBox="0 0 256 256" />
+                                  <span .flex-1.min-w-0>
+                                    <span .block.desktop-shell-sidebar-row-title.flex-1.leading-4.min-w-0.truncate>
+                                      "即将到期"
+                                  <span .flex.gap-0.5.items-center.justify-end.min-w-[24px].shrink-0>
+                                    <span .font-medium.leading-none.tabular-nums.text-[color:var(--shell-navigation-muted)].text-xs aria-label="6 个未完成待办">
+                                      "6"
+                              <button .!justify-start.!px-2.5.!py-1.5.!w-full.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.active:bg-[color:var(--sidebar-quiet-active)].appearance-none.bg-transparent.border-transparent.desktop-shell-nav-row.desktop-shell-sidebar-row.disabled:opacity-50.disabled:pointer-events-none.flex.focus-visible:ring-2.focus-visible:ring-ring.font-normal.gap-2.gap-2.5.hover:bg-[color:var(--sidebar-quiet-hover)].hover:text-[color:var(--shell-navigation-foreground)].inline-flex.items-center.justify-start.leading-none.lg:min-h-9.min-h-[2.75rem].min-w-0.outline-none.overflow-hidden.px-2.5.py-1.5.rounded-2xl.select-none.shrink-0.text-[color:var(--shell-navigation-muted)].text-left.text-sm.text-ui.ui-press-coarse.w-full.whitespace-nowrap data-todo-nav-row data-workbench-sidebar-row="nav" title="四象限 ⌘4" type="button">
+                                <span .flex.flex-1.gap-2.5.items-center.min-w-0>
+                                  <span .flex.items-center.justify-center.shrink-0.text-[color:var(--shell-navigation-foreground)].w-4>
+                                    <svg viewBox="0 0 256 256" />
+                                  <span .flex-1.min-w-0>
+                                    <span .block.desktop-shell-sidebar-row-title.flex-1.leading-4.min-w-0.truncate>
+                                      "四象限"
+                                  <span .flex.gap-0.5.items-center.justify-end.min-w-[24px].shrink-0 />
+                              <button .!justify-start.!px-2.5.!py-1.5.!w-full.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.active:bg-[color:var(--sidebar-quiet-active)].appearance-none.bg-transparent.border-transparent.desktop-shell-nav-row.desktop-shell-sidebar-row.disabled:opacity-50.disabled:pointer-events-none.flex.focus-visible:ring-2.focus-visible:ring-ring.font-normal.gap-2.gap-2.5.hover:bg-[color:var(--sidebar-quiet-hover)].hover:text-[color:var(--shell-navigation-foreground)].inline-flex.items-center.justify-start.leading-none.lg:min-h-9.min-h-[2.75rem].min-w-0.outline-none.overflow-hidden.px-2.5.py-1.5.rounded-2xl.select-none.shrink-0.text-[color:var(--shell-navigation-muted)].text-left.text-sm.text-ui.ui-press-coarse.w-full.whitespace-nowrap data-todo-nav-row data-workbench-sidebar-row="nav" title="已过期 ⌘5" type="button">
+                                <span .flex.flex-1.gap-2.5.items-center.min-w-0>
+                                  <span .flex.items-center.justify-center.shrink-0.text-[color:var(--shell-navigation-foreground)].w-4>
+                                    <svg viewBox="0 0 256 256" />
+                                  <span .flex-1.min-w-0>
+                                    <span .block.desktop-shell-sidebar-row-title.flex-1.leading-4.min-w-0.truncate>
+                                      "已过期"
+                                  <span .flex.gap-0.5.items-center.justify-end.min-w-[24px].shrink-0>
+                                    <span .bg-[color:hsl(var(--destructive))].font-semibold.h-[18px].inline-flex.items-center.justify-center.leading-none.min-w-[18px].px-1.rounded-full.tabular-nums.text-2xs.text-white aria-label="1 个逾期待办">
+                                      "1"
+                              <button .!justify-start.!px-2.5.!py-1.5.!w-full.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.active:bg-[color:var(--sidebar-quiet-active)].appearance-none.bg-transparent.border-transparent.desktop-shell-nav-row.desktop-shell-sidebar-row.disabled:opacity-50.disabled:pointer-events-none.flex.focus-visible:ring-2.focus-visible:ring-ring.font-normal.gap-2.gap-2.5.hover:bg-[color:var(--sidebar-quiet-hover)].hover:text-[color:var(--shell-navigation-foreground)].inline-flex.items-center.justify-start.leading-none.lg:min-h-9.min-h-[2.75rem].min-w-0.outline-none.overflow-hidden.px-2.5.py-1.5.rounded-2xl.select-none.shrink-0.text-[color:var(--shell-navigation-muted)].text-left.text-sm.text-ui.ui-press-coarse.w-full.whitespace-nowrap data-todo-nav-row data-workbench-sidebar-row="nav" title="已完成 ⌘6" type="button">
+                                <span .flex.flex-1.gap-2.5.items-center.min-w-0>
+                                  <span .flex.items-center.justify-center.shrink-0.text-[color:var(--shell-navigation-foreground)].w-4>
+                                    <svg viewBox="0 0 256 256" />
+                                  <span .flex-1.min-w-0>
+                                    <span .block.desktop-shell-sidebar-row-title.flex-1.leading-4.min-w-0.truncate>
+                                      "已完成"
+                                  <span .flex.gap-0.5.items-center.justify-end.min-w-[24px].shrink-0 />
+                              <button .!justify-start.!px-2.5.!py-1.5.!w-full.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.active:bg-[color:var(--sidebar-quiet-active)].appearance-none.bg-transparent.border-transparent.desktop-shell-nav-row.desktop-shell-sidebar-row.disabled:opacity-50.disabled:pointer-events-none.flex.focus-visible:ring-2.focus-visible:ring-ring.font-normal.gap-2.gap-2.5.hover:bg-[color:var(--sidebar-quiet-hover)].hover:text-[color:var(--shell-navigation-foreground)].inline-flex.items-center.justify-start.leading-none.lg:min-h-9.min-h-[2.75rem].min-w-0.outline-none.overflow-hidden.px-2.5.py-1.5.rounded-2xl.select-none.shrink-0.text-[color:var(--shell-navigation-muted)].text-left.text-sm.text-ui.ui-press-coarse.w-full.whitespace-nowrap data-todo-nav-row data-workbench-sidebar-row="nav" title="定时任务 ⌘7" type="button">
+                                <span .flex.flex-1.gap-2.5.items-center.min-w-0>
+                                  <span .flex.items-center.justify-center.shrink-0.text-[color:var(--shell-navigation-foreground)].w-4>
+                                    <svg viewBox="0 0 256 256" />
+                                  <span .flex-1.min-w-0>
+                                    <span .block.desktop-shell-sidebar-row-title.flex-1.leading-4.min-w-0.truncate>
+                                      "定时任务"
+                                  <span .flex.gap-0.5.items-center.justify-end.min-w-[24px].shrink-0 />
+                      <div .flex.flex-1.flex-col.min-h-0.overflow-hidden.pb-2.px-2>
+                        <div .flex.group/todo-section.items-center.justify-between.px-2.py-1>
+                          <button .[@media(pointer:coarse)]:min-h-[2.75rem].duration-150.flex.flex-1.focus-visible:ring-2.focus-visible:ring-ring.gap-1.items-center.min-w-0.outline-none.rounded-md.text-left.transition-colors aria-controls="@3" aria-expanded="true" type="button">
+                            <span .desktop-shell-nav-section-label.min-w-0.truncate>
+                              "列表"
+                            <svg .[@media(pointer:coarse)]:opacity-100.duration-200.ease-[cubic-bezier(0.22,1,0.36,1)].group-focus-within/todo-section:opacity-100.group-hover/todo-section:opacity-100.motion-reduce:transition-none.opacity-0.rotate-90.shrink-0.text-[color:var(--shell-navigation-muted)].transition-[transform,opacity] aria-hidden="true" viewBox="0 0 256 256" />
+                          <button .[@media(pointer:coarse)]:h-11.[@media(pointer:coarse)]:opacity-100.[@media(pointer:coarse)]:w-11.duration-150.flex.focus-visible:opacity-100.group-hover/todo-section:opacity-100.h-5.hover:bg-[color:var(--interactive-hover)].hover:text-[color:var(--shell-navigation-foreground)].items-center.justify-center.opacity-0.rounded-md.text-[color:var(--shell-navigation-muted)].transition-opacity.w-5 aria-label="新建列表" title="新建列表" type="button">
+                            <svg viewBox="0 0 256 256" />
+                        <div .duration-200.ease-[cubic-bezier(0.22,1,0.36,1)].flex-1.grid.grid-rows-[1fr].min-h-0.motion-reduce:transition-none.transition-[grid-template-rows] id="@3">
+                          <div .min-h-0.overflow-hidden>
+                            <div .h-full.min-h-0.min-w-0.relative data-native-scrollbars="false" data-orientation="vertical" data-overlayscrollbars="host" data-overlayscrollbars-initialize data-scroll-axes="vertical" data-scroll-track-right data-slot="scroll-area">
+                              <div .h-full.max-h-[inherit].min-h-0.min-w-0.w-full data-overlayscrollbars-viewport="scrollbarHidden overflowXHidden overflowYHidden" tabindex="-1">
+                                <div .flex.group/todo-section.items-center.justify-between.pb-1.pt-0.5.px-2.py-1>
+                                  <button .[@media(pointer:coarse)]:min-h-[2.75rem].duration-150.flex.flex-1.focus-visible:ring-2.focus-visible:ring-ring.gap-1.items-center.min-w-0.outline-none.rounded-md.text-left.transition-colors aria-controls="@4" aria-expanded="true" type="button">
+                                    <span .desktop-shell-nav-section-label.min-w-0.truncate>
+                                      "收藏"
+                                    <svg .[@media(pointer:coarse)]:opacity-100.duration-200.ease-[cubic-bezier(0.22,1,0.36,1)].group-focus-within/todo-section:opacity-100.group-hover/todo-section:opacity-100.motion-reduce:transition-none.opacity-0.rotate-90.shrink-0.text-[color:var(--shell-navigation-muted)].transition-[transform,opacity] aria-hidden="true" viewBox="0 0 256 256" />
+                                <div .duration-200.ease-[cubic-bezier(0.22,1,0.36,1)].grid.grid-rows-[1fr].motion-reduce:transition-none.transition-[grid-template-rows] id="@4">
+                                  <div .min-h-0.overflow-hidden>
+                                    <div .pb-1.5.space-y-0.5>
+                                      <div .group/list-item.relative>
+                                        <button .!justify-start.!px-2.5.!py-1.5.!w-full.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.active:bg-[color:var(--sidebar-quiet-active)].appearance-none.bg-transparent.border-transparent.desktop-shell-nav-row.desktop-shell-sidebar-row.disabled:opacity-50.disabled:pointer-events-none.flex.focus-visible:ring-2.focus-visible:ring-ring.font-normal.gap-2.gap-2.5.hover:bg-[color:var(--sidebar-quiet-hover)].hover:text-[color:var(--shell-navigation-foreground)].inline-flex.items-center.justify-start.leading-none.lg:min-h-9.min-h-[2.75rem].min-w-0.outline-none.overflow-hidden.px-2.5.py-1.5.rounded-2xl.select-none.shrink-0.text-[color:var(--shell-navigation-muted)].text-left.text-sm.text-ui.ui-press-coarse.w-full.whitespace-nowrap data-todo-nav-row data-workbench-sidebar-row="nav" type="button">
+                                          <span .flex.flex-1.gap-2.5.items-center.min-w-0>
+                                            <span .flex.items-center.justify-center.shrink-0.text-[color:var(--shell-navigation-foreground)].w-4>
+                                              <svg viewBox="0 0 256 256" />
+                                            <span .flex-1.min-w-0>
+                                              <span .block.desktop-shell-sidebar-row-title.flex-1.leading-4.min-w-0.truncate>
+                                                "考研冲刺"
+                                            <span .flex.gap-0.5.items-center.justify-end.min-w-[24px].shrink-0>
+                                              <span .[@media(pointer:coarse)]:mr-10.duration-150.flex.gap-1.group-focus-within/list-item:opacity-0.group-hover/list-item:opacity-0.items-center.transition-opacity>
+                                                <span .font-medium.leading-none.tabular-nums.text-[color:var(--shell-navigation-muted)].text-xs aria-label="5 个未完成待办">
+                                                  "5"
+                                                <svg .text-[color:hsl(var(--warning))] aria-hidden="true" viewBox="0 0 256 256" />
+                                        <div .[@media(pointer:coarse)]:opacity-100.[@media(pointer:coarse)]:pointer-events-auto.absolute.duration-150.flex.focus-within:opacity-100.focus-within:pointer-events-auto.gap-0.5.group-hover/list-item:opacity-100.group-hover/list-item:pointer-events-auto.inset-y-0.items-center.opacity-0.pointer-events-none.right-1.5.transition-opacity.z-[1]>
+                                          <button .[@media(pointer:coarse)]:h-11.[@media(pointer:coarse)]:w-11.active:cursor-grabbing.cursor-grab.duration-150.flex.h-5.hover:bg-[color:var(--interactive-hover)].hover:text-[color:var(--shell-navigation-foreground)].items-center.justify-center.rounded-md.text-[color:var(--shell-navigation-muted)].touch-none.transition-colors.w-5 aria-label="拖拽排序" title="拖拽排序" type="button">
+                                            <svg viewBox="0 0 256 256" />
+                                          <div .app-menu-root.inline-flex.relative>
+                                            <button .[@media(pointer:coarse)]:h-11.[@media(pointer:coarse)]:w-11.app-menu-trigger.duration-150.flex.h-5.hover:bg-[color:var(--interactive-hover)].hover:text-[color:var(--shell-navigation-foreground)].items-center.justify-center.rounded-md.text-[color:var(--shell-navigation-muted)].transition-colors.w-5 aria-expanded="false" aria-haspopup="menu" aria-label="更多操作" id="@5" title="更多操作" type="button">
+                                              <svg viewBox="0 0 256 256" />
+                                      <div .group/list-item.relative>
+                                        <button .!justify-start.!px-2.5.!py-1.5.!w-full.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.active:bg-[color:var(--sidebar-quiet-active)].appearance-none.bg-transparent.border-transparent.desktop-shell-nav-row.desktop-shell-sidebar-row.disabled:opacity-50.disabled:pointer-events-none.flex.focus-visible:ring-2.focus-visible:ring-ring.font-normal.gap-2.gap-2.5.hover:bg-[color:var(--sidebar-quiet-hover)].hover:text-[color:var(--shell-navigation-foreground)].inline-flex.items-center.justify-start.leading-none.lg:min-h-9.min-h-[2.75rem].min-w-0.outline-none.overflow-hidden.px-2.5.py-1.5.rounded-2xl.select-none.shrink-0.text-[color:var(--shell-navigation-muted)].text-left.text-sm.text-ui.ui-press-coarse.w-full.whitespace-nowrap data-todo-nav-row data-workbench-sidebar-row="nav" type="button">
+                                          <span .flex.flex-1.gap-2.5.items-center.min-w-0>
+                                            <span .flex.items-center.justify-center.shrink-0.text-[color:var(--shell-navigation-foreground)].w-4>
+                                              <svg viewBox="0 0 256 256" />
+                                            <span .flex-1.min-w-0>
+                                              <span .block.desktop-shell-sidebar-row-title.flex-1.leading-4.min-w-0.truncate>
+                                                "期末复习"
+                                            <span .flex.gap-0.5.items-center.justify-end.min-w-[24px].shrink-0>
+                                              <span .[@media(pointer:coarse)]:mr-10.duration-150.flex.gap-1.group-focus-within/list-item:opacity-0.group-hover/list-item:opacity-0.items-center.transition-opacity>
+                                                <span .font-medium.leading-none.tabular-nums.text-[color:var(--shell-navigation-muted)].text-xs aria-label="8 个未完成待办">
+                                                  "8"
+                                                <svg .text-[color:hsl(var(--warning))] aria-hidden="true" viewBox="0 0 256 256" />
+                                        <div .[@media(pointer:coarse)]:opacity-100.[@media(pointer:coarse)]:pointer-events-auto.absolute.duration-150.flex.focus-within:opacity-100.focus-within:pointer-events-auto.gap-0.5.group-hover/list-item:opacity-100.group-hover/list-item:pointer-events-auto.inset-y-0.items-center.opacity-0.pointer-events-none.right-1.5.transition-opacity.z-[1]>
+                                          <button .[@media(pointer:coarse)]:h-11.[@media(pointer:coarse)]:w-11.active:cursor-grabbing.cursor-grab.duration-150.flex.h-5.hover:bg-[color:var(--interactive-hover)].hover:text-[color:var(--shell-navigation-foreground)].items-center.justify-center.rounded-md.text-[color:var(--shell-navigation-muted)].touch-none.transition-colors.w-5 aria-label="拖拽排序" title="拖拽排序" type="button">
+                                            <svg viewBox="0 0 256 256" />
+                                          <div .app-menu-root.inline-flex.relative>
+                                            <button .[@media(pointer:coarse)]:h-11.[@media(pointer:coarse)]:w-11.app-menu-trigger.duration-150.flex.h-5.hover:bg-[color:var(--interactive-hover)].hover:text-[color:var(--shell-navigation-foreground)].items-center.justify-center.rounded-md.text-[color:var(--shell-navigation-muted)].transition-colors.w-5 aria-expanded="false" aria-haspopup="menu" aria-label="更多操作" id="@6" title="更多操作" type="button">
+                                              <svg viewBox="0 0 256 256" />
+                                <div .space-y-0.5>
+                                  <div .group/list-item.relative>
+                                    <button .!justify-start.!px-2.5.!py-1.5.!w-full.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.active:bg-[color:var(--sidebar-quiet-active)].appearance-none.bg-transparent.border-transparent.desktop-shell-nav-row.desktop-shell-sidebar-row.disabled:opacity-50.disabled:pointer-events-none.flex.focus-visible:ring-2.focus-visible:ring-ring.font-normal.gap-2.gap-2.5.hover:bg-[color:var(--sidebar-quiet-hover)].hover:text-[color:var(--shell-navigation-foreground)].inline-flex.items-center.justify-start.leading-none.lg:min-h-9.min-h-[2.75rem].min-w-0.outline-none.overflow-hidden.px-2.5.py-1.5.rounded-2xl.select-none.shrink-0.text-[color:var(--shell-navigation-muted)].text-left.text-sm.text-ui.ui-press-coarse.w-full.whitespace-nowrap data-todo-nav-row data-workbench-sidebar-row="nav" type="button">
+                                      <span .flex.flex-1.gap-2.5.items-center.min-w-0>
+                                        <span .flex.items-center.justify-center.shrink-0.text-[color:var(--shell-navigation-foreground)].w-4>
+                                          <svg viewBox="0 0 256 256" />
+                                        <span .flex-1.min-w-0>
+                                          <span .block.desktop-shell-sidebar-row-title.flex-1.leading-4.min-w-0.truncate>
+                                            "英语"
+                                        <span .flex.gap-0.5.items-center.justify-end.min-w-[24px].shrink-0>
+                                          <span .[@media(pointer:coarse)]:mr-10.duration-150.flex.gap-1.group-focus-within/list-item:opacity-0.group-hover/list-item:opacity-0.items-center.transition-opacity>
+                                            <span .font-medium.leading-none.tabular-nums.text-[color:var(--shell-navigation-muted)].text-xs aria-label="2 个未完成待办">
+                                              "2"
+                                    <div .[@media(pointer:coarse)]:opacity-100.[@media(pointer:coarse)]:pointer-events-auto.absolute.duration-150.flex.focus-within:opacity-100.focus-within:pointer-events-auto.gap-0.5.group-hover/list-item:opacity-100.group-hover/list-item:pointer-events-auto.inset-y-0.items-center.opacity-0.pointer-events-none.right-1.5.transition-opacity.z-[1]>
+                                      <button .[@media(pointer:coarse)]:h-11.[@media(pointer:coarse)]:w-11.active:cursor-grabbing.cursor-grab.duration-150.flex.h-5.hover:bg-[color:var(--interactive-hover)].hover:text-[color:var(--shell-navigation-foreground)].items-center.justify-center.rounded-md.text-[color:var(--shell-navigation-muted)].touch-none.transition-colors.w-5 aria-label="拖拽排序" title="拖拽排序" type="button">
+                                        <svg viewBox="0 0 256 256" />
+                                      <div .app-menu-root.inline-flex.relative>
+                                        <button .[@media(pointer:coarse)]:h-11.[@media(pointer:coarse)]:w-11.app-menu-trigger.duration-150.flex.h-5.hover:bg-[color:var(--interactive-hover)].hover:text-[color:var(--shell-navigation-foreground)].items-center.justify-center.rounded-md.text-[color:var(--shell-navigation-muted)].transition-colors.w-5 aria-expanded="false" aria-haspopup="menu" aria-label="更多操作" id="@7" title="更多操作" type="button">
+                                          <svg viewBox="0 0 256 256" />
+                                  <div .group/list-item.relative>
+                                    <button .!justify-start.!px-2.5.!py-1.5.!w-full.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.active:bg-[color:var(--sidebar-quiet-active)].appearance-none.bg-transparent.border-transparent.desktop-shell-nav-row.desktop-shell-sidebar-row.disabled:opacity-50.disabled:pointer-events-none.flex.focus-visible:ring-2.focus-visible:ring-ring.font-normal.gap-2.gap-2.5.hover:bg-[color:var(--sidebar-quiet-hover)].hover:text-[color:var(--shell-navigation-foreground)].inline-flex.items-center.justify-start.leading-none.lg:min-h-9.min-h-[2.75rem].min-w-0.outline-none.overflow-hidden.px-2.5.py-1.5.rounded-2xl.select-none.shrink-0.text-[color:var(--shell-navigation-muted)].text-left.text-sm.text-ui.ui-press-coarse.w-full.whitespace-nowrap data-todo-nav-row data-workbench-sidebar-row="nav" type="button">
+                                      <span .flex.flex-1.gap-2.5.items-center.min-w-0>
+                                        <span .flex.items-center.justify-center.shrink-0.text-[color:var(--shell-navigation-foreground)].w-4>
+                                          <svg viewBox="0 0 256 256" />
+                                        <span .flex-1.min-w-0>
+                                          <span .block.desktop-shell-sidebar-row-title.flex-1.leading-4.min-w-0.truncate>
+                                            "生活"
+                                        <span .flex.gap-0.5.items-center.justify-end.min-w-[24px].shrink-0>
+                                          <span .[@media(pointer:coarse)]:mr-10.duration-150.flex.gap-1.group-focus-within/list-item:opacity-0.group-hover/list-item:opacity-0.items-center.transition-opacity>
+                                            <span .font-medium.leading-none.tabular-nums.text-[color:var(--shell-navigation-muted)].text-xs aria-label="1 个未完成待办">
+                                              "1"
+                                    <div .[@media(pointer:coarse)]:opacity-100.[@media(pointer:coarse)]:pointer-events-auto.absolute.duration-150.flex.focus-within:opacity-100.focus-within:pointer-events-auto.gap-0.5.group-hover/list-item:opacity-100.group-hover/list-item:pointer-events-auto.inset-y-0.items-center.opacity-0.pointer-events-none.right-1.5.transition-opacity.z-[1]>
+                                      <button .[@media(pointer:coarse)]:h-11.[@media(pointer:coarse)]:w-11.active:cursor-grabbing.cursor-grab.duration-150.flex.h-5.hover:bg-[color:var(--interactive-hover)].hover:text-[color:var(--shell-navigation-foreground)].items-center.justify-center.rounded-md.text-[color:var(--shell-navigation-muted)].touch-none.transition-colors.w-5 aria-label="拖拽排序" title="拖拽排序" type="button">
+                                        <svg viewBox="0 0 256 256" />
+                                      <div .app-menu-root.inline-flex.relative>
+                                        <button .[@media(pointer:coarse)]:h-11.[@media(pointer:coarse)]:w-11.app-menu-trigger.duration-150.flex.h-5.hover:bg-[color:var(--interactive-hover)].hover:text-[color:var(--shell-navigation-foreground)].items-center.justify-center.rounded-md.text-[color:var(--shell-navigation-muted)].transition-colors.w-5 aria-expanded="false" aria-haspopup="menu" aria-label="更多操作" id="@8" title="更多操作" type="button">
+                                          <svg viewBox="0 0 256 256" />
+                                <div id="@9">
+                                  "To pick up a draggable item, press the space bar. While dragging, use the arrow keys to move the item. Press space again…"
+                                <div aria-atomic="true" aria-live="assertive" id="@10" role="status" />
+                              <div .os-scrollbar.os-scrollbar-auto-hide-hidden.os-scrollbar-cornerless.os-scrollbar-handle-interactive.os-scrollbar-horizontal.os-scrollbar-unusable.os-theme-deep-student>
+                                <div .os-scrollbar-track>
+                                  <div .os-scrollbar-handle />
+                              <div .os-scrollbar.os-scrollbar-auto-hide-hidden.os-scrollbar-cornerless.os-scrollbar-handle-interactive.os-scrollbar-unusable.os-scrollbar-vertical.os-theme-deep-student>
+                                <div .os-scrollbar-track>
+                                  <div .os-scrollbar-handle />
+                      <div .border-[color:var(--shell-navigation-border)].border-t.px-2.py-1.5.shrink-0>
+                        <button .!justify-start.!px-2.5.!py-1.5.!w-full.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.active:bg-[color:var(--sidebar-quiet-active)].appearance-none.bg-transparent.border-transparent.desktop-shell-nav-row.desktop-shell-sidebar-row.disabled:opacity-50.disabled:pointer-events-none.flex.focus-visible:ring-2.focus-visible:ring-ring.font-normal.gap-2.gap-2.5.hover:bg-[color:var(--sidebar-quiet-hover)].hover:text-[color:var(--shell-navigation-foreground)].inline-flex.items-center.justify-start.leading-none.lg:min-h-9.min-h-[2.75rem].min-w-0.outline-none.overflow-hidden.px-2.5.py-1.5.rounded-2xl.select-none.shrink-0.text-[color:var(--shell-navigation-muted)].text-left.text-sm.text-ui.ui-press-coarse.w-full.whitespace-nowrap data-todo-nav-row data-workbench-sidebar-row="nav" title="回收站 ⌘8" type="button">
+                          <span .flex.flex-1.gap-2.5.items-center.min-w-0>
+                            <span .flex.items-center.justify-center.shrink-0.text-[color:var(--shell-navigation-foreground)].w-4>
+                              <svg viewBox="0 0 256 256" />
+                            <span .flex-1.min-w-0>
+                              <span .block.desktop-shell-sidebar-row-title.flex-1.leading-4.min-w-0.truncate>
+                                "回收站"
+                            <span .flex.gap-0.5.items-center.justify-end.min-w-[24px].shrink-0>
+                              <span .font-medium.leading-none.tabular-nums.text-[color:var(--shell-navigation-muted)].text-xs aria-label="回收站内 1 条记录">
+                                "1"
+                <div .absolute.active:bg-[color:var(--interactive-selected)].before:-inset-x-3.before:absolute.before:content-[''].before:inset-y-0.cursor-col-resize.duration-150.focus-visible:bg-[color:var(--interactive-hover)].focus-visible:ring-1.focus-visible:ring-ring.hover:bg-[color:var(--interactive-hover)].inset-y-0.outline-none.right-0.select-none.touch-none.transition-colors.w-1.5.z-10 aria-label="拖拽调整侧栏宽度" aria-orientation="vertical" aria-valuemax="400" aria-valuemin="200" aria-valuenow="272" role="separator" tabindex="0" title="拖拽调整侧栏宽度" />
+            <div .wb-sys-content>
+              <div .flex.h-full.overflow-hidden.study-shell-page.w-full>
+                <div .flex.h-full.min-w-0.w-full>
+                  <div .flex.flex-1.flex-row.h-full.min-w-0.overflow-hidden>
+                    <div .flex.flex-1.flex-col.min-w-0.overflow-hidden.relative>
+                      <div .flex.flex-shrink-0.flex-wrap.gap-3.items-center.px-4.py-3.sm:px-6.study-shell-toolbar>
+                        <div .flex.flex-1.gap-3.items-baseline.min-w-0>
+                          <h2 .font-semibold.text-[15px].text-foreground.truncate>
+                            "今日"
+                          <span .min-w-0.tabular-nums.text-muted-foreground/40.text-xs.truncate>
+                            "5"
+                            "待完成"
+                            <span .mx-1.text-muted-foreground/30>
+                              "·"
+                            <span title="今日未完成任务的预估番茄合计">
+                              "预计 6 番茄"
+                        <div .flex.flex-shrink-0.gap-2.items-center>
+                          <div .relative>
+                            <svg .-translate-y-1/2.absolute.left-2.5.pointer-events-none.text-muted-foreground/60.top-1/2 viewBox="0 0 256 256" />
+                            <input .[@media(pointer:coarse)]:!min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:h-11.[@media(pointer:coarse)]:text-lg.bg-[color:var(--input-shell-surface)].border.border-[color:var(--input-shell-border)].disabled:cursor-not-allowed.disabled:opacity-50.ds-search-input.file:bg-transparent.file:border-0.file:font-medium.file:text-sm.flex.focus-visible:bg-background.focus-visible:border-[color:var(--border)].focus-visible:outline-none.focus-visible:ring-0.focus:bg-background.focus:border-[color:var(--border)].focus:outline-none.focus:ring-0.h-8.hover:bg-[color:var(--surface-panel-strong)].lg:min-h-[var(--button-height)].min-h-[var(--touch-target-size)].pl-8.placeholder:text-muted-foreground/50.pr-3.px-3.py-2.rounded-[var(--radius-shell-control)].sm:w-56.text-foreground.text-sm.text-xs.transition-colors.w-28.w-full data-todo-search="true" placeholder="搜索" type="search" value />
+                          <div .app-menu-root.inline-flex.relative>
+                            <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].app-menu-trigger.bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-expanded="false" aria-haspopup="menu" aria-label="优先级" data-selected="false" id="@11" title="优先级" type="button">
+                              <svg viewBox="0 0 256 256" />
+                              <span .hidden.sm:inline>
+                                "优先级"
+                          <button .[&>span]:line-clamp-1.[&>span]:text-left.[@media(pointer:coarse)]:!min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:text-lg.bg-[color:var(--input-shell-surface)].border.border-[color:var(--input-shell-border)].data-[placeholder]:text-muted-foreground/50.disabled:cursor-not-allowed.disabled:opacity-50.focus-visible:bg-background.focus-visible:border-[color:var(--border)].focus-visible:outline-none.focus-visible:ring-0.focus:bg-background.focus:border-[color:var(--border)].focus:outline-none.focus:ring-0.gap-1.gap-2.hover:bg-[color:var(--surface-panel-strong)].inline-flex.items-center.justify-between.lg:min-h-[var(--button-height)].min-h-[var(--touch-target-size)].placeholder:text-muted-foreground/50.px-3.py-2.rounded-[var(--radius-shell-control)].text-foreground.text-sm.transition-colors.w-auto.w-full aria-autocomplete="none" aria-controls="@12" aria-expanded="false" aria-label="排序" data-state="closed" dir="ltr" role="combobox" type="button">
+                            <svg .text-muted-foreground viewBox="0 0 256 256" />
+                            <span .!hidden.sm:!inline>
+                              "手动排序"
+                            <svg .data-[state=open]:rotate-180.shrink-0.text-muted-foreground/70.transition-transform aria-hidden="true" viewBox="0 0 256 256" />
+                          <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap data-selected="false" type="button">
+                            <svg viewBox="0 0 256 256" />
+                            <span .hidden.sm:inline>
+                              "显示已完成"
+                          <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="选择" aria-pressed="false" data-selected="false" title="选择" type="button">
+                            <svg viewBox="0 0 256 256" />
+                            <span .hidden.sm:inline>
+                              "选择"
+                      <div .flex.flex-1.flex-col.min-h-0.overflow-hidden>
+                        <div .flex-1.h-full.min-h-0.min-w-0.pb-[calc(1.5rem+var(--keyboard-inset,0px))].relative data-native-scrollbars="false" data-orientation="vertical" data-overlayscrollbars="host" data-overlayscrollbars-initialize data-scroll-axes="vertical" data-slot="scroll-area">
+                          <div .h-full.max-h-[inherit].min-h-0.min-w-0.w-full data-overlayscrollbars-viewport="scrollbarHidden overflowXHidden overflowYHidden" tabindex="-1">
+                            <div>
+                              <div .flex.flex-wrap.gap-x-2.5.gap-y-2.items-center.px-4.py-2.5.sm:flex-nowrap.sm:px-6>
+                                <svg .flex-shrink-0.order-1.sm:order-none.text-[color:var(--text-muted)] viewBox="0 0 256 256" />
+                                <input .[@media(pointer:coarse)]:!min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:text-lg.bg-[color:var(--input-shell-surface)].bg-transparent.border.border-0.border-[color:var(--input-shell-border)].disabled:cursor-not-allowed.disabled:opacity-50.file:bg-transparent.file:border-0.file:font-medium.file:text-sm.flex.flex-1.focus-visible:bg-background.focus-visible:border-[color:var(--border)].focus-visible:outline-none.focus-visible:ring-0.focus:bg-background.focus:border-[color:var(--border)].focus:outline-none.focus:ring-0.hover:bg-[color:var(--surface-panel-strong)].lg:min-h-[var(--button-height)].min-h-[var(--touch-target-size)].min-w-0.order-2.placeholder:text-muted-foreground/50.px-3.py-2.rounded-[var(--radius-shell-control)].sm:order-none.text-foreground.text-sm.transition-colors.w-full data-todo-quick-add="true" placeholder="添加待办，试试「明天交作业 !高」..." value />
+                            <div .bg-border/20.h-px />
+                            <button .border.border-border/40.duration-150.flex.gap-3.group.hover:bg-[color:var(--interactive-hover)].hover:border-border.items-center.mt-3.mx-4.px-3.py-2.5.rounded-[var(--radius-shell-control)].sm:mx-6.text-left.transition-colors>
+                              <span .bg-[color:hsl(var(--info))]/10.flex.flex-shrink-0.h-8.items-center.justify-center.rounded-md.text-[color:hsl(var(--info))].w-8>
+                                <svg viewBox="0 0 256 256" />
+                              <span .flex-1.min-w-0>
+                                <span .block.font-medium.text-foreground.text-ui>
+                                  "今日有 17 项待复习"
+                                <span .block.text-muted-foreground.text-xs>
+                                  "卡片 12 · 错题 5"
+                              <span .flex.flex-shrink-0.gap-0.5.group-hover:text-foreground.items-center.text-muted-foreground.text-xs.transition-colors>
+                                "去复习"
+                                <svg viewBox="0 0 256 256" />
+                            <div .flex.flex-col>
+                              <div>
+                                <div .backdrop-blur-sm.bg-[color:var(--surface-root)]/95.flex.gap-2.items-center.pb-1.pt-3.px-4.sm:px-6.sticky.top-0.z-[1] data-wb-blur-surface="true">
+                                  <button .-mx-1.[@media(pointer:coarse)]:after:-inset-y-3.[@media(pointer:coarse)]:after:absolute.[@media(pointer:coarse)]:after:content-[''].[@media(pointer:coarse)]:after:inset-x-0.flex.focus-visible:ring-1.focus-visible:ring-[color:hsl(var(--primary))]/50.focus:outline-none.gap-1.5.group/header.items-center.min-w-0.px-1.py-0.5.relative.rounded aria-expanded="true" type="button">
+                                    <svg .flex-shrink-0.group-hover/header:text-muted-foreground.text-muted-foreground/40.todo-group-caret data-collapsed="false" viewBox="0 0 256 256" />
+                                    <span .font-semibold.text-[color:hsl(var(--destructive))].text-xs.tracking-wide.uppercase>
+                                      "已逾期"
+                                    <span .tabular-nums.text-muted-foreground/50.text-xs>
+                                      "1"
+                                  <button .!px-2.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!h-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-1.gap-2.h-6.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].ml-auto.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.text-xs.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap title="把逾期任务的截止日期统一顺延到今天" type="button">
+                                    <svg viewBox="0 0 256 256" />
+                                    "全部改到今天"
+                                <div .duration-200.ease-[cubic-bezier(0.22,1,0.36,1)].grid.grid-rows-[1fr].motion-reduce:transition-none.opacity-100.transition-[grid-template-rows,opacity,visibility].visible aria-hidden="false">
+                                  <div .min-h-0.overflow-hidden>
+                                    <div .divide-border/[0.08].divide-y.flex.flex-col>
+                                      <div .relative data-no-screen-swipe="true">
+                                        <div .[@media(pointer:coarse)]:min-h-11.cursor-pointer.data-[checked=true]:bg-[color:hsl(var(--primary))]/[0.08].data-[checked=true]:shadow-[inset_2px_0_0_hsl(var(--primary))].data-[focused=true]:bg-[color:var(--interactive-hover)].data-[selected=true]:bg-[color:var(--interactive-selected)].duration-200.ease-[cubic-bezier(0.22,1,0.36,1)].flex.gap-3.group.hover:bg-[color:var(--interactive-hover)].items-center.motion-reduce:transition-none.px-4.py-2.5.relative.sm:px-6.transition-[background-color,opacity,transform] data-agent-entity="todo:todo_prob_hw" data-selected="false">
+                                          <button .[@media(pointer:coarse)]:-m-3.[@media(pointer:coarse)]:p-3.flex-shrink-0.focus-visible:ring-2.focus-visible:ring-[color:hsl(var(--primary))].focus-visible:ring-offset-1.focus:outline-none.rounded-full aria-label="标记为完成">
+                                            <div .border-[1.5px].border-[color:hsl(var(--brand-warm,var(--warning)))].duration-150.flex.h-5.items-center.justify-center.rounded-full.transition-colors.w-5>
+                                              <svg .group-focus-within:opacity-40.group-hover:opacity-40.opacity-0.text-[color:hsl(var(--brand-warm,var(--warning)))].transition-opacity viewBox="0 0 256 256" />
+                                          <div .flex.flex-1.flex-col.justify-center.min-w-0>
+                                            <div .duration-150.font-medium.text-foreground.text-sm.transition-all.truncate title="双击可编辑标题">
+                                              "交概率论作业：第二章 随机变量及其分布"
+                                            <div .flex.flex-wrap.gap-x-3.gap-y-1.items-center.mt-1>
+                                              <span .gap-1.inline-flex.items-center.text-xs>
+                                                <svg .h-3.text-[color:hsl(var(--brand-warm,var(--warning)))].w-3 viewBox="0 0 256 256" />
+                                                <span .text-muted-foreground>
+                                                  "高"
+                                              <span .-mx-0.5.bg-[color:hsl(var(--destructive))]/10.font-medium.gap-1.inline-flex.items-center.px-1.5.py-px.rounded-full.text-[color:hsl(var(--destructive))].text-xs title="2026-03-01 18:00">
+                                                <svg viewBox="0 0 256 256" />
+                                                "昨天"
+                                                "18:00"
+                                              <div .flex.gap-1>
+                                                <span .study-shell-badge>
+                                                  "概率论"
+                                                <span .study-shell-badge>
+                                                  "作业"
+                                          <span .flex-shrink-0>
+                                            <div .inline-flex.relative>
+                                              <button .!p-1.5.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!-m-2.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:!min-w-11.[@media(pointer:coarse)]:!p-3.5.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].[@media(pointer:coarse)]:opacity-60.active:bg-[var(--button-plain-active-bg)].aria-expanded:opacity-100.bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-100.duration-150.ease-out.flex-shrink-0.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.group-focus-within:opacity-100.group-hover:opacity-100.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.opacity-0.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].transition-opacity.ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-expanded="false" aria-label="设置优先级" title="设置优先级" type="button">
+                                                <svg .text-[color:hsl(var(--brand-warm,var(--warning)))] viewBox="0 0 256 256" />
+                                          <span .[@media(pointer:coarse)]:hidden.flex-shrink-0>
+                                            <span .flex-shrink-0>
+                                              <div .inline-flex.relative>
+                                                <button .!p-1.5.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!-m-2.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:!min-w-11.[@media(pointer:coarse)]:!p-3.5.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].[@media(pointer:coarse)]:opacity-60.active:bg-[var(--button-plain-active-bg)].aria-expanded:opacity-100.bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-100.duration-150.ease-out.flex-shrink-0.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.group-focus-within:opacity-100.group-hover:opacity-100.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.opacity-0.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].transition-opacity.ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-expanded="false" aria-label="改期" title="改期" type="button">
+                                                  <svg viewBox="0 0 256 256" />
+                                          <button .!p-1.5.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!-m-2.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:!min-w-11.[@media(pointer:coarse)]:!p-3.5.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].[@media(pointer:coarse)]:opacity-60.active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-100.duration-150.ease-out.flex-shrink-0.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.group-focus-within:opacity-100.group-hover:opacity-100.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.opacity-40.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].transition-opacity.ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-label="开始专注" aria-pressed="false" title="开始专注" type="button">
+                                            <svg viewBox="0 0 256 256" />
+                                          <button .!p-1.5.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!-m-2.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:!min-w-11.[@media(pointer:coarse)]:!p-3.5.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].[@media(pointer:coarse)]:opacity-60.active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-100.duration-150.ease-out.flex-shrink-0.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.group-hover:opacity-100.h-[var(--touch-target-size)].hover:!bg-[color:var(--button-danger-surface)].hover:!text-[color:hsl(var(--destructive))].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.opacity-0.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].transition-opacity.ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-label="删除待办" title="删除待办" type="button">
+                                            <svg viewBox="0 0 256 256" />
+                              <div>
+                                <div .backdrop-blur-sm.bg-[color:var(--surface-root)]/95.flex.gap-2.items-center.pb-1.pt-3.px-4.sm:px-6.sticky.top-0.z-[1] data-wb-blur-surface="true">
+                                  <button .-mx-1.[@media(pointer:coarse)]:after:-inset-y-3.[@media(pointer:coarse)]:after:absolute.[@media(pointer:coarse)]:after:content-[''].[@media(pointer:coarse)]:after:inset-x-0.flex.focus-visible:ring-1.focus-visible:ring-[color:hsl(var(--primary))]/50.focus:outline-none.gap-1.5.group/header.items-center.min-w-0.px-1.py-0.5.relative.rounded aria-expanded="true" type="button">
+                                    <svg .flex-shrink-0.group-hover/header:text-muted-foreground.text-muted-foreground/40.todo-group-caret data-collapsed="false" viewBox="0 0 256 256" />
+                                    <span .font-semibold.text-muted-foreground.text-xs.tracking-wide.uppercase>
+                                      "今天"
+                                    <span .tabular-nums.text-muted-foreground/50.text-xs>
+                                      "4"
+                                <div .duration-200.ease-[cubic-bezier(0.22,1,0.36,1)].grid.grid-rows-[1fr].motion-reduce:transition-none.opacity-100.transition-[grid-template-rows,opacity,visibility].visible aria-hidden="false">
+                                  <div .min-h-0.overflow-hidden>
+                                    <div .divide-border/[0.08].divide-y.flex.flex-col>
+                                      <div .relative data-no-screen-swipe="true">
+                                        <div .[@media(pointer:coarse)]:min-h-11.cursor-pointer.data-[checked=true]:bg-[color:hsl(var(--primary))]/[0.08].data-[checked=true]:shadow-[inset_2px_0_0_hsl(var(--primary))].data-[focused=true]:bg-[color:var(--interactive-hover)].data-[selected=true]:bg-[color:var(--interactive-selected)].duration-200.ease-[cubic-bezier(0.22,1,0.36,1)].flex.gap-3.group.hover:bg-[color:var(--interactive-hover)].items-center.motion-reduce:transition-none.px-4.py-2.5.relative.sm:px-6.transition-[background-color,opacity,transform] data-agent-entity="todo:todo_orgchem_report" data-selected="false">
+                                          <button .[@media(pointer:coarse)]:-m-3.[@media(pointer:coarse)]:p-3.flex-shrink-0.focus-visible:ring-2.focus-visible:ring-[color:hsl(var(--primary))].focus-visible:ring-offset-1.focus:outline-none.rounded-full aria-label="标记为完成">
+                                            <div .border-[1.5px].border-[color:hsl(var(--destructive))].duration-150.flex.h-5.items-center.justify-center.rounded-full.transition-colors.w-5>
+                                              <svg .group-focus-within:opacity-40.group-hover:opacity-40.opacity-0.text-[color:hsl(var(--destructive))].transition-opacity viewBox="0 0 256 256" />
+                                          <div .flex.flex-1.flex-col.justify-center.min-w-0>
+                                            <div .duration-150.font-medium.text-foreground.text-sm.transition-all.truncate title="双击可编辑标题">
+                                              "有机化学实验报告：乙酸乙酯的制备"
+                                            <div .flex.flex-wrap.gap-x-3.gap-y-1.items-center.mt-1>
+                                              <span .study-shell-badge.study-shell-badge--warning.tabular-nums title="已完成 0/2 个番茄">
+                                                <svg viewBox="0 0 256 256" />
+                                                "0"
+                                                "/"
+                                                "2"
+                                              <span .gap-1.inline-flex.items-center.text-xs>
+                                                <svg .h-3.text-[color:hsl(var(--destructive))].w-3 viewBox="0 0 256 256" />
+                                                <span .text-muted-foreground>
+                                                  "紧急"
+                                              <span .font-medium.gap-1.inline-flex.items-center.text-[color:hsl(var(--primary))].text-xs title="2026-03-02 23:00">
+                                                <svg viewBox="0 0 256 256" />
+                                                "今天"
+                                                "23:00"
+                                              <span .gap-1.inline-flex.items-center.text-muted-foreground.text-xs title="2026-03-02 21:00">
+                                                <svg viewBox="0 0 256 256" />
+                                                "21:00"
+                                              <div .flex.gap-1>
+                                                <span .study-shell-badge>
+                                                  "有机化学"
+                                                <span .study-shell-badge>
+                                                  "实验"
+                                          <span .flex-shrink-0>
+                                            <div .inline-flex.relative>
+                                              <button .!p-1.5.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!-m-2.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:!min-w-11.[@media(pointer:coarse)]:!p-3.5.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].[@media(pointer:coarse)]:opacity-60.active:bg-[var(--button-plain-active-bg)].aria-expanded:opacity-100.bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-100.duration-150.ease-out.flex-shrink-0.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.group-focus-within:opacity-100.group-hover:opacity-100.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.opacity-0.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].transition-opacity.ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-expanded="false" aria-label="设置优先级" title="设置优先级" type="button">
+                                                <svg .text-[color:hsl(var(--destructive))] viewBox="0 0 256 256" />
+                                          <span .[@media(pointer:coarse)]:hidden.flex-shrink-0>
+                                            <span .flex-shrink-0>
+                                              <div .inline-flex.relative>
+                                                <button .!p-1.5.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!-m-2.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:!min-w-11.[@media(pointer:coarse)]:!p-3.5.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].[@media(pointer:coarse)]:opacity-60.active:bg-[var(--button-plain-active-bg)].aria-expanded:opacity-100.bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-100.duration-150.ease-out.flex-shrink-0.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.group-focus-within:opacity-100.group-hover:opacity-100.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.opacity-0.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].transition-opacity.ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-expanded="false" aria-label="改期" title="改期" type="button">
+                                                  <svg viewBox="0 0 256 256" />
+                                          <button .!p-1.5.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!-m-2.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:!min-w-11.[@media(pointer:coarse)]:!p-3.5.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].[@media(pointer:coarse)]:opacity-60.active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-100.duration-150.ease-out.flex-shrink-0.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.group-focus-within:opacity-100.group-hover:opacity-100.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.opacity-40.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].transition-opacity.ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-label="开始专注" aria-pressed="false" title="开始专注" type="button">
+                                            <svg viewBox="0 0 256 256" />
+                                          <button .!p-1.5.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!-m-2.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:!min-w-11.[@media(pointer:coarse)]:!p-3.5.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].[@media(pointer:coarse)]:opacity-60.active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-100.duration-150.ease-out.flex-shrink-0.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.group-hover:opacity-100.h-[var(--touch-target-size)].hover:!bg-[color:var(--button-danger-surface)].hover:!text-[color:hsl(var(--destructive))].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.opacity-0.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].transition-opacity.ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-label="删除待办" title="删除待办" type="button">
+                                            <svg viewBox="0 0 256 256" />
+                                      <div .relative data-no-screen-swipe="true">
+                                        <div .[@media(pointer:coarse)]:min-h-11.cursor-pointer.data-[checked=true]:bg-[color:hsl(var(--primary))]/[0.08].data-[checked=true]:shadow-[inset_2px_0_0_hsl(var(--primary))].data-[focused=true]:bg-[color:var(--interactive-hover)].data-[selected=true]:bg-[color:var(--interactive-selected)].duration-200.ease-[cubic-bezier(0.22,1,0.36,1)].flex.gap-3.group.hover:bg-[color:var(--interactive-hover)].items-center.motion-reduce:transition-none.px-4.py-2.5.relative.sm:px-6.transition-[background-color,opacity,transform] data-agent-entity="todo:todo_gaoshu_3_2" data-selected="false">
+                                          <button .[@media(pointer:coarse)]:-m-3.[@media(pointer:coarse)]:p-3.flex-shrink-0.focus-visible:ring-2.focus-visible:ring-[color:hsl(var(--primary))].focus-visible:ring-offset-1.focus:outline-none.rounded-full aria-label="标记为完成">
+                                            <div .border-[1.5px].border-[color:hsl(var(--brand-warm,var(--warning)))].duration-150.flex.h-5.items-center.justify-center.rounded-full.transition-colors.w-5>
+                                              <svg .group-focus-within:opacity-40.group-hover:opacity-40.opacity-0.text-[color:hsl(var(--brand-warm,var(--warning)))].transition-opacity viewBox="0 0 256 256" />
+                                          <div .flex.flex-1.flex-col.justify-center.min-w-0>
+                                            <div .duration-150.font-medium.text-foreground.text-sm.transition-all.truncate title="双击可编辑标题">
+                                              "高数：多元函数微分 习题 3-2"
+                                            <div .flex.flex-wrap.gap-x-3.gap-y-1.items-center.mt-1>
+                                              <span .gap-1.inline-flex.items-center.tabular-nums.text-muted-foreground.text-xs title="2 份关联资料">
+                                                <svg aria-hidden="true" viewBox="0 0 256 256" />
+                                                "2"
+                                              <span .study-shell-badge.study-shell-badge--warning.tabular-nums title="已完成 2/4 个番茄">
+                                                <svg viewBox="0 0 256 256" />
+                                                "2"
+                                                "/"
+                                                "4"
+                                              <span .gap-1.inline-flex.items-center.text-xs>
+                                                <svg .h-3.text-[color:hsl(var(--brand-warm,var(--warning)))].w-3 viewBox="0 0 256 256" />
+                                                <span .text-muted-foreground>
+                                                  "高"
+                                              <span .font-medium.gap-1.inline-flex.items-center.text-[color:hsl(var(--primary))].text-xs title="2026-03-02 09:30">
+                                                <svg viewBox="0 0 256 256" />
+                                                "今天"
+                                                "09:30"
+                                              <div .flex.gap-1>
+                                                <span .study-shell-badge>
+                                                  "高等数学"
+                                                <span .study-shell-badge>
+                                                  "考研"
+                                          <span .flex-shrink-0>
+                                            <div .inline-flex.relative>
+                                              <button .!p-1.5.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!-m-2.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:!min-w-11.[@media(pointer:coarse)]:!p-3.5.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].[@media(pointer:coarse)]:opacity-60.active:bg-[var(--button-plain-active-bg)].aria-expanded:opacity-100.bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-100.duration-150.ease-out.flex-shrink-0.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.group-focus-within:opacity-100.group-hover:opacity-100.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.opacity-0.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].transition-opacity.ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-expanded="false" aria-label="设置优先级" title="设置优先级" type="button">
+                                                <svg .text-[color:hsl(var(--brand-warm,var(--warning)))] viewBox="0 0 256 256" />
+                                          <span .[@media(pointer:coarse)]:hidden.flex-shrink-0>
+                                            <span .flex-shrink-0>
+                                              <div .inline-flex.relative>
+                                                <button .!p-1.5.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!-m-2.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:!min-w-11.[@media(pointer:coarse)]:!p-3.5.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].[@media(pointer:coarse)]:opacity-60.active:bg-[var(--button-plain-active-bg)].aria-expanded:opacity-100.bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-100.duration-150.ease-out.flex-shrink-0.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.group-focus-within:opacity-100.group-hover:opacity-100.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.opacity-0.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].transition-opacity.ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-expanded="false" aria-label="改期" title="改期" type="button">
+                                                  <svg viewBox="0 0 256 256" />
+                                          <button .!p-1.5.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].[@media(pointer:coarse)]:opacity-60.active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-100.duration-150.ease-out.flex-shrink-0.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.group-focus-within:opacity-100.group-hover:opacity-100.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.opacity-40.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].transition-opacity.ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-label="打开关联资料（2）" title="打开关联资料（2）" type="button">
+                                            <svg viewBox="0 0 256 256" />
+                                          <button .!p-1.5.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!-m-2.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:!min-w-11.[@media(pointer:coarse)]:!p-3.5.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].[@media(pointer:coarse)]:opacity-60.active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-100.duration-150.ease-out.flex-shrink-0.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.group-focus-within:opacity-100.group-hover:opacity-100.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.opacity-40.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].transition-opacity.ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-label="开始专注" aria-pressed="false" title="开始专注" type="button">
+                                            <svg viewBox="0 0 256 256" />
+                                          <button .!p-1.5.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!-m-2.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:!min-w-11.[@media(pointer:coarse)]:!p-3.5.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].[@media(pointer:coarse)]:opacity-60.active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-100.duration-150.ease-out.flex-shrink-0.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.group-hover:opacity-100.h-[var(--touch-target-size)].hover:!bg-[color:var(--button-danger-surface)].hover:!text-[color:hsl(var(--destructive))].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.opacity-0.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].transition-opacity.ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-label="删除待办" title="删除待办" type="button">
+                                            <svg viewBox="0 0 256 256" />
+                                      <div .relative data-no-screen-swipe="true">
+                                        <div .[@media(pointer:coarse)]:min-h-11.cursor-pointer.data-[checked=true]:bg-[color:hsl(var(--primary))]/[0.08].data-[checked=true]:shadow-[inset_2px_0_0_hsl(var(--primary))].data-[focused=true]:bg-[color:var(--interactive-hover)].data-[selected=true]:bg-[color:var(--interactive-selected)].duration-200.ease-[cubic-bezier(0.22,1,0.36,1)].flex.gap-3.group.hover:bg-[color:var(--interactive-hover)].items-center.motion-reduce:transition-none.px-4.py-2.5.relative.sm:px-6.transition-[background-color,opacity,transform] data-agent-entity="todo:todo_linalg_wrong" data-selected="false">
+                                          <button .[@media(pointer:coarse)]:-m-3.[@media(pointer:coarse)]:p-3.flex-shrink-0.focus-visible:ring-2.focus-visible:ring-[color:hsl(var(--primary))].focus-visible:ring-offset-1.focus:outline-none.rounded-full aria-label="标记为完成">
+                                            <div .border-[1.5px].border-[color:hsl(var(--brand-warm,var(--warning)))].duration-150.flex.h-5.items-center.justify-center.rounded-full.transition-colors.w-5>
+                                              <svg .group-focus-within:opacity-40.group-hover:opacity-40.opacity-0.text-[color:hsl(var(--brand-warm,var(--warning)))].transition-opacity viewBox="0 0 256 256" />
+                                          <div .flex.flex-1.flex-col.justify-center.min-w-0>
+                                            <div .duration-150.font-medium.text-foreground.text-sm.transition-all.truncate title="双击可编辑标题">
+                                              "线代：特征值与相似对角化 错题回顾"
+                                            <div .flex.flex-wrap.gap-x-3.gap-y-1.items-center.mt-1>
+                                              <span .gap-1.inline-flex.items-center.tabular-nums.text-muted-foreground.text-xs title="1 份关联资料">
+                                                <svg aria-hidden="true" viewBox="0 0 256 256" />
+                                                "1"
+                                              <span .study-shell-badge.study-shell-badge--warning.tabular-nums title="已完成 1/2 个番茄">
+                                                <svg viewBox="0 0 256 256" />
+                                                "1"
+                                                "/"
+                                                "2"
+                                              <span .gap-1.inline-flex.items-center.text-xs>
+                                                <svg .h-3.text-[color:hsl(var(--brand-warm,var(--warning)))].w-3 viewBox="0 0 256 256" />
+                                                <span .text-muted-foreground>
+                                                  "高"
+                                              <span .font-medium.gap-1.inline-flex.items-center.text-[color:hsl(var(--primary))].text-xs title="2026-03-02">
+                                                <svg viewBox="0 0 256 256" />
+                                                "今天"
+                                              <div .flex.gap-1>
+                                                <span .study-shell-badge>
+                                                  "线性代数"
+                                                <span .study-shell-badge>
+                                                  "错题"
+                                          <span .flex-shrink-0>
+                                            <div .inline-flex.relative>
+                                              <button .!p-1.5.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!-m-2.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:!min-w-11.[@media(pointer:coarse)]:!p-3.5.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].[@media(pointer:coarse)]:opacity-60.active:bg-[var(--button-plain-active-bg)].aria-expanded:opacity-100.bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-100.duration-150.ease-out.flex-shrink-0.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.group-focus-within:opacity-100.group-hover:opacity-100.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.opacity-0.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].transition-opacity.ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-expanded="false" aria-label="设置优先级" title="设置优先级" type="button">
+                                                <svg .text-[color:hsl(var(--brand-warm,var(--warning)))] viewBox="0 0 256 256" />
+                                          <span .[@media(pointer:coarse)]:hidden.flex-shrink-0>
+                                            <span .flex-shrink-0>
+                                              <div .inline-flex.relative>
+                                                <button .!p-1.5.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!-m-2.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:!min-w-11.[@media(pointer:coarse)]:!p-3.5.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].[@media(pointer:coarse)]:opacity-60.active:bg-[var(--button-plain-active-bg)].aria-expanded:opacity-100.bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-100.duration-150.ease-out.flex-shrink-0.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.group-focus-within:opacity-100.group-hover:opacity-100.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.opacity-0.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].transition-opacity.ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-expanded="false" aria-label="改期" title="改期" type="button">
+                                                  <svg viewBox="0 0 256 256" />
+                                          <button .!p-1.5.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].[@media(pointer:coarse)]:opacity-60.active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-100.duration-150.ease-out.flex-shrink-0.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.group-focus-within:opacity-100.group-hover:opacity-100.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.opacity-40.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].transition-opacity.ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-label="打开关联资料（1）" title="打开关联资料（1）" type="button">
+                                            <svg viewBox="0 0 256 256" />
+                                          <button .!p-1.5.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!-m-2.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:!min-w-11.[@media(pointer:coarse)]:!p-3.5.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].[@media(pointer:coarse)]:opacity-60.active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-100.duration-150.ease-out.flex-shrink-0.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.group-focus-within:opacity-100.group-hover:opacity-100.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.opacity-40.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].transition-opacity.ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-label="开始专注" aria-pressed="false" title="开始专注" type="button">
+                                            <svg viewBox="0 0 256 256" />
+                                          <button .!p-1.5.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!-m-2.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:!min-w-11.[@media(pointer:coarse)]:!p-3.5.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].[@media(pointer:coarse)]:opacity-60.active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-100.duration-150.ease-out.flex-shrink-0.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.group-hover:opacity-100.h-[var(--touch-target-size)].hover:!bg-[color:var(--button-danger-surface)].hover:!text-[color:hsl(var(--destructive))].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.opacity-0.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].transition-opacity.ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-label="删除待办" title="删除待办" type="button">
+                                            <svg viewBox="0 0 256 256" />
+                                      <div .relative data-no-screen-swipe="true">
+                                        <div .[@media(pointer:coarse)]:min-h-11.cursor-pointer.data-[checked=true]:bg-[color:hsl(var(--primary))]/[0.08].data-[checked=true]:shadow-[inset_2px_0_0_hsl(var(--primary))].data-[focused=true]:bg-[color:var(--interactive-hover)].data-[selected=true]:bg-[color:var(--interactive-selected)].duration-200.ease-[cubic-bezier(0.22,1,0.36,1)].flex.gap-3.group.hover:bg-[color:var(--interactive-hover)].items-center.motion-reduce:transition-none.px-4.py-2.5.relative.sm:px-6.transition-[background-color,opacity,transform] data-agent-entity="todo:todo_words" data-selected="false">
+                                          <button .[@media(pointer:coarse)]:-m-3.[@media(pointer:coarse)]:p-3.flex-shrink-0.focus-visible:ring-2.focus-visible:ring-[color:hsl(var(--primary))].focus-visible:ring-offset-1.focus:outline-none.rounded-full aria-label="标记为完成">
+                                            <div .border-[1.5px].border-[color:hsl(var(--warning))]/80.duration-150.flex.h-5.items-center.justify-center.rounded-full.transition-colors.w-5>
+                                              <svg .group-focus-within:opacity-40.group-hover:opacity-40.opacity-0.text-[color:hsl(var(--warning))].transition-opacity viewBox="0 0 256 256" />
+                                          <div .flex.flex-1.flex-col.justify-center.min-w-0>
+                                            <div .duration-150.font-medium.text-foreground.text-sm.transition-all.truncate title="双击可编辑标题">
+                                              "背单词：新词 50 + 复习 120"
+                                            <div .flex.flex-wrap.gap-x-3.gap-y-1.items-center.mt-1>
+                                              <span .study-shell-badge.study-shell-badge--warning.tabular-nums title="已完成 0/1 个番茄">
+                                                <svg viewBox="0 0 256 256" />
+                                                "0"
+                                                "/"
+                                                "1"
+                                              <span .gap-1.inline-flex.items-center.text-xs>
+                                                <svg .h-3.text-[color:hsl(var(--warning))].w-3 viewBox="0 0 256 256" />
+                                                <span .text-muted-foreground>
+                                                  "中"
+                                              <span .-mx-0.5.bg-[color:hsl(var(--destructive))]/10.font-medium.gap-1.inline-flex.items-center.px-1.5.py-px.rounded-full.text-[color:hsl(var(--destructive))].text-xs title="2026-03-02 08:00">
+                                                <svg viewBox="0 0 256 256" />
+                                                "今天"
+                                                "08:00"
+                                              <span .gap-1.inline-flex.items-center.text-muted-foreground.text-xs>
+                                                <svg viewBox="0 0 256 256" />
+                                                "每天"
+                                              <div .flex.gap-1>
+                                                <span .study-shell-badge>
+                                                  "考研英语"
+                                          <span .flex-shrink-0>
+                                            <div .inline-flex.relative>
+                                              <button .!p-1.5.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!-m-2.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:!min-w-11.[@media(pointer:coarse)]:!p-3.5.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].[@media(pointer:coarse)]:opacity-60.active:bg-[var(--button-plain-active-bg)].aria-expanded:opacity-100.bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-100.duration-150.ease-out.flex-shrink-0.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.group-focus-within:opacity-100.group-hover:opacity-100.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.opacity-0.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].transition-opacity.ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-expanded="false" aria-label="设置优先级" title="设置优先级" type="button">
+                                                <svg .text-[color:hsl(var(--warning))] viewBox="0 0 256 256" />
+                                          <span .[@media(pointer:coarse)]:hidden.flex-shrink-0>
+                                            <span .flex-shrink-0>
+                                              <div .inline-flex.relative>
+                                                <button .!p-1.5.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!-m-2.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:!min-w-11.[@media(pointer:coarse)]:!p-3.5.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].[@media(pointer:coarse)]:opacity-60.active:bg-[var(--button-plain-active-bg)].aria-expanded:opacity-100.bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-100.duration-150.ease-out.flex-shrink-0.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.group-focus-within:opacity-100.group-hover:opacity-100.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.opacity-0.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].transition-opacity.ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-expanded="false" aria-label="改期" title="改期" type="button">
+                                                  <svg viewBox="0 0 256 256" />
+                                          <button .!p-1.5.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!-m-2.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:!min-w-11.[@media(pointer:coarse)]:!p-3.5.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].[@media(pointer:coarse)]:opacity-60.active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-100.duration-150.ease-out.flex-shrink-0.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.group-focus-within:opacity-100.group-hover:opacity-100.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.opacity-40.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].transition-opacity.ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-label="开始专注" aria-pressed="false" title="开始专注" type="button">
+                                            <svg viewBox="0 0 256 256" />
+                                          <button .!p-1.5.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!-m-2.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:!min-w-11.[@media(pointer:coarse)]:!p-3.5.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].[@media(pointer:coarse)]:opacity-60.active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-100.duration-150.ease-out.flex-shrink-0.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.group-hover:opacity-100.h-[var(--touch-target-size)].hover:!bg-[color:var(--button-danger-surface)].hover:!text-[color:hsl(var(--destructive))].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.opacity-0.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].transition-opacity.ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-label="删除待办" title="删除待办" type="button">
+                                            <svg viewBox="0 0 256 256" />
+                          <div .os-scrollbar.os-scrollbar-auto-hide-hidden.os-scrollbar-cornerless.os-scrollbar-handle-interactive.os-scrollbar-horizontal.os-scrollbar-unusable.os-theme-deep-student>
+                            <div .os-scrollbar-track>
+                              <div .os-scrollbar-handle />
+                          <div .os-scrollbar.os-scrollbar-auto-hide-hidden.os-scrollbar-cornerless.os-scrollbar-handle-interactive.os-scrollbar-unusable.os-scrollbar-vertical.os-theme-deep-student>
+                            <div .os-scrollbar-track>
+                              <div .os-scrollbar-handle />
+                      <div .flex-shrink-0.pb-[var(--mobile-safe-area-bottom,0px)]>
+                        <div .duration-200.ease-[cubic-bezier(0.22,1,0.36,1)].grid.grid-rows-[0fr].motion-reduce:transition-none.opacity-0.transition-[grid-template-rows,opacity].will-change-[grid-template-rows]>
+                          <div .min-h-0.overflow-hidden />
+                        <div .flex.flex-wrap.gap-3.items-center.px-4.py-2.5.sm:px-6>
+                          <div .flex.flex-shrink-0.gap-2.items-center.min-w-0>
+                            <span .duration-150.ease-standard.font-medium.gap-1.5.inline-flex.items-center.text-muted-foreground.text-xs.transition-colors>
+                              <svg viewBox="0 0 256 256" />
+                              "番茄钟"
+                          <div .flex.flex-1.gap-3.items-center.min-w-[200px]>
+                            <div .flex-shrink-0.relative aria-hidden="true">
+                              <svg .-rotate-90.h-full.w-full viewBox="0 0 44 44" />
+                              <span .absolute.duration-150.ease-standard.flex.inset-0.items-center.justify-center.transition-colors>
+                                <svg viewBox="0 0 256 256" />
+                            <div .flex.gap-2.items-baseline>
+                              <span .duration-150.ease-standard.font-mono.font-semibold.inline-flex.tabular-nums.text-base.text-muted-foreground.transition-[color,opacity] aria-label="25:00" role="timer">
+                                <span .inline-flex.justify-center.overflow-hidden.relative aria-hidden="true">
+                                  <span .inline-block>
+                                    "2"
+                                <span .inline-flex.justify-center.overflow-hidden.relative aria-hidden="true">
+                                  <span .inline-block>
+                                    "5"
+                                <span .inline-flex.justify-center.overflow-hidden.relative aria-hidden="true">
+                                  <span .inline-block>
+                                    ":"
+                                <span .inline-flex.justify-center.overflow-hidden.relative aria-hidden="true">
+                                  <span .inline-block>
+                                    "0"
+                                <span .inline-flex.justify-center.overflow-hidden.relative aria-hidden="true">
+                                  <span .inline-block>
+                                    "0"
+                              <span .flex-shrink-0.gap-1.inline-flex.items-center aria-label="时长快捷预设" role="group">
+                                <button .!px-2.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!h-11.[@media(pointer:coarse)]:!min-w-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.ease-standard.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-0.gap-2.h-6.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.tabular-nums.text-muted-foreground.text-ui.text-xs.transition-[background-color,border-color,color].transition-colors.ui-press-coarse.whitespace-nowrap aria-label="将专注时长设为 15 分钟" aria-pressed="false" title="将专注时长设为 15 分钟" type="button">
+                                  "15"
+                                <button .!px-2.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!h-11.[@media(pointer:coarse)]:!min-w-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.ease-standard.focus-visible:ring-2.focus-visible:ring-ring.font-medium.font-semibold.gap-0.gap-2.h-6.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.tabular-nums.text-muted-foreground.text-primary.text-ui.text-xs.transition-[background-color,border-color,color].transition-colors.ui-press-coarse.whitespace-nowrap aria-label="将专注时长设为 25 分钟" aria-pressed="true" title="将专注时长设为 25 分钟" type="button">
+                                  "25"
+                                <button .!px-2.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!h-11.[@media(pointer:coarse)]:!min-w-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.ease-standard.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-0.gap-2.h-6.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.tabular-nums.text-muted-foreground.text-ui.text-xs.transition-[background-color,border-color,color].transition-colors.ui-press-coarse.whitespace-nowrap aria-label="将专注时长设为 45 分钟" aria-pressed="false" title="将专注时长设为 45 分钟" type="button">
+                                  "45"
+                                <button .!px-2.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!h-11.[@media(pointer:coarse)]:!min-w-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.ease-standard.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-0.gap-2.h-6.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.tabular-nums.text-muted-foreground.text-ui.text-xs.transition-[background-color,border-color,color].transition-colors.ui-press-coarse.whitespace-nowrap aria-label="将专注时长设为 60 分钟" aria-pressed="false" title="将专注时长设为 60 分钟" type="button">
+                                  "60"
+                                <span .text-[10px].text-muted-foreground/60>
+                                  "分钟"
+                          <div .flex.flex-shrink-0.gap-1.items-center>
+                            <button .!px-3.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!h-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.ease-standard.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-1.5.gap-2.h-7.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.text-xs.transition-[background-color,border-color,color].transition-colors.ui-press-coarse.whitespace-nowrap aria-label="开始专注" title="开始 (Space)" type="button">
+                              <span .t-icon-swap data-state="a">
+                                <span .t-icon data-icon="a">
+                                  <svg viewBox="0 0 256 256" />
+                                <span .t-icon data-icon="b">
+                                  <svg viewBox="0 0 256 256" />
+                              <span>
+                                "开始"
+                            <button .!h-7.!w-7.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!h-11.[@media(pointer:coarse)]:!w-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.ease-standard.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.relative.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].transition-colors.ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-label="开启环境音 (M)" title="开启环境音 (M)" type="button">
+                              <span .t-icon-swap data-state="a">
+                                <span .t-icon data-icon="a">
+                                  <svg viewBox="0 0 256 256" />
+                                <span .t-icon data-icon="b">
+                                  <svg viewBox="0 0 256 256" />
+                            <button .!h-7.!w-7.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!h-11.[@media(pointer:coarse)]:!w-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.ease-standard.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].transition-colors.ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-expanded="false" aria-label="专注趋势" title="专注趋势" type="button">
+                              <svg viewBox="0 0 256 256" />
+                            <button .!h-7.!w-7.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!h-11.[@media(pointer:coarse)]:!w-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.ease-standard.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].transition-colors.ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-expanded="false" aria-label="番茄钟设置" title="番茄钟设置" type="button">
+                              <svg viewBox="0 0 256 256" />
+                        <div .duration-200.ease-[cubic-bezier(0.22,1,0.36,1)].grid.grid-rows-[0fr].motion-reduce:transition-none.opacity-0.pointer-events-none.transition-[grid-template-rows,opacity] aria-hidden="true">
+                          <div .min-h-0.overflow-hidden />
+                        <div .flex.flex-wrap.gap-x-4.gap-y-1.items-center.pb-2.5.px-4.sm:px-6>
+                          <div .gap-1.5.inline-flex.items-center.text-muted-foreground.text-xs>
+                            <span .inline-flex.relative>
+                              <svg .duration-200.ease-standard.motion-reduce:transform-none.motion-reduce:transition-none.text-[color:hsl(var(--warning))].transition-transform viewBox="0 0 256 256" />
+                            <span>
+                              "今日"
+                              <strong .font-semibold.tabular-nums.text-foreground>
+                                <span .pomodoro-num-roll>
+                                  "3"
+                                <span .font-normal.text-muted-foreground>
+                                  "/"
+                                  "8"
+                              "个番茄"
+                            <span .bg-[color:var(--shell-workspace-border)].h-1.inline-flex.ml-1.overflow-hidden.rounded-full.w-16 title="今日目标 3/8">
+                              <span .bg-[color:hsl(var(--warning))].duration-500.h-full.rounded-full.transition-all />
+                          <span .font-medium.gap-1.inline-flex.items-center.text-[color:hsl(var(--warning))].text-xs>
+                            <svg aria-hidden="true" viewBox="0 0 256 256" />
+                            "连续 4 天达标"
+                          <div .text-muted-foreground.text-xs>
+                            "专注"
+                            <strong .font-semibold.text-foreground>
+                              "1.4 小时"
+                          <div .text-muted-foreground/60.text-xs>
+                            "中断 1 次"
+  <div id="@13" />

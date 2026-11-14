@@ -1,0 +1,2673 @@
+{
+  "lane": "F4-security",
+  "generator": "deep-student/contracts-extract@1.6.0",
+  "commands": [
+    {
+      "name": "auto_install_package_manager",
+      "lane": "F4-security",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 7118,
+        "fn": "auto_install_package_manager"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "managerType",
+          "rustName": "manager_type",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "check_all_package_managers",
+      "lane": "F4-security",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 7130,
+        "fn": "check_all_package_managers"
+      },
+      "async": false,
+      "args": [],
+      "injected": [],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "check_package_manager",
+      "lane": "F4-security",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 7097,
+        "fn": "check_package_manager"
+      },
+      "async": false,
+      "args": [
+        {
+          "key": "command",
+          "rustName": "command",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "check_test_dependencies",
+      "lane": "F4-security",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 7402,
+        "fn": "check_test_dependencies"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "cleanup_old_debug_logs",
+      "lane": "F4-security",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 625,
+        "fn": "cleanup_old_debug_logs"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "maxAgeDays",
+          "rustName": "max_age_days",
+          "schema": {
+            "type": "integer",
+            "x-int": "u32",
+            "minimum": 0,
+            "maximum": 4294967295
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "type": "integer",
+        "x-int": "usize",
+        "minimum": 0
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "clear_backup_directory",
+      "lane": "F4-security",
+      "rust": {
+        "file": "src/backup_config.rs",
+        "line": 173,
+        "fn": "clear_backup_directory"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "clear_debug_logs",
+      "lane": "F4-security",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 615,
+        "fn": "clear_debug_logs"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "type": "integer",
+        "x-int": "usize",
+        "minimum": 0
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "cloud_config_publish",
+      "lane": "F4-security",
+      "rust": {
+        "file": "src/cloud_config_commands.rs",
+        "line": 27,
+        "fn": "cloud_config_publish"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "config",
+          "rustName": "config",
+          "schema": {
+            "$ref": "_shared.json#/$defs/SafeCloudStorageConfig__De"
+          },
+          "optional": false
+        },
+        {
+          "key": "credentials",
+          "rustName": "credentials",
+          "schema": {
+            "$ref": "_shared.json#/$defs/CloudStorageCredentials"
+          },
+          "optional": false
+        },
+        {
+          "key": "encryptionPasswordIsPreexisting",
+          "rustName": "encryption_password_is_preexisting",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        },
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/CloudConfigPublishResponse"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/CommandError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "cloud_config_ssot_clear",
+      "lane": "F4-security",
+      "rust": {
+        "file": "src/cloud_config_commands.rs",
+        "line": 47,
+        "fn": "cloud_config_ssot_clear"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "app-handle"
+        },
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/CloudConfigSsotResponse"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/CommandError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "cloud_config_ssot_get",
+      "lane": "F4-security",
+      "rust": {
+        "file": "src/cloud_config_commands.rs",
+        "line": 18,
+        "fn": "cloud_config_ssot_get"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/CloudConfigSsotResponse"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/CommandError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "cloud_config_ssot_save",
+      "lane": "F4-security",
+      "rust": {
+        "file": "src/cloud_config_commands.rs",
+        "line": 10,
+        "fn": "cloud_config_ssot_save"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "config",
+          "rustName": "config",
+          "schema": {
+            "$ref": "_shared.json#/$defs/SafeCloudStorageConfig__De"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/CloudConfigSsotResponse"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/CommandError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "debug_get_database_stats",
+      "lane": "F4-security",
+      "rust": {
+        "file": "src/debug_commands.rs",
+        "line": 67,
+        "fn": "debug_get_database_stats"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/DebugDatabaseStats"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "debug_vfs_migration_status",
+      "lane": "F4-security",
+      "rust": {
+        "file": "src/debug_commands.rs",
+        "line": 244,
+        "fn": "debug_vfs_migration_status"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/VfsMigrationDiagnostic"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "debug_vfs_textbook_pages",
+      "lane": "F4-security",
+      "rust": {
+        "file": "src/debug_commands.rs",
+        "line": 402,
+        "fn": "debug_vfs_textbook_pages"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/DebugTextbookPageInfo"
+        }
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "ensure_debug_log_dir",
+      "lane": "F4-security",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 636,
+        "fn": "ensure_debug_log_dir"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "type": "string"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "export_diagnostics_bundle",
+      "lane": "F4-security",
+      "rust": {
+        "file": "src/diagnostics.rs",
+        "line": 447,
+        "fn": "export_diagnostics_bundle"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "options",
+          "rustName": "options",
+          "schema": {
+            "$ref": "#/$defs/DiagnosticsExportOptions"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/DiagnosticsExportResult"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "get_auto_backup_status",
+      "lane": "F4-security",
+      "rust": {
+        "file": "src/backup_config.rs",
+        "line": 231,
+        "fn": "get_auto_backup_status"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/AutoBackupStatus"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app",
+      "x-rust-registered": false
+    },
+    {
+      "name": "get_backup_config",
+      "lane": "F4-security",
+      "rust": {
+        "file": "src/backup_config.rs",
+        "line": 115,
+        "fn": "get_backup_config"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/BackupConfig"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "get_debug_logs_info",
+      "lane": "F4-security",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 603,
+        "fn": "get_debug_logs_info"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/DebugLogsInfo"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "get_default_backup_directory",
+      "lane": "F4-security",
+      "rust": {
+        "file": "src/backup_config.rs",
+        "line": 183,
+        "fn": "get_default_backup_directory"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "string"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "get_test_logs",
+      "lane": "F4-security",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 6296,
+        "fn": "get_test_logs"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "logType",
+          "rustName": "log_type",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "log_debug_message",
+      "lane": "F4-security",
+      "rust": {
+        "file": "src/debug_commands.rs",
+        "line": 154,
+        "fn": "log_debug_message"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "message",
+          "rustName": "message",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "open_log_file",
+      "lane": "F4-security",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 6345,
+        "fn": "open_log_file"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "logPath",
+          "rustName": "log_path",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "open_logs_folder",
+      "lane": "F4-security",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 6403,
+        "fn": "open_logs_folder"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "logType",
+          "rustName": "log_type",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "pick_backup_directory",
+      "lane": "F4-security",
+      "rust": {
+        "file": "src/backup_config.rs",
+        "line": 136,
+        "fn": "pick_backup_directory"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        },
+        {
+          "kind": "window"
+        }
+      ],
+      "result": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "x-option": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "read_debug_log_file",
+      "lane": "F4-security",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 644,
+        "fn": "read_debug_log_file"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "path",
+          "rustName": "path",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "type": "string"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "report_frontend_log",
+      "lane": "F4-security",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 6519,
+        "fn": "report_frontend_log"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "payload",
+          "rustName": "payload",
+          "schema": {
+            "$ref": "#/$defs/FrontendLogPayload"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "save_test_log",
+      "lane": "F4-security",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 6261,
+        "fn": "save_test_log"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "fileName",
+          "rustName": "file_name",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "content",
+          "rustName": "content",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "logType",
+          "rustName": "log_type",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "secret_prompt_capabilities",
+      "lane": "F4-security",
+      "rust": {
+        "file": "crates/dstu-platform/src/secret_prompt.rs",
+        "line": 178,
+        "fn": "secret_prompt_capabilities"
+      },
+      "async": false,
+      "args": [],
+      "injected": [],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "secret_prompt_discard",
+      "lane": "F4-security",
+      "rust": {
+        "file": "crates/dstu-platform/src/secret_prompt.rs",
+        "line": 173,
+        "fn": "secret_prompt_discard"
+      },
+      "async": false,
+      "renameAll": "camelCase",
+      "args": [
+        {
+          "key": "handleId",
+          "rustName": "handle_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "dstu_platform::secret_prompt::SecretPromptStore"
+        }
+      ],
+      "result": {
+        "type": "boolean"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "secret_prompt_status",
+      "lane": "F4-security",
+      "rust": {
+        "file": "crates/dstu-platform/src/secret_prompt.rs",
+        "line": 161,
+        "fn": "secret_prompt_status"
+      },
+      "async": false,
+      "renameAll": "camelCase",
+      "args": [
+        {
+          "key": "handleId",
+          "rustName": "handle_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "dstu_platform::secret_prompt::SecretPromptStore"
+        }
+      ],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "secret_prompt_submit",
+      "lane": "F4-security",
+      "rust": {
+        "file": "crates/dstu-platform/src/secret_prompt.rs",
+        "line": 138,
+        "fn": "secret_prompt_submit"
+      },
+      "async": false,
+      "renameAll": "camelCase",
+      "args": [
+        {
+          "key": "request",
+          "rustName": "request",
+          "schema": {
+            "$ref": "#/$defs/SecretPromptSubmitRequest"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "dstu_platform::secret_prompt::SecretPromptStore"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/SecretPromptHandle"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "secure_clear_cloud_encryption_password",
+      "lane": "F4-security",
+      "rust": {
+        "file": "src/secure_store.rs",
+        "line": 66,
+        "fn": "secure_clear_cloud_encryption_password"
+      },
+      "async": false,
+      "args": [],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/CloudStorageCredentialStatus"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/CommandError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "secure_delete_cloud_credentials",
+      "lane": "F4-security",
+      "rust": {
+        "file": "src/secure_store.rs",
+        "line": 59,
+        "fn": "secure_delete_cloud_credentials"
+      },
+      "async": false,
+      "args": [],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/CommandError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "secure_get_cloud_credentials",
+      "lane": "F4-security",
+      "rust": {
+        "file": "src/secure_store.rs",
+        "line": 42,
+        "fn": "secure_get_cloud_credentials"
+      },
+      "async": false,
+      "args": [],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/CloudStorageCredentialStatus"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/CommandError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "secure_save_cloud_credentials",
+      "lane": "F4-security",
+      "rust": {
+        "file": "src/secure_store.rs",
+        "line": 26,
+        "fn": "secure_save_cloud_credentials"
+      },
+      "async": false,
+      "args": [
+        {
+          "key": "credentials",
+          "rustName": "credentials",
+          "schema": {
+            "$ref": "_shared.json#/$defs/CloudStorageCredentials"
+          },
+          "optional": false
+        },
+        {
+          "key": "encryptionPasswordIsPreexisting",
+          "rustName": "encryption_password_is_preexisting",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/CloudStorageCredentialStatus"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/CommandError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "secure_store_get_keystore_protection",
+      "lane": "F4-security",
+      "rust": {
+        "file": "src/secure_store.rs",
+        "line": 84,
+        "fn": "secure_store_get_keystore_protection"
+      },
+      "async": false,
+      "args": [],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/KeystoreProtectionStatus"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/CommandError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "secure_store_is_available",
+      "lane": "F4-security",
+      "rust": {
+        "file": "src/secure_store.rs",
+        "line": 77,
+        "fn": "secure_store_is_available"
+      },
+      "async": false,
+      "args": [],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "type": "boolean"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "secure_store_set_keystore_protection",
+      "lane": "F4-security",
+      "rust": {
+        "file": "src/secure_store.rs",
+        "line": 96,
+        "fn": "secure_store_set_keystore_protection"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "enabled",
+          "rustName": "enabled",
+          "schema": {
+            "type": "boolean"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/KeystoreProtectionStatus"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/CommandError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "set_backup_config",
+      "lane": "F4-security",
+      "rust": {
+        "file": "src/backup_config.rs",
+        "line": 121,
+        "fn": "set_backup_config"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "config",
+          "rustName": "config",
+          "schema": {
+            "$ref": "#/$defs/BackupConfig__De"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "tauri_lab_frontend_log",
+      "lane": "F4-security",
+      "rust": {
+        "file": "src/debug_commands.rs",
+        "line": 163,
+        "fn": "tauri_lab_frontend_log"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "level",
+          "rustName": "level",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "message",
+          "rustName": "message",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "stack",
+          "rustName": "stack",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "toggle_devtools",
+      "lane": "F4-security",
+      "rust": {
+        "file": "src/debug_commands.rs",
+        "line": 474,
+        "fn": "toggle_devtools"
+      },
+      "async": false,
+      "args": [],
+      "injected": [
+        {
+          "kind": "webview-window"
+        }
+      ],
+      "result": {
+        "type": "boolean"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app",
+      "x-platforms": [
+        "macos",
+        "windows",
+        "linux"
+      ]
+    },
+    {
+      "name": "write_debug_logs",
+      "lane": "F4-security",
+      "rust": {
+        "file": "crates/dstu-platform/src/debug_logger.rs",
+        "line": 892,
+        "fn": "write_debug_logs"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "logs",
+          "rustName": "logs",
+          "schema": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/LogEntry"
+            }
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "write_test_report",
+      "lane": "F4-security",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 7436,
+        "fn": "write_test_report"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "filename",
+          "rustName": "filename",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "content",
+          "rustName": "content",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    }
+  ],
+  "events": [
+    {
+      "name": "{}_unified_sources",
+      "dynamic": true,
+      "payload": {
+        "type": "object",
+        "properties": {
+          "stage": {
+            "type": "string"
+          },
+          "total": {
+            "type": "integer",
+            "x-int": "usize",
+            "minimum": 0
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "x-rust": "serde_json::Value"
+            }
+          }
+        },
+        "required": [
+          "stage",
+          "total",
+          "groups"
+        ],
+        "additionalProperties": false
+      },
+      "emitters": [
+        {
+          "file": "src/utils/chat_helpers.rs",
+          "line": 161,
+          "fn": "emit_unified_sources",
+          "lane": "F4-security",
+          "method": "emit"
+        }
+      ]
+    }
+  ],
+  "$defs": {
+    "AutoBackupStatus": {
+      "type": "object",
+      "properties": {
+        "lastAttemptAt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "lastSuccessAt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "lastError": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "nextDueAt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "lastJobId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "lastAttemptAt",
+        "lastSuccessAt",
+        "lastError",
+        "nextDueAt",
+        "lastJobId"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::backup_config::AutoBackupStatus"
+    },
+    "BackupConfig": {
+      "type": "object",
+      "properties": {
+        "backupDirectory": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "autoBackupEnabled": {
+          "type": "boolean"
+        },
+        "autoBackupIntervalHours": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "maxBackupCount": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "slimBackup": {
+          "type": "boolean"
+        },
+        "backupTiers": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/BackupTier"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        }
+      },
+      "required": [
+        "backupDirectory",
+        "autoBackupEnabled",
+        "autoBackupIntervalHours",
+        "maxBackupCount",
+        "slimBackup"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::backup_config::BackupConfig"
+    },
+    "BackupConfig__De": {
+      "type": "object",
+      "properties": {
+        "backupDirectory": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "autoBackupEnabled": {
+          "type": "boolean"
+        },
+        "autoBackupIntervalHours": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "maxBackupCount": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "slimBackup": {
+          "type": "boolean"
+        },
+        "backupTiers": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/BackupTier__De"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "x-rust": "deep_student_lib::backup_config::BackupConfig"
+    },
+    "BackupTier": {
+      "type": "string",
+      "enum": [
+        "core",
+        "important",
+        "rebuildable",
+        "large_assets"
+      ],
+      "x-rust": "dstu_sync::data_governance::backup::BackupTier"
+    },
+    "BackupTier__De": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "core",
+            "core_config_chat",
+            "important",
+            "vfs_full",
+            "rebuildable",
+            "large_assets",
+            "large_files"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "core": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "core"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "core_config_chat": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "core_config_chat"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "important": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "important"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "vfs_full": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "vfs_full"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "rebuildable": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "rebuildable"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "large_assets": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "large_assets"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "large_files": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "large_files"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "x-also-accepts": "externally tagged map form {\"<Variant>\": null}",
+      "x-rust": "dstu_sync::data_governance::backup::BackupTier"
+    },
+    "CloudConfigPublishResponse": {
+      "type": "object",
+      "properties": {
+        "ok": {
+          "type": "boolean"
+        },
+        "generation": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "provider": {
+          "type": "string"
+        },
+        "root": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "config": {
+          "$ref": "#/$defs/SafeCloudStorageConfig"
+        }
+      },
+      "required": [
+        "ok",
+        "generation",
+        "provider",
+        "config"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_sync::cloud_config_commands::CloudConfigPublishResponse"
+    },
+    "CloudConfigSsotResponse": {
+      "type": "object",
+      "properties": {
+        "configured": {
+          "type": "boolean"
+        },
+        "provider": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "root": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "config": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SafeCloudStorageConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        }
+      },
+      "required": [
+        "configured"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_sync::cloud_config_commands::CloudConfigSsotResponse"
+    },
+    "CloudStorageCredentialStatus": {
+      "type": "object",
+      "properties": {
+        "webdavPasswordConfigured": {
+          "type": "boolean"
+        },
+        "s3SecretAccessKeyConfigured": {
+          "type": "boolean"
+        },
+        "ftpPasswordConfigured": {
+          "type": "boolean"
+        },
+        "encryptionPasswordConfigured": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "webdavPasswordConfigured",
+        "s3SecretAccessKeyConfigured",
+        "ftpPasswordConfigured",
+        "encryptionPasswordConfigured"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_security::secure_store::CloudStorageCredentialStatus"
+    },
+    "DebugDatabaseStats": {
+      "type": "object",
+      "properties": {
+        "total_mistakes": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "mistakes_with_chat": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "total_messages": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "messages_with_images": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "messages_with_thinking": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "messages_with_rag_sources": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "messages_with_memory_sources": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "messages_with_web_sources": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "messages_with_persistent_id": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "total_mistakes",
+        "mistakes_with_chat",
+        "total_messages",
+        "messages_with_images",
+        "messages_with_thinking",
+        "messages_with_rag_sources",
+        "messages_with_memory_sources",
+        "messages_with_web_sources",
+        "messages_with_persistent_id"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::debug_commands::DebugDatabaseStats"
+    },
+    "DebugLogsInfo": {
+      "type": "object",
+      "properties": {
+        "count": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "total_size_bytes": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "total_size_display": {
+          "type": "string"
+        },
+        "oldest_file": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "newest_file": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "count",
+        "total_size_bytes",
+        "total_size_display",
+        "oldest_file",
+        "newest_file"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_platform::debug_log_service::DebugLogsInfo"
+    },
+    "DebugTextbookPageInfo": {
+      "type": "object",
+      "properties": {
+        "textbook_id": {
+          "type": "string"
+        },
+        "resource_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "file_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "page_count": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "i32",
+              "minimum": -2147483648,
+              "maximum": 2147483647
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "has_ocr_pages_json": {
+          "type": "boolean"
+        },
+        "ocr_pages_json_len": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "usize",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "has_extracted_text": {
+          "type": "boolean"
+        },
+        "extracted_text_len": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "usize",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "textbook_id",
+        "resource_id",
+        "file_name",
+        "page_count",
+        "has_ocr_pages_json",
+        "ocr_pages_json_len",
+        "has_extracted_text",
+        "extracted_text_len"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::debug_commands::DebugTextbookPageInfo"
+    },
+    "DiagnosticsExportOptions": {
+      "type": "object",
+      "properties": {
+        "destination": {
+          "type": "string"
+        },
+        "includeDebugLogs": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "destination"
+      ],
+      "x-rust": "deep_student_lib::diagnostics::DiagnosticsExportOptions"
+    },
+    "DiagnosticsExportResult": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "fileCount": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "skippedCount": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "sizeBytes": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "path",
+        "fileCount",
+        "skippedCount",
+        "sizeBytes"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::diagnostics::DiagnosticsExportResult"
+    },
+    "FrontendLogPayload": {
+      "type": "object",
+      "properties": {
+        "level": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "message": {
+          "type": "string"
+        },
+        "stack": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "component": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "route": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "line": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "column": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "user_agent": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "extra": {
+          "anyOf": [
+            {
+              "x-rust": "serde_json::Value"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "message"
+      ],
+      "x-rust": "deep_student_lib::commands::FrontendLogPayload"
+    },
+    "KeystoreProtectionStatus": {
+      "type": "object",
+      "properties": {
+        "supported": {
+          "type": "boolean"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "seedInKeystore": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "supported",
+        "enabled",
+        "seedInKeystore"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_security::secure_store::KeystoreProtectionStatus"
+    },
+    "LogContext": {
+      "type": "object",
+      "properties": {
+        "userId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "sessionId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "mistakeId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "streamId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "businessId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "x-rust": "dstu_platform::debug_logger::LogContext"
+    },
+    "LogEntry": {
+      "type": "object",
+      "properties": {
+        "timestamp": {
+          "type": "string"
+        },
+        "level": {
+          "$ref": "#/$defs/LogLevel"
+        },
+        "module": {
+          "type": "string"
+        },
+        "operation": {
+          "type": "string"
+        },
+        "data": {
+          "x-rust": "serde_json::Value"
+        },
+        "context": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LogContext"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "stackTrace": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "timestamp",
+        "level",
+        "module",
+        "operation",
+        "data"
+      ],
+      "x-rust": "dstu_platform::debug_logger::LogEntry"
+    },
+    "LogLevel": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "DEBUG",
+            "INFO",
+            "WARN",
+            "ERROR",
+            "TRACE"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "DEBUG": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "DEBUG"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "INFO": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "INFO"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "WARN": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "WARN"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "ERROR": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "ERROR"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "TRACE": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "TRACE"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "x-also-accepts": "externally tagged map form {\"<Variant>\": null}",
+      "x-rust": "dstu_platform::debug_logger::LogLevel"
+    },
+    "MigrationRecord": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "name": {
+          "type": "string"
+        },
+        "applied_at": {
+          "type": "string"
+        },
+        "success": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "version",
+        "name",
+        "applied_at",
+        "success"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::debug_commands::MigrationRecord"
+    },
+    "SafeCloudStorageConfig": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "provider": {
+              "const": "webdav"
+            },
+            "webdav": {
+              "$ref": "_shared.json#/$defs/SafeWebDavConfig"
+            },
+            "root": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "x-option": "omit"
+            },
+            "allow_insecure": {
+              "type": "boolean",
+              "x-skip-serializing-if": "is_false"
+            }
+          },
+          "required": [
+            "provider",
+            "webdav"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "provider": {
+              "const": "s3"
+            },
+            "s3": {
+              "$ref": "#/$defs/SafeS3Config"
+            },
+            "root": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "x-option": "omit"
+            },
+            "allow_insecure": {
+              "type": "boolean",
+              "x-skip-serializing-if": "is_false"
+            }
+          },
+          "required": [
+            "provider",
+            "s3"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "provider": {
+              "const": "ftp"
+            },
+            "ftp": {
+              "$ref": "#/$defs/SafeFtpConfig"
+            },
+            "root": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "x-option": "omit"
+            },
+            "allow_insecure": {
+              "type": "boolean",
+              "x-skip-serializing-if": "is_false"
+            }
+          },
+          "required": [
+            "provider",
+            "ftp"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "x-rust": "dstu_sync::cloud_config_commands::SafeCloudStorageConfig"
+    },
+    "SafeFtpConfig": {
+      "type": "object",
+      "properties": {
+        "host": {
+          "type": "string"
+        },
+        "port": {
+          "type": "integer",
+          "x-int": "u16",
+          "minimum": 0,
+          "maximum": 65535
+        },
+        "username": {
+          "type": "string"
+        },
+        "useTls": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "host",
+        "port",
+        "username",
+        "useTls"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_sync::cloud_config_commands::SafeFtpConfig"
+    },
+    "SafeS3Config": {
+      "type": "object",
+      "properties": {
+        "endpoint": {
+          "type": "string"
+        },
+        "bucket": {
+          "type": "string"
+        },
+        "accessKeyId": {
+          "type": "string"
+        },
+        "region": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "pathStyle": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "endpoint",
+        "bucket",
+        "accessKeyId",
+        "pathStyle"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_sync::cloud_config_commands::SafeS3Config"
+    },
+    "SecretPromptHandle": {
+      "type": "object",
+      "properties": {
+        "handleId": {
+          "type": "string"
+        },
+        "purpose": {
+          "type": "string"
+        },
+        "expiresInSeconds": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "memoryOnly": {
+          "type": "boolean"
+        },
+        "oneShot": {
+          "type": "boolean"
+        },
+        "consumerAvailable": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "handleId",
+        "purpose",
+        "expiresInSeconds",
+        "memoryOnly",
+        "oneShot",
+        "consumerAvailable"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_platform::secret_prompt::SecretPromptHandle"
+    },
+    "SecretPromptSubmitRequest": {
+      "type": "object",
+      "properties": {
+        "purpose": {
+          "type": "string"
+        },
+        "secret": {
+          "$ref": "#/$defs/SecretValue"
+        },
+        "ttlSeconds": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u64",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "purpose",
+        "secret"
+      ],
+      "x-rust": "dstu_platform::secret_prompt::SecretPromptSubmitRequest"
+    },
+    "SecretValue": {
+      "type": "string",
+      "x-rust": "dstu_platform::secret_prompt::SecretValue"
+    },
+    "VfsMigrationDiagnostic": {
+      "type": "object",
+      "properties": {
+        "recorded_version": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "expected_version": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "migration_history": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/MigrationRecord"
+          }
+        },
+        "resources_columns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "missing_index_columns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "vfs_index_units_exists": {
+          "type": "boolean"
+        },
+        "vfs_index_segments_exists": {
+          "type": "boolean"
+        },
+        "vfs_indexing_config_exists": {
+          "type": "boolean"
+        },
+        "diagnosis": {
+          "type": "string"
+        },
+        "suggested_fix": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "recorded_version",
+        "expected_version",
+        "migration_history",
+        "resources_columns",
+        "missing_index_columns",
+        "vfs_index_units_exists",
+        "vfs_index_segments_exists",
+        "vfs_indexing_config_exists",
+        "diagnosis",
+        "suggested_fix"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::debug_commands::VfsMigrationDiagnostic"
+    }
+  }
+}

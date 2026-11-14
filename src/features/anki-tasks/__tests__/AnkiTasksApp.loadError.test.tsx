@@ -154,7 +154,7 @@ describe('AnkiTasksApp load failures', () => {
     expect(screen.queryByTestId('anki-tasks-stale-banner')).not.toBeInTheDocument();
 
     sessionResponses.push(new Error('refresh is offline'));
-    fireEvent.click(screen.getByRole('button', { name: dashboard.refresh }));
+    fireEvent(document, new Event('visibilitychange'));
 
     const banner = await screen.findByTestId('anki-tasks-stale-banner');
     expect(banner).toHaveAttribute('role', 'status');

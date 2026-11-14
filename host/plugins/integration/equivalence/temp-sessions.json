@@ -1,0 +1,136 @@
+{
+  "domain": "integration",
+  "commands": ["pin_images", "unpin_images", "save_setting", "get_setting"],
+  "scenarios": [
+    {
+      "id": "integration.temp_session.pin.missing_nonempty_images",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "pin_images", "args": { "tempId": "tmp_absent", "images": ["iVBORw0KGgo=", "data:image/png;base64,AAAA"] }, "expect": "error" },
+        { "cmd": "get_setting", "args": { "key": "pinned_images:tmp_absent" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "integration.temp_session.pin.missing_empty_images",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "pin_images", "args": { "tempId": "tmp_absent", "images": [] }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "integration.temp_session.unpin.missing",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "unpin_images", "args": { "tempId": "tmp_absent" }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "integration.temp_session.pin.missing_keeps_existing_setting",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "save_setting", "args": { "key": "pinned_images:tmp_absent", "value": "[\"OLD\"]" } },
+        { "cmd": "pin_images", "args": { "tempId": "tmp_absent", "images": ["NEW"] }, "expect": "error" },
+        { "cmd": "pin_images", "args": { "tempId": "tmp_absent", "images": [] }, "expect": "error" },
+        { "cmd": "get_setting", "args": { "key": "pinned_images:tmp_absent" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "integration.temp_session.unpin.missing_keeps_existing_setting",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "save_setting", "args": { "key": "pinned_images:tmp_absent", "value": "[\"OLD\"]" } },
+        { "cmd": "unpin_images", "args": { "tempId": "tmp_absent" }, "expect": "error" },
+        { "cmd": "get_setting", "args": { "key": "pinned_images:tmp_absent" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "integration.temp_session.pin.missing_repeated_not_cached",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "pin_images", "args": { "tempId": "tmp_absent", "images": ["A"] }, "expect": "error" },
+        { "cmd": "pin_images", "args": { "tempId": "tmp_absent", "images": ["A"] }, "expect": "error" },
+        { "cmd": "unpin_images", "args": { "tempId": "tmp_absent" }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "integration.temp_session.pin.missing_edge_temp_ids",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "pin_images", "args": { "tempId": "", "images": ["A"] }, "expect": "error" },
+        { "cmd": "unpin_images", "args": { "tempId": "" }, "expect": "error" },
+        { "cmd": "pin_images", "args": { "tempId": "中文 🙂'\"\\%_", "images": ["it's \"q\" \\ \n \u0001 \u2028 中文🙂"] }, "expect": "error" },
+        { "cmd": "unpin_images", "args": { "tempId": "tmp_absent' OR '1'='1" }, "expect": "error" },
+        { "cmd": "get_setting", "args": { "key": "pinned_images:" } },
+        { "cmd": "get_setting", "args": { "key": "pinned_images:中文 🙂'\"\\%_" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "integration.temp_session.pin.args_missing_images",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "pin_images", "args": { "tempId": "tmp_absent" }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "integration.temp_session.pin.args_null_images",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "pin_images", "args": { "tempId": "tmp_absent", "images": null }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "integration.temp_session.pin.args_non_string_image",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "pin_images", "args": { "tempId": "tmp_absent", "images": ["A", 1, null] }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "integration.temp_session.pin.args_snake_case_temp_id",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "pin_images", "args": { "temp_id": "tmp_absent", "images": ["A"] }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "integration.temp_session.unpin.args_missing_temp_id",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "unpin_images", "args": {}, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "integration.temp_session.unpin.args_non_string_temp_id",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "unpin_images", "args": { "tempId": 42 }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    }
+  ]
+}

@@ -1,0 +1,615 @@
+{
+  "domain": "chat",
+  "commands": [
+    "chat_v2_emergency_stop",
+    "chat_v2_kill_switch_status",
+    "chat_v2_ask_user_respond",
+    "chat_v2_clear_approval_history",
+    "chat_v2_tool_approval_respond",
+    "chat_v2_plan_gate_respond",
+    "chat_v2_check_migration_status",
+    "chat_v2_migrate_legacy_chat",
+    "chat_v2_has_active_stream"
+  ],
+  "scenarios": [
+    {
+      "id": "chat.killswitch.trip_retrip_resume",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_kill_switch_status",
+          "args": {}
+        },
+        {
+          "cmd": "chat_v2_emergency_stop",
+          "args": {
+            "reason": "user_emergency_stop"
+          }
+        },
+        {
+          "cmd": "chat_v2_kill_switch_status",
+          "args": {}
+        },
+        {
+          "cmd": "chat_v2_emergency_stop",
+          "args": {
+            "reason": "  再次急停  "
+          }
+        },
+        {
+          "cmd": "chat_v2_kill_switch_status",
+          "args": {}
+        },
+        {
+          "cmd": "chat_v2_resume_agents",
+          "args": {}
+        },
+        {
+          "cmd": "chat_v2_kill_switch_status",
+          "args": {}
+        },
+        {
+          "cmd": "chat_v2_emergency_stop",
+          "args": {
+            "reason": "   "
+          }
+        },
+        {
+          "cmd": "chat_v2_resume_agents",
+          "args": {}
+        },
+        {
+          "cmd": "chat_v2_emergency_stop",
+          "args": {
+            "reason": null
+          }
+        },
+        {
+          "cmd": "chat_v2_resume_agents",
+          "args": {}
+        },
+        {
+          "cmd": "chat_v2_emergency_stop",
+          "args": {}
+        },
+        {
+          "cmd": "chat_v2_kill_switch_status",
+          "args": {}
+        },
+        {
+          "cmd": "chat_v2_resume_agents",
+          "args": {}
+        },
+        {
+          "cmd": "chat_v2_resume_automations",
+          "args": {}
+        },
+        {
+          "cmd": "chat_v2_kill_switch_status",
+          "args": {}
+        },
+        {
+          "cmd": "chat_v2_emergency_stop",
+          "args": {
+            "reason": 42
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "chat.ask_user.respond_sources_and_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_ask_user_respond",
+          "args": {
+            "toolCallId": "call_wp226_ask_1",
+            "selectedTexts": [
+              "选项A"
+            ],
+            "selectedIndices": [
+              0
+            ],
+            "customText": null,
+            "source": "user_click"
+          }
+        },
+        {
+          "cmd": "chat_v2_ask_user_respond",
+          "args": {
+            "toolCallId": "call_wp226_ask_2",
+            "selectedTexts": [],
+            "selectedIndices": [],
+            "customText": "自定义 回答\n第二行",
+            "source": "custom_input"
+          }
+        },
+        {
+          "cmd": "chat_v2_ask_user_respond",
+          "args": {
+            "toolCallId": "call_wp226_ask_3",
+            "selectedTexts": [
+              "A",
+              "B"
+            ],
+            "selectedIndices": [
+              0,
+              2147483647
+            ],
+            "customText": "补充",
+            "source": "mixed"
+          }
+        },
+        {
+          "cmd": "chat_v2_ask_user_respond",
+          "args": {
+            "toolCallId": "call_wp226_ask_4",
+            "selectedTexts": [],
+            "selectedIndices": [
+              -1
+            ],
+            "source": "timeout"
+          }
+        },
+        {
+          "cmd": "chat_v2_ask_user_respond",
+          "args": {
+            "toolCallId": "  call_wp226_ask_5  ",
+            "selectedTexts": [],
+            "selectedIndices": [],
+            "customText": "",
+            "source": "channel_closed"
+          }
+        },
+        {
+          "cmd": "chat_v2_ask_user_respond",
+          "args": {
+            "toolCallId": "",
+            "selectedTexts": [],
+            "selectedIndices": [],
+            "customText": null,
+            "source": "user_click"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_ask_user_respond",
+          "args": {
+            "toolCallId": " \t ",
+            "selectedTexts": [],
+            "selectedIndices": [],
+            "source": "user_click"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_ask_user_respond",
+          "args": {
+            "toolCallId": "call_wp226_ask_x",
+            "selectedTexts": [],
+            "selectedIndices": [],
+            "source": "USER_CLICK"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_ask_user_respond",
+          "args": {
+            "toolCallId": "call_wp226_ask_x",
+            "selectedTexts": [],
+            "selectedIndices": [],
+            "source": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_ask_user_respond",
+          "args": {
+            "toolCallId": "",
+            "selectedTexts": [],
+            "selectedIndices": [],
+            "source": "bogus"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_ask_user_respond",
+          "args": {
+            "toolCallId": "call_wp226_ask_x",
+            "selectedIndices": [],
+            "source": "user_click"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_ask_user_respond",
+          "args": {
+            "toolCallId": "call_wp226_ask_x",
+            "selectedTexts": [],
+            "selectedIndices": [
+              2147483648
+            ],
+            "source": "user_click"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_ask_user_respond",
+          "args": {
+            "toolCallId": "call_wp226_ask_x",
+            "selectedTexts": [],
+            "selectedIndices": []
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "chat.approval.clear_history_prefix_like",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_clear_approval_history",
+          "args": {}
+        },
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "tool_approval.scope.builtin:note_write.abc",
+            "value": "allow"
+          }
+        },
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "tool_approval.scope.note_write.def",
+            "value": "deny"
+          }
+        },
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "TOOL_APPROVAL.SCOPE.upper",
+            "value": "allow"
+          }
+        },
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "toolXapproval.scope.wildcard",
+            "value": "allow"
+          }
+        },
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "tool_approval.scopeless",
+            "value": "keep"
+          }
+        },
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "other.setting",
+            "value": "keep"
+          }
+        },
+        {
+          "cmd": "chat_v2_clear_approval_history",
+          "args": {}
+        },
+        {
+          "cmd": "get_setting",
+          "args": {
+            "key": "tool_approval.scope.note_write.def"
+          }
+        },
+        {
+          "cmd": "get_setting",
+          "args": {
+            "key": "toolXapproval.scope.wildcard"
+          }
+        },
+        {
+          "cmd": "get_setting",
+          "args": {
+            "key": "tool_approval.scopeless"
+          }
+        },
+        {
+          "cmd": "get_setting",
+          "args": {
+            "key": "other.setting"
+          }
+        },
+        {
+          "cmd": "chat_v2_clear_approval_history",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "chat.approval.respond_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_tool_approval_respond",
+          "args": {
+            "sessionId": "sess_wp226_ap",
+            "toolCallId": "",
+            "toolName": "note_write",
+            "approved": true,
+            "remember": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_tool_approval_respond",
+          "args": {
+            "sessionId": "sess_wp226_ap",
+            "toolCallId": "   ",
+            "toolName": "note_write",
+            "approved": true,
+            "reason": null,
+            "remember": true,
+            "rememberSession": null,
+            "arguments": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_tool_approval_respond",
+          "args": {
+            "sessionId": "sess_wp226_ap",
+            "toolCallId": "call_wp226_none",
+            "toolName": "note_write",
+            "approved": false,
+            "reason": "不需要",
+            "remember": true,
+            "rememberSession": true,
+            "arguments": {
+              "path": "/x"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_tool_approval_respond",
+          "args": {
+            "sessionId": "sess_wp226_ap",
+            "toolCallId": "call_wp226_none2",
+            "toolName": "skill_install",
+            "approved": true,
+            "remember": true
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_tool_approval_respond",
+          "args": {
+            "sessionId": "",
+            "toolCallId": "call_wp226_none3",
+            "toolName": "",
+            "approved": true,
+            "remember": false,
+            "rememberSession": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_tool_approval_respond",
+          "args": {
+            "sessionId": "sess_wp226_ap",
+            "toolCallId": "call_x",
+            "toolName": "t",
+            "remember": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_tool_approval_respond",
+          "args": {
+            "sessionId": "sess_wp226_ap",
+            "toolCallId": "call_x",
+            "toolName": "t",
+            "approved": "yes",
+            "remember": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_tool_approval_respond",
+          "args": {
+            "sessionId": "sess_wp226_ap",
+            "toolCallId": "call_x",
+            "toolName": "t",
+            "approved": true
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "chat.plan_gate.respond_no_waiting_gate",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_plan_gate_respond",
+          "args": {
+            "sessionId": "sess_wp226_plan",
+            "planId": "plan_1",
+            "toolCallId": "call_wp226_plan_1",
+            "approved": true,
+            "reason": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_plan_gate_respond",
+          "args": {
+            "sessionId": "sess_wp226_plan",
+            "planId": "plan_1",
+            "toolCallId": "call_wp226_plan_2",
+            "approved": false,
+            "reason": "user_rejected"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_plan_gate_respond",
+          "args": {
+            "sessionId": "",
+            "planId": "",
+            "toolCallId": "",
+            "approved": false
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_plan_gate_respond",
+          "args": {
+            "sessionId": "sess_wp226_plan",
+            "toolCallId": "call_x",
+            "approved": true
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_plan_gate_respond",
+          "args": {
+            "sessionId": "sess_wp226_plan",
+            "planId": "p",
+            "toolCallId": "call_x",
+            "approved": 1
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "chat.migration.check_and_migrate_fresh_db",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_check_migration_status",
+          "args": {}
+        },
+        {
+          "cmd": "chat_v2_migrate_legacy_chat",
+          "args": {}
+        },
+        {
+          "cmd": "chat_v2_check_migration_status",
+          "args": {}
+        },
+        {
+          "cmd": "chat_v2_migrate_legacy_chat",
+          "args": {}
+        },
+        {
+          "cmd": "chat_v2_list_sessions",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "chat.has_active_stream.idle_values",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "空闲"
+          }
+        },
+        {
+          "cmd": "chat_v2_has_active_stream",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_has_active_stream",
+          "args": {
+            "sessionId": "sess_wp226_missing"
+          }
+        },
+        {
+          "cmd": "chat_v2_has_active_stream",
+          "args": {
+            "sessionId": ""
+          }
+        },
+        {
+          "cmd": "chat_v2_has_active_stream",
+          "args": {
+            "sessionId": "legacy_no_prefix"
+          }
+        },
+        {
+          "cmd": "chat_v2_has_active_stream",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_has_active_stream",
+          "args": {
+            "sessionId": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

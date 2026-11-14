@@ -1,0 +1,2306 @@
+{
+  "lane": "L20-sync",
+  "generator": "deep-student/contracts-extract@1.6.0",
+  "commands": [
+    {
+      "name": "data_governance_cancel_sync",
+      "lane": "L20-sync",
+      "rust": {
+        "file": "src/data_governance/commands_sync.rs",
+        "line": 2810,
+        "fn": "data_governance_cancel_sync"
+      },
+      "async": true,
+      "args": [],
+      "injected": [],
+      "result": {
+        "type": "boolean"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "data_governance_count_record_conflicts",
+      "lane": "L20-sync",
+      "rust": {
+        "file": "src/data_governance/commands_sync.rs",
+        "line": 4550,
+        "fn": "data_governance_count_record_conflicts"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/RecordConflictCounts"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "data_governance_detect_conflicts",
+      "lane": "L20-sync",
+      "rust": {
+        "file": "src/data_governance/commands_sync.rs",
+        "line": 1280,
+        "fn": "data_governance_detect_conflicts"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "cloudManifestJson",
+          "rustName": "cloud_manifest_json",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "cloudConfig",
+          "rustName": "cloud_config",
+          "schema": {
+            "anyOf": [
+              {
+                "$ref": "_shared.json#/$defs/CloudStorageConfig"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/ConflictDetectionResponse"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "data_governance_detect_prune_gap",
+      "lane": "L20-sync",
+      "rust": {
+        "file": "src/data_governance/commands_sync.rs",
+        "line": 5070,
+        "fn": "data_governance_detect_prune_gap"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "cloudConfig",
+          "rustName": "cloud_config",
+          "schema": {
+            "$ref": "_shared.json#/$defs/CloudStorageConfig"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/PruneGapResponse"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "data_governance_discard_all_quarantine",
+      "lane": "L20-sync",
+      "rust": {
+        "file": "src/data_governance/commands_sync.rs",
+        "line": 4351,
+        "fn": "data_governance_discard_all_quarantine"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/BatchQuarantineResult"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "data_governance_discard_quarantine",
+      "lane": "L20-sync",
+      "rust": {
+        "file": "src/data_governance/commands_sync.rs",
+        "line": 4256,
+        "fn": "data_governance_discard_quarantine"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "databaseName",
+          "rustName": "database_name",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "quarantineId",
+          "rustName": "quarantine_id",
+          "schema": {
+            "type": "integer",
+            "x-int": "i64"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "type": "boolean"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "data_governance_export_sync_data",
+      "lane": "L20-sync",
+      "rust": {
+        "file": "src/data_governance/commands_sync.rs",
+        "line": 2368,
+        "fn": "data_governance_export_sync_data"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "outputPath",
+          "rustName": "output_path",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        },
+        {
+          "kind": "window"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/SyncExportResponse"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "data_governance_get_sync_status",
+      "lane": "L20-sync",
+      "rust": {
+        "file": "src/data_governance/commands_sync.rs",
+        "line": 1025,
+        "fn": "data_governance_get_sync_status"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/SyncStatusResponse"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "data_governance_import_sync_data",
+      "lane": "L20-sync",
+      "rust": {
+        "file": "src/data_governance/commands_sync.rs",
+        "line": 2570,
+        "fn": "data_governance_import_sync_data"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "inputPath",
+          "rustName": "input_path",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "strategy",
+          "rustName": "strategy",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        },
+        {
+          "kind": "window"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/SyncImportResponse"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "data_governance_list_quarantine",
+      "lane": "L20-sync",
+      "rust": {
+        "file": "src/data_governance/commands_sync.rs",
+        "line": 4167,
+        "fn": "data_governance_list_quarantine"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "limit",
+          "rustName": "limit",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "offset",
+          "rustName": "offset",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/SyncQuarantineRow"
+        }
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "data_governance_list_record_conflicts",
+      "lane": "L20-sync",
+      "rust": {
+        "file": "src/data_governance/commands_sync.rs",
+        "line": 4406,
+        "fn": "data_governance_list_record_conflicts"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "limit",
+          "rustName": "limit",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "offset",
+          "rustName": "offset",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/RecordConflictRow"
+        }
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "data_governance_list_sync_snapshot_batches",
+      "lane": "L20-sync",
+      "rust": {
+        "file": "src/data_governance/commands_sync.rs",
+        "line": 5186,
+        "fn": "data_governance_list_sync_snapshot_batches"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "limit",
+          "rustName": "limit",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/SyncSnapshotBatchRow"
+        }
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "data_governance_list_unsynced_items",
+      "lane": "L20-sync",
+      "rust": {
+        "file": "src/data_governance/commands_sync.rs",
+        "line": 5812,
+        "fn": "data_governance_list_unsynced_items"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "cloudConfig",
+          "rustName": "cloud_config",
+          "schema": {
+            "$ref": "_shared.json#/$defs/CloudStorageConfig"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/UnsyncedItemsReport"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "data_governance_mark_asset_deleted",
+      "lane": "L20-sync",
+      "rust": {
+        "file": "src/data_governance/commands_sync.rs",
+        "line": 4104,
+        "fn": "data_governance_mark_asset_deleted"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "key",
+          "rustName": "key",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "size",
+          "rustName": "size",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u64",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "cloudConfig",
+          "rustName": "cloud_config",
+          "schema": {
+            "$ref": "_shared.json#/$defs/CloudStorageConfig"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "data_governance_mark_blob_deleted",
+      "lane": "L20-sync",
+      "rust": {
+        "file": "src/data_governance/commands_sync.rs",
+        "line": 4062,
+        "fn": "data_governance_mark_blob_deleted"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "hash",
+          "rustName": "hash",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "relativePath",
+          "rustName": "relative_path",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "size",
+          "rustName": "size",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u64",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "cloudConfig",
+          "rustName": "cloud_config",
+          "schema": {
+            "$ref": "_shared.json#/$defs/CloudStorageConfig"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "data_governance_purge_resolved_conflicts",
+      "lane": "L20-sync",
+      "rust": {
+        "file": "src/data_governance/commands_sync.rs",
+        "line": 5010,
+        "fn": "data_governance_purge_resolved_conflicts"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "olderThanDays",
+          "rustName": "older_than_days",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "type": "integer",
+        "x-int": "u64",
+        "minimum": 0
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "data_governance_repo_check",
+      "lane": "L20-sync",
+      "rust": {
+        "file": "src/data_governance/commands_sync.rs",
+        "line": 5150,
+        "fn": "data_governance_repo_check"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "cloudConfig",
+          "rustName": "cloud_config",
+          "schema": {
+            "$ref": "_shared.json#/$defs/CloudStorageConfig"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/RepoCheckReport"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "data_governance_resolve_conflicts",
+      "lane": "L20-sync",
+      "rust": {
+        "file": "src/data_governance/commands_sync.rs",
+        "line": 1428,
+        "fn": "data_governance_resolve_conflicts"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "strategy",
+          "rustName": "strategy",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "cloudManifestJson",
+          "rustName": "cloud_manifest_json",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/SyncResultResponse"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "data_governance_resolve_record_conflict",
+      "lane": "L20-sync",
+      "rust": {
+        "file": "src/data_governance/commands_sync.rs",
+        "line": 4610,
+        "fn": "data_governance_resolve_record_conflict"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "databaseName",
+          "rustName": "database_name",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "tableName",
+          "rustName": "table_name",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "recordId",
+          "rustName": "record_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "resolution",
+          "rustName": "resolution",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "mergedDataJson",
+          "rustName": "merged_data_json",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "expectedConflictIds",
+          "rustName": "expected_conflict_ids",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "x-int": "i64"
+            }
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "data_governance_retry_all_quarantine",
+      "lane": "L20-sync",
+      "rust": {
+        "file": "src/data_governance/commands_sync.rs",
+        "line": 4293,
+        "fn": "data_governance_retry_all_quarantine"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/BatchQuarantineResult"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "data_governance_retry_quarantine",
+      "lane": "L20-sync",
+      "rust": {
+        "file": "src/data_governance/commands_sync.rs",
+        "line": 4232,
+        "fn": "data_governance_retry_quarantine"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "databaseName",
+          "rustName": "database_name",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "quarantineId",
+          "rustName": "quarantine_id",
+          "schema": {
+            "type": "integer",
+            "x-int": "i64"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "type": "boolean"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "data_governance_rollback_sync_snapshot_batch",
+      "lane": "L20-sync",
+      "rust": {
+        "file": "src/data_governance/commands_sync.rs",
+        "line": 5244,
+        "fn": "data_governance_rollback_sync_snapshot_batch"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "databaseName",
+          "rustName": "database_name",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "batchId",
+          "rustName": "batch_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/RollbackSnapshotResponse"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "data_governance_run_sync",
+      "lane": "L20-sync",
+      "rust": {
+        "file": "src/data_governance/commands_sync.rs",
+        "line": 1585,
+        "fn": "data_governance_run_sync"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "direction",
+          "rustName": "direction",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "cloudConfig",
+          "rustName": "cloud_config",
+          "schema": {
+            "anyOf": [
+              {
+                "$ref": "_shared.json#/$defs/CloudStorageConfig"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "strategy",
+          "rustName": "strategy",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/SyncExecutionResponse"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "data_governance_run_sync_with_progress",
+      "lane": "L20-sync",
+      "rust": {
+        "file": "src/data_governance/commands_sync.rs",
+        "line": 2858,
+        "fn": "data_governance_run_sync_with_progress"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "direction",
+          "rustName": "direction",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "cloudConfig",
+          "rustName": "cloud_config",
+          "schema": {
+            "anyOf": [
+              {
+                "$ref": "_shared.json#/$defs/CloudStorageConfig"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "strategy",
+          "rustName": "strategy",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/SyncExecutionResponse"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    }
+  ],
+  "events": [
+    {
+      "name": "data-governance-sync-progress",
+      "dynamic": false,
+      "payload": {
+        "$ref": "#/$defs/SyncProgress"
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-sync/src/data_governance/sync/emitter.rs",
+          "line": 236,
+          "fn": "do_emit",
+          "lane": "L20-sync",
+          "method": "emit"
+        }
+      ]
+    }
+  ],
+  "$defs": {
+    "BatchQuarantineResult": {
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "failed": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "success",
+        "failed",
+        "errors"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::data_governance::commands_sync::BatchQuarantineResult"
+    },
+    "ConflictDetectionResponse": {
+      "type": "object",
+      "properties": {
+        "has_conflicts": {
+          "type": "boolean"
+        },
+        "needs_migration": {
+          "type": "boolean"
+        },
+        "database_conflicts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DatabaseConflictResponse"
+          }
+        },
+        "record_conflict_count": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "local_manifest_json": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "cloud_manifest_json": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "has_conflicts",
+        "needs_migration",
+        "database_conflicts",
+        "record_conflict_count",
+        "local_manifest_json",
+        "cloud_manifest_json"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::data_governance::commands_sync::ConflictDetectionResponse"
+    },
+    "DatabaseConflictResponse": {
+      "type": "object",
+      "properties": {
+        "database_name": {
+          "type": "string"
+        },
+        "conflict_type": {
+          "type": "string"
+        },
+        "local_version": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u64",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "cloud_version": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u64",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "local_schema_version": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "cloud_schema_version": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "database_name",
+        "conflict_type",
+        "local_version",
+        "cloud_version",
+        "local_schema_version",
+        "cloud_schema_version"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::data_governance::commands_sync::DatabaseConflictResponse"
+    },
+    "DatabaseSyncStatusResponse": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "knowledge": {
+          "$ref": "#/$defs/SyncStatusKnowledge"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "has_change_log": {
+          "type": "boolean"
+        },
+        "pending_changes": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "synced_changes": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "last_sync_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "id",
+        "knowledge",
+        "error",
+        "has_change_log",
+        "pending_changes",
+        "synced_changes",
+        "last_sync_at"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::data_governance::commands_sync::DatabaseSyncStatusResponse"
+    },
+    "PruneGapResponse": {
+      "type": "object",
+      "properties": {
+        "has_gap": {
+          "type": "boolean"
+        },
+        "since_version": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "min_available_version": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u64",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "remote_format_version": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "uses_device_cursors": {
+          "type": "boolean"
+        },
+        "instance_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "gap_details": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "has_gap",
+        "since_version",
+        "min_available_version",
+        "remote_format_version",
+        "uses_device_cursors",
+        "instance_id",
+        "gap_details"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::data_governance::commands_sync::PruneGapResponse"
+    },
+    "RecordConflictCountEntry": {
+      "type": "object",
+      "properties": {
+        "groups": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "rows": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "groups",
+        "rows"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::data_governance::commands_sync::RecordConflictCountEntry"
+    },
+    "RecordConflictCounts": {
+      "type": "object",
+      "properties": {
+        "per_database": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/RecordConflictCountEntry"
+          },
+          "x-key-order": "unspecified"
+        },
+        "total_groups": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "total_rows": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "per_database",
+        "total_groups",
+        "total_rows"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::data_governance::commands_sync::RecordConflictCounts"
+    },
+    "RecordConflictRow": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "database_name": {
+          "type": "string"
+        },
+        "table_name": {
+          "type": "string"
+        },
+        "record_id": {
+          "type": "string"
+        },
+        "side": {
+          "type": "string"
+        },
+        "data_json": {
+          "type": "string"
+        },
+        "winning_device_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "losing_device_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "detected_at": {
+          "type": "string"
+        },
+        "resolved_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "resolution": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "id",
+        "database_name",
+        "table_name",
+        "record_id",
+        "side",
+        "data_json",
+        "winning_device_id",
+        "losing_device_id",
+        "detected_at",
+        "resolved_at",
+        "resolution"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::data_governance::commands_sync::RecordConflictRow"
+    },
+    "RepoCheckProblem": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/RepoCheckProblemKind"
+        },
+        "objectKey": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "versionId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "detail": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "detail"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_sync::cloud_storage::repo_check::RepoCheckProblem"
+    },
+    "RepoCheckProblemKind": {
+      "type": "string",
+      "enum": [
+        "missingObject",
+        "checksumMismatch",
+        "undecodableDsbkHeader",
+        "plaintextInEncryptedRepo",
+        "encryptedWithoutMarker",
+        "orphanObject",
+        "tempLeftover",
+        "corruptManifest",
+        "conflictingManifestEntry",
+        "corruptEncryptionMarker",
+        "objectReadFailed"
+      ],
+      "x-rust": "dstu_sync::cloud_storage::repo_check::RepoCheckProblemKind"
+    },
+    "RepoCheckReport": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/RepoCheckStatus"
+        },
+        "listingTruncated": {
+          "type": "boolean"
+        },
+        "encryptionMarkerPresent": {
+          "type": "boolean"
+        },
+        "versionsReferenced": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "objectsChecked": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "bytesVerified": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "orphanObjects": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "problems": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RepoCheckProblem"
+          }
+        },
+        "problemsTruncated": {
+          "type": "boolean"
+        },
+        "checkedAt": {
+          "type": "string",
+          "format": "date-time",
+          "x-rust": "chrono::DateTime<chrono::Utc>",
+          "x-format": "RFC 3339, SecondsFormat::AutoSi, Z for UTC"
+        }
+      },
+      "required": [
+        "status",
+        "listingTruncated",
+        "encryptionMarkerPresent",
+        "versionsReferenced",
+        "objectsChecked",
+        "bytesVerified",
+        "orphanObjects",
+        "problems",
+        "problemsTruncated",
+        "checkedAt"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_sync::cloud_storage::repo_check::RepoCheckReport"
+    },
+    "RepoCheckStatus": {
+      "type": "string",
+      "enum": [
+        "ok",
+        "problemsFound",
+        "incomplete"
+      ],
+      "x-rust": "dstu_sync::cloud_storage::repo_check::RepoCheckStatus"
+    },
+    "RollbackSnapshotResponse": {
+      "type": "object",
+      "properties": {
+        "batch_id": {
+          "type": "string"
+        },
+        "restored": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "deleted": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "skipped": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "undo_batch_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "batch_id",
+        "restored",
+        "deleted",
+        "skipped",
+        "undo_batch_id"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::data_governance::commands_sync::RollbackSnapshotResponse"
+    },
+    "SyncExecutionResponse": {
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "direction": {
+          "type": "string"
+        },
+        "changes_uploaded": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "changes_downloaded": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "conflicts_detected": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "duration_ms": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "device_id": {
+          "type": "string"
+        },
+        "error_message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "skipped_changes": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "success",
+        "direction",
+        "changes_uploaded",
+        "changes_downloaded",
+        "conflicts_detected",
+        "duration_ms",
+        "device_id",
+        "error_message",
+        "skipped_changes"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::data_governance::commands_sync::SyncExecutionResponse"
+    },
+    "SyncExportResponse": {
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "output_path": {
+          "type": "string"
+        },
+        "manifest_databases": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "pending_changes_count": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "success",
+        "output_path",
+        "manifest_databases",
+        "pending_changes_count"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::data_governance::commands_sync::SyncExportResponse"
+    },
+    "SyncImportResponse": {
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "imported_changes": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "conflicts_detected": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "needs_manual_resolution": {
+          "type": "boolean"
+        },
+        "error_message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "success",
+        "imported_changes",
+        "conflicts_detected",
+        "needs_manual_resolution",
+        "error_message"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::data_governance::commands_sync::SyncImportResponse"
+    },
+    "SyncOutcome": {
+      "type": "string",
+      "enum": [
+        "in_progress",
+        "succeeded",
+        "failed",
+        "partial",
+        "unknown"
+      ],
+      "x-rust": "dstu_sync::data_governance::sync::progress::SyncOutcome"
+    },
+    "SyncPhase": {
+      "type": "string",
+      "enum": [
+        "preparing",
+        "detecting_changes",
+        "uploading",
+        "downloading",
+        "applying",
+        "completed",
+        "failed"
+      ],
+      "x-rust": "dstu_sync::data_governance::sync::progress::SyncPhase"
+    },
+    "SyncProgress": {
+      "type": "object",
+      "properties": {
+        "operation_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "outcome": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SyncOutcome"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "phase": {
+          "$ref": "#/$defs/SyncPhase"
+        },
+        "percent": {
+          "type": "number",
+          "x-float": "f32"
+        },
+        "current": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "total": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "current_item": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "speed_bytes_per_sec": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u64",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "eta_seconds": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u64",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "phase",
+        "percent",
+        "current",
+        "total",
+        "current_item",
+        "speed_bytes_per_sec",
+        "eta_seconds",
+        "error"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_sync::data_governance::sync::progress::SyncProgress"
+    },
+    "SyncQuarantineRow": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "database_name": {
+          "type": "string"
+        },
+        "source_device_id": {
+          "type": "string"
+        },
+        "source_seq": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "table_name": {
+          "type": "string"
+        },
+        "record_id": {
+          "type": "string"
+        },
+        "operation": {
+          "type": "string"
+        },
+        "payload_json": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "error": {
+          "type": "string"
+        },
+        "attempts": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "first_seen": {
+          "type": "string"
+        },
+        "last_attempt": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "database_name",
+        "source_device_id",
+        "source_seq",
+        "table_name",
+        "record_id",
+        "operation",
+        "payload_json",
+        "error",
+        "attempts",
+        "first_seen",
+        "last_attempt"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::data_governance::commands_sync::SyncQuarantineRow"
+    },
+    "SyncResultResponse": {
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "strategy": {
+          "type": "string"
+        },
+        "synced_databases": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "resolved_conflicts": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "pending_manual_conflicts": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "records_to_push": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "records_to_pull": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "duration_ms": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "error_message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "success",
+        "strategy",
+        "synced_databases",
+        "resolved_conflicts",
+        "pending_manual_conflicts",
+        "records_to_push",
+        "records_to_pull",
+        "duration_ms",
+        "error_message"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::data_governance::commands_sync::SyncResultResponse"
+    },
+    "SyncSnapshotBatchRow": {
+      "type": "object",
+      "properties": {
+        "database_name": {
+          "type": "string"
+        },
+        "batch_id": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "record_count": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "rolled_back_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "database_name",
+        "batch_id",
+        "reason",
+        "created_at",
+        "record_count",
+        "rolled_back_at"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::data_governance::commands_sync::SyncSnapshotBatchRow"
+    },
+    "SyncStatusKnowledge": {
+      "type": "string",
+      "enum": [
+        "known",
+        "unknown"
+      ],
+      "x-rust": "deep_student_lib::data_governance::commands_sync::SyncStatusKnowledge"
+    },
+    "SyncStatusResponse": {
+      "type": "object",
+      "properties": {
+        "partial": {
+          "type": "boolean"
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "has_pending_changes": {
+          "type": "boolean"
+        },
+        "total_pending_changes": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "total_synced_changes": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "databases": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DatabaseSyncStatusResponse"
+          }
+        },
+        "last_sync_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "device_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "partial",
+        "errors",
+        "has_pending_changes",
+        "total_pending_changes",
+        "total_synced_changes",
+        "databases",
+        "last_sync_at",
+        "device_id"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::data_governance::commands_sync::SyncStatusResponse"
+    },
+    "UnsyncedItem": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/UnsyncedItemKind"
+        },
+        "scope": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        },
+        "counterpart": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "size": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u64",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "detail": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "scope",
+        "key",
+        "detail"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::data_governance::commands_sync::UnsyncedItem"
+    },
+    "UnsyncedItemKind": {
+      "type": "string",
+      "enum": [
+        "downloadPending",
+        "legacyPlaintext",
+        "caseConflict",
+        "sanitizedNameConflict",
+        "invalidKey"
+      ],
+      "x-rust": "deep_student_lib::data_governance::commands_sync::UnsyncedItemKind"
+    },
+    "UnsyncedItemsReport": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/UnsyncedItem"
+          }
+        },
+        "itemsTruncated": {
+          "type": "boolean"
+        },
+        "totalUnsynced": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "blobEntriesTotal": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "assetEntriesTotal": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "encryptionEnabled": {
+          "type": "boolean"
+        },
+        "generatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "x-rust": "chrono::DateTime<chrono::Utc>",
+          "x-format": "RFC 3339, SecondsFormat::AutoSi, Z for UTC"
+        }
+      },
+      "required": [
+        "items",
+        "itemsTruncated",
+        "totalUnsynced",
+        "blobEntriesTotal",
+        "assetEntriesTotal",
+        "encryptionEnabled",
+        "generatedAt"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::data_governance::commands_sync::UnsyncedItemsReport"
+    }
+  }
+}

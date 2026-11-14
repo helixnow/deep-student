@@ -1,0 +1,10 @@
+{
+  "/usr/bin/bwrap": {
+    "errno": 61,
+    "message": "No data available"
+  },
+  "/usr/bin/prlimit": {
+    "errno": 61,
+    "message": "No data available"
+  }
+}

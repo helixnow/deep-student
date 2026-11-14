@@ -1,0 +1,213 @@
+<div>
+  <div class="flex flex-col h-full p-4 space-y-4 overflow-hidden">
+    <div class="flex items-center justify-between flex-shrink-0">
+      <div class="flex items-center gap-2">
+        <svg size=20 icon="M117.25,157.92a60,60,0,1" class="text-primary">
+        <h3 class="text-lg font-semibold">
+          "多 Agent 调试"
+        <div class="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background bg-transparent text-muted-foreground text-xs">
+          "ws_01234"
+          "..."
+      <div class="flex items-center gap-2">
+        <button class="ui-press-coarse inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-ui font-medium leading-none transition-[background-color,border-color,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit border-[color:var(--button-plain-border)] bg-[var(--button-plain-bg)] text-muted-foreground hover:bg-[var(--button-plain-hover-bg)] hover:text-foreground active:bg-[var(--button-plain-active-bg)] h-[var(--touch-target-size)] px-[var(--button-padding-x-sm)] text-ui lg:h-[var(--button-height-sm)] lg:text-xs max-lg:[&_svg]:h-[18px] max-lg:[&_svg]:w-[18px] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:min-h-11">
+          <svg size=16 icon="M240,56v48a8,8,0,0,1-8,8">
+        <button class="ui-press-coarse inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-ui font-medium leading-none transition-[background-color,border-color,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit border-[color:var(--button-plain-border)] bg-[var(--button-plain-bg)] text-muted-foreground hover:bg-[var(--button-plain-hover-bg)] hover:text-foreground active:bg-[var(--button-plain-active-bg)] h-[var(--touch-target-size)] px-[var(--button-padding-x-sm)] text-ui lg:h-[var(--button-height-sm)] lg:text-xs max-lg:[&_svg]:h-[18px] max-lg:[&_svg]:w-[18px] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:min-h-11">
+          <svg size=16 icon="M216,32H88a8,8,0,0,0-8,8" class="mr-1">
+          "复制日志"
+        <button class="ui-press-coarse inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-ui font-medium leading-none transition-[background-color,border-color,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit border-[color:var(--button-destructive-border)] bg-[var(--button-destructive-bg)] text-destructive-foreground hover:bg-[var(--button-destructive-hover-bg)] active:bg-[var(--button-destructive-active-bg)] h-[var(--touch-target-size)] px-[var(--button-padding-x-sm)] text-ui lg:h-[var(--button-height-sm)] lg:text-xs max-lg:[&_svg]:h-[18px] max-lg:[&_svg]:w-[18px] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:min-h-11">
+          <svg size=16 icon="M216,48H176V40a24,24,0,0">
+    <div class="flex gap-1 flex-shrink-0">
+      <button class="ui-press-coarse inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-ui font-medium leading-none transition-[background-color,border-color,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit border-[color:var(--button-plain-border)] bg-[var(--button-plain-bg)] text-muted-foreground hover:bg-[var(--button-plain-hover-bg)] hover:text-foreground active:bg-[var(--button-plain-active-bg)] h-[var(--touch-target-size)] px-[var(--button-padding-x-sm)] text-ui lg:h-[var(--button-height-sm)] lg:text-xs max-lg:[&_svg]:h-[18px] max-lg:[&_svg]:w-[18px] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:min-h-11">
+        <svg size=16 icon="M216,72H131.31L104,44.69" class="mr-1">
+        "监控"
+      <button class="ui-press-coarse inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-ui font-medium leading-none transition-[background-color,border-color,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit border-[color:var(--button-plain-border)] bg-[var(--button-plain-bg)] text-muted-foreground hover:bg-[var(--button-plain-hover-bg)] hover:text-foreground active:bg-[var(--button-plain-active-bg)] h-[var(--touch-target-size)] px-[var(--button-padding-x-sm)] text-ui lg:h-[var(--button-height-sm)] lg:text-xs max-lg:[&_svg]:h-[18px] max-lg:[&_svg]:w-[18px] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:min-h-11">
+        <svg size=16 icon="M232.4,114.49,88.32,26.3" class="mr-1">
+        "调试"
+      <button class="ui-press-coarse inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-ui font-medium leading-none transition-[background-color,border-color,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit border-[color:var(--button-plain-border)] bg-[var(--button-plain-bg)] text-muted-foreground hover:bg-[var(--button-plain-hover-bg)] hover:text-foreground active:bg-[var(--button-plain-active-bg)] h-[var(--touch-target-size)] px-[var(--button-padding-x-sm)] text-ui lg:h-[var(--button-height-sm)] lg:text-xs max-lg:[&_svg]:h-[18px] max-lg:[&_svg]:w-[18px] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:min-h-11">
+        <svg size=16 icon="M213.66,82.34l-56-56A8,8" class="mr-1">
+        "日志 ("
+        "15"
+        ")"
+    <div class="shrink-0 bg-border/40">
+    <div class="flex-1 overflow-auto border rounded-md p-2 space-y-2 bg-muted/30">
+      <div class="flex items-start gap-2 p-2 bg-background rounded border text-xs">
+        <svg size=16 icon="M128,24A104,104,0,1,0,23" class="text-blue-500">
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2 mb-1 flex-wrap">
+            <div class="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background bg-muted/10 text-muted-foreground text-[10px] px-1.5 py-0 bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200">
+              "system"
+            <span class="font-medium">
+              "LOGGED_BEFORE_MOUNT"
+            <span class="text-muted-foreground text-[10px]">
+              "10:00:00 AM"
+          <pre class="text-[10px] text-muted-foreground overflow-x-auto whitespace-pre-wrap break-all">
+            "{ \"note\": \"shown on first render\" }"
+      <div class="flex items-start gap-2 p-2 bg-background rounded border text-xs">
+        <svg size=16 icon="M128,24A104,104,0,1,0,23" class="text-blue-500">
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2 mb-1 flex-wrap">
+            <div class="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background bg-muted/10 text-muted-foreground text-[10px] px-1.5 py-0 bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+              "message"
+            <span class="font-medium">
+              "MESSAGE_RECEIVED"
+            <span class="text-muted-foreground text-[10px]">
+              "10:00:00 AM"
+          <pre class="text-[10px] text-muted-foreground overflow-x-auto whitespace-pre-wrap break-all">
+            "{ \"workspaceId\": \"ws_0123456789abcdef\", \"messageId\": \"msg_12\" }"
+      <div class="flex items-start gap-2 p-2 bg-background rounded border text-xs">
+        <svg size=16 icon="M173.66,98.34a8,8,0,0,1," class="text-green-500">
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2 mb-1 flex-wrap">
+            <div class="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background bg-muted/10 text-muted-foreground text-[10px] px-1.5 py-0 bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+              "agent"
+            <span class="font-medium">
+              "AGENT_JOINED"
+            <span class="text-muted-foreground text-[10px]">
+              "10:00:00 AM"
+          <pre class="text-[10px] text-muted-foreground overflow-x-auto whitespace-pre-wrap break-all">
+            "{ \"sessionId\": \"sess_worker_writer_0003\", \"role\": \"worker\" }"
+      <div class="flex items-start gap-2 p-2 bg-background rounded border text-xs">
+        <svg size=16 icon="M128,24A104,104,0,1,0,23" class="text-blue-500">
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2 mb-1 flex-wrap">
+            <div class="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background bg-muted/10 text-muted-foreground text-[10px] px-1.5 py-0 bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+              "agent"
+            <span class="font-medium">
+              "AGENT_STATUS_CHANGED"
+            <span class="text-muted-foreground text-[10px]">
+              "10:00:00 AM"
+          <pre class="text-[10px] text-muted-foreground overflow-x-auto whitespace-pre-wrap break-all">
+            "{ \"sessionId\": \"sess_worker_research_02\", \"status\": \"running\" }"
+      <div class="flex items-start gap-2 p-2 bg-background rounded border text-xs">
+        <svg size=16 icon="M173.66,98.34a8,8,0,0,1," class="text-green-500">
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2 mb-1 flex-wrap">
+            <div class="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background bg-muted/10 text-muted-foreground text-[10px] px-1.5 py-0 bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+              "agent"
+            <span class="font-medium">
+              "WORKER_READY"
+            <span class="text-muted-foreground text-[10px]">
+              "10:00:00 AM"
+          <pre class="text-[10px] text-muted-foreground overflow-x-auto whitespace-pre-wrap break-all">
+            "{ \"sessionId\": \"sess_worker_research_02\" }"
+      <div class="flex items-start gap-2 p-2 bg-background rounded border text-xs">
+        <svg size=16 icon="M128,24A104,104,0,1,0,23" class="text-blue-500">
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2 mb-1 flex-wrap">
+            <div class="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background bg-muted/10 text-muted-foreground text-[10px] px-1.5 py-0 bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">
+              "workspace"
+            <span class="font-medium">
+              "TOOL_CALL_START"
+            <span class="text-muted-foreground text-[10px]">
+              "10:00:00 AM"
+          <pre class="text-[10px] text-muted-foreground overflow-x-auto whitespace-pre-wrap break-all">
+            "{ \"toolName\": \"workspace_create\", \"blockId\": \"blk-1\", \"messageId\": \"m-1\", \"toolInput\": { \"name\": \"AI教育研究\" }, \"sessionId\": \"sess_coordinator_0001\" }"
+      <div class="flex items-start gap-2 p-2 bg-background rounded border text-xs">
+        <svg size=16 icon="M173.66,98.34a8,8,0,0,1," class="text-green-500">
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2 mb-1 flex-wrap">
+            <div class="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background bg-muted/10 text-muted-foreground text-[10px] px-1.5 py-0 bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">
+              "workspace"
+            <span class="font-medium">
+              "TOOL_CALL_END"
+            <span class="text-muted-foreground text-[10px]">
+              "10:00:00 AM"
+          <pre class="text-[10px] text-muted-foreground overflow-x-auto whitespace-pre-wrap break-all">
+            "{ \"toolName\": \"workspace_create\", \"blockId\": \"blk-1\", \"result\": { \"workspaceId\": \"ws_0123456789abcdef\" }, \"sessionId\": \"sess_coordinator_0001\" }"
+      <div class="flex items-start gap-2 p-2 bg-background rounded border text-xs">
+        <svg size=16 icon="M128,24A104,104,0,1,0,23" class="text-blue-500">
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2 mb-1 flex-wrap">
+            <div class="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background bg-muted/10 text-muted-foreground text-[10px] px-1.5 py-0 bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">
+              "workspace"
+            <span class="font-medium">
+              "TOOL_CALL_START"
+            <span class="text-muted-foreground text-[10px]">
+              "10:00:00 AM"
+          <pre class="text-[10px] text-muted-foreground overflow-x-auto whitespace-pre-wrap break-all">
+            "{ \"toolName\": \"subagent_call\", \"blockId\": \"blk-4\", \"messageId\": \"m-2\", \"toolInput\": { \"skill\": \"research\" }, \"sessionId\": \"sess_coordinator_0001\" }"
+      <div class="flex items-start gap-2 p-2 bg-background rounded border text-xs">
+        <svg size=16 icon="M128,24A104,104,0,1,0,23" class="text-red-500">
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2 mb-1 flex-wrap">
+            <div class="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background bg-muted/10 text-muted-foreground text-[10px] px-1.5 py-0 bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">
+              "error"
+            <span class="font-medium">
+              "TOOL_CALL_ERROR"
+            <span class="text-muted-foreground text-[10px]">
+              "10:00:00 AM"
+          <pre class="text-[10px] text-muted-foreground overflow-x-auto whitespace-pre-wrap break-all">
+            "{ \"toolName\": \"subagent_call\", \"blockId\": \"blk-4\", \"error\": \"worker crashed\", \"sessionId\": \"sess_coordinator_0001\" }"
+      <div class="flex items-start gap-2 p-2 bg-background rounded border text-xs">
+        <svg size=16 icon="M173.66,98.34a8,8,0,0,1," class="text-green-500">
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2 mb-1 flex-wrap">
+            <div class="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background bg-muted/10 text-muted-foreground text-[10px] px-1.5 py-0 bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">
+              "workspace"
+            <span class="font-medium">
+              "TOOL_CALL_END"
+            <span class="text-muted-foreground text-[10px]">
+              "10:00:00 AM"
+          <pre class="text-[10px] text-muted-foreground overflow-x-auto whitespace-pre-wrap break-all">
+            "{ \"toolName\": \"workspace_send_message\", \"blockId\": \"blk-9\", \"result\": { \"ok\": true }, \"sessionId\": \"sess_coordinator_0001\" }"
+      <div class="flex items-start gap-2 p-2 bg-background rounded border text-xs">
+        <svg size=16 icon="M173.66,98.34a8,8,0,0,1," class="text-green-500">
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2 mb-1 flex-wrap">
+            <div class="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background bg-muted/10 text-muted-foreground text-[10px] px-1.5 py-0 bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">
+              "workspace"
+            <span class="font-medium">
+              "TOOL_CALL_END"
+            <span class="text-muted-foreground text-[10px]">
+              "10:00:00 AM"
+          <pre class="text-[10px] text-muted-foreground overflow-x-auto whitespace-pre-wrap break-all">
+            "{ \"toolName\": \"workspace_list_agents\", \"blockId\": \"\", \"result\": [], \"sessionId\": \"sess_coordinator_0001\" }"
+      <div class="flex items-start gap-2 p-2 bg-background rounded border text-xs">
+        <svg size=16 icon="M128,24A104,104,0,1,0,23" class="text-blue-500">
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2 mb-1 flex-wrap">
+            <div class="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background bg-muted/10 text-muted-foreground text-[10px] px-1.5 py-0 bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">
+              "workspace"
+            <span class="font-medium">
+              "TOOL_CALL_START"
+            <span class="text-muted-foreground text-[10px]">
+              "10:00:00 AM"
+          <pre class="text-[10px] text-muted-foreground overflow-x-auto whitespace-pre-wrap break-all">
+            "{ \"toolName\": \"workspace_query\", \"blockId\": \"blk-5\", \"messageId\": \"m-3\", \"toolInput\": {}, \"sessionId\": \"sess_new_0004\" }"
+      <div class="flex items-start gap-2 p-2 bg-background rounded border text-xs">
+        <svg size=16 icon="M128,24A104,104,0,1,0,23" class="text-blue-500">
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2 mb-1 flex-wrap">
+            <div class="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background bg-muted/10 text-muted-foreground text-[10px] px-1.5 py-0 bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">
+              "workspace"
+            <span class="font-medium">
+              "TOOL_CALL_START"
+            <span class="text-muted-foreground text-[10px]">
+              "10:00:00 AM"
+          <pre class="text-[10px] text-muted-foreground overflow-x-auto whitespace-pre-wrap break-all">
+            "{ \"toolName\": \"workspace_close\", \"blockId\": \"blk-6\", \"toolInput\": {}, \"sessionId\": \"sess_coordinator_0001\" }"
+      <div class="flex items-start gap-2 p-2 bg-background rounded border text-xs">
+        <svg size=16 icon="M173.66,98.34a8,8,0,0,1," class="text-green-500">
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2 mb-1 flex-wrap">
+            <div class="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background bg-muted/10 text-muted-foreground text-[10px] px-1.5 py-0 bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">
+              "workspace"
+            <span class="font-medium">
+              "TOOL_CALL_END"
+            <span class="text-muted-foreground text-[10px]">
+              "10:00:00 AM"
+          <pre class="text-[10px] text-muted-foreground overflow-x-auto whitespace-pre-wrap break-all">
+            "{ \"toolName\": \"workspace_query\", \"blockId\": \"blk-5\", \"result\": { \"agents\": 3 }, \"sessionId\": \"sess_new_0004\" }"
+      <div class="flex items-start gap-2 p-2 bg-background rounded border text-xs">
+        <svg size=16 icon="M128,24A104,104,0,1,0,23" class="text-yellow-500">
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2 mb-1 flex-wrap">
+            <div class="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background bg-muted/10 text-muted-foreground text-[10px] px-1.5 py-0 bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">
+              "workspace"
+            <span class="font-medium">
+              "WORKSPACE_CLOSED"
+            <span class="text-muted-foreground text-[10px]">
+              "10:00:00 AM"
+          <pre class="text-[10px] text-muted-foreground overflow-x-auto whitespace-pre-wrap break-all">
+            "{ \"workspaceId\": \"ws_0123456789abcdef\" }"
+      <div>

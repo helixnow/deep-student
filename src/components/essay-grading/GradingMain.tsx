@@ -271,7 +271,7 @@ export const GradingMain: React.FC<GradingMainProps> = ({
       textStats={inputTextStats}
       currentRound={currentRound}
       roundNavigation={roundNavigation}
-      // 📱 移动壳视口（<768）不给页内设置入口：宿主移动顶栏（learning-hub
+      // 移动壳视口（<768）不给页内设置入口：宿主移动顶栏（learning-hub
       // rightActions 更多菜单 → 设置，经 essay:openSettings 事件）已提供，页内
       // 保留会形成重复次级入口。仅看视口不看容器 compact——桌面窄容器
       // （分屏/浮窗）没有移动顶栏，页内按钮仍是唯一入口
@@ -332,7 +332,7 @@ export const GradingMain: React.FC<GradingMainProps> = ({
     <InlineSettingsPanel
       isOpen={showPromptEditor}
       onClose={() => setShowPromptEditor(false)}
-      // 📱 仅移动壳视口隐藏自绘标题行（宿主顶栏提供 chrome 与设置开关）；
+      // 仅移动壳视口隐藏自绘标题行（宿主顶栏提供 chrome 与设置开关）；
       // 桌面窄容器（分屏/浮窗）没有移动顶栏，标题行 X 仍是可见退出路径
       mobileFullscreen={!useSettingsPage && viewportIsSmallScreen}
       modeId={modeId}
@@ -398,16 +398,12 @@ export const GradingMain: React.FC<GradingMainProps> = ({
       <div className={cn('flex flex-1 min-h-0', useSettingsPage && showPromptEditor && 'hidden')}>
         <div ref={mainAreaRef} className="flex-1 min-w-0 h-full">
           {!resultActive ? (
-            /* 尚无批改内容：输入区占满，结果区折叠为占位条（开始批改后切到结果优先） */
+            /* 尚无批改内容：输入区直接占满单页画布，去掉冗余底部占位分割栏 */
             <div className="flex h-full min-h-0 flex-col bg-background">
               <div className="flex-1 min-h-0 [&>*]:!h-full [&>*]:!min-h-0 [&>*]:!basis-auto [&>*]:!flex-none">
                 {inputPanel}
               </div>
-              <div className="flex shrink-0 items-center gap-2 border-t border-border/40 px-4 py-2.5 text-xs text-muted-foreground/60 select-none">
-                <Pen size={13} className="shrink-0" />
-                <span>{t('essay_grading:result_section.title')}</span>
-                <span className="ml-auto text-muted-foreground/40">{t('essay_grading:result_empty.title')}</span>
-              </div>
+              <span className="sr-only">{t('essay_grading:result_empty.title')}</span>
             </div>
           ) : inputCollapsed ? (
             <div className="flex h-full min-h-0 flex-col bg-background">

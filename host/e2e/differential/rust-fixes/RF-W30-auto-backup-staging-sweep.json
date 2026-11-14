@@ -1,0 +1,24 @@
+{
+  "id": "RF-W30-auto-backup-staging-sweep",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T15:30:00+08:00",
+  "title": "自动备份在持有租约后、创建新暂存目录前，删除被中断运行遗留的 auto-backup-staging-* 目录",
+  "rust": {
+    "file": "src-tauri/src/backup_config.rs",
+    "line": 239,
+    "behavior": "create_auto_backup_staging_dir 用 tempfile::TempDir 在活动数据槽下建 auto-backup-staging-XXXX，只靠 Drop 清理；应用退出（进程直接结束，spawn_blocking 线程不 unwind）、崩溃或被杀时 Drop 不执行，目录连同未剥离的原始备份（数据库副本、最多 16 GiB 资产、crypto/ 密钥材料）永久留在槽内，之后的运行也不会清理"
+  },
+  "fix": {
+    "files": ["host/plugins/backup/src/auto-backup-scheduler.ts", "host/platform/settings/backup-config.ts"],
+    "behavior": "performAttempt 拿到数据治理租约（同进程队列 + 跨进程锁）并确定应用数据根目录后，删除该目录下所有名字以 auto-backup-staging- 开头的子目录（普通文件不动），每个记 info 日志，删除失败记 warn 并继续，然后再建本轮暂存目录"
+  },
+  "evidence": "backup_config.rs:415-416 的注释说明暂存目录装的是含 crypto/ 的原始备份，正因为敏感才不能放到自定义目录；一次中断就把这份副本永久留在数据槽里，占用与一次完整备份相同的磁盘空间。auto-backup-staging- 前缀只由 create_auto_backup_staging_dir 使用，且清理在租约内进行（依赖 RF-W30-auto-backup-operation-guard 的跨进程锁），不会删到另一次正在运行的自动备份。",
+  "userVisible": "被中断的自动备份留下的暂存目录会在下一次自动备份时自动清除，释放磁盘空间；日志出现“[AutoBackup] 清理遗留暂存目录: <路径>”",
+  "dataCompat": "只删除自动备份专用的临时目录，不触及数据库、资产或已发布的 ZIP",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    { "file": "host/plugins/backup/tests/auto-backup-scheduler.test.ts", "name": "RF-W30-auto-backup-staging-sweep: staging directories left by an interrupted run are removed under the guard before the next attempt" }
+  ]
+}

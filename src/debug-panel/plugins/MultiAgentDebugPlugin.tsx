@@ -24,7 +24,6 @@ import {
   Users,
   Chat,
   Folder,
-  ArrowClockwise,
   CheckCircle,
   WarningCircle,
   Clock,
@@ -37,147 +36,20 @@ import {
 } from '@phosphor-icons/react';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
 import { useWorkspaceStore } from '../../features/chat/workspace/workspaceStore';
-import { WORKSPACE_EVENTS } from '../../features/chat/workspace/events';
-import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import type {
   WorkspaceMessage,
   WorkspaceAgent,
 } from '../../features/chat/workspace/types';
 import { sessionManager } from '../../features/chat/core/session/sessionManager';
-import type { BackendEvent } from '../../features/chat/core/middleware/eventBridge';
 import { debugLog } from '../debugMasterSwitch';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { clearMultiAgentLogs, getMultiAgentLogs, logAdded, logMultiAgent, logsCleared, type MultiAgentLogEntry } from './multiAgent/log';
+import { PRESET_PROMPTS } from './multiAgent/presets';
+import { useMultiAgentWorkspaceListeners } from './multiAgent/useWorkspaceListeners';
 
-function isTauriEnvironment(): boolean {
-  return (
-    typeof window !== 'undefined' &&
-    Boolean((window as any).__TAURI_INTERNALS__)
-  );
-}
-
-function normalizeToolName(name: string): string {
-  return name
-    .replace('builtin-', '')
-    .replace('mcp.tools.', '')
-    .replace(/^.*\./, '');
-}
-
-// =============================================================================
-// 类型定义
-// =============================================================================
-
-interface MultiAgentLogEntry {
-  id: string;
-  timestamp: string;
-  type: 'workspace' | 'agent' | 'message' | 'error' | 'system' | 'block';
-  action: string;
-  data: Record<string, unknown>;
-  severity: 'info' | 'success' | 'warning' | 'error';
-}
-
-interface PresetPrompt {
-  id: string;
-  name: string;
-  description: string;
-  prompt: string;
-}
-
-// =============================================================================
-// 预设调试 Prompt
-// =============================================================================
-
-const PRESET_PROMPTS: PresetPrompt[] = [
-  {
-    id: 'create-workspace',
-    name: '创建工作区',
-    description: '创建一个新的多 Agent 工作区',
-    prompt: '请创建一个工作区，用于协作完成任务。',
-  },
-  {
-    id: 'create-research-agent',
-    name: '创建研究 Agent',
-    description: '创建一个负责调研的 Worker Agent',
-    prompt: '请在当前工作区中创建一个研究员 Agent（skill_id: research），让它帮我调研"人工智能在教育领域的应用"这个主题。',
-  },
-  {
-    id: 'create-writer-agent',
-    name: '创建写作 Agent',
-    description: '创建一个负责写作的 Worker Agent',
-    prompt: '请在当前工作区中创建一个写作 Agent（skill_id: writer），让它根据调研结果撰写一篇文章。',
-  },
-  {
-    id: 'full-workflow',
-    name: '完整工作流测试',
-    description: '创建工作区并启动完整的多 Agent 协作流程',
-    prompt: `请帮我完成以下任务：
-1. 创建一个名为"AI教育研究"的工作区
-2. 创建一个研究员 Agent，让它调研"人工智能在教育领域的最新应用"
-3. 等待研究完成后，创建一个写作 Agent 来整理研究结果
-请开始执行。`,
-  },
-  {
-    id: 'query-workspace',
-    name: '查询工作区状态',
-    description: '查询当前工作区的 Agent 和消息',
-    prompt: '请查询当前工作区的状态，包括所有 Agent 和最近的消息。',
-  },
-];
-
-// =============================================================================
-// 日志存储
-// =============================================================================
-
-const MAX_LOGS = 500;
-let multiAgentLogs: MultiAgentLogEntry[] = [];
+export { clearMultiAgentLogs, getMultiAgentLogs, logMultiAgent } from './multiAgent/log';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
-
-export function logMultiAgent(
-  type: MultiAgentLogEntry['type'],
-  action: string,
-  data: Record<string, unknown>,
-  severity: MultiAgentLogEntry['severity'] = 'info'
-): void {
-  const entry: MultiAgentLogEntry = {
-    id: `ma-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    timestamp: new Date().toISOString(),
-    type,
-    action,
-    data,
-    severity,
-  };
-
-  multiAgentLogs.push(entry);
-  if (multiAgentLogs.length > MAX_LOGS) {
-    multiAgentLogs = multiAgentLogs.slice(-MAX_LOGS);
-  }
-
-  // 派发自定义事件
-  window.dispatchEvent(
-    new CustomEvent('multi_agent_log', { detail: entry })
-  );
-
-  // 控制台输出
-  const prefix = `[MultiAgent:${type}]`;
-  const logFn = severity === 'error' ? console.error : severity === 'warning' ? console.warn : console.log;
-  logFn(prefix, action, data);
-}
-
-export function clearMultiAgentLogs(): void {
-  multiAgentLogs = [];
-  window.dispatchEvent(new CustomEvent('multi_agent_logs_cleared'));
-}
-
-export function getMultiAgentLogs(): MultiAgentLogEntry[] {
-  return [...multiAgentLogs];
-}
-
-// 全局注入
-(window as any).__multiAgentDebug = {
-  log: logMultiAgent,
-  clear: clearMultiAgentLogs,
-  getLogs: getMultiAgentLogs,
-};
 
 // =============================================================================
 // 组件
@@ -192,8 +64,6 @@ const MultiAgentDebugPlugin: React.FC<DebugPanelPluginProps> = ({
   const [isExecuting, setIsExecuting] = useState(false);
   const [activeTab, setActiveTab] = useState<'monitor' | 'prompts' | 'logs'>('monitor');
   const logsEndRef = useRef<HTMLDivElement>(null);
-  const toolCallMapRef = useRef(new Map<string, { toolName: string; messageId?: string }>());
-  const toolEventUnlistenMapRef = useRef(new Map<string, UnlistenFn>());
 
   // 从 Store 获取工作区状态
   const {
@@ -209,8 +79,7 @@ const MultiAgentDebugPlugin: React.FC<DebugPanelPluginProps> = ({
   useEffect(() => {
     if (!isActive) return;
 
-    const handleLogAdded = (e: Event) => {
-      const entry = (e as CustomEvent<MultiAgentLogEntry>).detail;
+    const handleLogAdded = (entry: MultiAgentLogEntry) => {
       setLogs((prev) => [...prev, entry]);
     };
 
@@ -221,171 +90,16 @@ const MultiAgentDebugPlugin: React.FC<DebugPanelPluginProps> = ({
     // 初始加载
     setLogs(getMultiAgentLogs());
 
-    window.addEventListener('multi_agent_log', handleLogAdded);
-    window.addEventListener('multi_agent_logs_cleared', handleLogsCleared);
+    const unsubscribeAdded = logAdded.subscribe(handleLogAdded);
+    const unsubscribeCleared = logsCleared.subscribe(handleLogsCleared);
 
     return () => {
-      window.removeEventListener('multi_agent_log', handleLogAdded);
-      window.removeEventListener('multi_agent_logs_cleared', handleLogsCleared);
+      unsubscribeAdded();
+      unsubscribeCleared();
     };
   }, [isActive]);
 
-  // 监听工作区事件并记录日志
-  useEffect(() => {
-    if (!isActive) return;
-    if (!isTauriEnvironment()) return;
-
-    const unlistenFns: UnlistenFn[] = [];
-    let unsubscribeSessionEvents: (() => void) | null = null;
-
-    const buildToolCallKey = (sessionId: string, blockId: string) => `${sessionId}:${blockId}`;
-
-    const unregisterToolEventListener = (sessionId: string) => {
-      const existing = toolEventUnlistenMapRef.current.get(sessionId);
-      if (existing) {
-        existing();
-        toolEventUnlistenMapRef.current.delete(sessionId);
-      }
-    };
-
-    const registerToolEventListener = async (sessionId: string) => {
-      if (!sessionId || toolEventUnlistenMapRef.current.has(sessionId)) return;
-
-      const toolEventChannel = `chat_v2_event_${sessionId}`;
-      const unlistenToolEvents = await listen(
-        toolEventChannel,
-        (event) => {
-          const backendEvent = event.payload as BackendEvent;
-          if (backendEvent.type !== 'tool_call') return;
-
-          const toolPayload = backendEvent.payload as { toolName?: string; toolInput?: unknown } | undefined;
-          const blockId = backendEvent.blockId ?? '';
-
-          if (backendEvent.phase === 'start') {
-            const toolName = toolPayload?.toolName ?? '';
-            const normalizedToolName = normalizeToolName(toolName);
-            if (!normalizedToolName.startsWith('workspace_') && normalizedToolName !== 'subagent_call') return;
-
-            if (blockId) {
-              toolCallMapRef.current.set(buildToolCallKey(sessionId, blockId), {
-                toolName: normalizedToolName,
-                messageId: backendEvent.messageId,
-              });
-            }
-
-            logMultiAgent('workspace', 'TOOL_CALL_START', {
-              toolName: normalizedToolName,
-              blockId,
-              messageId: backendEvent.messageId,
-              toolInput: toolPayload?.toolInput,
-              sessionId,
-            }, 'info');
-            return;
-          }
-
-          const cached = blockId ? toolCallMapRef.current.get(buildToolCallKey(sessionId, blockId)) : undefined;
-          const toolName = cached?.toolName ?? normalizeToolName(toolPayload?.toolName ?? '');
-          if (!toolName.startsWith('workspace_') && toolName !== 'subagent_call') return;
-
-          if (backendEvent.phase === 'end') {
-            logMultiAgent('workspace', 'TOOL_CALL_END', {
-              toolName,
-              blockId,
-              result: backendEvent.result,
-              sessionId,
-            }, 'success');
-            if (blockId) toolCallMapRef.current.delete(buildToolCallKey(sessionId, blockId));
-          } else if (backendEvent.phase === 'error') {
-            logMultiAgent('error', 'TOOL_CALL_ERROR', {
-              toolName,
-              blockId,
-              error: backendEvent.error,
-              sessionId,
-            }, 'error');
-            if (blockId) toolCallMapRef.current.delete(buildToolCallKey(sessionId, blockId));
-          }
-        }
-      );
-
-      toolEventUnlistenMapRef.current.set(sessionId, unlistenToolEvents);
-    };
-
-    const setupListeners = async () => {
-      // 消息事件
-      const unlistenMessage = await listen(
-        WORKSPACE_EVENTS.MESSAGE_RECEIVED,
-        (event) => {
-          logMultiAgent('message', 'MESSAGE_RECEIVED', event.payload as Record<string, unknown>, 'info');
-        }
-      );
-      unlistenFns.push(unlistenMessage);
-
-      // Agent 加入
-      const unlistenAgentJoined = await listen(
-        WORKSPACE_EVENTS.AGENT_JOINED,
-        (event) => {
-          logMultiAgent('agent', 'AGENT_JOINED', event.payload as Record<string, unknown>, 'success');
-        }
-      );
-      unlistenFns.push(unlistenAgentJoined);
-
-      // Agent 状态变更
-      const unlistenAgentStatus = await listen(
-        WORKSPACE_EVENTS.AGENT_STATUS_CHANGED,
-        (event) => {
-          logMultiAgent('agent', 'AGENT_STATUS_CHANGED', event.payload as Record<string, unknown>, 'info');
-        }
-      );
-      unlistenFns.push(unlistenAgentStatus);
-
-      // Worker 准备启动
-      const unlistenWorkerReady = await listen(
-        WORKSPACE_EVENTS.WORKER_READY,
-        (event) => {
-          logMultiAgent('agent', 'WORKER_READY', event.payload as Record<string, unknown>, 'success');
-        }
-      );
-      unlistenFns.push(unlistenWorkerReady);
-
-      // 工作区关闭
-      const unlistenClosed = await listen(
-        WORKSPACE_EVENTS.WORKSPACE_CLOSED,
-        (event) => {
-          logMultiAgent('workspace', 'WORKSPACE_CLOSED', event.payload as Record<string, unknown>, 'warning');
-        }
-      );
-      unlistenFns.push(unlistenClosed);
-
-      // 🆕 监听工具调用事件（捕获 workspace_* 工具调用）
-      const sessionIds = sessionManager.getAllSessionIds();
-      await Promise.all(sessionIds.map(registerToolEventListener));
-
-      unsubscribeSessionEvents = sessionManager.subscribe((event) => {
-        if (event.type === 'session-created') {
-          registerToolEventListener(event.sessionId);
-        } else if (event.type === 'session-destroyed' || event.type === 'session-evicted') {
-          unregisterToolEventListener(event.sessionId);
-          toolCallMapRef.current.forEach((_value, key) => {
-            if (key.startsWith(`${event.sessionId}:`)) {
-              toolCallMapRef.current.delete(key);
-            }
-          });
-        }
-      });
-    };
-
-    setupListeners();
-
-    return () => {
-      unlistenFns.forEach((fn) => fn());
-      if (unsubscribeSessionEvents) {
-        unsubscribeSessionEvents();
-      }
-      toolEventUnlistenMapRef.current.forEach((fn) => fn());
-      toolEventUnlistenMapRef.current.clear();
-      toolCallMapRef.current.clear();
-    };
-  }, [isActive]);
+  useMultiAgentWorkspaceListeners(isActive);
 
   // 🆕 P37: workspace_status 块持久化日志已直接注入到源代码中
   // - toolCall.ts: FRONTEND_CREATE_WORKSPACE_STATUS_BLOCK, UPSERT_WORKSPACE_STATUS_BLOCK, UPSERT_WORKSPACE_STATUS_BLOCK_SUCCESS/ERROR
@@ -478,54 +192,59 @@ const MultiAgentDebugPlugin: React.FC<DebugPanelPluginProps> = ({
   }, []);
 
   // 刷新工作区状态
-  const handleRefresh = useCallback(async () => {
-    if (!currentWorkspaceId) return;
+  useEffect(() => {
+    if (!visible || !isActive || !currentWorkspaceId) return;
     const currentSessionId = sessionManager.getCurrentSessionId();
     if (!currentSessionId) return;
 
-    logMultiAgent('system', 'REFRESH_START', { workspaceId: currentWorkspaceId }, 'info');
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const { listAgents, listMessages } = await import('../../features/chat/workspace/api');
+        const [agentsData, messagesData] = await Promise.all([
+          listAgents(currentSessionId, currentWorkspaceId),
+          listMessages(currentSessionId, currentWorkspaceId),
+        ]);
 
-    try {
-      const { listAgents, listMessages } = await import('../../features/chat/workspace/api');
-      const [agentsData, messagesData] = await Promise.all([
-        listAgents(currentSessionId, currentWorkspaceId),
-        listMessages(currentSessionId, currentWorkspaceId),
-      ]);
+        if (cancelled || useWorkspaceStore.getState().currentWorkspaceId !== currentWorkspaceId) return;
 
-      // 转换 AgentInfo[] -> WorkspaceAgent[]
-      const convertedAgents: WorkspaceAgent[] = agentsData.map((a) => ({
-        sessionId: a.session_id,
-        workspaceId: currentWorkspaceId,
-        role: a.role as WorkspaceAgent['role'],
-        skillId: a.skill_id,
-        status: a.status as WorkspaceAgent['status'],
-        joinedAt: a.joined_at,
-        lastActiveAt: a.last_active_at,
-      }));
+        // 转换 AgentInfo[] -> WorkspaceAgent[]
+        const convertedAgents: WorkspaceAgent[] = agentsData.map((a) => ({
+          sessionId: a.session_id,
+          workspaceId: currentWorkspaceId,
+          role: a.role as WorkspaceAgent['role'],
+          skillId: a.skill_id,
+          status: a.status as WorkspaceAgent['status'],
+          joinedAt: a.joined_at,
+          lastActiveAt: a.last_active_at,
+        }));
 
-      // 转换 MessageInfo[] -> WorkspaceMessage[]
-      const convertedMessages: WorkspaceMessage[] = messagesData.map((m) => ({
-        id: m.id,
-        workspaceId: currentWorkspaceId,
-        senderSessionId: m.sender_session_id,
-        targetSessionId: m.target_session_id,
-        messageType: m.message_type as WorkspaceMessage['messageType'],
-        content: m.content,
-        status: m.status as WorkspaceMessage['status'],
-        createdAt: m.created_at,
-      }));
+        // 转换 MessageInfo[] -> WorkspaceMessage[]
+        const convertedMessages: WorkspaceMessage[] = messagesData.map((m) => ({
+          id: m.id,
+          workspaceId: currentWorkspaceId,
+          senderSessionId: m.sender_session_id,
+          targetSessionId: m.target_session_id,
+          messageType: m.message_type as WorkspaceMessage['messageType'],
+          content: m.content,
+          status: m.status as WorkspaceMessage['status'],
+          createdAt: m.created_at,
+        }));
 
-      useWorkspaceStore.getState().setAgents(convertedAgents);
-      useWorkspaceStore.getState().setMessages(convertedMessages);
+        useWorkspaceStore.getState().setAgents(convertedAgents);
+        useWorkspaceStore.getState().setMessages(convertedMessages);
 
-      logMultiAgent('system', 'REFRESH_SUCCESS', {
-        agentsCount: convertedAgents.length,
-        messagesCount: convertedMessages.length,
-      }, 'success');
-    } catch (err) {
-      logMultiAgent('system', 'REFRESH_ERROR', { error: String(err) }, 'error');
-    }
-  }, [currentWorkspaceId]);
+        logMultiAgent('system', 'REFRESH_SUCCESS', {
+          agentsCount: convertedAgents.length,
+          messagesCount: convertedMessages.length,
+        }, 'success');
+      } catch (err) {
+        if (!cancelled) logMultiAgent('system', 'REFRESH_ERROR', { error: String(err) }, 'error');
+      }
+    };
+    void refresh();
+    return () => { cancelled = true; };
+  }, [visible, isActive, currentWorkspaceId]);
 
   if (!visible || !isActive) return null;
 
@@ -591,9 +310,6 @@ const MultiAgentDebugPlugin: React.FC<DebugPanelPluginProps> = ({
           )}
         </div>
         <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" className="[@media(pointer:coarse)]:min-h-11" onClick={handleRefresh} disabled={!currentWorkspaceId}>
-            <ArrowClockwise size={16} />
-          </Button>
           <Button size="sm" variant="outline" className="[@media(pointer:coarse)]:min-h-11" onClick={handleCopyLogs}>
             <Copy size={16} className="mr-1" />
             复制日志

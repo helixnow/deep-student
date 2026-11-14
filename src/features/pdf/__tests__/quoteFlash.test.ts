@@ -1,10 +1,39 @@
-import { describe, expect, it } from 'vitest';
-import { findQuoteSpans } from '../quoteFlash';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { findQuoteSpans, flashQuoteOnPage } from '../quoteFlash';
+afterEach(() => vi.useRealTimers());
 
 const spans = (...texts: string[]) => texts.map((text) => {
   const span = document.createElement('span');
   span.textContent = text;
   return span;
+});
+
+describe('quote flash cancellation', () => {
+  it('cancels text-layer polling immediately without highlighting a superseded page', async () => {
+    vi.useFakeTimers();
+    const root = document.createElement('div');
+    const controller = new AbortController();
+    const promise = flashQuoteOnPage(root, 12, 'original quote', 3000, controller.signal);
+    expect(vi.getTimerCount()).toBe(1);
+    controller.abort();
+    expect(vi.getTimerCount()).toBe(0);
+    await expect(promise).resolves.toBe(false);
+  });
+
+  it('clears the pulse class and timer immediately when its viewer is disposed', async () => {
+    vi.useFakeTimers();
+    const root = document.createElement('div');
+    root.innerHTML = '<div data-page-number="1"><div class="textLayer"><span>original quote</span></div></div>';
+    const span = root.querySelector('span')!;
+    span.scrollIntoView = vi.fn();
+    const controller = new AbortController();
+    expect(await flashQuoteOnPage(root, 1, 'original quote', 3000, controller.signal)).toBe(true);
+    expect(span.classList.contains('ds-pdf-quote-flash')).toBe(true);
+    controller.abort();
+    await Promise.resolve();
+    expect(span.classList.contains('ds-pdf-quote-flash')).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+  });
 });
 
 describe('findQuoteSpans', () => {

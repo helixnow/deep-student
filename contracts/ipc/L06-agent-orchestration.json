@@ -1,0 +1,2209 @@
+{
+  "lane": "L06-agent-orchestration",
+  "generator": "deep-student/contracts-extract@1.6.0",
+  "commands": [
+    {
+      "name": "chat_v2_automation_cancel_run",
+      "lane": "L06-agent-orchestration",
+      "rust": {
+        "file": "crates/dstu-agent/src/chat_v2/automations.rs",
+        "line": 4657,
+        "fn": "chat_v2_automation_cancel_run"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "runId",
+          "rustName": "run_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_storage::database::Database>"
+        }
+      ],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "chat_v2_automation_create",
+      "lane": "L06-agent-orchestration",
+      "rust": {
+        "file": "crates/dstu-agent/src/chat_v2/automations.rs",
+        "line": 4435,
+        "fn": "chat_v2_automation_create"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "request",
+          "rustName": "request",
+          "schema": {
+            "$ref": "#/$defs/AutomationCreateCommandRequest"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_storage::database::Database>"
+        }
+      ],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "chat_v2_automation_delete",
+      "lane": "L06-agent-orchestration",
+      "rust": {
+        "file": "crates/dstu-agent/src/chat_v2/automations.rs",
+        "line": 4816,
+        "fn": "chat_v2_automation_delete"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "automationId",
+          "rustName": "automation_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "expectedVersion",
+          "rustName": "expected_version",
+          "schema": {
+            "type": "integer",
+            "x-int": "u64",
+            "minimum": 0
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_storage::database::Database>"
+        }
+      ],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "chat_v2_automation_list",
+      "lane": "L06-agent-orchestration",
+      "rust": {
+        "file": "crates/dstu-agent/src/chat_v2/automations.rs",
+        "line": 4424,
+        "fn": "chat_v2_automation_list"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_storage::database::Database>"
+        }
+      ],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "chat_v2_automation_retry_run",
+      "lane": "L06-agent-orchestration",
+      "rust": {
+        "file": "crates/dstu-agent/src/chat_v2/automations.rs",
+        "line": 4641,
+        "fn": "chat_v2_automation_retry_run"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "runId",
+          "rustName": "run_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_storage::database::Database>"
+        }
+      ],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "chat_v2_automation_run_now",
+      "lane": "L06-agent-orchestration",
+      "rust": {
+        "file": "crates/dstu-agent/src/chat_v2/automations.rs",
+        "line": 4959,
+        "fn": "chat_v2_automation_run_now"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "automationId",
+          "rustName": "automation_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "expectedVersion",
+          "rustName": "expected_version",
+          "schema": {
+            "type": "integer",
+            "x-int": "u64",
+            "minimum": 0
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_storage::database::Database>"
+        }
+      ],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "chat_v2_automation_runs",
+      "lane": "L06-agent-orchestration",
+      "rust": {
+        "file": "crates/dstu-agent/src/chat_v2/automations.rs",
+        "line": 4553,
+        "fn": "chat_v2_automation_runs"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "automationId",
+          "rustName": "automation_id",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "limit",
+          "rustName": "limit",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "usize",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_storage::database::Database>"
+        }
+      ],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "chat_v2_automation_set_background_enabled",
+      "lane": "L06-agent-orchestration",
+      "rust": {
+        "file": "crates/dstu-agent/src/chat_v2/automations.rs",
+        "line": 4794,
+        "fn": "chat_v2_automation_set_background_enabled"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "enabled",
+          "rustName": "enabled",
+          "schema": {
+            "type": "boolean"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_storage::database::Database>"
+        }
+      ],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "chat_v2_automation_set_enabled",
+      "lane": "L06-agent-orchestration",
+      "rust": {
+        "file": "crates/dstu-agent/src/chat_v2/automations.rs",
+        "line": 4474,
+        "fn": "chat_v2_automation_set_enabled"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "automationId",
+          "rustName": "automation_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "expectedVersion",
+          "rustName": "expected_version",
+          "schema": {
+            "type": "integer",
+            "x-int": "u64",
+            "minimum": 0
+          },
+          "optional": false
+        },
+        {
+          "key": "enabled",
+          "rustName": "enabled",
+          "schema": {
+            "type": "boolean"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_storage::database::Database>"
+        }
+      ],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "chat_v2_automation_summary",
+      "lane": "L06-agent-orchestration",
+      "rust": {
+        "file": "crates/dstu-agent/src/chat_v2/automations.rs",
+        "line": 4673,
+        "fn": "chat_v2_automation_summary"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_storage::database::Database>"
+        }
+      ],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "chat_v2_automation_update",
+      "lane": "L06-agent-orchestration",
+      "rust": {
+        "file": "crates/dstu-agent/src/chat_v2/automations.rs",
+        "line": 4498,
+        "fn": "chat_v2_automation_update"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "request",
+          "rustName": "request",
+          "schema": {
+            "$ref": "#/$defs/AutomationUpdateCommandRequest"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_storage::database::Database>"
+        }
+      ],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "chat_v2_background_subagent",
+      "lane": "L06-agent-orchestration",
+      "source": "host/plugins/agent-orchestration/src/plugin.ts",
+      "async": false,
+      "args": [
+        {
+          "key": "sessionId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "blockId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [],
+      "result": {
+        "type": "boolean"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "chat_v2_super_deliver_inbox",
+      "lane": "L06-agent-orchestration",
+      "rust": {
+        "file": "crates/dstu-agent/src/chat_v2/super_session/commands.rs",
+        "line": 58,
+        "fn": "chat_v2_super_deliver_inbox"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "request",
+          "rustName": "request",
+          "schema": {
+            "$ref": "#/$defs/DeliverInboxRequest"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "window"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_agent::chat_v2::database::ChatV2Database>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_agent::chat_v2::state::ChatV2State>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_agent::chat_v2::pipeline::ChatV2Pipeline>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_agent::chat_v2::workspace::coordinator::WorkspaceCoordinator>"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/DeliverOutcome"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "super_session_ensure",
+      "lane": "L06-agent-orchestration",
+      "rust": {
+        "file": "crates/dstu-agent/src/chat_v2/super_session/commands.rs",
+        "line": 32,
+        "fn": "super_session_ensure"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/SuperSessionState"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "super_session_get_settings",
+      "lane": "L06-agent-orchestration",
+      "rust": {
+        "file": "crates/dstu-agent/src/chat_v2/super_session/commands.rs",
+        "line": 42,
+        "fn": "super_session_get_settings"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/SuperSessionSettings"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "super_session_get_state",
+      "lane": "L06-agent-orchestration",
+      "rust": {
+        "file": "crates/dstu-agent/src/chat_v2/super_session/commands.rs",
+        "line": 17,
+        "fn": "super_session_get_state"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/SuperSessionState"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "super_session_set_enabled",
+      "lane": "L06-agent-orchestration",
+      "rust": {
+        "file": "crates/dstu-agent/src/chat_v2/super_session/commands.rs",
+        "line": 23,
+        "fn": "super_session_set_enabled"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "enabled",
+          "rustName": "enabled",
+          "schema": {
+            "type": "boolean"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/SuperSessionState"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "super_session_set_settings",
+      "lane": "L06-agent-orchestration",
+      "rust": {
+        "file": "crates/dstu-agent/src/chat_v2/super_session/commands.rs",
+        "line": 48,
+        "fn": "super_session_set_settings"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "settings",
+          "rustName": "settings",
+          "schema": {
+            "$ref": "#/$defs/SuperSessionSettings__De"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    }
+  ],
+  "events": [
+    {
+      "name": "chat_v2://automations_changed",
+      "dynamic": false,
+      "payload": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "automationId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "automationId"
+        ],
+        "additionalProperties": false
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-agent/src/chat_v2/automations.rs",
+          "line": 1852,
+          "fn": "emit_automations_changed",
+          "lane": "L06-agent-orchestration",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "chat_v2_automation_run_completed",
+      "dynamic": false,
+      "payload": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "automationId": {
+                "type": "string"
+              },
+              "automationName": {
+                "type": "string"
+              },
+              "sessionId": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "x-option": "null"
+              },
+              "runId": {
+                "type": "string"
+              },
+              "attempt": {
+                "type": "integer",
+                "x-int": "i64"
+              },
+              "status": {
+                "type": "string"
+              },
+              "summary": {
+                "type": "string"
+              },
+              "heartbeat": {
+                "type": "boolean"
+              },
+              "osNotificationDelivered": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "automationId",
+              "automationName",
+              "sessionId",
+              "runId",
+              "attempt",
+              "status",
+              "summary",
+              "heartbeat",
+              "osNotificationDelivered"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "automationId": {
+                "type": "string"
+              },
+              "automationName": {
+                "type": "string"
+              },
+              "sessionId": {
+                "x-rust": "serde_json::Value"
+              },
+              "runId": {
+                "type": "string"
+              },
+              "attempt": {
+                "type": "integer",
+                "x-int": "i64"
+              },
+              "status": {
+                "type": "string"
+              },
+              "summary": {
+                "type": "string"
+              },
+              "heartbeat": {
+                "type": "boolean"
+              },
+              "osNotificationDelivered": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "automationId",
+              "automationName",
+              "sessionId",
+              "runId",
+              "attempt",
+              "status",
+              "summary",
+              "heartbeat",
+              "osNotificationDelivered"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "x-note": "emitters send different payload shapes"
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-agent/src/chat_v2/automations.rs",
+          "line": 4100,
+          "fn": "execute_agent_turn_automation",
+          "lane": "L06-agent-orchestration",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-agent/src/chat_v2/automations.rs",
+          "line": 4203,
+          "fn": "finalize_heartbeat_idle_skip",
+          "lane": "L06-agent-orchestration",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "chat_v2_session_{}",
+      "dynamic": true,
+      "payload": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "eventType": {
+                "type": "string"
+              },
+              "messageId": {
+                "type": "string"
+              },
+              "variantId": {
+                "type": "string"
+              },
+              "remainingCount": {
+                "type": "integer",
+                "x-int": "usize",
+                "minimum": 0
+              },
+              "newActiveVariantId": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "x-option": "null"
+              }
+            },
+            "required": [
+              "eventType",
+              "messageId",
+              "variantId",
+              "remainingCount",
+              "newActiveVariantId"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "sessionId": {
+                "type": "string"
+              },
+              "eventType": {
+                "type": "string"
+              },
+              "messageId": {
+                "type": "string"
+              },
+              "retryAttempt": {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              "retryMax": {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              "timestamp": {
+                "type": "integer",
+                "x-int": "i64"
+              }
+            },
+            "required": [
+              "sessionId",
+              "eventType",
+              "messageId",
+              "retryAttempt",
+              "retryMax",
+              "timestamp"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "x-rust": "serde_json::Value"
+          }
+        ],
+        "x-note": "emitters send different payload shapes"
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-agent/src/chat_v2/goal/mod.rs",
+          "line": 28,
+          "fn": "emit_goal_updated",
+          "lane": "L04-chat-session",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-agent/src/chat_v2/handlers/goal_handlers.rs",
+          "line": 39,
+          "fn": "emit_goal_updated",
+          "lane": "L04-chat-session",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-agent/src/chat_v2/handlers/variant_handlers.rs",
+          "line": 368,
+          "fn": "delete_variant_impl",
+          "lane": "L04-chat-session",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-agent/src/chat_v2/tools/goal_executor.rs",
+          "line": 154,
+          "fn": "emit_goal_updated",
+          "lane": "L06-agent-orchestration",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-llm/src/llm_manager/model2_pipeline.rs",
+          "line": 5152,
+          "fn": "emit_inner_retry_progress",
+          "lane": "L02-llm-manager",
+          "method": "emit",
+          "note": "receiver `sink` type not inferred; accepted because the event name is static"
+        }
+      ]
+    },
+    {
+      "name": "session_management_change",
+      "dynamic": false,
+      "payload": {
+        "type": "object",
+        "properties": {
+          "tool": {
+            "type": "string"
+          },
+          "sessionId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "tool",
+          "sessionId"
+        ],
+        "additionalProperties": false
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-agent/src/chat_v2/tools/session_executor.rs",
+          "line": 2251,
+          "fn": "execute",
+          "lane": "L06-agent-orchestration",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "super_session_changed",
+      "dynamic": false,
+      "payload": {
+        "$ref": "#/$defs/ChangedPayload"
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-agent/src/chat_v2/super_session/state.rs",
+          "line": 683,
+          "fn": "emit_changed",
+          "lane": "L06-agent-orchestration",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "super_session_inbox_changed",
+      "dynamic": false,
+      "payload": {
+        "$ref": "#/$defs/InboxChangedPayload"
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-agent/src/chat_v2/super_session/state.rs",
+          "line": 705,
+          "fn": "emit_inbox_changed",
+          "lane": "L06-agent-orchestration",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "todo://changed",
+      "dynamic": false,
+      "payload": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "source": {
+                "type": "string"
+              },
+              "action": {
+                "type": "string"
+              },
+              "entityIds": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "runId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "source",
+              "action",
+              "entityIds",
+              "runId"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "source": {
+                "type": "string"
+              },
+              "action": {
+                "type": "string"
+              },
+              "entityIds": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "source",
+              "action",
+              "entityIds"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "source": {
+                "type": "string"
+              },
+              "action": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "source",
+              "action"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "x-note": "emitters send different payload shapes"
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-agent/src/chat_v2/automations.rs",
+          "line": 2606,
+          "fn": "create_automation_todo",
+          "lane": "L06-agent-orchestration",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-vfs/src/vfs/todo_handlers.rs",
+          "line": 31,
+          "fn": "emit_todo_changed",
+          "lane": "L13-vfs-api",
+          "method": "emit"
+        },
+        {
+          "file": "src/chat_v2/tools/user_todo_executor.rs",
+          "line": 274,
+          "fn": "emit_todo_changed",
+          "lane": "L10-notes",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "workspace_worker_ready",
+      "dynamic": false,
+      "payload": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "workspace_id": {
+                "type": "string"
+              },
+              "agent_session_id": {
+                "type": "string"
+              },
+              "skill_id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "x-option": "null"
+              },
+              "restored": {
+                "type": "boolean"
+              },
+              "reminder": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "x-option": "null"
+              },
+              "runtime_managed": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "workspace_id",
+              "agent_session_id",
+              "skill_id",
+              "restored",
+              "reminder",
+              "runtime_managed"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "workspace_id": {
+                "type": "string"
+              },
+              "agent_session_id": {
+                "type": "string"
+              },
+              "skill_id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "x-option": "null"
+              },
+              "run_id": {
+                "type": "string"
+              },
+              "runtime_managed": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "workspace_id",
+              "agent_session_id",
+              "skill_id",
+              "run_id",
+              "runtime_managed"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "workspace_id": {
+                "type": "string"
+              },
+              "agent_session_id": {
+                "type": "string"
+              },
+              "skill_id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "x-option": "null"
+              },
+              "runtime_managed": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "workspace_id",
+              "agent_session_id",
+              "skill_id",
+              "runtime_managed"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "workspace_id": {
+                "type": "string"
+              },
+              "agent_session_id": {
+                "type": "string"
+              },
+              "skill_id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "x-option": "null"
+              }
+            },
+            "required": [
+              "workspace_id",
+              "agent_session_id",
+              "skill_id"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "x-note": "emitters send different payload shapes"
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-agent/src/chat_v2/handlers/workspace_handlers.rs",
+          "line": 840,
+          "fn": "workspace_create_agent",
+          "lane": "L04-chat-session",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-agent/src/chat_v2/handlers/workspace_handlers.rs",
+          "line": 2001,
+          "fn": "run_workspace_agent_backend",
+          "lane": "L04-chat-session",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-agent/src/chat_v2/handlers/workspace_handlers.rs",
+          "line": 2545,
+          "fn": "workspace_restore_executions",
+          "lane": "L04-chat-session",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-agent/src/chat_v2/tools/subagent_executor.rs",
+          "line": 712,
+          "fn": "execute_subagent_call_with_args",
+          "lane": "L06-agent-orchestration",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-agent/src/chat_v2/tools/workspace_executor.rs",
+          "line": 373,
+          "fn": "execute_create_agent",
+          "lane": "L05-agent-workspace",
+          "method": "emit"
+        }
+      ]
+    }
+  ],
+  "$defs": {
+    "AutomationActionType": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "notify",
+            "agent_turn"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "notify": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "notify"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "agent_turn": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "agent_turn"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "x-also-accepts": "externally tagged map form {\"<Variant>\": null}",
+      "x-rust": "dstu_agent::chat_v2::automations::AutomationActionType"
+    },
+    "AutomationCreateCommandRequest": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "schedule": {
+          "$ref": "#/$defs/AutomationScheduleCommandRequest"
+        },
+        "prompt": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "actionType": {
+          "$ref": "#/$defs/AutomationActionType"
+        },
+        "agentPrompt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "sessionMode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HeadlessSessionMode"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "modelId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "catchUpPolicy": {
+          "$ref": "#/$defs/CatchUpPolicy"
+        },
+        "maxRetries": {
+          "type": "integer",
+          "x-int": "u8",
+          "minimum": 0,
+          "maximum": 255
+        },
+        "retryBackoffSeconds": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "timeoutSeconds": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "trustedProfile": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TrustedAutomationProfile"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "name",
+        "schedule",
+        "prompt"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_agent::chat_v2::automations::AutomationCreateCommandRequest"
+    },
+    "AutomationRootAccess": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "read_only",
+            "read_write"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "read_only": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "read_only"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "read_write": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "read_write"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "x-also-accepts": "externally tagged map form {\"<Variant>\": null}",
+      "x-rust": "dstu_agent::chat_v2::automations::AutomationRootAccess"
+    },
+    "AutomationRuntimeRoot": {
+      "type": "object",
+      "properties": {
+        "rootId": {
+          "type": "string"
+        },
+        "access": {
+          "$ref": "#/$defs/AutomationRootAccess"
+        }
+      },
+      "required": [
+        "rootId",
+        "access"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_agent::chat_v2::automations::AutomationRuntimeRoot"
+    },
+    "AutomationScheduleCommandRequest": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/ScheduleKind"
+        },
+        "time": {
+          "type": "string"
+        },
+        "weekday": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u8",
+              "minimum": 0,
+              "maximum": 255
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "weekdays": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "x-int": "u8",
+                "minimum": 0,
+                "maximum": 255
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "dayOfMonth": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u8",
+              "minimum": 0,
+              "maximum": 255
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "intervalMinutes": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "date": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "timezone": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_agent::chat_v2::automations::AutomationScheduleCommandRequest"
+    },
+    "AutomationUpdateCommandRequest": {
+      "type": "object",
+      "properties": {
+        "automationId": {
+          "type": "string"
+        },
+        "expectedVersion": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "schedule": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AutomationScheduleCommandRequest"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "prompt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "actionType": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AutomationActionType"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "agentPrompt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null",
+          "x-serde-with": "deserialize_optional_nullable: present key → Some(Option<T>) (null → Some(None))"
+        },
+        "sessionMode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HeadlessSessionMode"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null",
+          "x-serde-with": "deserialize_optional_nullable: present key → Some(Option<T>) (null → Some(None))"
+        },
+        "modelId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null",
+          "x-serde-with": "deserialize_optional_nullable: present key → Some(Option<T>) (null → Some(None))"
+        },
+        "catchUpPolicy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CatchUpPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "maxRetries": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u8",
+              "minimum": 0,
+              "maximum": 255
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "retryBackoffSeconds": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u64",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "timeoutSeconds": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u64",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "trustedProfile": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TrustedAutomationProfile"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null",
+          "x-serde-with": "deserialize_optional_nullable: present key → Some(Option<T>) (null → Some(None))"
+        }
+      },
+      "required": [
+        "automationId",
+        "expectedVersion"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_agent::chat_v2::automations::AutomationUpdateCommandRequest"
+    },
+    "CatchUpPolicy": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "skip",
+            "run_once",
+            "catch_up_all"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "skip": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "skip"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "run_once": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "run_once"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "catch_up_all": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "catch_up_all"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "x-also-accepts": "externally tagged map form {\"<Variant>\": null}",
+      "x-rust": "dstu_agent::chat_v2::automations::CatchUpPolicy"
+    },
+    "ChangedPayload": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "sessionId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "enabled",
+        "sessionId"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_agent::chat_v2::super_session::state::ChangedPayload"
+    },
+    "DeliverInboxRequest": {
+      "type": "object",
+      "properties": {
+        "sessionId": {
+          "type": "string"
+        },
+        "userMessageId": {
+          "type": "string"
+        },
+        "assistantMessageId": {
+          "type": "string"
+        },
+        "options": {
+          "$ref": "_shared.json#/$defs/SendOptions"
+        },
+        "force": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "sessionId",
+        "userMessageId",
+        "assistantMessageId"
+      ],
+      "x-rust": "dstu_agent::chat_v2::super_session::inbox::DeliverInboxRequest"
+    },
+    "DeliverOutcome": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "const": "started"
+            },
+            "userMessage": {
+              "$ref": "#/$defs/DeliveredUserMessage"
+            },
+            "assistantMessageId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "userMessage",
+            "assistantMessageId"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "const": "empty"
+            }
+          },
+          "required": [
+            "status"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "const": "busy"
+            }
+          },
+          "required": [
+            "status"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "const": "disabled"
+            }
+          },
+          "required": [
+            "status"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "const": "paused"
+            },
+            "autoTurns": {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            }
+          },
+          "required": [
+            "status",
+            "autoTurns"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "x-rust": "dstu_agent::chat_v2::super_session::inbox::DeliverOutcome"
+    },
+    "DeliveredUserMessage": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "content": {
+          "type": "string"
+        },
+        "timestampMs": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "inboundOrigin": {
+          "x-rust": "serde_json::Value"
+        }
+      },
+      "required": [
+        "id",
+        "content",
+        "timestampMs",
+        "inboundOrigin"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_agent::chat_v2::super_session::inbox::DeliveredUserMessage"
+    },
+    "HeadlessSessionMode": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "isolated",
+            "named"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "isolated": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "isolated"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "named": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "named"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "x-also-accepts": "externally tagged map form {\"<Variant>\": null}",
+      "x-rust": "dstu_agent::chat_v2::headless::HeadlessSessionMode"
+    },
+    "InboxChangedPayload": {
+      "type": "object",
+      "properties": {
+        "sessionId": {
+          "type": "string"
+        },
+        "pendingInbox": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        }
+      },
+      "required": [
+        "sessionId",
+        "pendingInbox"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_agent::chat_v2::super_session::state::InboxChangedPayload"
+    },
+    "ScheduleKind": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "daily",
+            "weekly",
+            "weekdays",
+            "monthly",
+            "interval",
+            "once"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "daily": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "daily"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "weekly": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "weekly"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "weekdays": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "weekdays"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "monthly": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "monthly"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "interval": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "interval"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "once": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "once"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "x-also-accepts": "externally tagged map form {\"<Variant>\": null}",
+      "x-rust": "dstu_agent::chat_v2::automations::ScheduleKind"
+    },
+    "SuperSessionSettings": {
+      "type": "object",
+      "properties": {
+        "instructions": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "instructions"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_agent::chat_v2::super_session::state::SuperSessionSettings"
+    },
+    "SuperSessionSettings__De": {
+      "type": "object",
+      "properties": {
+        "instructions": {
+          "type": "string"
+        }
+      },
+      "x-rust": "dstu_agent::chat_v2::super_session::state::SuperSessionSettings"
+    },
+    "SuperSessionState": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "sessionId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "workspaceId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "pendingInbox": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        }
+      },
+      "required": [
+        "enabled",
+        "sessionId",
+        "workspaceId",
+        "pendingInbox"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_agent::chat_v2::super_session::state::SuperSessionState"
+    },
+    "TrustedAutomationProfile": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "x-int": "u16",
+          "minimum": 0,
+          "maximum": 65535
+        },
+        "profileHash": {
+          "type": "string"
+        },
+        "allowedTools": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "runtimeRoots": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/AutomationRuntimeRoot"
+          }
+        },
+        "shellCommandPrefixes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "networkDomains": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "maxToolRounds": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "timeoutSeconds": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "maxOutputBytes": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "rollbackRequired": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "profileHash",
+        "allowedTools",
+        "runtimeRoots",
+        "shellCommandPrefixes",
+        "networkDomains",
+        "maxToolRounds",
+        "timeoutSeconds",
+        "maxOutputBytes",
+        "rollbackRequired"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_agent::chat_v2::automations::TrustedAutomationProfile"
+    }
+  }
+}

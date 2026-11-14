@@ -1,0 +1,601 @@
+{
+  "domain": "log",
+  "commands": [
+    "get_debug_logs_info",
+    "clear_debug_logs",
+    "ensure_debug_log_dir",
+    "read_debug_log_file",
+    "open_logs_folder",
+    "export_diagnostics_bundle"
+  ],
+  "scenarios": [
+    {
+      "id": "log.debug_logs.info_empty",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_debug_logs_info",
+          "args": {}
+        },
+        {
+          "cmd": "clear_debug_logs",
+          "args": {}
+        },
+        {
+          "cmd": "get_debug_logs_info",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "log.debug_logs.ensure_then_info_clear",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "ensure_debug_log_dir",
+          "args": {}
+        },
+        {
+          "cmd": "ensure_debug_log_dir",
+          "args": {}
+        },
+        {
+          "cmd": "get_debug_logs_info",
+          "args": {}
+        },
+        {
+          "cmd": "clear_debug_logs",
+          "args": {}
+        },
+        {
+          "cmd": "get_debug_logs_info",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "log.debug_logs.read_dir_itself",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "ensure_debug_log_dir",
+          "args": {}
+        },
+        {
+          "cmd": "read_debug_log_file",
+          "args": {
+            "path": "${0}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "log.debug_logs.read_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "read_debug_log_file",
+          "args": {
+            "path": "/tmp/ds-equivalence-diagnostics/missing.json"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "read_debug_log_file",
+          "args": {
+            "path": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "read_debug_log_file",
+          "args": {
+            "path": "debug-logs/x.json"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "read_debug_log_file",
+          "args": {
+            "path": "/etc/hostname"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "read_debug_log_file",
+          "args": {
+            "path": "/tmp"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "read_debug_log_file",
+          "args": {
+            "path": "/etc/../etc/hostname"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "log.debug_logs.read_arg_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "read_debug_log_file",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "read_debug_log_file",
+          "args": {
+            "path": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "read_debug_log_file",
+          "args": {
+            "path": 1
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "read_debug_log_file",
+          "args": {
+            "filePath": "/tmp/x.json"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "log.logs_folder.arg_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "open_logs_folder",
+          "args": {
+            "logType": "Backend"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "open_logs_folder",
+          "args": {
+            "logType": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "open_logs_folder",
+          "args": {
+            "logType": "debug-logs"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "open_logs_folder",
+          "args": {
+            "logType": " all"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "open_logs_folder",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "open_logs_folder",
+          "args": {
+            "logType": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "open_logs_folder",
+          "args": {
+            "log_type": "all"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "log.diagnostics.export_default",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "export_diagnostics_bundle",
+          "args": {
+            "options": {
+              "destination": "/tmp/ds-equivalence-diagnostics/default.zip"
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "log.diagnostics.export_include_debug_logs",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "ensure_debug_log_dir",
+          "args": {}
+        },
+        {
+          "cmd": "export_diagnostics_bundle",
+          "args": {
+            "options": {
+              "destination": "/tmp/ds-equivalence-diagnostics/with-debug.zip",
+              "includeDebugLogs": true
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "log.diagnostics.export_replace_existing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "export_diagnostics_bundle",
+          "args": {
+            "options": {
+              "destination": "/tmp/ds-equivalence-diagnostics/replace.zip",
+              "includeDebugLogs": false
+            }
+          }
+        },
+        {
+          "cmd": "export_diagnostics_bundle",
+          "args": {
+            "options": {
+              "destination": "${0.path}"
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "log.diagnostics.export_after_frontend_logs",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "write_debug_logs",
+          "args": {
+            "logs": [
+              {
+                "timestamp": "2026-11-06T04:00:00.000Z",
+                "level": "INFO",
+                "module": "DIAG",
+                "operation": "BEFORE_EXPORT",
+                "data": {
+                  "n": 1
+                }
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "report_frontend_log",
+          "args": {
+            "payload": {
+              "message": "before export",
+              "url": "http://localhost:1422/a?token=abc"
+            }
+          }
+        },
+        {
+          "cmd": "export_diagnostics_bundle",
+          "args": {
+            "options": {
+              "destination": "/tmp/ds-equivalence-diagnostics/after-logs.zip"
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "log.diagnostics.export_path_shapes",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "export_diagnostics_bundle",
+          "args": {
+            "options": {
+              "destination": "/tmp/ds-equivalence-diagnostics/nested/new/dir/bundle.zip"
+            }
+          }
+        },
+        {
+          "cmd": "export_diagnostics_bundle",
+          "args": {
+            "options": {
+              "destination": "/tmp/ds-equivalence-diagnostics/../ds-equivalence-diagnostics/dotdot.zip"
+            }
+          }
+        },
+        {
+          "cmd": "export_diagnostics_bundle",
+          "args": {
+            "options": {
+              "destination": "/tmp/ds-equivalence-diagnostics/诊断 包.zip"
+            }
+          }
+        },
+        {
+          "cmd": "export_diagnostics_bundle",
+          "args": {
+            "options": {
+              "destination": "/tmp/ds-equivalence-diagnostics/no-extension"
+            }
+          }
+        },
+        {
+          "cmd": "export_diagnostics_bundle",
+          "args": {
+            "options": {
+              "destination": "/tmp/ds-equivalence-diagnostics/unknown-fields.zip",
+              "include_debug_logs": true,
+              "extra": 1
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "log.diagnostics.export_destination_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "export_diagnostics_bundle",
+          "args": {
+            "options": {
+              "destination": "relative.zip"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "export_diagnostics_bundle",
+          "args": {
+            "options": {
+              "destination": ""
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "export_diagnostics_bundle",
+          "args": {
+            "options": {
+              "destination": "~/diag.zip"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "export_diagnostics_bundle",
+          "args": {
+            "options": {
+              "destination": "/"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "export_diagnostics_bundle",
+          "args": {
+            "options": {
+              "destination": "/tmp"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "export_diagnostics_bundle",
+          "args": {
+            "options": {
+              "destination": "/proc/ds-equivalence.zip"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "log.diagnostics.export_parent_is_file",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "export_diagnostics_bundle",
+          "args": {
+            "options": {
+              "destination": "/tmp/ds-equivalence-diagnostics/parent-file.zip"
+            }
+          }
+        },
+        {
+          "cmd": "export_diagnostics_bundle",
+          "args": {
+            "options": {
+              "destination": "/tmp/ds-equivalence-diagnostics/parent-file.zip/inner.zip"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "log.diagnostics.export_arg_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "export_diagnostics_bundle",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "export_diagnostics_bundle",
+          "args": {
+            "options": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "export_diagnostics_bundle",
+          "args": {
+            "options": {}
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "export_diagnostics_bundle",
+          "args": {
+            "options": {
+              "destination": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "export_diagnostics_bundle",
+          "args": {
+            "options": {
+              "destination": 1
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "export_diagnostics_bundle",
+          "args": {
+            "options": {
+              "destination": "/tmp/ds-equivalence-diagnostics/x.zip",
+              "includeDebugLogs": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "export_diagnostics_bundle",
+          "args": {
+            "options": {
+              "destination": "/tmp/ds-equivalence-diagnostics/x.zip",
+              "includeDebugLogs": "true"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "export_diagnostics_bundle",
+          "args": {
+            "destination": "/tmp/ds-equivalence-diagnostics/x.zip"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

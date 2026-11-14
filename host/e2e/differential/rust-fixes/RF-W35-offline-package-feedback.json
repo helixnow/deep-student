@@ -1,0 +1,24 @@
+{
+  "id": "RF-W35-offline-package-feedback",
+  "kind": "deliberate",
+  "status": "proposed",
+  "title": "离线 .dsplugin 安装结果反馈：区分已安装/已回滚/被拒绝，并明确“磁盘已安装≠已同意≠正在运行”",
+  "rust": {
+    "file": "src/features/settings/components/plugins/PluginsTab.tsx",
+    "behavior": "Rust 版插件页没有离线包安装入口：插件是随应用打包的渠道实现，装/删由应用发布流程处理，界面不展示安装事务结果，也没有回滚提示"
+  },
+  "fix": {
+    "files": ["src/features/plugin-manager/InstallFeedback.tsx"],
+    "behavior": "安装适配器返回 W34/W01 的事务结果后，InstallFeedback 分三种结果展示：installed（版本、是否升级自旧版本，并声明只写入磁盘、仍需同意才运行）、rolled-back（恢复到的旧版本或“没有可恢复版本，磁盘未改变”及原因）、rejected（错误码、详情、回滚状态 restored/unchanged/failed）。结果按 Host 原文展示，不把安装成功推导成已授权或正在运行"
+  },
+  "evidence": "plugin-packages.md：install 返回 record/previous/manifest，失败保留旧锁，restore 只在指针仍匹配时回滚；W35-consumes.md 要求离线安装反馈与回滚提示。测试见 InstallFeedback.test.tsx（8 条，含三种回滚状态与无旧版本），UI 只消费结果联合类型",
+  "userVisible": "点“安装离线插件”选择 .dsplugin 后看到明确结果：成功时显示新旧版本并提示还需要同意；失败时显示错误码、原因与“已恢复旧版本/磁盘未改变/回滚失败”，不再只有笼统失败",
+  "dataCompat": "不改变落库数据与备份格式；ZIP 暂存、plugins.lock.json 与指针切换全部由 W34 模块经 W01 命令完成，本视图只显示结果",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "src/features/plugin-manager/__tests__/InstallFeedback.test.tsx",
+      "name": "RF-W35-offline-package-feedback: a fresh install says it is on disk only, not consented or running"
+    }
+  ]
+}

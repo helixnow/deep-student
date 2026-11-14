@@ -16,11 +16,13 @@
 
 import React, { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Export, Highlighter, X } from '@phosphor-icons/react';
+import { Export, Highlighter, NotePencil, X } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { SaveAsNoteFolderPicker, useSaveAsNoteFlow } from '@/shared/notes';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
+import { resolveHighlightSemanticKey } from '../pdfAcademicText';
 import {
   buildAnnotationSummaryMarkdown,
   collectHighlightColors,
@@ -39,6 +41,8 @@ export interface PdfAnnotationsPanelProps {
   /** 点击批注项：viewer 侧跳页 + 精确定位闪烁；移动端由 viewer 包一层关面板 */
   onSelectHighlight: (highlight: AnnotationHighlight) => void;
   onRemoveHighlight: (id: string) => void;
+  /** 新增或修改批注笔记文本 */
+  onUpdateHighlightComment?: (id: string, comment: string) => void;
 }
 
 export const PdfAnnotationsPanel: React.FC<PdfAnnotationsPanelProps> = ({
@@ -47,16 +51,49 @@ export const PdfAnnotationsPanel: React.FC<PdfAnnotationsPanelProps> = ({
   resourcePath,
   onSelectHighlight,
   onRemoveHighlight,
+  onUpdateHighlightComment,
 }) => {
   const { t } = useTranslation(['pdf', 'common']);
   const [query, setQuery] = useState('');
   const [activeColors, setActiveColors] = useState<string[]>([]);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draftComment, setDraftComment] = useState('');
 
   const sorted = useMemo(() => sortHighlightsForList(highlights), [highlights]);
   const colors = useMemo(() => collectHighlightColors(sorted), [sorted]);
   const visible = useMemo(
     () => filterHighlights(sorted, { colors: activeColors, query }),
     [sorted, activeColors, query],
+  );
+
+  const getColorLabel = useCallback(
+    (color: string) => {
+      const semantic = resolveHighlightSemanticKey(color);
+      if (semantic) {
+        return t(`pdf:annotations.semantic_${semantic}`);
+      }
+      return t('pdf:annotations.color_chip', { color });
+    },
+    [t],
+  );
+
+  const beginEditComment = useCallback((hl: AnnotationHighlight) => {
+    setEditingId(hl.id);
+    setDraftComment(hl.comment ?? '');
+  }, []);
+
+  const cancelEditComment = useCallback(() => {
+    setEditingId(null);
+    setDraftComment('');
+  }, []);
+
+  const commitEditComment = useCallback(
+    (id: string) => {
+      onUpdateHighlightComment?.(id, draftComment.trim());
+      setEditingId(null);
+      setDraftComment('');
+    },
+    [draftComment, onUpdateHighlightComment],
   );
 
   const toggleColor = useCallback((color: string) => {
@@ -82,6 +119,7 @@ export const PdfAnnotationsPanel: React.FC<PdfAnnotationsPanelProps> = ({
           fileName
             ? t('pdf:selection.note_source', { name: fileName, page })
             : t('pdf:toolbar.page', { page }),
+        commentPrefix: t('pdf:annotations.comment_prefix'),
       },
     });
     if (!content) return;
@@ -98,7 +136,7 @@ export const PdfAnnotationsPanel: React.FC<PdfAnnotationsPanelProps> = ({
   return (
     <div className="ds-annotations-panel">
       {hasAnyHighlights && (
-        <div className="ds-annotations-toolbar">
+        <div className="ds-annotations-toolbar border-b border-border/35 pb-2">
           <Input
             type="search"
             className="ds-annotations-filter-input [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!text-base"
@@ -118,25 +156,33 @@ export const PdfAnnotationsPanel: React.FC<PdfAnnotationsPanelProps> = ({
                   const active = activeColors.some(
                     (c) => c.toLowerCase() === color.toLowerCase(),
                   );
+                  const chipLabel = getColorLabel(color);
                   return (
-                    <button
+                    <DsButton
                       key={color.toLowerCase()}
-                      type="button"
-                      className={`ds-annotations-color-chip [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 ${active ? 'active' : ''}`}
+                      variant="ghost"
+                      size="icon"
+                      iconOnly
+                      className={`ds-annotations-color-chip !h-[18px] !w-[18px] !min-h-0 !min-w-0 !p-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 ${active ? 'active' : ''}`}
                       style={{ backgroundColor: color }}
                       onClick={() => toggleColor(color)}
                       aria-pressed={active}
-                      aria-label={t('pdf:annotations.color_chip', { color })}
-                      title={t('pdf:annotations.color_chip', { color })}
+                      aria-label={chipLabel}
+                      title={chipLabel}
                     />
                   );
                 })}
+                {activeColors.length === 1 && (
+                  <span className="text-2xs text-muted-foreground truncate max-w-[84px]">
+                    {getColorLabel(activeColors[0]!)}
+                  </span>
+                )}
               </div>
             )}
             <DsButton
               variant="ghost"
               size="sm"
-              className="ds-annotations-export gap-1.5 [@media(pointer:coarse)]:!min-h-11"
+              className="ds-annotations-export gap-1.5 font-mono tabular-nums [@media(pointer:coarse)]:!min-h-11"
               onClick={handleExport}
               disabled={visible.length === 0 || saveAsNoteFlow.isSaving}
               title={t('pdf:annotations.export_hint')}
@@ -164,36 +210,130 @@ export const PdfAnnotationsPanel: React.FC<PdfAnnotationsPanelProps> = ({
             <p>{t('pdf:annotations.no_filter_match')}</p>
           </div>
         ) : (
-          visible.map((hl) => (
-            <div
-              key={hl.id}
-              className="ds-highlight-item"
-              onClick={() => onSelectHighlight(hl)}
-              title={t('pdf:annotations.locate', { page: hl.pageIndex })}
-            >
-              <div className="ds-highlight-color" style={{ backgroundColor: hl.color }} />
-              <div className="ds-highlight-content">
-                <div className="ds-highlight-text">{hl.text}</div>
-                <div className="ds-highlight-meta">
-                  {t('pdf:toolbar.page', { page: hl.pageIndex })}
+          visible.map((hl) => {
+            const semanticKey = resolveHighlightSemanticKey(hl.color);
+            const isEditing = editingId === hl.id;
+            const hasComment = Boolean(hl.comment?.trim());
+            return (
+              <div
+                key={hl.id}
+                className="ds-highlight-item border-l-2 hover:bg-foreground/[0.035] transition-colors"
+                style={{ borderLeftColor: hl.color }}
+                onClick={() => {
+                  if (!isEditing) onSelectHighlight(hl);
+                }}
+                title={t('pdf:annotations.locate', { page: hl.pageIndex })}
+              >
+                <div className="ds-highlight-content">
+                  <div className="ds-highlight-text">{hl.text}</div>
+                  {isEditing ? (
+                    <div
+                      className="ds-highlight-note-editor mt-1.5"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <textarea
+                        rows={2}
+                        value={draftComment}
+                        onChange={(e) => setDraftComment(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (isComposingKeyEvent(e)) return;
+                          if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            commitEditComment(hl.id);
+                          } else if (e.key === 'Escape') {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            cancelEditComment();
+                          }
+                        }}
+                        placeholder={t('pdf:annotations.note_placeholder')}
+                        className="ds-highlight-note-textarea [@media(pointer:coarse)]:!text-base"
+                        autoFocus
+                      />
+                      <div className="ds-highlight-note-actions">
+                        <DsButton
+                          variant="ghost"
+                          size="sm"
+                          className="!h-6 !px-2 text-xs"
+                          onClick={cancelEditComment}
+                        >
+                          {t('pdf:annotations.cancel_note')}
+                        </DsButton>
+                        <DsButton
+                          variant="primary"
+                          size="sm"
+                          className="!h-6 !px-2.5 text-xs"
+                          onClick={() => commitEditComment(hl.id)}
+                        >
+                          {t('pdf:annotations.save_note')}
+                        </DsButton>
+                      </div>
+                    </div>
+                  ) : hasComment ? (
+                    <div
+                      className="ds-highlight-comment"
+                      onClick={(e) => {
+                        if (!onUpdateHighlightComment) return;
+                        e.stopPropagation();
+                        beginEditComment(hl);
+                      }}
+                    >
+                      {hl.comment}
+                    </div>
+                  ) : null}
+                  <div className="ds-highlight-meta font-mono tabular-nums">
+                    <span>{t('pdf:toolbar.page', { page: hl.pageIndex })}</span>
+                    {semanticKey && (
+                      <span className="ds-highlight-semantic-tag font-sans">
+                        · {t(`pdf:annotations.semantic_${semanticKey}`)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="ds-highlight-actions">
+                  {onUpdateHighlightComment && !isEditing && (
+                    <DsButton
+                      variant="ghost"
+                      size="icon"
+                      iconOnly
+                      className="ds-highlight-edit"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        beginEditComment(hl);
+                      }}
+                      title={
+                        hasComment
+                          ? t('pdf:annotations.edit_note')
+                          : t('pdf:annotations.add_note')
+                      }
+                      aria-label={
+                        hasComment
+                          ? t('pdf:annotations.edit_note')
+                          : t('pdf:annotations.add_note')
+                      }
+                    >
+                      <NotePencil size={12} />
+                    </DsButton>
+                  )}
+                  <DsButton
+                    variant="ghost"
+                    size="icon"
+                    iconOnly
+                    className="ds-highlight-delete"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRemoveHighlight(hl.id);
+                    }}
+                    title={t('pdf:toolbar.delete_highlight')}
+                    aria-label={t('pdf:a11y.delete')}
+                  >
+                    <X size={12} />
+                  </DsButton>
                 </div>
               </div>
-              <DsButton
-                variant="ghost"
-                size="icon"
-                iconOnly
-                className="ds-highlight-delete"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onRemoveHighlight(hl.id);
-                }}
-                title={t('pdf:toolbar.delete_highlight')}
-                aria-label={t('pdf:a11y.delete')}
-              >
-                <X size={12} />
-              </DsButton>
-            </div>
-          ))
+            );
+          })
         )}
       </CustomScrollArea>
 

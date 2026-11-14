@@ -15,7 +15,7 @@ import type { ChatStore, VariantStatus, TokenUsage } from '../types';
 import { eventRegistry, type EventStartPayload } from '../../registry/eventRegistry';
 import { autoSave, streamingBlockSaver } from './autoSave';
 import { chunkBuffer } from './chunkBuffer';
-import { logMultiVariant } from '@/debug-panel/plugins/MultiVariantDebugPlugin';
+import { logMultiVariant } from '@/shared/debug/channels/multiVariant';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import {
   EVENT_BRIDGE_MAX_BUFFER_SIZE,
@@ -346,6 +346,7 @@ export function clearBridgeState(sessionId: string): void {
     clearTimeout(state.gapTimer);
   }
   bridgeStates.delete(sessionId);
+  lastSkillInjectionAudits.delete(sessionId);
 }
 
 /**
@@ -461,6 +462,47 @@ export const EVENT_TYPE_VARIANT_START = 'variant_start';
 /** 变体结束事件类型 */
 export const EVENT_TYPE_VARIANT_END = 'variant_end';
 
+/**
+ * 技能注入审计（Rust events.rs emit_skill_injection_audit）：phase=end、只带 messageId、无块生命周期。
+ * 首个正文前即可出现，因此可以作为序号基线；只做诊断记录，不进入块分发。
+ */
+export const EVENT_TYPE_SKILL_INJECTION_AUDIT = 'skill_injection_audit';
+
+/** 消息级事件：不创建块，序号首包时与 start 同等对待。 */
+const MESSAGE_LEVEL_EVENT_TYPES: ReadonlySet<string> = new Set([EVENT_TYPE_SKILL_INJECTION_AUDIT]);
+
+export interface SkillInjectionAudit {
+  messageId?: string;
+  variantId?: string;
+  roundId?: string;
+  injectedSkillIds?: string[];
+  droppedSkillIds?: string[];
+  missingSkillIds?: string[];
+  estimatedTokens?: number;
+  skillStateVersion?: number;
+}
+
+const lastSkillInjectionAudits = new Map<string, SkillInjectionAudit>();
+
+/** 最近一次技能注入审计（诊断用）。 */
+export function getLastSkillInjectionAudit(sessionId: string): SkillInjectionAudit | undefined {
+  return lastSkillInjectionAudits.get(sessionId);
+}
+
+function handleSkillInjectionAudit(store: ChatStore, event: BackendEvent): void {
+  const result = event.result && typeof event.result === 'object' ? (event.result as Record<string, unknown>) : {};
+  const audit: SkillInjectionAudit = {
+    ...result,
+    messageId: event.messageId,
+    variantId: event.variantId,
+    roundId: event.roundId,
+  };
+  lastSkillInjectionAudits.set(store.sessionId, audit);
+  if ((audit.missingSkillIds?.length ?? 0) > 0 || (audit.droppedSkillIds?.length ?? 0) > 0) {
+    console.warn('[EventBridge] skill injection audit: skills dropped or missing', audit);
+  }
+}
+
 // 🚀 性能：content/thinking 的 chunk 阶段是 token 级热路径，多变体流式时
 // 逐条调试日志会绕开 chunk 缓冲（每秒数百次分配 + 同步 DOM 事件派发）。
 // 此处按 1/10 采样（与 TauriAdapter 的 chatanki chunk 日志同一模式），
@@ -542,7 +584,7 @@ export function handleBackendEventWithSequence(
   // 🔧 修复：如果是第一个事件（lastSequenceId === -1），需要确保 start 优先
   // 乱序情况下 chunk 先到会导致 start 被丢弃，从而无法创建 block
   if (bridgeState.lastSequenceId === -1) {
-    if (phase !== 'start') {
+    if (phase !== 'start' && !MESSAGE_LEVEL_EVENT_TYPES.has(type)) {
       logMultiVariant('adapter', 'sequenceHandler_first_non_start_buffered', {
         type,
         phase,
@@ -810,6 +852,12 @@ function processEventInternal(snapshot: ChatStore, event: BackendEvent): void {
 
   if (type === EVENT_TYPE_VARIANT_END) {
     handleVariantEnd(store, event);
+    return;
+  }
+
+  // RUST-FIX(RF-W09-skill-injection-audit-unhandled): Rust 版前端没有这个事件的处理器，首包时被当作“非 start 首事件”缓冲等间隙恢复，再落到块分发报 No handler
+  if (type === EVENT_TYPE_SKILL_INJECTION_AUDIT) {
+    handleSkillInjectionAudit(store, event);
     return;
   }
 
@@ -1222,16 +1270,23 @@ function dispatchBlockEvent(store: ChatStore, event: BackendEvent): void {
 
         // 🔧 重复 start 防护：断流重连/事件重放可能再次发送 start，且该
         // blockId 已存在于 store（restore 后继续流式、同事件重复到达）。
-        // 此时复用已有块，不再创建克隆块追加到 blockIds 末尾——克隆块会
-        // 与原文重复且永远收不到正确的 end，导致工具块/思维链残留在消息
-        // 底部（安装版 0.9.50 数据已复现该形态）。
+        // 此时复用已有块，不再创建克隆块追加到 blockIds 末尾；
+        // 若是工具瞬时重试（payload.retry === true 或原块处于 error），允许重置并重启同一逻辑块。
+        const existingBlock = blockId ? store.blocks?.get(blockId) : undefined;
+        const isRetryRestart =
+          (startPayload && typeof startPayload === 'object' && 'retry' in startPayload && (startPayload as { retry?: unknown }).retry === true) ||
+          existingBlock?.status === 'error';
         let effectiveBlockId: string | undefined;
-        if (blockId && isBlockKnown(store, context, blockId)) {
+        if (blockId && isBlockKnown(store, context, blockId) && !isRetryRestart) {
           effectiveBlockId = blockId;
           console.warn(
             `[EventBridge] Duplicate '${type}' start for known block, reusing existing: blockId=${blockId}`
           );
         } else {
+          if (isRetryRestart && blockId && existingBlock) {
+            store.updateBlock?.(blockId, { error: undefined, endedAt: undefined });
+            store.updateBlockStatus?.(blockId, 'running');
+          }
           // 如果后端传了 blockId，直接使用（多工具并发场景）；否则由前端创建
           effectiveBlockId = blockId
             ? handler.onStart(store, effectiveMessageId, startPayload, blockId)

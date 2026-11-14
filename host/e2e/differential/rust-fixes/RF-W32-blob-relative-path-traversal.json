@@ -1,0 +1,32 @@
+{
+  "id": "RF-W32-blob-relative-path-traversal",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T15:30:00+08:00",
+  "title": "同步下载 VFS blob 时不再按云端清单的 relative_path 写到 blobs 目录之外",
+  "rust": {
+    "file": "src-tauri/crates/dstu-sync/src/data_governance/sync/mod.rs",
+    "line": 11328,
+    "behavior": "sync_vfs_blobs_with_progress_excluding 对云端 blob 清单的每个条目直接 blobs_dir.join(&cloud_entry.relative_path)，create_dir_all 父目录后下载写入；只校验明文 sha256 等于条目 hash，不检查路径。relative_path 含 ../ 时写到 blobs 目录之外；是绝对路径时 Path::join 直接替换基路径，可写任意位置"
+  },
+  "fix": {
+    "files": ["host/plugins/sync/src/file-manifest.ts", "host/plugins/sync/src/blob-sync.ts"],
+    "behavior": "下载前校验条目：hash 必须是 64 位小写十六进制；relative_path 必须恰好是 <hash 前两位>/<hash>[.扩展名] 两段（扩展名不含点，其余字符不限：dstu/handlers.rs:1347 对没有显式映射的 MIME 直接用整个子类型作扩展名，会写出 epub+zip、x-tar、octet-stream、“markdown; charset=utf-8” 这类扩展名，只允许字母数字会误伤它们；image/svg+xml 有显式映射，写成 svg），拒绝空串、以 / 开头的绝对路径、反斜杠、冒号（盘符）、控制字符、./../空分量；再做包含性检查（relative(root, dest) 不得为 .. 开头或绝对路径），并逐级 lstat blobs 目录以下已存在的分量，任一是符号链接即拒绝。不合法条目记 error 日志、计入 download_failures，不创建任何目录、不发起下载。清单解析本身不变，未同步诊断仍把这类条目报为 InvalidKey"
+  },
+  "evidence": "安全问题（S01-security-r2 H1，审计台账 S01r2-H1）：同步服务器被攻破或本身恶意、用户未开端到端加密时，清单是明文 JSON。服务器发布 relative_path 为 ../../plugins/user.profile.json 的条目（hash 取载荷 sha256），文件被写到 <dataDir>/plugins/user.profile.json；Host 下次启动加载用户 profile，配合 S01-security-r3 M1（profile 条目可为 data: 模块）只写这一个 JSON 就能在 Host 进程内执行任意代码。布局约束与 Rust 自身意图一致：本地 blob 只由 blob_repo.rs:1120 build_blob_path 以 {hash[0..2]}/{hash}.{ext} 写出，上传时 relative_path 取自本地扫描；Rust 应用 blob 墓碑时已在 tombstone.rs:1635 对 relative_path 强制同样的两段布局并拒绝符号链接；只读诊断 commands_sync.rs 也把含 .. 的 relative_path 报为“已拒绝落地”。收紧布局的代价很小：key 不是 hash 的条目原本必然下载失败（下载端精确比较明文 sha256 与条目 hash）；文件名主干与 hash 不符的条目下载后本地扫描的 file_stem 对不上，每次同步都会重下；扩展名含点的条目（如 <hash>.vnd.ms-excel）现在被拒绝，但原本也下载不了：Rust 扫描本地 blob 时用 file_stem 作清单 key（mod.rs:12382），key 是 <hash>.vnd，下载端用它比对明文 sha256（mod.rs:11360）必然不符。原本能落地、现在被拒绝的只有两类：一是桶目录不对或多一层目录、主干正确的条目，这种路径只会在本地 vfs_blobs 被手工改动后才被上传，正常客户端不会产生；二是 POSIX 上扩展名含冒号或控制字符、主干正确的条目，只有 macOS/Linux 上的 Rust 能写出（attachment_repo.rs:2684-2686 取附件名的扩展名，只转小写、限长度，不过滤字符，例如附件名 photo.a:b），这类 blob 原本能在 POSIX 设备之间同步，现在计入下载失败（Windows 上本来就写不出、同步不了），极少见且用户可见，接受。复现见登记测试，修复前 6 条用例全部失败（文件写到 blobs 目录之外或经符号链接写出）；后加的悬空链接用例和扩展名边角用例分别以去掉逐级 lstat 检查、放宽扩展名规则的变异验证为红。",
+  "userVisible": "正常同步感知不到；只有云端清单含越界或不合规路径时，该 blob 不再下载，同步结果里计为下载失败，日志有“拒绝下载 blob（清单路径不安全）”。",
+  "dataCompat": "不改变落库数据、同步载荷与备份格式；清单照旧解析和回写，旧 Rust 版与新版互相读写不受影响。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    { "file": "host/plugins/sync/tests/blob-relative-path.test.ts", "name": "RF-W32-blob-relative-path-traversal: a blob manifest entry whose relative_path leaves the blobs directory is not downloaded" },
+    { "file": "host/plugins/sync/tests/blob-relative-path.test.ts", "name": "RF-W32-blob-relative-path-traversal: an absolute relative_path is refused (Rust Path::join would replace the blobs root)" },
+    { "file": "host/plugins/sync/tests/blob-relative-path.test.ts", "name": "RF-W32-blob-relative-path-traversal: a drive-letter relative_path is refused" },
+    { "file": "host/plugins/sync/tests/blob-relative-path.test.ts", "name": "RF-W32-blob-relative-path-traversal: a relative_path with backslash separators is refused" },
+    { "file": "host/plugins/sync/tests/blob-relative-path.test.ts", "name": "RF-W32-blob-relative-path-traversal: a symlinked bucket directory inside the blobs root is not written through" },
+    { "file": "host/plugins/sync/tests/blob-relative-path.test.ts", "name": "RF-W32-blob-relative-path-traversal: a dangling symlink at the destination file itself is not written through" },
+    { "file": "host/plugins/sync/tests/blob-relative-path.test.ts", "name": "RF-W32-blob-relative-path-traversal: entries whose path does not follow the <hash[0..2]>/<hash>[.ext] layout are refused" },
+    { "file": "host/plugins/sync/tests/blob-relative-path.test.ts", "name": "RF-W32-blob-relative-path-traversal: extensions containing a dot, a colon or a control character are refused" },
+    { "file": "host/plugins/sync/tests/blob-relative-path.test.ts", "name": "RF-W32-blob-relative-path-traversal: well-formed entries still download, including MIME-derived extensions and no extension" }
+  ]
+}

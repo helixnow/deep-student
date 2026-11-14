@@ -22,7 +22,7 @@
 import React from 'react';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 // 与 CloudStorageSection.cloudUi.test.tsx 相同的稳定身份 t mock：
@@ -160,6 +160,31 @@ describe('CloudStorageSection draft connection test keeps SSOT untouched on fail
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
+  });
+
+  test.each([true, false])('ignores an obsolete connection result after editing the draft (success: %s)', async (success) => {
+    let resolveTest!: () => void;
+    let rejectTest!: (error: Error) => void;
+    vi.mocked(draftApi.testConnectionDraft).mockImplementationOnce(() => new Promise<void>((resolve, reject) => {
+      resolveTest = resolve;
+      rejectTest = reject;
+    }));
+    render(<CloudStorageSection />);
+    await fillValidWebdavForm();
+    fireEvent.click(screen.getByRole('button', { name: 'cloudStorage:actions.testConnection' }));
+    await waitFor(() => expect(draftApi.testConnectionDraft).toHaveBeenCalledTimes(1));
+    fireEvent.change(screen.getByPlaceholderText('cloudStorage:webdav.endpointPlaceholder'), {
+      target: { value: 'https://different.example.test' },
+    });
+
+    await act(async () => {
+      if (success) resolveTest();
+      else rejectTest(new Error('old endpoint failed'));
+    });
+
+    expect(screen.getByTestId('cloud-config-phase')).toHaveTextContent('cloudStorage:phase.draftUntested');
+    expect(screen.getByRole('button', { name: 'cloudStorage:actions.testConnection' })).toBeEnabled();
+    expect(showGlobalNotification).not.toHaveBeenCalled();
   });
 
   test('a failing connection test persists nothing: no credentials, no SSOT, no publish', async () => {

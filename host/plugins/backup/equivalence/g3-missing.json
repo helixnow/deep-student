@@ -1,0 +1,67 @@
+{
+  "domain": "backup",
+  "commands": [
+    "data_governance_run_backup",
+    "data_governance_restore_with_assets",
+    "data_governance_restore_backup",
+    "data_governance_export_zip",
+    "data_governance_verify_backup_with_assets",
+    "data_governance_cancel_backup"
+  ],
+  "scenarios": [
+    {
+      "id": "backup.g3.run_backup.incremental_removed",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "data_governance_run_backup", "args": { "backupType": "incremental" }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "backup.g3.restore_with_assets.retired_entry",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "data_governance_restore_with_assets", "args": { "backupId": "backup-20260101_000000" }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "backup.g3.restore_backup.rejects_traversal_id",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "data_governance_restore_backup", "args": { "backupId": "../escape" }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "backup.g3.export_zip.rejects_traversal_id",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "data_governance_export_zip", "args": { "backupId": "../escape" }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "backup.g3.verify_with_assets.rejects_traversal_id",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "data_governance_verify_backup_with_assets", "args": { "backupId": "../escape" }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "backup.g3.cancel_backup.unknown_job_is_false",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "data_governance_cancel_backup", "args": { "jobId": "00000000-0000-0000-0000-000000000000" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    }
+  ]
+}

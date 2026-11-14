@@ -1,0 +1,1635 @@
+{
+  "domain": "chat",
+  "commands": [
+    "chat_v2_create_session",
+    "chat_v2_get_session",
+    "chat_v2_update_session_settings",
+    "chat_v2_freeze_available_skills_snapshot",
+    "chat_v2_archive_session",
+    "chat_v2_restore_session",
+    "chat_v2_delete_session",
+    "chat_v2_list_sessions",
+    "chat_v2_count_sessions",
+    "chat_v2_save_session"
+  ],
+  "scenarios": [
+    {
+      "id": "chat.session.create.modes_title_metadata_group",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_group",
+          "args": {
+            "request": {
+              "name": "课题A"
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "会话一",
+            "metadata": null
+          }
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "analysis"
+          }
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "review",
+            "title": null,
+            "metadata": null,
+            "groupId": null
+          }
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "textbook",
+            "title": "",
+            "metadata": {
+              "userNote": "保留",
+              "nested": {
+                "n": 1,
+                "z": null
+              },
+              "list": [
+                3,
+                1,
+                2
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "bridge",
+            "title": "空白组",
+            "metadata": "scalar-metadata",
+            "groupId": "   "
+          }
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "general_chat",
+            "title": "空串组",
+            "metadata": 42,
+            "groupId": ""
+          }
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "带课题",
+            "metadata": {
+              "k": "v"
+            },
+            "groupId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_get_session",
+          "args": {
+            "sessionId": "${7.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_sessions",
+          "args": {
+            "status": "active",
+            "groupId": "${0.id}",
+            "limit": 50,
+            "offset": 0
+          }
+        },
+        {
+          "cmd": "chat_v2_list_sessions",
+          "args": {}
+        },
+        {
+          "cmd": "chat_v2_count_sessions",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "chat.session.create.errors_mode_and_group",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_group",
+          "args": {
+            "request": {
+              "name": "将归档课题"
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_update_group",
+          "args": {
+            "groupId": "${0.id}",
+            "request": {
+              "persistStatus": "archived"
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_create_group",
+          "args": {
+            "request": {
+              "name": "将删除课题"
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_update_group",
+          "args": {
+            "groupId": "${2.id}",
+            "request": {
+              "persistStatus": "deleted"
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "agent",
+            "title": "x"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "subagent"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "Chat"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "groupId": "group_missing_fixture"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "groupId": "${0.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "groupId": "${2.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "title": "missing mode"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_list_sessions",
+          "args": {
+            "status": "active"
+          }
+        },
+        {
+          "cmd": "chat_v2_count_sessions",
+          "args": {
+            "status": "active"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "chat.session.get.found_null_and_prefix_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "读取"
+          }
+        },
+        {
+          "cmd": "chat_v2_get_session",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_get_session",
+          "args": {
+            "sessionId": "sess_missing_fixture"
+          }
+        },
+        {
+          "cmd": "chat_v2_get_session",
+          "args": {
+            "sessionId": "agent_missing_fixture"
+          }
+        },
+        {
+          "cmd": "chat_v2_get_session",
+          "args": {
+            "sessionId": "subagent_missing_fixture"
+          }
+        },
+        {
+          "cmd": "chat_v2_get_session",
+          "args": {
+            "sessionId": "session_bad_prefix"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_get_session",
+          "args": {
+            "sessionId": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_get_session",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "chat.session.update_settings.title_metadata_patch_rules",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "metadata": {
+              "keep": 1,
+              "availableSkillsSnapshot": "forged-before-create"
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_freeze_available_skills_snapshot",
+          "args": {
+            "sessionId": "${0.id}",
+            "snapshot": "{\"skills\":[\"a\"]}"
+          }
+        },
+        {
+          "cmd": "chat_v2_update_session_settings",
+          "args": {
+            "sessionId": "${0.id}",
+            "settings": {}
+          }
+        },
+        {
+          "cmd": "chat_v2_update_session_settings",
+          "args": {
+            "sessionId": "${0.id}",
+            "settings": {
+              "title": "改名"
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_update_session_settings",
+          "args": {
+            "sessionId": "${0.id}",
+            "settings": {
+              "title": null
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_update_session_settings",
+          "args": {
+            "sessionId": "${0.id}",
+            "settings": {
+              "metadata": {
+                "userNote": "x",
+                "drop": null,
+                "availableSkillsSnapshot": "forged",
+                "branchedFrom": {
+                  "sessionId": "sess_forged"
+                }
+              }
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_get_session",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_update_session_settings",
+          "args": {
+            "sessionId": "${0.id}",
+            "settings": {
+              "metadata": "scalar-ignored-with-authoritative-keys"
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_get_session",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_update_session_settings",
+          "args": {
+            "sessionId": "${0.id}",
+            "settings": {
+              "metadata": null
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_get_session",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_update_session_settings",
+          "args": {
+            "sessionId": "${0.id}",
+            "settings": {
+              "title": "",
+              "metadata": {}
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_get_session",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "analysis",
+            "title": "无权威键"
+          }
+        },
+        {
+          "cmd": "chat_v2_update_session_settings",
+          "args": {
+            "sessionId": "${13.id}",
+            "settings": {
+              "metadata": "scalar-replaces"
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_update_session_settings",
+          "args": {
+            "sessionId": "${13.id}",
+            "settings": {
+              "metadata": {
+                "onlyNull": null
+              }
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_get_session",
+          "args": {
+            "sessionId": "${13.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "chat.session.update_settings.errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "待归档"
+          }
+        },
+        {
+          "cmd": "chat_v2_archive_session",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_update_session_settings",
+          "args": {
+            "sessionId": "${0.id}",
+            "settings": {
+              "title": "归档后改名"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_update_session_settings",
+          "args": {
+            "sessionId": "sess_missing_fixture",
+            "settings": {
+              "title": "x"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_update_session_settings",
+          "args": {
+            "sessionId": "bad_prefix",
+            "settings": {
+              "title": "x"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_update_session_settings",
+          "args": {
+            "sessionId": "${0.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_get_session",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "chat.session.freeze_snapshot.first_write_wins_and_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "冻结"
+          }
+        },
+        {
+          "cmd": "chat_v2_freeze_available_skills_snapshot",
+          "args": {
+            "sessionId": "${0.id}",
+            "snapshot": "{\"skills\":[\"first\"]}"
+          }
+        },
+        {
+          "cmd": "chat_v2_freeze_available_skills_snapshot",
+          "args": {
+            "sessionId": "${0.id}",
+            "snapshot": "{\"skills\":[\"second\"]}"
+          }
+        },
+        {
+          "cmd": "chat_v2_get_session",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "空快照"
+          }
+        },
+        {
+          "cmd": "chat_v2_freeze_available_skills_snapshot",
+          "args": {
+            "sessionId": "${4.id}",
+            "snapshot": ""
+          }
+        },
+        {
+          "cmd": "chat_v2_freeze_available_skills_snapshot",
+          "args": {
+            "sessionId": "${4.id}",
+            "snapshot": "{\"skills\":[\"later\"]}"
+          }
+        },
+        {
+          "cmd": "chat_v2_get_session",
+          "args": {
+            "sessionId": "${4.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_freeze_available_skills_snapshot",
+          "args": {
+            "sessionId": "sess_missing_fixture",
+            "snapshot": "{}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_freeze_available_skills_snapshot",
+          "args": {
+            "sessionId": "nope_prefix",
+            "snapshot": "{}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "chat.session.archive_restore.roundtrip_metadata_shapes",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "归档往返",
+            "metadata": {
+              "userNote": "保留"
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_archive_session",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_get_session",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_sessions",
+          "args": {
+            "status": "archived"
+          }
+        },
+        {
+          "cmd": "chat_v2_count_sessions",
+          "args": {
+            "status": "archived"
+          }
+        },
+        {
+          "cmd": "chat_v2_archive_session",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_restore_session",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_get_session",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat"
+          }
+        },
+        {
+          "cmd": "chat_v2_archive_session",
+          "args": {
+            "sessionId": "${8.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_get_session",
+          "args": {
+            "sessionId": "${8.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "metadata": "scalar"
+          }
+        },
+        {
+          "cmd": "chat_v2_archive_session",
+          "args": {
+            "sessionId": "${11.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_restore_session",
+          "args": {
+            "sessionId": "${11.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "未归档直接恢复"
+          }
+        },
+        {
+          "cmd": "chat_v2_restore_session",
+          "args": {
+            "sessionId": "${14.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "metadata": {
+              "super_agent": {
+                "active": false,
+                "retired_at": "2026-01-01T00:00:00Z"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_archive_session",
+          "args": {
+            "sessionId": "${16.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_sessions",
+          "args": {
+            "status": "active"
+          }
+        },
+        {
+          "cmd": "chat_v2_count_sessions",
+          "args": {
+            "status": "active"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "chat.session.archive.errors_super_missing_prefix",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "Super",
+            "metadata": {
+              "super_agent": {
+                "active": true,
+                "version": 1,
+                "workspace_id": null,
+                "hidden": false
+              },
+              "pinned": true
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_archive_session",
+          "args": {
+            "sessionId": "${0.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_get_session",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_archive_session",
+          "args": {
+            "sessionId": "sess_missing_fixture"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_archive_session",
+          "args": {
+            "sessionId": "bad_prefix"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_archive_session",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "chat.session.restore.errors_group_missing_prefix",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_group",
+          "args": {
+            "request": {
+              "name": "归档课题"
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "课题内",
+            "groupId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_update_group",
+          "args": {
+            "groupId": "${0.id}",
+            "request": {
+              "persistStatus": "archived"
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_get_session",
+          "args": {
+            "sessionId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_restore_session",
+          "args": {
+            "sessionId": "${1.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_update_group",
+          "args": {
+            "groupId": "${0.id}",
+            "request": {
+              "persistStatus": "deleted"
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_restore_session",
+          "args": {
+            "sessionId": "${1.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_get_session",
+          "args": {
+            "sessionId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_restore_session",
+          "args": {
+            "sessionId": "sess_missing_fixture"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_restore_session",
+          "args": {
+            "sessionId": "bad_prefix"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "chat.session.restore.group_active_and_super_retire",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_group",
+          "args": {
+            "request": {
+              "name": "可恢复课题"
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "课题内",
+            "groupId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_archive_session",
+          "args": {
+            "sessionId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_restore_session",
+          "args": {
+            "sessionId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "Super A",
+            "metadata": {
+              "super_agent": {
+                "active": true,
+                "version": 1,
+                "workspace_id": null,
+                "hidden": false
+              },
+              "pinned": true
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_restore_session",
+          "args": {
+            "sessionId": "${4.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "Super B",
+            "metadata": {
+              "super_agent": {
+                "active": true,
+                "version": 1,
+                "workspace_id": null,
+                "hidden": false
+              },
+              "pinned": true
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_restore_session",
+          "args": {
+            "sessionId": "${4.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_get_session",
+          "args": {
+            "sessionId": "${4.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_get_session",
+          "args": {
+            "sessionId": "${6.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_sessions",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "chat.session.delete.cascade_and_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "将删除"
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_del_1",
+            "messageId": "msg_del_1",
+            "sessionId": "${0.id}",
+            "blockType": "content",
+            "content": "内容",
+            "status": "success"
+          }
+        },
+        {
+          "cmd": "chat_v2_save_session",
+          "args": {
+            "sessionId": "${0.id}",
+            "sessionState": {
+              "sessionId": "${0.id}",
+              "updatedAt": "2026-01-01T00:00:00Z",
+              "inputValue": "草稿"
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_get_message_summary",
+          "args": {}
+        },
+        {
+          "cmd": "chat_v2_delete_session",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_get_session",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_load_messages_page",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_get_message_summary",
+          "args": {}
+        },
+        {
+          "cmd": "chat_v2_delete_session",
+          "args": {
+            "sessionId": "${0.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_delete_session",
+          "args": {
+            "sessionId": "sess_missing_fixture"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_delete_session",
+          "args": {
+            "sessionId": "bad_prefix"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_delete_session",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "chat.session.delete.running_anki_blocks",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "ChatAnki"
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_anki_1",
+            "messageId": "msg_anki_1",
+            "sessionId": "${0.id}",
+            "blockType": "anki_cards",
+            "content": ""
+          }
+        },
+        {
+          "cmd": "chat_v2_delete_session",
+          "args": {
+            "sessionId": "${0.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_anki_1",
+            "messageId": "msg_anki_1",
+            "sessionId": "${0.id}",
+            "blockType": "anki_cards",
+            "content": "",
+            "status": "pending"
+          }
+        },
+        {
+          "cmd": "chat_v2_delete_session",
+          "args": {
+            "sessionId": "${0.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_anki_1",
+            "messageId": "msg_anki_1",
+            "sessionId": "${0.id}",
+            "blockType": "anki_cards",
+            "content": "",
+            "status": "success"
+          }
+        },
+        {
+          "cmd": "chat_v2_delete_session",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_get_session",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "chat.session.list_count.filters_visibility_paging",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_group",
+          "args": {
+            "request": {
+              "name": "列表课题"
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "课题会话",
+            "groupId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "草稿隐藏",
+            "metadata": {
+              "chatV2Draft": {
+                "hidden": true
+              }
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "草稿可见",
+            "metadata": {
+              "chatV2Draft": {
+                "hidden": false
+              }
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "Router 内部",
+            "metadata": {
+              "superagent": {
+                "role": "router"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "superagent=null",
+            "metadata": {
+              "superagent": null
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "Super 隐藏",
+            "metadata": {
+              "super_agent": {
+                "active": false,
+                "hidden": true
+              }
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "analysis",
+            "title": "归档的"
+          }
+        },
+        {
+          "cmd": "chat_v2_archive_session",
+          "args": {
+            "sessionId": "${7.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_sessions",
+          "args": {}
+        },
+        {
+          "cmd": "chat_v2_list_sessions",
+          "args": {
+            "status": null,
+            "groupId": null,
+            "limit": null,
+            "offset": null
+          }
+        },
+        {
+          "cmd": "chat_v2_list_sessions",
+          "args": {
+            "status": "active"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_sessions",
+          "args": {
+            "status": "archived"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_sessions",
+          "args": {
+            "status": "deleted"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_sessions",
+          "args": {
+            "status": "bogus"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_sessions",
+          "args": {
+            "status": "active",
+            "groupId": ""
+          }
+        },
+        {
+          "cmd": "chat_v2_list_sessions",
+          "args": {
+            "status": "active",
+            "groupId": "*"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_sessions",
+          "args": {
+            "groupId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_sessions",
+          "args": {
+            "groupId": "group_missing_fixture"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_sessions",
+          "args": {
+            "limit": 2,
+            "offset": 0
+          }
+        },
+        {
+          "cmd": "chat_v2_list_sessions",
+          "args": {
+            "limit": 2,
+            "offset": 2
+          }
+        },
+        {
+          "cmd": "chat_v2_list_sessions",
+          "args": {
+            "limit": 2,
+            "offset": 100
+          }
+        },
+        {
+          "cmd": "chat_v2_list_sessions",
+          "args": {
+            "limit": 0
+          }
+        },
+        {
+          "cmd": "chat_v2_count_sessions",
+          "args": {}
+        },
+        {
+          "cmd": "chat_v2_count_sessions",
+          "args": {
+            "status": null,
+            "groupId": null
+          }
+        },
+        {
+          "cmd": "chat_v2_count_sessions",
+          "args": {
+            "status": "active"
+          }
+        },
+        {
+          "cmd": "chat_v2_count_sessions",
+          "args": {
+            "status": "archived"
+          }
+        },
+        {
+          "cmd": "chat_v2_count_sessions",
+          "args": {
+            "status": "bogus"
+          }
+        },
+        {
+          "cmd": "chat_v2_count_sessions",
+          "args": {
+            "status": "active",
+            "groupId": ""
+          }
+        },
+        {
+          "cmd": "chat_v2_count_sessions",
+          "args": {
+            "status": "active",
+            "groupId": "*"
+          }
+        },
+        {
+          "cmd": "chat_v2_count_sessions",
+          "args": {
+            "groupId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_sessions",
+          "args": {
+            "limit": -1
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_list_sessions",
+          "args": {
+            "offset": 4294967296
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_count_sessions",
+          "args": {
+            "status": 1
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "chat.session.save_load_state.roundtrip_and_skill_merge",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "状态"
+          }
+        },
+        {
+          "cmd": "chat_v2_save_session",
+          "args": {
+            "sessionId": "${0.id}",
+            "sessionState": {
+              "sessionId": "${0.id}",
+              "chatParams": {
+                "modelId": "model-a",
+                "temperature": 0.7,
+                "topP": 0.9,
+                "contextLimit": 8192,
+                "maxTokens": 4096,
+                "enableThinking": true,
+                "thinkingBudget": -1,
+                "ragLibraryIds": [
+                  "lib1"
+                ],
+                "visionQuality": "high"
+              },
+              "features": {
+                "rag": true,
+                "search": false
+              },
+              "modeState": {
+                "step": 2,
+                "items": [
+                  {
+                    "a": null
+                  }
+                ]
+              },
+              "inputValue": "未发送草稿",
+              "panelStates": {
+                "rag": true,
+                "mcp": false,
+                "skill": null
+              },
+              "updatedAt": "2026-01-01T00:00:00.000Z",
+              "pendingContextRefsJson": "[{\"resourceId\":\"res_1\",\"hash\":\"h\",\"typeId\":\"note\"}]",
+              "loadedSkillIdsJson": "[\"knowledge-retrieval\"]",
+              "activeSkillIdsJson": "[\"skill-1\",\"skill-2\"]",
+              "skillStateJson": null
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_load_session",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_save_session",
+          "args": {
+            "sessionId": "${0.id}",
+            "sessionState": {
+              "sessionId": "${0.id}",
+              "updatedAt": "2026-01-02T00:00:00.000Z",
+              "skillStateJson": "{\"manualPinnedSkillIds\":[\"skill-x\"],\"branchLocalSkillIds\":[\"tmp\"],\"version\":7,\"legacyMigrated\":true}"
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_load_session",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_save_session",
+          "args": {
+            "sessionId": "${0.id}",
+            "sessionState": {
+              "sessionId": "${0.id}",
+              "updatedAt": "2026-01-03T00:00:00.000Z",
+              "activeSkillIdsJson": "[\"skill-y\"]",
+              "skillStateJson": "not-json"
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_load_session",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_save_session",
+          "args": {
+            "sessionId": "${0.id}",
+            "sessionState": {
+              "sessionId": "sess_other_inner_id",
+              "updatedAt": "2026-01-04T00:00:00.000Z",
+              "activeSkillIdsJson": "[\"skill-y\"]",
+              "unknownExtraKey": 1
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_load_session",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_save_session",
+          "args": {
+            "sessionId": "sess_missing_fixture",
+            "sessionState": {
+              "sessionId": "sess_missing_fixture",
+              "updatedAt": "2026-01-01T00:00:00Z"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_save_session",
+          "args": {
+            "sessionId": "${0.id}",
+            "sessionState": {
+              "sessionId": "${0.id}"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_save_session",
+          "args": {
+            "sessionId": "${0.id}",
+            "sessionState": {
+              "sessionId": "${0.id}",
+              "updatedAt": "x",
+              "features": {
+                "rag": "yes"
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_save_session",
+          "args": {
+            "sessionId": "${0.id}",
+            "sessionState": {
+              "sessionId": "${0.id}",
+              "updatedAt": "x",
+              "chatParams": {
+                "maxTokens": -1
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_save_session",
+          "args": {
+            "sessionId": "${0.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_load_session",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

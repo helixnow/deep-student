@@ -2,14 +2,14 @@
  * DeepSeekBalanceSection - DeepSeek 官方账户余额查询
  * 仅对 providerType=deepseek 且 baseUrl 指向官方域名的供应商渲染
  * （调用方负责用 isOfficialDeepSeekVendor 判断）。
- * 连接区展开时自动查询一次；后续仅手动刷新。
+ * 连接区展开时和回到应用时自动查询。
  */
 
+import { useRefreshOnReturn } from '@/hooks/useRefreshOnReturn';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ArrowClockwise, Spinner, WarningCircle } from '@phosphor-icons/react';
+import { Spinner, WarningCircle } from '@phosphor-icons/react';
 import type { VendorConfig } from '@/types';
-import { DsButton } from '@/components/ui/DsButton';
 import {
   formatBalanceFetchedAt,
   queryDeepSeekBalance,
@@ -76,13 +76,15 @@ export const DeepSeekBalanceSection: React.FC<DeepSeekBalanceSectionProps> = ({
     }
   }, [vendor, fetcher]);
 
-  // 连接区展开时自动查询一次；成功/失败后不自动重复（保留“31 分钟前”语义）
+  // 首次展开时查询，回到应用时重新查询。
   useEffect(() => {
     if (!active || autoQueriedRef.current) return;
     if (state.status !== 'idle') return;
     autoQueriedRef.current = true;
     void query();
   }, [active, query, state.status]);
+
+  useRefreshOnReturn(query, active && state.status !== 'loading');
 
   if (state.status === 'idle') {
     return null;
@@ -112,20 +114,6 @@ export const DeepSeekBalanceSection: React.FC<DeepSeekBalanceSectionProps> = ({
           <span className="truncate">{t(state.errorKey)}</span>
         </span>
       )}
-      <DsButton
-        size="sm"
-        variant="ghost"
-        iconOnly
-        className="h-5 w-5 shrink-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
-        onClick={() => void query()}
-        disabled={state.status === 'loading'}
-        title={t('settings:vendor_panel.balance_refresh')}
-        aria-label={t('settings:vendor_panel.balance_refresh')}
-      >
-        <ArrowClockwise
-          className={state.status === 'loading' ? 'h-3 w-3 animate-spin' : 'h-3 w-3'}
-        />
-      </DsButton>
     </span>
   );
 };

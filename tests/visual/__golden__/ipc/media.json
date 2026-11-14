@@ -1,0 +1,29 @@
+{
+  "scene": "media",
+  "steps": [
+    {
+      "name": "boot",
+      "order": "sequence",
+      "calls": [
+        "listen:tauri://close-requested",
+        "listen:tauri://drag-enter",
+        "media_library_list()",
+        "listen:media-processing-progress",
+        "listen:media-processing-completed",
+        "listen:media-processing-error",
+        "dstu_watch(path)",
+        "listen:dstu:change",
+        "media_study_ledger(includeCardIds,resourceIds)",
+        "listen:tauri://drag-over",
+        "listen:tauri://drag-drop",
+        "listen:tauri://drag-leave",
+        "unlisten:tauri://drag-enter",
+        "unlisten:tauri://drag-drop",
+        "unlisten:tauri://drag-over",
+        "unlisten:tauri://drag-leave",
+        "get_setting(key)",
+        "save_setting(key,value)"
+      ]
+    }
+  ]
+}

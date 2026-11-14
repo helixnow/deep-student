@@ -1,12 +1,9 @@
 #!/usr/bin/env bash
-# Verify that the tag version matches the three version declarations in the
-# checked-out tree (package.json / src-tauri/Cargo.toml / src-tauri/tauri.conf.json).
+# Verify that the tag version matches the tracked version declarations in the
+# checked-out Node/Electron tree (package.json, package-lock.json, resources/app/tauri.conf.json).
 #
 # Usage:
-#   bash scripts/ci/verify-version-consistency.sh <tag_name>   # e.g. v0.9.42
-#
-# Single source of truth for the "版本号三重校验" that used to be copy-pasted
-# across release.yml / rebuild-release.yml / hotfix-linux-release.yml.
+#   bash scripts/ci/verify-version-consistency.sh <tag_name>   # e.g. v0.20.0
 set -euo pipefail
 
 if [[ $# -ne 1 ]]; then
@@ -16,22 +13,22 @@ fi
 
 TAG_NAME="$1"
 if [[ ! "${TAG_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  echo "::error::Invalid tag format: '${TAG_NAME}'. Expected format like v0.9.30"
+  echo "::error::Invalid tag format: '${TAG_NAME}'. Expected format like v0.20.0"
   exit 1
 fi
 TAG_VERSION="${TAG_NAME#v}"
 
 PKG_VERSION=$(jq -r '.version' package.json)
-# 结尾分号兼容 BSD sed（本地 macOS）与 GNU sed（CI）
-CARGO_VERSION=$(sed -n '/^\[package\]/,/^\[/{s/^version *= *"\(.*\)"/\1/p;}' src-tauri/Cargo.toml)
-TAURI_VERSION=$(jq -r '.version' src-tauri/tauri.conf.json)
+LOCK_VERSION=$(jq -r '.version' package-lock.json)
+LOCK_ROOT_VERSION=$(jq -r '.packages[""].version // empty' package-lock.json)
+TAURI_VERSION=$(jq -r '.version' resources/app/tauri.conf.json)
 
-echo "══════════════════════════════════════"
-echo "  Tag version:       ${TAG_VERSION}"
-echo "  package.json:      ${PKG_VERSION}"
-echo "  Cargo.toml:        ${CARGO_VERSION}"
-echo "  tauri.conf.json:   ${TAURI_VERSION}"
-echo "══════════════════════════════════════"
+echo "═════════════════════════════════════════════"
+echo "  Tag version:             ${TAG_VERSION}"
+echo "  package.json:            ${PKG_VERSION}"
+echo "  package-lock.json:       ${LOCK_VERSION} (root: ${LOCK_ROOT_VERSION})"
+echo "  resources/app/tauri.conf:${TAURI_VERSION}"
+echo "═════════════════════════════════════════════"
 
 ERRORS=0
 
@@ -40,13 +37,13 @@ if [[ "${PKG_VERSION}" != "${TAG_VERSION}" ]]; then
   ERRORS=$((ERRORS + 1))
 fi
 
-if [[ "${CARGO_VERSION}" != "${TAG_VERSION}" ]]; then
-  echo "::error::Cargo.toml version (${CARGO_VERSION}) does not match tag (${TAG_VERSION})"
+if [[ "${LOCK_VERSION}" != "${TAG_VERSION}" || "${LOCK_ROOT_VERSION}" != "${TAG_VERSION}" ]]; then
+  echo "::error::package-lock.json version (${LOCK_VERSION}/${LOCK_ROOT_VERSION}) does not match tag (${TAG_VERSION})"
   ERRORS=$((ERRORS + 1))
 fi
 
 if [[ "${TAURI_VERSION}" != "${TAG_VERSION}" ]]; then
-  echo "::error::tauri.conf.json version (${TAURI_VERSION}) does not match tag (${TAG_VERSION})"
+  echo "::error::resources/app/tauri.conf.json version (${TAURI_VERSION}) does not match tag (${TAG_VERSION})"
   ERRORS=$((ERRORS + 1))
 fi
 

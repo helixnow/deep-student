@@ -1,0 +1,171 @@
+{
+  "schema": "g3-normalize-approvals/v1",
+  "approvedBy": "C2-platform",
+  "approvedAt": "2026-11-06T03:55:00Z",
+  "rules": [
+    {
+      "id": "N-001",
+      "scope": "capture.db value 差异",
+      "decision": "approved",
+      "rule": "只对同一场景 A1≠A2 的 (db 相对 slot 路径, table, column) 生效；A 与 B 两侧都先投影，再比较。投影后值换成占位符 <ts>，但要求 A、B 两侧在该位置 storageClass 相同、且都非 null；类型或 null 性不同仍判 fail。原件不改。",
+      "evidence": "ds-mig/X7-differential fixtures/differential/a-runs/20261106-first-A/A1-A2.database-differences.raw.json.gz：164 条 value 差异，C2 逐条正则核对全为 RFC3339 时间戳（非时间戳 0 条）",
+      "columns": [
+        "chat_v2.db/__governance_schema_fingerprints/verified_at",
+        "chat_v2.db/refinery_schema_history/applied_on",
+        "databases/vfs.db/__governance_schema_fingerprints/verified_at",
+        "databases/vfs.db/memory_config/updated_at",
+        "databases/vfs.db/refinery_schema_history/applied_on",
+        "databases/vfs.db/vfs_indexing_config/updated_at",
+        "llm_usage.db/__governance_schema_fingerprints/verified_at",
+        "llm_usage.db/refinery_schema_history/applied_on",
+        "mistakes.db/__change_log/changed_at",
+        "mistakes.db/__governance_schema_fingerprints/verified_at",
+        "mistakes.db/automation_definitions/created_at",
+        "mistakes.db/automation_definitions/updated_at",
+        "mistakes.db/refinery_schema_history/applied_on",
+        "mistakes.db/settings/updated_at"
+      ],
+      "sameTakeCollision": "approved",
+      "sameTakeApprovedBy": "C0-chief (acting for C2; C2 unavailable: provider 403 GROUP_DELETED; user authorized C0 to act 10:55Z)",
+      "sameTakeApprovedAt": "2026-11-06T10:56:00Z",
+      "actingNote": "C2 会话 10:50Z 因 API Key 分组删除退出；07:56Z/08:38Z 批准请求无回复。用户明确授权 C0 代行。规则文本与 A1/A2 证据未变。"
+    },
+    {
+      "id": "N-002",
+      "scope": "databases/audit.db/__audit_log 行差异（8 条 row，主键为每次随机的 UUID）",
+      "decision": "approved",
+      "rule": "按多重集比较：每行投影为 (operation_type, target, operation_data, status, error_message, details)，忽略 id、timestamp、duration_ms；A、B 两侧多重集必须完全相等（行数相同）。",
+      "evidence": "同上原件，kind=row 的 8 条，before/after 只在 id/timestamp/duration_ms 不同"
+    },
+    {
+      "id": "N-003",
+      "scope": "命令返回值与事件里的随机 id / 时间戳（如 exam_* id、createdAt）",
+      "decision": "approved-with-conditions",
+      "rule": "同一场景 A1≠A2 的 JSON 路径可自动规范化，但 compare 产物必须逐条列出：路径、A1 值、A2 值、A 值、B 值、替换后的占位符。同一个随机值在后续步骤被引用时，要用同一个占位符（保持引用一致），不能每处独立替换。不允许通配符或整对象忽略。A、B 两侧在该路径的 JSON 类型必须相同，否则 fail。C2 每小时抽查按这份清单复算；清单缺失的 compare 一律不算 pass。"
+    },
+    {
+      "id": "N-004",
+      "scope": "capture.db 文件集合：A 侧 app-data/com.deepstudent.differential/hsts-storage.sqlite",
+      "decision": "approved",
+      "approvedAt": "2026-11-06T04:28:00Z",
+      "rule": "只排除这一个精确相对路径（A 端 WebKitGTK webview 的 HSTS 缓存）。不排除其他任何 A-only 或 B-only 文件；B 端出现的 Chromium 运行时文件（Cookies、Local Storage 等）如出现在比对集合中，要另行逐个申请。compare 产物要在 excludedFiles 里写明该路径和 N-004。",
+      "evidence": "X7 95465e925 fixtures/differential/g2/README.md:42 与 manifest.json:71/154/237/320；C2 检索 src-tauri/src 无 hsts 引用（应用代码不打开此文件）"
+    },
+    {
+      "id": "N-005",
+      "scope": "capture.db 中的随机 id 列（如 sess_/note_/卡片 UUID 主键及其外键、引用列）",
+      "decision": "approved-with-conditions",
+      "approvedAt": "2026-11-06T04:28:00Z",
+      "rule": "N-003 的扩展：只对同一场景 A1≠A2 的 (db, table, column) 生效。整个场景用同一张“随机值→占位符”双射表，覆盖命令参数、返回值、事件和 DB 值：同一 A 值在各处必须映射到同一占位符，B 侧同样独立建表，两侧占位符序列必须一致（等价于引用结构相同）。双射冲突（一个值对应两个占位符或反之）判 fail。compare 产物逐条列出 (db, table, column, A1, A2, A, B, 占位符)。",
+      "evidence": "X7 G2 04:10Z 报告：A1/A2 同样不等，差异来自 sess_/note_/UUID 与时间戳的传播"
+    },
+    {
+      "id": "N-006",
+      "scope": "capture.db 的 schema 条目：sql 文本空白差异",
+      "decision": "approved",
+      "rule": "schema 比较前只折叠 sql 中 token 之间的空白（连续空白折叠为 1 个空格，首尾去空白），单引号字符串字面量内部空白不改；type/name/tbl_name 必须逐字相等，schema 条目数必须相等。替换逐条进入 normalization（rule=N-006, db, side, changed, samples）。",
+      "evidence": "compare/electron__equivalence__g3w-shell-01/g3w.shell.pdfstream_check_access.err_missing_path.compare.json.gz：before/after 各 220 条，仅 4 条 sql 缩进 12 vs 8 空格（chat_v2_compaction_memory_flushes 的 3 索引 + 1 表），type/name/tbl_name 与列定义完全一致；A1/A2 两次独立 A 采集的 schema 完全一致。",
+      "approvedBy": "C0-chief (acting for C2; C2 unavailable: provider 403 GROUP_DELETED; user authorized C0 to act 10:55Z)",
+      "approvedAt": "2026-11-06T10:56:00Z",
+      "actingNote": "C2 会话 10:50Z 因 API Key 分组删除退出；07:56Z/08:38Z 批准请求无回复。用户明确授权 C0 代行。规则文本与 A1/A2 证据未变。"
+    },
+    {
+      "id": "N-007",
+      "scope": "运行根路径泄漏到 args/outcome/events/DB 字符串值",
+      "decision": "approved",
+      "rule": "只把每个 trace 自己的 run root（trace 文件同级 run/ 目录的绝对路径，例如 .../<suite>/<shard>/<id>/A1/run）在所有字符串值中精确替换为 <run>；不做通配，不做路径后缀替换。替换逐条进入 normalization（rule=N-007, side, runRoot, replaced, samples）。",
+      "evidence": "compare/electron__equivalence__shell-file-ops/shell.file.read_bytes.errors.compare.json.gz：get_app_data_dir 的 expected/actual 只差 runs/full/A/... 与 runs/full/B/... 前缀；约 10/83 shard 命中。路径由录制器注入，不属于产品契约。",
+      "approvedBy": "C0-chief (acting for C2; C2 unavailable: provider 403 GROUP_DELETED; user authorized C0 to act 10:55Z)",
+      "approvedAt": "2026-11-06T10:56:00Z",
+      "actingNote": "C2 会话 10:50Z 因 API Key 分组删除退出；07:56Z/08:38Z 批准请求无回复。用户明确授权 C0 代行。规则文本与 A1/A2 证据未变。"
+    },
+    {
+      "id": "N-010",
+      "scope": "任一 db 的 __change_log：record_id 占位编号与 changed_at（datetime('now') 秒级文本）",
+      "decision": "approved",
+      "approvedBy": "main-agent(C2-proxy) 2026-11-07",
+      "rule": "只在 __change_log 主键恰为整数 id、且 id/table_name/operation 本身不是易变列时生效。行按 id 升序（写入序列）处理；record_id 的占位符按 (table_name, operation, 原始 record_id) 在序列中首次出现的序号命名，不再依赖按掩码内容排序的位置，也不含抓取单元号；占位名若与已有名字重复则加后缀，双射不允许两个值共用一个名字。changed_at 只有在同一场景 A1≠A2、且 A1/A2 的差异值全部是 'YYYY-MM-DD HH:MM:SS' 时才登记为易变；投影为 <ts> 的前提是该快照里每一行都是这种格式、非 null，且按 id 顺序不倒退，否则整列保留原值（判差）。时间值本身不进双射表，不再把“同一秒”当作引用关系。mistakes.db 的 changed_at 仍按 N-001。",
+      "evidence": "W10 第二轮只读扫描 runs/full 1221 个 compare：487 个 A/B __change_log (table_name, operation) 序列完全相同却仍判不等；media.library.list_limits step 5 原件 A1 跨 3 秒、B 13 行同一秒，差异样本全部是 changed_at/record_id 占位名（<@u5:…#5.1> vs <@u4:…#0.1>）。回放统计见 tests 与 W13-PROGRESS 第三轮。",
+      "tests": "host/e2e/differential/g3-normalize-db.test.mjs：正例（A1 三秒/A2 两秒/B 一秒、序列相同 → equal）；负例：UPDATE 目标换成另一资源、INSERT/UPDATE 顺序颠倒、少一行、RFC3339 格式、时间倒退、null、非随机列内容差，全部仍判差；未批准 N-010 时行为不变。"
+    },
+    {
+      "id": "N-011",
+      "scope": "capture.db 列与命令返回/事件 JSON 中形如 <prefix>_<nanoid> 且不含数字的随机 id（如 unit_lKyWrgmMj-、ic_*、tdl_*）",
+      "decision": "approved",
+      "approvedBy": "main-agent(C2-proxy) 2026-11-07",
+      "rule": "N-005/N-003 的扩展。值匹配 ^[a-z][a-z0-9]{0,15}_[A-Za-z0-9_-]{8,}$，且后缀含数字、'-' 或同时含大小写（单一大小写的单词不算）时，取形状 <prefix>_*<后缀长度>。DB 列：只有当 A1 独有值和 A2 独有值里都出现同一形状时，该形状在这一列才视为随机；A1=A2 的值仍原样保留；B 侧只有同列、同形状的值才换成占位符，长度或前缀不同保持原值。JSON：同一路径 A1、A2 两个值形状相同才登记。占位符仍走同一张双射表，引用结构必须一致。compare 产物在该列条目里列出 generated 形状与 extendedBy=N-011。",
+      "evidence": "bili.link_item.offline_descriptor step 16：vfs_index_units 新行 25 列只有 id 不同，A1 的 unit_lKyWrgmMj- 不含数字，被 randomLike 判为非随机而保留字面值，B 的 id 换成了占位符。runs/full 全部 compare 的 normalizationSkipped 中，被跳过的列样本前缀 ic 1908、unit 750、tdl 716、icr 702、iev 408、ice 386、ti 290、icx 100、task 22 次，全是 nanoid 形状。",
+      "tests": "g3-normalize-db.test.mjs：正例（A1 含无数字 id → equal，条目列出 unit_*10）；负例：B 的 id 长度不同、A1=A2 常量被 B 改成另一常量、小写单词 unit_startedok/unit_stoppedok（不登记，判差）、change_log 指向不存在的资源，全部仍判差。"
+    },
+    {
+      "id": "N-012",
+      "scope": "capture.db 中掩码后内容完全相同、且含未命名随机值的并列行",
+      "decision": "approved",
+      "approvedBy": "main-agent(C2-proxy) 2026-11-07",
+      "rule": "原规则按掩码内容排序给行编号，并列时退回按原始随机主键排序，A、B 两侧随机主键的相对顺序不同就会给同一行起不同的占位名。现改为：并列且含未命名随机值的行先不命名，等同一抓取单元里其他所有行（包括引用它们的外键行）命名完，再按重新掩码后的内容排序命名（占位名带 #t 前缀，与原编号不冲突）。仍无法区分的行退回原顺序。内容不同、外键指向不同的行不受影响。",
+      "evidence": "W04 第四轮交接：按排序位置配对随机 id 时，A1/A2 位置不同会让 id 保持字面值、或让引用方的占位名错位，产生伪差异（bili.link_item.offline_descriptor 一类）。合成复现见 tests。",
+      "tests": "g3-normalize-db.test.mjs：正例（两条内容相同的父行，A1 与 B 随机主键顺序相反，由子行区分 → equal）；负例：B 的父行内容不同、两个子行都指向同一父行，仍判差。"
+    },
+    {
+      "id": "N-013",
+      "scope": "抓取时机（录制器，不是投影规则）：每次抓库前的静默等待",
+      "decision": "approved",
+      "approvedBy": "main-agent(C2-proxy) 2026-11-07",
+      "rule": "A、B 两个录制器在每次 capture 前调用同一个 quiesce（scripts/electron-migration/record/g3-quiet.mjs）：先等本场景已开始的会话流（chat_v2_session_* 的 stream_start）都收到终态事件（stream_complete/stream_error/stream_cancelled），上限 5 s；再等事件数与应用数据目录下所有 SQLite 主文件、-wal、-journal 的 (size, mtime) 在 300 ms 窗口内不变，上限 3 s。步骤自带 waitAfter 等非终态事件（如 stream_start，表示场景要在流中途操作）时不等流结束。等待结果写入每个 capture 的 quiet 字段（waitedMs、streamsOpen、settled），不参与比较；未静默不报错，由报告标注。",
+      "evidence": "W10 第二轮：workspace.cancel 与 send-errors 两侧最终写入同样 5 行，但 B 的 setup 较慢，cancel IPC 返回时 B 还没写入 “User message saved immediately”，逐步抓库因此不等；memory 的索引/维护任务也是异步写入。",
+      "tests": "host/e2e/differential/g3-quiet.test.mjs：等到窗口内无变化才返回；持续变化时在上限处停止并标 settled=false；有未结束的流时先等终态；waitAfter 为 stream_start 时不等流；A、B 录制器都调用同一个 quiesce。"
+    },
+    {
+      "id": "N-014",
+      "scope": "拆分录制（g3-batch --mode b-only：A/A2 取自 A 预录目录，B 之后单独录制）时，A1=A2 的位置上落在各侧自己录制窗口内的时钟读数（DB 文本/整数列、命令参数/返回值/事件 JSON 叶子）",
+      "decision": "approved",
+      "approvedBy": "main-agent 2026-11-07（W13 r6 合入 INT 时批准）",
+      "proposedBy": "W13 第六轮 2026-11-07",
+      "rule": "只在比较器收到 --split-recording 时考虑（g3-batch 只在 b-only 模式传）；A、B 都有录制窗口且两窗口不重叠才生效，否则记入 normalizationSkipped 并照常逐字比较。窗口：本侧录制 worker 进程启动（之前没有任何种子和应用写入）到本次 take 结束，按整秒放宽 1 s（datetime('now') 截断到秒）；B 和新录的 A 取 trace.recording，已录的 A 预录取 worker 回执 process.startedAt 到同目录 run/app-process.json 的 endedAt。只作用于 A1=A2 的位置：DB 列须在每次抓取中 A1、A2 值的多重集都相同且不是 N-001/N-005/N-010/N-011 已登记的易变列；JSON 叶子须 A1、A2 同值。A1≠A2 的位置完全按原规则处理。时钟读数：文本中的 YYYY-MM-DD[ T]hh:mm:ss[.f…][Z|±hh:mm] 片段（无时区按 UTC，TZ 已固定）、10 位（秒）或 13 位（毫秒）的整数；只有落在本侧窗口内的才替换为形状占位 <tw:格式>（保留分隔符、小数位数、时区写法，epoch 区分 s/ms），窗口外的值（种子里的历史时间等）原样比较。替换后两侧形状必须相同。另做先后检查：两侧都被替换的同一位置配对（DB 按行键+列，同一位置值变化按出现顺序编号），任意两对在 A、B 上严格先后相反即报 timestamp-order 差异（按两者中较粗的精度比较，同一秒内视为不分先后，不报）。不比较相对起点的偏移：A 启动后有 8 s 静置、Tauri 与 Host 每步耗时不同，偏移容差必须放到几十秒才不误报，失去意义。一侧窗口内、另一侧窗口外的值（例如常量恰好落在 A 窗口）仍判差。",
+      "rationale": "ser-38 第一次仅 B smoke（g3-b-smoke-007c1af54c3e）：A1、A2 同时录制，vfs.db __change_log.changed_at 两次都是 2026-11-07 01:20:16，N-010 因 A1=A2 不登记为易变，按确定值逐字比较；B 晚 6 分钟录制得到 01:26:26，判为差异。所有写库场景都会如此。种子（historical-wp013-v1、l15、l22）含 build clock，种子在 worker 内每个分片建一次，所以窗口从 worker 启动算起。",
+      "evidence": ".reports/server/g3-b-smoke-007c1af54c3e/compare/host__plugins__review__equivalence__pending-provider__wp229-essay-stream-scripted/review.essay.scripted.stream-success-round-persisted.compare.json.gz：after step 2 起 __change_log id 1–5 changed_at 01:20:14/01:20:16 对 01:26:25/01:26:26。",
+      "tests": "host/e2e/differential/g3-split-clock.test.mjs：「N-014: same-second A values inside the A window no longer differ from later B values (DB text, epoch ms, JSON ISO)」；「N-014: values outside each side's window (seed history) are still compared verbatim」；「N-014: two timestamps of one scenario in the opposite order on B are reported」；「N-014: where A1 and A2 differ the existing rules decide, as without N-014; combined recording is untouched」（含窗口重叠、无窗口、proposed 不生效）。"
+    },
+    {
+      "id": "N-015",
+      "scope": "命令 get_app_version 的返回值（字符串 \"<版本> (Build <构建号>, <提交>)\"）",
+      "decision": "approved",
+      "approvedBy": "main-agent 2026-11-07（W13 r6 合入 INT 时批准）",
+      "proposedBy": "W13 第六轮 2026-11-07",
+      "rule": "只对 get_app_version 成功返回的整串匹配 ^(\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.]+)?) \\(Build \\d+, [0-9a-f]{7,40}\\)$ 的值，把构建号和提交换成 <build>、<commit>，版本号原样比较；格式不符（缺 Build、多余字段等）不改，判差。所有录制模式都适用（A 构建与 B 树本来就不是同一次构建）。替换逐条进入 normalization（rule=N-015, side, value, normalized）。",
+      "rationale": "A 构建回执是 X7 时期的 Tauri 构建（Build 26056, ec19ff0f），B 是录制树（Build 26651, 007c1af5）；构建号和提交按定义不同，版本号相同才是要比较的内容。",
+      "evidence": ".reports/server/g3-b-smoke-007c1af54c3e/compare/fixtures__differential__wp043__get-app-version.v0/shell.get-app-version.first.compare.json.gz：step 0 outcome \"0.11.0 (Build 26056, ec19ff0f)\" 对 \"0.11.0 (Build 26651, 007c1af5)\"。",
+      "tests": "host/e2e/differential/g3-split-clock.test.mjs：「N-015: get_app_version keeps its version; only the build number and commit are masked」（版本号变化、格式变化仍判差；未批准不生效）。"
+    },
+    {
+      "id": "N-016",
+      "scope": "capture.db 文本值与命令参数/返回值/事件 JSON 叶子中的 AEAD 密封信封 {\"ciphertext\",\"nonce\",\"version\"}（如 settings 里 vendor_configs 的 apiKey、单独加密存储的密钥）",
+      "decision": "approved",
+      "approvedBy": "main-agent 2026-11-07（W13 r7 随第四批合入 INT 时批准）",
+      "proposedBy": "W13 第七轮 2026-11-07",
+      "rule": "N-003/N-005 的扩展。只在同一位置 A1≠A2 时生效（DB 按 (db, table, column) 判定易变，JSON 按叶子路径判定）。信封格式严格为 {\"ciphertext\":\"<base64>\",\"nonce\":\"<base64>\",\"version\":<整数>}：键名与顺序固定、无多余字段；允许任意 JSON 转义层级（每个引号前的反斜杠数量相同）。信封里的 ciphertext 和 nonce 两段作为随机记号进入同一张双射表，占位名附 base64 长度（如 <@…/value.3~b64*40>、<@…/value.5~b64*16>）。因此 B 侧必须满足：信封格式相同、version 相同、密文长度相同（明文等长、认证标签等长）、nonce 长度相同；同一密文在各步抓取和返回值里的引用一致（只有一侧重新加密时占位名不同，判差）。A1=A2 的信封（种子里的密文）不替换，逐字比较。B 存明文、键序不同、字段增减一律判差。不解密，不读任何密钥。替换逐条进入 normalization（rule=N-016, side, db/table/column 或 site/pointer, replaced, samples）。",
+      "rationale": "AEAD 每次加密都取随机 nonce，同一明文两次加密的密文和 nonce 都不同：A1 与 A2 已经不同，A 与 B 不可能逐字相同。现有记号切分只认 UUID、时间戳、长数字串和长十六进制串；base64 段（含 / 和 +）既不是记号，整值也不满足 randomLike，于是原样保留，必然判差。",
+      "evidence": ".reports/server/g3-b-smoke-007c1af54c3e/compare/host__plugins__review__equivalence__pending-provider__wp229-essay-stream-scripted/review.essay.scripted.stream-success-round-persisted.compare.json.gz：after step 1 起 mistakes.db settings.value（key=vendor_configs）的 apiKey，A1 为 {\\\"ciphertext\\\":\\\"1t36JBi0…CONE8\\\",\\\"nonce\\\":\\\"fvsqyH0NLg62hVtt\\\",\\\"version\\\":2}，A2 为 y0xti2qn…wlL4 / QNoxHbXOiZF5kqAd，B 为 8X/say0L…H/YV / zy+Arsd2pRVQFP2n（密文都是 40 字符，nonce 都是 16 字符）。这个值的 16 个字段里，除 apiKey 和 vendor id 占位名外全部相同。INTEGRATION-NOTES 09:20 的「save_api_configurations 写入 settings 的 vendor/model JSON 在字段上有差异」就是这一项加 N-017。同目录的 stream-success-missing-session-rejected 情况相同。",
+      "tests": "host/e2e/differential/g3-normalize-proposals.test.mjs：「N-016 + N-017: the save_api_configurations rows of the ser-38 smoke are equal; only the A-only lance rows remain」（DB 单元内嵌一层转义、独立密钥列无转义、命令返回值三处；只批 N-016 时 vendor_configs 只剩名次差异）；「N-016 negatives: length, version, key order, plaintext, re-encryption and A-stable envelopes are still compared」（密文变长、nonce 变长、version 变化、B 存明文、键序不同、B 在读取时重新加密、A1=A2 的种子信封，全部仍判差）；「repository approvals: N-016 and N-017 are registered as proposed, with evidence and tests, and change nothing」。"
+    },
+    {
+      "id": "N-017",
+      "scope": "capture.db 中主键在 A1、A2 两次录制里都相同的表：易变值占位名中的行名次",
+      "decision": "approved",
+      "approvedBy": "main-agent 2026-11-07（W13 r7 随第四批合入 INT 时批准）",
+      "proposedBy": "W13 第七轮 2026-11-07",
+      "rule": "修订 N-003/N-005 的占位命名。原规则按掩码后的内容排序给行编号（#名次），一侧多一行或少一行（即使这一行已单独判差），排在它后面的所有行名次都会错位，引用同一随机值的其他行和命令返回值也随之判差。改为：表有主键，主键各列在 A1、A2 的每次抓取中值多重集都相同（不是易变列，也没有其他 A1/A2 差异），且本次快照中每行主键非 null、不重复时，按主键顺序处理各行，占位名用主键值命名：u<单元>:<db>/<table>[<列>='<文本>' 或 <列>=<整数>]/<column>.<记号序号>。__change_log（N-010 序列命名）、audit（N-002）、主键随机或 A1/A2 有差异的表仍按原规则。双射和引用一致的要求不变：同一随机值在各处仍必须同名，B 侧引用错位（例如 model_profiles.vendorId 指向另一个 vendor）仍判差。只改名字，不改比较；缺行、多行仍按行差异计。compare 产物对每张按主键命名的表记一条 (rule=N-017, side, db, table, primaryKey)。",
+      "rationale": "按名次命名时，一个真实差异（A 启动维护写入的 lance.optimize.last.chat/kb 两行，B 没有）会连带出与它无关的行差异，掩盖这些行本身是否一致。按稳定主键命名后，真实差异只在它自己的行上报告。",
+      "evidence": "同一 compare：A 的 settings 多出 lance.optimize.last.chat、lance.optimize.last.kb 两行（行差异，由 W07/W10 定性）。key 排在它们之后的 model_profiles 名次 A 为 6、B 为 4，vendor id 的占位名因此是 <@u2:mistakes.db/settings/value#6.1> 对 <@u2:mistakes.db/settings/value#4.1>；model_profiles 与 vendor_configs 两个值从 after step 1 到 final 的每次抓取都判差，而去掉占位名后 model_profiles 的 36 个字段完全相同。",
+      "tests": "host/e2e/differential/g3-normalize-proposals.test.mjs：正例同 N-016（只批 N-017 时 model_profiles 相等，vendor_configs 只剩信封字面值）；「N-017 negatives: a wrong reference or a missing row still fails; random primary keys keep rank names」（B 的 model 指向另一个 vendor、B 缺 model_profiles 行，仍判差；随机主键的 sessions 表仍用 #名次）。"
+    }
+  ],
+  "notApproved": [
+    "按表或按整列通配忽略",
+    "只在 B 端出现的差异路径（A1=A2 却 A≠B 一律是真实差异）",
+    "修改原始轨迹文件",
+    "B 侧结构差异（B 多/缺表、B 在标识目录外建库）不属于规范化范围，按真实差异计 fail，已由 C1 派 L20 WP-262 / L03 WP-263 / L12 WP-264"
+  ],
+  "actingApprover": "C0-chief (acting for C2; C2 unavailable: provider 403 GROUP_DELETED; user authorized C0 to act 10:55Z)",
+  "actingApprovedAt": "2026-11-06T10:56:00Z"
+}

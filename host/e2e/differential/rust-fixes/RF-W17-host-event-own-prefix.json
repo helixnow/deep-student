@@ -1,0 +1,30 @@
+{
+  "id": "RF-W17-host-event-own-prefix",
+  "kind": "deliberate",
+  "status": "proposed",
+  "title": "ctx.ui.host.on 只允许订阅本插件命名空间下的 Host 事件，外来/近似前缀与非法字符在注册前拒绝",
+  "rust": {
+    "file": "src/ui-kernel/services/events.ts",
+    "line": 33,
+    "behavior": "Rust 快照没有社区 UI 插件，也没有按插件命名空间限定的事件订阅：前端可以 listen 任意 Tauri 事件名（electron/shell/events.ts 只校验字符集），因而能读到其他插件或内核自己的推送"
+  },
+  "fix": {
+    "files": [
+      "src/ui-kernel/services/events.ts",
+      "src/ui-kernel/ui-service.ts",
+      "src/ui-kernel/plugin.ts",
+      "src/ui-kernel/bootstrap.ts"
+    ],
+    "behavior": "ctx.ui.host.on(event, handler) 只接受本插件 id 派生的事件名（完整名 example/word-of-day:changed 或本地名 changed），事件名与派生规则直接复用 Host 的 host/kernel/plugin-id.ts 与 event-name.ts。完整名不在本插件前缀内、或者本地名含 ':'/'/' 时同步抛 TypeError，且不调用传输层；订阅登记在调用方 fiber 上，卸载/覆盖/apply 失败自动退订（含尚未 resolve 的注册）；handler 异常与 listen 失败计入本插件错误预算"
+  },
+  "evidence": "插件生态 v1（decisions/2026-11-07-plugin-ecosystem-v1.md、host-manifest.md）要求 W17 的 ctx.ui.host.on 只能本插件前缀、fiber 自动退订；W27 的消费契约（interfaces/events-example.md）要求外来私有前缀在传输注册前被拒、近似前缀 example/study-goal-other: 也不能命中。deriveEvent 与 Host 同一份实现，避免两边正则漂移。",
+  "userVisible": "只对第三方插件可见：社区插件用 ctx.ui.host.on 订阅其他插件或内核事件时直接报错（错误文本指明本插件的事件命名空间），不再静默订阅任意 Tauri 事件。仓库内官方界面与既有功能不订阅这些事件，无变化。",
+  "dataCompat": "不改变落库数据、同步载荷与备份格式；事件只在进程内传递。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "src/ui-kernel/__tests__/host-events.test.ts",
+      "name": "RF-W17-host-event-own-prefix: rejects foreign, near-prefix, malformed and empty names before anything is registered"
+    }
+  ]
+}

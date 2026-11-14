@@ -25,7 +25,6 @@ import {
 } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/shad/Card';
 import { cn } from '@/lib/utils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
@@ -339,13 +338,27 @@ const FinalizationBadge: React.FC<{ finalization: FinalizationData; className?: 
 
 export const CompletionCard: React.FC<CompletionCardProps> = ({ data, variant = 'card', className }) => {
   const { t } = useTranslation('chatV2');
+  const isInline = variant === 'inline';
 
-  if (variant === 'inline') {
+  const body = (
+    <>
+      {/* G07-a：验收徽章与模型自述 result 并列展示，不替代 */}
+      {data.finalization && <FinalizationBadge finalization={data.finalization} />}
+      {data.result && (
+        <div className="whitespace-pre-wrap break-words text-sm text-foreground">
+          {data.result}
+        </div>
+      )}
+      {data.command && <SuggestedCommand command={data.command} compact={isInline} />}
+    </>
+  );
+
+  if (isInline) {
     // 时间线内联形态：无厚边框卡片，贴合左轨节奏；颜色走语义 token
     return (
       <div
         className={cn(
-          'rounded-[var(--chat-radius-md,12px)] border border-success/30 bg-success/5 px-3 py-2 space-y-2',
+          'rounded-[var(--chat-radius-md,12px)] border border-success/25 bg-success/5 px-3 py-2 space-y-2',
           className,
         )}
       >
@@ -353,43 +366,29 @@ export const CompletionCard: React.FC<CompletionCardProps> = ({ data, variant = 
           <CheckCircle size={16} weight="fill" />
           {t('completion.title')}
         </div>
-        {/* G07-a：验收徽章与模型自述 result 并列展示，不替代 */}
-        {data.finalization && <FinalizationBadge finalization={data.finalization} />}
-        {data.result && (
-          <div className="whitespace-pre-wrap break-words text-sm text-foreground">
-            {data.result}
-          </div>
-        )}
-        {data.command && <SuggestedCommand command={data.command} compact />}
+        {body}
       </div>
     );
   }
 
   return (
-    <Card
+    <div
       className={cn(
-        'border border-success/40 bg-success/5',
-        className
+        'rounded-lg border border-success/25 bg-success/[0.03] dark:bg-card/80 overflow-hidden',
+        className,
       )}
     >
-      <CardHeader className="pb-2">
-        <CardTitle className="flex items-center gap-2 text-base text-success">
-          <CheckCircle size={20} weight="fill" />
+      <div className="flex items-center gap-2 border-b border-success/15 px-3 py-2.5">
+        <CheckCircle size={16} weight="fill" className="shrink-0 text-success" />
+        <h3 className="text-sm font-medium leading-none tracking-tight text-success">
           {t('completion.title')}
-        </CardTitle>
-      </CardHeader>
+        </h3>
+      </div>
 
-      <CardContent className="space-y-3">
-        {/* G07-a：验收徽章与模型自述 result 并列展示，不替代 */}
-        {data.finalization && <FinalizationBadge finalization={data.finalization} />}
-
-        {/* 结果文本 */}
-        <div className="text-sm text-foreground whitespace-pre-wrap break-words">{data.result}</div>
-
-        {/* 建议命令（如果有） */}
-        {data.command && <SuggestedCommand command={data.command} />}
-      </CardContent>
-    </Card>
+      <div className="space-y-3 p-3">
+        {body}
+      </div>
+    </div>
   );
 };
 

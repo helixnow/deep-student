@@ -1,0 +1,4 @@
+{
+  "$comment": "测试里代替 extends: \"official\" 的官方 profile：只有提供 webSearch 的官方 browser 插件。",
+  "plugins": [{ "id": "dstu.browser", "module": "../../../../../host/plugins/browser/index.ts" }]
+}

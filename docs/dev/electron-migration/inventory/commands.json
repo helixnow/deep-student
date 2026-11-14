@@ -1,0 +1,7464 @@
+[
+  {
+    "name": "plugin_begin_login",
+    "file": "src/plugins/commands.rs",
+    "line": 66,
+    "lane": "F1-kernel",
+    "frontend": "app"
+  },
+  {
+    "name": "plugin_cancel_login",
+    "file": "src/plugins/commands.rs",
+    "line": 74,
+    "lane": "F1-kernel",
+    "frontend": "app"
+  },
+  {
+    "name": "plugin_get_config",
+    "file": "src/plugins/commands.rs",
+    "line": 40,
+    "lane": "F1-kernel",
+    "frontend": "app"
+  },
+  {
+    "name": "plugin_get_status",
+    "file": "src/plugins/commands.rs",
+    "line": 32,
+    "lane": "F1-kernel",
+    "frontend": "app"
+  },
+  {
+    "name": "plugin_list",
+    "file": "src/plugins/commands.rs",
+    "line": 11,
+    "lane": "F1-kernel",
+    "frontend": "app"
+  },
+  {
+    "name": "plugin_logout",
+    "file": "src/plugins/commands.rs",
+    "line": 82,
+    "lane": "F1-kernel",
+    "frontend": "app"
+  },
+  {
+    "name": "plugin_set_config",
+    "file": "src/plugins/commands.rs",
+    "line": 48,
+    "lane": "F1-kernel",
+    "frontend": "app"
+  },
+  {
+    "name": "plugin_set_enabled",
+    "file": "src/plugins/commands.rs",
+    "line": 57,
+    "lane": "F1-kernel",
+    "frontend": "app"
+  },
+  {
+    "name": "plugin_start",
+    "file": "src/plugins/commands.rs",
+    "line": 16,
+    "lane": "F1-kernel",
+    "frontend": "app"
+  },
+  {
+    "name": "plugin_stop",
+    "file": "src/plugins/commands.rs",
+    "line": 24,
+    "lane": "F1-kernel",
+    "frontend": "app"
+  },
+  {
+    "name": "plugin_unbind",
+    "file": "src/plugins/commands.rs",
+    "line": 87,
+    "lane": "F1-kernel",
+    "frontend": "app"
+  },
+  {
+    "name": "copy_file",
+    "file": "src/commands.rs",
+    "line": 4264,
+    "lane": "F2-shell",
+    "frontend": "app"
+  },
+  {
+    "name": "export_unified_backup_data",
+    "file": "src/commands.rs",
+    "line": 6552,
+    "lane": "F2-shell",
+    "frontend": "none"
+  },
+  {
+    "name": "get_app_data_dir",
+    "file": "src/commands.rs",
+    "line": 562,
+    "lane": "F2-shell",
+    "frontend": "app"
+  },
+  {
+    "name": "get_app_version",
+    "file": "src/commands.rs",
+    "line": 499,
+    "lane": "F2-shell",
+    "frontend": "app"
+  },
+  {
+    "name": "get_file_size",
+    "file": "src/commands.rs",
+    "line": 4193,
+    "lane": "F2-shell",
+    "frontend": "app"
+  },
+  {
+    "name": "get_prevent_sleep",
+    "file": "src/cmd/power.rs",
+    "line": 77,
+    "lane": "F2-shell",
+    "frontend": "app"
+  },
+  {
+    "name": "hash_file",
+    "file": "src/commands.rs",
+    "line": 4259,
+    "lane": "F2-shell",
+    "frontend": "none"
+  },
+  {
+    "name": "install_apk",
+    "file": "src/commands.rs",
+    "line": 532,
+    "lane": "F2-shell",
+    "frontend": "app"
+  },
+  {
+    "name": "load_webview_settings",
+    "file": "src/commands.rs",
+    "line": 7508,
+    "lane": "F2-shell",
+    "frontend": "none"
+  },
+  {
+    "name": "open_file_externally",
+    "file": "src/external_file_opener.rs",
+    "line": 176,
+    "lane": "F2-shell",
+    "frontend": "app"
+  },
+  {
+    "name": "open_system_permission_settings",
+    "file": "src/system_permissions.rs",
+    "line": 129,
+    "lane": "F2-shell",
+    "frontend": "none"
+  },
+  {
+    "name": "pdfstream_check_access",
+    "file": "src/commands.rs",
+    "line": 4212,
+    "lane": "F2-shell",
+    "frontend": "app"
+  },
+  {
+    "name": "read_file_bytes",
+    "file": "src/commands.rs",
+    "line": 4171,
+    "lane": "F2-shell",
+    "frontend": "app"
+  },
+  {
+    "name": "read_file_text",
+    "file": "src/commands.rs",
+    "line": 4149,
+    "lane": "F2-shell",
+    "frontend": "app"
+  },
+  {
+    "name": "save_text_to_file",
+    "file": "src/commands.rs",
+    "line": 4271,
+    "lane": "F2-shell",
+    "frontend": "app"
+  },
+  {
+    "name": "save_webview_settings",
+    "file": "src/commands.rs",
+    "line": 7475,
+    "lane": "F2-shell",
+    "frontend": "app"
+  },
+  {
+    "name": "set_android_immersive_mode",
+    "file": "src/system_bars.rs",
+    "line": 43,
+    "lane": "F2-shell",
+    "frontend": "app"
+  },
+  {
+    "name": "set_backend_sentry_enabled",
+    "file": "src/lib.rs",
+    "line": 330,
+    "lane": "F2-shell",
+    "frontend": "none"
+  },
+  {
+    "name": "set_prevent_sleep",
+    "file": "src/cmd/power.rs",
+    "line": 26,
+    "lane": "F2-shell",
+    "frontend": "app"
+  },
+  {
+    "name": "set_sidebar_vibrancy",
+    "file": "src/cmd/window_effects.rs",
+    "line": 171,
+    "lane": "F2-shell",
+    "frontend": "app"
+  },
+  {
+    "name": "set_window_appearance",
+    "file": "src/cmd/window_effects.rs",
+    "line": 214,
+    "lane": "F2-shell",
+    "frontend": "app"
+  },
+  {
+    "name": "sync_titlebar_sidebar_material",
+    "file": "src/cmd/window_effects.rs",
+    "line": 270,
+    "lane": "F2-shell",
+    "frontend": "app"
+  },
+  {
+    "name": "updater_install_supported",
+    "file": "src/commands.rs",
+    "line": 515,
+    "lane": "F2-shell",
+    "frontend": "app"
+  },
+  {
+    "name": "clear_test_slots",
+    "file": "crates/dstu-storage/src/data_space.rs",
+    "line": 2598,
+    "lane": "F3-storage",
+    "frontend": "app"
+  },
+  {
+    "name": "export_startup_recovery_incident",
+    "file": "crates/dstu-storage/src/data_space.rs",
+    "line": 2231,
+    "lane": "F3-storage",
+    "frontend": "app"
+  },
+  {
+    "name": "export_startup_recovery_report",
+    "file": "crates/dstu-storage/src/data_space.rs",
+    "line": 2269,
+    "lane": "F3-storage",
+    "frontend": "app"
+  },
+  {
+    "name": "get_data_space_info",
+    "file": "crates/dstu-storage/src/data_space.rs",
+    "line": 2493,
+    "lane": "F3-storage",
+    "frontend": "app"
+  },
+  {
+    "name": "get_database_info",
+    "file": "src/commands.rs",
+    "line": 7308,
+    "lane": "F3-storage",
+    "frontend": "none"
+  },
+  {
+    "name": "get_slot_directory",
+    "file": "crates/dstu-storage/src/data_space.rs",
+    "line": 2616,
+    "lane": "F3-storage",
+    "frontend": "none"
+  },
+  {
+    "name": "get_startup_recovery_status",
+    "file": "crates/dstu-storage/src/data_space.rs",
+    "line": 2169,
+    "lane": "F3-storage",
+    "frontend": "none"
+  },
+  {
+    "name": "get_test_slot_info",
+    "file": "crates/dstu-storage/src/data_space.rs",
+    "line": 2576,
+    "lane": "F3-storage",
+    "frontend": "app"
+  },
+  {
+    "name": "list_startup_recovery_incidents",
+    "file": "crates/dstu-storage/src/data_space.rs",
+    "line": 2469,
+    "lane": "F3-storage",
+    "frontend": "none"
+  },
+  {
+    "name": "llm_usage_by_caller",
+    "file": "crates/dstu-storage/src/llm_usage/handlers.rs",
+    "line": 39,
+    "lane": "F3-storage",
+    "frontend": "app"
+  },
+  {
+    "name": "llm_usage_by_model",
+    "file": "crates/dstu-storage/src/llm_usage/handlers.rs",
+    "line": 29,
+    "lane": "F3-storage",
+    "frontend": "app"
+  },
+  {
+    "name": "llm_usage_cleanup",
+    "file": "crates/dstu-storage/src/llm_usage/handlers.rs",
+    "line": 89,
+    "lane": "F3-storage",
+    "frontend": "app"
+  },
+  {
+    "name": "llm_usage_daily",
+    "file": "crates/dstu-storage/src/llm_usage/handlers.rs",
+    "line": 79,
+    "lane": "F3-storage",
+    "frontend": "app"
+  },
+  {
+    "name": "llm_usage_get_trends",
+    "file": "crates/dstu-storage/src/llm_usage/handlers.rs",
+    "line": 11,
+    "lane": "F3-storage",
+    "frontend": "app"
+  },
+  {
+    "name": "llm_usage_recent",
+    "file": "crates/dstu-storage/src/llm_usage/handlers.rs",
+    "line": 70,
+    "lane": "F3-storage",
+    "frontend": "app"
+  },
+  {
+    "name": "llm_usage_session_summary",
+    "file": "crates/dstu-storage/src/llm_usage/handlers.rs",
+    "line": 61,
+    "lane": "F3-storage",
+    "frontend": "app"
+  },
+  {
+    "name": "llm_usage_summary",
+    "file": "crates/dstu-storage/src/llm_usage/handlers.rs",
+    "line": 49,
+    "lane": "F3-storage",
+    "frontend": "app"
+  },
+  {
+    "name": "mark_data_space_pending_switch_to_inactive",
+    "file": "crates/dstu-storage/src/data_space.rs",
+    "line": 2523,
+    "lane": "F3-storage",
+    "frontend": "app"
+  },
+  {
+    "name": "open_startup_recovery_incident_folder",
+    "file": "crates/dstu-storage/src/data_space.rs",
+    "line": 2197,
+    "lane": "F3-storage",
+    "frontend": "app"
+  },
+  {
+    "name": "purge_active_data_dir_now",
+    "file": "crates/dstu-storage/src/data_space.rs",
+    "line": 2552,
+    "lane": "F3-storage",
+    "frontend": "app"
+  },
+  {
+    "name": "purge_all_database_files",
+    "file": "crates/dstu-storage/src/data_space.rs",
+    "line": 2539,
+    "lane": "F3-storage",
+    "frontend": "app"
+  },
+  {
+    "name": "reset_test_database",
+    "file": "src/commands.rs",
+    "line": 7215,
+    "lane": "F3-storage",
+    "frontend": "none"
+  },
+  {
+    "name": "resolve_startup_recovery",
+    "file": "crates/dstu-storage/src/data_space.rs",
+    "line": 2478,
+    "lane": "F3-storage",
+    "frontend": "app"
+  },
+  {
+    "name": "restart_app",
+    "file": "crates/dstu-storage/src/data_space.rs",
+    "line": 2610,
+    "lane": "F3-storage",
+    "frontend": "app"
+  },
+  {
+    "name": "retry_startup_recovery_preflight",
+    "file": "crates/dstu-storage/src/data_space.rs",
+    "line": 2190,
+    "lane": "F3-storage",
+    "frontend": "none"
+  },
+  {
+    "name": "seed_test_database",
+    "file": "src/commands.rs",
+    "line": 7330,
+    "lane": "F3-storage",
+    "frontend": "none"
+  },
+  {
+    "name": "set_test_run_id",
+    "file": "src/commands.rs",
+    "line": 7424,
+    "lane": "F3-storage",
+    "frontend": "none"
+  },
+  {
+    "name": "staged_upload_abort",
+    "file": "crates/dstu-storage/src/staged_upload.rs",
+    "line": 510,
+    "lane": "F3-storage",
+    "frontend": "app"
+  },
+  {
+    "name": "staged_upload_append",
+    "file": "crates/dstu-storage/src/staged_upload.rs",
+    "line": 461,
+    "lane": "F3-storage",
+    "frontend": "app"
+  },
+  {
+    "name": "staged_upload_begin",
+    "file": "crates/dstu-storage/src/staged_upload.rs",
+    "line": 446,
+    "lane": "F3-storage",
+    "frontend": "app"
+  },
+  {
+    "name": "staged_upload_from_path",
+    "file": "crates/dstu-storage/src/staged_upload.rs",
+    "line": 490,
+    "lane": "F3-storage",
+    "frontend": "app"
+  },
+  {
+    "name": "switch_to_production_database",
+    "file": "src/commands.rs",
+    "line": 7276,
+    "lane": "F3-storage",
+    "frontend": "none"
+  },
+  {
+    "name": "switch_to_test_database",
+    "file": "src/commands.rs",
+    "line": 7169,
+    "lane": "F3-storage",
+    "frontend": "none"
+  },
+  {
+    "name": "auto_install_package_manager",
+    "file": "src/commands.rs",
+    "line": 7118,
+    "lane": "F4-security",
+    "frontend": "app"
+  },
+  {
+    "name": "check_all_package_managers",
+    "file": "src/commands.rs",
+    "line": 7130,
+    "lane": "F4-security",
+    "frontend": "app"
+  },
+  {
+    "name": "check_package_manager",
+    "file": "src/commands.rs",
+    "line": 7097,
+    "lane": "F4-security",
+    "frontend": "app"
+  },
+  {
+    "name": "check_test_dependencies",
+    "file": "src/commands.rs",
+    "line": 7402,
+    "lane": "F4-security",
+    "frontend": "none"
+  },
+  {
+    "name": "cleanup_old_debug_logs",
+    "file": "src/commands.rs",
+    "line": 625,
+    "lane": "F4-security",
+    "frontend": "none"
+  },
+  {
+    "name": "clear_backup_directory",
+    "file": "src/backup_config.rs",
+    "line": 173,
+    "lane": "F4-security",
+    "frontend": "none"
+  },
+  {
+    "name": "clear_debug_logs",
+    "file": "src/commands.rs",
+    "line": 615,
+    "lane": "F4-security",
+    "frontend": "none"
+  },
+  {
+    "name": "cloud_config_publish",
+    "file": "src/cloud_config_commands.rs",
+    "line": 27,
+    "lane": "F4-security",
+    "frontend": "app"
+  },
+  {
+    "name": "cloud_config_ssot_clear",
+    "file": "src/cloud_config_commands.rs",
+    "line": 47,
+    "lane": "F4-security",
+    "frontend": "app"
+  },
+  {
+    "name": "cloud_config_ssot_get",
+    "file": "src/cloud_config_commands.rs",
+    "line": 18,
+    "lane": "F4-security",
+    "frontend": "app"
+  },
+  {
+    "name": "cloud_config_ssot_save",
+    "file": "src/cloud_config_commands.rs",
+    "line": 10,
+    "lane": "F4-security",
+    "frontend": "app"
+  },
+  {
+    "name": "debug_get_database_stats",
+    "file": "src/debug_commands.rs",
+    "line": 67,
+    "lane": "F4-security",
+    "frontend": "none"
+  },
+  {
+    "name": "debug_vfs_migration_status",
+    "file": "src/debug_commands.rs",
+    "line": 244,
+    "lane": "F4-security",
+    "frontend": "none"
+  },
+  {
+    "name": "debug_vfs_textbook_pages",
+    "file": "src/debug_commands.rs",
+    "line": 402,
+    "lane": "F4-security",
+    "frontend": "none"
+  },
+  {
+    "name": "ensure_debug_log_dir",
+    "file": "src/commands.rs",
+    "line": 636,
+    "lane": "F4-security",
+    "frontend": "none"
+  },
+  {
+    "name": "export_diagnostics_bundle",
+    "file": "src/diagnostics.rs",
+    "line": 447,
+    "lane": "F4-security",
+    "frontend": "app"
+  },
+  {
+    "name": "get_auto_backup_status",
+    "file": "src/backup_config.rs",
+    "line": 231,
+    "lane": "F4-security",
+    "frontend": "app"
+  },
+  {
+    "name": "get_backup_config",
+    "file": "src/backup_config.rs",
+    "line": 115,
+    "lane": "F4-security",
+    "frontend": "app"
+  },
+  {
+    "name": "get_debug_logs_info",
+    "file": "src/commands.rs",
+    "line": 603,
+    "lane": "F4-security",
+    "frontend": "none"
+  },
+  {
+    "name": "get_default_backup_directory",
+    "file": "src/backup_config.rs",
+    "line": 183,
+    "lane": "F4-security",
+    "frontend": "none"
+  },
+  {
+    "name": "get_test_logs",
+    "file": "src/commands.rs",
+    "line": 6296,
+    "lane": "F4-security",
+    "frontend": "none"
+  },
+  {
+    "name": "log_debug_message",
+    "file": "src/debug_commands.rs",
+    "line": 154,
+    "lane": "F4-security",
+    "frontend": "app"
+  },
+  {
+    "name": "open_log_file",
+    "file": "src/commands.rs",
+    "line": 6345,
+    "lane": "F4-security",
+    "frontend": "none"
+  },
+  {
+    "name": "open_logs_folder",
+    "file": "src/commands.rs",
+    "line": 6403,
+    "lane": "F4-security",
+    "frontend": "none"
+  },
+  {
+    "name": "pick_backup_directory",
+    "file": "src/backup_config.rs",
+    "line": 136,
+    "lane": "F4-security",
+    "frontend": "none"
+  },
+  {
+    "name": "read_debug_log_file",
+    "file": "src/commands.rs",
+    "line": 644,
+    "lane": "F4-security",
+    "frontend": "none"
+  },
+  {
+    "name": "report_frontend_log",
+    "file": "src/commands.rs",
+    "line": 6519,
+    "lane": "F4-security",
+    "frontend": "app"
+  },
+  {
+    "name": "save_test_log",
+    "file": "src/commands.rs",
+    "line": 6261,
+    "lane": "F4-security",
+    "frontend": "none"
+  },
+  {
+    "name": "secret_prompt_capabilities",
+    "file": "crates/dstu-platform/src/secret_prompt.rs",
+    "line": 178,
+    "lane": "F4-security",
+    "frontend": "none"
+  },
+  {
+    "name": "secret_prompt_discard",
+    "file": "crates/dstu-platform/src/secret_prompt.rs",
+    "line": 173,
+    "lane": "F4-security",
+    "frontend": "none"
+  },
+  {
+    "name": "secret_prompt_status",
+    "file": "crates/dstu-platform/src/secret_prompt.rs",
+    "line": 161,
+    "lane": "F4-security",
+    "frontend": "none"
+  },
+  {
+    "name": "secret_prompt_submit",
+    "file": "crates/dstu-platform/src/secret_prompt.rs",
+    "line": 138,
+    "lane": "F4-security",
+    "frontend": "none"
+  },
+  {
+    "name": "secure_clear_cloud_encryption_password",
+    "file": "src/secure_store.rs",
+    "line": 66,
+    "lane": "F4-security",
+    "frontend": "app"
+  },
+  {
+    "name": "secure_delete_cloud_credentials",
+    "file": "src/secure_store.rs",
+    "line": 59,
+    "lane": "F4-security",
+    "frontend": "app"
+  },
+  {
+    "name": "secure_get_cloud_credentials",
+    "file": "src/secure_store.rs",
+    "line": 42,
+    "lane": "F4-security",
+    "frontend": "app"
+  },
+  {
+    "name": "secure_save_cloud_credentials",
+    "file": "src/secure_store.rs",
+    "line": 26,
+    "lane": "F4-security",
+    "frontend": "app"
+  },
+  {
+    "name": "secure_store_get_keystore_protection",
+    "file": "src/secure_store.rs",
+    "line": 84,
+    "lane": "F4-security",
+    "frontend": "none"
+  },
+  {
+    "name": "secure_store_is_available",
+    "file": "src/secure_store.rs",
+    "line": 77,
+    "lane": "F4-security",
+    "frontend": "app"
+  },
+  {
+    "name": "secure_store_set_keystore_protection",
+    "file": "src/secure_store.rs",
+    "line": 96,
+    "lane": "F4-security",
+    "frontend": "none"
+  },
+  {
+    "name": "set_backup_config",
+    "file": "src/backup_config.rs",
+    "line": 121,
+    "lane": "F4-security",
+    "frontend": "app"
+  },
+  {
+    "name": "tauri_lab_frontend_log",
+    "file": "src/debug_commands.rs",
+    "line": 163,
+    "lane": "F4-security",
+    "frontend": "app"
+  },
+  {
+    "name": "toggle_devtools",
+    "file": "src/debug_commands.rs",
+    "line": 474,
+    "lane": "F4-security",
+    "frontend": "app"
+  },
+  {
+    "name": "write_debug_logs",
+    "file": "crates/dstu-platform/src/debug_logger.rs",
+    "line": 892,
+    "lane": "F4-security",
+    "frontend": "app"
+  },
+  {
+    "name": "write_test_report",
+    "file": "src/commands.rs",
+    "line": 7436,
+    "lane": "F4-security",
+    "frontend": "none"
+  },
+  {
+    "name": "openai_codex_auth_status",
+    "file": "src/cmd/openai_codex.rs",
+    "line": 12,
+    "lane": "L01-llm-providers",
+    "frontend": "app"
+  },
+  {
+    "name": "openai_codex_login_cancel",
+    "file": "src/cmd/openai_codex.rs",
+    "line": 36,
+    "lane": "L01-llm-providers",
+    "frontend": "none"
+  },
+  {
+    "name": "openai_codex_login_start",
+    "file": "src/cmd/openai_codex.rs",
+    "line": 19,
+    "lane": "L01-llm-providers",
+    "frontend": "none"
+  },
+  {
+    "name": "openai_codex_logout",
+    "file": "src/cmd/openai_codex.rs",
+    "line": 48,
+    "lane": "L01-llm-providers",
+    "frontend": "none"
+  },
+  {
+    "name": "openai_codex_usage",
+    "file": "src/cmd/openai_codex.rs",
+    "line": 57,
+    "lane": "L01-llm-providers",
+    "frontend": "none"
+  },
+  {
+    "name": "call_llm_for_boundary",
+    "file": "src/commands.rs",
+    "line": 4051,
+    "lane": "L02-llm-manager",
+    "frontend": "app"
+  },
+  {
+    "name": "cancel_stream",
+    "file": "src/commands.rs",
+    "line": 341,
+    "lane": "L02-llm-manager",
+    "frontend": "app"
+  },
+  {
+    "name": "cancel_translation_candidates",
+    "file": "src/translation/candidates.rs",
+    "line": 33,
+    "lane": "L02-llm-manager",
+    "frontend": "none"
+  },
+  {
+    "name": "check_api_config_status",
+    "file": "crates/dstu-llm/src/config_recovery.rs",
+    "line": 192,
+    "lane": "L02-llm-manager",
+    "frontend": "none"
+  },
+  {
+    "name": "estimate_tokens",
+    "file": "src/commands.rs",
+    "line": 316,
+    "lane": "L02-llm-manager",
+    "frontend": "none"
+  },
+  {
+    "name": "fetch_vendor_models",
+    "file": "src/commands.rs",
+    "line": 3106,
+    "lane": "L02-llm-manager",
+    "frontend": "none"
+  },
+  {
+    "name": "get_api_configurations",
+    "file": "src/commands.rs",
+    "line": 2127,
+    "lane": "L02-llm-manager",
+    "frontend": "app"
+  },
+  {
+    "name": "get_injection_budget_config",
+    "file": "src/commands.rs",
+    "line": 6913,
+    "lane": "L02-llm-manager",
+    "frontend": "none"
+  },
+  {
+    "name": "get_model_assignments",
+    "file": "src/commands.rs",
+    "line": 2175,
+    "lane": "L02-llm-manager",
+    "frontend": "app"
+  },
+  {
+    "name": "get_model_profiles",
+    "file": "src/commands.rs",
+    "line": 2206,
+    "lane": "L02-llm-manager",
+    "frontend": "app"
+  },
+  {
+    "name": "get_vendor_configs",
+    "file": "src/commands.rs",
+    "line": 2193,
+    "lane": "L02-llm-manager",
+    "frontend": "app"
+  },
+  {
+    "name": "llm_get_failover_policy",
+    "file": "crates/dstu-llm/src/llm_manager/routing.rs",
+    "line": 781,
+    "lane": "L02-llm-manager",
+    "frontend": "none"
+  },
+  {
+    "name": "llm_set_failover_policy",
+    "file": "crates/dstu-llm/src/llm_manager/routing.rs",
+    "line": 789,
+    "lane": "L02-llm-manager",
+    "frontend": "none"
+  },
+  {
+    "name": "ocr_extract_text",
+    "file": "src/cmd/translation.rs",
+    "line": 90,
+    "lane": "L02-llm-manager",
+    "frontend": "app"
+  },
+  {
+    "name": "opencode_go_get_usage",
+    "file": "src/commands.rs",
+    "line": 3311,
+    "lane": "L02-llm-manager",
+    "frontend": "none"
+  },
+  {
+    "name": "restore_default_api_configs",
+    "file": "crates/dstu-llm/src/config_recovery.rs",
+    "line": 166,
+    "lane": "L02-llm-manager",
+    "frontend": "none"
+  },
+  {
+    "name": "save_api_configurations",
+    "file": "src/commands.rs",
+    "line": 2149,
+    "lane": "L02-llm-manager",
+    "frontend": "app"
+  },
+  {
+    "name": "save_model_assignments",
+    "file": "src/commands.rs",
+    "line": 2182,
+    "lane": "L02-llm-manager",
+    "frontend": "app"
+  },
+  {
+    "name": "save_model_profiles",
+    "file": "src/commands.rs",
+    "line": 2211,
+    "lane": "L02-llm-manager",
+    "frontend": "app"
+  },
+  {
+    "name": "save_vendor_configs",
+    "file": "src/commands.rs",
+    "line": 2198,
+    "lane": "L02-llm-manager",
+    "frontend": "app"
+  },
+  {
+    "name": "simulate_budget_allocation",
+    "file": "src/commands.rs",
+    "line": 6927,
+    "lane": "L02-llm-manager",
+    "frontend": "none"
+  },
+  {
+    "name": "stream_chat_translation_aligned",
+    "file": "src/translation/chat_popover.rs",
+    "line": 16,
+    "lane": "L02-llm-manager",
+    "frontend": "none"
+  },
+  {
+    "name": "stream_chat_translation_plain",
+    "file": "src/translation/chat_popover.rs",
+    "line": 26,
+    "lane": "L02-llm-manager",
+    "frontend": "none"
+  },
+  {
+    "name": "test_api_connection",
+    "file": "src/commands.rs",
+    "line": 3321,
+    "lane": "L02-llm-manager",
+    "frontend": "app"
+  },
+  {
+    "name": "translate_text_candidates",
+    "file": "src/translation/candidates.rs",
+    "line": 21,
+    "lane": "L02-llm-manager",
+    "frontend": "none"
+  },
+  {
+    "name": "translate_text_stream",
+    "file": "src/translation/mod.rs",
+    "line": 35,
+    "lane": "L02-llm-manager",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_add_tag",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/search_handlers.rs",
+    "line": 117,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_archive_group",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/group_handlers.rs",
+    "line": 330,
+    "lane": "L04-chat-session",
+    "frontend": "none"
+  },
+  {
+    "name": "chat_v2_archive_session",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/manage_session.rs",
+    "line": 522,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_ask_user_respond",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/ask_user_handlers.rs",
+    "line": 44,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_branch_session",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/manage_session.rs",
+    "line": 710,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_cancel_stream",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/send_message.rs",
+    "line": 859,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_cancel_variant",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/variant_handlers.rs",
+    "line": 1085,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_check_migration_status",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/migration.rs",
+    "line": 18,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_clear_approval_history",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/approval_handlers.rs",
+    "line": 178,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_compact_session",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/block_actions.rs",
+    "line": 56,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_continue_message",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/send_message.rs",
+    "line": 2010,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_copy_block_content",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/block_actions.rs",
+    "line": 258,
+    "lane": "L04-chat-session",
+    "frontend": "none"
+  },
+  {
+    "name": "chat_v2_count_sessions",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/manage_session.rs",
+    "line": 641,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_create_group",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/group_handlers.rs",
+    "line": 145,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_create_session",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/manage_session.rs",
+    "line": 329,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_delete_group",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/group_handlers.rs",
+    "line": 285,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_delete_message",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/block_actions.rs",
+    "line": 195,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_delete_session",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/manage_session.rs",
+    "line": 892,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_delete_variant",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/variant_handlers.rs",
+    "line": 224,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_edit_and_resend",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/send_message.rs",
+    "line": 1267,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_emergency_stop",
+    "file": "crates/dstu-agent/src/chat_v2/kill_switch.rs",
+    "line": 194,
+    "lane": "L04-chat-session",
+    "frontend": "none"
+  },
+  {
+    "name": "chat_v2_empty_deleted_sessions",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/manage_session.rs",
+    "line": 979,
+    "lane": "L04-chat-session",
+    "frontend": "none"
+  },
+  {
+    "name": "chat_v2_export_session",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/export_handlers.rs",
+    "line": 56,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_export_session_jsonl",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/export_handlers.rs",
+    "line": 130,
+    "lane": "L04-chat-session",
+    "frontend": "none"
+  },
+  {
+    "name": "chat_v2_export_session_messages",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/snapshot_handlers.rs",
+    "line": 116,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_export_session_meta",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/snapshot_handlers.rs",
+    "line": 82,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_freeze_available_skills_snapshot",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/manage_session.rs",
+    "line": 488,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_get_anki_cards_from_block_by_document_id",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/block_actions.rs",
+    "line": 552,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_get_emit_failure_count",
+    "file": "crates/dstu-agent/src/chat_v2/events.rs",
+    "line": 827,
+    "lane": "L04-chat-session",
+    "frontend": "none"
+  },
+  {
+    "name": "chat_v2_get_group",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/group_handlers.rs",
+    "line": 368,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_get_message_summary",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/manage_session.rs",
+    "line": 1109,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_get_rag_scope",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/manage_session.rs",
+    "line": 2980,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_get_session",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/manage_session.rs",
+    "line": 413,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_get_session_tags",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/search_handlers.rs",
+    "line": 96,
+    "lane": "L04-chat-session",
+    "frontend": "none"
+  },
+  {
+    "name": "chat_v2_get_tags_batch",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/search_handlers.rs",
+    "line": 107,
+    "lane": "L04-chat-session",
+    "frontend": "none"
+  },
+  {
+    "name": "chat_v2_goal_clear",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/goal_handlers.rs",
+    "line": 231,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_goal_edit",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/goal_handlers.rs",
+    "line": 174,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_goal_get",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/goal_handlers.rs",
+    "line": 75,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_goal_pause",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/goal_handlers.rs",
+    "line": 85,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_goal_resume",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/goal_handlers.rs",
+    "line": 126,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_has_active_stream",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/send_message.rs",
+    "line": 890,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_import_session",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/snapshot_handlers.rs",
+    "line": 189,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_kill_switch_status",
+    "file": "crates/dstu-agent/src/chat_v2/kill_switch.rs",
+    "line": 290,
+    "lane": "L04-chat-session",
+    "frontend": "none"
+  },
+  {
+    "name": "chat_v2_list_agent_sessions",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/manage_session.rs",
+    "line": 671,
+    "lane": "L04-chat-session",
+    "frontend": "none"
+  },
+  {
+    "name": "chat_v2_list_all_tags",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/search_handlers.rs",
+    "line": 147,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_list_groups",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/group_handlers.rs",
+    "line": 398,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_list_sessions",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/manage_session.rs",
+    "line": 597,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_list_sessions_referencing",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/manage_session.rs",
+    "line": 2938,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_load_messages_page",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/load_messages_page.rs",
+    "line": 32,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_load_session",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/load_session.rs",
+    "line": 37,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_migrate_legacy_chat",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/migration.rs",
+    "line": 35,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_move_session_to_group",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/group_handlers.rs",
+    "line": 438,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_perform_ocr",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/ocr.rs",
+    "line": 44,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_plan_gate_respond",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/manage_session.rs",
+    "line": 2185,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_remove_tag",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/search_handlers.rs",
+    "line": 132,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_reorder_groups",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/group_handlers.rs",
+    "line": 427,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_restore_group",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/group_handlers.rs",
+    "line": 341,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_restore_session",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/manage_session.rs",
+    "line": 845,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_resume_agents",
+    "file": "crates/dstu-agent/src/chat_v2/kill_switch.rs",
+    "line": 255,
+    "lane": "L04-chat-session",
+    "frontend": "none"
+  },
+  {
+    "name": "chat_v2_resume_automations",
+    "file": "crates/dstu-agent/src/chat_v2/kill_switch.rs",
+    "line": 272,
+    "lane": "L04-chat-session",
+    "frontend": "none"
+  },
+  {
+    "name": "chat_v2_retry_message",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/send_message.rs",
+    "line": 918,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_retry_variant",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/variant_handlers.rs",
+    "line": 401,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_retry_variants",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/variant_handlers.rs",
+    "line": 446,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_rollback_migration",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/migration.rs",
+    "line": 52,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_save_session",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/manage_session.rs",
+    "line": 562,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_search_content",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/search_handlers.rs",
+    "line": 30,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_search_sessions",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/search_handlers.rs",
+    "line": 71,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_send_message",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/send_message.rs",
+    "line": 461,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_session_message_count",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/manage_session.rs",
+    "line": 1079,
+    "lane": "L04-chat-session",
+    "frontend": "none"
+  },
+  {
+    "name": "chat_v2_set_authority_mode",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/manage_session.rs",
+    "line": 2127,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_set_permission_preset",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/manage_session.rs",
+    "line": 2153,
+    "lane": "L04-chat-session",
+    "frontend": "none"
+  },
+  {
+    "name": "chat_v2_set_rag_scope",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/manage_session.rs",
+    "line": 2988,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_soft_delete_session",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/manage_session.rs",
+    "line": 771,
+    "lane": "L04-chat-session",
+    "frontend": "none"
+  },
+  {
+    "name": "chat_v2_stage_context_attachments",
+    "file": "crates/dstu-agent/src/chat_v2/tools/attachment_stage_executor.rs",
+    "line": 1848,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_switch_variant",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/variant_handlers.rs",
+    "line": 153,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_tool_approval_cancel",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/approval_handlers.rs",
+    "line": 153,
+    "lane": "L04-chat-session",
+    "frontend": "none"
+  },
+  {
+    "name": "chat_v2_tool_approval_respond",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/approval_handlers.rs",
+    "line": 39,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_undo_compaction",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/block_actions.rs",
+    "line": 118,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_update_block_content",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/block_actions.rs",
+    "line": 441,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_update_block_tool_output",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/block_actions.rs",
+    "line": 499,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_update_group",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/group_handlers.rs",
+    "line": 197,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_update_session_settings",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/manage_session.rs",
+    "line": 448,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_upsert_streaming_block",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/block_actions.rs",
+    "line": 689,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_wake_session",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/send_message.rs",
+    "line": 717,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "rebuild_chat_fts",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/search_handlers.rs",
+    "line": 89,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "workspace_cancel_agent",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/workspace_handlers.rs",
+    "line": 2139,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "workspace_cancel_sleep",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/workspace_handlers.rs",
+    "line": 2308,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "workspace_close",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/workspace_handlers.rs",
+    "line": 642,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "workspace_create",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/workspace_handlers.rs",
+    "line": 606,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "workspace_create_agent",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/workspace_handlers.rs",
+    "line": 680,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "workspace_delete",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/workspace_handlers.rs",
+    "line": 661,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "workspace_delete_agent_profile_file",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/workspace_handlers.rs",
+    "line": 2789,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "workspace_get",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/workspace_handlers.rs",
+    "line": 622,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "workspace_get_context",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/workspace_handlers.rs",
+    "line": 972,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "workspace_get_document",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/workspace_handlers.rs",
+    "line": 1008,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "workspace_list_agent_profiles",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/workspace_handlers.rs",
+    "line": 2638,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "workspace_list_agents",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/workspace_handlers.rs",
+    "line": 866,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "workspace_list_all",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/workspace_handlers.rs",
+    "line": 1021,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "workspace_list_documents",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/workspace_handlers.rs",
+    "line": 985,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "workspace_list_messages",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/workspace_handlers.rs",
+    "line": 935,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "workspace_manual_wake",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/workspace_handlers.rs",
+    "line": 2274,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "workspace_read_agent_profile_file",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/workspace_handlers.rs",
+    "line": 2709,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "workspace_restore_executions",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/workspace_handlers.rs",
+    "line": 2413,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "workspace_run_agent",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/workspace_handlers.rs",
+    "line": 1075,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "workspace_save_agent_profile_file",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/workspace_handlers.rs",
+    "line": 2742,
+    "lane": "L04-chat-session",
+    "frontend": "none"
+  },
+  {
+    "name": "workspace_send_message",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/workspace_handlers.rs",
+    "line": 902,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "workspace_set_context",
+    "file": "crates/dstu-agent/src/chat_v2/handlers/workspace_handlers.rs",
+    "line": 960,
+    "lane": "L04-chat-session",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_authorize_runtime_root",
+    "file": "crates/dstu-agent/src/chat_v2/runtime_roots.rs",
+    "line": 1871,
+    "lane": "L05-agent-workspace",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_delete_artifact",
+    "file": "crates/dstu-agent/src/chat_v2/runtime_roots.rs",
+    "line": 1965,
+    "lane": "L05-agent-workspace",
+    "frontend": "none"
+  },
+  {
+    "name": "chat_v2_list_runtime_directory",
+    "file": "crates/dstu-agent/src/chat_v2/runtime_roots.rs",
+    "line": 1785,
+    "lane": "L05-agent-workspace",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_list_runtime_roots",
+    "file": "crates/dstu-agent/src/chat_v2/runtime_roots.rs",
+    "line": 1673,
+    "lane": "L05-agent-workspace",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_read_runtime_file",
+    "file": "crates/dstu-agent/src/chat_v2/runtime_roots.rs",
+    "line": 2551,
+    "lane": "L05-agent-workspace",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_reset_workspace_root",
+    "file": "crates/dstu-agent/src/chat_v2/runtime_roots.rs",
+    "line": 1854,
+    "lane": "L05-agent-workspace",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_resolve_runtime_path",
+    "file": "crates/dstu-agent/src/chat_v2/runtime_roots.rs",
+    "line": 1941,
+    "lane": "L05-agent-workspace",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_revert_artifact_write",
+    "file": "crates/dstu-agent/src/chat_v2/runtime_roots.rs",
+    "line": 2454,
+    "lane": "L05-agent-workspace",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_revert_workspace_change",
+    "file": "crates/dstu-agent/src/chat_v2/runtime_roots.rs",
+    "line": 2510,
+    "lane": "L05-agent-workspace",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_revoke_runtime_root",
+    "file": "crates/dstu-agent/src/chat_v2/runtime_roots.rs",
+    "line": 1884,
+    "lane": "L05-agent-workspace",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_set_skill_trust",
+    "file": "crates/dstu-agent/src/chat_v2/runtime_roots.rs",
+    "line": 1601,
+    "lane": "L05-agent-workspace",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_set_workspace_root",
+    "file": "crates/dstu-agent/src/chat_v2/runtime_roots.rs",
+    "line": 1813,
+    "lane": "L05-agent-workspace",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_automation_cancel_run",
+    "file": "crates/dstu-agent/src/chat_v2/automations.rs",
+    "line": 4657,
+    "lane": "L06-agent-orchestration",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_automation_create",
+    "file": "crates/dstu-agent/src/chat_v2/automations.rs",
+    "line": 4435,
+    "lane": "L06-agent-orchestration",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_automation_delete",
+    "file": "crates/dstu-agent/src/chat_v2/automations.rs",
+    "line": 4816,
+    "lane": "L06-agent-orchestration",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_automation_list",
+    "file": "crates/dstu-agent/src/chat_v2/automations.rs",
+    "line": 4424,
+    "lane": "L06-agent-orchestration",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_automation_retry_run",
+    "file": "crates/dstu-agent/src/chat_v2/automations.rs",
+    "line": 4641,
+    "lane": "L06-agent-orchestration",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_automation_run_now",
+    "file": "crates/dstu-agent/src/chat_v2/automations.rs",
+    "line": 4959,
+    "lane": "L06-agent-orchestration",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_automation_runs",
+    "file": "crates/dstu-agent/src/chat_v2/automations.rs",
+    "line": 4553,
+    "lane": "L06-agent-orchestration",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_automation_set_background_enabled",
+    "file": "crates/dstu-agent/src/chat_v2/automations.rs",
+    "line": 4794,
+    "lane": "L06-agent-orchestration",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_automation_set_enabled",
+    "file": "crates/dstu-agent/src/chat_v2/automations.rs",
+    "line": 4474,
+    "lane": "L06-agent-orchestration",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_automation_summary",
+    "file": "crates/dstu-agent/src/chat_v2/automations.rs",
+    "line": 4673,
+    "lane": "L06-agent-orchestration",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_automation_update",
+    "file": "crates/dstu-agent/src/chat_v2/automations.rs",
+    "line": 4498,
+    "lane": "L06-agent-orchestration",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_super_deliver_inbox",
+    "file": "crates/dstu-agent/src/chat_v2/super_session/commands.rs",
+    "line": 58,
+    "lane": "L06-agent-orchestration",
+    "frontend": "app"
+  },
+  {
+    "name": "super_session_ensure",
+    "file": "crates/dstu-agent/src/chat_v2/super_session/commands.rs",
+    "line": 32,
+    "lane": "L06-agent-orchestration",
+    "frontend": "app"
+  },
+  {
+    "name": "super_session_get_settings",
+    "file": "crates/dstu-agent/src/chat_v2/super_session/commands.rs",
+    "line": 42,
+    "lane": "L06-agent-orchestration",
+    "frontend": "app"
+  },
+  {
+    "name": "super_session_get_state",
+    "file": "crates/dstu-agent/src/chat_v2/super_session/commands.rs",
+    "line": 17,
+    "lane": "L06-agent-orchestration",
+    "frontend": "app"
+  },
+  {
+    "name": "super_session_set_enabled",
+    "file": "crates/dstu-agent/src/chat_v2/super_session/commands.rs",
+    "line": 23,
+    "lane": "L06-agent-orchestration",
+    "frontend": "app"
+  },
+  {
+    "name": "super_session_set_settings",
+    "file": "crates/dstu-agent/src/chat_v2/super_session/commands.rs",
+    "line": 48,
+    "lane": "L06-agent-orchestration",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_list_skill_candidates",
+    "file": "crates/dstu-agent/src/chat_v2/skill_replay.rs",
+    "line": 1263,
+    "lane": "L07-agent-skills-ptc",
+    "frontend": "none"
+  },
+  {
+    "name": "chat_v2_promote_skill_candidate",
+    "file": "crates/dstu-agent/src/chat_v2/skill_replay.rs",
+    "line": 1308,
+    "lane": "L07-agent-skills-ptc",
+    "frontend": "none"
+  },
+  {
+    "name": "chat_v2_record_skill_activation",
+    "file": "crates/dstu-agent/src/chat_v2/skill_usage.rs",
+    "line": 1101,
+    "lane": "L07-agent-skills-ptc",
+    "frontend": "none"
+  },
+  {
+    "name": "chat_v2_replay_skill_candidate",
+    "file": "crates/dstu-agent/src/chat_v2/skill_replay.rs",
+    "line": 1287,
+    "lane": "L07-agent-skills-ptc",
+    "frontend": "none"
+  },
+  {
+    "name": "chat_v2_rollback_skill_candidate",
+    "file": "crates/dstu-agent/src/chat_v2/skill_replay.rs",
+    "line": 1331,
+    "lane": "L07-agent-skills-ptc",
+    "frontend": "none"
+  },
+  {
+    "name": "skill_check_updates",
+    "file": "crates/dstu-agent/src/chat_v2/skill_updates.rs",
+    "line": 354,
+    "lane": "L07-agent-skills-ptc",
+    "frontend": "app"
+  },
+  {
+    "name": "skill_create",
+    "file": "crates/dstu-agent/src/chat_v2/skills.rs",
+    "line": 646,
+    "lane": "L07-agent-skills-ptc",
+    "frontend": "app"
+  },
+  {
+    "name": "skill_delete",
+    "file": "crates/dstu-agent/src/chat_v2/skills.rs",
+    "line": 796,
+    "lane": "L07-agent-skills-ptc",
+    "frontend": "app"
+  },
+  {
+    "name": "skill_export_tap",
+    "file": "src/chat_v2/skill_taps.rs",
+    "line": 17,
+    "lane": "L07-agent-skills-ptc",
+    "frontend": "app"
+  },
+  {
+    "name": "skill_import_zip",
+    "file": "crates/dstu-agent/src/chat_v2/skills.rs",
+    "line": 2320,
+    "lane": "L07-agent-skills-ptc",
+    "frontend": "app"
+  },
+  {
+    "name": "skill_list_directories",
+    "file": "crates/dstu-agent/src/chat_v2/skills.rs",
+    "line": 370,
+    "lane": "L07-agent-skills-ptc",
+    "frontend": "app"
+  },
+  {
+    "name": "skill_list_package_files",
+    "file": "crates/dstu-agent/src/chat_v2/skills.rs",
+    "line": 565,
+    "lane": "L07-agent-skills-ptc",
+    "frontend": "app"
+  },
+  {
+    "name": "skill_market_download_and_scan",
+    "file": "crates/dstu-agent/src/chat_v2/skill_market_client.rs",
+    "line": 1277,
+    "lane": "L07-agent-skills-ptc",
+    "frontend": "app"
+  },
+  {
+    "name": "skill_market_search",
+    "file": "crates/dstu-agent/src/chat_v2/skill_market_client.rs",
+    "line": 1196,
+    "lane": "L07-agent-skills-ptc",
+    "frontend": "app"
+  },
+  {
+    "name": "skill_market_skill_detail",
+    "file": "crates/dstu-agent/src/chat_v2/skill_market_client.rs",
+    "line": 1237,
+    "lane": "L07-agent-skills-ptc",
+    "frontend": "app"
+  },
+  {
+    "name": "skill_market_verify",
+    "file": "crates/dstu-agent/src/chat_v2/skill_market_client.rs",
+    "line": 1252,
+    "lane": "L07-agent-skills-ptc",
+    "frontend": "app"
+  },
+  {
+    "name": "skill_probe_requires",
+    "file": "crates/dstu-agent/src/chat_v2/skill_requires.rs",
+    "line": 87,
+    "lane": "L07-agent-skills-ptc",
+    "frontend": "app"
+  },
+  {
+    "name": "skill_read_file",
+    "file": "crates/dstu-agent/src/chat_v2/skills.rs",
+    "line": 595,
+    "lane": "L07-agent-skills-ptc",
+    "frontend": "app"
+  },
+  {
+    "name": "skill_tap_catalog",
+    "file": "crates/dstu-agent/src/chat_v2/skill_taps.rs",
+    "line": 462,
+    "lane": "L07-agent-skills-ptc",
+    "frontend": "app"
+  },
+  {
+    "name": "skill_tap_install",
+    "file": "crates/dstu-agent/src/chat_v2/skill_taps.rs",
+    "line": 489,
+    "lane": "L07-agent-skills-ptc",
+    "frontend": "app"
+  },
+  {
+    "name": "skill_update",
+    "file": "crates/dstu-agent/src/chat_v2/skills.rs",
+    "line": 743,
+    "lane": "L07-agent-skills-ptc",
+    "frontend": "app"
+  },
+  {
+    "name": "skill_update_from_source",
+    "file": "crates/dstu-agent/src/chat_v2/skill_updates.rs",
+    "line": 414,
+    "lane": "L07-agent-skills-ptc",
+    "frontend": "app"
+  },
+  {
+    "name": "canvas_note_append",
+    "file": "src/cmd/notes.rs",
+    "line": 1385,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "canvas_note_read",
+    "file": "src/cmd/notes.rs",
+    "line": 1363,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "canvas_note_replace",
+    "file": "src/cmd/notes.rs",
+    "line": 1410,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "canvas_note_set",
+    "file": "src/cmd/notes.rs",
+    "line": 1437,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_canvas_edit_ack",
+    "file": "src/chat_v2/handlers/canvas_handlers.rs",
+    "line": 49,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "chat_v2_canvas_edit_result",
+    "file": "src/chat_v2/handlers/canvas_handlers.rs",
+    "line": 28,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "notes_assets_bulk_delete",
+    "file": "src/cmd/notes.rs",
+    "line": 2167,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "notes_assets_index_scan",
+    "file": "src/cmd/notes.rs",
+    "line": 1972,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "notes_assets_scan_orphans",
+    "file": "src/cmd/notes.rs",
+    "line": 2004,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "notes_create",
+    "file": "src/cmd/notes.rs",
+    "line": 1206,
+    "lane": "L10-notes",
+    "frontend": "none"
+  },
+  {
+    "name": "notes_db_stats",
+    "file": "src/cmd/notes.rs",
+    "line": 2960,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "notes_db_vacuum",
+    "file": "src/cmd/notes.rs",
+    "line": 3020,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "notes_delete",
+    "file": "src/cmd/notes.rs",
+    "line": 1342,
+    "lane": "L10-notes",
+    "frontend": "none"
+  },
+  {
+    "name": "notes_delete_asset",
+    "file": "src/cmd/notes.rs",
+    "line": 1898,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "notes_editor_begin",
+    "file": "src/cmd/notes.rs",
+    "line": 397,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "notes_editor_finish",
+    "file": "src/cmd/notes.rs",
+    "line": 478,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "notes_editor_flush",
+    "file": "src/cmd/notes.rs",
+    "line": 457,
+    "lane": "L10-notes",
+    "frontend": "none"
+  },
+  {
+    "name": "notes_editor_freeze_ack",
+    "file": "src/cmd/notes.rs",
+    "line": 428,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "notes_editor_heartbeat",
+    "file": "src/cmd/notes.rs",
+    "line": 368,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "notes_editor_lease_status",
+    "file": "src/cmd/notes.rs",
+    "line": 421,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "notes_editor_refresh_ack",
+    "file": "src/cmd/notes.rs",
+    "line": 493,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "notes_editor_register",
+    "file": "src/cmd/notes.rs",
+    "line": 350,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "notes_editor_release",
+    "file": "src/cmd/notes.rs",
+    "line": 509,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "notes_editor_unregister",
+    "file": "src/cmd/notes.rs",
+    "line": 380,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "notes_empty_trash",
+    "file": "src/cmd/notes.rs",
+    "line": 1595,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "notes_enable_columns",
+    "file": "src/cmd/notes.rs",
+    "line": 628,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "notes_export",
+    "file": "src/cmd/notes.rs",
+    "line": 2363,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "notes_export_single",
+    "file": "src/cmd/notes.rs",
+    "line": 2447,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "notes_get",
+    "file": "src/cmd/notes.rs",
+    "line": 1327,
+    "lane": "L10-notes",
+    "frontend": "none"
+  },
+  {
+    "name": "notes_get_backlinks",
+    "file": "src/cmd/notes.rs",
+    "line": 3384,
+    "lane": "L10-notes",
+    "frontend": "none"
+  },
+  {
+    "name": "notes_get_format",
+    "file": "src/cmd/notes.rs",
+    "line": 595,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "notes_get_outgoing_links",
+    "file": "src/cmd/notes.rs",
+    "line": 3403,
+    "lane": "L10-notes",
+    "frontend": "none"
+  },
+  {
+    "name": "notes_get_pref",
+    "file": "src/cmd/notes.rs",
+    "line": 2326,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "notes_get_subject_rag_config",
+    "file": "src/cmd/notes.rs",
+    "line": 2230,
+    "lane": "L10-notes",
+    "frontend": "none"
+  },
+  {
+    "name": "notes_hard_delete",
+    "file": "src/cmd/notes.rs",
+    "line": 1462,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "notes_history_current",
+    "file": "src/cmd/notes.rs",
+    "line": 926,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "notes_history_get",
+    "file": "src/cmd/notes.rs",
+    "line": 1032,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "notes_history_get_retention",
+    "file": "src/cmd/notes.rs",
+    "line": 934,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "notes_history_list",
+    "file": "src/cmd/notes.rs",
+    "line": 1002,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "notes_history_restore_copy",
+    "file": "src/cmd/notes.rs",
+    "line": 1077,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "notes_history_restore_current",
+    "file": "src/cmd/notes.rs",
+    "line": 972,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "notes_history_restore_selection_copy",
+    "file": "src/cmd/notes.rs",
+    "line": 952,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "notes_history_set_pinned",
+    "file": "src/cmd/notes.rs",
+    "line": 1054,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "notes_history_set_retention",
+    "file": "src/cmd/notes.rs",
+    "line": 941,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "notes_import",
+    "file": "src/cmd/notes.rs",
+    "line": 2544,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "notes_import_markdown",
+    "file": "src/cmd/notes.rs",
+    "line": 2668,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "notes_import_markdown_batch",
+    "file": "src/cmd/notes.rs",
+    "line": 2722,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "notes_invalidate_resource_refs",
+    "file": "src/cmd/notes.rs",
+    "line": 914,
+    "lane": "L10-notes",
+    "frontend": "none"
+  },
+  {
+    "name": "notes_list",
+    "file": "src/cmd/notes.rs",
+    "line": 1110,
+    "lane": "L10-notes",
+    "frontend": "none"
+  },
+  {
+    "name": "notes_list_advanced",
+    "file": "src/cmd/notes.rs",
+    "line": 1162,
+    "lane": "L10-notes",
+    "frontend": "none"
+  },
+  {
+    "name": "notes_list_assets",
+    "file": "src/cmd/notes.rs",
+    "line": 1879,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "notes_list_deleted",
+    "file": "src/cmd/notes.rs",
+    "line": 1782,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "notes_list_meta",
+    "file": "src/cmd/notes.rs",
+    "line": 1128,
+    "lane": "L10-notes",
+    "frontend": "none"
+  },
+  {
+    "name": "notes_list_referencing_resource",
+    "file": "src/cmd/notes.rs",
+    "line": 835,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "notes_list_tags",
+    "file": "src/cmd/notes.rs",
+    "line": 3040,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "notes_mentions_search",
+    "file": "src/cmd/notes.rs",
+    "line": 3202,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "notes_migrate_blocks",
+    "file": "src/cmd/notes.rs",
+    "line": 677,
+    "lane": "L10-notes",
+    "frontend": "none"
+  },
+  {
+    "name": "notes_rag_rebuild_fts_index",
+    "file": "src/cmd/notes.rs",
+    "line": 2212,
+    "lane": "L10-notes",
+    "frontend": "none"
+  },
+  {
+    "name": "notes_rebuild_links",
+    "file": "src/cmd/notes.rs",
+    "line": 3435,
+    "lane": "L10-notes",
+    "frontend": "none"
+  },
+  {
+    "name": "notes_reference_status",
+    "file": "src/cmd/notes.rs",
+    "line": 899,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "notes_relation_delete",
+    "file": "src/cmd/notes.rs",
+    "line": 888,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "notes_relation_get",
+    "file": "src/cmd/notes.rs",
+    "line": 730,
+    "lane": "L10-notes",
+    "frontend": "none"
+  },
+  {
+    "name": "notes_relation_list",
+    "file": "src/cmd/notes.rs",
+    "line": 744,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "notes_relation_put",
+    "file": "src/cmd/notes.rs",
+    "line": 874,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "notes_resolve_asset_path",
+    "file": "src/cmd/notes.rs",
+    "line": 1926,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "notes_restore",
+    "file": "src/cmd/notes.rs",
+    "line": 1836,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "notes_review_save_as",
+    "file": "src/cmd/notes.rs",
+    "line": 648,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "notes_save_asset",
+    "file": "src/cmd/notes.rs",
+    "line": 1858,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "notes_search",
+    "file": "src/cmd/notes.rs",
+    "line": 3129,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "notes_set_favorite",
+    "file": "src/cmd/notes.rs",
+    "line": 1310,
+    "lane": "L10-notes",
+    "frontend": "none"
+  },
+  {
+    "name": "notes_set_pref",
+    "file": "src/cmd/notes.rs",
+    "line": 2313,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "notes_state_delete",
+    "file": "src/cmd/notes.rs",
+    "line": 720,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "notes_state_get",
+    "file": "src/cmd/notes.rs",
+    "line": 696,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "notes_state_list",
+    "file": "src/cmd/notes.rs",
+    "line": 703,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "notes_state_put",
+    "file": "src/cmd/notes.rs",
+    "line": 710,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "notes_transfer_blocks",
+    "file": "src/cmd/notes.rs",
+    "line": 556,
+    "lane": "L10-notes",
+    "frontend": "none"
+  },
+  {
+    "name": "notes_undo_transfer",
+    "file": "src/cmd/notes.rs",
+    "line": 572,
+    "lane": "L10-notes",
+    "frontend": "none"
+  },
+  {
+    "name": "notes_unlinked_mentions",
+    "file": "src/cmd/notes.rs",
+    "line": 3469,
+    "lane": "L10-notes",
+    "frontend": "none"
+  },
+  {
+    "name": "notes_update",
+    "file": "src/cmd/notes.rs",
+    "line": 1245,
+    "lane": "L10-notes",
+    "frontend": "app"
+  },
+  {
+    "name": "notes_update_subject_rag_config",
+    "file": "src/cmd/notes.rs",
+    "line": 2260,
+    "lane": "L10-notes",
+    "frontend": "none"
+  },
+  {
+    "name": "rag_rebuild_fts_index",
+    "file": "src/cmd/notes.rs",
+    "line": 2203,
+    "lane": "L10-notes",
+    "frontend": "none"
+  },
+  {
+    "name": "clear_message_embeddings",
+    "file": "src/commands.rs",
+    "line": 2012,
+    "lane": "L12-vfs-index",
+    "frontend": "app"
+  },
+  {
+    "name": "optimize_chat_embeddings_table",
+    "file": "src/commands.rs",
+    "line": 2088,
+    "lane": "L12-vfs-index",
+    "frontend": "none"
+  },
+  {
+    "name": "optimize_lance_database",
+    "file": "src/commands.rs",
+    "line": 6898,
+    "lane": "L12-vfs-index",
+    "frontend": "app"
+  },
+  {
+    "name": "dstu_batch_move",
+    "file": "crates/dstu-vfs/src/dstu/handlers.rs",
+    "line": 6297,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "dstu_build_path",
+    "file": "crates/dstu-vfs/src/dstu/handlers.rs",
+    "line": 5929,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "dstu_copy",
+    "file": "crates/dstu-vfs/src/dstu/handlers.rs",
+    "line": 2243,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "dstu_create",
+    "file": "crates/dstu-vfs/src/dstu/handlers.rs",
+    "line": 726,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "dstu_delete",
+    "file": "crates/dstu-vfs/src/dstu/handlers.rs",
+    "line": 1663,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "dstu_delete_many",
+    "file": "crates/dstu-vfs/src/dstu/handlers.rs",
+    "line": 5264,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "dstu_empty_trash",
+    "file": "crates/dstu-vfs/src/dstu/trash_handlers.rs",
+    "line": 641,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "dstu_export",
+    "file": "crates/dstu-vfs/src/dstu/export/mod.rs",
+    "line": 303,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "dstu_export_formats",
+    "file": "crates/dstu-vfs/src/dstu/export/mod.rs",
+    "line": 275,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "dstu_folder_add_item",
+    "file": "crates/dstu-vfs/src/dstu/folder_handlers.rs",
+    "line": 471,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "dstu_folder_create",
+    "file": "crates/dstu-vfs/src/dstu/folder_handlers.rs",
+    "line": 135,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "dstu_folder_delete",
+    "file": "crates/dstu-vfs/src/dstu/folder_handlers.rs",
+    "line": 336,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "dstu_folder_get",
+    "file": "crates/dstu-vfs/src/dstu/folder_handlers.rs",
+    "line": 233,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "dstu_folder_get_all_resources",
+    "file": "crates/dstu-vfs/src/dstu/folder_handlers.rs",
+    "line": 762,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "dstu_folder_get_breadcrumbs",
+    "file": "crates/dstu-vfs/src/dstu/folder_handlers.rs",
+    "line": 910,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "dstu_folder_get_items",
+    "file": "crates/dstu-vfs/src/dstu/folder_handlers.rs",
+    "line": 704,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "dstu_folder_get_tree",
+    "file": "crates/dstu-vfs/src/dstu/folder_handlers.rs",
+    "line": 669,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "dstu_folder_list",
+    "file": "crates/dstu-vfs/src/dstu/folder_handlers.rs",
+    "line": 637,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "dstu_folder_move",
+    "file": "crates/dstu-vfs/src/dstu/folder_handlers.rs",
+    "line": 382,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "dstu_folder_move_item",
+    "file": "crates/dstu-vfs/src/dstu/folder_handlers.rs",
+    "line": 588,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "dstu_folder_remove_item",
+    "file": "crates/dstu-vfs/src/dstu/folder_handlers.rs",
+    "line": 553,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "dstu_folder_rename",
+    "file": "crates/dstu-vfs/src/dstu/folder_handlers.rs",
+    "line": 273,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "dstu_folder_reorder",
+    "file": "crates/dstu-vfs/src/dstu/folder_handlers.rs",
+    "line": 817,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "dstu_folder_reorder_items",
+    "file": "crates/dstu-vfs/src/dstu/folder_handlers.rs",
+    "line": 858,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "dstu_folder_set_expanded",
+    "file": "crates/dstu-vfs/src/dstu/folder_handlers.rs",
+    "line": 424,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "dstu_get",
+    "file": "crates/dstu-vfs/src/dstu/handlers.rs",
+    "line": 467,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "dstu_get_content",
+    "file": "crates/dstu-vfs/src/dstu/handlers.rs",
+    "line": 3289,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "dstu_get_exam_content",
+    "file": "crates/dstu-vfs/src/dstu/handlers.rs",
+    "line": 3323,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "dstu_get_path_by_id",
+    "file": "crates/dstu-vfs/src/dstu/handlers.rs",
+    "line": 6625,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "dstu_get_resource_by_path",
+    "file": "crates/dstu-vfs/src/dstu/handlers.rs",
+    "line": 6042,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "dstu_get_resource_location",
+    "file": "crates/dstu-vfs/src/dstu/handlers.rs",
+    "line": 5973,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "dstu_list",
+    "file": "crates/dstu-vfs/src/dstu/handlers.rs",
+    "line": 171,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "dstu_list_deleted",
+    "file": "crates/dstu-vfs/src/dstu/handlers.rs",
+    "line": 4857,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "dstu_list_trash",
+    "file": "crates/dstu-vfs/src/dstu/trash_handlers.rs",
+    "line": 237,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "dstu_move",
+    "file": "crates/dstu-vfs/src/dstu/handlers.rs",
+    "line": 1770,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "dstu_move_many",
+    "file": "crates/dstu-vfs/src/dstu/handlers.rs",
+    "line": 5530,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "dstu_move_to_folder",
+    "file": "crates/dstu-vfs/src/dstu/handlers.rs",
+    "line": 6137,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "dstu_parse_path",
+    "file": "crates/dstu-vfs/src/dstu/handlers.rs",
+    "line": 5851,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "dstu_permanently_delete",
+    "file": "crates/dstu-vfs/src/dstu/trash_handlers.rs",
+    "line": 798,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "dstu_purge",
+    "file": "crates/dstu-vfs/src/dstu/handlers.rs",
+    "line": 4459,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "dstu_purge_all",
+    "file": "crates/dstu-vfs/src/dstu/handlers.rs",
+    "line": 5141,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "dstu_refresh_path_cache",
+    "file": "crates/dstu-vfs/src/dstu/handlers.rs",
+    "line": 6516,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "dstu_rename",
+    "file": "crates/dstu-vfs/src/dstu/handlers.rs",
+    "line": 1879,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "dstu_restore",
+    "file": "crates/dstu-vfs/src/dstu/handlers.rs",
+    "line": 4234,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "dstu_restore_many",
+    "file": "crates/dstu-vfs/src/dstu/handlers.rs",
+    "line": 5427,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "dstu_search",
+    "file": "crates/dstu-vfs/src/dstu/handlers.rs",
+    "line": 3269,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "dstu_search_in_folder",
+    "file": "crates/dstu-vfs/src/dstu/handlers.rs",
+    "line": 5654,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "dstu_set_favorite",
+    "file": "crates/dstu-vfs/src/dstu/handlers.rs",
+    "line": 4554,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "dstu_set_metadata",
+    "file": "crates/dstu-vfs/src/dstu/handlers.rs",
+    "line": 3348,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "dstu_soft_delete",
+    "file": "crates/dstu-vfs/src/dstu/trash_handlers.rs",
+    "line": 113,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "dstu_trash_restore",
+    "file": "crates/dstu-vfs/src/dstu/trash_handlers.rs",
+    "line": 180,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "dstu_unwatch",
+    "file": "crates/dstu-vfs/src/dstu/handlers.rs",
+    "line": 5634,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "dstu_update",
+    "file": "crates/dstu-vfs/src/dstu/handlers.rs",
+    "line": 1438,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "dstu_watch",
+    "file": "crates/dstu-vfs/src/dstu/handlers.rs",
+    "line": 5627,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "filestream_check_access",
+    "file": "crates/dstu-vfs/src/file_stream_protocol.rs",
+    "line": 718,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "pomodoro_create_record",
+    "file": "crates/dstu-vfs/src/vfs/todo_handlers.rs",
+    "line": 1175,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "pomodoro_daily_stats",
+    "file": "crates/dstu-vfs/src/vfs/todo_handlers.rs",
+    "line": 1247,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "pomodoro_delete_record",
+    "file": "crates/dstu-vfs/src/vfs/pomodoro_handlers.rs",
+    "line": 23,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "pomodoro_get_record",
+    "file": "crates/dstu-vfs/src/vfs/todo_handlers.rs",
+    "line": 1204,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "pomodoro_hourly_stats",
+    "file": "crates/dstu-vfs/src/vfs/pomodoro_handlers.rs",
+    "line": 77,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "pomodoro_list_by_todo",
+    "file": "crates/dstu-vfs/src/vfs/todo_handlers.rs",
+    "line": 1216,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "pomodoro_list_range",
+    "file": "crates/dstu-vfs/src/vfs/pomodoro_handlers.rs",
+    "line": 48,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "pomodoro_list_today",
+    "file": "crates/dstu-vfs/src/vfs/todo_handlers.rs",
+    "line": 1237,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "pomodoro_stats_by_todo",
+    "file": "crates/dstu-vfs/src/vfs/pomodoro_handlers.rs",
+    "line": 93,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "pomodoro_stats_overview",
+    "file": "crates/dstu-vfs/src/vfs/pomodoro_handlers.rs",
+    "line": 117,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "pomodoro_streak",
+    "file": "crates/dstu-vfs/src/vfs/pomodoro_handlers.rs",
+    "line": 65,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "pomodoro_today_stats",
+    "file": "crates/dstu-vfs/src/vfs/todo_handlers.rs",
+    "line": 1228,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "pomodoro_todo_focus_summary",
+    "file": "crates/dstu-vfs/src/vfs/pomodoro_handlers.rs",
+    "line": 132,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "todo_ai_breakdown",
+    "file": "crates/dstu-vfs/src/vfs/todo_handlers.rs",
+    "line": 1007,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "todo_batch_complete",
+    "file": "crates/dstu-vfs/src/vfs/todo_handlers.rs",
+    "line": 750,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "todo_batch_delete",
+    "file": "crates/dstu-vfs/src/vfs/todo_handlers.rs",
+    "line": 831,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "todo_batch_move",
+    "file": "crates/dstu-vfs/src/vfs/todo_handlers.rs",
+    "line": 811,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "todo_batch_purge",
+    "file": "crates/dstu-vfs/src/vfs/todo_handlers.rs",
+    "line": 868,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "todo_batch_reschedule",
+    "file": "crates/dstu-vfs/src/vfs/todo_handlers.rs",
+    "line": 769,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "todo_batch_restore",
+    "file": "crates/dstu-vfs/src/vfs/todo_handlers.rs",
+    "line": 849,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "todo_batch_set_priority",
+    "file": "crates/dstu-vfs/src/vfs/todo_handlers.rs",
+    "line": 791,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "todo_counts_snapshot",
+    "file": "crates/dstu-vfs/src/vfs/todo_handlers.rs",
+    "line": 730,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "todo_create_item",
+    "file": "crates/dstu-vfs/src/vfs/todo_handlers.rs",
+    "line": 452,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "todo_create_list",
+    "file": "crates/dstu-vfs/src/vfs/todo_handlers.rs",
+    "line": 231,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "todo_delete_item",
+    "file": "crates/dstu-vfs/src/vfs/todo_handlers.rs",
+    "line": 564,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "todo_delete_list",
+    "file": "crates/dstu-vfs/src/vfs/todo_handlers.rs",
+    "line": 293,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "todo_ensure_inbox",
+    "file": "crates/dstu-vfs/src/vfs/todo_handlers.rs",
+    "line": 317,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "todo_get_active_summary",
+    "file": "crates/dstu-vfs/src/vfs/todo_handlers.rs",
+    "line": 717,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "todo_get_item",
+    "file": "crates/dstu-vfs/src/vfs/todo_handlers.rs",
+    "line": 480,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "todo_get_list",
+    "file": "crates/dstu-vfs/src/vfs/todo_handlers.rs",
+    "line": 254,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "todo_list_all_pending",
+    "file": "crates/dstu-vfs/src/vfs/todo_handlers.rs",
+    "line": 669,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "todo_list_all_tags",
+    "file": "crates/dstu-vfs/src/vfs/todo_handlers.rs",
+    "line": 916,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "todo_list_completed",
+    "file": "crates/dstu-vfs/src/vfs/todo_handlers.rs",
+    "line": 679,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "todo_list_deleted_items",
+    "file": "crates/dstu-vfs/src/vfs/todo_handlers.rs",
+    "line": 408,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "todo_list_deleted_lists",
+    "file": "crates/dstu-vfs/src/vfs/todo_handlers.rs",
+    "line": 344,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "todo_list_items",
+    "file": "crates/dstu-vfs/src/vfs/todo_handlers.rs",
+    "line": 492,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "todo_list_items_with_stats",
+    "file": "crates/dstu-vfs/src/vfs/todo_handlers.rs",
+    "line": 927,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "todo_list_lists",
+    "file": "crates/dstu-vfs/src/vfs/todo_handlers.rs",
+    "line": 263,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "todo_list_overdue",
+    "file": "crates/dstu-vfs/src/vfs/todo_handlers.rs",
+    "line": 629,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "todo_list_reminders",
+    "file": "crates/dstu-vfs/src/vfs/todo_handlers.rs",
+    "line": 659,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "todo_list_today",
+    "file": "crates/dstu-vfs/src/vfs/todo_handlers.rs",
+    "line": 612,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "todo_list_upcoming",
+    "file": "crates/dstu-vfs/src/vfs/todo_handlers.rs",
+    "line": 644,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "todo_move_item",
+    "file": "crates/dstu-vfs/src/vfs/todo_handlers.rs",
+    "line": 594,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "todo_purge_deleted_items",
+    "file": "crates/dstu-vfs/src/vfs/todo_handlers.rs",
+    "line": 434,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "todo_purge_deleted_lists",
+    "file": "crates/dstu-vfs/src/vfs/todo_handlers.rs",
+    "line": 382,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "todo_purge_item",
+    "file": "crates/dstu-vfs/src/vfs/todo_handlers.rs",
+    "line": 422,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "todo_purge_list",
+    "file": "crates/dstu-vfs/src/vfs/todo_handlers.rs",
+    "line": 370,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "todo_reorder_items",
+    "file": "crates/dstu-vfs/src/vfs/todo_handlers.rs",
+    "line": 576,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "todo_reorder_lists",
+    "file": "crates/dstu-vfs/src/vfs/todo_handlers.rs",
+    "line": 328,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "todo_restore_item",
+    "file": "crates/dstu-vfs/src/vfs/todo_handlers.rs",
+    "line": 396,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "todo_restore_list",
+    "file": "crates/dstu-vfs/src/vfs/todo_handlers.rs",
+    "line": 358,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "todo_search",
+    "file": "crates/dstu-vfs/src/vfs/todo_handlers.rs",
+    "line": 696,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "todo_stats_overview",
+    "file": "crates/dstu-vfs/src/vfs/todo_handlers.rs",
+    "line": 901,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "todo_toggle_item",
+    "file": "crates/dstu-vfs/src/vfs/todo_handlers.rs",
+    "line": 547,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "todo_toggle_list_favorite",
+    "file": "crates/dstu-vfs/src/vfs/todo_handlers.rs",
+    "line": 305,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "todo_trash_counts",
+    "file": "crates/dstu-vfs/src/vfs/todo_handlers.rs",
+    "line": 886,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "todo_update_item",
+    "file": "crates/dstu-vfs/src/vfs/todo_handlers.rs",
+    "line": 508,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "todo_update_list",
+    "file": "crates/dstu-vfs/src/vfs/todo_handlers.rs",
+    "line": 272,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "vfs_assign_dimension_model",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 3398,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_batch_index_pending",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 3859,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_cancel_pdf_processing",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 6533,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_clear_default_embedding_dimension",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 3817,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_clear_media_cache",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 6975,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_clear_resource_ocr",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 7783,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_create_attachment_root_folder",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 1679,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_create_dimension",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 3495,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_create_mindmap",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 5088,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "vfs_create_note",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 460,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "vfs_create_or_reuse",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 300,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_debug_index_status",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 5472,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_decrement_ref",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 430,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_delete_attachment",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 1964,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_delete_dimension",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 3581,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_delete_file",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 2750,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_delete_mindmap",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 5302,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "vfs_delete_note",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 646,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "vfs_delete_resource_index",
+    "file": "crates/dstu-vfs/src/vfs/index_handlers.rs",
+    "line": 201,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_diagnose_lance_schema",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 6472,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_download_paper",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 7340,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_get_all_index_status",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 4225,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_get_attachment",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 1946,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_get_attachment_config",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 1648,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_get_attachment_content",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 1720,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_get_batch_pdf_processing_status",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 6628,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "vfs_get_blob_base64",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 2858,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_get_default_embedding_dimension",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 3763,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_get_dimension_range",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 3675,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_get_embedding_readiness",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 4198,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_get_embedding_stats",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 3318,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "vfs_get_file",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 2714,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_get_file_content",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 2782,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_get_index_status",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 3269,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "vfs_get_indexing_config",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 4053,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "vfs_get_lance_stats",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 4970,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_get_media_cache_stats",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 6813,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_get_mindmap",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 5115,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "vfs_get_mindmap_content",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 5134,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "vfs_get_mindmap_version",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 5231,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "vfs_get_mindmap_version_content",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 5209,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "vfs_get_mindmap_versions",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 5155,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "vfs_get_note",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 567,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "vfs_get_note_content",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 592,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "vfs_get_or_create_attachment_root_folder",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 1688,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "vfs_get_pdf_page_image",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 3105,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_get_pdf_processing_status",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 6504,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_get_pending_resources",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 3353,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "vfs_get_preset_dimensions",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 3670,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_get_resource",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 355,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_get_resource_ocr_info",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 7621,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_get_resource_path",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 1043,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_get_resource_ref_count",
+    "file": "crates/dstu-vfs/src/vfs/ref_handlers.rs",
+    "line": 243,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_get_resource_refs",
+    "file": "crates/dstu-vfs/src/vfs/ref_handlers.rs",
+    "line": 52,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_get_resource_text_chunks",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 7860,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_get_resource_units",
+    "file": "crates/dstu-vfs/src/vfs/index_handlers.rs",
+    "line": 27,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_increment_ref",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 404,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_inspect_retrieval_capabilities",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 6354,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_list_dimensions",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 3329,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_list_embedding_dims",
+    "file": "crates/dstu-vfs/src/vfs/index_handlers.rs",
+    "line": 287,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_list_essays",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 779,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "vfs_list_exam_sheets",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 717,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "vfs_list_files",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 2728,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_list_mindmaps",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 5321,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "vfs_list_notes",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 614,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "vfs_list_pending_pdf_processing",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 6685,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "vfs_list_textbooks",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 682,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "vfs_list_translations",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 747,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "vfs_multimodal_delete",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 6395,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_multimodal_index",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 6080,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_multimodal_index_resource",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 6419,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_multimodal_search",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 6295,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_multimodal_search_detailed",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 6337,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_multimodal_stats",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 6372,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_optimize_lance",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 4989,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_rag_search",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 4889,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_reindex_resource",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 3153,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_reindex_unit",
+    "file": "crates/dstu-vfs/src/vfs/index_handlers.rs",
+    "line": 39,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_reset_all_index_state",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 5922,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_reset_disabled_to_pending",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 5859,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_reset_indexed_without_embeddings",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 5885,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_resolve_resource_refs",
+    "file": "crates/dstu-vfs/src/vfs/ref_handlers.rs",
+    "line": 153,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_resource_exists",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 378,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_restore_mindmap_version",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 5187,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "vfs_retry_pdf_processing",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 6558,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_search",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 3132,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "vfs_search_all",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 811,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "vfs_set_attachment_root_folder",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 1662,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_set_default_embedding_dimension",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 3693,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_set_indexing_config",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 4043,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "vfs_set_mindmap_favorite",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 5331,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "vfs_start_pdf_processing",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 6592,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_sync_resource_units",
+    "file": "crates/dstu-vfs/src/vfs/index_handlers.rs",
+    "line": 164,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_toggle_index_disabled",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 3282,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "vfs_unified_batch_index",
+    "file": "crates/dstu-vfs/src/vfs/index_handlers.rs",
+    "line": 56,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_unified_index_status",
+    "file": "crates/dstu-vfs/src/vfs/index_handlers.rs",
+    "line": 18,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_update_mindmap",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 5250,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "vfs_update_note",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 516,
+    "lane": "L13-vfs-api",
+    "frontend": "none"
+  },
+  {
+    "name": "vfs_update_path_cache",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 1143,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_upload_attachment",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 1327,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "vfs_upload_file",
+    "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+    "line": 2107,
+    "lane": "L13-vfs-api",
+    "frontend": "app"
+  },
+  {
+    "name": "cancel_question_bank_import",
+    "file": "src/commands.rs",
+    "line": 1264,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "cancel_questions_csv_import",
+    "file": "src/commands.rs",
+    "line": 1859,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "export_questions_csv",
+    "file": "src/commands.rs",
+    "line": 1875,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "get_csv_exportable_fields",
+    "file": "src/commands.rs",
+    "line": 2005,
+    "lane": "L14-qbank",
+    "frontend": "none"
+  },
+  {
+    "name": "get_csv_preview",
+    "file": "src/commands.rs",
+    "line": 1967,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "get_enhanced_statistics",
+    "file": "src/commands.rs",
+    "line": 2109,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "get_exam_sheet_session_detail",
+    "file": "src/commands.rs",
+    "line": 945,
+    "lane": "L14-qbank",
+    "frontend": "none"
+  },
+  {
+    "name": "get_learning_heatmap",
+    "file": "src/commands.rs",
+    "line": 8244,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "import_question_bank",
+    "file": "src/commands.rs",
+    "line": 1087,
+    "lane": "L14-qbank",
+    "frontend": "none"
+  },
+  {
+    "name": "import_question_bank_stream",
+    "file": "src/commands.rs",
+    "line": 1122,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "import_questions_csv",
+    "file": "src/commands.rs",
+    "line": 1709,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "inspect_pdf_text_for_qbank",
+    "file": "src/commands.rs",
+    "line": 1042,
+    "lane": "L14-qbank",
+    "frontend": "none"
+  },
+  {
+    "name": "list_exam_sheet_sessions",
+    "file": "src/commands.rs",
+    "line": 932,
+    "lane": "L14-qbank",
+    "frontend": "none"
+  },
+  {
+    "name": "list_importing_sessions",
+    "file": "src/commands.rs",
+    "line": 1646,
+    "lane": "L14-qbank",
+    "frontend": "none"
+  },
+  {
+    "name": "qbank_ai_generate_questions",
+    "file": "src/qbank_generation.rs",
+    "line": 16,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_ai_grade",
+    "file": "src/qbank_grading.rs",
+    "line": 22,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_batch_create_questions",
+    "file": "src/commands.rs",
+    "line": 7718,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_batch_delete_questions",
+    "file": "src/commands.rs",
+    "line": 7789,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_batch_update_questions",
+    "file": "src/commands.rs",
+    "line": 7764,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_cancel_generation_task",
+    "file": "src/qbank_generation.rs",
+    "line": 48,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_cancel_grading",
+    "file": "src/qbank_grading.rs",
+    "line": 33,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_commit_authoring_draft",
+    "file": "src/commands.rs",
+    "line": 1361,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_complete_paper_export",
+    "file": "crates/dstu-qbank/src/qbank_practice/export_bridge.rs",
+    "line": 66,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_count_by_type",
+    "file": "src/commands.rs",
+    "line": 7882,
+    "lane": "L14-qbank",
+    "frontend": "none"
+  },
+  {
+    "name": "qbank_create_practice",
+    "file": "src/qbank_practice.rs",
+    "line": 16,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_create_question",
+    "file": "src/commands.rs",
+    "line": 7704,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_crop_source_image",
+    "file": "src/commands.rs",
+    "line": 8609,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_delete_group",
+    "file": "src/commands.rs",
+    "line": 1612,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_delete_material",
+    "file": "src/commands.rs",
+    "line": 1453,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_delete_practice",
+    "file": "src/qbank_practice.rs",
+    "line": 63,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_delete_question",
+    "file": "src/commands.rs",
+    "line": 7778,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_export_document",
+    "file": "src/commands.rs",
+    "line": 1489,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_export_paper_docx",
+    "file": "crates/dstu-qbank/src/qbank_practice/export.rs",
+    "line": 228,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_export_portable",
+    "file": "src/commands.rs",
+    "line": 1633,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_generate_mock_exam",
+    "file": "src/commands.rs",
+    "line": 8106,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_generate_paper",
+    "file": "src/commands.rs",
+    "line": 8168,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_get_activity_heatmap",
+    "file": "src/commands.rs",
+    "line": 8018,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_get_authoring_draft",
+    "file": "src/commands.rs",
+    "line": 1386,
+    "lane": "L14-qbank",
+    "frontend": "none"
+  },
+  {
+    "name": "qbank_get_check_in_calendar",
+    "file": "src/commands.rs",
+    "line": 8193,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_get_daily_practice",
+    "file": "src/commands.rs",
+    "line": 8147,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_get_generation_task",
+    "file": "src/qbank_generation.rs",
+    "line": 27,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_get_history",
+    "file": "src/commands.rs",
+    "line": 7910,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_get_knowledge_stats",
+    "file": "src/commands.rs",
+    "line": 8041,
+    "lane": "L14-qbank",
+    "frontend": "none"
+  },
+  {
+    "name": "qbank_get_knowledge_stats_with_comparison",
+    "file": "src/commands.rs",
+    "line": 8055,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_get_learning_trend",
+    "file": "src/commands.rs",
+    "line": 7989,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_get_paper",
+    "file": "src/qbank_practice.rs",
+    "line": 80,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_get_practice",
+    "file": "src/qbank_practice.rs",
+    "line": 33,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_get_question",
+    "file": "src/commands.rs",
+    "line": 7675,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_get_question_by_card_id",
+    "file": "src/commands.rs",
+    "line": 7689,
+    "lane": "L14-qbank",
+    "frontend": "none"
+  },
+  {
+    "name": "qbank_get_source_images",
+    "file": "src/commands.rs",
+    "line": 8515,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_get_source_page",
+    "file": "crates/dstu-qbank/src/qbank_source_view.rs",
+    "line": 339,
+    "lane": "L14-qbank",
+    "frontend": "none"
+  },
+  {
+    "name": "qbank_get_stats",
+    "file": "src/commands.rs",
+    "line": 7868,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_get_submissions",
+    "file": "src/commands.rs",
+    "line": 7925,
+    "lane": "L14-qbank",
+    "frontend": "none"
+  },
+  {
+    "name": "qbank_grade_practice_manually",
+    "file": "src/qbank_practice.rs",
+    "line": 112,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_legacy_audit",
+    "file": "src/commands.rs",
+    "line": 1542,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_legacy_migrate_selected",
+    "file": "src/commands.rs",
+    "line": 1555,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_list_authoring_drafts",
+    "file": "src/commands.rs",
+    "line": 1398,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_list_generation_tasks",
+    "file": "src/qbank_generation.rs",
+    "line": 37,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_list_mistakes",
+    "file": "src/commands.rs",
+    "line": 7600,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_list_papers",
+    "file": "src/qbank_practice.rs",
+    "line": 72,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_list_practices",
+    "file": "src/qbank_practice.rs",
+    "line": 42,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_list_questions",
+    "file": "src/commands.rs",
+    "line": 7572,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_list_structure",
+    "file": "src/commands.rs",
+    "line": 1530,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_rebuild_fts_index",
+    "file": "src/commands.rs",
+    "line": 7664,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_refresh_stats",
+    "file": "src/commands.rs",
+    "line": 7896,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_remove_question_image",
+    "file": "src/commands.rs",
+    "line": 8727,
+    "lane": "L14-qbank",
+    "frontend": "none"
+  },
+  {
+    "name": "qbank_reparse_report",
+    "file": "src/commands.rs",
+    "line": 1576,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_reparse_resolve",
+    "file": "src/commands.rs",
+    "line": 1590,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_reset_progress",
+    "file": "src/commands.rs",
+    "line": 7940,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_reset_questions_progress",
+    "file": "src/commands.rs",
+    "line": 7954,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_resolve_authoring_route",
+    "file": "src/commands.rs",
+    "line": 1467,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_resume_practice_grading",
+    "file": "src/qbank_practice.rs",
+    "line": 96,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_retry_practice_grading",
+    "file": "src/qbank_practice.rs",
+    "line": 101,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_review_authoring_draft",
+    "file": "src/commands.rs",
+    "line": 1410,
+    "lane": "L14-qbank",
+    "frontend": "none"
+  },
+  {
+    "name": "qbank_save_practice",
+    "file": "src/qbank_practice.rs",
+    "line": 25,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_search_questions",
+    "file": "src/commands.rs",
+    "line": 7641,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_start_timed_practice",
+    "file": "src/commands.rs",
+    "line": 8081,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_submit_answer",
+    "file": "src/commands.rs",
+    "line": 7817,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_submit_mock_exam",
+    "file": "src/commands.rs",
+    "line": 8126,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_submit_practice",
+    "file": "src/qbank_practice.rs",
+    "line": 53,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_toggle_favorite",
+    "file": "src/commands.rs",
+    "line": 7854,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_update_group",
+    "file": "src/commands.rs",
+    "line": 1501,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_update_material",
+    "file": "src/commands.rs",
+    "line": 1432,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_update_paper",
+    "file": "src/qbank_practice.rs",
+    "line": 85,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "qbank_update_question",
+    "file": "src/commands.rs",
+    "line": 7740,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "rename_exam_sheet_session",
+    "file": "src/commands.rs",
+    "line": 980,
+    "lane": "L14-qbank",
+    "frontend": "none"
+  },
+  {
+    "name": "resume_question_import",
+    "file": "src/commands.rs",
+    "line": 1285,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "update_exam_sheet_cards",
+    "file": "src/commands.rs",
+    "line": 957,
+    "lane": "L14-qbank",
+    "frontend": "app"
+  },
+  {
+    "name": "essay_grading_create_custom_mode",
+    "file": "src/essay_grading/mod.rs",
+    "line": 157,
+    "lane": "L15-review-analytics",
+    "frontend": "app"
+  },
+  {
+    "name": "essay_grading_create_session",
+    "file": "src/essay_grading/mod.rs",
+    "line": 37,
+    "lane": "L15-review-analytics",
+    "frontend": "app"
+  },
+  {
+    "name": "essay_grading_delete_custom_mode",
+    "file": "src/essay_grading/mod.rs",
+    "line": 175,
+    "lane": "L15-review-analytics",
+    "frontend": "app"
+  },
+  {
+    "name": "essay_grading_delete_session",
+    "file": "src/essay_grading/mod.rs",
+    "line": 79,
+    "lane": "L15-review-analytics",
+    "frontend": "app"
+  },
+  {
+    "name": "essay_grading_get_latest_round_number",
+    "file": "src/essay_grading/mod.rs",
+    "line": 127,
+    "lane": "L15-review-analytics",
+    "frontend": "app"
+  },
+  {
+    "name": "essay_grading_get_mode",
+    "file": "src/essay_grading/mod.rs",
+    "line": 144,
+    "lane": "L15-review-analytics",
+    "frontend": "app"
+  },
+  {
+    "name": "essay_grading_get_models",
+    "file": "src/essay_grading/mod.rs",
+    "line": 219,
+    "lane": "L15-review-analytics",
+    "frontend": "app"
+  },
+  {
+    "name": "essay_grading_get_modes",
+    "file": "src/essay_grading/mod.rs",
+    "line": 136,
+    "lane": "L15-review-analytics",
+    "frontend": "app"
+  },
+  {
+    "name": "essay_grading_get_round",
+    "file": "src/essay_grading/mod.rs",
+    "line": 117,
+    "lane": "L15-review-analytics",
+    "frontend": "app"
+  },
+  {
+    "name": "essay_grading_get_rounds",
+    "file": "src/essay_grading/mod.rs",
+    "line": 108,
+    "lane": "L15-review-analytics",
+    "frontend": "app"
+  },
+  {
+    "name": "essay_grading_get_session",
+    "file": "src/essay_grading/mod.rs",
+    "line": 56,
+    "lane": "L15-review-analytics",
+    "frontend": "app"
+  },
+  {
+    "name": "essay_grading_has_builtin_override",
+    "file": "src/essay_grading/mod.rs",
+    "line": 210,
+    "lane": "L15-review-analytics",
+    "frontend": "app"
+  },
+  {
+    "name": "essay_grading_list_custom_modes",
+    "file": "src/essay_grading/mod.rs",
+    "line": 184,
+    "lane": "L15-review-analytics",
+    "frontend": "app"
+  },
+  {
+    "name": "essay_grading_list_sessions",
+    "file": "src/essay_grading/mod.rs",
+    "line": 88,
+    "lane": "L15-review-analytics",
+    "frontend": "app"
+  },
+  {
+    "name": "essay_grading_reset_builtin_mode",
+    "file": "src/essay_grading/mod.rs",
+    "line": 201,
+    "lane": "L15-review-analytics",
+    "frontend": "app"
+  },
+  {
+    "name": "essay_grading_save_builtin_override",
+    "file": "src/essay_grading/mod.rs",
+    "line": 192,
+    "lane": "L15-review-analytics",
+    "frontend": "app"
+  },
+  {
+    "name": "essay_grading_stream",
+    "file": "src/essay_grading/mod.rs",
+    "line": 27,
+    "lane": "L15-review-analytics",
+    "frontend": "app"
+  },
+  {
+    "name": "essay_grading_toggle_favorite",
+    "file": "src/essay_grading/mod.rs",
+    "line": 99,
+    "lane": "L15-review-analytics",
+    "frontend": "app"
+  },
+  {
+    "name": "essay_grading_update_custom_mode",
+    "file": "src/essay_grading/mod.rs",
+    "line": 166,
+    "lane": "L15-review-analytics",
+    "frontend": "app"
+  },
+  {
+    "name": "essay_grading_update_session",
+    "file": "src/essay_grading/mod.rs",
+    "line": 68,
+    "lane": "L15-review-analytics",
+    "frontend": "app"
+  },
+  {
+    "name": "fsrs_bury_card",
+    "file": "src/cmd/fsrs_review.rs",
+    "line": 470,
+    "lane": "L15-review-analytics",
+    "frontend": "none"
+  },
+  {
+    "name": "fsrs_enqueue_cards",
+    "file": "src/cmd/fsrs_review.rs",
+    "line": 107,
+    "lane": "L15-review-analytics",
+    "frontend": "app"
+  },
+  {
+    "name": "fsrs_get_card_memory_history",
+    "file": "src/cmd/fsrs_review.rs",
+    "line": 544,
+    "lane": "L15-review-analytics",
+    "frontend": "app"
+  },
+  {
+    "name": "fsrs_get_due",
+    "file": "src/cmd/fsrs_review.rs",
+    "line": 129,
+    "lane": "L15-review-analytics",
+    "frontend": "app"
+  },
+  {
+    "name": "fsrs_get_memory_overview",
+    "file": "src/cmd/fsrs_review.rs",
+    "line": 533,
+    "lane": "L15-review-analytics",
+    "frontend": "app"
+  },
+  {
+    "name": "fsrs_get_review_statistics",
+    "file": "src/cmd/fsrs_review.rs",
+    "line": 523,
+    "lane": "L15-review-analytics",
+    "frontend": "app"
+  },
+  {
+    "name": "fsrs_get_scheduler_config",
+    "file": "src/cmd/fsrs_review.rs",
+    "line": 555,
+    "lane": "L15-review-analytics",
+    "frontend": "app"
+  },
+  {
+    "name": "fsrs_get_stats",
+    "file": "src/cmd/fsrs_review.rs",
+    "line": 515,
+    "lane": "L15-review-analytics",
+    "frontend": "app"
+  },
+  {
+    "name": "fsrs_optimize_parameters",
+    "file": "src/cmd/fsrs_review.rs",
+    "line": 572,
+    "lane": "L15-review-analytics",
+    "frontend": "app"
+  },
+  {
+    "name": "fsrs_preview_intervals",
+    "file": "src/cmd/fsrs_review.rs",
+    "line": 237,
+    "lane": "L15-review-analytics",
+    "frontend": "app"
+  },
+  {
+    "name": "fsrs_rate",
+    "file": "src/cmd/fsrs_review.rs",
+    "line": 250,
+    "lane": "L15-review-analytics",
+    "frontend": "app"
+  },
+  {
+    "name": "fsrs_reset_card_progress",
+    "file": "src/cmd/fsrs_review.rs",
+    "line": 595,
+    "lane": "L15-review-analytics",
+    "frontend": "app"
+  },
+  {
+    "name": "fsrs_suspend_card",
+    "file": "src/cmd/fsrs_review.rs",
+    "line": 455,
+    "lane": "L15-review-analytics",
+    "frontend": "app"
+  },
+  {
+    "name": "fsrs_unbury_card",
+    "file": "src/cmd/fsrs_review.rs",
+    "line": 485,
+    "lane": "L15-review-analytics",
+    "frontend": "none"
+  },
+  {
+    "name": "fsrs_undo_last_review",
+    "file": "src/cmd/fsrs_review.rs",
+    "line": 415,
+    "lane": "L15-review-analytics",
+    "frontend": "app"
+  },
+  {
+    "name": "fsrs_unsuspend_card",
+    "file": "src/cmd/fsrs_review.rs",
+    "line": 500,
+    "lane": "L15-review-analytics",
+    "frontend": "app"
+  },
+  {
+    "name": "fsrs_update_scheduler_config",
+    "file": "src/cmd/fsrs_review.rs",
+    "line": 562,
+    "lane": "L15-review-analytics",
+    "frontend": "app"
+  },
+  {
+    "name": "insight_add_relation",
+    "file": "src/insight/handlers.rs",
+    "line": 125,
+    "lane": "L15-review-analytics",
+    "frontend": "none"
+  },
+  {
+    "name": "insight_confirm",
+    "file": "src/insight/handlers.rs",
+    "line": 31,
+    "lane": "L15-review-analytics",
+    "frontend": "none"
+  },
+  {
+    "name": "insight_correct",
+    "file": "src/insight/handlers.rs",
+    "line": 41,
+    "lane": "L15-review-analytics",
+    "frontend": "none"
+  },
+  {
+    "name": "insight_create_draft",
+    "file": "src/insight/handlers.rs",
+    "line": 22,
+    "lane": "L15-review-analytics",
+    "frontend": "none"
+  },
+  {
+    "name": "insight_delete",
+    "file": "src/insight/handlers.rs",
+    "line": 51,
+    "lane": "L15-review-analytics",
+    "frontend": "none"
+  },
+  {
+    "name": "insight_get",
+    "file": "src/insight/handlers.rs",
+    "line": 57,
+    "lane": "L15-review-analytics",
+    "frontend": "none"
+  },
+  {
+    "name": "insight_list",
+    "file": "src/insight/handlers.rs",
+    "line": 66,
+    "lane": "L15-review-analytics",
+    "frontend": "none"
+  },
+  {
+    "name": "insight_list_events",
+    "file": "src/insight/handlers.rs",
+    "line": 104,
+    "lane": "L15-review-analytics",
+    "frontend": "none"
+  },
+  {
+    "name": "insight_list_evidence",
+    "file": "src/insight/handlers.rs",
+    "line": 88,
+    "lane": "L15-review-analytics",
+    "frontend": "none"
+  },
+  {
+    "name": "insight_list_relations",
+    "file": "src/insight/handlers.rs",
+    "line": 96,
+    "lane": "L15-review-analytics",
+    "frontend": "none"
+  },
+  {
+    "name": "insight_list_revisions",
+    "file": "src/insight/handlers.rs",
+    "line": 80,
+    "lane": "L15-review-analytics",
+    "frontend": "none"
+  },
+  {
+    "name": "insight_record_feedback",
+    "file": "src/insight/handlers.rs",
+    "line": 114,
+    "lane": "L15-review-analytics",
+    "frontend": "none"
+  },
+  {
+    "name": "insight_run_jobs",
+    "file": "src/insight/handlers.rs",
+    "line": 144,
+    "lane": "L15-review-analytics",
+    "frontend": "none"
+  },
+  {
+    "name": "mastery_get_overview",
+    "file": "crates/dstu-learning/src/mastery/mod.rs",
+    "line": 23,
+    "lane": "L15-review-analytics",
+    "frontend": "app"
+  },
+  {
+    "name": "review_plan_batch_create",
+    "file": "crates/dstu-qbank/src/review_plan_service.rs",
+    "line": 908,
+    "lane": "L15-review-analytics",
+    "frontend": "app"
+  },
+  {
+    "name": "review_plan_create",
+    "file": "crates/dstu-qbank/src/review_plan_service.rs",
+    "line": 762,
+    "lane": "L15-review-analytics",
+    "frontend": "app"
+  },
+  {
+    "name": "review_plan_create_for_exam",
+    "file": "crates/dstu-qbank/src/review_plan_service.rs",
+    "line": 921,
+    "lane": "L15-review-analytics",
+    "frontend": "app"
+  },
+  {
+    "name": "review_plan_delete",
+    "file": "crates/dstu-qbank/src/review_plan_service.rs",
+    "line": 885,
+    "lane": "L15-review-analytics",
+    "frontend": "app"
+  },
+  {
+    "name": "review_plan_get",
+    "file": "crates/dstu-qbank/src/review_plan_service.rs",
+    "line": 855,
+    "lane": "L15-review-analytics",
+    "frontend": "none"
+  },
+  {
+    "name": "review_plan_get_by_question",
+    "file": "crates/dstu-qbank/src/review_plan_service.rs",
+    "line": 843,
+    "lane": "L15-review-analytics",
+    "frontend": "app"
+  },
+  {
+    "name": "review_plan_get_calendar_data",
+    "file": "crates/dstu-qbank/src/review_plan_service.rs",
+    "line": 960,
+    "lane": "L15-review-analytics",
+    "frontend": "app"
+  },
+  {
+    "name": "review_plan_get_due",
+    "file": "crates/dstu-qbank/src/review_plan_service.rs",
+    "line": 794,
+    "lane": "L15-review-analytics",
+    "frontend": "app"
+  },
+  {
+    "name": "review_plan_get_due_with_filter",
+    "file": "crates/dstu-qbank/src/review_plan_service.rs",
+    "line": 807,
+    "lane": "L15-review-analytics",
+    "frontend": "app"
+  },
+  {
+    "name": "review_plan_get_history",
+    "file": "crates/dstu-qbank/src/review_plan_service.rs",
+    "line": 895,
+    "lane": "L15-review-analytics",
+    "frontend": "app"
+  },
+  {
+    "name": "review_plan_get_or_create",
+    "file": "crates/dstu-qbank/src/review_plan_service.rs",
+    "line": 947,
+    "lane": "L15-review-analytics",
+    "frontend": "app"
+  },
+  {
+    "name": "review_plan_get_stats",
+    "file": "crates/dstu-qbank/src/review_plan_service.rs",
+    "line": 819,
+    "lane": "L15-review-analytics",
+    "frontend": "app"
+  },
+  {
+    "name": "review_plan_list_by_exam",
+    "file": "crates/dstu-qbank/src/review_plan_service.rs",
+    "line": 933,
+    "lane": "L15-review-analytics",
+    "frontend": "app"
+  },
+  {
+    "name": "review_plan_process",
+    "file": "crates/dstu-qbank/src/review_plan_service.rs",
+    "line": 775,
+    "lane": "L15-review-analytics",
+    "frontend": "app"
+  },
+  {
+    "name": "review_plan_refresh_stats",
+    "file": "crates/dstu-qbank/src/review_plan_service.rs",
+    "line": 831,
+    "lane": "L15-review-analytics",
+    "frontend": "app"
+  },
+  {
+    "name": "review_plan_resume",
+    "file": "crates/dstu-qbank/src/review_plan_service.rs",
+    "line": 875,
+    "lane": "L15-review-analytics",
+    "frontend": "app"
+  },
+  {
+    "name": "review_plan_suspend",
+    "file": "crates/dstu-qbank/src/review_plan_service.rs",
+    "line": 865,
+    "lane": "L15-review-analytics",
+    "frontend": "app"
+  },
+  {
+    "name": "study_time_add",
+    "file": "crates/dstu-learning/src/study_loop/study_time.rs",
+    "line": 116,
+    "lane": "L15-review-analytics",
+    "frontend": "app"
+  },
+  {
+    "name": "study_time_range",
+    "file": "crates/dstu-learning/src/study_loop/study_time.rs",
+    "line": 147,
+    "lane": "L15-review-analytics",
+    "frontend": "none"
+  },
+  {
+    "name": "add_cards_to_anki_connect",
+    "file": "src/cmd/anki_connect.rs",
+    "line": 226,
+    "lane": "L16-anki",
+    "frontend": "app"
+  },
+  {
+    "name": "anki_get_deck_names",
+    "file": "src/cmd/anki_connect.rs",
+    "line": 198,
+    "lane": "L16-anki",
+    "frontend": "app"
+  },
+  {
+    "name": "batch_export_cards",
+    "file": "src/cmd/anki_connect.rs",
+    "line": 1323,
+    "lane": "L16-anki",
+    "frontend": "app"
+  },
+  {
+    "name": "cancel_document_processing",
+    "file": "src/cmd/enhanced_anki.rs",
+    "line": 140,
+    "lane": "L16-anki",
+    "frontend": "app"
+  },
+  {
+    "name": "check_anki_connect_availability",
+    "file": "crates/dstu-anki/src/anki_connect_service.rs",
+    "line": 308,
+    "lane": "L16-anki",
+    "frontend": "none"
+  },
+  {
+    "name": "check_anki_connect_status",
+    "file": "src/cmd/anki_connect.rs",
+    "line": 180,
+    "lane": "L16-anki",
+    "frontend": "app"
+  },
+  {
+    "name": "count_custom_template_references",
+    "file": "src/commands.rs",
+    "line": 4465,
+    "lane": "L16-anki",
+    "frontend": "app"
+  },
+  {
+    "name": "create_anki_deck",
+    "file": "src/cmd/anki_connect.rs",
+    "line": 213,
+    "lane": "L16-anki",
+    "frontend": "app"
+  },
+  {
+    "name": "create_custom_template",
+    "file": "src/commands.rs",
+    "line": 4303,
+    "lane": "L16-anki",
+    "frontend": "app"
+  },
+  {
+    "name": "delete_anki_card",
+    "file": "src/cmd/enhanced_anki.rs",
+    "line": 287,
+    "lane": "L16-anki",
+    "frontend": "app"
+  },
+  {
+    "name": "delete_custom_template",
+    "file": "src/commands.rs",
+    "line": 4402,
+    "lane": "L16-anki",
+    "frontend": "app"
+  },
+  {
+    "name": "delete_document_session",
+    "file": "src/cmd/enhanced_anki.rs",
+    "line": 325,
+    "lane": "L16-anki",
+    "frontend": "app"
+  },
+  {
+    "name": "delete_document_task",
+    "file": "src/cmd/enhanced_anki.rs",
+    "line": 306,
+    "lane": "L16-anki",
+    "frontend": "none"
+  },
+  {
+    "name": "dismiss_pending_memory_candidates",
+    "file": "src/cmd/enhanced_anki.rs",
+    "line": 786,
+    "lane": "L16-anki",
+    "frontend": "app"
+  },
+  {
+    "name": "export_anki_cards",
+    "file": "src/cmd/enhanced_anki.rs",
+    "line": 646,
+    "lane": "L16-anki",
+    "frontend": "app"
+  },
+  {
+    "name": "export_apkg_for_selection",
+    "file": "src/cmd/enhanced_anki.rs",
+    "line": 347,
+    "lane": "L16-anki",
+    "frontend": "none"
+  },
+  {
+    "name": "export_cards_as_apkg",
+    "file": "src/cmd/anki_connect.rs",
+    "line": 947,
+    "lane": "L16-anki",
+    "frontend": "none"
+  },
+  {
+    "name": "export_cards_as_apkg_with_template",
+    "file": "src/cmd/anki_connect.rs",
+    "line": 977,
+    "lane": "L16-anki",
+    "frontend": "app"
+  },
+  {
+    "name": "export_multi_template_apkg",
+    "file": "src/cmd/anki_connect.rs",
+    "line": 1123,
+    "lane": "L16-anki",
+    "frontend": "app"
+  },
+  {
+    "name": "export_template",
+    "file": "src/commands.rs",
+    "line": 4476,
+    "lane": "L16-anki",
+    "frontend": "app"
+  },
+  {
+    "name": "generate_anki_cards_from_document",
+    "file": "src/commands.rs",
+    "line": 3911,
+    "lane": "L16-anki",
+    "frontend": "none"
+  },
+  {
+    "name": "generate_anki_cards_from_document_base64",
+    "file": "src/commands.rs",
+    "line": 3998,
+    "lane": "L16-anki",
+    "frontend": "none"
+  },
+  {
+    "name": "generate_anki_cards_from_document_file",
+    "file": "src/commands.rs",
+    "line": 3950,
+    "lane": "L16-anki",
+    "frontend": "none"
+  },
+  {
+    "name": "get_all_custom_templates",
+    "file": "src/commands.rs",
+    "line": 4279,
+    "lane": "L16-anki",
+    "frontend": "app"
+  },
+  {
+    "name": "get_all_recent_cards",
+    "file": "src/commands.rs",
+    "line": 7075,
+    "lane": "L16-anki",
+    "frontend": "none"
+  },
+  {
+    "name": "get_anki_deck_names",
+    "file": "src/cmd/anki_connect.rs",
+    "line": 189,
+    "lane": "L16-anki",
+    "frontend": "app"
+  },
+  {
+    "name": "get_anki_library_card_content",
+    "file": "src/cmd/enhanced_anki.rs",
+    "line": 460,
+    "lane": "L16-anki",
+    "frontend": "app"
+  },
+  {
+    "name": "get_anki_model_names",
+    "file": "src/cmd/anki_connect.rs",
+    "line": 204,
+    "lane": "L16-anki",
+    "frontend": "app"
+  },
+  {
+    "name": "get_anki_stats",
+    "file": "src/cmd/enhanced_anki.rs",
+    "line": 612,
+    "lane": "L16-anki",
+    "frontend": "app"
+  },
+  {
+    "name": "get_custom_template_by_id",
+    "file": "src/commands.rs",
+    "line": 4291,
+    "lane": "L16-anki",
+    "frontend": "none"
+  },
+  {
+    "name": "get_default_template_id",
+    "file": "src/commands.rs",
+    "line": 6239,
+    "lane": "L16-anki",
+    "frontend": "app"
+  },
+  {
+    "name": "get_document_cards",
+    "file": "src/cmd/enhanced_anki.rs",
+    "line": 379,
+    "lane": "L16-anki",
+    "frontend": "app"
+  },
+  {
+    "name": "get_document_processing_state",
+    "file": "src/cmd/enhanced_anki.rs",
+    "line": 181,
+    "lane": "L16-anki",
+    "frontend": "app"
+  },
+  {
+    "name": "get_document_task_counts",
+    "file": "src/cmd/enhanced_anki.rs",
+    "line": 195,
+    "lane": "L16-anki",
+    "frontend": "none"
+  },
+  {
+    "name": "get_document_tasks",
+    "file": "src/cmd/enhanced_anki.rs",
+    "line": 229,
+    "lane": "L16-anki",
+    "frontend": "app"
+  },
+  {
+    "name": "get_model_adapter_options",
+    "file": "src/cmd/anki_cards.rs",
+    "line": 19,
+    "lane": "L16-anki",
+    "frontend": "app"
+  },
+  {
+    "name": "get_pending_memory_candidates",
+    "file": "src/cmd/enhanced_anki.rs",
+    "line": 725,
+    "lane": "L16-anki",
+    "frontend": "none"
+  },
+  {
+    "name": "get_task_cards",
+    "file": "src/cmd/enhanced_anki.rs",
+    "line": 247,
+    "lane": "L16-anki",
+    "frontend": "none"
+  },
+  {
+    "name": "import_anki_package",
+    "file": "src/cmd/anki_connect.rs",
+    "line": 413,
+    "lane": "L16-anki",
+    "frontend": "app"
+  },
+  {
+    "name": "import_apkg_to_library",
+    "file": "src/cmd/apkg_import.rs",
+    "line": 81,
+    "lane": "L16-anki",
+    "frontend": "app"
+  },
+  {
+    "name": "import_builtin_templates",
+    "file": "src/commands.rs",
+    "line": 4898,
+    "lane": "L16-anki",
+    "frontend": "app"
+  },
+  {
+    "name": "import_custom_templates_bulk",
+    "file": "src/commands.rs",
+    "line": 4579,
+    "lane": "L16-anki",
+    "frontend": "app"
+  },
+  {
+    "name": "import_template",
+    "file": "src/commands.rs",
+    "line": 4504,
+    "lane": "L16-anki",
+    "frontend": "none"
+  },
+  {
+    "name": "list_anki_library_cards",
+    "file": "src/cmd/enhanced_anki.rs",
+    "line": 477,
+    "lane": "L16-anki",
+    "frontend": "app"
+  },
+  {
+    "name": "list_document_sessions",
+    "file": "src/cmd/enhanced_anki.rs",
+    "line": 559,
+    "lane": "L16-anki",
+    "frontend": "app"
+  },
+  {
+    "name": "mark_pending_memory_candidates_saved",
+    "file": "src/cmd/enhanced_anki.rs",
+    "line": 814,
+    "lane": "L16-anki",
+    "frontend": "app"
+  },
+  {
+    "name": "pause_document_processing",
+    "file": "src/cmd/enhanced_anki.rs",
+    "line": 121,
+    "lane": "L16-anki",
+    "frontend": "app"
+  },
+  {
+    "name": "read_anki_media",
+    "file": "src/cmd/apkg_import.rs",
+    "line": 306,
+    "lane": "L16-anki",
+    "frontend": "app"
+  },
+  {
+    "name": "recover_stuck_document_tasks",
+    "file": "src/cmd/enhanced_anki.rs",
+    "line": 547,
+    "lane": "L16-anki",
+    "frontend": "app"
+  },
+  {
+    "name": "reset_model_adapter_options",
+    "file": "src/cmd/anki_cards.rs",
+    "line": 57,
+    "lane": "L16-anki",
+    "frontend": "none"
+  },
+  {
+    "name": "resume_document_processing",
+    "file": "src/cmd/enhanced_anki.rs",
+    "line": 162,
+    "lane": "L16-anki",
+    "frontend": "app"
+  },
+  {
+    "name": "save_anki_cards",
+    "file": "src/cmd/anki_connect.rs",
+    "line": 925,
+    "lane": "L16-anki",
+    "frontend": "app"
+  },
+  {
+    "name": "save_json_file",
+    "file": "src/cmd/anki_connect.rs",
+    "line": 2145,
+    "lane": "L16-anki",
+    "frontend": "none"
+  },
+  {
+    "name": "save_model_adapter_options",
+    "file": "src/cmd/anki_cards.rs",
+    "line": 28,
+    "lane": "L16-anki",
+    "frontend": "none"
+  },
+  {
+    "name": "save_template_debug_data",
+    "file": "src/commands.rs",
+    "line": 6856,
+    "lane": "L16-anki",
+    "frontend": "none"
+  },
+  {
+    "name": "set_default_template",
+    "file": "src/commands.rs",
+    "line": 6230,
+    "lane": "L16-anki",
+    "frontend": "app"
+  },
+  {
+    "name": "set_document_session_source",
+    "file": "src/cmd/enhanced_anki.rs",
+    "line": 623,
+    "lane": "L16-anki",
+    "frontend": "app"
+  },
+  {
+    "name": "start_enhanced_document_processing",
+    "file": "src/cmd/enhanced_anki.rs",
+    "line": 85,
+    "lane": "L16-anki",
+    "frontend": "app"
+  },
+  {
+    "name": "trigger_task_processing",
+    "file": "src/cmd/enhanced_anki.rs",
+    "line": 209,
+    "lane": "L16-anki",
+    "frontend": "app"
+  },
+  {
+    "name": "update_anki_card",
+    "file": "src/cmd/enhanced_anki.rs",
+    "line": 266,
+    "lane": "L16-anki",
+    "frontend": "app"
+  },
+  {
+    "name": "update_custom_template",
+    "file": "src/commands.rs",
+    "line": 4320,
+    "lane": "L16-anki",
+    "frontend": "app"
+  },
+  {
+    "name": "memory_add_relation",
+    "file": "crates/dstu-memory/src/memory/handlers.rs",
+    "line": 364,
+    "lane": "L17-memory-research",
+    "frontend": "app"
+  },
+  {
+    "name": "memory_batch_delete",
+    "file": "crates/dstu-memory/src/memory/handlers.rs",
+    "line": 478,
+    "lane": "L17-memory-research",
+    "frontend": "app"
+  },
+  {
+    "name": "memory_batch_move",
+    "file": "crates/dstu-memory/src/memory/handlers.rs",
+    "line": 522,
+    "lane": "L17-memory-research",
+    "frontend": "app"
+  },
+  {
+    "name": "memory_create_root_folder",
+    "file": "crates/dstu-memory/src/memory/handlers.rs",
+    "line": 208,
+    "lane": "L17-memory-research",
+    "frontend": "app"
+  },
+  {
+    "name": "memory_delete",
+    "file": "crates/dstu-memory/src/memory/handlers.rs",
+    "line": 614,
+    "lane": "L17-memory-research",
+    "frontend": "app"
+  },
+  {
+    "name": "memory_export_all",
+    "file": "crates/dstu-memory/src/memory/handlers.rs",
+    "line": 688,
+    "lane": "L17-memory-research",
+    "frontend": "app"
+  },
+  {
+    "name": "memory_get_audit_logs",
+    "file": "crates/dstu-memory/src/memory/handlers.rs",
+    "line": 947,
+    "lane": "L17-memory-research",
+    "frontend": "app"
+  },
+  {
+    "name": "memory_get_config",
+    "file": "crates/dstu-memory/src/memory/handlers.rs",
+    "line": 174,
+    "lane": "L17-memory-research",
+    "frontend": "app"
+  },
+  {
+    "name": "memory_get_or_create_root_folder",
+    "file": "crates/dstu-memory/src/memory/handlers.rs",
+    "line": 221,
+    "lane": "L17-memory-research",
+    "frontend": "none"
+  },
+  {
+    "name": "memory_get_profile",
+    "file": "crates/dstu-memory/src/memory/handlers.rs",
+    "line": 721,
+    "lane": "L17-memory-research",
+    "frontend": "app"
+  },
+  {
+    "name": "memory_get_related",
+    "file": "crates/dstu-memory/src/memory/handlers.rs",
+    "line": 400,
+    "lane": "L17-memory-research",
+    "frontend": "app"
+  },
+  {
+    "name": "memory_get_tags",
+    "file": "crates/dstu-memory/src/memory/handlers.rs",
+    "line": 466,
+    "lane": "L17-memory-research",
+    "frontend": "app"
+  },
+  {
+    "name": "memory_get_tree",
+    "file": "crates/dstu-memory/src/memory/handlers.rs",
+    "line": 353,
+    "lane": "L17-memory-research",
+    "frontend": "app"
+  },
+  {
+    "name": "memory_list",
+    "file": "crates/dstu-memory/src/memory/handlers.rs",
+    "line": 337,
+    "lane": "L17-memory-research",
+    "frontend": "app"
+  },
+  {
+    "name": "memory_move_to_folder",
+    "file": "crates/dstu-memory/src/memory/handlers.rs",
+    "line": 566,
+    "lane": "L17-memory-research",
+    "frontend": "app"
+  },
+  {
+    "name": "memory_read",
+    "file": "crates/dstu-memory/src/memory/handlers.rs",
+    "line": 249,
+    "lane": "L17-memory-research",
+    "frontend": "app"
+  },
+  {
+    "name": "memory_remove_relation",
+    "file": "crates/dstu-memory/src/memory/handlers.rs",
+    "line": 382,
+    "lane": "L17-memory-research",
+    "frontend": "app"
+  },
+  {
+    "name": "memory_restore_archived",
+    "file": "crates/dstu-memory/src/memory/handlers.rs",
+    "line": 447,
+    "lane": "L17-memory-research",
+    "frontend": "app"
+  },
+  {
+    "name": "memory_restore_stale",
+    "file": "crates/dstu-memory/src/memory/handlers.rs",
+    "line": 430,
+    "lane": "L17-memory-research",
+    "frontend": "app"
+  },
+  {
+    "name": "memory_search",
+    "file": "crates/dstu-memory/src/memory/handlers.rs",
+    "line": 233,
+    "lane": "L17-memory-research",
+    "frontend": "app"
+  },
+  {
+    "name": "memory_set_auto_create_subfolders",
+    "file": "crates/dstu-memory/src/memory/handlers.rs",
+    "line": 629,
+    "lane": "L17-memory-research",
+    "frontend": "app"
+  },
+  {
+    "name": "memory_set_auto_extract_frequency",
+    "file": "crates/dstu-memory/src/memory/handlers.rs",
+    "line": 655,
+    "lane": "L17-memory-research",
+    "frontend": "app"
+  },
+  {
+    "name": "memory_set_default_category",
+    "file": "crates/dstu-memory/src/memory/handlers.rs",
+    "line": 642,
+    "lane": "L17-memory-research",
+    "frontend": "app"
+  },
+  {
+    "name": "memory_set_privacy_mode",
+    "file": "crates/dstu-memory/src/memory/handlers.rs",
+    "line": 197,
+    "lane": "L17-memory-research",
+    "frontend": "app"
+  },
+  {
+    "name": "memory_set_root_folder",
+    "file": "crates/dstu-memory/src/memory/handlers.rs",
+    "line": 184,
+    "lane": "L17-memory-research",
+    "frontend": "app"
+  },
+  {
+    "name": "memory_to_anki_document",
+    "file": "crates/dstu-memory/src/memory/handlers.rs",
+    "line": 973,
+    "lane": "L17-memory-research",
+    "frontend": "app"
+  },
+  {
+    "name": "memory_update_by_id",
+    "file": "crates/dstu-memory/src/memory/handlers.rs",
+    "line": 584,
+    "lane": "L17-memory-research",
+    "frontend": "app"
+  },
+  {
+    "name": "memory_update_tags",
+    "file": "crates/dstu-memory/src/memory/handlers.rs",
+    "line": 412,
+    "lane": "L17-memory-research",
+    "frontend": "app"
+  },
+  {
+    "name": "memory_write",
+    "file": "crates/dstu-memory/src/memory/handlers.rs",
+    "line": 276,
+    "lane": "L17-memory-research",
+    "frontend": "app"
+  },
+  {
+    "name": "memory_write_batch",
+    "file": "crates/dstu-memory/src/memory/handlers.rs",
+    "line": 815,
+    "lane": "L17-memory-research",
+    "frontend": "app"
+  },
+  {
+    "name": "memory_write_smart",
+    "file": "crates/dstu-memory/src/memory/handlers.rs",
+    "line": 761,
+    "lane": "L17-memory-research",
+    "frontend": "app"
+  },
+  {
+    "name": "quick_assistant_apply_enabled",
+    "file": "src/quick_assistant.rs",
+    "line": 273,
+    "lane": "L17-memory-research",
+    "frontend": "app"
+  },
+  {
+    "name": "quick_assistant_hide",
+    "file": "src/quick_assistant.rs",
+    "line": 264,
+    "lane": "L17-memory-research",
+    "frontend": "app"
+  },
+  {
+    "name": "quick_assistant_show",
+    "file": "src/quick_assistant.rs",
+    "line": 256,
+    "lane": "L17-memory-research",
+    "frontend": "app"
+  },
+  {
+    "name": "add_ocr_engine",
+    "file": "src/cmd/ocr.rs",
+    "line": 447,
+    "lane": "L18-media-docs",
+    "frontend": "app"
+  },
+  {
+    "name": "cancel_pdf_ocr_session",
+    "file": "src/commands.rs",
+    "line": 787,
+    "lane": "L18-media-docs",
+    "frontend": "none"
+  },
+  {
+    "name": "compress_image",
+    "file": "crates/dstu-media/src/cmd/media.rs",
+    "line": 54,
+    "lane": "L18-media-docs",
+    "frontend": "none"
+  },
+  {
+    "name": "convert_heic_to_jpeg",
+    "file": "src/heic_decoder.rs",
+    "line": 78,
+    "lane": "L18-media-docs",
+    "frontend": "app"
+  },
+  {
+    "name": "get_available_ocr_models",
+    "file": "src/cmd/ocr.rs",
+    "line": 154,
+    "lane": "L18-media-docs",
+    "frontend": "app"
+  },
+  {
+    "name": "get_image_as_base64",
+    "file": "src/commands.rs",
+    "line": 8493,
+    "lane": "L18-media-docs",
+    "frontend": "app"
+  },
+  {
+    "name": "get_ocr_engine_type",
+    "file": "src/cmd/ocr.rs",
+    "line": 56,
+    "lane": "L18-media-docs",
+    "frontend": "app"
+  },
+  {
+    "name": "get_ocr_engines",
+    "file": "src/cmd/ocr.rs",
+    "line": 38,
+    "lane": "L18-media-docs",
+    "frontend": "app"
+  },
+  {
+    "name": "get_ocr_prompt_template",
+    "file": "src/cmd/ocr.rs",
+    "line": 137,
+    "lane": "L18-media-docs",
+    "frontend": "none"
+  },
+  {
+    "name": "get_ocr_thinking_enabled",
+    "file": "src/cmd/ocr.rs",
+    "line": 70,
+    "lane": "L18-media-docs",
+    "frontend": "app"
+  },
+  {
+    "name": "get_pdf_ocr_temp_dir",
+    "file": "src/commands.rs",
+    "line": 875,
+    "lane": "L18-media-docs",
+    "frontend": "none"
+  },
+  {
+    "name": "get_recent_document_tasks",
+    "file": "src/commands.rs",
+    "line": 7062,
+    "lane": "L18-media-docs",
+    "frontend": "none"
+  },
+  {
+    "name": "handout_cancel",
+    "file": "src/cmd/handout.rs",
+    "line": 129,
+    "lane": "L18-media-docs",
+    "frontend": "app"
+  },
+  {
+    "name": "handout_llm_complete",
+    "file": "src/cmd/handout.rs",
+    "line": 74,
+    "lane": "L18-media-docs",
+    "frontend": "app"
+  },
+  {
+    "name": "handout_release",
+    "file": "src/cmd/handout.rs",
+    "line": 135,
+    "lane": "L18-media-docs",
+    "frontend": "app"
+  },
+  {
+    "name": "handout_vlm_caption",
+    "file": "src/cmd/handout.rs",
+    "line": 96,
+    "lane": "L18-media-docs",
+    "frontend": "app"
+  },
+  {
+    "name": "infer_ocr_engine_from_model",
+    "file": "src/cmd/ocr.rs",
+    "line": 106,
+    "lane": "L18-media-docs",
+    "frontend": "none"
+  },
+  {
+    "name": "init_pdf_ocr_session",
+    "file": "src/commands.rs",
+    "line": 727,
+    "lane": "L18-media-docs",
+    "frontend": "none"
+  },
+  {
+    "name": "media_bilibili_auth_status",
+    "file": "crates/dstu-media/src/media/bilibili_auth.rs",
+    "line": 461,
+    "lane": "L18-media-docs",
+    "frontend": "app"
+  },
+  {
+    "name": "media_bilibili_bridge_approve",
+    "file": "crates/dstu-media/src/media/bilibili_transport/bridge_server.rs",
+    "line": 523,
+    "lane": "L18-media-docs",
+    "frontend": "none"
+  },
+  {
+    "name": "media_bilibili_bridge_disconnect",
+    "file": "crates/dstu-media/src/media/bilibili_transport/bridge_server.rs",
+    "line": 529,
+    "lane": "L18-media-docs",
+    "frontend": "none"
+  },
+  {
+    "name": "media_bilibili_bridge_pair",
+    "file": "crates/dstu-media/src/media/bilibili_transport/bridge_server.rs",
+    "line": 509,
+    "lane": "L18-media-docs",
+    "frontend": "none"
+  },
+  {
+    "name": "media_bilibili_cancel",
+    "file": "crates/dstu-media/src/media/bilibili_transport/session.rs",
+    "line": 440,
+    "lane": "L18-media-docs",
+    "frontend": "app"
+  },
+  {
+    "name": "media_bilibili_create",
+    "file": "crates/dstu-media/src/media/bilibili.rs",
+    "line": 1212,
+    "lane": "L18-media-docs",
+    "frontend": "app"
+  },
+  {
+    "name": "media_bilibili_import_subtitle",
+    "file": "crates/dstu-media/src/media/bilibili.rs",
+    "line": 1311,
+    "lane": "L18-media-docs",
+    "frontend": "app"
+  },
+  {
+    "name": "media_bilibili_link_get",
+    "file": "crates/dstu-media/src/media/bilibili.rs",
+    "line": 1353,
+    "lane": "L18-media-docs",
+    "frontend": "app"
+  },
+  {
+    "name": "media_bilibili_login_qr_poll",
+    "file": "crates/dstu-media/src/media/bilibili_auth.rs",
+    "line": 500,
+    "lane": "L18-media-docs",
+    "frontend": "app"
+  },
+  {
+    "name": "media_bilibili_login_qr_start",
+    "file": "crates/dstu-media/src/media/bilibili_auth.rs",
+    "line": 488,
+    "lane": "L18-media-docs",
+    "frontend": "app"
+  },
+  {
+    "name": "media_bilibili_logout",
+    "file": "crates/dstu-media/src/media/bilibili_auth.rs",
+    "line": 529,
+    "lane": "L18-media-docs",
+    "frontend": "app"
+  },
+  {
+    "name": "media_bilibili_probe",
+    "file": "crates/dstu-media/src/media/bilibili.rs",
+    "line": 1172,
+    "lane": "L18-media-docs",
+    "frontend": "app"
+  },
+  {
+    "name": "media_bilibili_stream_quality",
+    "file": "crates/dstu-media/src/media/bilibili_stream.rs",
+    "line": 512,
+    "lane": "L18-media-docs",
+    "frontend": "app"
+  },
+  {
+    "name": "media_bilibili_transport_configure",
+    "file": "crates/dstu-media/src/media/bilibili_transport/bridge_server.rs",
+    "line": 494,
+    "lane": "L18-media-docs",
+    "frontend": "none"
+  },
+  {
+    "name": "media_bilibili_transport_status",
+    "file": "crates/dstu-media/src/media/bilibili_transport/bridge_server.rs",
+    "line": 485,
+    "lane": "L18-media-docs",
+    "frontend": "app"
+  },
+  {
+    "name": "media_chapters",
+    "file": "src/media/ledger.rs",
+    "line": 19,
+    "lane": "L18-media-docs",
+    "frontend": "app"
+  },
+  {
+    "name": "media_checkpoints",
+    "file": "src/media/ledger.rs",
+    "line": 11,
+    "lane": "L18-media-docs",
+    "frontend": "app"
+  },
+  {
+    "name": "media_library_list",
+    "file": "crates/dstu-media/src/media/library.rs",
+    "line": 410,
+    "lane": "L18-media-docs",
+    "frontend": "app"
+  },
+  {
+    "name": "media_progress_get",
+    "file": "crates/dstu-media/src/media/commands.rs",
+    "line": 533,
+    "lane": "L18-media-docs",
+    "frontend": "app"
+  },
+  {
+    "name": "media_progress_set",
+    "file": "crates/dstu-media/src/media/commands.rs",
+    "line": 544,
+    "lane": "L18-media-docs",
+    "frontend": "app"
+  },
+  {
+    "name": "media_related_notes",
+    "file": "crates/dstu-media/src/media/library.rs",
+    "line": 440,
+    "lane": "L18-media-docs",
+    "frontend": "app"
+  },
+  {
+    "name": "media_study_ledger",
+    "file": "src/media/ledger.rs",
+    "line": 27,
+    "lane": "L18-media-docs",
+    "frontend": "app"
+  },
+  {
+    "name": "media_transcribe_cancel",
+    "file": "crates/dstu-media/src/media/commands.rs",
+    "line": 366,
+    "lane": "L18-media-docs",
+    "frontend": "app"
+  },
+  {
+    "name": "media_transcribe_estimate",
+    "file": "src/media/commands.rs",
+    "line": 19,
+    "lane": "L18-media-docs",
+    "frontend": "app"
+  },
+  {
+    "name": "media_transcribe_start",
+    "file": "src/media/commands.rs",
+    "line": 28,
+    "lane": "L18-media-docs",
+    "frontend": "app"
+  },
+  {
+    "name": "media_transcript_export",
+    "file": "crates/dstu-media/src/media/commands.rs",
+    "line": 504,
+    "lane": "L18-media-docs",
+    "frontend": "app"
+  },
+  {
+    "name": "media_transcript_get",
+    "file": "crates/dstu-media/src/media/commands.rs",
+    "line": 382,
+    "lane": "L18-media-docs",
+    "frontend": "app"
+  },
+  {
+    "name": "media_transcript_import",
+    "file": "crates/dstu-media/src/media/commands.rs",
+    "line": 422,
+    "lane": "L18-media-docs",
+    "frontend": "app"
+  },
+  {
+    "name": "notes_export_docx",
+    "file": "src/cmd/handout.rs",
+    "line": 146,
+    "lane": "L18-media-docs",
+    "frontend": "app"
+  },
+  {
+    "name": "parse_document_from_base64",
+    "file": "src/commands.rs",
+    "line": 4121,
+    "lane": "L18-media-docs",
+    "frontend": "app"
+  },
+  {
+    "name": "parse_document_from_path",
+    "file": "src/commands.rs",
+    "line": 4093,
+    "lane": "L18-media-docs",
+    "frontend": "none"
+  },
+  {
+    "name": "pause_pdf_ocr_session",
+    "file": "src/commands.rs",
+    "line": 802,
+    "lane": "L18-media-docs",
+    "frontend": "none"
+  },
+  {
+    "name": "pin_images",
+    "file": "src/commands.rs",
+    "line": 356,
+    "lane": "L18-media-docs",
+    "frontend": "none"
+  },
+  {
+    "name": "process_pdf_ocr",
+    "file": "src/commands.rs",
+    "line": 774,
+    "lane": "L18-media-docs",
+    "frontend": "none"
+  },
+  {
+    "name": "remove_ocr_engine",
+    "file": "src/cmd/ocr.rs",
+    "line": 527,
+    "lane": "L18-media-docs",
+    "frontend": "app"
+  },
+  {
+    "name": "resume_pdf_ocr_session",
+    "file": "src/commands.rs",
+    "line": 814,
+    "lane": "L18-media-docs",
+    "frontend": "none"
+  },
+  {
+    "name": "save_available_ocr_models",
+    "file": "src/cmd/ocr.rs",
+    "line": 356,
+    "lane": "L18-media-docs",
+    "frontend": "app"
+  },
+  {
+    "name": "save_pdf_to_temp",
+    "file": "src/commands.rs",
+    "line": 891,
+    "lane": "L18-media-docs",
+    "frontend": "none"
+  },
+  {
+    "name": "set_ocr_engine_type",
+    "file": "src/cmd/ocr.rs",
+    "line": 88,
+    "lane": "L18-media-docs",
+    "frontend": "none"
+  },
+  {
+    "name": "set_ocr_thinking_enabled",
+    "file": "src/cmd/ocr.rs",
+    "line": 76,
+    "lane": "L18-media-docs",
+    "frontend": "app"
+  },
+  {
+    "name": "skip_pdf_ocr_page",
+    "file": "src/commands.rs",
+    "line": 829,
+    "lane": "L18-media-docs",
+    "frontend": "none"
+  },
+  {
+    "name": "start_pdf_ocr_backend",
+    "file": "src/commands.rs",
+    "line": 846,
+    "lane": "L18-media-docs",
+    "frontend": "none"
+  },
+  {
+    "name": "test_ocr_engine",
+    "file": "src/cmd/ocr.rs",
+    "line": 612,
+    "lane": "L18-media-docs",
+    "frontend": "app"
+  },
+  {
+    "name": "test_pdfium_status",
+    "file": "crates/dstu-docs/src/pdfium_utils.rs",
+    "line": 192,
+    "lane": "L18-media-docs",
+    "frontend": "none"
+  },
+  {
+    "name": "textbooks_add",
+    "file": "src/cmd/textbooks.rs",
+    "line": 114,
+    "lane": "L18-media-docs",
+    "frontend": "app"
+  },
+  {
+    "name": "textbooks_relink",
+    "file": "src/cmd/textbooks.rs",
+    "line": 700,
+    "lane": "L18-media-docs",
+    "frontend": "app"
+  },
+  {
+    "name": "textbooks_update_bookmarks",
+    "file": "src/cmd/textbooks.rs",
+    "line": 821,
+    "lane": "L18-media-docs",
+    "frontend": "app"
+  },
+  {
+    "name": "tts_check_available",
+    "file": "src/tts.rs",
+    "line": 25,
+    "lane": "L18-media-docs",
+    "frontend": "app"
+  },
+  {
+    "name": "tts_speak",
+    "file": "src/tts.rs",
+    "line": 59,
+    "lane": "L18-media-docs",
+    "frontend": "app"
+  },
+  {
+    "name": "tts_stop",
+    "file": "src/tts.rs",
+    "line": 93,
+    "lane": "L18-media-docs",
+    "frontend": "app"
+  },
+  {
+    "name": "unpin_images",
+    "file": "src/commands.rs",
+    "line": 384,
+    "lane": "L18-media-docs",
+    "frontend": "none"
+  },
+  {
+    "name": "update_ocr_engine_priority",
+    "file": "src/cmd/ocr.rs",
+    "line": 403,
+    "lane": "L18-media-docs",
+    "frontend": "app"
+  },
+  {
+    "name": "upload_pdf_ocr_page",
+    "file": "src/commands.rs",
+    "line": 747,
+    "lane": "L18-media-docs",
+    "frontend": "none"
+  },
+  {
+    "name": "validate_ocr_model",
+    "file": "src/cmd/ocr.rs",
+    "line": 113,
+    "lane": "L18-media-docs",
+    "frontend": "none"
+  },
+  {
+    "name": "vfs_get_file_blob_path",
+    "file": "src/cmd/textbooks.rs",
+    "line": 785,
+    "lane": "L18-media-docs",
+    "frontend": "app"
+  },
+  {
+    "name": "voice_input_transcribe",
+    "file": "src/voice_input.rs",
+    "line": 21,
+    "lane": "L18-media-docs",
+    "frontend": "app"
+  },
+  {
+    "name": "browser_back",
+    "file": "crates/dstu-browser/src/cmd/browser.rs",
+    "line": 158,
+    "lane": "L19-mcp-browser",
+    "frontend": "none"
+  },
+  {
+    "name": "browser_click",
+    "file": "crates/dstu-browser/src/cmd/browser.rs",
+    "line": 390,
+    "lane": "L19-mcp-browser",
+    "frontend": "none"
+  },
+  {
+    "name": "browser_close",
+    "file": "crates/dstu-browser/src/cmd/browser.rs",
+    "line": 210,
+    "lane": "L19-mcp-browser",
+    "frontend": "none"
+  },
+  {
+    "name": "browser_content_user_input",
+    "file": "crates/dstu-browser/src/cmd/browser.rs",
+    "line": 317,
+    "lane": "L19-mcp-browser",
+    "frontend": "none"
+  },
+  {
+    "name": "browser_focus",
+    "file": "crates/dstu-browser/src/cmd/browser.rs",
+    "line": 232,
+    "lane": "L19-mcp-browser",
+    "frontend": "none"
+  },
+  {
+    "name": "browser_forward",
+    "file": "crates/dstu-browser/src/cmd/browser.rs",
+    "line": 168,
+    "lane": "L19-mcp-browser",
+    "frontend": "none"
+  },
+  {
+    "name": "browser_get_state",
+    "file": "crates/dstu-browser/src/cmd/browser.rs",
+    "line": 191,
+    "lane": "L19-mcp-browser",
+    "frontend": "none"
+  },
+  {
+    "name": "browser_get_surface_host_mode",
+    "file": "crates/dstu-browser/src/cmd/browser.rs",
+    "line": 310,
+    "lane": "L19-mcp-browser",
+    "frontend": "none"
+  },
+  {
+    "name": "browser_list_downloads",
+    "file": "crates/dstu-browser/src/cmd/browser.rs",
+    "line": 443,
+    "lane": "L19-mcp-browser",
+    "frontend": "none"
+  },
+  {
+    "name": "browser_list_task_downloads",
+    "file": "crates/dstu-browser/src/cmd/browser.rs",
+    "line": 454,
+    "lane": "L19-mcp-browser",
+    "frontend": "app"
+  },
+  {
+    "name": "browser_navigate",
+    "file": "crates/dstu-browser/src/cmd/browser.rs",
+    "line": 134,
+    "lane": "L19-mcp-browser",
+    "frontend": "none"
+  },
+  {
+    "name": "browser_open_session",
+    "file": "crates/dstu-browser/src/cmd/browser.rs",
+    "line": 109,
+    "lane": "L19-mcp-browser",
+    "frontend": "none"
+  },
+  {
+    "name": "browser_release_surface_focus",
+    "file": "crates/dstu-browser/src/cmd/browser.rs",
+    "line": 250,
+    "lane": "L19-mcp-browser",
+    "frontend": "none"
+  },
+  {
+    "name": "browser_reload",
+    "file": "crates/dstu-browser/src/cmd/browser.rs",
+    "line": 178,
+    "lane": "L19-mcp-browser",
+    "frontend": "none"
+  },
+  {
+    "name": "browser_scroll",
+    "file": "crates/dstu-browser/src/cmd/browser.rs",
+    "line": 464,
+    "lane": "L19-mcp-browser",
+    "frontend": "none"
+  },
+  {
+    "name": "browser_set_input_files",
+    "file": "crates/dstu-browser/src/cmd/browser.rs",
+    "line": 426,
+    "lane": "L19-mcp-browser",
+    "frontend": "none"
+  },
+  {
+    "name": "browser_set_surface_bounds",
+    "file": "crates/dstu-browser/src/cmd/browser.rs",
+    "line": 262,
+    "lane": "L19-mcp-browser",
+    "frontend": "none"
+  },
+  {
+    "name": "browser_set_surface_visibility",
+    "file": "crates/dstu-browser/src/cmd/browser.rs",
+    "line": 295,
+    "lane": "L19-mcp-browser",
+    "frontend": "none"
+  },
+  {
+    "name": "browser_snapshot",
+    "file": "crates/dstu-browser/src/cmd/browser.rs",
+    "line": 357,
+    "lane": "L19-mcp-browser",
+    "frontend": "none"
+  },
+  {
+    "name": "browser_take_over",
+    "file": "crates/dstu-browser/src/cmd/browser.rs",
+    "line": 335,
+    "lane": "L19-mcp-browser",
+    "frontend": "none"
+  },
+  {
+    "name": "browser_type",
+    "file": "crates/dstu-browser/src/cmd/browser.rs",
+    "line": 406,
+    "lane": "L19-mcp-browser",
+    "frontend": "none"
+  },
+  {
+    "name": "cancel_mcp_oauth",
+    "file": "crates/dstu-mcp/src/mcp/commands.rs",
+    "line": 43,
+    "lane": "L19-mcp-browser",
+    "frontend": "app"
+  },
+  {
+    "name": "delete_setting",
+    "file": "src/cmd/web_search.rs",
+    "line": 572,
+    "lane": "L19-mcp-browser",
+    "frontend": "app"
+  },
+  {
+    "name": "delete_settings_by_prefix",
+    "file": "src/cmd/web_search.rs",
+    "line": 593,
+    "lane": "L19-mcp-browser",
+    "frontend": "none"
+  },
+  {
+    "name": "detect_tool_conflicts",
+    "file": "src/cmd/web_search.rs",
+    "line": 284,
+    "lane": "L19-mcp-browser",
+    "frontend": "none"
+  },
+  {
+    "name": "export_mcp_config",
+    "file": "src/commands.rs",
+    "line": 7025,
+    "lane": "L19-mcp-browser",
+    "frontend": "none"
+  },
+  {
+    "name": "export_mcp_config",
+    "file": "src/commands.rs",
+    "line": 7053,
+    "lane": "L19-mcp-browser",
+    "frontend": "none"
+  },
+  {
+    "name": "get_cn_whitelist_config",
+    "file": "src/cmd/web_search.rs",
+    "line": 235,
+    "lane": "L19-mcp-browser",
+    "frontend": "app"
+  },
+  {
+    "name": "get_feature_flags",
+    "file": "src/cmd/web_search.rs",
+    "line": 363,
+    "lane": "L19-mcp-browser",
+    "frontend": "none"
+  },
+  {
+    "name": "get_mcp_config",
+    "file": "src/commands.rs",
+    "line": 7003,
+    "lane": "L19-mcp-browser",
+    "frontend": "none"
+  },
+  {
+    "name": "get_mcp_config",
+    "file": "src/commands.rs",
+    "line": 7038,
+    "lane": "L19-mcp-browser",
+    "frontend": "none"
+  },
+  {
+    "name": "get_mcp_oauth_access_token",
+    "file": "crates/dstu-mcp/src/mcp/commands.rs",
+    "line": 81,
+    "lane": "L19-mcp-browser",
+    "frontend": "app"
+  },
+  {
+    "name": "get_mcp_oauth_status",
+    "file": "crates/dstu-mcp/src/mcp/commands.rs",
+    "line": 61,
+    "lane": "L19-mcp-browser",
+    "frontend": "app"
+  },
+  {
+    "name": "get_mcp_status",
+    "file": "src/cmd/mcp.rs",
+    "line": 25,
+    "lane": "L19-mcp-browser",
+    "frontend": "app"
+  },
+  {
+    "name": "get_mcp_stdio_allow_unapproved",
+    "file": "src/cmd/mcp.rs",
+    "line": 792,
+    "lane": "L19-mcp-browser",
+    "frontend": "app"
+  },
+  {
+    "name": "get_mcp_tools",
+    "file": "src/cmd/mcp.rs",
+    "line": 58,
+    "lane": "L19-mcp-browser",
+    "frontend": "none"
+  },
+  {
+    "name": "get_provider_strategies_config",
+    "file": "src/cmd/web_search.rs",
+    "line": 318,
+    "lane": "L19-mcp-browser",
+    "frontend": "app"
+  },
+  {
+    "name": "get_security_status",
+    "file": "src/cmd/web_search.rs",
+    "line": 210,
+    "lane": "L19-mcp-browser",
+    "frontend": "app"
+  },
+  {
+    "name": "get_setting",
+    "file": "src/cmd/web_search.rs",
+    "line": 562,
+    "lane": "L19-mcp-browser",
+    "frontend": "app"
+  },
+  {
+    "name": "get_settings_by_prefix",
+    "file": "src/cmd/web_search.rs",
+    "line": 581,
+    "lane": "L19-mcp-browser",
+    "frontend": "app"
+  },
+  {
+    "name": "get_tools_namespace_config",
+    "file": "src/cmd/web_search.rs",
+    "line": 291,
+    "lane": "L19-mcp-browser",
+    "frontend": "none"
+  },
+  {
+    "name": "import_mcp_config",
+    "file": "src/commands.rs",
+    "line": 7016,
+    "lane": "L19-mcp-browser",
+    "frontend": "none"
+  },
+  {
+    "name": "import_mcp_config",
+    "file": "src/commands.rs",
+    "line": 7044,
+    "lane": "L19-mcp-browser",
+    "frontend": "none"
+  },
+  {
+    "name": "is_feature_enabled",
+    "file": "src/cmd/web_search.rs",
+    "line": 454,
+    "lane": "L19-mcp-browser",
+    "frontend": "none"
+  },
+  {
+    "name": "mcp_stdio_close",
+    "file": "src/cmd/mcp.rs",
+    "line": 654,
+    "lane": "L19-mcp-browser",
+    "frontend": "app"
+  },
+  {
+    "name": "mcp_stdio_send",
+    "file": "src/cmd/mcp.rs",
+    "line": 639,
+    "lane": "L19-mcp-browser",
+    "frontend": "app"
+  },
+  {
+    "name": "mcp_stdio_start",
+    "file": "src/cmd/mcp.rs",
+    "line": 553,
+    "lane": "L19-mcp-browser",
+    "frontend": "app"
+  },
+  {
+    "name": "network_probe",
+    "file": "src/cmd/network.rs",
+    "line": 38,
+    "lane": "L19-mcp-browser",
+    "frontend": "none"
+  },
+  {
+    "name": "preheat_mcp_tools",
+    "file": "src/cmd/mcp.rs",
+    "line": 822,
+    "lane": "L19-mcp-browser",
+    "frontend": "app"
+  },
+  {
+    "name": "reload_mcp_client",
+    "file": "src/cmd/mcp.rs",
+    "line": 784,
+    "lane": "L19-mcp-browser",
+    "frontend": "app"
+  },
+  {
+    "name": "revoke_mcp_oauth",
+    "file": "crates/dstu-mcp/src/mcp/commands.rs",
+    "line": 49,
+    "lane": "L19-mcp-browser",
+    "frontend": "app"
+  },
+  {
+    "name": "save_mcp_config",
+    "file": "src/cmd/mcp.rs",
+    "line": 688,
+    "lane": "L19-mcp-browser",
+    "frontend": "none"
+  },
+  {
+    "name": "save_provider_strategies_config",
+    "file": "src/cmd/web_search.rs",
+    "line": 344,
+    "lane": "L19-mcp-browser",
+    "frontend": "app"
+  },
+  {
+    "name": "save_setting",
+    "file": "src/cmd/web_search.rs",
+    "line": 541,
+    "lane": "L19-mcp-browser",
+    "frontend": "app"
+  },
+  {
+    "name": "set_mcp_stdio_allow_unapproved",
+    "file": "src/cmd/mcp.rs",
+    "line": 801,
+    "lane": "L19-mcp-browser",
+    "frontend": "app"
+  },
+  {
+    "name": "start_mcp_oauth",
+    "file": "crates/dstu-mcp/src/mcp/commands.rs",
+    "line": 15,
+    "lane": "L19-mcp-browser",
+    "frontend": "app"
+  },
+  {
+    "name": "test_all_search_engines",
+    "file": "src/cmd/web_search.rs",
+    "line": 87,
+    "lane": "L19-mcp-browser",
+    "frontend": "app"
+  },
+  {
+    "name": "test_mcp_connection",
+    "file": "src/cmd/mcp.rs",
+    "line": 65,
+    "lane": "L19-mcp-browser",
+    "frontend": "app"
+  },
+  {
+    "name": "test_mcp_connection",
+    "file": "src/cmd/mcp.rs",
+    "line": 103,
+    "lane": "L19-mcp-browser",
+    "frontend": "app"
+  },
+  {
+    "name": "test_mcp_http",
+    "file": "src/cmd/mcp.rs",
+    "line": 172,
+    "lane": "L19-mcp-browser",
+    "frontend": "app"
+  },
+  {
+    "name": "test_mcp_http",
+    "file": "src/cmd/mcp.rs",
+    "line": 189,
+    "lane": "L19-mcp-browser",
+    "frontend": "app"
+  },
+  {
+    "name": "test_mcp_sse",
+    "file": "src/cmd/mcp.rs",
+    "line": 142,
+    "lane": "L19-mcp-browser",
+    "frontend": "app"
+  },
+  {
+    "name": "test_mcp_sse",
+    "file": "src/cmd/mcp.rs",
+    "line": 159,
+    "lane": "L19-mcp-browser",
+    "frontend": "app"
+  },
+  {
+    "name": "test_mcp_websocket",
+    "file": "src/cmd/mcp.rs",
+    "line": 119,
+    "lane": "L19-mcp-browser",
+    "frontend": "app"
+  },
+  {
+    "name": "test_mcp_websocket",
+    "file": "src/cmd/mcp.rs",
+    "line": 130,
+    "lane": "L19-mcp-browser",
+    "frontend": "app"
+  },
+  {
+    "name": "test_rmcp_streamable_http",
+    "file": "src/cmd/mcp.rs",
+    "line": 671,
+    "lane": "L19-mcp-browser",
+    "frontend": "none"
+  },
+  {
+    "name": "test_rmcp_streamable_http",
+    "file": "src/cmd/mcp.rs",
+    "line": 680,
+    "lane": "L19-mcp-browser",
+    "frontend": "none"
+  },
+  {
+    "name": "test_search_engine",
+    "file": "src/cmd/web_search.rs",
+    "line": 478,
+    "lane": "L19-mcp-browser",
+    "frontend": "app"
+  },
+  {
+    "name": "test_web_search_connectivity",
+    "file": "src/cmd/web_search.rs",
+    "line": 43,
+    "lane": "L19-mcp-browser",
+    "frontend": "app"
+  },
+  {
+    "name": "update_feature_flag",
+    "file": "src/cmd/web_search.rs",
+    "line": 397,
+    "lane": "L19-mcp-browser",
+    "frontend": "none"
+  },
+  {
+    "name": "data_governance_cancel_sync",
+    "file": "src/data_governance/commands_sync.rs",
+    "line": 2810,
+    "lane": "L20-sync",
+    "frontend": "app"
+  },
+  {
+    "name": "data_governance_count_record_conflicts",
+    "file": "src/data_governance/commands_sync.rs",
+    "line": 4550,
+    "lane": "L20-sync",
+    "frontend": "app"
+  },
+  {
+    "name": "data_governance_detect_conflicts",
+    "file": "src/data_governance/commands_sync.rs",
+    "line": 1280,
+    "lane": "L20-sync",
+    "frontend": "app"
+  },
+  {
+    "name": "data_governance_detect_prune_gap",
+    "file": "src/data_governance/commands_sync.rs",
+    "line": 5070,
+    "lane": "L20-sync",
+    "frontend": "app"
+  },
+  {
+    "name": "data_governance_discard_all_quarantine",
+    "file": "src/data_governance/commands_sync.rs",
+    "line": 4351,
+    "lane": "L20-sync",
+    "frontend": "app"
+  },
+  {
+    "name": "data_governance_discard_quarantine",
+    "file": "src/data_governance/commands_sync.rs",
+    "line": 4256,
+    "lane": "L20-sync",
+    "frontend": "app"
+  },
+  {
+    "name": "data_governance_export_sync_data",
+    "file": "src/data_governance/commands_sync.rs",
+    "line": 2368,
+    "lane": "L20-sync",
+    "frontend": "app"
+  },
+  {
+    "name": "data_governance_get_sync_status",
+    "file": "src/data_governance/commands_sync.rs",
+    "line": 1025,
+    "lane": "L20-sync",
+    "frontend": "app"
+  },
+  {
+    "name": "data_governance_import_sync_data",
+    "file": "src/data_governance/commands_sync.rs",
+    "line": 2570,
+    "lane": "L20-sync",
+    "frontend": "app"
+  },
+  {
+    "name": "data_governance_list_quarantine",
+    "file": "src/data_governance/commands_sync.rs",
+    "line": 4167,
+    "lane": "L20-sync",
+    "frontend": "app"
+  },
+  {
+    "name": "data_governance_list_record_conflicts",
+    "file": "src/data_governance/commands_sync.rs",
+    "line": 4406,
+    "lane": "L20-sync",
+    "frontend": "app"
+  },
+  {
+    "name": "data_governance_list_sync_snapshot_batches",
+    "file": "src/data_governance/commands_sync.rs",
+    "line": 5186,
+    "lane": "L20-sync",
+    "frontend": "app"
+  },
+  {
+    "name": "data_governance_list_unsynced_items",
+    "file": "src/data_governance/commands_sync.rs",
+    "line": 5812,
+    "lane": "L20-sync",
+    "frontend": "app"
+  },
+  {
+    "name": "data_governance_mark_asset_deleted",
+    "file": "src/data_governance/commands_sync.rs",
+    "line": 4104,
+    "lane": "L20-sync",
+    "frontend": "app"
+  },
+  {
+    "name": "data_governance_mark_blob_deleted",
+    "file": "src/data_governance/commands_sync.rs",
+    "line": 4062,
+    "lane": "L20-sync",
+    "frontend": "app"
+  },
+  {
+    "name": "data_governance_purge_resolved_conflicts",
+    "file": "src/data_governance/commands_sync.rs",
+    "line": 5010,
+    "lane": "L20-sync",
+    "frontend": "app"
+  },
+  {
+    "name": "data_governance_repo_check",
+    "file": "src/data_governance/commands_sync.rs",
+    "line": 5150,
+    "lane": "L20-sync",
+    "frontend": "app"
+  },
+  {
+    "name": "data_governance_resolve_conflicts",
+    "file": "src/data_governance/commands_sync.rs",
+    "line": 1428,
+    "lane": "L20-sync",
+    "frontend": "app"
+  },
+  {
+    "name": "data_governance_resolve_record_conflict",
+    "file": "src/data_governance/commands_sync.rs",
+    "line": 4610,
+    "lane": "L20-sync",
+    "frontend": "app"
+  },
+  {
+    "name": "data_governance_retry_all_quarantine",
+    "file": "src/data_governance/commands_sync.rs",
+    "line": 4293,
+    "lane": "L20-sync",
+    "frontend": "app"
+  },
+  {
+    "name": "data_governance_retry_quarantine",
+    "file": "src/data_governance/commands_sync.rs",
+    "line": 4232,
+    "lane": "L20-sync",
+    "frontend": "app"
+  },
+  {
+    "name": "data_governance_rollback_sync_snapshot_batch",
+    "file": "src/data_governance/commands_sync.rs",
+    "line": 5244,
+    "lane": "L20-sync",
+    "frontend": "app"
+  },
+  {
+    "name": "data_governance_run_sync",
+    "file": "src/data_governance/commands_sync.rs",
+    "line": 1585,
+    "lane": "L20-sync",
+    "frontend": "app"
+  },
+  {
+    "name": "data_governance_run_sync_with_progress",
+    "file": "src/data_governance/commands_sync.rs",
+    "line": 2858,
+    "lane": "L20-sync",
+    "frontend": "app"
+  },
+  {
+    "name": "cloud_config_test_connection_draft",
+    "file": "crates/dstu-sync/src/cloud_config_commands.rs",
+    "line": 765,
+    "lane": "L21-backup-governance",
+    "frontend": "app"
+  },
+  {
+    "name": "data_governance_auto_verify_latest_backup",
+    "file": "src/data_governance/commands_backup.rs",
+    "line": 1494,
+    "lane": "L21-backup-governance",
+    "frontend": "app"
+  },
+  {
+    "name": "data_governance_backup_and_export_zip",
+    "file": "src/data_governance/commands_zip.rs",
+    "line": 221,
+    "lane": "L21-backup-governance",
+    "frontend": "app"
+  },
+  {
+    "name": "data_governance_backup_tiered",
+    "file": "src/data_governance/commands_backup.rs",
+    "line": 2538,
+    "lane": "L21-backup-governance",
+    "frontend": "app"
+  },
+  {
+    "name": "data_governance_cancel_backup",
+    "file": "src/data_governance/commands_backup.rs",
+    "line": 2249,
+    "lane": "L21-backup-governance",
+    "frontend": "app"
+  },
+  {
+    "name": "data_governance_check_disk_space_for_restore",
+    "file": "src/data_governance/commands_backup.rs",
+    "line": 1320,
+    "lane": "L21-backup-governance",
+    "frontend": "app"
+  },
+  {
+    "name": "data_governance_cleanup_audit_logs",
+    "file": "src/data_governance/commands.rs",
+    "line": 598,
+    "lane": "L21-backup-governance",
+    "frontend": "app"
+  },
+  {
+    "name": "data_governance_cleanup_persisted_jobs",
+    "file": "src/data_governance/commands_backup.rs",
+    "line": 2504,
+    "lane": "L21-backup-governance",
+    "frontend": "app"
+  },
+  {
+    "name": "data_governance_delete_backup",
+    "file": "src/data_governance/commands_backup.rs",
+    "line": 1271,
+    "lane": "L21-backup-governance",
+    "frontend": "app"
+  },
+  {
+    "name": "data_governance_export_zip",
+    "file": "src/data_governance/commands_zip.rs",
+    "line": 698,
+    "lane": "L21-backup-governance",
+    "frontend": "app"
+  },
+  {
+    "name": "data_governance_get_asset_types",
+    "file": "src/data_governance/commands_asset.rs",
+    "line": 79,
+    "lane": "L21-backup-governance",
+    "frontend": "app"
+  },
+  {
+    "name": "data_governance_get_audit_logs",
+    "file": "src/data_governance/commands.rs",
+    "line": 529,
+    "lane": "L21-backup-governance",
+    "frontend": "app"
+  },
+  {
+    "name": "data_governance_get_backup_job",
+    "file": "src/data_governance/commands_backup.rs",
+    "line": 2281,
+    "lane": "L21-backup-governance",
+    "frontend": "app"
+  },
+  {
+    "name": "data_governance_get_backup_list",
+    "file": "src/data_governance/commands_backup.rs",
+    "line": 1193,
+    "lane": "L21-backup-governance",
+    "frontend": "app"
+  },
+  {
+    "name": "data_governance_get_database_status",
+    "file": "src/data_governance/commands.rs",
+    "line": 1005,
+    "lane": "L21-backup-governance",
+    "frontend": "app"
+  },
+  {
+    "name": "data_governance_get_maintenance_status",
+    "file": "src/data_governance/commands.rs",
+    "line": 430,
+    "lane": "L21-backup-governance",
+    "frontend": "app"
+  },
+  {
+    "name": "data_governance_get_migration_diagnostic_report",
+    "file": "src/data_governance/commands.rs",
+    "line": 1060,
+    "lane": "L21-backup-governance",
+    "frontend": "app"
+  },
+  {
+    "name": "data_governance_get_migration_status",
+    "file": "src/data_governance/commands.rs",
+    "line": 738,
+    "lane": "L21-backup-governance",
+    "frontend": "app"
+  },
+  {
+    "name": "data_governance_get_schema_registry",
+    "file": "src/data_governance/commands.rs",
+    "line": 499,
+    "lane": "L21-backup-governance",
+    "frontend": "app"
+  },
+  {
+    "name": "data_governance_import_zip",
+    "file": "src/data_governance/commands_zip.rs",
+    "line": 1209,
+    "lane": "L21-backup-governance",
+    "frontend": "app"
+  },
+  {
+    "name": "data_governance_list_backup_jobs",
+    "file": "src/data_governance/commands_backup.rs",
+    "line": 2299,
+    "lane": "L21-backup-governance",
+    "frontend": "app"
+  },
+  {
+    "name": "data_governance_list_resumable_jobs",
+    "file": "src/data_governance/commands_backup.rs",
+    "line": 2355,
+    "lane": "L21-backup-governance",
+    "frontend": "app"
+  },
+  {
+    "name": "data_governance_purge_all_data",
+    "file": "src/data_governance/commands_backup.rs",
+    "line": 3047,
+    "lane": "L21-backup-governance",
+    "frontend": "app"
+  },
+  {
+    "name": "data_governance_restore_backup",
+    "file": "src/data_governance/commands_restore.rs",
+    "line": 420,
+    "lane": "L21-backup-governance",
+    "frontend": "app"
+  },
+  {
+    "name": "data_governance_restore_with_assets",
+    "file": "src/data_governance/commands_asset.rs",
+    "line": 116,
+    "lane": "L21-backup-governance",
+    "frontend": "app"
+  },
+  {
+    "name": "data_governance_resume_backup_job",
+    "file": "src/data_governance/commands_backup.rs",
+    "line": 2395,
+    "lane": "L21-backup-governance",
+    "frontend": "app"
+  },
+  {
+    "name": "data_governance_run_backup",
+    "file": "src/data_governance/commands_backup.rs",
+    "line": 1737,
+    "lane": "L21-backup-governance",
+    "frontend": "app"
+  },
+  {
+    "name": "data_governance_run_health_check",
+    "file": "src/data_governance/commands.rs",
+    "line": 822,
+    "lane": "L21-backup-governance",
+    "frontend": "app"
+  },
+  {
+    "name": "data_governance_run_slot_c_empty_db_test",
+    "file": "src/data_governance/commands.rs",
+    "line": 1279,
+    "lane": "L21-backup-governance",
+    "frontend": "app"
+  },
+  {
+    "name": "data_governance_run_slot_d_clone_db_test",
+    "file": "src/data_governance/commands.rs",
+    "line": 1288,
+    "lane": "L21-backup-governance",
+    "frontend": "app"
+  },
+  {
+    "name": "data_governance_scan_assets",
+    "file": "src/data_governance/commands_asset.rs",
+    "line": 24,
+    "lane": "L21-backup-governance",
+    "frontend": "app"
+  },
+  {
+    "name": "data_governance_verify_backup",
+    "file": "src/data_governance/commands_backup.rs",
+    "line": 1403,
+    "lane": "L21-backup-governance",
+    "frontend": "app"
+  },
+  {
+    "name": "data_governance_verify_backup_with_assets",
+    "file": "src/data_governance/commands_asset.rs",
+    "line": 138,
+    "lane": "L21-backup-governance",
+    "frontend": "app"
+  },
+  {
+    "name": "cloud_storage_check_connection",
+    "file": "crates/dstu-sync/src/cloud_storage/mod.rs",
+    "line": 297,
+    "lane": "L23-sync-providers",
+    "frontend": "app"
+  },
+  {
+    "name": "cloud_storage_delete",
+    "file": "crates/dstu-sync/src/cloud_storage/mod.rs",
+    "line": 346,
+    "lane": "L23-sync-providers",
+    "frontend": "app"
+  },
+  {
+    "name": "cloud_storage_exists",
+    "file": "crates/dstu-sync/src/cloud_storage/mod.rs",
+    "line": 370,
+    "lane": "L23-sync-providers",
+    "frontend": "app"
+  },
+  {
+    "name": "cloud_storage_get",
+    "file": "crates/dstu-sync/src/cloud_storage/mod.rs",
+    "line": 322,
+    "lane": "L23-sync-providers",
+    "frontend": "app"
+  },
+  {
+    "name": "cloud_storage_is_s3_enabled",
+    "file": "crates/dstu-sync/src/cloud_storage/mod.rs",
+    "line": 737,
+    "lane": "L23-sync-providers",
+    "frontend": "app"
+  },
+  {
+    "name": "cloud_storage_list",
+    "file": "crates/dstu-sync/src/cloud_storage/mod.rs",
+    "line": 334,
+    "lane": "L23-sync-providers",
+    "frontend": "app"
+  },
+  {
+    "name": "cloud_storage_put",
+    "file": "crates/dstu-sync/src/cloud_storage/mod.rs",
+    "line": 309,
+    "lane": "L23-sync-providers",
+    "frontend": "app"
+  },
+  {
+    "name": "cloud_storage_stat",
+    "file": "crates/dstu-sync/src/cloud_storage/mod.rs",
+    "line": 358,
+    "lane": "L23-sync-providers",
+    "frontend": "app"
+  },
+  {
+    "name": "cloud_sync_delete_version",
+    "file": "crates/dstu-sync/src/cloud_storage/mod.rs",
+    "line": 714,
+    "lane": "L23-sync-providers",
+    "frontend": "app"
+  },
+  {
+    "name": "cloud_sync_download",
+    "file": "crates/dstu-sync/src/cloud_storage/mod.rs",
+    "line": 552,
+    "lane": "L23-sync-providers",
+    "frontend": "app"
+  },
+  {
+    "name": "cloud_sync_get_device_id",
+    "file": "crates/dstu-sync/src/cloud_storage/mod.rs",
+    "line": 731,
+    "lane": "L23-sync-providers",
+    "frontend": "app"
+  },
+  {
+    "name": "cloud_sync_get_status",
+    "file": "crates/dstu-sync/src/cloud_storage/mod.rs",
+    "line": 384,
+    "lane": "L23-sync-providers",
+    "frontend": "app"
+  },
+  {
+    "name": "cloud_sync_list_versions",
+    "file": "crates/dstu-sync/src/cloud_storage/mod.rs",
+    "line": 396,
+    "lane": "L23-sync-providers",
+    "frontend": "app"
+  },
+  {
+    "name": "cloud_sync_upload",
+    "file": "crates/dstu-sync/src/cloud_storage/mod.rs",
+    "line": 410,
+    "lane": "L23-sync-providers",
+    "frontend": "app"
+  }
+]

@@ -1,0 +1,136 @@
+{
+  "note": "Responses of the scripted local LLM per scenario id and per request order. Request bodies are recorded from A and compared to B; not pre-written here.",
+  "qbank.ai_grade.scripted.correct_verdict": [
+    {
+      "status": 200,
+      "headers": {
+        "content-type": "text/event-stream"
+      },
+      "chunks": [
+        "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"答案要点正确。\"}}]}\n\n",
+        "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"<verdict>correct</verdict>\"}}]}\n\n",
+        "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"<score value=\\\"92\\\"/>\"}}]}\n\n",
+        "data: [DONE]\n\n"
+      ]
+    }
+  ],
+  "qbank.ai_grade.scripted.incorrect_verdict_review_plan": [
+    {
+      "status": 200,
+      "headers": {
+        "content-type": "text/event-stream"
+      },
+      "chunks": [
+        "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"没有说明能量形式。\"}}]}\n\n",
+        "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"<verdict>incorrect</verdict><score value=\\\"20\\\"/>\"}}]}\n\n",
+        "data: [DONE]\n\n"
+      ]
+    }
+  ],
+  "qbank.ai_grade.scripted.partial_verdict": [
+    {
+      "status": 200,
+      "headers": {
+        "content-type": "text/event-stream"
+      },
+      "chunks": [
+        "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"部分正确。<VERDICT> partial </VERDICT>\"}}]}\n\n",
+        "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"<score value=\\\"150\\\"/>\"}}]}\n\n",
+        "data: [DONE]\n\n"
+      ]
+    }
+  ],
+  "qbank.ai_grade.scripted.missing_verdict_invalid_result": [
+    {
+      "status": 200,
+      "headers": {
+        "content-type": "text/event-stream"
+      },
+      "chunks": [
+        "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"只有反馈，没有判定标签。\"}}]}\n\n",
+        "data: [DONE]\n\n"
+      ]
+    }
+  ],
+  "qbank.ai_grade.scripted.empty_body": [
+    {
+      "status": 200,
+      "headers": {
+        "content-type": "text/event-stream"
+      },
+      "chunks": [
+        "data: [DONE]\n\n"
+      ]
+    }
+  ],
+  "qbank.ai_grade.scripted.http_500": [
+    {
+      "status": 500,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "chunks": [
+        "{\"error\":{\"message\":\"wp052 scripted failure\"}}"
+      ]
+    }
+  ],
+  "qbank.ai_grade.scripted.analyze_writes_empty_explanation": [
+    {
+      "status": 200,
+      "headers": {
+        "content-type": "text/event-stream"
+      },
+      "chunks": [
+        "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"解题思路：逐个检验因数。\"}}]}\n\n",
+        "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"易错点：把 9 当作质数。\"}}]}\n\n",
+        "data: [DONE]\n\n"
+      ]
+    }
+  ],
+  "qbank.ai_grade.scripted.analyze_keeps_existing_explanation": [
+    {
+      "status": 200,
+      "headers": {
+        "content-type": "text/event-stream"
+      },
+      "chunks": [
+        "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"新的解析文本。\"}}]}\n\n",
+        "data: [DONE]\n\n"
+      ]
+    }
+  ],
+  "qbank.ai_grade.scripted.ai_correct_then_manual_regrade": [
+    {
+      "status": 200,
+      "headers": {
+        "content-type": "text/event-stream"
+      },
+      "chunks": [
+        "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"<verdict>correct</verdict><score value=\\\"88\\\"/>\"}}]}\n\n",
+        "data: [DONE]\n\n"
+      ]
+    }
+  ],
+  "qbank.ai_grade.scripted.regrade_same_submission_twice": [
+    {
+      "status": 200,
+      "headers": {
+        "content-type": "text/event-stream"
+      },
+      "chunks": [
+        "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"<verdict>correct</verdict><score value=\\\"80\\\"/>\"}}]}\n\n",
+        "data: [DONE]\n\n"
+      ]
+    },
+    {
+      "status": 200,
+      "headers": {
+        "content-type": "text/event-stream"
+      },
+      "chunks": [
+        "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"<verdict>incorrect</verdict><score value=\\\"30\\\"/>\"}}]}\n\n",
+        "data: [DONE]\n\n"
+      ]
+    }
+  ]
+}

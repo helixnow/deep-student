@@ -12,6 +12,7 @@
  * 锚点对齐 R1-03：{ heading?, position: 'end'|'afterHeading' }
  */
 import i18n from '@/i18n';
+import { dispatchTypedEvent } from '@/events';
 import { boundedRegexReplace } from '@/utils/boundedRegexReplace';
 import type { CrepeEditorApi, FullDocumentSnapshot } from '@/components/crepe/types';
 import type {
@@ -445,14 +446,12 @@ function dispatchSuggestionEvent(detail: {
     accepted: false,
     reason: tNote('noSuggestionClaimer', '没有匹配的笔记编辑器认领建议'),
   };
-  window.dispatchEvent(new CustomEvent('canvas:ai-edit-request', {
-    detail: {
-      ...detail,
-      onLocalDisposition: (next: SuggestionDisposition) => {
-        disposition = next;
-      },
+  dispatchTypedEvent('canvas:ai-edit-request', {
+    ...detail,
+    onLocalDisposition: (next: SuggestionDisposition) => {
+      disposition = next;
     },
-  }));
+  });
   return disposition;
 }
 
@@ -479,7 +478,10 @@ export function computeDestructiveMarkdown(
 ): { content: string; error?: string } {
   if (op.kind === 'note_set') {
     const payload = (op.payload ?? {}) as { content?: string };
-    return { content: typeof payload.content === 'string' ? payload.content : '' };
+    if (typeof payload.content !== 'string') {
+      return { content: original, error: tNote('missingSetContent', '缺少替换正文，原文未改动') };
+    }
+    return { content: payload.content };
   }
 
   if (op.kind === 'note_replace') {
@@ -490,6 +492,9 @@ export function computeDestructiveMarkdown(
     };
     const searchPattern = payload.search ?? '';
     const replaceWith = payload.replace ?? '';
+    if (typeof searchPattern !== 'string' || typeof replaceWith !== 'string') {
+      return { content: original, error: tNote('invalidReplacement', '查找与替换内容必须是文本') };
+    }
     if (!searchPattern) {
       return { content: original, error: i18n.t('forms:note_driver.empty_search_pattern') };
     }
@@ -558,11 +563,15 @@ export function isNoteEditorHot(api: Pick<CrepeEditorApi, 'hasFocus' | 'getUserA
   }
 }
 
-function shouldUseSuggestionMode(resourceId: string, api?: CrepeEditorApi): boolean {
-  // DESIGN §1.1 / §4.1：dirty（或 hot）破坏类走建议模式；clean 直写演出
+export function shouldUseSuggestionMode(
+  resourceId: string,
+  api?: CrepeEditorApi,
+  currentMarkdown?: string,
+): boolean {
   if (isContentDirty('note', resourceId)) return true;
   if (api && isNoteEditorHot(api)) return true;
-  return false;
+  const body = currentMarkdown ?? (api ? readCompleteMarkdown(api) : '');
+  return body.trim().length > 0;
 }
 
 /** S-SUG-04：hot 等待时的 pause/resume 钩子（registerNoteDriver 绑定，避免循环依赖） */
@@ -1237,8 +1246,29 @@ export const noteDriver: CollabDriver = {
       run.reportProgress(i + 1, ops.length, op.label, resourceId);
 
       if (op.kind === 'note_replace' || op.kind === 'note_set') {
-        // R2-03 / DESIGN §1.1：dirty → 建议模式；clean → 直写 setMarkdown
-        if (shouldUseSuggestionMode(resourceId, api)) {
+        let previous = '';
+        try {
+          previous = api.getFullDocument?.()?.markdown ?? readCompleteMarkdown(api);
+        } catch {
+          undone.push(op.label);
+          run.reportProgress(
+            i + 1,
+            ops.length,
+            tNote('readFailed', '无法读取当前笔记正文'),
+            resourceId,
+          );
+          continue;
+        }
+
+        const precheck = computeDestructiveMarkdown(previous, op);
+        if (precheck.error) {
+          undone.push(op.label);
+          run.reportProgress(i + 1, ops.length, precheck.error, resourceId);
+          continue;
+        }
+
+        // C4 §3.2.1：非空笔记（无论 clean / dirty / hot）一律进入视觉审阅建议流；仅空白笔记首次填充允许直写
+        if (shouldUseSuggestionMode(resourceId, api, previous)) {
           const suggestion = handleDestructiveSuggestion(run, op);
           if (suggestion.suggestionPending) {
             pendingSuggestion = suggestion;
@@ -1422,9 +1452,7 @@ export const noteDriver: CollabDriver = {
       try {
         const after = readCompleteMarkdown(api);
         if (after !== runBaseline) {
-          window.dispatchEvent(new CustomEvent('notes:agent-applied', {
-            detail: { noteId: resourceId, windowId: run.windowId ?? undefined, before: runBaseline, after },
-          }));
+          dispatchTypedEvent('notes:agent-applied', { noteId: resourceId, windowId: run.windowId ?? undefined, before: runBaseline, after });
         }
       } catch { /* 读取失败时不提供撤销入口 */ }
     }

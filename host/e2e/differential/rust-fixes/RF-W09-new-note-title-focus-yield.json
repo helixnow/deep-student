@@ -1,0 +1,27 @@
+{
+  "id": "RF-W09-new-note-title-focus-yield",
+  "kind": "rust-bug",
+  "status": "proposed",
+  "title": "新建笔记时工作区的“激活即聚焦”不再抢在标题之前聚焦正文（W12 冒烟 #23 重开，补 RF-W09-new-note-title-focus）",
+  "rust": {
+    "file": "src/features/learning-hub/apps/views/NoteContentView.tsx",
+    "line": 820,
+    "behavior": "参照仓 deep-student（快照 21c9d808）的 NoteContentView handleEditorReady（:818-823）在 focusOnActive（NotesWorkspaceApp.tsx:646/659 传 workspaceActive && visible）且激活时，正文编辑器一就绪就在下一帧聚焦正文。NotesEditorHeader 的标题自动聚焦（:143-152）也在正文就绪后的下一帧执行，看到 .ProseMirror 已有焦点就放弃。结果新建笔记后标题从未拿到焦点"
+  },
+  "fix": {
+    "files": [
+      "src/features/learning-hub/apps/views/NoteContentView.tsx"
+    ],
+    "behavior": "正文编辑器就绪时，若笔记可写且正文为空（即 NotesCrepeEditor 会让标题自动聚焦的情形），focusOnActive 不再聚焦正文，交给标题。有内容的笔记、只读笔记照旧聚焦正文；之后切走再切回标签页（isActive 变化）照旧聚焦正文"
+  },
+  "evidence": "W12 r7 冒烟（.reports/agent-final/W12-1208-8aee08c8.md:44）：RF-W09-new-note-title-focus 修复后，真实窗口里新建笔记约 390ms 焦点被正文拿走，标题自动聚焦随即放弃。那次修复只让标题等正文就绪，没有处理正文就绪时这一侧的聚焦。tests/vitest/learning-hub/NoteContentView.newNoteFocus.test.tsx 修复前：空白可写笔记就绪即聚焦正文（失败）；有内容、只读、重新激活三条对照用例修复前后行为相同",
+  "userVisible": "能：在笔记工作区新建笔记后光标在标题里，可以直接输入标题，回车进入正文。打开已有内容的笔记、只读笔记、切回标签页时仍聚焦正文",
+  "dataCompat": "不涉及",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "tests/vitest/learning-hub/NoteContentView.newNoteFocus.test.tsx",
+      "name": "RF-W09-new-note-title-focus-yield: a writable empty note leaves focus to the title when the body editor becomes ready"
+    }
+  ]
+}

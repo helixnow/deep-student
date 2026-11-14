@@ -11,8 +11,7 @@
 
 import type { DstuNode } from '@/dstu/types';
 import { openResource, getOpenResourceHandler } from '@/dstu/openResource';
-import { workbenchBus } from '@/features/workbench/core/workbenchBus';
-import { resourceTypeToAppTypeId } from '@/features/workbench/apps/content/typeMap';
+import { launchWorkbenchApp } from '@/shared/workbenchHost';
 import {
   CONTENT_SEARCH_MIN_CHARS,
   GLOBAL_SEARCH_DEBOUNCE_MS,
@@ -94,7 +93,7 @@ export async function openFileFromPalette(deps: DependencyResolver, node: DstuNo
     // remaining resource types use the public app mapping.
     const typeId = node.type === 'note' || node.type === 'mindmap'
       ? node.type
-      : resourceTypeToAppTypeId(node.type);
+      : (await import('@/features/workbench/apps/content/typeMap')).resourceTypeToAppTypeId(node.type);
     if (!typeId) {
       deps.showNotification(
         'warning',
@@ -105,7 +104,7 @@ export async function openFileFromPalette(deps: DependencyResolver, node: DstuNo
       );
       return;
     }
-    workbenchBus.launch({ typeId, instanceKey: node.id, reason: 'command' });
+    launchWorkbenchApp({ typeId, instanceKey: node.id, reason: 'command' });
     return;
   }
 

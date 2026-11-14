@@ -78,10 +78,10 @@ describe('DataGovernanceDashboard multiple API failures (Issue #15)', () => {
 
     // 组件应仍然渲染核心 UI 元素
     expect(container.firstChild).not.toBeNull();
-    // 刷新按钮应存在且可操作
-    expect(screen.getByRole('button', { name: /刷新|common:actions\.refresh/i })).toBeInTheDocument();
+    // 健康检查入口应存在
+    expect(screen.getByRole('button', { name: /运行健康检查|data:governance\.run_health_check/i })).toBeInTheDocument();
     // Tab 导航应存在
-    expect(screen.getByRole('button', { name: /^(?:概览|data:governance\.tab_overview)$/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /^(?:概览|data:governance\.tab_overview)$/i })).toBeInTheDocument();
   });
 
   it('does not crash when migration status returns null', async () => {
@@ -100,8 +100,8 @@ describe('DataGovernanceDashboard multiple API failures (Issue #15)', () => {
 
     expect(container.firstChild).not.toBeNull();
     // 即使数据为 null，核心导航仍应可用
-    expect(screen.getByRole('button', { name: /刷新|common:actions\.refresh/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /^(?:备份|data:governance\.tab_backup)$/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /运行健康检查|data:governance\.run_health_check/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /^(?:备份|data:governance\.tab_backup)$/i })).toBeInTheDocument();
   });
 
   it('does not crash when APIs return partial/empty data shapes', async () => {
@@ -134,8 +134,8 @@ describe('DataGovernanceDashboard multiple API failures (Issue #15)', () => {
 
     // 断言组件成功渲染，核心 UI 元素存在
     expect(container.firstChild).not.toBeNull();
-    expect(screen.getByRole('button', { name: /刷新|common:actions\.refresh/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /^(?:概览|data:governance\.tab_overview)$/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /运行健康检查|data:governance\.run_health_check/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /^(?:概览|data:governance\.tab_overview)$/i })).toBeInTheDocument();
   });
 
   it('crashes with ErrorBoundary when APIs return completely invalid types (documents defensive gap)', async () => {
@@ -233,7 +233,7 @@ describe('DataGovernanceDashboard tab state isolation (Issue #15)', () => {
     });
 
     // 切换到备份标签
-    const backupTab = screen.getByRole('button', { name: /^(?:备份|data:governance\.tab_backup)$/i });
+    const backupTab = screen.getByRole('tab', { name: /^(?:备份|data:governance\.tab_backup)$/i });
     fireEvent.click(backupTab);
 
     await waitFor(() => {
@@ -241,7 +241,7 @@ describe('DataGovernanceDashboard tab state isolation (Issue #15)', () => {
     });
 
     // 切换回概览标签
-    const overviewTab = screen.getByRole('button', { name: /^(?:概览|data:governance\.tab_overview)$/i });
+    const overviewTab = screen.getByRole('tab', { name: /^(?:概览|data:governance\.tab_overview)$/i });
     fireEvent.click(overviewTab);
 
     // 再切换回备份标签 - 不应该重新加载（或至少不应该崩溃）
@@ -249,7 +249,7 @@ describe('DataGovernanceDashboard tab state isolation (Issue #15)', () => {
 
     // 组件应该仍然正常工作
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /刷新|common:actions\.refresh/i })).toBeEnabled();
+      expect(screen.getByRole('button', { name: /导入|data:governance\.import_button/i })).toBeEnabled();
     });
   });
 
@@ -260,8 +260,8 @@ describe('DataGovernanceDashboard tab state isolation (Issue #15)', () => {
       expect(mockDataGovernanceApi.runHealthCheck).toHaveBeenCalled();
     });
 
-    const backupTab = screen.getByRole('button', { name: /^(?:备份|data:governance\.tab_backup)$/i });
-    const overviewTab = screen.getByRole('button', { name: /^(?:概览|data:governance\.tab_overview)$/i });
+    const backupTab = screen.getByRole('tab', { name: /^(?:备份|data:governance\.tab_backup)$/i });
+    const overviewTab = screen.getByRole('tab', { name: /^(?:概览|data:governance\.tab_overview)$/i });
 
     // 快速切换 5 次
     for (let i = 0; i < 5; i++) {
@@ -273,10 +273,11 @@ describe('DataGovernanceDashboard tab state isolation (Issue #15)', () => {
     await waitFor(() => {
       // 概览 Tab 应该被选中（aria-selected 或 data-state）
       expect(overviewTab).toHaveAttribute('data-state', 'active');
+      expect(overviewTab).toHaveAttribute('aria-selected', 'true');
     });
 
-    // 组件没有抛出异常，刷新按钮仍然可用
-    expect(screen.getByRole('button', { name: /刷新|common:actions\.refresh/i })).toBeEnabled();
+    // 组件没有抛出异常，健康检查入口仍然可用
+    expect(screen.getByRole('button', { name: /运行健康检查|data:governance\.run_health_check/i })).toBeEnabled();
   });
 });
 
@@ -324,8 +325,8 @@ describe('DataGovernanceDashboard standalone mode (Issue #15)', () => {
     });
 
     expect(container.firstChild).not.toBeNull();
-    // 非嵌入模式也应渲染刷新按钮和 Tab 导航
-    expect(screen.getByRole('button', { name: /刷新|common:actions\.refresh/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /^(?:概览|data:governance\.tab_overview)$/i })).toBeInTheDocument();
+    // 非嵌入模式也应渲染健康检查入口和 Tab 导航
+    expect(screen.getByRole('button', { name: /运行健康检查|data:governance\.run_health_check/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /^(?:概览|data:governance\.tab_overview)$/i })).toBeInTheDocument();
   });
 });

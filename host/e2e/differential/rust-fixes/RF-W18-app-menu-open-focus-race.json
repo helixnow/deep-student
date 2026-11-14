@@ -1,0 +1,27 @@
+{
+  "id": "RF-W18-app-menu-open-focus-race",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T15:30:00+08:00",
+  "title": "菜单打开的进入过渡结束时，焦点若已进入菜单（菜单项或子菜单项）会被抢回菜单容器",
+  "rust": {
+    "file": "src/components/ui/app-menu/AppMenu.tsx",
+    "line": 542,
+    "behavior": "Rust 快照 21c9d808 中 AppMenuContent 的打开聚焦在 presence.shown 变真（进入过渡的两帧之后）才排 setTimeout，回调不看当前焦点：指针打开直接聚焦菜单容器，键盘打开聚焦选中项或第一项。两帧之内焦点已移到菜单项或经键盘展开的子菜单项时，过渡一结束就被拉回容器或第一项"
+  },
+  "fix": {
+    "files": ["src/components/ui/app-menu/AppMenu.tsx"],
+    "behavior": "打开聚焦的回调先看当前焦点：已在本菜单（同一 data-app-menu-id 的根面板或子菜单面板）里、且不是菜单容器本身时不再移动焦点；焦点在菜单外（触发器、页面其他位置、另一个菜单）或在容器本身时与原来相同"
+  },
+  "userVisible": "只在打开后约两帧（约 33ms）内可感知：这段时间里已用键盘进入子菜单或聚焦了某个菜单项，焦点不再跳回菜单容器。正常打开（焦点在触发器）时外观与焦点落点不变",
+  "dataCompat": "不涉及落库、同步载荷或备份格式",
+  "evidence": "服务器 Linux 全量（INT 1fcc7743）src/components/ui/app-menu/AppMenu.keyboard.test.tsx「does not reset submenu focus when its parent rerenders」失败，焦点落在根菜单容器上，审计 V10 记为负载。复现：把 requestAnimationFrame 换成 1–5ms 的定时器，本机同一用例稳定以相同信息失败（7ms 及以上通过），即测试起点落在 jsdom 帧周期的哪个位置决定两帧是否在 beta.focus() 之后、断言之前走完。Tauri 版使用同一份前端代码，同样存在。修复后 1/3/5/7/16ms 均通过；去掉守卫，新增的两条竞态用例失败；守卫不按 menuId 区分时，跨菜单用例失败",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "src/components/ui/app-menu/AppMenu.openFocus.test.tsx",
+      "name": "RF-W18-app-menu-open-focus-race: a submenu item focused before the enter transition ends keeps focus"
+    }
+  ]
+}

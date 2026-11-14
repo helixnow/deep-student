@@ -1,6 +1,6 @@
-import React, { useState, useRef, useEffect, useCallback, useLayoutEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { cn } from '@/lib/utils';
+import { cn } from '@/utils/cn';
 import { BlankedText } from '../../shared/BlankedText';
 import { InlineLatex } from '../../shared/InlineLatex';
 import { containsLatex } from '../../../utils/renderLatex';
@@ -17,6 +17,8 @@ import {
   ProgressRing,
 } from '../../shared/NodeDecorationBadges';
 import type { NodeDecorations } from '../../../utils/nodeDecorations';
+import type { NodeExcerptMeta } from '../../../utils/nodeAnchors';
+import { NodeSourcePills } from '../../shared/NodeSourcePills';
 import '../../../styles/node-edge-enhancements.css';
 
 export interface NodeContentProps {
@@ -37,6 +39,15 @@ export interface NodeContentProps {
   isBold?: boolean;
   /** 装饰角标（priority / progress / href），由节点壳层从 store 读取后传入 */
   decorations?: NodeDecorations | null;
+  /** 摘录出处与原文（anchors / excerptQuote），由节点壳层从 store 索引读取后传入 */
+  excerpt?: NodeExcerptMeta | null;
+  /** 节点是否被选中（选中时出处胶囊显示移除按钮） */
+  isSelected?: boolean;
+  onRemoveAnchor?: (anchorUri: string) => void;
+  onRemoveExcerptSlot?: (slotId: string) => void;
+  onCardNoteChange?: (cardNote: string | undefined) => void;
+  onToggleExpandedCard?: () => void;
+  onToggleFlashcard?: () => void;
   /** 完成态以 checkbox 视觉呈现（style.showCheckbox） */
   showCheckbox?: boolean;
   /** checkbox 点击切换 completed */
@@ -86,6 +97,13 @@ export const NodeContent: React.FC<NodeContentProps> = ({
   reciteMode = false,
   isBold = false,
   decorations,
+  excerpt,
+  isSelected = false,
+  onRemoveAnchor,
+  onRemoveExcerptSlot,
+  onCardNoteChange,
+  onToggleExpandedCard,
+  onToggleFlashcard,
   showCheckbox = false,
   onToggleCompleted,
   onEmptyCommit,
@@ -110,11 +128,8 @@ export const NodeContent: React.FC<NodeContentProps> = ({
   const { t } = useTranslation('mindmap');
   const [editValue, setEditValue] = useState(text);
   const [editNoteValue, setEditNoteValue] = useState(note || '');
-  const [inputWidth, setInputWidth] = useState(0);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const noteRef = useRef<HTMLTextAreaElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const measureRef = useRef<HTMLSpanElement>(null);
 
   const { handleMouseUp: handleEditSelectionMouseUp, bubble: editSelectionBubble } =
     useTextSelectionBubble({
@@ -157,14 +172,6 @@ export const NodeContent: React.FC<NodeContentProps> = ({
       noteRef.current.style.height = noteRef.current.scrollHeight + 'px';
     }
   }, [isEditingNote]);
-
-  useLayoutEffect(() => {
-    if (isEditing && measureRef.current) {
-      const measuredWidth = measureRef.current.offsetWidth + 4;
-      const containerWidth = containerRef.current?.offsetWidth || 0;
-      setInputWidth(Math.max(measuredWidth, containerWidth));
-    }
-  }, [editValue, isEditing]);
 
   const handleDoubleClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -223,6 +230,7 @@ export const NodeContent: React.FC<NodeContentProps> = ({
       }
       e.preventDefault();
       e.stopPropagation();
+      if (!editValue.trim() && !text.trim()) return;
       commitText();
       if (onCommitAndCreateSibling) {
         onCommitAndCreateSibling();
@@ -231,7 +239,7 @@ export const NodeContent: React.FC<NodeContentProps> = ({
       }
       return;
     }
-    if (e.key === 'Tab' && !e.shiftKey && onCommitAndCreateChild) {
+    if (e.key === 'Tab' && !e.shiftKey && onCommitAndCreateChild && (editValue.trim() || text.trim())) {
       e.preventDefault();
       e.stopPropagation();
       commitText();
@@ -269,7 +277,9 @@ export const NodeContent: React.FC<NodeContentProps> = ({
     }
   }, [editNoteValue, handleNoteSave, onNoteChange, onEndEditNote]);
 
-  const displayWithBlanks = !isEditing && (reciteMode || !!onAddBlank);
+  const unnamedLabel = t('node.unnamed');
+  const displayText = text || unnamedLabel;
+  const displayWithBlanks = reciteMode || !!onAddBlank;
   const hasLatex = containsLatex(text);
   const hasBlanks = (blankedRanges?.length ?? 0) > 0;
   // LaTeX 与挖空共存降级策略：
@@ -282,9 +292,8 @@ export const NodeContent: React.FC<NodeContentProps> = ({
 
   return (
     <div
-      ref={containerRef}
       className={cn(
-        "relative flex flex-col min-w-[20px] max-w-[600px]",
+        "relative flex w-full min-w-0 max-w-[600px] flex-col",
         className
       )}
       onDoubleClick={handleDoubleClick}
@@ -327,94 +336,60 @@ export const NodeContent: React.FC<NodeContentProps> = ({
           <ProgressRing progress={decorations.progress} />
         )}
         {icon && <span className="flex-shrink-0 text-base leading-none select-none">{icon}</span>}
-        <div className="relative flex-1 min-w-0">
-        {useBlankedDisplay ? (
-          <BlankedText
-            text={text || t('node.unnamed')}
-            blankedRanges={blankedRanges || []}
-            revealedIndices={revealedIndices}
-            reciteMode={reciteMode}
-            allowSelectionActions={!reciteMode}
-            isBold={isBold}
-            onRevealBlank={onRevealBlank}
-            onBlanksPresented={onBlanksPresented}
-            onAddBlank={text.length > 0 ? onAddBlank : undefined}
-            onRemoveBlank={onRemoveBlank}
-            onToggleBold={onToggleBold}
-            className={cn(
-              // 多行策略：展示态支持 pre-wrap（Shift+Enter 换行不再“消失”），
-              // 高度变化由 ResizeObserver → setMeasuredNodeHeight 链路同步布局
-              "mm-node-text inline-block whitespace-pre-wrap break-words px-1 min-h-[1.2em] rounded-sm",
-              isCompleted && "line-through text-[var(--mm-text-muted)]",
-            )}
-            style={{ backgroundColor: bgColor ? `color-mix(in srgb, ${bgColor} 52%, transparent)` : undefined }}
-          />
-        ) : (
-          <InlineLatex
-            text={text || t('node.unnamed')}
-            className={cn(
-              "mm-node-text inline-block whitespace-pre-wrap break-words px-1 min-h-[1.2em] select-none opacity-0 rounded-sm",
-              !isEditing && "opacity-100",
-              isCompleted && !isEditing && "line-through text-[var(--mm-text-muted)]",
-            )}
-            style={{ backgroundColor: bgColor ? `color-mix(in srgb, ${bgColor} 52%, transparent)` : undefined }}
-          />
-        )}
-
-        {isEditing && (
-          <>
-            {/* 测量 span：字体属性靠自然继承与展示态一致（不要加 Tailwind 字体类破坏继承） */}
-            <span
-              ref={measureRef}
-              className="absolute invisible pointer-events-none whitespace-pre px-1"
-              style={{
-                fontFamily: 'inherit',
-                fontSize: 'inherit',
-                fontWeight: 'inherit',
-                lineHeight: 'inherit',
-                letterSpacing: 'inherit',
-              }}
-              aria-hidden="true"
-            >
-              {editValue || t('node.unnamed')}
-            </span>
-
-            <TextareaAutosize
-            ref={inputRef as any}
-            value={editValue}
-            onChange={(e) => setEditValue(e.target.value)}
-            onBlur={handleSave}
-            onKeyDown={handleKeyDown as any}
-            onClick={(e) => e.stopPropagation()}
-            onMouseUp={handleEditSelectionMouseUp as any}
-            onTouchEnd={handleEditSelectionMouseUp as any}
-            style={{
-              width: inputWidth,
-              left: isRoot ? '50%' : '0',
-              transform: isRoot ? 'translateX(-50%)' : 'none',
-              fontFamily: 'inherit',
-              fontSize: 'inherit',
-              fontWeight: 'inherit',
-              lineHeight: 'inherit',
-              letterSpacing: 'inherit',
-              backgroundColor: bgColor ? `color-mix(in srgb, ${bgColor} 52%, transparent)` : undefined,
-            }}
+        <div className="relative min-w-0 flex-1 text-center">
+          {isEditing ? (
+            <>
+              <TextareaAutosize
+                ref={inputRef}
+                aria-label={t('contextMenu.edit')}
+                value={editValue}
+                onChange={(e) => setEditValue(e.target.value)}
+                onBlur={handleSave}
+                onKeyDown={handleKeyDown}
+                onClick={(e) => e.stopPropagation()}
+                onMouseUp={handleEditSelectionMouseUp}
+                onTouchEnd={handleEditSelectionMouseUp}
+                placeholder={text || unnamedLabel}
+                className={cn(
+                  'nopan nodrag block w-full resize-none overflow-hidden bg-transparent px-1',
+                  'rounded-sm border-none outline-none ring-0 focus:ring-0',
+                  'text-inherit placeholder:text-[var(--mm-text-muted)]',
+                  'text-center',
+                )}
+                style={{ font: 'inherit', letterSpacing: 'inherit' }}
+              />
+              {editSelectionBubble}
+            </>
+          ) : useBlankedDisplay ? (
+            <BlankedText
+              text={displayText}
+              blankedRanges={blankedRanges || []}
+              revealedIndices={revealedIndices}
+              reciteMode={reciteMode}
+              allowSelectionActions={!reciteMode}
+              isBold={isBold}
+              onRevealBlank={onRevealBlank}
+              onBlanksPresented={onBlanksPresented}
+              onAddBlank={text.length > 0 ? onAddBlank : undefined}
+              onRemoveBlank={onRemoveBlank}
+              onToggleBold={onToggleBold}
               className={cn(
-                "absolute top-0 h-full resize-none overflow-hidden block",
-                "nopan nodrag",
-                "bg-[var(--mm-bg-elevated)] shadow-[var(--mm-shadow-sm)] rounded-sm",
-                "border-none outline-none ring-0 focus:ring-0",
-                "text-inherit px-1",
-                "placeholder:text-[var(--mm-text-muted)]",
-                isRoot ? "text-center" : "text-left",
-                "z-10"
+                'mm-node-text inline-block whitespace-pre-wrap break-words px-1 min-h-[1.2em] rounded-sm',
+                !text && 'text-[var(--mm-text-muted)]',
+                isCompleted && 'line-through text-[var(--mm-text-muted)]',
               )}
-              placeholder={text || t('node.unnamed')}
             />
-            {editSelectionBubble}
-          </>
-        )}
-      </div>
+          ) : (
+            <InlineLatex
+              text={displayText}
+              className={cn(
+                'mm-node-text inline-block whitespace-pre-wrap break-words px-1 min-h-[1.2em] select-none rounded-sm',
+                !text && 'text-[var(--mm-text-muted)]',
+                isCompleted && 'line-through text-[var(--mm-text-muted)]',
+              )}
+            />
+          )}
+        </div>
       {decorations?.href && !isEditing && <NodeLinkButton href={decorations.href} />}
       </div>
 
@@ -455,6 +430,25 @@ export const NodeContent: React.FC<NodeContentProps> = ({
           )}
         />
       ) : null}
+
+      {excerpt && !isEditing && (
+        <NodeSourcePills
+          anchors={excerpt.anchors}
+          excerptQuote={excerpt.excerptQuote}
+          excerpts={excerpt.excerpts}
+          cardNote={excerpt.cardNote}
+          isExpandedCard={excerpt.isExpandedCard}
+          isFlashcard={excerpt.isFlashcard}
+          readonly={reciteMode || !onRemoveAnchor}
+          selected={isSelected}
+          onRemoveAnchor={onRemoveAnchor}
+          onRemoveExcerptSlot={onRemoveExcerptSlot}
+          onCardNoteChange={onCardNoteChange}
+          onToggleExpandedCard={onToggleExpandedCard}
+          onToggleFlashcard={onToggleFlashcard}
+          className={isRoot ? 'items-center' : 'items-start'}
+        />
+      )}
 
       {refs && refs.length > 0 && (
         <NodeRefList

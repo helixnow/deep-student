@@ -1,0 +1,59 @@
+{
+  "id": "RF-W23-fs-deny-case-insensitive",
+  "kind": "deliberate",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T16:46:00+08:00",
+  "title": "macOS / Windows 上 fs / asset 作用域的 deny 不区分大小写（并按 APFS 的完整大小写折叠与 Unicode 规范化）匹配；allow 仍是 Tauri 的逐字 glob",
+  "rust": {
+    "file": "src-tauri/Cargo.toml",
+    "line": 156,
+    "behavior": "tauri-2.11.5 src/scope/fs.rs 的 is_allowed / is_forbidden 用 glob 匹配，MatchOptions { case_sensitive: true }，allow 与 deny 都逐字比较。Rust 版的 capability 与 assetProtocol scope 没有任何 fs deny 条目，所以这在 Rust 版没有可见后果；Electron 版新增了 deny（RF-W23-fs-deny-host-plugin-dir 的 $APPDATA/plugins、RF-W23-fs-deny-browser-profiles 的 slots/*/browser-profiles、RF-W23-fs-deny-webview-data-user-data 的 userData 与 Windows 的 $APPLOCALDATA/EBWebView），沿用逐字比较后，在大小写不敏感的文件系统上换一种写法就能绕过"
+  },
+  "fix": {
+    "files": ["electron/shell/scope.ts"],
+    "behavior": "FsScope 在 darwin / win32 上为每条 deny 模式另存一份 foldForDeny 形态（NFD 后逐字符 lower → upper → lower，再 NFD），判定 deny 时原样匹配与折叠后匹配任一命中即拒绝；canonical 形态与（目标不存在时的）字面形态都参与。allow 不折叠，与 Tauri 相同。Linux 不变（大小写敏感的文件系统上 Plugins 本来就是另一个目录）。Windows 上的 NTFS 流写法与带末尾点 / 空格的 `\\\\.\\` 设备路径由 RF-W23-fs-deny-ntfs-stream-suffix 先还原成同一个名字，再按本条折叠（`\\\\.\\…\\PLUGINS.` 同样被拒绝）"
+  },
+  "evidence": "S01 第三轮审查 M2（.reports/reviews/S01-security-r3.md:79-109）。在 INT 390f244b（已含 RF-W23-fs-scope-missing-path-canonical-ancestor）上复现（macOS 默认 APFS）：1) $APPDATA/plugins 还不存在时，主窗口页面 plugin:fs|mkdir $APPDATA/Plugins 成功，建出的就是 Host 读取的目录；2) 该目录以 Plugins 存在后（作用域在此之前已建好），write_text_file $APPDATA/Plugins/user.profile.json、连同 plugins/、PLUGINS/、pluginſ/ 写法都成功，下次启动 Host 在沙箱外执行 profile 里的模块；3) slots/<slot>/Browser-Profiles 同理可预先建出并读出 Cookies；4) 最直接的一步：先在 $APPDATA/staging 写好 user.profile.json（允许），再 plugin:fs|rename staging → $APPDATA/Plugins，整个目录一次落到 Host 读取的位置。本机实测 APFS 把 Plugins、PLUGINS、pluginſ（U+017F）、Kelvin 符号 K、ß / ẞ 与 ss、ﬁ 与 fi、NFC 与 NFD 都视为同名，只做 toLowerCase 不够。修复后上述请求都得到 forbidden path，$APPDATA 下其余路径（Plugins-notes.txt、Browser-Profiles-backup）照常可写。shell-builtin-acl.test.ts 的三例 e2e 在大小写不敏感的非 Linux 平台（macOS、Windows）运行，本机只在 macOS 上跑过",
+  "userVisible": "正常使用感知不到；在 macOS / Windows 上，页面脚本用另一种大小写或等价 Unicode 写法访问受保护目录（Host 插件目录、内置浏览器会话、WebView 数据）时被拒绝（forbidden path）。名字只是与受保护目录折叠后相同的其他路径也会被拒绝，前端没有这样的路径。",
+  "dataCompat": "不改变落库数据、同步载荷与备份格式。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "electron/tests/fs-scope-deny-case.test.ts",
+      "name": "RF-W23-fs-deny-case-insensitive: the fold names what APFS and NTFS treat as one entry"
+    },
+    {
+      "file": "electron/tests/fs-scope-deny-case.test.ts",
+      "name": "RF-W23-fs-deny-case-insensitive: while plugins / browser-profiles do not exist, no other spelling of them is allowed on macOS and Windows"
+    },
+    {
+      "file": "electron/tests/fs-scope-deny-case.test.ts",
+      "name": "RF-W23-fs-deny-case-insensitive: once the directory exists under another case (created after the scope was built), every spelling inside it stays denied"
+    },
+    {
+      "file": "electron/tests/fs-scope-deny-case.test.ts",
+      "name": "RF-W23-fs-deny-case-insensitive: Windows spellings of a denied directory (drive letter, separators, verbatim prefix) are denied"
+    },
+    {
+      "file": "electron/tests/fs-scope-deny-case.test.ts",
+      "name": "RF-W23-fs-deny-case-insensitive: Linux keeps exact matching (Plugins is another directory there, the Host reads plugins)"
+    },
+    {
+      "file": "electron/tests/fs-scope-deny-case.test.ts",
+      "name": "RF-W23-fs-deny-case-insensitive: allow keeps Tauri's exact glob on every platform (only deny is folded)"
+    },
+    {
+      "file": "host/e2e/security/shell-builtin-acl.test.ts",
+      "name": "RF-W23-fs-deny-case-insensitive: while $APPDATA/plugins does not exist, no other spelling of it can be created (it would be the directory the Host loads from)"
+    },
+    {
+      "file": "host/e2e/security/shell-builtin-acl.test.ts",
+      "name": "RF-W23-fs-deny-case-insensitive: when the plugins directory exists under another case, no spelling can plant the profile in it"
+    },
+    {
+      "file": "host/e2e/security/shell-builtin-acl.test.ts",
+      "name": "RF-W23-fs-deny-case-insensitive: a slot's browser-profiles cannot be pre-created or read under another spelling"
+    }
+  ]
+}

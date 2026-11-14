@@ -1,0 +1,26 @@
+{
+  "id": "RF-W06-backend-sentry-rust-no-transport",
+  "kind": "rust-bug",
+  "status": "proposed",
+  "title": "后端 Sentry 带上真正的发送通道：Rust 的 sentry crate 编译时没有 transport，授权 + 有 DSN 时 sentry::init 直接 panic，后端错误从来没有上报过",
+  "rust": {
+    "file": "src-tauri/src/lib.rs",
+    "line": 311,
+    "behavior": "init_backend_sentry_client 在 DSN 合法时调 sentry::init。sentry 0.32.3 以 default-features = false、features = [backtrace, contexts, panic, rustls, debug-images, anyhow] 引入（src-tauri/Cargo.toml:186），没有 reqwest / curl / surf / ureq 任何一个 transport；有 DSN 时 DefaultTransportFactory::create_transport panic \"sentry crate was compiled without transport\"（sentry-0.32.3/src/transports/mod.rs:99）。官方构建由 CI secrets 注入 SENTRY_DSN（.github/workflows/reusable-build-{macos,windows,linux}.yml），所以：用户打开开关时设置先写成 \"true\"，随后 spawn_blocking 里 panic，命令返回 `更新错误报告授权任务失败: …`，前端提示失败并把开关拨回；之后每次启动在 setup（lib.rs:1328）读到 \"true\" 再次 panic"
+  },
+  "fix": {
+    "files": ["electron/backend-sentry.ts"],
+    "behavior": "Host 用 @sentry/node 8.55.2（自带 HTTP transport）：DSN 取运行时 SENTRY_DSN，否则取打包时写入 electron/.build/backend-sentry.json 的值；授权为 \"true\" 或打开开关时初始化，Host 未处理的异常 / Promise 拒绝按 crash_logger 的形状（Fatal、scrub_pii 后的消息、两段指纹）上报，关掉开关或 Host 退出时解绑并 flush 后关闭。选项照 Rust：不装默认集成、不带 PII 与主机名、不发会话与客户端报告"
+  },
+  "evidence": "与 Rust 自身意图矛盾：Rust 写了完整的授权开关、启动读授权与 panic 上报（crash_logger.rs:40-61），但发送通道没有编译进去，配置 DSN 只会 panic。复现：用 src-tauri/Cargo.toml:186 同一行依赖建最小 crate，按 init_backend_sentry_client 的选项传一个假 DSN 调 sentry::init，输出 `panicked at …/sentry-0.32.3/src/transports/mod.rs:99:13: sentry crate was compiled without transport`（cargo run --offline，本轮已跑）。在 src-tauri 下 `cargo tree --offline --locked -e features -i sentry --target all` 列出的 sentry feature 只有 anyhow / backtrace / contexts / debug-images / panic / rustls 及其依赖项，没有任何 transport。用户决定 FM-11：Electron 版补上后端 Sentry 并真正上报。",
+  "userVisible": "授权用户的 Host 崩溃与未处理异常进 Sentry；打开开关返回成功（Rust 官方构建里会报错并拨回开关，之后启动崩溃）。未授权的用户没有任何变化，SDK 不加载。",
+  "dataCompat": "设置键 sentry_error_reporting_enabled 的读写与 Rust 相同，不改变落库数据、同步载荷与备份格式。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "electron/tests/backend-sentry.test.ts",
+      "name": "RF-W06-backend-sentry-rust-no-transport: with consent and a valid DSN the crash event reaches the transport (Rust built sentry without a transport and panicked here)"
+    }
+  ],
+  "notes": "插件级证据：electron/tests/backend-sentry.test.ts 的 dstu.shell 用例经真实 @sentry/node HTTP transport 把事件发到本机假收件端，撤回授权后不再发送。取代已删除的 RF-W06-backend-sentry-sdk-not-shipped（deliberate，未获批准）。"
+}

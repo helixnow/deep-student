@@ -4,7 +4,13 @@ import { resolve } from 'node:path';
 import { JSDOM } from 'jsdom';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createElement } from 'react';
-import { BootShell } from '../../../src/boot/BootShell';
+import { render, cleanup } from '@testing-library/react';
+import {
+  BOOT_SHIMMER_DELAY_MS,
+  BOOT_SHIMMER_DURATION_MS,
+  BootShell,
+  computeBootShimmerDelayMs,
+} from '../../../src/boot/BootShell';
 
 /**
  * 启动面（boot surface）契约。
@@ -105,6 +111,26 @@ describe('boot surface contract', () => {
       expect(data).not.toContain('"preflight_description"');
       // 失败路径的文案必须仍在
       expect(data).toContain('"preflight_failed_title"');
+    }
+  });
+
+  it('keeps BootShell shimmer timing aligned with public/boot.css and anchors phase to document clock', () => {
+    const css = readRepoFile(BOOT_CSS);
+    expect(css).toContain(`--boot-shimmer-dur: ${BOOT_SHIMMER_DURATION_MS}ms;`);
+    expect(css).toContain(`--boot-shimmer-delay: ${BOOT_SHIMMER_DELAY_MS}ms;`);
+
+    expect(computeBootShimmerDelayMs(200)).toBe(450);
+    expect(computeBootShimmerDelayMs(650)).toBe(0);
+    expect(computeBootShimmerDelayMs(1200)).toBe(-550);
+    expect(computeBootShimmerDelayMs(1200 + BOOT_SHIMMER_DURATION_MS)).toBe(-550);
+
+    const { container } = render(createElement(BootShell));
+    try {
+      const shine = container.querySelector('.boot-loading__logo--shine') as HTMLElement | null;
+      expect(shine).not.toBeNull();
+      expect(shine!.style.animationDelay).toMatch(/^-?\d+ms$/);
+    } finally {
+      cleanup();
     }
   });
 });

@@ -74,13 +74,14 @@ export const translationToolsSkill: SkillDefinition = {
 ## 工具
 
 - **builtin-translate_text**（Low）：调用翻译专用模型，聚合返回译文结果。单段最多 100000 个 Unicode 字符；总输入最多 500000 字符，超出单段时由后端自动分段并按原顺序合并。
+- **builtin-translation_result_read**（Low，只读）：分页读取 translate_text 缓存的译文。
 - **builtin-translation_save**（Medium，仅前台对话）：把一次成功翻译的完整结果或用户提供的成对原文/译文保存为真实 VFS 翻译资源，可指定 folder_id。
 
 ## 标准工作流
 
 1. 从用户文本或资源读取工具取得原文。用户指定资源库文档或页范围时，先 \`load_skills(["learning-resource"])\`，再用 \`builtin-resource_read\` 的 \`page_start/page_end\` 读取正文；不要把文件路径当成待翻译文本。
 2. 调用 translate_text。术语约束只使用内联 \`terms: [{src, dst}]\`；仓库没有可供 Agent 使用的 glossary 存取后端，因此不存在 \`glossary_id\` 参数，也不得编造该 ID。
-3. 检查返回的 \`translated_preview\`、\`translated_truncated\`、字符数与分段数。完整译文不超过安全输出上限时，返回还会带 \`translated\`；长译文不直接注入上下文。
+3. 检查返回的 \`translated_preview\`、\`translated_truncated\`、字符数与分段数。完整译文不超过安全输出上限时，返回还会带 \`translated\`；长译文不直接注入上下文，需要全文时用 translation_result_read 按 \`next_offset_chars\` 读到 \`has_more=false\`（失败或取消的部分结果同样可读，\`partial=true\`）。
 4. 只有用户明确要求入库时才调用 translation_save。长译文优先原样传入 translate_text 返回的 \`translation_result_id\`；这是会话绑定、进程内、有界的短期引用，有效期见 \`expires_in_seconds\`（当前 1800 秒）。应立即保存；保存成功后引用即被消费，不得重复使用。应用重启或引用过期后必须重新翻译。
 5. translation_save 的两种输入互斥：
    - 翻译结果路径：传 \`translation_result_id\`，可附 title/folder_id；
@@ -100,6 +101,7 @@ translate_text **不会自动入库**，translation_save **不会重新翻译**�
 `,
   allowedTools: [
     'builtin-translate_text',
+    'builtin-translation_result_read',
     'builtin-translation_save',
   ],
   embeddedTools: [
@@ -148,6 +150,37 @@ translate_text **不会自动入库**，translation_save **不会重新翻译**�
           },
         },
         required: ['text', 'source_lang', 'target_lang'],
+        additionalProperties: false,
+      },
+    },
+    // RUST-FIX(RF-W09-translation-result-read-undeclared): Rust 的 translate_text 让模型调用本工具，但前端从未声明它
+    {
+      name: 'builtin-translation_result_read',
+      description:
+        '分页读取 translate_text 缓存的译文（Low，只读，不消费引用）。返回 chunk、has_more、next_offset_chars、partial 等；引用过期、已保存或跨会话时返回 TRANSLATION_RESULT_NOT_FOUND。',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          translation_result_id: {
+            type: 'string',
+            minLength: 1,
+            maxLength: 80,
+            description: 'translate_text 返回的短期引用',
+          },
+          offset_chars: {
+            type: 'integer',
+            minimum: 0,
+            maximum: 2000000,
+            description: '起始字符偏移，默认 0',
+          },
+          limit_chars: {
+            type: 'integer',
+            minimum: 1,
+            maximum: 5000,
+            description: '每页字符数，默认 2000',
+          },
+        },
+        required: ['translation_result_id'],
         additionalProperties: false,
       },
     },

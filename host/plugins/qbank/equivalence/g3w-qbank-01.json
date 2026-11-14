@@ -1,0 +1,542 @@
+{
+  "domain": "qbank",
+  "commands": [
+    "cancel_question_bank_import",
+    "cancel_questions_csv_import",
+    "export_questions_csv",
+    "get_csv_preview",
+    "get_exam_sheet_session_detail",
+    "get_learning_heatmap",
+    "import_question_bank_stream",
+    "import_questions_csv",
+    "list_exam_sheet_sessions",
+    "rename_exam_sheet_session",
+    "resume_question_import",
+    "update_exam_sheet_cards"
+  ],
+  "scenarios": [
+    {
+      "id": "g3w.qbank.cancel_question_bank_import.err_missing_import_id",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "cancel_question_bank_import", "args": {}, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.cancel_questions_csv_import.err_missing_import_id",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "cancel_questions_csv_import", "args": {}, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.export_questions_csv.err_missing_request",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "export_questions_csv", "args": {}, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.export_questions_csv.err_path_traversal",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "export_questions_csv",
+          "args": {
+            "request": {
+              "exam_id": "exam_doesnotexist",
+              "file_path": "/tmp/../questions-export.csv",
+              "fields": [],
+              "filters": {},
+              "include_answers": false,
+              "encoding": "utf8"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.export_questions_csv.err_unsupported_field",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "export_questions_csv",
+          "args": {
+            "request": {
+              "exam_id": "exam_doesnotexist",
+              "file_path": "/tmp/questions-export.csv",
+              "fields": ["field_doesnotexist"],
+              "filters": {},
+              "include_answers": false,
+              "encoding": "utf8"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.export_questions_csv.err_no_questions",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "export_questions_csv",
+          "args": {
+            "request": {
+              "exam_id": "exam_doesnotexist",
+              "file_path": "/tmp/questions-export.csv",
+              "fields": [],
+              "filters": {},
+              "include_answers": false,
+              "encoding": "utf8"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.get_csv_preview.err_missing_file_path",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "get_csv_preview", "args": { "rows": 5 }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.get_csv_preview.err_path_traversal",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_csv_preview",
+          "args": { "filePath": "/tmp/../questions.csv", "rows": 5 },
+          "expect": "error"
+        }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.get_exam_sheet_session_detail.err_missing_request",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "get_exam_sheet_session_detail", "args": {}, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.get_exam_sheet_session_detail.err_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_exam_sheet_session_detail",
+          "args": { "request": { "session_id": "exam_doesnotexist" } },
+          "expect": "error"
+        }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.get_learning_heatmap.err_missing_start_date",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_learning_heatmap",
+          "args": { "endDate": "2026-11-06" },
+          "expect": "error"
+        }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.get_learning_heatmap.err_invalid_start_date",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_learning_heatmap",
+          "args": { "startDate": "2026/05/06", "endDate": "2026-11-06" },
+          "expect": "error"
+        }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.get_learning_heatmap.err_invalid_end_date",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_learning_heatmap",
+          "args": { "startDate": "2026-05-06", "endDate": "2026/11/06" },
+          "expect": "error"
+        }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.import_question_bank_stream.err_missing_request",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "import_question_bank_stream", "args": {}, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.import_question_bank_stream.err_json_parse",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "import_question_bank_stream",
+          "args": {
+            "request": {
+              "content": "bm90IGpzb24=",
+              "format": "json",
+              "name": "questions",
+              "import_id": "import_g3w_json_parse"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.import_question_bank_stream.err_json_missing_questions",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "import_question_bank_stream",
+          "args": {
+            "request": {
+              "content": "e30=",
+              "format": "json",
+              "name": "questions",
+              "import_id": "import_g3w_json_missing_questions"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.import_question_bank_stream.err_json_no_questions",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "import_question_bank_stream",
+          "args": {
+            "request": {
+              "content": "eyJxdWVzdGlvbnMiOltdfQ==",
+              "format": "json",
+              "name": "questions",
+              "import_id": "import_g3w_json_no_questions"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.import_question_bank_stream.err_zip_invalid",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "import_question_bank_stream",
+          "args": {
+            "request": {
+              "content": "bm90IGpzb24=",
+              "format": "zip",
+              "name": "questions",
+              "import_id": "import_g3w_zip_invalid"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.import_question_bank_stream.err_bundle_invalid",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "import_question_bank_stream",
+          "args": {
+            "request": {
+              "content": "not json",
+              "format": "bundle",
+              "name": "questions",
+              "import_id": "import_g3w_bundle_invalid"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.import_question_bank_stream.err_bundle_empty",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "import_question_bank_stream",
+          "args": {
+            "request": {
+              "content": "[]",
+              "format": "bundle",
+              "name": "questions",
+              "import_id": "import_g3w_bundle_empty"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.import_question_bank_stream.err_model_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "import_question_bank_stream",
+          "args": {
+            "request": {
+              "content": "MSsxPT8=",
+              "format": "txt",
+              "name": "questions",
+              "model_config_id": "model_doesnotexist",
+              "import_id": "import_g3w_model_not_found"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.import_questions_csv.err_missing_request",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "import_questions_csv", "args": {}, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.import_questions_csv.err_path_traversal",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "import_questions_csv",
+          "args": {
+            "request": {
+              "file_path": "/tmp/../questions.csv",
+              "exam_id": "exam_doesnotexist",
+              "field_mapping": { "content": "content" },
+              "duplicate_strategy": "skip",
+              "import_id": "csv_import_g3w_path_traversal"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.list_exam_sheet_sessions.err_missing_request",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "list_exam_sheet_sessions", "args": {}, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.rename_exam_sheet_session.err_missing_request",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "rename_exam_sheet_session", "args": {}, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.rename_exam_sheet_session.err_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "rename_exam_sheet_session",
+          "args": { "request": { "session_id": "exam_doesnotexist", "exam_name": "新名称" } },
+          "expect": "error"
+        }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.resume_question_import.err_missing_session_id",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "resume_question_import", "args": {}, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.resume_question_import.err_no_import_state",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "resume_question_import",
+          "args": { "sessionId": "exam_doesnotexist", "importId": "import_g3w_resume" },
+          "expect": "error"
+        }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.update_exam_sheet_cards.err_missing_request",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "update_exam_sheet_cards", "args": {}, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.update_exam_sheet_cards.err_nothing_to_update",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "update_exam_sheet_cards",
+          "args": { "request": { "session_id": "exam_doesnotexist" } },
+          "expect": "error"
+        }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.update_exam_sheet_cards.err_session_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "update_exam_sheet_cards",
+          "args": {
+            "request": {
+              "session_id": "exam_doesnotexist",
+              "cards": [{ "card_id": "card_doesnotexist", "user_answer": "B" }]
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.update_exam_sheet_cards.err_card_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "测试题集",
+              "metadata": { "status": "empty", "pageCount": 0, "questionCount": 0 }
+            }
+          }
+        },
+        {
+          "cmd": "update_exam_sheet_cards",
+          "args": {
+            "request": {
+              "session_id": "${0.id}",
+              "cards": [{ "card_id": "card_doesnotexist", "user_answer": "B" }]
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.qbank.update_exam_sheet_cards.err_formal_questions",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "测试题集",
+              "metadata": { "status": "empty", "pageCount": 0, "questionCount": 0 }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "1+1=?",
+              "question_type": "single_choice",
+              "options": [
+                { "key": "A", "content": "1" },
+                { "key": "B", "content": "2" }
+              ],
+              "answer": "B",
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "update_exam_sheet_cards",
+          "args": {
+            "request": {
+              "session_id": "${0.id}",
+              "cards": [{ "card_id": "${1.id}", "user_answer": "B" }]
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    }
+  ]
+}

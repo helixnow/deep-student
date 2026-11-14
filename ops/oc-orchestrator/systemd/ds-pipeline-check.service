@@ -1,0 +1,12 @@
+[Unit]
+Description=流水线体检（不变量报警：合入停滞、关键 lane 久未合入、main 变红、协调者异常）
+
+[Service]
+Type=oneshot
+User=dsdev
+Group=dsdev
+WorkingDirectory=/home/dsdev/dev/deep-student
+Environment=PATH=/opt/node26/bin:/home/dsdev/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=HOME=/home/dsdev
+ExecStart=/opt/node26/bin/node /home/dsdev/dev/deep-student/scripts/electron-migration/pipeline-check.mjs --alert
+SuccessExitStatus=0 1

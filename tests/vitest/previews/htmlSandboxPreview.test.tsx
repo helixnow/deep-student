@@ -34,9 +34,9 @@ describe('html sandbox preview policy', () => {
     expect(doc).toContain("script-src 'none'");
   });
 
-  // 2026-10：模板脚本放开（交互式卡片模板依赖 <script>/onclick），隔离靠 iframe 沙箱 +
-  // CSP connect-src 'none' 禁网；chat-safe 仍无脚本。
-  it('keeps template scripts in template-safe mode inside a network-blocked script sandbox', () => {
+  // D-154/D-166：模板 <script> 在预览中剥除（父 CSP 经 srcdoc 继承本来就拦截），
+  // 沙箱仍允许应用自有 helper 脚本执行，并禁网；chat-safe 仍无脚本。
+  it('strips template scripts in template-safe mode but keeps the network-blocked script sandbox', () => {
     const html = '<div id="target">before</div><script>document.body.dataset.ready = "yes"</script>';
     const safeHtml = sanitizeHtmlForPreview(html, 'template-safe');
     const doc = buildHtmlSandboxDocument({
@@ -45,7 +45,8 @@ describe('html sandbox preview policy', () => {
       mode: 'template-safe',
     });
 
-    expect(safeHtml).toContain('<script>');
+    expect(safeHtml).not.toContain('<script');
+    expect(safeHtml).toContain('before');
     expect(doc).toContain("script-src 'unsafe-inline'");
     expect(doc).toContain("connect-src 'none'");
     expect(doc).toContain("sdp-resize");
@@ -76,7 +77,7 @@ describe('HtmlSandboxPreview', () => {
     expect(iframe?.getAttribute('srcdoc')).toContain("default-src 'none'");
   });
 
-  it('renders template-safe previews with script-enabled sandbox', () => {
+  it('renders template-safe previews with script-enabled sandbox but without template scripts', () => {
     const { container } = render(
       <HtmlSandboxPreview
         mode="template-safe"
@@ -89,7 +90,8 @@ describe('HtmlSandboxPreview', () => {
     const iframe = container.querySelector('iframe');
     expect(iframe).not.toBeNull();
     expect(iframe?.getAttribute('sandbox')).toBe('allow-scripts');
-    expect(iframe?.getAttribute('srcdoc')).toContain("document.body.dataset.ready='yes'");
+    expect(iframe?.getAttribute('srcdoc')).toContain('before');
+    expect(iframe?.getAttribute('srcdoc')).not.toContain("document.body.dataset.ready='yes'");
     expect(iframe?.getAttribute('srcdoc')).toContain('sdp-resize');
   });
 });

@@ -1,0 +1,161 @@
+{
+  "schema": "w21-a-produced/v1",
+  "seeds": [
+    "l21-backups-mixed-v1",
+    "l21-backups-legacy-mirror-v1",
+    "l21-historical-zip-v1"
+  ],
+  "take": "A1",
+  "producer": {
+    "suite": "host/e2e/data-compat/__fixtures__/a-produced/producers.v0.json",
+    "suiteSha256": "517cc7562f72885247069762c4366471764cc552a4ae29e46dca2013339646ef",
+    "treeCommit": "753cbb86bc1505f1c08ae101a15f3f1f434ac9bb"
+  },
+  "a": {
+    "receiptSha256": "24c9f5b77e2b63a8b0f9d9a9ea2031ad603068b62fb72f3bfd9fe8bf17bdcf3b",
+    "job": "20261106023719-bc16bc",
+    "binarySha256": "102b48358f08f7f0d2d9b5a887b7337bacbc03f3ff217f3553d5900ec00cac7c",
+    "submittedRevision": "ec19ff0f1",
+    "rustSourceTree": "cff4c0cc6eddd710a71e87cb814bf20bc0384516"
+  },
+  "fullBackup": {
+    "backupId": "20261107_161441_4c235ca0_373",
+    "directories": [
+      "assets",
+      "assets/vfs_blobs",
+      "assets/workspaces",
+      "workspaces"
+    ],
+    "files": [
+      {
+        "path": "chat_v2.db",
+        "size": 860160,
+        "sha256": "78ef05ce367b47ccfb72b5d36c361f9c35f825b5ef17c0c451c997d2f84a24d2"
+      },
+      {
+        "path": "chat_v2.db-shm",
+        "size": 32768,
+        "sha256": "fd4c9fda9cd3f9ae7c962b0ddf37232294d55580e1aa165aa06129b8549389eb"
+      },
+      {
+        "path": "chat_v2.db-wal",
+        "size": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "llm_usage.db",
+        "size": 204800,
+        "sha256": "739091db1b280c3905311a242040ae09a2015506c0a7d21cc33919cec4a35ed8"
+      },
+      {
+        "path": "llm_usage.db-shm",
+        "size": 32768,
+        "sha256": "fd4c9fda9cd3f9ae7c962b0ddf37232294d55580e1aa165aa06129b8549389eb"
+      },
+      {
+        "path": "llm_usage.db-wal",
+        "size": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "manifest.json",
+        "size": 10043,
+        "sha256": "854f08bbd981f6f38ae21d299a76fe45dbcd6c2442ca932a1d536bfd4885903e"
+      },
+      {
+        "path": "mistakes.db",
+        "size": 856064,
+        "sha256": "969f744b6717b8e66a68c54c11501767736b6f5918151c18c203b83459970fa7"
+      },
+      {
+        "path": "mistakes.db-shm",
+        "size": 32768,
+        "sha256": "fd4c9fda9cd3f9ae7c962b0ddf37232294d55580e1aa165aa06129b8549389eb"
+      },
+      {
+        "path": "mistakes.db-wal",
+        "size": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "vfs.db",
+        "size": 2260992,
+        "sha256": "4009e5fd8075802d666fef514cbd826f027e6a13875f2a93e5341adb7195be57"
+      },
+      {
+        "path": "vfs.db-shm",
+        "size": 32768,
+        "sha256": "fd4c9fda9cd3f9ae7c962b0ddf37232294d55580e1aa165aa06129b8549389eb"
+      },
+      {
+        "path": "vfs.db-wal",
+        "size": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    ],
+    "flip": {
+      "path": "chat_v2.db",
+      "offset": 2076
+    }
+  },
+  "zips": {
+    "portable": {
+      "path": "historical-zip/portable.zip.gz",
+      "size": 145130,
+      "sha256": "977e20ad5a7004207c28f3b55a93f750a9f3087b7ffd355b606020a15664852b"
+    },
+    "sealed": {
+      "path": "historical-zip/sealed.zip.gz",
+      "size": 146866,
+      "sha256": "244117ef40e659e568054eaaee7cb5aa68afbd30066b38bc03fa5e3797717fcd",
+      "password": "w21-l21-historical-sealed"
+    }
+  },
+  "audit": {
+    "rows": [
+      {
+        "operation_type": "Migration",
+        "status": "Completed",
+        "operation_data": "{\"type\":\"Migration\",\"from_version\":0,\"to_version\":20261027,\"applied_count\":71}",
+        "details": "null",
+        "timestamp": "2026-11-07T16:14:27.475195338+00:00"
+      },
+      {
+        "operation_type": "Migration",
+        "status": "Completed",
+        "operation_data": "{\"type\":\"Migration\",\"from_version\":0,\"to_version\":20260826,\"applied_count\":8}",
+        "details": "null",
+        "timestamp": "2026-11-07T16:14:27.668520177+00:00"
+      },
+      {
+        "operation_type": "Migration",
+        "status": "Completed",
+        "operation_data": "{\"type\":\"Migration\",\"from_version\":0,\"to_version\":20260910,\"applied_count\":29}",
+        "details": "null",
+        "timestamp": "2026-11-07T16:14:28.802949412+00:00"
+      },
+      {
+        "operation_type": "Migration",
+        "status": "Completed",
+        "operation_data": "{\"type\":\"Migration\",\"from_version\":0,\"to_version\":20261005,\"applied_count\":23}",
+        "details": "null",
+        "timestamp": "2026-11-07T16:14:29.712271935+00:00"
+      },
+      {
+        "operation_type": "Backup",
+        "status": "Completed",
+        "operation_data": "{\"type\":\"Backup\",\"backup_type\":\"Full\",\"file_count\":4,\"total_size\":4182016}",
+        "details": "{\"job_id\":\"0883ad53-c346-4dfa-b9cc-2c9685468ebd\",\"backup_type\":\"full\",\"include_assets\":true,\"db_files\":4,\"asset_files\":0,\"db_size\":4182016,\"asset_size\":0}",
+        "timestamp": "2026-11-07T16:14:41.246907938+00:00"
+      },
+      {
+        "operation_type": "Backup",
+        "status": "Completed",
+        "operation_data": "{\"type\":\"Backup\",\"backup_type\":\"Auto\",\"file_count\":4,\"total_size\":4182016}",
+        "details": "{\"action\":\"post_backup_auto_verify\",\"backup_id\":\"20261107_161441_4c235ca0_373\",\"is_valid\":true,\"errors\":[]}",
+        "timestamp": "2026-11-07T16:14:44.885690119+00:00"
+      }
+    ],
+    "mismatches": []
+  }
+}

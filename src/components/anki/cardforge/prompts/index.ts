@@ -14,7 +14,7 @@
  * wrapper 格式或任何分隔符规则，否则后端自动选择 json_schema 时，
  * system 消息（CardAgent prompt）与 user 消息（后端协议指令）会互相矛盾。
  * 与该原则对应的跨层契约 fixture：
- * `src-tauri/tests/fixtures/cardagent_system_prompt.txt`
+ * `tests/fixtures/anki/cardagent_system_prompt.txt`
  * （Rust 侧 streaming_anki_service 用它组装完整请求消息做协议冲突断言，
  * TS 侧 prompts.test.ts 断言本函数输出与 fixture 逐字一致）。
  *
@@ -44,7 +44,7 @@ import type { TemplateInfo } from '../types';
  * 输出格式协议由后端按供应商能力单点生成，此层绝不包含协议规则。
  *
  * 修改本函数输出时必须同步更新跨层契约 fixture：
- * `src-tauri/tests/fixtures/cardagent_system_prompt.txt`
+ * `tests/fixtures/anki/cardagent_system_prompt.txt`
  */
 export function buildCardGenerationSystemPrompt(): string {
   return `你是一位专业的 Anki 记忆卡片制作专家。你的任务是将学习材料转化为高质量的记忆卡片。

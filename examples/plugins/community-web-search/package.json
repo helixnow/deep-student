@@ -1,0 +1,14 @@
+{
+  "name": "deepstudent-plugin-web-search",
+  "version": "1.0.0",
+  "private": true,
+  "description": "示例插件：只有 Host 半，提供带配置校验的离线搜索服务 exampleWebSearch，与官方 webSearch 并存（README.md）",
+  "type": "module",
+  "engines": { "deepStudent": "^0.20" },
+  "deepStudent": {
+    "manifestVersion": 1,
+    "id": "example.web-search",
+    "platforms": ["desktop"],
+    "host": "./index.ts"
+  }
+}

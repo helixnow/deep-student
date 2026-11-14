@@ -1,0 +1,777 @@
+const ACTIVITY: "plugin-activity"
+
+const APP_EXECUTOR_ROSTER: readonly ["AttemptCompletionExecutor", "CanvasToolExecutor", "ChatAnkiToolExecutor", "BuiltinRetrievalExecutor", "InsightRecallExecutor", "BuiltinResourceExecutor", "ConnectorToolExecutor", "TaskAuditExecutor", "DstuToolExecutor", "AttachmentToolExecutor", "FetchExecutor", "BrowserToolExecutor", "MediaToolExecutor", "OfficeFidelityExecutor", "McpProposeExecutor", "McpManageExecutor", "AutomationExecutor", "AcademicSearchExecutor", "PaperSaveExecutor", "KnowledgeExecutor", "TodoListExecutor", "GoalExecutor", "QBankExecutor", "TranslationToolExecutor", "SettingsModelsToolExecutor", "LlmUsageToolExecutor", "LearningOverviewExecutor", "FsrsSettingsExecutor", "DataGovernanceToolExecutor", "MemoryToolExecutor", "UserTodoExecutor", "SkillsExecutor", "TemplateDesignerExecutor", "TextbookPdfToolExecutor", "IndexWebpageToolExecutor", "AskUserExecutor", "SessionToolExecutor", "DocxToolExecutor", "PptxToolExecutor", "XlsxToolExecutor", "ImageGenerationExecutor", "GenerativeUiExecutor", "WorkspaceFsExecutor", "LspNavigationExecutor", "CodeNavigationExecutor", "FileManagerExecutor", "AttachmentStageExecutor", "NotesImportExecutor", "SkillInstallExecutor", "SkillMarketReadToolExecutor", "SkillMarketInstallToolExecutor", "SkillWorkshopExecutor", "SkillLifecycleExecutor", "LocalShellPreflightExecutor", "GitToolExecutor", "SelfInspectExecutor", "RolePackExecutor", "RuntimeRootRequestExecutor", "LocalShellExecuteExecutor", "EssayGradingExecutor", "ReviewToolExecutor", "DocumentProcessingExecutor", "WorkbenchToolExecutor"]
+
+interface ActivityPayload
+  pluginId: string
+  kind: string
+  summary: string
+  ts: number
+
+interface AdmittedToolDispatcher
+  dispatchAdmitted(call: AgentToolCall, ctx: ExecutionContext) => Promise<AgentToolResultInfo>
+
+type AgentJson = null | boolean | number | string | AgentJson[] | { [key: string]: AgentJson }
+
+class AgentServices
+  constructor()
+  insert<T>(key: ServiceKey<T>, value: T) => T | undefined
+  get<T>(key: ServiceKey<T>) => T | undefined
+  require<T>(key: ServiceKey<T>) => T
+  contains<T>(key: ServiceKey<T>) => boolean
+  len() => number
+  isEmpty() => boolean
+
+interface AgentToolCall
+  id: string
+  name: string
+  arguments: unknown
+
+interface AgentToolResultInfo
+  toolCallId?: string | undefined
+  blockId?: string | undefined
+  toolName: string
+  input: unknown
+  output: unknown
+  success: boolean
+  error?: string | undefined
+  durationMs?: number | undefined
+  reasoningContent?: string | undefined
+  thoughtSignature?: string | undefined
+
+interface AppEventEmitter
+  hasFrontend() => boolean
+  emitBlockEvent(event: string, payload: unknown) => void
+  emitSessionEvent(event: string, payload: unknown) => void
+
+type AppExecutorName = (typeof APP_EXECUTOR_ROSTER)[number]
+
+interface AppInfo  @stable
+  readonly dataDir: string
+  readonly version: string
+  readonly platform: "darwin" | "win32" | "linux"
+  readonly debug: boolean
+
+type ApprovalPolicy = { kind: 'never' } | { kind: 'scoped'; scopeKind: string; precise: boolean; neverRemember: boolean }
+
+interface BackendEvents  @stable
+  emit(event: string, payload: unknown) => void
+  emitTo(target: EventTarget, event: string, payload: unknown) => void
+  listen(event: string, handler: (payload: unknown, source: WindowRef) => void) => void
+  listenWindow(window: WindowRef, event: string, receive: (payload: unknown) => void) => () => void
+
+interface CallContext  @stable
+  readonly source: WindowRef
+  readonly signal: AbortSignal
+  readonly invokeId: string
+  readonly payload?: unknown
+  readonly exactPayload?: (() => unknown) | undefined
+  readonly headers?: Readonly<Record<string, string>> | undefined
+
+interface CallIds
+  sessionId: string
+  messageId: string
+  blockId?: string | undefined
+  toolCallId: string
+  round: number
+
+interface Capability<Scope = unknown>
+  identifier: string
+  description: string
+  remote: { urls: string[]; } | null
+  local: boolean
+  windows: string[]
+  webviews: string[]
+  permissions: CapabilityPermission<Scope>[]
+  platforms: CapabilityPlatform[] | null
+
+class CapabilityDecodeError extends Error
+  constructor(file: string, path: string, detail: string)
+  readonly file: string
+  readonly path: string
+  readonly detail: string
+
+type CapabilityPermission<Scope = unknown> = string | { identifier: string; /** Scopes are Option<Vec<Value>>; plugin-specific scope schemas belong to F2. */ allow: Scope[] | null; deny: Scope[] | null; }
+
+type CapabilityPlatform = 'macOS' | 'windows' | 'linux' | 'android' | 'iOS'
+
+interface ChannelPlugin
+  descriptor() => PluginDescriptor
+  isConfigured(config: PluginJsonValue) => boolean
+  isBound(settings: PluginSettings) => Promise<boolean>
+  run(ctx: PluginRuntimeContext) => Promise<void>
+  status(settings: PluginSettings) => Promise<PluginStatusSnapshot>
+  getPublicConfig(settings: PluginSettings) => Promise<PluginJsonValue>
+  setConfig(settings: PluginSettings, patch: PluginJsonValue) => Promise<void>
+  beginLogin(ctx: PluginRuntimeContext) => Promise<void>
+  cancelLogin() => Promise<void>
+  logout(settings: PluginSettings) => Promise<void>
+
+class CommandError extends Error  @stable
+  constructor(value: unknown)
+  readonly value: unknown
+
+type CommandHandler<A = Record<string, unknown>, R = unknown> = (args: A, call: CallContext) => R | Promise<R>  @stable
+
+interface CommandRegistry  @stable
+  register<A = Record<string, unknown>, R = unknown>(name: string, handler: CommandHandler<A, R>) => void
+  has(name: string) => boolean
+
+class Context = @deepseek-ai/cordis  @stable
+  commands: CommandRegistry
+  backendEvents: BackendEvents
+  uiEvents: UiEvents
+  app: AppInfo
+  shell: ShellBridge
+  protocols: ProtocolRegistry
+
+const DEFAULT_PLUGIN_STATE: PluginState
+
+const DEFAULT_TOOL_RESULT_CHAR_BUDGET: 30000
+
+interface DegradedPlugin  @stable
+  id: string
+  reason: string
+
+class DescriptorTable
+  constructor(entries?: Iterable<readonly [string, ToolDescriptor]>)
+  get(name: string) => ToolDescriptor | undefined
+  contains(name: string) => boolean
+  len() => number
+  isEmpty() => boolean
+  iter() => ReadonlyMap<string, ToolDescriptor>
+
+class Disposer
+  constructor(action: ()
+  isActive() => boolean
+  dispose() => void
+
+const EXTENSION_PLUGIN_ORDER: readonly ["web_search_fallback", "memory_vfs", "memory_mastery", "media_vfs", "media_host", "qbank_vfs", "qbank_runtime", "storage_notes", "browser_artifact_root", "sync_settings_database", "memory_sync_field_merger", "chatanki_agent", "agent_insight_hints"]
+
+type EventTarget = | { kind: 'Any' } | { kind: 'AnyLabel'; label: string } | { kind: 'App' } | { kind: 'Window'; label: string } | { kind: 'Webview'; label: string } | { kind: 'WebviewWindow'; label: string }  @stable
+
+class ExecutionContext
+  constructor(init: ExecutionContextInit)
+  readonly call: AgentToolCall
+  readonly ids: CallIds
+  readonly emitter: AppEventEmitter
+  readonly services: AgentServices
+  readonly host: HostBridge
+  readonly runtimeRoots: RuntimeRootResolver
+  readonly blockStore: ToolBlockStore
+  readonly dispatcher: AdmittedToolDispatcher
+  readonly cancel: AbortSignal
+  readonly flags: ExecutionFlags
+  readonly request: RequestExt
+  isCancelled() => boolean
+  hasFrontend() => boolean
+
+interface ExecutionContextInit
+  call: AgentToolCall
+  ids?: CallIds | undefined
+  emitter: AppEventEmitter
+  services: AgentServices
+  host: HostBridge
+  runtimeRoots: RuntimeRootResolver
+  blockStore: ToolBlockStore
+  dispatcher: AdmittedToolDispatcher
+  cancel: AbortSignal
+  flags?: ExecutionFlags | undefined
+  request?: RequestExt | undefined
+
+interface ExecutionFlags
+  memoryEnabled: boolean
+  ragEnabled: boolean
+  webSearchEnabled: boolean
+  supportsTools: boolean
+
+interface ExecutorRosterOptions
+  readonly workspace: boolean
+
+interface ExtensionFailure
+  readonly name: "web_search_fallback" | "memory_vfs" | "memory_mastery" | "media_vfs" | "media_host" | "qbank_vfs" | "qbank_runtime" | "storage_notes" | "browser_artifact_root" | "sync_settings_database" | "memory_sync_field_merger" | "chatanki_agent" | "agent_insight_hints"
+  readonly error: unknown
+
+type ExtensionInstaller = (scope: Scope) => void
+
+type ExtensionInstallers = Partial<Record<ExtensionPluginName, ExtensionInstaller>>
+
+interface ExtensionLogger
+  error(message: string) => void
+
+type ExtensionPluginName = (typeof EXTENSION_PLUGIN_ORDER)[number]
+
+interface ExtensionRegistration
+  readonly applied: ("web_search_fallback" | "memory_vfs" | "memory_mastery" | "media_vfs" | "media_host" | "qbank_vfs" | "qbank_runtime" | "storage_notes" | "browser_artifact_root" | "sync_settings_database" | "memory_sync_field_merger" | "chatanki_agent" | "agent_insight_hints")[]
+  readonly missing: ("web_search_fallback" | "memory_vfs" | "memory_mastery" | "media_vfs" | "media_host" | "qbank_vfs" | "qbank_runtime" | "storage_notes" | "browser_artifact_root" | "sync_settings_database" | "memory_sync_field_merger" | "chatanki_agent" | "agent_insight_hints")[]
+  readonly failure: ExtensionFailure | null
+
+class ExtensionRegistry
+  constructor()
+  register(installers: Partial<Record<"web_search_fallback" | "memory_vfs" | "memory_mastery" | "media_vfs" | "media_host" | "qbank_vfs" | "qbank_runtime" | "storage_notes" | "browser_artifact_root" | "sync_settings_database" | "memory_sync_field_merger" | "chatanki_agent" | "agent_insight_hints", ExtensionInstaller>>, logger: ExtensionLogger) => ExtensionRegistration
+  appliedNames() => string[]
+  dispose() => void
+
+const GLOBAL_SHORTCUT_TRIGGERED: "global-shortcut://triggered"
+
+type GateDecision<R> = { block: R } | undefined
+
+const HOST_CALL_COMMAND: "plugin:host|call"
+
+const HOST_STATUS_COMMAND: "plugin:host|status"
+
+type HeadlessPolicy = 'blocked' | 'read_only' | 'allowed'
+
+class HookKernel<T>
+  constructor<T>()
+  kernelLen() => number
+  defaultLen() => number
+  addKernel(hook: T) => void
+  addDefault(hook: T) => Disposer
+  observe(visit: (hook: T) => void) => void
+  gate<R>(check: (hook: T) => GateDecision<R>) => R | undefined
+  waterfall<C>(context: C, visit: (hook: T, context: C) => void) => C
+
+class HookSet<T>
+  constructor<T>()
+  len() => number
+  isEmpty() => boolean
+  snapshot() => T[]
+  register(hook: T) => Disposer
+
+interface HostBridge
+  hasFrontend() => boolean
+  emit(event: string, payload: unknown) => void
+  roundTrip(request: HostRequest) => Promise<unknown>
+  asAny() => unknown
+
+interface HostExiting
+  readonly reason: "shutdown" | "dispose"
+
+interface HostPlugin<C = void>  @stable
+  name: string
+  meta: PluginMeta
+  inject?: readonly string[] | undefined
+  Config?: Schema<any, C> | undefined
+  apply(ctx: Context, config: C) => void | Promise<void>
+
+type HostPluginOrigin = 'builtin' | 'community'  @stable
+
+class HostRequest
+  constructor(channel: string, payload: unknown, timeoutMs?: number | undefined)
+  readonly channel: string
+  readonly payload: unknown
+  readonly timeoutMs: number | undefined
+  withTimeoutMs(timeoutMs: number) => HostRequest
+
+type IpcInteger = number | bigint
+
+type IpcJsonValue = null | boolean | string | number | import('../platform/util/portable.ts').JsonRawNumber | IpcJsonValue[] | { [key: string]: IpcJsonValue }
+
+interface JsonSchema
+  [key: string]: unknown
+  x-rust?: string | undefined
+  x-int?: "u8" | "u16" | "u32" | "u64" | "u128" | "usize" | "i8" | "i16" | "i32" | "i64" | "i128" | "isize" | undefined
+  x-float?: "f32" | "f64" | undefined
+  x-option?: "null" | "omit" | undefined
+  x-unresolved?: string | undefined
+
+class MissingExecutorError extends Error
+  constructor(names: readonly string[])
+  readonly names: readonly string[]
+
+interface NamedExecutor
+  name() => string
+
+interface OptionalService<T = unknown>
+  readonly key: ServiceKey<T>
+  readonly value: T
+
+const PIPELINE_EXECUTOR_TAIL: readonly ["ToolPackExecutor", "PtcExecutor", "GeneralToolExecutor"]
+
+const PLUGINS_DEGRADED_EVENT: "host://plugins-degraded"
+
+const PLUGIN_MANAGER_CONFIG_COMMAND: "plugin:manager|config"
+
+const PLUGIN_MANAGER_CONFIG_SAVE_COMMAND: "plugin:manager|config|save"
+
+const PLUGIN_MANAGER_CONSENT_COMMAND: "plugin:manager|consent"
+
+const PLUGIN_MANAGER_INSTALL_COMMAND: "plugin:manager|install"
+
+const PLUGIN_MANAGER_LIST_COMMAND: "plugin:manager|list"
+
+const PLUGIN_MANAGER_SET_ENABLED_COMMAND: "plugin:manager|set-enabled"
+
+const PLUGIN_MANAGER_SET_TRUST_COMMAND: "plugin:manager|set-trust"
+
+const PLUGIN_MANAGER_UNINSTALL_COMMAND: "plugin:manager|uninstall"
+
+const PLUGIN_MANAGER_UPDATE_IMPACT_COMMAND: "plugin:manager|update-impact"
+
+const PLUGIN_PLATFORMS: readonly ["desktop", "mobile"]  @stable
+
+type PipelineTailExecutorName = (typeof PIPELINE_EXECUTOR_TAIL)[number]
+
+interface PluginDescriptor
+  readonly id: string
+  readonly label: string
+  readonly blurb: string
+  readonly kind: "channel"
+
+interface PluginEventSink
+  emitState(pluginId: string, state: PluginState, error: string | null) => void
+  emitQrcode(pluginId: string, pngBase64: string, status: string) => void
+  emitActivity(pluginId: string, kind: string, summary: string) => void
+
+interface PluginInfo
+  id: string
+  label: string
+  blurb: string
+  kind: "channel"
+  state: PluginState
+  enabled: boolean
+  configured: boolean
+  bound: boolean
+  error: string | null
+
+type PluginJsonValue = null | boolean | number | bigint | string | PluginJsonValue[] | { [key: string]: PluginJsonValue }
+
+type PluginKind = 'channel'
+
+class PluginManager
+  constructor(options: PluginManagerOptions)
+  register(plugin: ChannelPlugin) => void
+  setState(id: string, state: PluginState, error: string | null) => Promise<void>
+  currentState(id: string) => PluginState
+  list() => Promise<PluginInfo[]>
+  getStatus(id: string) => Promise<PluginStatusSnapshot>
+  start(id: string) => Promise<PluginState>
+  stop(id: string) => Promise<PluginState>
+  setEnabled(id: string, enabled: boolean) => Promise<void>
+  getConfig(id: string) => Promise<PluginJsonValue>
+  setConfig(id: string, patch: PluginJsonValue) => Promise<void>
+  beginLogin(id: string) => Promise<void>
+  cancelLogin(id: string) => Promise<void>
+  logout(id: string) => Promise<void>
+  unbind(id: string) => Promise<void>
+  shutdownAll() => Promise<void>
+  bootstrapEnabled() => Promise<void>
+
+interface PluginManagerConfigView
+  id: string
+  revision: string | null
+  values: unknown
+  schema: ConfigSchemaProjection | null
+
+interface PluginManagerConsentView
+  trust?: "full" | "restricted" | undefined
+  source?: "workshop" | "package" | undefined
+  id: string
+  version: string
+  permissions: readonly string[]
+  permissionsDigest: string
+
+interface PluginManagerEntry
+  trust: "full" | "restricted"
+  source: "workshop" | "package" | "builtin"
+  displayName?: string | undefined
+  displayNameKey?: string | undefined
+  descriptionKey?: string | undefined
+  icon?: string | undefined
+  author?: string | undefined
+  description?: string | undefined
+  category?: string | undefined
+  homepage?: string | undefined
+  id: string
+  origin: HostPluginOrigin
+  platforms: readonly ("desktop" | "mobile")[]
+  version?: string | undefined
+  enabled: boolean
+  state: PluginManagerState
+  reason?: string | undefined
+  permissions: readonly string[]
+  services: readonly string[]
+  hasConfig: boolean
+  consent?: { matched: boolean; code: "CONSENT_REQUIRED" | null; reason: "missing" | "version" | "permissions" | null; grantedPermissions: readonly string[]; } | undefined
+
+interface PluginManagerInstallResult
+  id: string
+  version: string
+  enabled: false
+  revision: string
+  consentRequired: { code: "CONSENT_REQUIRED"; id: string; version: string; permissions: readonly string[]; }
+  rollback: "not-needed"
+
+interface PluginManagerInventory
+  safeMode: boolean
+  revision: string | null
+  plugins: PluginManagerEntry[]
+
+interface PluginManagerOptions
+  settings: PluginSettings
+  events: Pick<BackendEvents, "emit">
+  desktop?: boolean | undefined
+  now?: (() => number) | undefined
+  warn: (message: string) => void
+  debug?: ((message: string) => void) | undefined
+
+type PluginManagerState = 'running' | 'degraded' | 'disabled' | 'not-installed'
+
+interface PluginMeta  @stable
+  displayName?: string | undefined
+  displayNameKey?: string | undefined
+  descriptionKey?: string | undefined
+  icon?: string | undefined
+  author?: string | undefined
+  description?: string | undefined
+  category?: string | undefined
+  homepage?: string | undefined
+  id: string
+  lane?: string | undefined
+  commands?: readonly string[] | undefined
+  provides?: readonly string[] | undefined
+  ui?: string | undefined
+  remote?: Record<string, readonly string[]> | undefined
+  version?: string | undefined
+  platforms?: readonly ("desktop" | "mobile")[] | undefined
+
+type PluginPlatform = (typeof PLUGIN_PLATFORMS)[number]  @stable
+
+interface PluginRuntimeContext
+  readonly settings: PluginSettings
+  readonly signal: AbortSignal
+  readonly config: PluginJsonValue
+  readonly desktop: boolean
+
+interface PluginSettings
+  get(key: string) => string | null
+  save(key: string, value: string) => void
+  delete(key: string) => boolean
+  getSecret(key: string) => Promise<string | null>
+  saveSecret(key: string, value: string) => Promise<void>
+  deleteSecret(key: string) => Promise<boolean>
+
+type PluginState = (typeof PluginState)[keyof typeof PluginState]
+const PluginState: { readonly Stopped: "stopped"; readonly Starting: "starting"; readonly WaitingLogin: "waiting_login"; readonly Running: "running"; readonly Stopping: "stopping"; readonly Error: "error"; }
+
+interface PluginStatusSnapshot
+  state: PluginState
+  enabled: boolean
+  configured: boolean
+  bound: boolean
+  loginStatus: string | null
+  accountId: string | null
+  userId: string | null
+  lastError: string | null
+  lastActivity: string | null
+  qrcodePngBase64: string | null
+  qrcodeStatus: string | null
+
+interface PluginUpdateImpact
+  incompatible: string[]
+  unchecked: string[]
+
+interface ProtocolRegistry  @stable
+  register(scheme: string, handler: (req: ProtocolRequestInfo) => ProtocolReply | Promise<ProtocolReply>) => void
+
+interface ProtocolReply  @stable
+  status: number
+  headers: Record<string, string>
+  body: Uint8Array | AsyncIterable<Uint8Array>
+
+interface ProtocolRequestInfo  @stable
+  url: string
+  method: string
+  headers: Record<string, string>
+  body?: Uint8Array | undefined
+
+type ProviderId = string
+
+type PtcPolicy = 'denied' | 'read_only' | 'write'
+
+const QRCODE: "plugin-qrcode"
+
+interface QrcodePayload
+  pluginId: string
+  pngBase64: string
+  status: string
+  ts: number
+
+class RateLimiter
+  constructor(perMin: number | bigint, now?: ()
+  checkAndRecord(peerId: string) => boolean
+
+interface RequestExt
+  ragTopK?: number | undefined
+  canvasNoteId?: string | undefined
+  questionAuthoring?: unknown
+
+interface RosterCoverageLogger
+  error(message: string) => void
+
+interface RuntimeRootResolver
+  artifactRoot() => string
+  tempRoot() => string
+  workspaceRoot() => string
+  resolve(relative: string) => string
+  authorize(path: string) => void
+
+const STATE_CHANGED: "plugin-state-changed"
+
+value Schema = @deepseek-ai/schemastery  @stable
+
+interface SchemaRefResolver
+  resolve(ref: string, base: string) => { schema: boolean | JsonSchema; base: string; } | undefined
+
+class Scope
+  constructor()
+  add(disposer: Disposer) => void
+  len() => number
+  isEmpty() => boolean
+  dispose() => void
+
+interface ScopedPlugin
+  name: string
+  apply(scope: Scope) => void
+
+class ScopedPluginError extends Error
+  constructor(plugin: string, message: string, options?: ErrorOptions | undefined)
+  readonly plugin: string
+  readonly detail: string
+
+class ScopedPluginHost
+  constructor()
+  len() => number
+  isEmpty() => boolean
+  contains(name: string) => boolean
+  appliedNames() => string[]
+  apply(plugin: ScopedPlugin) => boolean
+  applyAll(plugins: Iterable<ScopedPlugin>) => number
+  unload(name: string) => boolean
+  unloadAll() => void
+
+type SerdeCheck = { ok: true } | { ok: false; detail: string } | { ok: 'unknown' }
+
+class ServiceKey<T>
+  constructor<T>(typeName: string)
+  readonly type: T
+  readonly typeName: string
+
+class ServiceNotFound extends Error
+  constructor(typeName: string)
+  readonly typeName: string
+
+interface ShellBridge
+  request<R = unknown>(op: string, args?: unknown) => Promise<R>
+
+class ShellError extends Error
+  constructor(op: string, message: string, data?: ShellErrorData | undefined)
+  name: string
+  readonly op: string
+  readonly data?: ShellErrorData | undefined
+
+interface ShellErrorData
+  code: string
+  message: string
+  details?: unknown
+
+class Slot<T>
+  constructor<T>()
+  isOccupied() => boolean
+  get() => T | undefined
+  provide(value: T) => Disposer
+  replace(value: T) => Disposer
+
+class SlotOccupied extends Error
+  constructor()
+
+interface SpecificExecutorRegistry
+  hasSpecificExecutor(toolName: string) => boolean
+  len() => number
+
+interface StateChangedPayload
+  pluginId: string
+  state: PluginState
+  error: string | null
+  ts: number
+
+const TRUNCATION_MARKER: "…[truncated]"
+
+interface ToolBlockStore
+  upsertToolBlock(call: AgentToolCall, blockType: string, payload: unknown) => void
+
+type ToolConcurrency = 'read_only' | 'safe_parallel' | 'serial'
+
+class ToolDescriptor
+  constructor(name: string)
+  readonly name: string
+  aliases: readonly string[]
+  blockType: string
+  timeout: ToolTimeout
+  headless: HeadlessPolicy
+  ptc: PtcPolicy
+  approval: ApprovalPolicy
+  sensitivity: ToolSensitivity
+  withAliases(aliases: readonly string[]) => ToolDescriptor
+  withBlockType(blockType: string) => ToolDescriptor
+  withTimeout(timeout: ToolTimeout) => ToolDescriptor
+  withHeadless(headless: HeadlessPolicy) => ToolDescriptor
+  withPtc(ptc: PtcPolicy) => ToolDescriptor
+  withApproval(approval: ApprovalPolicy) => ToolDescriptor
+  withSensitivity(sensitivity: ToolSensitivity) => ToolDescriptor
+  names() => string[]
+
+interface ToolExecutor
+  canHandle(toolName: string) => boolean
+  execute(call: AgentToolCall, ctx: ExecutionContext) => Promise<AgentToolResultInfo>
+  name() => string
+
+abstract class ToolExecutorBase implements ToolExecutor
+  constructor()
+  abstract canHandle(toolName: string) => boolean
+  abstract execute(call: AgentToolCall, ctx: ExecutionContext) => Promise<AgentToolResultInfo>
+  sensitivityLevel(_toolName: string) => ToolSensitivity
+  sensitivityLevelForCall(toolName: string, _arguments: unknown) => ToolSensitivity
+  hasDynamicSensitivity(_toolName: string) => boolean
+  concurrencyClass(_toolName: string) => ToolConcurrency
+  managesCancellation(_toolName: string) => boolean
+  resultCharBudget(_toolName: string) => number | null
+  name() => string
+
+interface ToolProvider<E extends object>
+  readonly id: string
+  descriptors() => readonly ToolDescriptor[]
+  executor(name: string) => E | undefined
+  executors() => readonly E[]
+
+class ToolRegistry<E extends object>
+  constructor<E extends object>(providers: ToolProvider<E>[], roster: E[], byName: Map<string, E>, owners: Map<string, string>, descriptors: DescriptorTable, catchAll?: ToolProvider<E> | undefined)
+  executorFor(name: string) => E | undefined
+  descriptor(name: string) => ToolDescriptor | undefined
+  descriptorTable() => DescriptorTable
+  ownerOf(name: string) => string | undefined
+  executors() => readonly E[]
+  providers() => readonly ToolProvider<E>[]
+  catchAllProvider() => ToolProvider<E> | undefined
+  len() => number
+  isEmpty() => boolean
+
+class ToolRegistryBuilder<E extends object>
+  constructor<E extends object>()
+  register(provider: ToolProvider<E>) => ToolRegistryBuilder<E>
+  withProvider(provider: ToolProvider<E>) => ToolRegistryBuilder<E>
+  build() => ToolRegistry<E>
+
+class ToolRegistryError extends Error
+  constructor(code: ToolRegistryErrorCode, fields?: Record<string, string>)
+  readonly code: ToolRegistryErrorCode
+  readonly fields: Record<string, string>
+
+type ToolSensitivity = 'low' | 'medium' | 'high'
+
+type ToolTimeout = number | null
+
+const UI_MANIFEST_COMMAND: "plugin:ui|manifest"
+
+const UI_MANIFEST_EVENT: "host://ui-manifest"
+
+const UI_MANIFEST_V2_EVENT: "host://ui-manifest-v2"
+
+const UI_MANIFEST_VERSION: 2
+
+const UI_READY_COMMAND: "plugin:ui|ready"
+
+interface UiEvents
+  emit(event: string, payload: unknown) => void
+
+interface UiManifestEntry
+  id: string
+  file: string
+  version?: string | undefined
+
+interface UiManifestV2
+  version: 2
+  plugins: UiManifestV2Plugin[]
+  degraded: DegradedPlugin[]
+  safeMode: boolean
+
+interface UiManifestV2Plugin
+  id: string
+  origin: HostPluginOrigin
+  platforms: readonly ("desktop" | "mobile")[]
+  version?: string | undefined
+  file?: string | undefined
+
+const WORKSPACE_COORDINATOR_GROUP: readonly ["WorkspaceToolExecutor", "SubagentExecutor", "SuperSessionExecutor", "CustomAgentExecutor", "CoordinatorSleepExecutor"]
+
+interface WindowLifecycle
+  kind: "window"
+  ref: WindowRef
+  state: "created" | "focused" | "blurred" | "close-requested" | "destroyed" | "page-load-started"
+
+interface WindowRef  @stable
+  window: string
+  webview: string
+  origin?: string | undefined
+  native?: true | undefined
+
+type WorkspaceExecutorName = (typeof WORKSPACE_COORDINATOR_GROUP)[number]
+
+function applyToolResultBudget(output: AgentJson, requestedBudget: number) => AgentJson
+
+function asAppError(error: unknown) => AppError
+
+function buildPipelineServices(notesManager?: OptionalService<unknown> | undefined, questionBankService?: OptionalService<unknown> | undefined) => AgentServices
+
+function canTransitionTo(current: PluginState, next: PluginState) => boolean
+
+function composeAppExecutorRoster<E extends NamedExecutor>(catalog: ReadonlyMap<string, E>, options: ExecutorRosterOptions) => E[]
+
+function composePipelineExecutorRoster<E extends NamedExecutor>(catalog: ReadonlyMap<string, E>, options: ExecutorRosterOptions) => E[]
+
+function createPluginEventSink(events: Pick<BackendEvents, "emit">, options: PluginEventOptions) => PluginEventSink
+
+function decodeCapabilityFile(value: unknown, file?: string) => Capability<unknown>[]
+
+function definePlugin<C = void>(plugin: Omit<HostPlugin<C>, "name"> & { name?: string | undefined; }) => HostPlugin<C>  @stable
+
+function disposeGlobalExtensions() => void
+
+function emptyStatusSnapshot() => PluginStatusSnapshot
+
+function errorDisplay(error: unknown) => string  @stable
+
+function executorConcurrencyClass(executor: ToolExecutor, toolName: string) => ToolConcurrency
+
+function executorHasDynamicSensitivity(executor: ToolExecutor, toolName: string) => boolean
+
+function executorManagesCancellation(executor: ToolExecutor, toolName: string) => boolean
+
+function executorResultCharBudget(executor: ToolExecutor, toolName: string) => number | null
+
+function executorSensitivity(executor: ToolExecutor, toolName: string) => ToolSensitivity
+
+function executorSensitivityForCall(executor: ToolExecutor, toolName: string, args: unknown) => ToolSensitivity
+
+function isBoundUser(boundUserId: string, peerId: string) => boolean
+
+function isCatchAllProvider<E extends object>(provider: ToolProvider<E>) => boolean
+
+function missingDescriptorTools(registry: SpecificExecutorRegistry, descriptors: readonly ToolDescriptor[]) => string[]
+
+function normalizeUnitEnums(schema: boolean | JsonSchema, value: unknown, base: string, resolver: SchemaRefResolver) => unknown
+
+function parseCapabilityFile(text: string, file?: string) => Capability<JsonNode>[]
+
+function registerExtensions(installers: Partial<Record<"web_search_fallback" | "memory_vfs" | "memory_mastery" | "media_vfs" | "media_host" | "qbank_vfs" | "qbank_runtime" | "storage_notes" | "browser_artifact_root" | "sync_settings_database" | "memory_sync_field_merger" | "chatanki_agent" | "agent_insight_hints", ExtensionInstaller>>, logger: ExtensionLogger) => ExtensionRegistration
+
+function rustDebugString(value: string) => string
+
+function serdeCheck(schema: boolean | JsonSchema, value: unknown, base: string, resolver: SchemaRefResolver) => SerdeCheck
+
+function serializedCharLen(value: AgentJson) => number
+
+function unexpectedOf(value: unknown) => string
+
+function verifyRosterCoverage(registry: SpecificExecutorRegistry, descriptors: readonly ToolDescriptor[], logger: RosterCoverageLogger) => string[]

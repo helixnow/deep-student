@@ -1,6 +1,6 @@
 import React from 'react';
 import { AppIconImage } from '../../icons/appIcons';
-import { appRegistry } from '../../core/appRegistry';
+import { contributeWorkbenchApp } from '../../core/appContributions';
 import type { ActivationContext, ActivationResult, AppDefinition } from '../../core/types';
 import { FILE_PREVIEW_APP_TYPE_ID } from '../content/typeMap';
 import { createResourceContentManifest } from '../content/agentManifests';
@@ -55,4 +55,4 @@ export const FILE_PREVIEW_APP_DEFINITION: AppDefinition = {
   ),
 };
 
-appRegistry.register(FILE_PREVIEW_APP_DEFINITION);
+contributeWorkbenchApp(FILE_PREVIEW_APP_DEFINITION);

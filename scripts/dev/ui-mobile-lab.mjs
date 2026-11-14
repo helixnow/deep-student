@@ -6,12 +6,11 @@
  *
  * 会做：
  *   1. 启动 ui-bridge-server（17423）
- *   2. 以手机比例窗口 + VITE_DS_UI_BRIDGE=1 启动 tauri dev
+ *   2. 以手机比例窗口 + VITE_DS_UI_BRIDGE=1 启动 Electron
  *
  * 选项：
  *   --device android-default | android-compact | …  （见 ui_devices）
- *   --no-tauri   只启动 bridge（已有 dev 实例时）
- *   --bridge-only  同 --no-tauri
+ *   --bridge-only  只启动 bridge（已有 dev 实例时）
  */
 import { spawn, execSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -29,7 +28,7 @@ const args = process.argv.slice(2);
 const flags = new Set(args.filter((a) => a.startsWith('--')));
 const deviceArg = args.find((a) => !a.startsWith('--') && !a.startsWith('-'));
 const device = deviceArg && DEVICES[deviceArg] ? deviceArg : 'android-default';
-const bridgeOnly = flags.has('--no-tauri') || flags.has('--bridge-only');
+const bridgeOnly = flags.has('--bridge-only');
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
@@ -114,11 +113,11 @@ async function main() {
 
     devPid = spawnDetached(
       'npm',
-      ['run', 'dev:tauri', '--', '--config', runtimeCfg],
-      { VITE_DS_UI_BRIDGE: '1' },
+      ['run', 'dev:electron'],
+      { VITE_DS_UI_BRIDGE: '1', DS_ELECTRON_DEV_CONFIG: runtimeCfg },
       DEV_LOG,
     );
-    console.log(`  tauri dev pid: ${devPid}`);
+    console.log(`  Electron dev pid: ${devPid}`);
   }
 
   fs.writeFileSync(PID_FILE, JSON.stringify({ bridgePid, devPid, device }, null, 2));
@@ -128,7 +127,7 @@ async function main() {
   if (connected) {
     console.log('🟢 ui-bridge connected');
   } else {
-    console.log('🟡 bridge up but app not connected yet — wait for tauri dev to finish compiling');
+    console.log('🟡 bridge up but app not connected yet — wait for the Electron app to load');
     console.log(`   tail -f ${DEV_LOG}`);
   }
 

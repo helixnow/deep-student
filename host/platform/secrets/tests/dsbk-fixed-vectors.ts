@@ -1,0 +1,5 @@
+/** Existing independently calculated default-parameter fixtures, moved verbatim
+ * from backup-crypto.test.ts so real-native consumption uses the same bytes.
+ */
+export const DSBK_V1_DEFAULT_HEX = '4453424b0100000100030000000400000007070707070707070707070707070707000102030405060708090a0b23f2c6510cc9cfec607a867c3ddd216ae244d9eb789081723128f0d51d7434da4d9f';
+export const DSBK_V2_DEFAULT_HEX = '4453424b0200000100030000000400000007070707070707070707070707070707aaaaaaaaaaaaaa00001000f6bdd95a3155ef588c2e94c3d79e8c2fb7091b543b77a8397976ee45c90801e0cedb';

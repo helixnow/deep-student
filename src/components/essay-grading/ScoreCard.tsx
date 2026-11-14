@@ -275,7 +275,7 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({ score, className, gradingM
               />
             </svg>
             <div className="absolute inset-0 flex items-center justify-center">
-              <span className={cn('text-xl font-semibold tabular-nums', gradeText)}>
+              <span className={cn('text-xl font-mono font-semibold tabular-nums tracking-tight', gradeText)}>
                 {displayTotal}
               </span>
             </div>
@@ -283,22 +283,22 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({ score, className, gradingM
 
           <div>
             <div className="flex items-baseline gap-1.5 mb-0.5">
-              <span className="text-sm text-muted-foreground">{t('score.total')}</span>
+              <span className="text-xs font-medium text-muted-foreground/75">{t('score.total')}</span>
             </div>
-            <div className="flex items-baseline gap-0.5">
-              <span className={cn('text-3xl font-semibold tabular-nums', gradeText)}>
+            <div className="flex items-baseline gap-1">
+              <span className={cn('text-3xl font-mono font-semibold tabular-nums tracking-tight', gradeText)}>
                 {displayTotal}
               </span>
-              <span className="text-base text-muted-foreground/60">
+              <span className="text-sm font-mono tabular-nums text-muted-foreground/55">
                 /{displayMaxTotal}
               </span>
             </div>
           </div>
         </div>
 
-        {/* 等级徽章 - 语义色 */}
+        {/* 等级徽章 - 语义色轻量胶囊 */}
         <div className={cn(
-          'px-3 py-1.5 rounded-md text-sm font-medium',
+          'px-2.5 py-1 rounded-full text-xs font-medium tracking-wide',
           GRADE_BADGE_CLASS[score.grade] ?? GRADE_BADGE_CLASS.fail
         )}>
           {t(`score.grade.${score.grade}`)}
@@ -306,7 +306,7 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({ score, className, gradingM
       </div>
 
       {/* 总进度条：颜色与等级徽章/圆环同源（score.grade），避免两处口径漂移 */}
-      <div className="h-1 bg-muted/30 rounded-full overflow-hidden mb-5">
+      <div className="h-[3px] bg-foreground/[0.06] rounded-full overflow-hidden mb-5">
         <div
           className={cn(
             'h-full rounded-full transition-[width] duration-700 ease-out motion-reduce:transition-none',
@@ -324,7 +324,7 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({ score, className, gradingM
               {t('score.dimensions')}
             </div>
             {canShowRadar && (
-              <div className="flex items-center gap-0.5 rounded-md border border-border/40 p-0.5">
+              <div className="flex items-center gap-0.5 rounded-lg border border-border/35 bg-foreground/[0.02] p-0.5">
                 <DsButton
                   variant="ghost"
                   size="icon"
@@ -372,7 +372,7 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({ score, className, gradingM
                   return (
                     <div key={index} className="text-xs leading-relaxed">
                       <span className="text-foreground/80">{dim.name}</span>
-                      <span className="tabular-nums ml-1.5">
+                      <span className="font-mono tabular-nums ml-1.5">
                         <span className={cn('font-medium', GRADE_TEXT_CLASS[dimGrade])}>{dim.score}</span>
                         <span className="text-muted-foreground/50">/{dim.maxScore}</span>
                       </span>
@@ -393,7 +393,7 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({ score, className, gradingM
                   <div key={index} className="group">
                     <div className="flex items-center justify-between mb-1.5">
                       <span className="text-sm text-foreground/80">{dim.name}</span>
-                      <span className="text-sm tabular-nums">
+                      <span className="text-sm font-mono tabular-nums">
                         <span className={cn('font-medium', GRADE_TEXT_CLASS[dimGrade])}>
                           {dim.score}
                         </span>
@@ -401,7 +401,7 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({ score, className, gradingM
                         <span className="text-muted-foreground/50">{dim.maxScore}</span>
                       </span>
                     </div>
-                    <div className="h-0.5 bg-muted/20 rounded-full overflow-hidden">
+                    <div className="h-[3px] bg-foreground/[0.06] rounded-full overflow-hidden">
                       <div
                         className={cn(
                           'h-full rounded-full transition-[width] duration-500 ease-out motion-reduce:transition-none',

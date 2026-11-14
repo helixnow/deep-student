@@ -1,0 +1,793 @@
+{
+  "domain": "review",
+  "commands": [
+    "study_time_range",
+    "study_time_add",
+    "save_anki_cards",
+    "fsrs_enqueue_cards",
+    "fsrs_get_due",
+    "fsrs_unbury_card",
+    "fsrs_bury_card",
+    "fsrs_get_stats",
+    "fsrs_get_scheduler_config",
+    "fsrs_suspend_card",
+    "fsrs_unsuspend_card",
+    "fsrs_update_scheduler_config",
+    "delete_anki_card",
+    "fsrs_optimize_parameters",
+    "fsrs_rate"
+  ],
+  "scenarios": [
+    {
+      "id": "review.study-time.add-default-today-cap-and-range",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "study_time_range",
+          "args": {
+            "from": "2026-01-01",
+            "to": "2035-12-31"
+          }
+        },
+        {
+          "cmd": "study_time_add",
+          "args": {
+            "seconds": 60
+          }
+        },
+        {
+          "cmd": "study_time_add",
+          "args": {
+            "seconds": 1,
+            "date": null
+          }
+        },
+        {
+          "cmd": "study_time_add",
+          "args": {
+            "seconds": 3600,
+            "date": ""
+          }
+        },
+        {
+          "cmd": "study_time_add",
+          "args": {
+            "seconds": 3600,
+            "date": "   "
+          }
+        },
+        {
+          "cmd": "study_time_add",
+          "args": {
+            "seconds": 3600
+          }
+        },
+        {
+          "cmd": "study_time_add",
+          "args": {
+            "seconds": 3600
+          }
+        },
+        {
+          "cmd": "study_time_add",
+          "args": {
+            "seconds": 3600
+          }
+        },
+        {
+          "cmd": "study_time_add",
+          "args": {
+            "seconds": 3600
+          }
+        },
+        {
+          "cmd": "study_time_add",
+          "args": {
+            "seconds": 3600
+          }
+        },
+        {
+          "cmd": "study_time_add",
+          "args": {
+            "seconds": 3600
+          }
+        },
+        {
+          "cmd": "study_time_add",
+          "args": {
+            "seconds": 3600
+          }
+        },
+        {
+          "cmd": "study_time_add",
+          "args": {
+            "seconds": 3600
+          }
+        },
+        {
+          "cmd": "study_time_add",
+          "args": {
+            "seconds": 3600
+          }
+        },
+        {
+          "cmd": "study_time_add",
+          "args": {
+            "seconds": 3600
+          }
+        },
+        {
+          "cmd": "study_time_add",
+          "args": {
+            "seconds": 3600
+          }
+        },
+        {
+          "cmd": "study_time_add",
+          "args": {
+            "seconds": 3600
+          }
+        },
+        {
+          "cmd": "study_time_add",
+          "args": {
+            "seconds": 3600
+          }
+        },
+        {
+          "cmd": "study_time_add",
+          "args": {
+            "seconds": 3600
+          }
+        },
+        {
+          "cmd": "study_time_add",
+          "args": {
+            "seconds": 3600
+          }
+        },
+        {
+          "cmd": "study_time_add",
+          "args": {
+            "seconds": 3600
+          }
+        },
+        {
+          "cmd": "study_time_add",
+          "args": {
+            "seconds": 3600
+          }
+        },
+        {
+          "cmd": "study_time_add",
+          "args": {
+            "seconds": 3600
+          }
+        },
+        {
+          "cmd": "study_time_add",
+          "args": {
+            "seconds": 3600
+          }
+        },
+        {
+          "cmd": "study_time_add",
+          "args": {
+            "seconds": 3600
+          }
+        },
+        {
+          "cmd": "study_time_add",
+          "args": {
+            "seconds": 3600
+          }
+        },
+        {
+          "cmd": "study_time_add",
+          "args": {
+            "seconds": 3600
+          }
+        },
+        {
+          "cmd": "study_time_add",
+          "args": {
+            "seconds": 1
+          }
+        },
+        {
+          "cmd": "study_time_range",
+          "args": {
+            "from": "2026-01-01",
+            "to": "2035-12-31"
+          }
+        },
+        {
+          "cmd": "study_time_range",
+          "args": {
+            "from": " 2026-01-01 ",
+            "to": "2035-12-31\n"
+          }
+        },
+        {
+          "cmd": "study_time_range",
+          "args": {
+            "from": "2000-01-01",
+            "to": "2000-01-01"
+          }
+        },
+        {
+          "cmd": "study_time_range",
+          "args": {
+            "from": "2000-01-01",
+            "to": "2010-02-17"
+          }
+        },
+        {
+          "cmd": "study_time_range",
+          "args": {
+            "from": "2026-1-1",
+            "to": "2035-12-31"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "review.study-time.validation-errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "study_time_add",
+          "args": {
+            "seconds": 0
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "study_time_add",
+          "args": {
+            "seconds": -1
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "study_time_add",
+          "args": {
+            "seconds": 3601
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "study_time_add",
+          "args": {
+            "seconds": -9007199254740991
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "study_time_add",
+          "args": {
+            "seconds": 9007199254740991
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "study_time_add",
+          "args": {
+            "seconds": 3600,
+            "date": "2000-01-01"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "study_time_add",
+          "args": {
+            "seconds": 60,
+            "date": "2099-12-31"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "study_time_add",
+          "args": {
+            "seconds": 60,
+            "date": "2026/11/06"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "study_time_add",
+          "args": {
+            "seconds": 60,
+            "date": "2026-02-30"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "study_time_add",
+          "args": {
+            "seconds": 60,
+            "date": "today"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "study_time_add",
+          "args": {
+            "seconds": 0,
+            "date": "not-a-date"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "study_time_add",
+          "args": {
+            "seconds": 1.5
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "study_time_add",
+          "args": {
+            "date": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "study_time_add",
+          "args": {
+            "seconds": "60"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "study_time_range",
+          "args": {
+            "from": "",
+            "to": "2026-01-01"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "study_time_range",
+          "args": {
+            "from": "2026-01-01",
+            "to": "2026-13-01"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "study_time_range",
+          "args": {
+            "from": "20260101",
+            "to": "2026-01-02"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "study_time_range",
+          "args": {
+            "from": "2026-01-02",
+            "to": "2026-01-01"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "study_time_range",
+          "args": {
+            "from": "2000-01-01",
+            "to": "2010-02-18"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "study_time_range",
+          "args": {
+            "from": "bad",
+            "to": "bad"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "study_time_range",
+          "args": {
+            "from": "2026-01-01"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "study_time_range",
+          "args": {
+            "from": null,
+            "to": "2026-01-01"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "study_time_range",
+          "args": {
+            "from": "2000-01-01",
+            "to": "2010-02-17"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "review.fsrs.bury-unbury-idempotent-and-due-visibility",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_anki_cards",
+          "args": {
+            "request": {
+              "cards": [
+                {
+                  "front": "埋藏",
+                  "back": "次日恢复"
+                },
+                {
+                  "front": "对照",
+                  "back": "不埋藏"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "fsrs_enqueue_cards",
+          "args": {
+            "ankiCardIds": "${0.savedIds}"
+          }
+        },
+        {
+          "cmd": "fsrs_get_due",
+          "args": {
+            "limit": 50
+          }
+        },
+        {
+          "cmd": "fsrs_unbury_card",
+          "args": {
+            "cardStateId": "${1.states.0.id}"
+          }
+        },
+        {
+          "cmd": "fsrs_bury_card",
+          "args": {
+            "cardStateId": "${1.states.0.id}"
+          }
+        },
+        {
+          "cmd": "fsrs_bury_card",
+          "args": {
+            "cardStateId": "${1.states.0.id}"
+          }
+        },
+        {
+          "cmd": "fsrs_get_due",
+          "args": {
+            "limit": 50
+          }
+        },
+        {
+          "cmd": "fsrs_get_stats",
+          "args": {}
+        },
+        {
+          "cmd": "fsrs_get_scheduler_config",
+          "args": {}
+        },
+        {
+          "cmd": "fsrs_unbury_card",
+          "args": {
+            "cardStateId": "${1.states.0.id}"
+          }
+        },
+        {
+          "cmd": "fsrs_unbury_card",
+          "args": {
+            "cardStateId": "${1.states.0.id}"
+          }
+        },
+        {
+          "cmd": "fsrs_get_due",
+          "args": {
+            "limit": 50
+          }
+        },
+        {
+          "cmd": "fsrs_get_stats",
+          "args": {}
+        },
+        {
+          "cmd": "fsrs_suspend_card",
+          "args": {
+            "cardStateId": "${1.states.0.id}"
+          }
+        },
+        {
+          "cmd": "fsrs_bury_card",
+          "args": {
+            "cardStateId": "${1.states.0.id}"
+          }
+        },
+        {
+          "cmd": "fsrs_get_stats",
+          "args": {}
+        },
+        {
+          "cmd": "fsrs_unsuspend_card",
+          "args": {
+            "cardStateId": "${1.states.0.id}"
+          }
+        },
+        {
+          "cmd": "fsrs_get_due",
+          "args": {
+            "limit": 50
+          }
+        },
+        {
+          "cmd": "fsrs_update_scheduler_config",
+          "args": {
+            "update": {
+              "dayRolloverHour": 0
+            }
+          }
+        },
+        {
+          "cmd": "fsrs_unbury_card",
+          "args": {
+            "cardStateId": "${1.states.0.id}"
+          }
+        },
+        {
+          "cmd": "fsrs_bury_card",
+          "args": {
+            "cardStateId": "${1.states.1.id}"
+          }
+        },
+        {
+          "cmd": "fsrs_get_due",
+          "args": {
+            "limit": 50
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "review.fsrs.bury-unbury-missing-and-deleted",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_anki_cards",
+          "args": {
+            "request": {
+              "cards": [
+                {
+                  "front": "将删除",
+                  "back": "物理删除后"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "fsrs_enqueue_cards",
+          "args": {
+            "ankiCardIds": "${0.savedIds}"
+          }
+        },
+        {
+          "cmd": "fsrs_bury_card",
+          "args": {
+            "cardStateId": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "fsrs_bury_card",
+          "args": {
+            "cardStateId": "   "
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "fsrs_unbury_card",
+          "args": {
+            "cardStateId": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "fsrs_unbury_card",
+          "args": {
+            "cardStateId": "\t"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "fsrs_bury_card",
+          "args": {
+            "cardStateId": "fsrs_state_missing"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "fsrs_unbury_card",
+          "args": {
+            "cardStateId": "fsrs_state_missing"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "delete_anki_card",
+          "args": {
+            "cardId": "${0.savedIds.0}"
+          }
+        },
+        {
+          "cmd": "fsrs_bury_card",
+          "args": {
+            "cardStateId": "${1.states.0.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "fsrs_unbury_card",
+          "args": {
+            "cardStateId": "${1.states.0.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "fsrs_bury_card",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "fsrs_unbury_card",
+          "args": {
+            "cardStateId": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "fsrs_bury_card",
+          "args": {
+            "card_state_id": "snake_case_key"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "fsrs_get_stats",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "review.fsrs.optimize-not-enough-data",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "fsrs_optimize_parameters",
+          "args": {}
+        },
+        {
+          "cmd": "fsrs_get_scheduler_config",
+          "args": {}
+        },
+        {
+          "cmd": "save_anki_cards",
+          "args": {
+            "request": {
+              "cards": [
+                {
+                  "front": "优化 1",
+                  "back": "a"
+                },
+                {
+                  "front": "优化 2",
+                  "back": "b"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "fsrs_enqueue_cards",
+          "args": {
+            "ankiCardIds": "${2.savedIds}"
+          }
+        },
+        {
+          "cmd": "fsrs_rate",
+          "args": {
+            "cardStateId": "${3.states.0.id}",
+            "rating": 1,
+            "durationMs": 1000,
+            "clientOpId": "00000000-0000-4000-8000-000000002291",
+            "enforceExpectedLastReview": true,
+            "expectedLastReviewMs": null
+          }
+        },
+        {
+          "cmd": "fsrs_rate",
+          "args": {
+            "cardStateId": "${3.states.0.id}",
+            "rating": 3,
+            "durationMs": 1000,
+            "clientOpId": "00000000-0000-4000-8000-000000002292"
+          }
+        },
+        {
+          "cmd": "fsrs_rate",
+          "args": {
+            "cardStateId": "${3.states.1.id}",
+            "rating": 4,
+            "durationMs": 500,
+            "clientOpId": "00000000-0000-4000-8000-000000002293"
+          }
+        },
+        {
+          "cmd": "fsrs_optimize_parameters",
+          "args": {}
+        },
+        {
+          "cmd": "fsrs_update_scheduler_config",
+          "args": {
+            "update": {
+              "relearningSteps": []
+            }
+          }
+        },
+        {
+          "cmd": "fsrs_optimize_parameters",
+          "args": {}
+        },
+        {
+          "cmd": "fsrs_get_scheduler_config",
+          "args": {}
+        },
+        {
+          "cmd": "fsrs_get_stats",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "id": "RF-W08-sanitize-path-component-match",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main-agent",
+  "approvedAt": "2026-11-07T02:38:24Z",
+  "title": "错误信息里的路径脱敏按路径组件匹配主目录，并按 Windows 分隔符截断，不再泄露其他用户名或完整 Windows 路径",
+  "rust": {
+    "file": "src-tauri/src/data_governance/commands_backup.rs",
+    "line": 621,
+    "behavior": "sanitize_path_for_user 用字符串 starts_with 判断主目录：主目录 /Users/ann 会命中 /Users/anna/…，输出 ~/a/…；回退分支只按 '/' 切分，Windows 路径 C:\\Users\\<name>\\… 没有 '/'，整条路径原样返回"
+  },
+  "fix": {
+    "files": ["host/plugins/backup/src/paths.ts"],
+    "behavior": "用 platform/files/path.ts 的 parseAbsolute + isWithin 按组件判断（Windows 不区分大小写，盘符和 UNC 根都识别），在主目录内输出 ~/<相对路径>；否则按平台分隔符（Windows 同时认 \\ 和 /）只保留最后两级 .../a/b"
+  },
+  "evidence": "函数注释写明目的是“避免在面向用户的错误信息中泄露完整文件系统路径”。在 Windows 上它对任何路径都不起作用（ZIP 文件不存在、备份路径越界、恢复目标槽缺失这些错误会带出 C:\\Users\\<用户名>\\…）；在 macOS/Linux 上，前缀相同的另一用户目录会被拼成错误的 ~/ 路径。主目录内的普通 POSIX 路径输出与 Rust 完全相同。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    { "file": "host/plugins/backup/tests/rust-fixes.test.ts", "name": "RF-W08-sanitize-path-component-match: home matching is per component and Windows paths never leak the user name" }
+  ]
+}

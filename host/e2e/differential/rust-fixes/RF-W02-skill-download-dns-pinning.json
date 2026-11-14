@@ -1,0 +1,28 @@
+{
+  "id": "RF-W02-skill-download-dns-pinning",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main-agent",
+  "approvedAt": "2026-11-07T02:38:24Z",
+  "title": "技能包 HTTPS 下载只连接通过 SSRF 校验的那个 IP（Rust 校验后由 reqwest 重新解析，存在 DNS 重绑定窗口）",
+  "rust": {
+    "file": "src-tauri/crates/dstu-agent/src/chat_v2/tools/fetch_executor.rs",
+    "line": 653,
+    "behavior": "download_https_bytes 先 to_socket_addrs 检查地址不是内网，再交给 reqwest 发请求；reqwest 连接时再解析一次域名。重定向策略同样只在校验时解析。两次解析之间 DNS 可以换成内网地址，校验被绕过。"
+  },
+  "fix": {
+    "files": ["host/plugins/agent-skills/src/http.ts"],
+    "behavior": "downloadHttpsBytes 必须由调用方传入 ctx.http（skill_scan/skill_install、技能 tap 目录与安装、skill_check_updates/skill_update_from_source 都从插件 ctx 取），每一跳以 destination public-pinned、redirect manual 发出：传输层解析主机、逐个校验地址、只连接校验通过的地址，不走代理；重定向在 downloadHttpsBytes 里逐跳处理，每跳重新解析、校验、钉住。没有 ctx.http 的宿主报 `UNSUPPORTED_ON_PLATFORM: skill downloads need the ctx.http service…`，不再自建桌面传输。错误文本、大小限制、超时与 Rust 相同。"
+  },
+  "evidence": "与 Rust 自身意图矛盾：download_https_bytes 的内网校验（Blocked: URL resolves to internal IP address）目的是防 SSRF，但校验与连接分别解析，攻击者控制的域名可在两次解析之间改指 127.0.0.1/内网，校验形同虚设。同仓 web_fetch 已用钉住连接修掉同一问题（RF-S01 系列）。来源：reviews/AGENT-EXECUTOR-SECURITY.md S2。技能市场 / tap / URL 安装都走这条下载路径。",
+  "g3": {
+    "affects": false,
+    "selectors": []
+  },
+  "tests": [
+    {
+      "file": "host/plugins/agent-skills/tests/http.test.ts",
+      "name": "RF-W02-skill-download-dns-pinning: connects every hop only to the address that passed the SSRF check"
+    }
+  ]
+}

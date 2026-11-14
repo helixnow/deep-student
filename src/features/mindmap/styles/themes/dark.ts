@@ -2,7 +2,7 @@ import type { IStyleTheme } from '../../registry/types';
 import { DARK_SAFE_PALETTE } from './palettes';
 
 /**
- * 显式暗色主题（简洁风格深色）
+ * 显式暗色主题（深邃夜石）
  *
  * 与 hidden 的 default-dark 是两套不同视觉：
  * - dark：用户主动选择的独立主题，主色根节点（primary 底），任何模式下都是深色视觉；
@@ -17,24 +17,25 @@ export const darkTheme: IStyleTheme = {
       background: 'hsl(var(--primary))',
       foreground: 'hsl(var(--primary-foreground))',
       border: 'transparent',
-      borderRadius: 6,
-      fontSize: 16,
+      borderRadius: 10,
+      fontSize: 18,
       fontWeight: '600',
       padding: '10px 20px',
     },
     branch: {
       background: 'hsl(var(--secondary))',
       foreground: 'hsl(var(--foreground) / 0.9)',
-      border: 'hsl(var(--foreground) / 0.09)',
-      borderRadius: 4,
-      fontSize: 14,
-      padding: '6px 12px',
+      border: '1px solid hsl(var(--foreground) / 0.1)',
+      borderRadius: 8,
+      fontSize: 15,
+      fontWeight: '500',
+      padding: '7px 14px',
     },
     leaf: {
       background: 'transparent',
-      foreground: 'hsl(var(--foreground) / 0.9)',
+      foreground: 'hsl(var(--foreground) / 0.85)',
       border: 'transparent',
-      borderRadius: 4,
+      borderRadius: 6,
       fontSize: 14,
       padding: '4px 8px',
     },

@@ -1,0 +1,361 @@
+{
+  "domain": "vfs",
+  "commands": ["dstu_folder_get", "dstu_folder_rename", "dstu_folder_delete", "dstu_folder_move", "dstu_folder_set_expanded", "dstu_folder_list", "dstu_folder_get_tree", "dstu_folder_get_breadcrumbs"],
+  "scenarios": [
+    {
+      "id": "vfs.folder.read.empty",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "dstu_folder_list", "args": {}},
+        {"cmd": "dstu_folder_get_tree", "args": {}},
+        {"cmd": "dstu_folder_get", "args": {"folderId": "fld_missing0000"}},
+        {"cmd": "dstu_folder_get", "args": {"folderId": "root"}},
+        {"cmd": "dstu_folder_get", "args": {"folderId": ""}},
+        {"cmd": "dstu_folder_get_breadcrumbs", "args": {"folderId": "fld_missing0000"}},
+        {"cmd": "dstu_folder_get_breadcrumbs", "args": {"folderId": "root"}},
+        {"cmd": "dstu_folder_get_breadcrumbs", "args": {"folderId": ""}}
+      ],
+      "capture": {"events": true, "db": ["*"]}, "normalize": []
+    },
+    {
+      "id": "vfs.folder.read.root_child_tree",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "dstu_folder_create", "args": {"title": "高考复习", "parentId": null, "icon": "folder", "color": "#FF0000"}},
+        {"cmd": "dstu_folder_create", "args": {"title": "数学", "parentId": "${0.id}", "icon": null, "color": null}},
+        {"cmd": "dstu_folder_create", "args": {"title": "矩阵📚", "parentId": "${1.id}"}},
+        {"cmd": "dstu_folder_create", "args": {"title": "另一根", "parentId": "root"}},
+        {"cmd": "dstu_folder_create", "args": {"title": "空串根", "parentId": ""}},
+        {"cmd": "dstu_folder_get", "args": {"folderId": "${0.id}"}},
+        {"cmd": "dstu_folder_get", "args": {"folderId": "${1.id}"}},
+        {"cmd": "dstu_folder_list", "args": {}},
+        {"cmd": "dstu_folder_get_tree", "args": {}},
+        {"cmd": "dstu_folder_get_breadcrumbs", "args": {"folderId": "${0.id}"}},
+        {"cmd": "dstu_folder_get_breadcrumbs", "args": {"folderId": "${2.id}"}}
+      ],
+      "capture": {"events": true, "db": ["*"]}, "normalize": []
+    },
+    {
+      "id": "vfs.folder.rename.readback",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "dstu_folder_create", "args": {"title": "旧根", "icon": "folder", "color": "blue"}},
+        {"cmd": "dstu_folder_create", "args": {"title": "子", "parentId": "${0.id}"}},
+        {"cmd": "dstu_folder_get_breadcrumbs", "args": {"folderId": "${1.id}"}},
+        {"cmd": "dstu_folder_set_expanded", "args": {"folderId": "${0.id}", "isExpanded": false}},
+        {"cmd": "dstu_folder_rename", "args": {"folderId": "${0.id}", "title": " 新根📚 "}},
+        {"cmd": "dstu_folder_get", "args": {"folderId": "${0.id}"}},
+        {"cmd": "dstu_folder_list", "args": {}},
+        {"cmd": "dstu_folder_get_tree", "args": {}},
+        {"cmd": "dstu_folder_get_breadcrumbs", "args": {"folderId": "${1.id}"}},
+        {"cmd": "dstu_folder_rename", "args": {"folderId": "${1.id}", "title": "新子"}},
+        {"cmd": "dstu_folder_get_breadcrumbs", "args": {"folderId": "${1.id}"}},
+        {"cmd": "dstu_folder_rename", "args": {"folderId": "${1.id}", "title": "新子"}},
+        {"cmd": "dstu_folder_get", "args": {"folderId": "${1.id}"}}
+      ],
+      "capture": {"events": true, "db": ["*"]}, "normalize": []
+    },
+    {
+      "id": "vfs.folder.rename.duplicate_and_literal_titles",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "dstu_folder_create", "args": {"title": "甲"}},
+        {"cmd": "dstu_folder_create", "args": {"title": "乙"}},
+        {"cmd": "dstu_folder_rename", "args": {"folderId": "${1.id}", "title": "甲"}},
+        {"cmd": "dstu_folder_list", "args": {}},
+        {"cmd": "dstu_folder_rename", "args": {"folderId": "${1.id}", "title": "单.点 %_ '\""}},
+        {"cmd": "dstu_folder_get_breadcrumbs", "args": {"folderId": "${1.id}"}},
+        {"cmd": "dstu_folder_rename", "args": {"folderId": "${0.id}", "title": "__system__"}},
+        {"cmd": "dstu_folder_list", "args": {}},
+        {"cmd": "dstu_folder_get_tree", "args": {}}
+      ],
+      "capture": {"events": true, "db": ["*"]}, "normalize": []
+    },
+    {
+      "id": "vfs.folder.rename.validation_order",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "dstu_folder_create", "args": {"title": "保留原名"}},
+        {"cmd": "dstu_folder_rename", "args": {"folderId": "${0.id}", "title": ""}, "expect": "error"},
+        {"cmd": "dstu_folder_rename", "args": {"folderId": "${0.id}", "title": "   "}, "expect": "error"},
+        {"cmd": "dstu_folder_rename", "args": {"folderId": "fld_missing0000", "title": "\t\n"}, "expect": "error"},
+        {"cmd": "dstu_folder_rename", "args": {"folderId": "${0.id}", "title": "a\u0000b"}, "expect": "error"},
+        {"cmd": "dstu_folder_rename", "args": {"folderId": "${0.id}", "title": "a\nb"}, "expect": "error"},
+        {"cmd": "dstu_folder_rename", "args": {"folderId": "${0.id}", "title": "a/b"}, "expect": "error"},
+        {"cmd": "dstu_folder_rename", "args": {"folderId": "${0.id}", "title": "a\\b"}, "expect": "error"},
+        {"cmd": "dstu_folder_rename", "args": {"folderId": "${0.id}", "title": "a..b"}, "expect": "error"},
+        {"cmd": "dstu_folder_rename", "args": {"folderId": "fld_missing0000", "title": "\n／/"}, "expect": "error"},
+        {"cmd": "dstu_folder_rename", "args": {"folderId": "fld_missing0000", "title": "／/"}, "expect": "error"},
+        {"cmd": "dstu_folder_get", "args": {"folderId": "${0.id}"}},
+        {"cmd": "dstu_folder_list", "args": {}}
+      ],
+      "capture": {"events": true, "db": ["*"]}, "normalize": []
+    },
+    {
+      "id": "vfs.folder.rename.unicode_bypass",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "dstu_folder_create", "args": {"title": "保留"}},
+        {"cmd": "dstu_folder_rename", "args": {"folderId": "${0.id}", "title": "a／b"}, "expect": "error"},
+        {"cmd": "dstu_folder_rename", "args": {"folderId": "${0.id}", "title": "a＼b"}, "expect": "error"},
+        {"cmd": "dstu_folder_rename", "args": {"folderId": "${0.id}", "title": "a⁄b"}, "expect": "error"},
+        {"cmd": "dstu_folder_rename", "args": {"folderId": "${0.id}", "title": "a∕b"}, "expect": "error"},
+        {"cmd": "dstu_folder_rename", "args": {"folderId": "${0.id}", "title": "a⧸b"}, "expect": "error"},
+        {"cmd": "dstu_folder_rename", "args": {"folderId": "${0.id}", "title": "a\u200bb"}, "expect": "error"},
+        {"cmd": "dstu_folder_rename", "args": {"folderId": "${0.id}", "title": "a\u200cb"}, "expect": "error"},
+        {"cmd": "dstu_folder_rename", "args": {"folderId": "${0.id}", "title": "a\u200db"}, "expect": "error"},
+        {"cmd": "dstu_folder_rename", "args": {"folderId": "${0.id}", "title": "\ufeff"}, "expect": "error"},
+        {"cmd": "dstu_folder_get", "args": {"folderId": "${0.id}"}}
+      ],
+      "capture": {"events": true, "db": ["*"]}, "normalize": []
+    },
+    {
+      "id": "vfs.folder.rename.utf8_limits",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "dstu_folder_create", "args": {"title": "长度"}},
+        {"cmd": "dstu_folder_rename", "args": {"folderId": "${0.id}", "title": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}},
+        {"cmd": "dstu_folder_get", "args": {"folderId": "${0.id}"}},
+        {"cmd": "dstu_folder_rename", "args": {"folderId": "${0.id}", "title": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}, "expect": "error"},
+        {"cmd": "dstu_folder_rename", "args": {"folderId": "${0.id}", "title": "汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉a"}},
+        {"cmd": "dstu_folder_get", "args": {"folderId": "${0.id}"}},
+        {"cmd": "dstu_folder_rename", "args": {"folderId": "${0.id}", "title": "汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉"}, "expect": "error"},
+        {"cmd": "dstu_folder_get_breadcrumbs", "args": {"folderId": "${0.id}"}}
+      ],
+      "capture": {"events": true, "db": ["*"]}, "normalize": []
+    },
+    {
+      "id": "vfs.folder.rename.missing_and_deleted",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "dstu_folder_rename", "args": {"folderId": "fld_missing0000", "title": "新名"}, "expect": "error"},
+        {"cmd": "dstu_folder_create", "args": {"title": "已删"}},
+        {"cmd": "dstu_folder_delete", "args": {"folderId": "${1.id}"}},
+        {"cmd": "dstu_folder_rename", "args": {"folderId": "${1.id}", "title": "新名"}, "expect": "error"},
+        {"cmd": "dstu_folder_get", "args": {"folderId": "${1.id}"}},
+        {"cmd": "dstu_folder_get_breadcrumbs", "args": {"folderId": "${1.id}"}},
+        {"cmd": "dstu_folder_list", "args": {}}
+      ],
+      "capture": {"events": true, "db": ["*"]}, "normalize": []
+    },
+    {
+      "id": "vfs.folder.move.subtree_and_root",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "dstu_folder_create", "args": {"title": "源"}},
+        {"cmd": "dstu_folder_create", "args": {"title": "子", "parentId": "${0.id}"}},
+        {"cmd": "dstu_folder_create", "args": {"title": "孙", "parentId": "${1.id}"}},
+        {"cmd": "dstu_folder_create", "args": {"title": "目标"}},
+        {"cmd": "dstu_folder_move", "args": {"folderId": "${1.id}", "newParentId": "${3.id}"}},
+        {"cmd": "dstu_folder_get", "args": {"folderId": "${1.id}"}},
+        {"cmd": "dstu_folder_list", "args": {}},
+        {"cmd": "dstu_folder_get_tree", "args": {}},
+        {"cmd": "dstu_folder_get_breadcrumbs", "args": {"folderId": "${2.id}"}},
+        {"cmd": "dstu_folder_move", "args": {"folderId": "${1.id}", "newParentId": "${3.id}"}},
+        {"cmd": "dstu_folder_move", "args": {"folderId": "${1.id}", "newParentId": null}},
+        {"cmd": "dstu_folder_get_breadcrumbs", "args": {"folderId": "${2.id}"}},
+        {"cmd": "dstu_folder_get_tree", "args": {}},
+        {"cmd": "dstu_folder_move", "args": {"folderId": "${2.id}"}},
+        {"cmd": "dstu_folder_get", "args": {"folderId": "${2.id}"}},
+        {"cmd": "dstu_folder_list", "args": {}},
+        {"cmd": "dstu_folder_get_tree", "args": {}}
+      ],
+      "capture": {"events": true, "db": ["*"]}, "normalize": []
+    },
+    {
+      "id": "vfs.folder.move.invalid_parent_and_precedence",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "dstu_folder_create", "args": {"title": "不动"}},
+        {"cmd": "dstu_folder_move", "args": {"folderId": "${0.id}", "newParentId": "${0.id}"}, "expect": "error"},
+        {"cmd": "dstu_folder_move", "args": {"folderId": "fld_missing0000", "newParentId": "fld_missing0000"}, "expect": "error"},
+        {"cmd": "dstu_folder_move", "args": {"folderId": "fld_missing0000", "newParentId": "other_missing"}, "expect": "error"},
+        {"cmd": "dstu_folder_move", "args": {"folderId": "fld_missing0000", "newParentId": null}, "expect": "error"},
+        {"cmd": "dstu_folder_move", "args": {"folderId": "${0.id}", "newParentId": "fld_missing0000"}, "expect": "error"},
+        {"cmd": "dstu_folder_move", "args": {"folderId": "${0.id}", "newParentId": "root"}, "expect": "error"},
+        {"cmd": "dstu_folder_move", "args": {"folderId": "${0.id}", "newParentId": ""}, "expect": "error"},
+        {"cmd": "dstu_folder_get", "args": {"folderId": "${0.id}"}},
+        {"cmd": "dstu_folder_get_tree", "args": {}}
+      ],
+      "capture": {"events": true, "db": ["*"]}, "normalize": []
+    },
+    {
+      "id": "vfs.folder.move.cycle",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "dstu_folder_create", "args": {"title": "祖"}},
+        {"cmd": "dstu_folder_create", "args": {"title": "父", "parentId": "${0.id}"}},
+        {"cmd": "dstu_folder_create", "args": {"title": "子", "parentId": "${1.id}"}},
+        {"cmd": "dstu_folder_move", "args": {"folderId": "${0.id}", "newParentId": "${1.id}"}, "expect": "error"},
+        {"cmd": "dstu_folder_move", "args": {"folderId": "${0.id}", "newParentId": "${2.id}"}, "expect": "error"},
+        {"cmd": "dstu_folder_list", "args": {}},
+        {"cmd": "dstu_folder_get_tree", "args": {}},
+        {"cmd": "dstu_folder_get_breadcrumbs", "args": {"folderId": "${2.id}"}}
+      ],
+      "capture": {"events": true, "db": ["*"]}, "normalize": []
+    },
+    {
+      "id": "vfs.folder.move.depth_boundary",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "dstu_folder_create", "args": {"title": "层1"}},
+        {"cmd": "dstu_folder_create", "args": {"title": "层2", "parentId": "${0.id}"}},
+        {"cmd": "dstu_folder_create", "args": {"title": "层3", "parentId": "${1.id}"}},
+        {"cmd": "dstu_folder_create", "args": {"title": "层4", "parentId": "${2.id}"}},
+        {"cmd": "dstu_folder_create", "args": {"title": "层5", "parentId": "${3.id}"}},
+        {"cmd": "dstu_folder_create", "args": {"title": "层6", "parentId": "${4.id}"}},
+        {"cmd": "dstu_folder_create", "args": {"title": "层7", "parentId": "${5.id}"}},
+        {"cmd": "dstu_folder_create", "args": {"title": "层8", "parentId": "${6.id}"}},
+        {"cmd": "dstu_folder_create", "args": {"title": "层9", "parentId": "${7.id}"}},
+        {"cmd": "dstu_folder_create", "args": {"title": "层10", "parentId": "${8.id}"}},
+        {"cmd": "dstu_folder_get_breadcrumbs", "args": {"folderId": "${9.id}"}},
+        {"cmd": "dstu_folder_create", "args": {"title": "移动树"}},
+        {"cmd": "dstu_folder_create", "args": {"title": "移动叶", "parentId": "${11.id}"}},
+        {"cmd": "dstu_folder_move", "args": {"folderId": "${11.id}", "newParentId": "${6.id}"}},
+        {"cmd": "dstu_folder_get_breadcrumbs", "args": {"folderId": "${12.id}"}},
+        {"cmd": "dstu_folder_move", "args": {"folderId": "${11.id}", "newParentId": "${7.id}"}, "expect": "error"},
+        {"cmd": "dstu_folder_move", "args": {"folderId": "${11.id}", "newParentId": "${8.id}"}, "expect": "error"},
+        {"cmd": "dstu_folder_get_breadcrumbs", "args": {"folderId": "${12.id}"}},
+        {"cmd": "dstu_folder_get_tree", "args": {}},
+        {"cmd": "dstu_folder_list", "args": {}}
+      ],
+      "capture": {"events": true, "db": ["*"]}, "normalize": []
+    },
+    {
+      "id": "vfs.folder.move.deleted_parent_and_source",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "dstu_folder_create", "args": {"title": "活跃"}},
+        {"cmd": "dstu_folder_create", "args": {"title": "回收站"}},
+        {"cmd": "dstu_folder_delete", "args": {"folderId": "${1.id}"}},
+        {"cmd": "dstu_folder_move", "args": {"folderId": "${0.id}", "newParentId": "${1.id}"}, "expect": "error"},
+        {"cmd": "dstu_folder_move", "args": {"folderId": "${1.id}", "newParentId": "${0.id}"}},
+        {"cmd": "dstu_folder_get", "args": {"folderId": "${1.id}"}},
+        {"cmd": "dstu_folder_get_breadcrumbs", "args": {"folderId": "${1.id}"}},
+        {"cmd": "dstu_folder_list", "args": {}},
+        {"cmd": "dstu_folder_get_tree", "args": {}},
+        {"cmd": "dstu_folder_move", "args": {"folderId": "${1.id}", "newParentId": null}},
+        {"cmd": "dstu_folder_get_breadcrumbs", "args": {"folderId": "${1.id}"}}
+      ],
+      "capture": {"events": true, "db": ["*"]}, "normalize": []
+    },
+    {
+      "id": "vfs.folder.expanded.toggle_and_deleted",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "dstu_folder_create", "args": {"title": "展开状态"}},
+        {"cmd": "dstu_folder_set_expanded", "args": {"folderId": "${0.id}", "isExpanded": false}},
+        {"cmd": "dstu_folder_get", "args": {"folderId": "${0.id}"}},
+        {"cmd": "dstu_folder_get_tree", "args": {}},
+        {"cmd": "dstu_folder_set_expanded", "args": {"folderId": "${0.id}", "isExpanded": false}},
+        {"cmd": "dstu_folder_set_expanded", "args": {"folderId": "${0.id}", "isExpanded": true}},
+        {"cmd": "dstu_folder_list", "args": {}},
+        {"cmd": "dstu_folder_delete", "args": {"folderId": "${0.id}"}},
+        {"cmd": "dstu_folder_set_expanded", "args": {"folderId": "${0.id}", "isExpanded": false}},
+        {"cmd": "dstu_folder_get", "args": {"folderId": "${0.id}"}},
+        {"cmd": "dstu_folder_list", "args": {}},
+        {"cmd": "dstu_folder_set_expanded", "args": {"folderId": "fld_missing0000", "isExpanded": true}, "expect": "error"},
+        {"cmd": "dstu_folder_set_expanded", "args": {"folderId": "", "isExpanded": false}, "expect": "error"}
+      ],
+      "capture": {"events": true, "db": ["*"]}, "normalize": []
+    },
+    {
+      "id": "vfs.folder.delete.cascade_and_repeat",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "dstu_folder_create", "args": {"title": "保留根"}},
+        {"cmd": "dstu_folder_create", "args": {"title": "删除子树", "parentId": "${0.id}"}},
+        {"cmd": "dstu_folder_create", "args": {"title": "子树叶", "parentId": "${1.id}"}},
+        {"cmd": "dstu_folder_create", "args": {"title": "保留兄弟", "parentId": "${0.id}"}},
+        {"cmd": "dstu_folder_delete", "args": {"folderId": "${1.id}"}},
+        {"cmd": "dstu_folder_list", "args": {}},
+        {"cmd": "dstu_folder_get_tree", "args": {}},
+        {"cmd": "dstu_folder_get", "args": {"folderId": "${1.id}"}},
+        {"cmd": "dstu_folder_get", "args": {"folderId": "${2.id}"}},
+        {"cmd": "dstu_folder_get_breadcrumbs", "args": {"folderId": "${2.id}"}},
+        {"cmd": "dstu_folder_delete", "args": {"folderId": "${1.id}"}},
+        {"cmd": "dstu_folder_delete", "args": {"folderId": "${2.id}"}},
+        {"cmd": "dstu_folder_delete", "args": {"folderId": "${0.id}"}},
+        {"cmd": "dstu_folder_list", "args": {}},
+        {"cmd": "dstu_folder_get_tree", "args": {}},
+        {"cmd": "dstu_folder_get_breadcrumbs", "args": {"folderId": "${3.id}"}}
+      ],
+      "capture": {"events": true, "db": ["*"]}, "normalize": []
+    },
+    {
+      "id": "vfs.folder.delete.missing",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "dstu_folder_delete", "args": {"folderId": "fld_missing0000"}, "expect": "error"},
+        {"cmd": "dstu_folder_delete", "args": {"folderId": "root"}, "expect": "error"},
+        {"cmd": "dstu_folder_delete", "args": {"folderId": ""}, "expect": "error"},
+        {"cmd": "dstu_folder_list", "args": {}},
+        {"cmd": "dstu_folder_get_tree", "args": {}}
+      ],
+      "capture": {"events": true, "db": ["*"]}, "normalize": []
+    },
+    {
+      "id": "vfs.folder.args.get_and_breadcrumbs",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "dstu_folder_get", "args": {}, "expect": "error"},
+        {"cmd": "dstu_folder_get", "args": {"folderId": null}, "expect": "error"},
+        {"cmd": "dstu_folder_get", "args": {"folderId": 1}, "expect": "error"},
+        {"cmd": "dstu_folder_get_breadcrumbs", "args": {}, "expect": "error"},
+        {"cmd": "dstu_folder_get_breadcrumbs", "args": {"folderId": null}, "expect": "error"},
+        {"cmd": "dstu_folder_get_breadcrumbs", "args": {"folderId": []}, "expect": "error"},
+        {"cmd": "dstu_folder_get", "args": {"folderId": "fld_missing0000", "unknown": true}},
+        {"cmd": "dstu_folder_get_breadcrumbs", "args": {"folderId": "fld_missing0000", "unknown": true}}
+      ],
+      "capture": {"events": true, "db": ["*"]}, "normalize": []
+    },
+    {
+      "id": "vfs.folder.args.rename",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "dstu_folder_rename", "args": {"title": "x"}, "expect": "error"},
+        {"cmd": "dstu_folder_rename", "args": {"folderId": null, "title": "x"}, "expect": "error"},
+        {"cmd": "dstu_folder_rename", "args": {"folderId": "fld_missing0000"}, "expect": "error"},
+        {"cmd": "dstu_folder_rename", "args": {"folderId": "fld_missing0000", "title": null}, "expect": "error"},
+        {"cmd": "dstu_folder_rename", "args": {"folderId": "fld_missing0000", "title": 1}, "expect": "error"}
+      ],
+      "capture": {"events": true, "db": ["*"]}, "normalize": []
+    },
+    {
+      "id": "vfs.folder.args.move_and_delete",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "dstu_folder_move", "args": {}, "expect": "error"},
+        {"cmd": "dstu_folder_move", "args": {"folderId": null}, "expect": "error"},
+        {"cmd": "dstu_folder_move", "args": {"folderId": "fld_missing0000", "newParentId": false}, "expect": "error"},
+        {"cmd": "dstu_folder_delete", "args": {}, "expect": "error"},
+        {"cmd": "dstu_folder_delete", "args": {"folderId": null}, "expect": "error"},
+        {"cmd": "dstu_folder_delete", "args": {"folderId": {}}, "expect": "error"}
+      ],
+      "capture": {"events": true, "db": ["*"]}, "normalize": []
+    },
+    {
+      "id": "vfs.folder.args.expanded",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "dstu_folder_set_expanded", "args": {"isExpanded": true}, "expect": "error"},
+        {"cmd": "dstu_folder_set_expanded", "args": {"folderId": null, "isExpanded": true}, "expect": "error"},
+        {"cmd": "dstu_folder_set_expanded", "args": {"folderId": "fld_missing0000"}, "expect": "error"},
+        {"cmd": "dstu_folder_set_expanded", "args": {"folderId": "fld_missing0000", "isExpanded": null}, "expect": "error"},
+        {"cmd": "dstu_folder_set_expanded", "args": {"folderId": "fld_missing0000", "isExpanded": "false"}, "expect": "error"},
+        {"cmd": "dstu_folder_set_expanded", "args": {"folderId": "fld_missing0000", "isExpanded": 0}, "expect": "error"}
+      ],
+      "capture": {"events": true, "db": ["*"]}, "normalize": []
+    },
+    {
+      "id": "vfs.folder.args.list_tree_unknown_ignored",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "dstu_folder_create", "args": {"title": "不按父级过滤"}},
+        {"cmd": "dstu_folder_list", "args": {"folderId": "fld_missing0000", "limit": 0}},
+        {"cmd": "dstu_folder_get_tree", "args": {"parentId": "fld_missing0000", "unknown": true}}
+      ],
+      "capture": {"events": true, "db": ["*"]}, "normalize": []
+    }
+  ]
+}

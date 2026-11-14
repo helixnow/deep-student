@@ -26,6 +26,11 @@
   transform: translateZ(0);
 }
 
+/* CSS Text Level 4 中西文混排光学微距 */
+:where(.markdown-body, .chat-prose, body):lang(zh) {
+  text-autospace: normal;
+}
+
 .chat-v2 .markdown-content {
   line-height: var(--chat-md-line-height);
   color: hsl(var(--foreground));
@@ -37,6 +42,10 @@
   width: 100%;
   max-width: 100%;
   font-feature-settings: "kern" 1, "liga" 1;
+}
+
+.chat-v2 .markdown-content:lang(zh) {
+  text-autospace: normal;
 }
 
 .chat-v2 .markdown-content > *:first-child {

@@ -1,0 +1,187 @@
+{
+  "rows": [
+    {
+      "label": "打开",
+      "danger": false,
+      "disabled": false
+    },
+    {
+      "label": "在右侧分屏打开",
+      "danger": false,
+      "disabled": false
+    },
+    {
+      "label": "取消收藏",
+      "danger": false,
+      "disabled": false
+    },
+    {
+      "label": "重命名",
+      "danger": false,
+      "disabled": false
+    },
+    "—",
+    {
+      "label": "新建笔记",
+      "danger": false,
+      "disabled": false
+    },
+    {
+      "label": "新建文件夹",
+      "danger": false,
+      "disabled": false
+    },
+    {
+      "label": "新建导图",
+      "danger": false,
+      "disabled": false
+    },
+    {
+      "label": "新建学习笔记",
+      "danger": false,
+      "disabled": false
+    },
+    "—",
+    {
+      "label": "删除",
+      "danger": true,
+      "disabled": false
+    }
+  ],
+  "keyboardSameRows": true,
+  "actions": {
+    "0:打开": {
+      "menuClosed": true,
+      "calls": [],
+      "refreshed": false,
+      "events": [],
+      "tabs": [
+        [
+          "收藏笔记 *"
+        ]
+      ],
+      "panes": [
+        "main: note-editor-note_fav"
+      ]
+    },
+    "1:在右侧分屏打开": {
+      "menuClosed": true,
+      "calls": [],
+      "refreshed": false,
+      "events": [],
+      "tabs": [
+        [
+          "收藏笔记 *"
+        ]
+      ],
+      "panes": [
+        "main: note-editor-note_fav"
+      ]
+    },
+    "2:取消收藏": {
+      "menuClosed": true,
+      "calls": [
+        "dstu.setFavorite[\"/note_fav\",false]"
+      ],
+      "refreshed": false,
+      "events": []
+    },
+    "3:重命名": {
+      "menuClosed": true,
+      "calls": [],
+      "refreshed": false,
+      "events": [],
+      "renameEditor": "收藏笔记"
+    },
+    "5:新建笔记": {
+      "menuClosed": true,
+      "calls": [
+        "createEmpty[{\"type\":\"note\"}]"
+      ],
+      "refreshed": true,
+      "events": [],
+      "tabs": [
+        [
+          "未命名笔记 *"
+        ]
+      ],
+      "panes": [
+        "main: note-editor-note_new"
+      ]
+    },
+    "6:新建文件夹": {
+      "menuClosed": true,
+      "calls": [],
+      "refreshed": false,
+      "events": [],
+      "opens": {
+        "kind": "inline-create",
+        "label": "新建文件夹",
+        "value": "",
+        "buttons": []
+      },
+      "followUp": {
+        "action": "name 新文件夹 + Enter",
+        "calls": [
+          "folderApi.createFolder[\"新文件夹\",null]"
+        ],
+        "refreshed": true,
+        "closed": true
+      }
+    },
+    "7:新建导图": {
+      "menuClosed": true,
+      "calls": [
+        "createEmpty[{\"type\":\"mindmap\"}]"
+      ],
+      "refreshed": true,
+      "events": [],
+      "tabs": [
+        [
+          "未命名导图 *"
+        ]
+      ],
+      "panes": [
+        "main: mindmap-editor-mm_new"
+      ]
+    },
+    "8:新建学习笔记": {
+      "menuClosed": true,
+      "calls": [],
+      "refreshed": false,
+      "events": [],
+      "opens": {
+        "kind": "dialog",
+        "title": "新建学习笔记",
+        "buttons": [
+          "创建笔记",
+          "取消新建"
+        ]
+      }
+    },
+    "10:删除": {
+      "menuClosed": true,
+      "calls": [],
+      "refreshed": false,
+      "events": [],
+      "opens": {
+        "kind": "inline-confirm",
+        "label": "移到回收站",
+        "text": "将“收藏笔记”移到回收站？",
+        "buttons": [
+          "取消",
+          "删除 (danger)"
+        ]
+      },
+      "followUp": {
+        "action": "click danger button",
+        "calls": [
+          "dstu.delete[\"/note_fav\"]",
+          "notify[\"success\",\"已将 收藏笔记 移到回收站\",null,{\"action\":{\"label\":\"撤销\",\"onClick\":\"ƒ\"}}]"
+        ],
+        "refreshed": true,
+        "closed": true
+      }
+    }
+  }
+}

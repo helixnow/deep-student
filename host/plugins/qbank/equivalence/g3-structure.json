@@ -1,0 +1,1303 @@
+{
+  "domain": "qbank",
+  "commands": [
+    "qbank_list_structure",
+    "qbank_update_material",
+    "qbank_delete_material",
+    "qbank_update_group",
+    "qbank_delete_group",
+    "qbank_legacy_audit",
+    "qbank_legacy_migrate_selected",
+    "qbank_reparse_report",
+    "qbank_reparse_resolve",
+    "update_exam_sheet_cards",
+    "list_exam_sheet_sessions",
+    "get_exam_sheet_session_detail",
+    "rename_exam_sheet_session"
+  ],
+  "scenarios": [
+    {
+      "id": "qbank.g3.structure.list_structure.material_group_exam",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "import_question_bank",
+          "args": {
+            "request": {
+              "content": "{\"schema_version\": 2, \"mode\": \"extract\", \"materials\": [{\"local_id\": \"m1\", \"content\": \"阅读材料：2 和 3 都是质数，且 2 是最小的质数。\", \"source_refs\": []}], \"groups\": [{\"local_id\": \"g1\", \"label\": \"材料题组 A\", \"material_ids\": [\"m1\"], \"question_ids\": [\"q1\", \"q2\"]}], \"questions\": [{\"local_id\": \"q1\", \"group_id\": \"g1\", \"original_label\": \"1\", \"content\": \"材料中提到的最小质数是？\", \"question_type\": \"single_choice\", \"options\": [{\"key\": \"A\", \"content\": \"2\"}, {\"key\": \"B\", \"content\": \"3\"}], \"answer\": \"A\", \"difficulty\": \"easy\", \"tags\": [\"质数\"]}, {\"local_id\": \"q2\", \"group_id\": \"g1\", \"original_label\": \"2\", \"content\": \"材料中一共提到了几个质数？\", \"question_type\": \"single_choice\", \"options\": [{\"key\": \"A\", \"content\": \"1\"}, {\"key\": \"B\", \"content\": \"2\"}], \"answer\": \"B\", \"difficulty\": \"easy\", \"tags\": [\"质数\"]}]}",
+              "format": "json",
+              "name": "结构测试卷",
+              "session_id": "${0.id}"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_commit_authoring_draft",
+          "args": {
+            "jobId": "${1.draft_job_id}",
+            "selectedLocalIds": [
+              "q1",
+              "q2"
+            ],
+            "expectedVersion": "${1.draft_version}"
+          }
+        },
+        {
+          "cmd": "qbank_list_structure",
+          "args": {
+            "examId": "${0.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.g3.structure.list_structure.empty_exam",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_list_structure",
+          "args": {
+            "examId": "${0.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.g3.structure.update_material.body_and_version_bump",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "import_question_bank",
+          "args": {
+            "request": {
+              "content": "{\"schema_version\": 2, \"mode\": \"extract\", \"materials\": [{\"local_id\": \"m1\", \"content\": \"阅读材料：2 和 3 都是质数，且 2 是最小的质数。\", \"source_refs\": []}], \"groups\": [{\"local_id\": \"g1\", \"label\": \"材料题组 A\", \"material_ids\": [\"m1\"], \"question_ids\": [\"q1\", \"q2\"]}], \"questions\": [{\"local_id\": \"q1\", \"group_id\": \"g1\", \"original_label\": \"1\", \"content\": \"材料中提到的最小质数是？\", \"question_type\": \"single_choice\", \"options\": [{\"key\": \"A\", \"content\": \"2\"}, {\"key\": \"B\", \"content\": \"3\"}], \"answer\": \"A\", \"difficulty\": \"easy\", \"tags\": [\"质数\"]}, {\"local_id\": \"q2\", \"group_id\": \"g1\", \"original_label\": \"2\", \"content\": \"材料中一共提到了几个质数？\", \"question_type\": \"single_choice\", \"options\": [{\"key\": \"A\", \"content\": \"1\"}, {\"key\": \"B\", \"content\": \"2\"}], \"answer\": \"B\", \"difficulty\": \"easy\", \"tags\": [\"质数\"]}]}",
+              "format": "json",
+              "name": "结构测试卷",
+              "session_id": "${0.id}"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_commit_authoring_draft",
+          "args": {
+            "jobId": "${1.draft_job_id}",
+            "selectedLocalIds": [
+              "q1",
+              "q2"
+            ],
+            "expectedVersion": "${1.draft_version}"
+          }
+        },
+        {
+          "cmd": "qbank_list_structure",
+          "args": {
+            "examId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "qbank_update_material",
+          "args": {
+            "materialId": "${3.materials.0.id}",
+            "content": "阅读材料（修订）：2 和 3 都是质数，且 2 是最小的质数。",
+            "expectedVersion": "${3.materials.0.version}"
+          }
+        },
+        {
+          "cmd": "qbank_update_material",
+          "args": {
+            "materialId": "${3.materials.0.id}",
+            "content": "阅读材料（第二次修订）：质数只有 2 和 3。",
+            "expectedVersion": "${4.version}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.g3.structure.delete_material.unreferenced_after_group_cleared",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "import_question_bank",
+          "args": {
+            "request": {
+              "content": "{\"schema_version\": 2, \"mode\": \"extract\", \"materials\": [{\"local_id\": \"m1\", \"content\": \"阅读材料：2 和 3 都是质数，且 2 是最小的质数。\", \"source_refs\": []}], \"groups\": [{\"local_id\": \"g1\", \"label\": \"材料题组 A\", \"material_ids\": [\"m1\"], \"question_ids\": [\"q1\", \"q2\"]}], \"questions\": [{\"local_id\": \"q1\", \"group_id\": \"g1\", \"original_label\": \"1\", \"content\": \"材料中提到的最小质数是？\", \"question_type\": \"single_choice\", \"options\": [{\"key\": \"A\", \"content\": \"2\"}, {\"key\": \"B\", \"content\": \"3\"}], \"answer\": \"A\", \"difficulty\": \"easy\", \"tags\": [\"质数\"]}, {\"local_id\": \"q2\", \"group_id\": \"g1\", \"original_label\": \"2\", \"content\": \"材料中一共提到了几个质数？\", \"question_type\": \"single_choice\", \"options\": [{\"key\": \"A\", \"content\": \"1\"}, {\"key\": \"B\", \"content\": \"2\"}], \"answer\": \"B\", \"difficulty\": \"easy\", \"tags\": [\"质数\"]}]}",
+              "format": "json",
+              "name": "结构测试卷",
+              "session_id": "${0.id}"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_commit_authoring_draft",
+          "args": {
+            "jobId": "${1.draft_job_id}",
+            "selectedLocalIds": [
+              "q1",
+              "q2"
+            ],
+            "expectedVersion": "${1.draft_version}"
+          }
+        },
+        {
+          "cmd": "qbank_list_structure",
+          "args": {
+            "examId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "qbank_update_group",
+          "args": {
+            "groupId": "${3.groups.0.id}",
+            "label": "${3.groups.0.label}",
+            "questionIds": [
+              "${3.groups.0.question_ids.0}",
+              "${3.groups.0.question_ids.1}"
+            ],
+            "materialIds": [],
+            "expectedVersion": "${3.groups.0.version}"
+          }
+        },
+        {
+          "cmd": "qbank_delete_material",
+          "args": {
+            "materialId": "${3.materials.0.id}",
+            "expectedVersion": "${3.materials.0.version}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.g3.structure.update_group.reorder_members",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "import_question_bank",
+          "args": {
+            "request": {
+              "content": "{\"schema_version\": 2, \"mode\": \"extract\", \"materials\": [{\"local_id\": \"m1\", \"content\": \"阅读材料：2 和 3 都是质数，且 2 是最小的质数。\", \"source_refs\": []}], \"groups\": [{\"local_id\": \"g1\", \"label\": \"材料题组 A\", \"material_ids\": [\"m1\"], \"question_ids\": [\"q1\", \"q2\"]}], \"questions\": [{\"local_id\": \"q1\", \"group_id\": \"g1\", \"original_label\": \"1\", \"content\": \"材料中提到的最小质数是？\", \"question_type\": \"single_choice\", \"options\": [{\"key\": \"A\", \"content\": \"2\"}, {\"key\": \"B\", \"content\": \"3\"}], \"answer\": \"A\", \"difficulty\": \"easy\", \"tags\": [\"质数\"]}, {\"local_id\": \"q2\", \"group_id\": \"g1\", \"original_label\": \"2\", \"content\": \"材料中一共提到了几个质数？\", \"question_type\": \"single_choice\", \"options\": [{\"key\": \"A\", \"content\": \"1\"}, {\"key\": \"B\", \"content\": \"2\"}], \"answer\": \"B\", \"difficulty\": \"easy\", \"tags\": [\"质数\"]}]}",
+              "format": "json",
+              "name": "结构测试卷",
+              "session_id": "${0.id}"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_commit_authoring_draft",
+          "args": {
+            "jobId": "${1.draft_job_id}",
+            "selectedLocalIds": [
+              "q1",
+              "q2"
+            ],
+            "expectedVersion": "${1.draft_version}"
+          }
+        },
+        {
+          "cmd": "qbank_list_structure",
+          "args": {
+            "examId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "qbank_update_group",
+          "args": {
+            "groupId": "${3.groups.0.id}",
+            "label": "材料题组 B",
+            "questionIds": [
+              "${3.groups.0.question_ids.1}",
+              "${3.groups.0.question_ids.0}"
+            ],
+            "materialIds": [
+              "${3.groups.0.material_ids.0}"
+            ],
+            "expectedVersion": "${3.groups.0.version}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.g3.structure.update_group.remove_member_solo_group",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "import_question_bank",
+          "args": {
+            "request": {
+              "content": "{\"schema_version\": 2, \"mode\": \"extract\", \"materials\": [{\"local_id\": \"m1\", \"content\": \"阅读材料：2 和 3 都是质数，且 2 是最小的质数。\", \"source_refs\": []}], \"groups\": [{\"local_id\": \"g1\", \"label\": \"材料题组 A\", \"material_ids\": [\"m1\"], \"question_ids\": [\"q1\", \"q2\"]}], \"questions\": [{\"local_id\": \"q1\", \"group_id\": \"g1\", \"original_label\": \"1\", \"content\": \"材料中提到的最小质数是？\", \"question_type\": \"single_choice\", \"options\": [{\"key\": \"A\", \"content\": \"2\"}, {\"key\": \"B\", \"content\": \"3\"}], \"answer\": \"A\", \"difficulty\": \"easy\", \"tags\": [\"质数\"]}, {\"local_id\": \"q2\", \"group_id\": \"g1\", \"original_label\": \"2\", \"content\": \"材料中一共提到了几个质数？\", \"question_type\": \"single_choice\", \"options\": [{\"key\": \"A\", \"content\": \"1\"}, {\"key\": \"B\", \"content\": \"2\"}], \"answer\": \"B\", \"difficulty\": \"easy\", \"tags\": [\"质数\"]}]}",
+              "format": "json",
+              "name": "结构测试卷",
+              "session_id": "${0.id}"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_commit_authoring_draft",
+          "args": {
+            "jobId": "${1.draft_job_id}",
+            "selectedLocalIds": [
+              "q1",
+              "q2"
+            ],
+            "expectedVersion": "${1.draft_version}"
+          }
+        },
+        {
+          "cmd": "qbank_list_structure",
+          "args": {
+            "examId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "qbank_update_group",
+          "args": {
+            "groupId": "${3.groups.0.id}",
+            "label": "材料题组 A",
+            "questionIds": [
+              "${3.groups.0.question_ids.0}"
+            ],
+            "materialIds": [
+              "${3.groups.0.material_ids.0}"
+            ],
+            "expectedVersion": "${3.groups.0.version}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.g3.structure.delete_group.ungroup_preserves_material",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "import_question_bank",
+          "args": {
+            "request": {
+              "content": "{\"schema_version\": 2, \"mode\": \"extract\", \"materials\": [{\"local_id\": \"m1\", \"content\": \"阅读材料：2 和 3 都是质数，且 2 是最小的质数。\", \"source_refs\": []}], \"groups\": [{\"local_id\": \"g1\", \"label\": \"材料题组 A\", \"material_ids\": [\"m1\"], \"question_ids\": [\"q1\", \"q2\"]}], \"questions\": [{\"local_id\": \"q1\", \"group_id\": \"g1\", \"original_label\": \"1\", \"content\": \"材料中提到的最小质数是？\", \"question_type\": \"single_choice\", \"options\": [{\"key\": \"A\", \"content\": \"2\"}, {\"key\": \"B\", \"content\": \"3\"}], \"answer\": \"A\", \"difficulty\": \"easy\", \"tags\": [\"质数\"]}, {\"local_id\": \"q2\", \"group_id\": \"g1\", \"original_label\": \"2\", \"content\": \"材料中一共提到了几个质数？\", \"question_type\": \"single_choice\", \"options\": [{\"key\": \"A\", \"content\": \"1\"}, {\"key\": \"B\", \"content\": \"2\"}], \"answer\": \"B\", \"difficulty\": \"easy\", \"tags\": [\"质数\"]}]}",
+              "format": "json",
+              "name": "结构测试卷",
+              "session_id": "${0.id}"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_commit_authoring_draft",
+          "args": {
+            "jobId": "${1.draft_job_id}",
+            "selectedLocalIds": [
+              "q1",
+              "q2"
+            ],
+            "expectedVersion": "${1.draft_version}"
+          }
+        },
+        {
+          "cmd": "qbank_list_structure",
+          "args": {
+            "examId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "qbank_delete_group",
+          "args": {
+            "groupId": "${3.groups.0.id}",
+            "mode": "ungroup",
+            "expectedVersion": "${3.groups.0.version}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.g3.structure.delete_group.delete_members",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "import_question_bank",
+          "args": {
+            "request": {
+              "content": "{\"schema_version\": 2, \"mode\": \"extract\", \"materials\": [{\"local_id\": \"m1\", \"content\": \"阅读材料：2 和 3 都是质数，且 2 是最小的质数。\", \"source_refs\": []}], \"groups\": [{\"local_id\": \"g1\", \"label\": \"材料题组 A\", \"material_ids\": [\"m1\"], \"question_ids\": [\"q1\", \"q2\"]}], \"questions\": [{\"local_id\": \"q1\", \"group_id\": \"g1\", \"original_label\": \"1\", \"content\": \"材料中提到的最小质数是？\", \"question_type\": \"single_choice\", \"options\": [{\"key\": \"A\", \"content\": \"2\"}, {\"key\": \"B\", \"content\": \"3\"}], \"answer\": \"A\", \"difficulty\": \"easy\", \"tags\": [\"质数\"]}, {\"local_id\": \"q2\", \"group_id\": \"g1\", \"original_label\": \"2\", \"content\": \"材料中一共提到了几个质数？\", \"question_type\": \"single_choice\", \"options\": [{\"key\": \"A\", \"content\": \"1\"}, {\"key\": \"B\", \"content\": \"2\"}], \"answer\": \"B\", \"difficulty\": \"easy\", \"tags\": [\"质数\"]}]}",
+              "format": "json",
+              "name": "结构测试卷",
+              "session_id": "${0.id}"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_commit_authoring_draft",
+          "args": {
+            "jobId": "${1.draft_job_id}",
+            "selectedLocalIds": [
+              "q1",
+              "q2"
+            ],
+            "expectedVersion": "${1.draft_version}"
+          }
+        },
+        {
+          "cmd": "qbank_list_structure",
+          "args": {
+            "examId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "qbank_delete_group",
+          "args": {
+            "groupId": "${3.groups.0.id}",
+            "mode": "delete_members",
+            "expectedVersion": "${3.groups.0.version}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.g3.structure.delete_group.ungroup_without_material",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "import_question_bank",
+          "args": {
+            "request": {
+              "content": "{\"schema_version\": 2, \"mode\": \"extract\", \"materials\": [{\"local_id\": \"m1\", \"content\": \"阅读材料：2 和 3 都是质数，且 2 是最小的质数。\", \"source_refs\": []}], \"groups\": [{\"local_id\": \"g1\", \"label\": \"材料题组 A\", \"material_ids\": [\"m1\"], \"question_ids\": [\"q1\", \"q2\"]}], \"questions\": [{\"local_id\": \"q1\", \"group_id\": \"g1\", \"original_label\": \"1\", \"content\": \"材料中提到的最小质数是？\", \"question_type\": \"single_choice\", \"options\": [{\"key\": \"A\", \"content\": \"2\"}, {\"key\": \"B\", \"content\": \"3\"}], \"answer\": \"A\", \"difficulty\": \"easy\", \"tags\": [\"质数\"]}, {\"local_id\": \"q2\", \"group_id\": \"g1\", \"original_label\": \"2\", \"content\": \"材料中一共提到了几个质数？\", \"question_type\": \"single_choice\", \"options\": [{\"key\": \"A\", \"content\": \"1\"}, {\"key\": \"B\", \"content\": \"2\"}], \"answer\": \"B\", \"difficulty\": \"easy\", \"tags\": [\"质数\"]}]}",
+              "format": "json",
+              "name": "结构测试卷",
+              "session_id": "${0.id}"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_commit_authoring_draft",
+          "args": {
+            "jobId": "${1.draft_job_id}",
+            "selectedLocalIds": [
+              "q1",
+              "q2"
+            ],
+            "expectedVersion": "${1.draft_version}"
+          }
+        },
+        {
+          "cmd": "qbank_list_structure",
+          "args": {
+            "examId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "qbank_update_group",
+          "args": {
+            "groupId": "${3.groups.0.id}",
+            "label": "${3.groups.0.label}",
+            "questionIds": [
+              "${3.groups.0.question_ids.0}",
+              "${3.groups.0.question_ids.1}"
+            ],
+            "materialIds": [],
+            "expectedVersion": "${3.groups.0.version}"
+          }
+        },
+        {
+          "cmd": "qbank_list_structure",
+          "args": {
+            "examId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "qbank_delete_group",
+          "args": {
+            "groupId": "${5.groups.0.id}",
+            "mode": "ungroup",
+            "expectedVersion": "${5.groups.0.version}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.g3.structure.legacy_audit.preview_card_unmatched",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_update",
+          "args": {
+            "path": "${0.path}",
+            "content": "{\"temp_id\": \"legacy_t\", \"exam_name\": \"历史卷\", \"pages\": [{\"page_index\": 0, \"width\": 1000, \"height\": 1400, \"original_image_path\": \"\", \"cards\": [{\"card_id\": \"c1\", \"page_index\": 0, \"question_label\": \"1\", \"bbox\": {\"x\": 0.05, \"y\": 0.05, \"width\": 0.9, \"height\": 0.25}, \"resolved_bbox\": {\"x\": 50.0, \"y\": 70.0, \"width\": 900.0, \"height\": 350.0}, \"cropped_image_path\": \"\", \"ocr_text\": \"已知 2 和 3 都是质数，那么最小的质数是？\", \"tags\": [\"质数\"], \"question_type\": \"single_choice\", \"options\": [{\"key\": \"A\", \"content\": \"2\"}, {\"key\": \"B\", \"content\": \"3\"}], \"answer\": \"A\", \"difficulty\": \"easy\"}]}]}",
+            "resourceType": "exam",
+            "expectedUpdatedAtMs": null
+          }
+        },
+        {
+          "cmd": "qbank_legacy_audit",
+          "args": {
+            "examId": "${0.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.g3.structure.legacy_audit.empty_exam",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_legacy_audit",
+          "args": {
+            "examId": "${0.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.g3.structure.legacy_migrate_selected.unmatched_card_to_question",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_update",
+          "args": {
+            "path": "${0.path}",
+            "content": "{\"temp_id\": \"legacy_t\", \"exam_name\": \"历史卷\", \"pages\": [{\"page_index\": 0, \"width\": 1000, \"height\": 1400, \"original_image_path\": \"\", \"cards\": [{\"card_id\": \"c1\", \"page_index\": 0, \"question_label\": \"1\", \"bbox\": {\"x\": 0.05, \"y\": 0.05, \"width\": 0.9, \"height\": 0.25}, \"resolved_bbox\": {\"x\": 50.0, \"y\": 70.0, \"width\": 900.0, \"height\": 350.0}, \"cropped_image_path\": \"\", \"ocr_text\": \"已知 2 和 3 都是质数，那么最小的质数是？\", \"tags\": [\"质数\"], \"question_type\": \"single_choice\", \"options\": [{\"key\": \"A\", \"content\": \"2\"}, {\"key\": \"B\", \"content\": \"3\"}], \"answer\": \"A\", \"difficulty\": \"easy\"}]}]}",
+            "resourceType": "exam",
+            "expectedUpdatedAtMs": null
+          }
+        },
+        {
+          "cmd": "qbank_legacy_audit",
+          "args": {
+            "examId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "qbank_legacy_migrate_selected",
+          "args": {
+            "examId": "${0.id}",
+            "cardIds": [
+              "${2.migratable_card_ids.0}"
+            ],
+            "expectedVersion": "${2.audit_version}"
+          }
+        },
+        {
+          "cmd": "qbank_legacy_audit",
+          "args": {
+            "examId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "qbank_legacy_migrate_selected",
+          "args": {
+            "examId": "${0.id}",
+            "cardIds": [
+              "${2.migratable_card_ids.0}"
+            ],
+            "expectedVersion": "${2.audit_version}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.g3.structure.reparse_report.pending_draft_explicit_job",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "import_question_bank",
+          "args": {
+            "request": {
+              "content": "{\"schema_version\": 2, \"mode\": \"extract\", \"questions\": [{\"local_id\": \"q1\", \"original_label\": \"1\", \"content\": \"2 和 4 中哪个是质数？\", \"question_type\": \"single_choice\", \"options\": [{\"key\": \"A\", \"content\": \"2\"}, {\"key\": \"B\", \"content\": \"4\"}], \"answer\": \"A\", \"difficulty\": \"easy\", \"tags\": [\"质数\"]}, {\"local_id\": \"q2\", \"original_label\": \"2\", \"content\": \"3 和 6 中哪个是质数？\", \"question_type\": \"single_choice\", \"options\": [{\"key\": \"A\", \"content\": \"3\"}, {\"key\": \"B\", \"content\": \"6\"}], \"answer\": \"A\", \"difficulty\": \"easy\", \"tags\": [\"质数\"]}]}",
+              "format": "json",
+              "name": "结构测试卷",
+              "session_id": "${0.id}"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_reparse_report",
+          "args": {
+            "examId": "${0.id}",
+            "jobId": "${1.draft_job_id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.g3.structure.reparse_report.pending_draft_latest_job",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "import_question_bank",
+          "args": {
+            "request": {
+              "content": "{\"schema_version\": 2, \"mode\": \"extract\", \"questions\": [{\"local_id\": \"q1\", \"original_label\": \"1\", \"content\": \"2 和 4 中哪个是质数？\", \"question_type\": \"single_choice\", \"options\": [{\"key\": \"A\", \"content\": \"2\"}, {\"key\": \"B\", \"content\": \"4\"}], \"answer\": \"A\", \"difficulty\": \"easy\", \"tags\": [\"质数\"]}, {\"local_id\": \"q2\", \"original_label\": \"2\", \"content\": \"3 和 6 中哪个是质数？\", \"question_type\": \"single_choice\", \"options\": [{\"key\": \"A\", \"content\": \"3\"}, {\"key\": \"B\", \"content\": \"6\"}], \"answer\": \"A\", \"difficulty\": \"easy\", \"tags\": [\"质数\"]}]}",
+              "format": "json",
+              "name": "结构测试卷",
+              "session_id": "${0.id}"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_reparse_report",
+          "args": {
+            "examId": "${0.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.g3.structure.reparse_resolve.keep_all_and_idempotent_replay",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "import_question_bank",
+          "args": {
+            "request": {
+              "content": "{\"schema_version\": 2, \"mode\": \"extract\", \"questions\": [{\"local_id\": \"q1\", \"original_label\": \"1\", \"content\": \"2 和 4 中哪个是质数？\", \"question_type\": \"single_choice\", \"options\": [{\"key\": \"A\", \"content\": \"2\"}, {\"key\": \"B\", \"content\": \"4\"}], \"answer\": \"A\", \"difficulty\": \"easy\", \"tags\": [\"质数\"]}, {\"local_id\": \"q2\", \"original_label\": \"2\", \"content\": \"3 和 6 中哪个是质数？\", \"question_type\": \"single_choice\", \"options\": [{\"key\": \"A\", \"content\": \"3\"}, {\"key\": \"B\", \"content\": \"6\"}], \"answer\": \"A\", \"difficulty\": \"easy\", \"tags\": [\"质数\"]}]}",
+              "format": "json",
+              "name": "结构测试卷",
+              "session_id": "${0.id}"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_reparse_report",
+          "args": {
+            "examId": "${0.id}",
+            "jobId": "${1.draft_job_id}"
+          }
+        },
+        {
+          "cmd": "qbank_reparse_resolve",
+          "args": {
+            "examId": "${0.id}",
+            "jobId": "${1.draft_job_id}",
+            "decisions": [],
+            "expectedReportVersion": "${2.report_version}"
+          }
+        },
+        {
+          "cmd": "qbank_reparse_report",
+          "args": {
+            "examId": "${0.id}",
+            "jobId": "${1.draft_job_id}"
+          }
+        },
+        {
+          "cmd": "qbank_reparse_resolve",
+          "args": {
+            "examId": "${0.id}",
+            "jobId": "${1.draft_job_id}",
+            "decisions": [],
+            "expectedReportVersion": "${4.report_version}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.g3.structure.reparse_resolve.import_first_item_as_new",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "import_question_bank",
+          "args": {
+            "request": {
+              "content": "{\"schema_version\": 2, \"mode\": \"extract\", \"questions\": [{\"local_id\": \"q1\", \"original_label\": \"1\", \"content\": \"2 和 4 中哪个是质数？\", \"question_type\": \"single_choice\", \"options\": [{\"key\": \"A\", \"content\": \"2\"}, {\"key\": \"B\", \"content\": \"4\"}], \"answer\": \"A\", \"difficulty\": \"easy\", \"tags\": [\"质数\"]}, {\"local_id\": \"q2\", \"original_label\": \"2\", \"content\": \"3 和 6 中哪个是质数？\", \"question_type\": \"single_choice\", \"options\": [{\"key\": \"A\", \"content\": \"3\"}, {\"key\": \"B\", \"content\": \"6\"}], \"answer\": \"A\", \"difficulty\": \"easy\", \"tags\": [\"质数\"]}]}",
+              "format": "json",
+              "name": "结构测试卷",
+              "session_id": "${0.id}"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_reparse_report",
+          "args": {
+            "examId": "${0.id}",
+            "jobId": "${1.draft_job_id}"
+          }
+        },
+        {
+          "cmd": "qbank_reparse_resolve",
+          "args": {
+            "examId": "${0.id}",
+            "jobId": "${1.draft_job_id}",
+            "decisions": [
+              {
+                "local_id": "${2.items.0.local_id}",
+                "action": "import_as_new"
+              }
+            ],
+            "expectedReportVersion": "${2.report_version}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.g3.structure.update_exam_sheet_cards.update_card_text",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_update",
+          "args": {
+            "path": "${0.path}",
+            "content": "{\"temp_id\": \"sheet_t\", \"exam_name\": \"整卷识别测试\", \"pages\": [{\"page_index\": 0, \"width\": 1000, \"height\": 1400, \"original_image_path\": \"\", \"cards\": [{\"card_id\": \"c1\", \"page_index\": 0, \"question_label\": \"1\", \"bbox\": {\"x\": 0.05, \"y\": 0.05, \"width\": 0.9, \"height\": 0.25}, \"resolved_bbox\": {\"x\": 50.0, \"y\": 70.0, \"width\": 900.0, \"height\": 350.0}, \"cropped_image_path\": \"\", \"ocr_text\": \"已知函数 f(x)=x^2，求 f(2)。\", \"tags\": [\"函数\"]}]}]}",
+            "resourceType": "exam",
+            "expectedUpdatedAtMs": null
+          }
+        },
+        {
+          "cmd": "update_exam_sheet_cards",
+          "args": {
+            "request": {
+              "session_id": "${0.id}",
+              "cards": [
+                {
+                  "card_id": "c1",
+                  "ocr_text": "已知函数 f(x)=x^2，求 f(3)。",
+                  "tags": [
+                    "函数",
+                    "代数"
+                  ],
+                  "question_label": "1"
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.g3.structure.update_exam_sheet_cards.delete_card",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_update",
+          "args": {
+            "path": "${0.path}",
+            "content": "{\"temp_id\": \"sheet_t\", \"exam_name\": \"整卷识别测试\", \"pages\": [{\"page_index\": 0, \"width\": 1000, \"height\": 1400, \"original_image_path\": \"\", \"cards\": [{\"card_id\": \"c1\", \"page_index\": 0, \"question_label\": \"1\", \"bbox\": {\"x\": 0.05, \"y\": 0.05, \"width\": 0.9, \"height\": 0.25}, \"resolved_bbox\": {\"x\": 50.0, \"y\": 70.0, \"width\": 900.0, \"height\": 350.0}, \"cropped_image_path\": \"\", \"ocr_text\": \"已知函数 f(x)=x^2，求 f(2)。\", \"tags\": [\"函数\"]}]}]}",
+            "resourceType": "exam",
+            "expectedUpdatedAtMs": null
+          }
+        },
+        {
+          "cmd": "update_exam_sheet_cards",
+          "args": {
+            "request": {
+              "session_id": "${0.id}",
+              "delete_card_ids": [
+                "c1"
+              ]
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.g3.structure.list_exam_sheet_sessions.limit_and_default",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "试卷 A",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "试卷 B",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "list_exam_sheet_sessions",
+          "args": {
+            "request": {
+              "limit": 10
+            }
+          }
+        },
+        {
+          "cmd": "list_exam_sheet_sessions",
+          "args": {
+            "request": {}
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.g3.structure.get_exam_sheet_session_detail.seeded_card",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_update",
+          "args": {
+            "path": "${0.path}",
+            "content": "{\"temp_id\": \"sheet_t\", \"exam_name\": \"整卷识别测试\", \"pages\": [{\"page_index\": 0, \"width\": 1000, \"height\": 1400, \"original_image_path\": \"\", \"cards\": [{\"card_id\": \"c1\", \"page_index\": 0, \"question_label\": \"1\", \"bbox\": {\"x\": 0.05, \"y\": 0.05, \"width\": 0.9, \"height\": 0.25}, \"resolved_bbox\": {\"x\": 50.0, \"y\": 70.0, \"width\": 900.0, \"height\": 350.0}, \"cropped_image_path\": \"\", \"ocr_text\": \"已知函数 f(x)=x^2，求 f(2)。\", \"tags\": [\"函数\"]}]}]}",
+            "resourceType": "exam",
+            "expectedUpdatedAtMs": null
+          }
+        },
+        {
+          "cmd": "get_exam_sheet_session_detail",
+          "args": {
+            "request": {
+              "session_id": "${0.id}"
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.g3.structure.get_exam_sheet_session_detail.empty_exam",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "get_exam_sheet_session_detail",
+          "args": {
+            "request": {
+              "session_id": "${0.id}"
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.g3.structure.rename_exam_sheet_session.set_name",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "rename_exam_sheet_session",
+          "args": {
+            "request": {
+              "session_id": "${0.id}",
+              "exam_name": "高数期中卷"
+            }
+          }
+        },
+        {
+          "cmd": "rename_exam_sheet_session",
+          "args": {
+            "request": {
+              "session_id": "${0.id}",
+              "exam_name": "高数期中卷"
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.g3.structure.rename_exam_sheet_session.clear_name",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "rename_exam_sheet_session",
+          "args": {
+            "request": {
+              "session_id": "${0.id}",
+              "exam_name": null
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

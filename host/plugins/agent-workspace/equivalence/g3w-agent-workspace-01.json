@@ -1,0 +1,70 @@
+{
+  "domain": "agent-workspace",
+  "commands": [
+    "chat_v2_list_runtime_roots",
+    "chat_v2_reset_workspace_root",
+    "save_setting"
+  ],
+  "scenarios": [
+    {
+      "id": "g3w.agent-workspace.chat_v2_list_runtime_roots.workspace_setting_unparsable",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "chat_v2.runtime.workspace_root",
+            "value": "not-json"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_runtime_roots",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.agent-workspace.chat_v2_list_runtime_roots.authorized_roots_unparsable",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "chat_v2.runtime.authorized_roots",
+            "value": "not-json"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_runtime_roots",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "g3w.agent-workspace.chat_v2_reset_workspace_root.authorized_roots_unparsable",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "chat_v2.runtime.authorized_roots",
+            "value": "not-json"
+          }
+        },
+        {
+          "cmd": "chat_v2_reset_workspace_root",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    }
+  ]
+}

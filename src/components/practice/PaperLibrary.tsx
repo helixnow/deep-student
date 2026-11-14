@@ -119,7 +119,7 @@ export default function PaperLibrary({ examId, readOnly, onStartPaper, onOpenPra
         </Suspense>
       ) : selected ? (
         <>
-          <div className="flex flex-wrap items-center gap-3 border-b pb-3">
+          <div className="flex flex-wrap items-center gap-3 border-b border-border/35 pb-3">
             {!readOnly && (
               <DsButton size="sm" onClick={() => onStartPaper(selected)}>
                 <Play size={16} />
@@ -130,7 +130,7 @@ export default function PaperLibrary({ examId, readOnly, onStartPaper, onOpenPra
               aria-label={t('paper.exportFormat')}
               value={format}
               onChange={(e) => setFormat(e.target.value as typeof format)}
-              className="min-h-9 rounded-md border bg-background px-2 text-sm"
+              className="min-h-8 rounded-lg border border-border/50 bg-background px-2.5 text-xs"
             >
               {['pdf', 'word', 'markdown'].map((f) => (
                 <option key={f} value={f}>
@@ -138,7 +138,7 @@ export default function PaperLibrary({ examId, readOnly, onStartPaper, onOpenPra
                 </option>
               ))}
             </select>
-            <label className="flex items-center gap-2 text-xs">
+            <label className="flex items-center gap-2 text-xs text-muted-foreground">
               <input
                 type="checkbox"
                 checked={answers}
@@ -146,7 +146,7 @@ export default function PaperLibrary({ examId, readOnly, onStartPaper, onOpenPra
               />
               {t('paper.includeAnswers')}
             </label>
-            <label className="flex items-center gap-2 text-xs">
+            <label className="flex items-center gap-2 text-xs text-muted-foreground">
               <input
                 type="checkbox"
                 checked={explanations}
@@ -165,17 +165,24 @@ export default function PaperLibrary({ examId, readOnly, onStartPaper, onOpenPra
             </DsButton>
           </div>
           <PracticeRecords scopeId={examId} paperId={selected.id} onOpen={onOpenPractice} readOnly={readOnly} />
-          <div className="mx-auto max-w-3xl divide-y">
+          <div className="mx-auto max-w-3xl divide-y divide-border/35">
             {selected.questions.map((q, index) => (
               <section key={q.id} className="space-y-3 py-5">
-                <h4 className="text-sm font-medium">
-                  {index + 1}. {t(`questionType.${q.question_type}`)}
-                </h4>
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-xs font-medium tabular-nums text-muted-foreground">
+                    {index + 1}.
+                  </span>
+                  <span className="rounded-md bg-foreground/[0.04] px-2 py-0.5 text-xs text-muted-foreground">
+                    {t(`questionType.${q.question_type}`)}
+                  </span>
+                </div>
                 {!!q.materials?.length && <QuestionMaterialView materials={q.materials} />}
-                <MarkdownRenderer content={q.content} />
+                <div className="max-w-[74ch] text-[16px] leading-[1.72] text-foreground">
+                  <MarkdownRenderer content={q.content} />
+                </div>
                 {q.options?.map((o) => (
-                  <div key={o.key} className="flex gap-2 text-sm">
-                    <span>{o.key}.</span>
+                  <div key={o.key} className="flex items-start gap-2.5 text-sm leading-relaxed">
+                    <span className="font-mono text-xs font-medium text-muted-foreground pt-0.5">{o.key}.</span>
                     <MarkdownRenderer content={o.content} />
                   </div>
                 ))}
@@ -187,14 +194,14 @@ export default function PaperLibrary({ examId, readOnly, onStartPaper, onOpenPra
         <>
           {!papers.length && (
             <div className="py-12 text-center text-sm text-muted-foreground">
-              <FileText size={28} className="mx-auto mb-3" />
+              <FileText size={28} className="mx-auto mb-3 opacity-40" />
               {t('batch.noPapers')}
             </div>
           )}
-          <div className="divide-y">
+          <div className="space-y-2">
           {papers.map((paper) => (
-              <div key={paper.id} className="flex flex-wrap items-center gap-3 py-3">
-                <FileText size={20} className="shrink-0 text-muted-foreground" />
+              <div key={paper.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-border/40 bg-card/30 px-4 py-3 transition-colors hover:border-border/70 hover:bg-foreground/[0.03]">
+                <FileText size={18} className="shrink-0 text-muted-foreground" />
                 <div className="min-w-0 flex-1">
                   {renaming === paper.id ? (
                     <form
@@ -212,7 +219,7 @@ export default function PaperLibrary({ examId, readOnly, onStartPaper, onOpenPra
                     >
                       <input
                         aria-label={t('paper.paperTitle')}
-                        className="min-w-0 flex-1 rounded-md border bg-background px-2 py-1 text-sm"
+                        className="min-w-0 flex-1 rounded-lg border border-border/50 bg-background px-2.5 py-1 text-sm"
                         value={title}
                         maxLength={200}
                         onChange={(e) => setTitle(e.target.value)}
@@ -229,16 +236,16 @@ export default function PaperLibrary({ examId, readOnly, onStartPaper, onOpenPra
                       <DsButton
                         variant="ghost"
                         size="sm"
-                        className="!h-auto !max-w-full !justify-start !px-0 !text-left"
+                        className="!h-auto !max-w-full !justify-start !px-0 !text-left font-medium text-foreground"
                         onClick={() => setSelected(paper)}
                       >
                         <span className="truncate">{paper.title}</span>
                       </DsButton>
-                      <p className="text-xs text-muted-foreground">
+                      <p className="font-mono text-xs tabular-nums text-muted-foreground">
                         {paper.questions.length} {t('paper.questions')} ·{' '}
                         {new Date(paper.created_at).toLocaleString()}
                       </p>
-                    <p className="text-xs text-muted-foreground">{records.some(r => r.paper_id === paper.id && r.status === 'draft') ? t('batch.inProgress') : records.some(r => r.paper_id === paper.id) ? t('batch.viewResult') : t('batch.notStarted')}{(() => {
+                    <p className="font-mono text-xs tabular-nums text-muted-foreground">{records.some(r => r.paper_id === paper.id && r.status === 'draft') ? t('batch.inProgress') : records.some(r => r.paper_id === paper.id) ? t('batch.viewResult') : t('batch.notStarted')}{(() => {
                       const latest = records.filter(r => r.paper_id === paper.id && r.status !== 'draft').sort((a, b) => b.updated_at.localeCompare(a.updated_at))[0];
                       return latest ? ` · ${t('batch.lastResult', { correct: latest.correct_count, total: latest.question_count })}` : '';
                     })()}</p>

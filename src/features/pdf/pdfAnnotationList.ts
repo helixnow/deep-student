@@ -12,8 +12,7 @@
  * 不依赖 React / DOM / i18n：文案由调用方注入（labels），保证可单测。
  */
 
-import { buildPdfRefHref } from '@/components/crepe/plugins/pdfRef/protocol';
-import { formatSelectionQuoteBlock } from './pdfSelectionActions';
+import { buildPdfQuoteHref, formatSelectionQuoteBlock } from './pdfSelectionActions';
 
 /**
  * 批注列表关心的最小高亮形状（EnhancedPdfViewer 的 Highlight 结构性满足）。
@@ -28,6 +27,10 @@ export interface AnnotationHighlight {
   rects: { x: number; y: number; width: number; height: number }[];
   createdAt: number;
   coordVersion?: number;
+  /** 用户批注笔记或一键钉住的 AI 译文/解读 */
+  comment?: string;
+  /** 最近编辑批注时间戳 */
+  updatedAt?: number;
 }
 
 // ============================================================================
@@ -131,7 +134,11 @@ export function filterHighlights<T extends AnnotationHighlight>(
   if (!colorSet && !query) return [...highlights];
   return highlights.filter((hl) => {
     if (colorSet && !colorSet.has(normalizeColor(hl.color))) return false;
-    if (query && !hl.text.toLowerCase().includes(query)) return false;
+    if (query) {
+      const inText = hl.text.toLowerCase().includes(query);
+      const inComment = Boolean(hl.comment?.toLowerCase().includes(query));
+      if (!inText && !inComment) return false;
+    }
     return true;
   });
 }
@@ -160,9 +167,10 @@ export function buildAnnotationSourceLine(input: {
   label: string;
   sourceId?: string | null;
   page: number;
+  quote?: string;
 }): string {
   if (!input.sourceId) return input.label;
-  return `[${input.label}](${buildPdfRefHref(input.sourceId, input.page)})`;
+  return `[${input.label}](${buildPdfQuoteHref(input.sourceId, input.page, input.quote)})`;
 }
 
 // ============================================================================
@@ -174,6 +182,8 @@ export interface AnnotationSummaryLabels {
   pageHeading: (page: number) => string;
   /** 来源回链行文案（如「—— 摘自《x.pdf》第 3 页」） */
   sourceLine: (page: number) => string;
+  /** 批注笔记前缀标签（如「批注：」，缺省为「批注：」） */
+  commentPrefix?: string;
 }
 
 export interface AnnotationSummaryInput {
@@ -185,7 +195,7 @@ export interface AnnotationSummaryInput {
 
 /**
  * 批注汇总 Markdown（对标 PDF Expert Annotation Summary / Zotero
- * Add Note from Annotations）：按页分组，每条 = 引用块 + 来源回链行。
+ * Add Note from Annotations）：按页分组，每条 = 引用块 + （可选）批注笔记 + 来源回链行。
  * 空列表返回空串（调用方应在 UI 层禁用导出按钮，而不是导出空笔记）。
  */
 export function buildAnnotationSummaryMarkdown(
@@ -194,18 +204,23 @@ export function buildAnnotationSummaryMarkdown(
   const sorted = sortHighlightsForList(input.highlights);
   if (!sorted.length) return '';
   const groups = groupHighlightsByPage(sorted);
+  const commentPrefix = input.labels.commentPrefix ?? '批注：';
   const sections: string[] = [];
   for (const group of groups) {
     const lines: string[] = [`## ${input.labels.pageHeading(group.page)}`];
     for (const hl of group.items) {
+      lines.push('', formatSelectionQuoteBlock(hl.text));
+      const trimmedComment = hl.comment?.trim();
+      if (trimmedComment) {
+        lines.push('', `**${commentPrefix}**${trimmedComment}`);
+      }
       lines.push(
-        '',
-        formatSelectionQuoteBlock(hl.text),
         '',
         buildAnnotationSourceLine({
           label: input.labels.sourceLine(group.page),
           sourceId: input.sourceId,
           page: group.page,
+          quote: hl.text,
         }),
       );
     }

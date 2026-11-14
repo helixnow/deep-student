@@ -1,0 +1,1912 @@
+{
+  "domain": "qbank",
+  "commands": [
+    "export_questions_csv",
+    "import_questions_csv",
+    "cancel_questions_csv_import",
+    "get_csv_preview",
+    "import_question_bank_stream",
+    "cancel_question_bank_import",
+    "resume_question_import",
+    "qbank_export_document",
+    "qbank_export_portable",
+    "get_csv_exportable_fields",
+    "list_importing_sessions"
+  ],
+  "scenarios": [
+    {
+      "id": "qbank.g3.csv_export.default_fields_two_questions",
+      "seed": "empty",
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": [],
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "导出题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "下列哪个是质数？",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "4"
+                },
+                {
+                  "key": "B",
+                  "content": "7"
+                },
+                {
+                  "key": "C",
+                  "content": "9"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "数论"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "证明根号2是无理数。",
+              "question_type": "short_answer",
+              "options": null,
+              "answer": "假设根号2是有理数，推出矛盾。",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "hard",
+              "tags": [
+                "证明"
+              ],
+              "question_label": "2",
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "export_questions_csv",
+          "args": {
+            "request": {
+              "exam_id": "${0.id}",
+              "file_path": "/tmp/l14-qbank-g3-csv-default.csv"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "qbank.g3.csv_export.selected_fields_utf8_bom",
+      "seed": "empty",
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": [],
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "导出题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "下列哪个是质数？",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "4"
+                },
+                {
+                  "key": "B",
+                  "content": "7"
+                },
+                {
+                  "key": "C",
+                  "content": "9"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "数论"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "export_questions_csv",
+          "args": {
+            "request": {
+              "exam_id": "${0.id}",
+              "file_path": "/tmp/l14-qbank-g3-csv-bom.csv",
+              "fields": [
+                "content",
+                "question_type",
+                "options",
+                "answer",
+                "difficulty",
+                "tags",
+                "user_answer",
+                "is_correct"
+              ],
+              "include_answers": true,
+              "encoding": "utf8_bom"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "qbank.g3.csv_export.gbk_filtered_by_difficulty",
+      "seed": "empty",
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": [],
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "导出题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "下列哪个是质数？",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "4"
+                },
+                {
+                  "key": "B",
+                  "content": "7"
+                },
+                {
+                  "key": "C",
+                  "content": "9"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "数论"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "证明根号2是无理数。",
+              "question_type": "short_answer",
+              "options": null,
+              "answer": "假设根号2是有理数，推出矛盾。",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "hard",
+              "tags": [
+                "证明"
+              ],
+              "question_label": "2",
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "export_questions_csv",
+          "args": {
+            "request": {
+              "exam_id": "${0.id}",
+              "file_path": "/tmp/l14-qbank-g3-csv-gbk.csv",
+              "encoding": "gbk",
+              "filters": {
+                "difficulty": [
+                  "hard"
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "qbank.g3.csv_export.default_fields_with_answer_records",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "答题记录导出题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "下列哪个是质数？",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "4"
+                },
+                {
+                  "key": "B",
+                  "content": "7"
+                },
+                {
+                  "key": "C",
+                  "content": "9"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "数论"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "export_questions_csv",
+          "args": {
+            "request": {
+              "exam_id": "${0.id}",
+              "file_path": "/tmp/l14-qbank-g3-csv-answers.csv",
+              "include_answers": true
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.g3.csv_preview.after_export_rows_limit",
+      "seed": "empty",
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": [],
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "预览题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "下列哪个是质数？",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "4"
+                },
+                {
+                  "key": "B",
+                  "content": "7"
+                },
+                {
+                  "key": "C",
+                  "content": "9"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "数论"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "证明根号2是无理数。",
+              "question_type": "short_answer",
+              "options": null,
+              "answer": "假设根号2是有理数，推出矛盾。",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "hard",
+              "tags": [
+                "证明"
+              ],
+              "question_label": "2",
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "export_questions_csv",
+          "args": {
+            "request": {
+              "exam_id": "${0.id}",
+              "file_path": "/tmp/l14-qbank-g3-csv-preview-utf8.csv"
+            }
+          }
+        },
+        {
+          "cmd": "get_csv_preview",
+          "args": {
+            "filePath": "${3.file_path}",
+            "rows": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "qbank.g3.csv_preview.gbk_default_rows",
+      "seed": "empty",
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": [],
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "预览题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "下列哪个是质数？",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "4"
+                },
+                {
+                  "key": "B",
+                  "content": "7"
+                },
+                {
+                  "key": "C",
+                  "content": "9"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "数论"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "export_questions_csv",
+          "args": {
+            "request": {
+              "exam_id": "${0.id}",
+              "file_path": "/tmp/l14-qbank-g3-csv-preview-gbk.csv",
+              "encoding": "gbk"
+            }
+          }
+        },
+        {
+          "cmd": "get_csv_preview",
+          "args": {
+            "filePath": "${2.file_path}"
+          }
+        }
+      ]
+    },
+    {
+      "id": "qbank.g3.csv_preview.utf8_bom_zero_rows",
+      "seed": "empty",
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": [],
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "预览题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "下列哪个是质数？",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "4"
+                },
+                {
+                  "key": "B",
+                  "content": "7"
+                },
+                {
+                  "key": "C",
+                  "content": "9"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "数论"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "export_questions_csv",
+          "args": {
+            "request": {
+              "exam_id": "${0.id}",
+              "file_path": "/tmp/l14-qbank-g3-csv-preview-bom.csv",
+              "encoding": "utf8_bom"
+            }
+          }
+        },
+        {
+          "cmd": "get_csv_preview",
+          "args": {
+            "filePath": "${2.file_path}",
+            "rows": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "qbank.g3.csv_import.roundtrip_creates_new_exam",
+      "seed": "empty",
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": [],
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "CSV 源题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "下列哪个是质数？",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "4"
+                },
+                {
+                  "key": "B",
+                  "content": "7"
+                },
+                {
+                  "key": "C",
+                  "content": "9"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "数论"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "export_questions_csv",
+          "args": {
+            "request": {
+              "exam_id": "${0.id}",
+              "file_path": "/tmp/l14-qbank-g3-csv-import-new.csv"
+            }
+          }
+        },
+        {
+          "cmd": "import_questions_csv",
+          "args": {
+            "request": {
+              "file_path": "${2.file_path}",
+              "exam_id": "exam_g3_csv_new",
+              "field_mapping": {
+                "题干内容": "content",
+                "题目类型": "question_type",
+                "选项": "options",
+                "答案": "answer",
+                "解析": "explanation",
+                "难度": "difficulty",
+                "标签": "tags",
+                "题号": "question_label"
+              },
+              "exam_name": "CSV 回导题目集"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "qbank.g3.csv_import.into_existing_exam_subset_mapping",
+      "seed": "empty",
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": [],
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "CSV 源题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "下列哪个是质数？",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "4"
+                },
+                {
+                  "key": "B",
+                  "content": "7"
+                },
+                {
+                  "key": "C",
+                  "content": "9"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "数论"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "export_questions_csv",
+          "args": {
+            "request": {
+              "exam_id": "${0.id}",
+              "file_path": "/tmp/l14-qbank-g3-csv-import-existing.csv"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "CSV 目标题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "import_questions_csv",
+          "args": {
+            "request": {
+              "file_path": "${2.file_path}",
+              "exam_id": "${3.id}",
+              "field_mapping": {
+                "题干内容": "content",
+                "答案": "answer",
+                "题号": "question_label"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "qbank.g3.csv_import.duplicate_overwrite_same_exam",
+      "seed": "empty",
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": [],
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "CSV 覆盖题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "下列哪个是质数？",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "4"
+                },
+                {
+                  "key": "B",
+                  "content": "7"
+                },
+                {
+                  "key": "C",
+                  "content": "9"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "数论"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "export_questions_csv",
+          "args": {
+            "request": {
+              "exam_id": "${0.id}",
+              "file_path": "/tmp/l14-qbank-g3-csv-import-overwrite.csv"
+            }
+          }
+        },
+        {
+          "cmd": "import_questions_csv",
+          "args": {
+            "request": {
+              "file_path": "${2.file_path}",
+              "exam_id": "${0.id}",
+              "field_mapping": {
+                "题干内容": "content",
+                "题目类型": "question_type",
+                "选项": "options",
+                "答案": "answer",
+                "解析": "explanation",
+                "难度": "difficulty",
+                "标签": "tags",
+                "题号": "question_label"
+              },
+              "duplicate_strategy": "overwrite"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "qbank.g3.csv_import.duplicate_skip_default_strategy",
+      "seed": "empty",
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": [],
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "CSV 去重题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "下列哪个是质数？",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "4"
+                },
+                {
+                  "key": "B",
+                  "content": "7"
+                },
+                {
+                  "key": "C",
+                  "content": "9"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "数论"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "export_questions_csv",
+          "args": {
+            "request": {
+              "exam_id": "${0.id}",
+              "file_path": "/tmp/l14-qbank-g3-csv-import-skip.csv"
+            }
+          }
+        },
+        {
+          "cmd": "import_questions_csv",
+          "args": {
+            "request": {
+              "file_path": "${2.file_path}",
+              "exam_id": "${0.id}",
+              "field_mapping": {
+                "题干内容": "content",
+                "题目类型": "question_type",
+                "选项": "options",
+                "答案": "answer",
+                "解析": "explanation",
+                "难度": "difficulty",
+                "标签": "tags",
+                "题号": "question_label"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "qbank.g3.csv_cancel.unknown_id",
+      "seed": "empty",
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": [],
+      "steps": [
+        {
+          "cmd": "cancel_questions_csv_import",
+          "args": {
+            "importId": "csv_g3_never_registered"
+          }
+        }
+      ]
+    },
+    {
+      "id": "qbank.g3.csv_cancel.blank_id",
+      "seed": "empty",
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": [],
+      "steps": [
+        {
+          "cmd": "cancel_questions_csv_import",
+          "args": {
+            "importId": ""
+          }
+        }
+      ]
+    },
+    {
+      "id": "qbank.g3.csv_cancel.after_completed_import",
+      "seed": "empty",
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": [],
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "CSV 取消题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "下列哪个是质数？",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "4"
+                },
+                {
+                  "key": "B",
+                  "content": "7"
+                },
+                {
+                  "key": "C",
+                  "content": "9"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "数论"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "export_questions_csv",
+          "args": {
+            "request": {
+              "exam_id": "${0.id}",
+              "file_path": "/tmp/l14-qbank-g3-csv-cancel.csv"
+            }
+          }
+        },
+        {
+          "cmd": "import_questions_csv",
+          "args": {
+            "request": {
+              "file_path": "${2.file_path}",
+              "exam_id": "exam_g3_csv_cancel_target",
+              "field_mapping": {
+                "题干内容": "content",
+                "题目类型": "question_type",
+                "选项": "options",
+                "答案": "answer",
+                "解析": "explanation",
+                "难度": "difficulty",
+                "标签": "tags",
+                "题号": "question_label"
+              },
+              "import_id": "csv_g3_completed_import",
+              "exam_name": "CSV 取消题目集"
+            }
+          }
+        },
+        {
+          "cmd": "cancel_questions_csv_import",
+          "args": {
+            "importId": "csv_g3_completed_import"
+          }
+        }
+      ]
+    },
+    {
+      "id": "qbank.g3.import_stream.json_full_document",
+      "seed": "empty",
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": [],
+      "steps": [
+        {
+          "cmd": "import_question_bank_stream",
+          "args": {
+            "request": {
+              "content": "{\"schema_version\":2,\"mode\":\"extract\",\"materials\":[],\"groups\":[],\"questions\":[{\"local_id\":\"q1\",\"content\":\"下列哪个是质数？\",\"question_type\":\"single_choice\",\"options\":[{\"key\":\"A\",\"content\":\"4\"},{\"key\":\"B\",\"content\":\"7\"},{\"key\":\"C\",\"content\":\"9\"}],\"answer\":\"B\",\"explanation\":\"7 只能被 1 和自身整除。\",\"difficulty\":\"easy\",\"tags\":[\"数论\"]},{\"local_id\":\"q2\",\"content\":\"请写出你的推导过程。\",\"question_type\":\"short_answer\",\"answer\":\"因为 7 除了 1 和自身外没有其他因数。\",\"difficulty\":\"medium\",\"tags\":[\"推导\"]}],\"unmatched_answers\":[],\"coverage\":[],\"issues\":[]}",
+              "format": "json",
+              "name": "JSON 导入题目集",
+              "import_id": "qbank_g3_json_full"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "qbank.g3.import_stream.json_legacy_questions_only_default_name",
+      "seed": "empty",
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": [],
+      "steps": [
+        {
+          "cmd": "import_question_bank_stream",
+          "args": {
+            "request": {
+              "content": "{\"questions\":[{\"content\":\"下列哪个是质数？\",\"questionType\":\"single_choice\",\"questionLabel\":\"1\",\"options\":[{\"key\":\"A\",\"content\":\"4\"},{\"key\":\"B\",\"content\":\"7\"}],\"answer\":\"B\",\"tags\":[\"数论\"]}]}",
+              "format": "json"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "qbank.g3.import_stream.json_into_existing_session",
+      "seed": "empty",
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": [],
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "已有题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "import_question_bank_stream",
+          "args": {
+            "request": {
+              "content": "{\"schema_version\":2,\"mode\":\"extract\",\"materials\":[],\"groups\":[],\"questions\":[{\"local_id\":\"q1\",\"content\":\"下列哪个是质数？\",\"question_type\":\"single_choice\",\"options\":[{\"key\":\"A\",\"content\":\"4\"},{\"key\":\"B\",\"content\":\"7\"},{\"key\":\"C\",\"content\":\"9\"}],\"answer\":\"B\",\"explanation\":\"7 只能被 1 和自身整除。\",\"difficulty\":\"easy\",\"tags\":[\"数论\"]},{\"local_id\":\"q2\",\"content\":\"请写出你的推导过程。\",\"question_type\":\"short_answer\",\"answer\":\"因为 7 除了 1 和自身外没有其他因数。\",\"difficulty\":\"medium\",\"tags\":[\"推导\"]}],\"unmatched_answers\":[],\"coverage\":[],\"issues\":[]}",
+              "format": "json",
+              "session_id": "${0.id}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "qbank.g3.import_stream.zip_portable_roundtrip",
+      "seed": "empty",
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": [],
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "便携题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "下列哪个是质数？",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "4"
+                },
+                {
+                  "key": "B",
+                  "content": "7"
+                },
+                {
+                  "key": "C",
+                  "content": "9"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "数论"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_export_portable",
+          "args": {
+            "examId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "import_question_bank_stream",
+          "args": {
+            "request": {
+              "content": "${2.base64}",
+              "format": "zip",
+              "name": "便携包导入题目集"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "qbank.g3.import_stream.with_import_id_then_cancel",
+      "seed": "empty",
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": [],
+      "steps": [
+        {
+          "cmd": "import_question_bank_stream",
+          "args": {
+            "request": {
+              "content": "{\"schema_version\":2,\"mode\":\"extract\",\"materials\":[],\"groups\":[],\"questions\":[{\"local_id\":\"q1\",\"content\":\"下列哪个是质数？\",\"question_type\":\"single_choice\",\"options\":[{\"key\":\"A\",\"content\":\"4\"},{\"key\":\"B\",\"content\":\"7\"},{\"key\":\"C\",\"content\":\"9\"}],\"answer\":\"B\",\"explanation\":\"7 只能被 1 和自身整除。\",\"difficulty\":\"easy\",\"tags\":[\"数论\"]},{\"local_id\":\"q2\",\"content\":\"请写出你的推导过程。\",\"question_type\":\"short_answer\",\"answer\":\"因为 7 除了 1 和自身外没有其他因数。\",\"difficulty\":\"medium\",\"tags\":[\"推导\"]}],\"unmatched_answers\":[],\"coverage\":[],\"issues\":[]}",
+              "format": "json",
+              "name": "可取消导入题目集",
+              "import_id": "qbank_g3_stream_done"
+            }
+          }
+        },
+        {
+          "cmd": "cancel_question_bank_import",
+          "args": {
+            "importId": "qbank_g3_stream_done"
+          }
+        }
+      ]
+    },
+    {
+      "id": "qbank.g3.import_cancel.unknown_id",
+      "seed": "empty",
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": [],
+      "steps": [
+        {
+          "cmd": "cancel_question_bank_import",
+          "args": {
+            "importId": "qbank_import_g3_never_registered"
+          }
+        }
+      ]
+    },
+    {
+      "id": "qbank.g3.import_cancel.blank_id",
+      "seed": "empty",
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": [],
+      "steps": [
+        {
+          "cmd": "cancel_question_bank_import",
+          "args": {
+            "importId": ""
+          }
+        }
+      ]
+    },
+    {
+      "id": "qbank.g3.resume.after_json_import",
+      "seed": "empty",
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": [],
+      "steps": [
+        {
+          "cmd": "import_question_bank_stream",
+          "args": {
+            "request": {
+              "content": "{\"schema_version\":2,\"mode\":\"extract\",\"materials\":[],\"groups\":[],\"questions\":[{\"local_id\":\"q1\",\"content\":\"下列哪个是质数？\",\"question_type\":\"single_choice\",\"options\":[{\"key\":\"A\",\"content\":\"4\"},{\"key\":\"B\",\"content\":\"7\"},{\"key\":\"C\",\"content\":\"9\"}],\"answer\":\"B\",\"explanation\":\"7 只能被 1 和自身整除。\",\"difficulty\":\"easy\",\"tags\":[\"数论\"]},{\"local_id\":\"q2\",\"content\":\"请写出你的推导过程。\",\"question_type\":\"short_answer\",\"answer\":\"因为 7 除了 1 和自身外没有其他因数。\",\"difficulty\":\"medium\",\"tags\":[\"推导\"]}],\"unmatched_answers\":[],\"coverage\":[],\"issues\":[]}",
+              "format": "json",
+              "name": "断点续导题目集"
+            }
+          }
+        },
+        {
+          "cmd": "resume_question_import",
+          "args": {
+            "sessionId": "${0.summary.id}"
+          }
+        }
+      ]
+    },
+    {
+      "id": "qbank.g3.resume.with_import_id",
+      "seed": "empty",
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": [],
+      "steps": [
+        {
+          "cmd": "import_question_bank_stream",
+          "args": {
+            "request": {
+              "content": "{\"schema_version\":2,\"mode\":\"extract\",\"materials\":[],\"groups\":[],\"questions\":[{\"local_id\":\"q1\",\"content\":\"下列哪个是质数？\",\"question_type\":\"single_choice\",\"options\":[{\"key\":\"A\",\"content\":\"4\"},{\"key\":\"B\",\"content\":\"7\"},{\"key\":\"C\",\"content\":\"9\"}],\"answer\":\"B\",\"explanation\":\"7 只能被 1 和自身整除。\",\"difficulty\":\"easy\",\"tags\":[\"数论\"]},{\"local_id\":\"q2\",\"content\":\"请写出你的推导过程。\",\"question_type\":\"short_answer\",\"answer\":\"因为 7 除了 1 和自身外没有其他因数。\",\"difficulty\":\"medium\",\"tags\":[\"推导\"]}],\"unmatched_answers\":[],\"coverage\":[],\"issues\":[]}",
+              "format": "json",
+              "name": "断点续导题目集"
+            }
+          }
+        },
+        {
+          "cmd": "resume_question_import",
+          "args": {
+            "sessionId": "${0.summary.id}",
+            "importId": "resume_g3_run"
+          }
+        }
+      ]
+    },
+    {
+      "id": "qbank.g3.resume.after_import_into_existing_session",
+      "seed": "empty",
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": [],
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "断点续导已有题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "import_question_bank_stream",
+          "args": {
+            "request": {
+              "content": "{\"schema_version\":2,\"mode\":\"extract\",\"materials\":[],\"groups\":[],\"questions\":[{\"local_id\":\"q1\",\"content\":\"下列哪个是质数？\",\"question_type\":\"single_choice\",\"options\":[{\"key\":\"A\",\"content\":\"4\"},{\"key\":\"B\",\"content\":\"7\"},{\"key\":\"C\",\"content\":\"9\"}],\"answer\":\"B\",\"explanation\":\"7 只能被 1 和自身整除。\",\"difficulty\":\"easy\",\"tags\":[\"数论\"]},{\"local_id\":\"q2\",\"content\":\"请写出你的推导过程。\",\"question_type\":\"short_answer\",\"answer\":\"因为 7 除了 1 和自身外没有其他因数。\",\"difficulty\":\"medium\",\"tags\":[\"推导\"]}],\"unmatched_answers\":[],\"coverage\":[],\"issues\":[]}",
+              "format": "json",
+              "session_id": "${0.id}"
+            }
+          }
+        },
+        {
+          "cmd": "resume_question_import",
+          "args": {
+            "sessionId": "${1.summary.id}"
+          }
+        }
+      ]
+    },
+    {
+      "id": "qbank.g3.export_document.two_questions",
+      "seed": "empty",
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": [],
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "文档导出题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "下列哪个是质数？",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "4"
+                },
+                {
+                  "key": "B",
+                  "content": "7"
+                },
+                {
+                  "key": "C",
+                  "content": "9"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "数论"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "证明根号2是无理数。",
+              "question_type": "short_answer",
+              "options": null,
+              "answer": "假设根号2是有理数，推出矛盾。",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "hard",
+              "tags": [
+                "证明"
+              ],
+              "question_label": "2",
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_export_document",
+          "args": {
+            "examId": "${0.id}"
+          }
+        }
+      ]
+    },
+    {
+      "id": "qbank.g3.export_document.empty_exam",
+      "seed": "empty",
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": [],
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "空文档题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_export_document",
+          "args": {
+            "examId": "${0.id}"
+          }
+        }
+      ]
+    },
+    {
+      "id": "qbank.g3.export_document.preserves_label_tags_and_options",
+      "seed": "empty",
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": [],
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "字段保真题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "下列哪个是质数？",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "4"
+                },
+                {
+                  "key": "B",
+                  "content": "7"
+                },
+                {
+                  "key": "C",
+                  "content": "9"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "数论"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_export_document",
+          "args": {
+            "examId": "${0.id}"
+          }
+        }
+      ]
+    },
+    {
+      "id": "qbank.g3.export_portable.with_questions",
+      "seed": "empty",
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": [],
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "便携导出题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "下列哪个是质数？",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "4"
+                },
+                {
+                  "key": "B",
+                  "content": "7"
+                },
+                {
+                  "key": "C",
+                  "content": "9"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "数论"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_export_portable",
+          "args": {
+            "examId": "${0.id}"
+          }
+        }
+      ]
+    },
+    {
+      "id": "qbank.g3.export_portable.empty_exam",
+      "seed": "empty",
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": [],
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "空便携题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_export_portable",
+          "args": {
+            "examId": "${0.id}"
+          }
+        }
+      ]
+    },
+    {
+      "id": "qbank.g3.exportable_fields.list",
+      "seed": "empty",
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": [],
+      "steps": [
+        {
+          "cmd": "get_csv_exportable_fields",
+          "args": {}
+        }
+      ]
+    },
+    {
+      "id": "qbank.g3.importing_sessions.empty_db",
+      "seed": "empty",
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": [],
+      "steps": [
+        {
+          "cmd": "list_importing_sessions",
+          "args": {}
+        }
+      ]
+    },
+    {
+      "id": "qbank.g3.importing_sessions.after_json_import",
+      "seed": "empty",
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": [],
+      "steps": [
+        {
+          "cmd": "import_question_bank_stream",
+          "args": {
+            "request": {
+              "content": "{\"schema_version\":2,\"mode\":\"extract\",\"materials\":[],\"groups\":[],\"questions\":[{\"local_id\":\"q1\",\"content\":\"下列哪个是质数？\",\"question_type\":\"single_choice\",\"options\":[{\"key\":\"A\",\"content\":\"4\"},{\"key\":\"B\",\"content\":\"7\"},{\"key\":\"C\",\"content\":\"9\"}],\"answer\":\"B\",\"explanation\":\"7 只能被 1 和自身整除。\",\"difficulty\":\"easy\",\"tags\":[\"数论\"]},{\"local_id\":\"q2\",\"content\":\"请写出你的推导过程。\",\"question_type\":\"short_answer\",\"answer\":\"因为 7 除了 1 和自身外没有其他因数。\",\"difficulty\":\"medium\",\"tags\":[\"推导\"]}],\"unmatched_answers\":[],\"coverage\":[],\"issues\":[]}",
+              "format": "json",
+              "name": "中断导入会话题目集"
+            }
+          }
+        },
+        {
+          "cmd": "list_importing_sessions",
+          "args": {}
+        }
+      ]
+    },
+    {
+      "id": "qbank.g3.importing_sessions.after_commit_cleared",
+      "seed": "empty",
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": [],
+      "steps": [
+        {
+          "cmd": "import_question_bank_stream",
+          "args": {
+            "request": {
+              "content": "{\"schema_version\":2,\"mode\":\"extract\",\"materials\":[],\"groups\":[],\"questions\":[{\"local_id\":\"q1\",\"content\":\"下列哪个是质数？\",\"question_type\":\"single_choice\",\"options\":[{\"key\":\"A\",\"content\":\"4\"},{\"key\":\"B\",\"content\":\"7\"},{\"key\":\"C\",\"content\":\"9\"}],\"answer\":\"B\",\"explanation\":\"7 只能被 1 和自身整除。\",\"difficulty\":\"easy\",\"tags\":[\"数论\"]},{\"local_id\":\"q2\",\"content\":\"请写出你的推导过程。\",\"question_type\":\"short_answer\",\"answer\":\"因为 7 除了 1 和自身外没有其他因数。\",\"difficulty\":\"medium\",\"tags\":[\"推导\"]}],\"unmatched_answers\":[],\"coverage\":[],\"issues\":[]}",
+              "format": "json",
+              "name": "已提交导入会话题目集"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_commit_authoring_draft",
+          "args": {
+            "jobId": "${0.draft_job_id}",
+            "selectedLocalIds": [
+              "q1",
+              "q2"
+            ],
+            "expectedVersion": "${0.draft_version}"
+          }
+        },
+        {
+          "cmd": "list_importing_sessions",
+          "args": {}
+        }
+      ]
+    }
+  ]
+}

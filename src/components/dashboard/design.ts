@@ -1,0 +1,42 @@
+// 设计系统常量 - 统一从主题变量取色，兼容亮暗与调色板
+export const DESIGN = {
+  colors: {
+    primary: 'hsl(var(--primary))',
+    secondary: 'hsl(var(--accent))',
+    success: 'hsl(var(--success))',
+    warning: 'hsl(var(--warning))',
+    danger: 'hsl(var(--danger))',
+    info: 'hsl(var(--info))',
+    surface: 'var(--surface-elevated)',
+    surfaceMuted: 'var(--surface-muted)',
+    textPrimary: 'var(--text-primary)',
+    textMuted: 'var(--text-muted)',
+    border: 'var(--border-default)',
+    gradients: {
+      primary: 'var(--brand-gradient)',
+      secondary: 'linear-gradient(135deg, hsl(var(--accent)) 0%, hsl(var(--primary)) 100%)',
+      success: 'linear-gradient(135deg, hsl(var(--success)) 0%, hsl(var(--success-muted)) 100%)',
+      warning: 'linear-gradient(135deg, hsl(var(--warning)) 0%, hsl(var(--warning-muted)) 100%)',
+      info: 'linear-gradient(135deg, hsl(var(--info)) 0%, hsl(var(--info-muted)) 100%)',
+      danger: 'linear-gradient(135deg, hsl(var(--danger)) 0%, hsl(var(--danger-muted)) 100%)',
+    },
+    gradientBackgrounds: {
+      primary: 'var(--brand-100)',
+      secondary: 'var(--surface-muted)',
+      success: 'hsl(var(--success-bg))',
+      warning: 'hsl(var(--warning-bg))',
+      danger: 'hsl(var(--danger-bg))',
+      info: 'hsl(var(--info-bg))',
+    },
+    chart: [
+      'hsl(var(--primary))',
+      'hsl(var(--accent))',
+      'hsl(var(--info))',
+      'hsl(var(--success))',
+      'hsl(var(--warning))',
+      'hsl(var(--danger))',
+      'var(--brand-secondary)',
+      'var(--brand-primary-light)',
+    ],
+  },
+} as const;

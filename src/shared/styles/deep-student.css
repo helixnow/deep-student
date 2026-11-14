@@ -166,7 +166,10 @@ svg.h-4 {
 
 /* ---- 5. 输入框防缩放 ---- */
 
-@media (pointer: coarse) and (hover: none) and (max-width: 1024px) {
+/* 按 pointer: coarse 判定而非 max-width: 1024px：iPad Pro 等宽视口触屏上 <16px
+   输入框聚焦同样会触发 iOS Safari/WKWebView 自动捏合缩放页面。 */
+@media (pointer: coarse) {
+  input:not([type]),
   input[type="text"],
   input[type="number"],
   input[type="email"],

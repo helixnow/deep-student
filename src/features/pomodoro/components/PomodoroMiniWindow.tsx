@@ -130,7 +130,7 @@ export const PomodoroMiniWindow: React.FC = () => {
   return (
     <div
       data-tauri-drag-region
-      className="group relative flex h-screen w-screen select-none items-center gap-2 overflow-hidden rounded-full border border-border bg-background px-3.5 pr-1.5 shadow-lg"
+      className="group relative flex h-screen w-screen select-none items-center gap-2 overflow-hidden rounded-full border border-border/60 bg-background px-3.5 pr-1.5 shadow-md"
     >
       {state ? (
         <>

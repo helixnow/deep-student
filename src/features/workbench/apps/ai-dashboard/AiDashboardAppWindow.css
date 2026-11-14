@@ -12,17 +12,20 @@
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
-  padding: 16px 20px 8px;
-  font-size: 15px;
+  padding: 14px 20px 10px;
+  font-size: 14px;
   font-weight: 600;
+  letter-spacing: -0.01em;
   color: var(--text-primary, hsl(var(--foreground)));
+  border-bottom: 1px solid hsl(var(--border) / 0.35);
 }
 
 .wb-ai-dashboard-body {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 0 20px 20px;
+  padding: 14px 20px 20px;
+  font-variant-numeric: tabular-nums;
 }
 
 .wb-ai-dashboard-body .generative-ui-root,

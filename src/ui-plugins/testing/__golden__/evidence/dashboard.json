@@ -1,0 +1,238 @@
+{
+  "desktop.loaded": {
+    "ipc": [
+      "dstu_list(options,path)",
+      "fsrs_get_stats()",
+      "get_enhanced_statistics()",
+      "list_document_sessions(limit)",
+      "mastery_get_overview(limit)",
+      "review_plan_get_stats(examId)",
+      "todo_list_today(includeCompleted)"
+    ],
+    "style": "6ea4a3e705fca4d5",
+    "charts": [
+      {
+        "title": "数据趋势",
+        "ticks": [
+          "2026-09",
+          "2026-10",
+          "0",
+          "5",
+          "10",
+          "15",
+          "20"
+        ],
+        "series": [
+          "recharts-curve recharts-area-area M40,139L616,16L616,262L40,262Z",
+          "recharts-curve recharts-area-curve M40,139L616,16"
+        ]
+      },
+      {
+        "title": "标签 Top 8",
+        "ticks": [
+          "函数",
+          "导数",
+          "概率",
+          "数列",
+          "0",
+          "3",
+          "6",
+          "9",
+          "12"
+        ],
+        "series": [
+          "recharts-rectangle M54.4,22A 6,6,0,0,1,60.4,16L 163.4,16A 6,6,0,0,1, 169.4,22L 169.4,208L 54.4,208Z",
+          "recharts-rectangle M198.4,86A 6,6,0,0,1,204.4,80L 307.4,80A 6,6,0,0,1, 313.4,86L 313.4,208L 198.4,208Z",
+          "recharts-rectangle M342.4,134A 6,6,0,0,1,348.4,128L 451.4,128A 6,6,0,0,1, 457.4,134L 457.4,208L 342.4,208Z",
+          "recharts-rectangle M486.4,166A 6,6,0,0,1,492.4,160L 595.4,160A 6,6,0,0,1, 601.4,166L 601.4,208L 486.4,208Z"
+        ]
+      }
+    ]
+  },
+  "desktop.empty": {
+    "ipc": [
+      "dstu_list(options,path)",
+      "fsrs_get_stats()",
+      "get_enhanced_statistics()",
+      "list_document_sessions(limit)",
+      "mastery_get_overview(limit)",
+      "review_plan_get_stats(examId)",
+      "todo_list_today(includeCompleted)"
+    ],
+    "style": "6ea4a3e705fca4d5",
+    "charts": [
+      {
+        "title": "",
+        "ticks": [],
+        "series": []
+      }
+    ]
+  },
+  "desktop.error": {
+    "ipc": [
+      "dstu_list(options,path)",
+      "fsrs_get_stats()",
+      "get_enhanced_statistics()",
+      "list_document_sessions(limit)",
+      "mastery_get_overview(limit)",
+      "review_plan_get_stats(examId)",
+      "todo_list_today(includeCompleted)"
+    ],
+    "style": "6ea4a3e705fca4d5",
+    "charts": []
+  },
+  "desktop.embedded": {
+    "ipc": [
+      "dstu_list(options,path)",
+      "fsrs_get_stats()",
+      "get_enhanced_statistics()",
+      "list_document_sessions(limit)",
+      "mastery_get_overview(limit)",
+      "review_plan_get_stats(examId)",
+      "todo_list_today(includeCompleted)"
+    ],
+    "style": "6ea4a3e705fca4d5",
+    "charts": [
+      {
+        "title": "数据趋势",
+        "ticks": [
+          "2026-09",
+          "2026-10",
+          "0",
+          "5",
+          "10",
+          "15",
+          "20"
+        ],
+        "series": [
+          "recharts-curve recharts-area-area M40,139L616,16L616,262L40,262Z",
+          "recharts-curve recharts-area-curve M40,139L616,16"
+        ]
+      },
+      {
+        "title": "标签 Top 8",
+        "ticks": [
+          "函数",
+          "导数",
+          "概率",
+          "数列",
+          "0",
+          "3",
+          "6",
+          "9",
+          "12"
+        ],
+        "series": [
+          "recharts-rectangle M54.4,22A 6,6,0,0,1,60.4,16L 163.4,16A 6,6,0,0,1, 169.4,22L 169.4,208L 54.4,208Z",
+          "recharts-rectangle M198.4,86A 6,6,0,0,1,204.4,80L 307.4,80A 6,6,0,0,1, 313.4,86L 313.4,208L 198.4,208Z",
+          "recharts-rectangle M342.4,134A 6,6,0,0,1,348.4,128L 451.4,128A 6,6,0,0,1, 457.4,134L 457.4,208L 342.4,208Z",
+          "recharts-rectangle M486.4,166A 6,6,0,0,1,492.4,160L 595.4,160A 6,6,0,0,1, 601.4,166L 601.4,208L 486.4,208Z"
+        ]
+      }
+    ]
+  },
+  "mobile.loaded": {
+    "ipc": [
+      "dstu_list(options,path)",
+      "fsrs_get_stats()",
+      "get_enhanced_statistics()",
+      "list_document_sessions(limit)",
+      "mastery_get_overview(limit)",
+      "review_plan_get_stats(examId)",
+      "todo_list_today(includeCompleted)"
+    ],
+    "style": "6ea4a3e705fca4d5",
+    "charts": [
+      {
+        "title": "数据趋势",
+        "ticks": [
+          "2026-09",
+          "2026-10",
+          "0",
+          "5",
+          "10",
+          "15",
+          "20"
+        ],
+        "series": [
+          "recharts-curve recharts-area-area M40,139L616,16L616,262L40,262Z",
+          "recharts-curve recharts-area-curve M40,139L616,16"
+        ]
+      },
+      {
+        "title": "标签 Top 8",
+        "ticks": [
+          "函数",
+          "导数",
+          "概率",
+          "数列",
+          "0",
+          "3",
+          "6",
+          "9",
+          "12"
+        ],
+        "series": [
+          "recharts-rectangle M54.4,22A 6,6,0,0,1,60.4,16L 163.4,16A 6,6,0,0,1, 169.4,22L 169.4,208L 54.4,208Z",
+          "recharts-rectangle M198.4,86A 6,6,0,0,1,204.4,80L 307.4,80A 6,6,0,0,1, 313.4,86L 313.4,208L 198.4,208Z",
+          "recharts-rectangle M342.4,134A 6,6,0,0,1,348.4,128L 451.4,128A 6,6,0,0,1, 457.4,134L 457.4,208L 342.4,208Z",
+          "recharts-rectangle M486.4,166A 6,6,0,0,1,492.4,160L 595.4,160A 6,6,0,0,1, 601.4,166L 601.4,208L 486.4,208Z"
+        ]
+      }
+    ]
+  },
+  "mobile.empty": {
+    "ipc": [
+      "dstu_list(options,path)",
+      "fsrs_get_stats()",
+      "get_enhanced_statistics()",
+      "list_document_sessions(limit)",
+      "mastery_get_overview(limit)",
+      "review_plan_get_stats(examId)",
+      "todo_list_today(includeCompleted)"
+    ],
+    "style": "6ea4a3e705fca4d5",
+    "charts": [
+      {
+        "title": "",
+        "ticks": [],
+        "series": []
+      }
+    ]
+  },
+  "mobile.error": {
+    "ipc": [
+      "dstu_list(options,path)",
+      "fsrs_get_stats()",
+      "get_enhanced_statistics()",
+      "list_document_sessions(limit)",
+      "mastery_get_overview(limit)",
+      "review_plan_get_stats(examId)",
+      "todo_list_today(includeCompleted)"
+    ],
+    "style": "6ea4a3e705fca4d5",
+    "charts": []
+  },
+  "desktop.loading": {
+    "ipc": [
+      "dstu_list(options,path)",
+      "fsrs_get_stats()",
+      "get_enhanced_statistics()",
+      "list_document_sessions(limit)",
+      "mastery_get_overview(limit)",
+      "review_plan_get_stats(examId)",
+      "todo_list_today(includeCompleted)"
+    ]
+  },
+  "mobile.loading": {
+    "ipc": [
+      "dstu_list(options,path)",
+      "fsrs_get_stats()",
+      "get_enhanced_statistics()",
+      "list_document_sessions(limit)",
+      "mastery_get_overview(limit)",
+      "review_plan_get_stats(examId)",
+      "todo_list_today(includeCompleted)"
+    ]
+  }
+}

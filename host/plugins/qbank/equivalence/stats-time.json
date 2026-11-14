@@ -1,0 +1,5430 @@
+{
+  "domain": "qbank",
+  "commands": [
+    "qbank_count_by_type",
+    "qbank_get_knowledge_stats_with_comparison",
+    "qbank_get_learning_trend",
+    "qbank_get_activity_heatmap",
+    "qbank_get_check_in_calendar"
+  ],
+  "scenarios": [
+    {
+      "id": "qbank.count_by_type.mixed_types_excludes_deleted_and_other_exam",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "组卷题目集A",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "组卷题目集B",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "单选一",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "单选二",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "判断一",
+              "question_type": "true_false",
+              "options": null,
+              "answer": "true",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "填空一",
+              "question_type": "fill_blank",
+              "options": null,
+              "answer": "答案",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "简答一",
+              "question_type": "short_answer",
+              "options": null,
+              "answer": "要点",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${1.id}",
+              "content": "论述一",
+              "question_type": "essay",
+              "options": null,
+              "answer": null,
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_count_by_type",
+          "args": {
+            "examId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "qbank_delete_question",
+          "args": {
+            "questionId": "${2.id}"
+          }
+        },
+        {
+          "cmd": "qbank_count_by_type",
+          "args": {
+            "examId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "qbank_count_by_type",
+          "args": {
+            "examId": "${1.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.count_by_type.default_type_other",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "未指定题型"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_count_by_type",
+          "args": {
+            "examId": "${0.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.count_by_type.type_change_moves_count",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "改题型",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_count_by_type",
+          "args": {
+            "examId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "qbank_update_question",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "params": {
+                "question_type": "true_false",
+                "answer": "true",
+                "options": []
+              },
+              "record_history": true
+            }
+          }
+        },
+        {
+          "cmd": "qbank_count_by_type",
+          "args": {
+            "examId": "${0.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.count_by_type.empty_unknown_and_blank_exam",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_count_by_type",
+          "args": {
+            "examId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "qbank_count_by_type",
+          "args": {
+            "examId": "exam_missing"
+          }
+        },
+        {
+          "cmd": "qbank_count_by_type",
+          "args": {
+            "examId": ""
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.count_by_type.err_missing_examId",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "单选一",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_count_by_type",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.count_by_type.err_snake_case_key",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "单选一",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_count_by_type",
+          "args": {
+            "exam_id": "${0.id}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.count_by_type.err_examId_number",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "单选一",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_count_by_type",
+          "args": {
+            "examId": 42
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.knowledge_stats.status_buckets_and_rates",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "知识点A",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "知识点B",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "代数一",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [
+                "代数",
+                "几何"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "代数二",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [
+                "代数"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "代数三",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [
+                "代数",
+                "几何"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "代数四",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [
+                "代数"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${1.id}",
+              "content": "代数五",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [
+                "代数"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${2.id}",
+              "user_answer": "B",
+              "client_request_id": "req-knowledge_stats.status_buckets_and_rates-1"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${2.id}",
+              "user_answer": "B",
+              "client_request_id": "req-knowledge_stats.status_buckets_and_rates-2"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${3.id}",
+              "user_answer": "B",
+              "client_request_id": "req-knowledge_stats.status_buckets_and_rates-3"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${4.id}",
+              "user_answer": "A",
+              "client_request_id": "req-knowledge_stats.status_buckets_and_rates-4"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_knowledge_stats_with_comparison",
+          "args": {
+            "request": {
+              "exam_id": "${0.id}"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_knowledge_stats_with_comparison",
+          "args": {
+            "request": {
+              "exam_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_knowledge_stats_with_comparison",
+          "args": {
+            "request": {}
+          }
+        },
+        {
+          "cmd": "qbank_get_knowledge_stats_with_comparison",
+          "args": {
+            "request": {
+              "exam_id": "${1.id}"
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.knowledge_stats.top10_limit_distinct_totals",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "标签题1",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [
+                "t01"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "标签题2",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [
+                "t01",
+                "t02"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "标签题3",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [
+                "t01",
+                "t02",
+                "t03"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "标签题4",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [
+                "t01",
+                "t02",
+                "t03",
+                "t04"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "标签题5",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [
+                "t01",
+                "t02",
+                "t03",
+                "t04",
+                "t05"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "标签题6",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [
+                "t01",
+                "t02",
+                "t03",
+                "t04",
+                "t05",
+                "t06"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "标签题7",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [
+                "t01",
+                "t02",
+                "t03",
+                "t04",
+                "t05",
+                "t06",
+                "t07"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "标签题8",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [
+                "t01",
+                "t02",
+                "t03",
+                "t04",
+                "t05",
+                "t06",
+                "t07",
+                "t08"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "标签题9",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [
+                "t01",
+                "t02",
+                "t03",
+                "t04",
+                "t05",
+                "t06",
+                "t07",
+                "t08",
+                "t09"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "标签题10",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [
+                "t01",
+                "t02",
+                "t03",
+                "t04",
+                "t05",
+                "t06",
+                "t07",
+                "t08",
+                "t09",
+                "t10"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "标签题11",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [
+                "t01",
+                "t02",
+                "t03",
+                "t04",
+                "t05",
+                "t06",
+                "t07",
+                "t08",
+                "t09",
+                "t10",
+                "t11"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_knowledge_stats_with_comparison",
+          "args": {
+            "request": {
+              "exam_id": "${0.id}"
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.knowledge_stats.equal_total_tie_order",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "并列",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [
+                "丙",
+                "甲",
+                "乙"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_knowledge_stats_with_comparison",
+          "args": {
+            "request": {
+              "exam_id": "${0.id}"
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.knowledge_stats.excludes_deleted_untagged_dup_tag",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "无标签",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "重复标签",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [
+                "重复",
+                "重复"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "已删",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [
+                "删除"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_delete_question",
+          "args": {
+            "questionId": "${3.id}"
+          }
+        },
+        {
+          "cmd": "qbank_get_knowledge_stats_with_comparison",
+          "args": {
+            "request": {
+              "exam_id": "${0.id}"
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.knowledge_stats.manual_status_and_pending_subjective",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "手工掌握",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [
+                "手工"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "主观待批",
+              "question_type": "short_answer",
+              "options": null,
+              "answer": "要点",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [
+                "主观"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_update_question",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "params": {
+                "status": "mastered"
+              },
+              "record_history": true
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${2.id}",
+              "user_answer": "我的作答",
+              "client_request_id": "req-knowledge_stats.manual_status_and_pending_subjective-1"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_knowledge_stats_with_comparison",
+          "args": {
+            "request": {
+              "exam_id": "${0.id}"
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.knowledge_stats.empty_db_and_unknown_exam",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_get_knowledge_stats_with_comparison",
+          "args": {
+            "request": {
+              "exam_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_knowledge_stats_with_comparison",
+          "args": {
+            "request": {
+              "exam_id": "exam_missing"
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.knowledge_stats.err_missing_request",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_get_knowledge_stats_with_comparison",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.knowledge_stats.err_exam_id_number",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_get_knowledge_stats_with_comparison",
+          "args": {
+            "request": {
+              "exam_id": 5
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.trend.attempts_correct_rate_by_exam",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "趋势A",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "趋势B",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "趋势一",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${1.id}",
+              "content": "趋势二",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${2.id}",
+              "user_answer": "A",
+              "client_request_id": "req-trend.attempts_correct_rate_by_exam-1"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${2.id}",
+              "user_answer": "B",
+              "client_request_id": "req-trend.attempts_correct_rate_by_exam-2"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${2.id}",
+              "user_answer": "B",
+              "client_request_id": "req-trend.attempts_correct_rate_by_exam-3"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${3.id}",
+              "user_answer": "B",
+              "client_request_id": "req-trend.attempts_correct_rate_by_exam-4"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${3.id}",
+              "user_answer": "C",
+              "client_request_id": "req-trend.attempts_correct_rate_by_exam-5"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${3.id}",
+              "user_answer": "C",
+              "client_request_id": "req-trend.attempts_correct_rate_by_exam-6"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${3.id}",
+              "user_answer": "C",
+              "client_request_id": "req-trend.attempts_correct_rate_by_exam-7"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${3.id}",
+              "user_answer": "C",
+              "client_request_id": "req-trend.attempts_correct_rate_by_exam-8"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${3.id}",
+              "user_answer": "C",
+              "client_request_id": "req-trend.attempts_correct_rate_by_exam-9"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${3.id}",
+              "user_answer": "C",
+              "client_request_id": "req-trend.attempts_correct_rate_by_exam-10"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${3.id}",
+              "user_answer": "C",
+              "client_request_id": "req-trend.attempts_correct_rate_by_exam-11"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_learning_trend",
+          "args": {
+            "request": {
+              "exam_id": "${0.id}",
+              "start_date": "2026-01-01",
+              "end_date": "2027-12-31"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_learning_trend",
+          "args": {
+            "request": {
+              "exam_id": "${1.id}",
+              "start_date": "2026-01-01",
+              "end_date": "2027-12-31"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_learning_trend",
+          "args": {
+            "request": {
+              "exam_id": null,
+              "start_date": "2026-01-01",
+              "end_date": "2027-12-31"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_learning_trend",
+          "args": {
+            "request": {
+              "exam_id": "${0.id}",
+              "start_date": "2026-11-01",
+              "end_date": "2026-11-30"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_learning_trend",
+          "args": {
+            "request": {
+              "exam_id": "${0.id}",
+              "start_date": "2026-12-01",
+              "end_date": "2026-12-31"
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.trend.subjective_pending_attempt_only",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "主观",
+              "question_type": "short_answer",
+              "options": null,
+              "answer": "要点",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "user_answer": "作答",
+              "client_request_id": "req-trend.subjective_pending_attempt_only-1"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_learning_trend",
+          "args": {
+            "request": {
+              "exam_id": "${0.id}",
+              "start_date": "2026-01-01",
+              "end_date": "2027-12-31"
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.trend.past_window_zero_filled_leap_day",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "今日",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "user_answer": "B",
+              "client_request_id": "req-trend.past_window_zero_filled_leap_day-1"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_learning_trend",
+          "args": {
+            "request": {
+              "exam_id": null,
+              "start_date": "2024-02-27",
+              "end_date": "2024-03-02"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_learning_trend",
+          "args": {
+            "request": {
+              "exam_id": null,
+              "start_date": "2025-06-15",
+              "end_date": "2025-06-15"
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.trend.max_range_3700_days",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_get_learning_trend",
+          "args": {
+            "request": {
+              "exam_id": null,
+              "start_date": "2016-01-01",
+              "end_date": "2026-02-17"
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.trend.deleted_question_excluded",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "保留",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "删除",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "user_answer": "B",
+              "client_request_id": "req-trend.deleted_question_excluded-1"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${2.id}",
+              "user_answer": "A",
+              "client_request_id": "req-trend.deleted_question_excluded-2"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_delete_question",
+          "args": {
+            "questionId": "${2.id}"
+          }
+        },
+        {
+          "cmd": "qbank_get_learning_trend",
+          "args": {
+            "request": {
+              "exam_id": "${0.id}",
+              "start_date": "2026-01-01",
+              "end_date": "2027-12-31"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_learning_trend",
+          "args": {
+            "request": {
+              "exam_id": null,
+              "start_date": "2026-01-01",
+              "end_date": "2027-12-31"
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.trend.unpadded_date_strings",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "今日",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "user_answer": "B",
+              "client_request_id": "req-trend.unpadded_date_strings-1"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_learning_trend",
+          "args": {
+            "request": {
+              "exam_id": null,
+              "start_date": "2026-1-01",
+              "end_date": "2027-12-31"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_learning_trend",
+          "args": {
+            "request": {
+              "exam_id": null,
+              "start_date": "2026-11-1",
+              "end_date": "2026-12-1"
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.trend.empty_db_and_unknown_exam_zero_filled",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_get_learning_trend",
+          "args": {
+            "request": {
+              "exam_id": null,
+              "start_date": "2026-11-01",
+              "end_date": "2026-11-30"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_learning_trend",
+          "args": {
+            "request": {
+              "exam_id": "exam_missing",
+              "start_date": "2026-11-01",
+              "end_date": "2026-11-30"
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.trend.err_start_format",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_get_learning_trend",
+          "args": {
+            "request": {
+              "exam_id": null,
+              "start_date": "2026/11/01",
+              "end_date": "2026-11-30"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.trend.err_end_invalid_day",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_get_learning_trend",
+          "args": {
+            "request": {
+              "exam_id": null,
+              "start_date": "2026-02-01",
+              "end_date": "2026-02-30"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.trend.err_start_empty",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_get_learning_trend",
+          "args": {
+            "request": {
+              "exam_id": null,
+              "start_date": "",
+              "end_date": "2026-11-30"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.trend.err_start_after_end",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_get_learning_trend",
+          "args": {
+            "request": {
+              "exam_id": null,
+              "start_date": "2026-11-30",
+              "end_date": "2026-11-01"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.trend.err_range_3701_days",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_get_learning_trend",
+          "args": {
+            "request": {
+              "exam_id": null,
+              "start_date": "2016-01-01",
+              "end_date": "2026-02-18"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.trend.err_missing_end_date",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_get_learning_trend",
+          "args": {
+            "request": {
+              "exam_id": null,
+              "start_date": "2026-11-01"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.trend.err_missing_request",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_get_learning_trend",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.heatmap.level_thresholds_distinct_questions",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "热力1",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "热力2",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "热力3",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "热力4",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "热力5",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "热力6",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "热力7",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "热力8",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "热力9",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "热力10",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "热力11",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "user_answer": "B",
+              "client_request_id": "req-heatmap.level_thresholds_distinct_questions-1"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_activity_heatmap",
+          "args": {
+            "request": {
+              "exam_id": "${0.id}",
+              "year": 2026
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${2.id}",
+              "user_answer": "A",
+              "client_request_id": "req-heatmap.level_thresholds_distinct_questions-2"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${3.id}",
+              "user_answer": "B",
+              "client_request_id": "req-heatmap.level_thresholds_distinct_questions-3"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_activity_heatmap",
+          "args": {
+            "request": {
+              "exam_id": "${0.id}",
+              "year": 2026
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${4.id}",
+              "user_answer": "A",
+              "client_request_id": "req-heatmap.level_thresholds_distinct_questions-4"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_activity_heatmap",
+          "args": {
+            "request": {
+              "exam_id": "${0.id}",
+              "year": 2026
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${5.id}",
+              "user_answer": "B",
+              "client_request_id": "req-heatmap.level_thresholds_distinct_questions-5"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${6.id}",
+              "user_answer": "A",
+              "client_request_id": "req-heatmap.level_thresholds_distinct_questions-6"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_activity_heatmap",
+          "args": {
+            "request": {
+              "exam_id": "${0.id}",
+              "year": 2026
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${7.id}",
+              "user_answer": "B",
+              "client_request_id": "req-heatmap.level_thresholds_distinct_questions-7"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_activity_heatmap",
+          "args": {
+            "request": {
+              "exam_id": "${0.id}",
+              "year": 2026
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${8.id}",
+              "user_answer": "A",
+              "client_request_id": "req-heatmap.level_thresholds_distinct_questions-8"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${9.id}",
+              "user_answer": "B",
+              "client_request_id": "req-heatmap.level_thresholds_distinct_questions-9"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${10.id}",
+              "user_answer": "A",
+              "client_request_id": "req-heatmap.level_thresholds_distinct_questions-10"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_activity_heatmap",
+          "args": {
+            "request": {
+              "exam_id": "${0.id}",
+              "year": 2026
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${11.id}",
+              "user_answer": "B",
+              "client_request_id": "req-heatmap.level_thresholds_distinct_questions-11"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_activity_heatmap",
+          "args": {
+            "request": {
+              "exam_id": "${0.id}",
+              "year": 2026
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_activity_heatmap",
+          "args": {
+            "request": {
+              "exam_id": "${0.id}",
+              "year": 2027
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.heatmap.repeat_submissions_count_once_max_correct",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "重复一",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "重复二",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "user_answer": "A",
+              "client_request_id": "req-heatmap.repeat_submissions_count_once_max_correct-1"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "user_answer": "C",
+              "client_request_id": "req-heatmap.repeat_submissions_count_once_max_correct-2"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "user_answer": "B",
+              "client_request_id": "req-heatmap.repeat_submissions_count_once_max_correct-3"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${2.id}",
+              "user_answer": "A",
+              "client_request_id": "req-heatmap.repeat_submissions_count_once_max_correct-4"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_activity_heatmap",
+          "args": {
+            "request": {
+              "exam_id": "${0.id}",
+              "year": 2026
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_activity_heatmap",
+          "args": {
+            "request": {
+              "exam_id": "${0.id}",
+              "year": 2027
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_learning_trend",
+          "args": {
+            "request": {
+              "exam_id": "${0.id}",
+              "start_date": "2026-01-01",
+              "end_date": "2027-12-31"
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.heatmap.exam_filter_global_and_deleted",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "热力A",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "热力B",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "A1",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "A2",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${1.id}",
+              "content": "B1",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${2.id}",
+              "user_answer": "B",
+              "client_request_id": "req-heatmap.exam_filter_global_and_deleted-1"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${3.id}",
+              "user_answer": "A",
+              "client_request_id": "req-heatmap.exam_filter_global_and_deleted-2"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${4.id}",
+              "user_answer": "B",
+              "client_request_id": "req-heatmap.exam_filter_global_and_deleted-3"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_delete_question",
+          "args": {
+            "questionId": "${3.id}"
+          }
+        },
+        {
+          "cmd": "qbank_get_activity_heatmap",
+          "args": {
+            "request": {
+              "exam_id": "${0.id}",
+              "year": 2026
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_activity_heatmap",
+          "args": {
+            "request": {
+              "exam_id": "${1.id}",
+              "year": 2026
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_activity_heatmap",
+          "args": {
+            "request": {
+              "exam_id": null,
+              "year": 2026
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_activity_heatmap",
+          "args": {
+            "request": {
+              "year": 2026
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_activity_heatmap",
+          "args": {
+            "request": {
+              "exam_id": null,
+              "year": 2027
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.heatmap.valid_year_bounds_without_data",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "今日",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "user_answer": "B",
+              "client_request_id": "req-heatmap.valid_year_bounds_without_data-1"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_activity_heatmap",
+          "args": {
+            "request": {
+              "exam_id": null,
+              "year": 2025
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_activity_heatmap",
+          "args": {
+            "request": {
+              "exam_id": null,
+              "year": 1970
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_activity_heatmap",
+          "args": {
+            "request": {
+              "exam_id": null,
+              "year": 9999
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.heatmap.empty_db",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_get_activity_heatmap",
+          "args": {
+            "request": {
+              "exam_id": null,
+              "year": 2026
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.heatmap.err_year_1969",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_get_activity_heatmap",
+          "args": {
+            "request": {
+              "exam_id": null,
+              "year": 1969
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.heatmap.err_year_10000",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_get_activity_heatmap",
+          "args": {
+            "request": {
+              "exam_id": null,
+              "year": 10000
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.heatmap.err_year_zero",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_get_activity_heatmap",
+          "args": {
+            "request": {
+              "exam_id": null,
+              "year": 0
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.heatmap.err_year_negative",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_get_activity_heatmap",
+          "args": {
+            "request": {
+              "exam_id": null,
+              "year": -1
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.heatmap.err_year_i32_overflow",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_get_activity_heatmap",
+          "args": {
+            "request": {
+              "exam_id": null,
+              "year": 2147483648
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.heatmap.err_missing_year",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_get_activity_heatmap",
+          "args": {
+            "request": {
+              "exam_id": null
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.heatmap.err_year_string",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_get_activity_heatmap",
+          "args": {
+            "request": {
+              "exam_id": null,
+              "year": "2026"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.heatmap.err_missing_request",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_get_activity_heatmap",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.calendar.daily_target_threshold",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "打卡一",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "打卡二",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "打卡三",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "user_answer": "B",
+              "client_request_id": "req-calendar.daily_target_threshold-1"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "user_answer": "A",
+              "client_request_id": "req-calendar.daily_target_threshold-2"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${2.id}",
+              "user_answer": "B",
+              "client_request_id": "req-calendar.daily_target_threshold-3"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${3.id}",
+              "user_answer": "A",
+              "client_request_id": "req-calendar.daily_target_threshold-4"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_check_in_calendar",
+          "args": {
+            "request": {
+              "exam_id": "${0.id}",
+              "year": 2026,
+              "month": 11,
+              "daily_target": 3
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_check_in_calendar",
+          "args": {
+            "request": {
+              "exam_id": "${0.id}",
+              "year": 2026,
+              "month": 11,
+              "daily_target": 4
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_check_in_calendar",
+          "args": {
+            "request": {
+              "exam_id": "${0.id}",
+              "year": 2026,
+              "month": 11,
+              "daily_target": 0
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_check_in_calendar",
+          "args": {
+            "request": {
+              "exam_id": "${0.id}",
+              "year": 2026,
+              "month": 11
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_check_in_calendar",
+          "args": {
+            "request": {
+              "exam_id": "${0.id}",
+              "year": 2026,
+              "month": 11,
+              "daily_target": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_check_in_calendar",
+          "args": {
+            "request": {
+              "exam_id": "${0.id}",
+              "year": 2026,
+              "month": 12,
+              "daily_target": 3
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.calendar.global_streak_from_history_other_months",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "打卡A",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "打卡B",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "A1",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${1.id}",
+              "content": "B1",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${2.id}",
+              "user_answer": "B",
+              "client_request_id": "req-calendar.global_streak_from_history_other_months-1"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${3.id}",
+              "user_answer": "A",
+              "client_request_id": "req-calendar.global_streak_from_history_other_months-2"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_check_in_calendar",
+          "args": {
+            "request": {
+              "exam_id": null,
+              "year": 2026,
+              "month": 11,
+              "daily_target": 1
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_check_in_calendar",
+          "args": {
+            "request": {
+              "exam_id": null,
+              "year": 2026,
+              "month": 10,
+              "daily_target": 1
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_check_in_calendar",
+          "args": {
+            "request": {
+              "exam_id": null,
+              "year": 2025,
+              "month": 1,
+              "daily_target": 1
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.calendar.pomodoro_focus_seconds",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 1500,
+              "type": "work",
+              "status": "completed"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 600,
+              "type": "work",
+              "status": "interrupted"
+            }
+          }
+        },
+        {
+          "cmd": "pomodoro_create_record",
+          "args": {
+            "input": {
+              "startTime": "2026-11-06T08:00:00.000Z",
+              "endTime": "2026-11-06T08:25:00.000Z",
+              "duration": 1500,
+              "actualDuration": 300,
+              "type": "short_break",
+              "status": "completed"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_check_in_calendar",
+          "args": {
+            "request": {
+              "exam_id": null,
+              "year": 2026,
+              "month": 11
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_check_in_calendar",
+          "args": {
+            "request": {
+              "exam_id": null,
+              "year": 2026,
+              "month": 12
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${5.id}",
+              "content": "专注后作答",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${6.id}",
+              "user_answer": "B",
+              "client_request_id": "req-calendar.pomodoro_focus_seconds-1"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_check_in_calendar",
+          "args": {
+            "request": {
+              "exam_id": null,
+              "year": 2026,
+              "month": 11
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_check_in_calendar",
+          "args": {
+            "request": {
+              "exam_id": null,
+              "year": 2026,
+              "month": 12
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_check_in_calendar",
+          "args": {
+            "request": {
+              "exam_id": "${5.id}",
+              "year": 2026,
+              "month": 11
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.calendar.exam_scope_deleted_unknown",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "打卡A",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "打卡B",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "A1",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "A2",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${1.id}",
+              "content": "B1",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${2.id}",
+              "user_answer": "B",
+              "client_request_id": "req-calendar.exam_scope_deleted_unknown-1"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${3.id}",
+              "user_answer": "B",
+              "client_request_id": "req-calendar.exam_scope_deleted_unknown-2"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${4.id}",
+              "user_answer": "B",
+              "client_request_id": "req-calendar.exam_scope_deleted_unknown-3"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_delete_question",
+          "args": {
+            "questionId": "${3.id}"
+          }
+        },
+        {
+          "cmd": "qbank_get_check_in_calendar",
+          "args": {
+            "request": {
+              "exam_id": "${0.id}",
+              "year": 2026,
+              "month": 11,
+              "daily_target": 1
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_check_in_calendar",
+          "args": {
+            "request": {
+              "exam_id": "${1.id}",
+              "year": 2026,
+              "month": 11,
+              "daily_target": 1
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_check_in_calendar",
+          "args": {
+            "request": {
+              "exam_id": null,
+              "year": 2026,
+              "month": 11,
+              "daily_target": 1
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_check_in_calendar",
+          "args": {
+            "request": {
+              "exam_id": "exam_missing",
+              "year": 2026,
+              "month": 11,
+              "daily_target": 1
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.calendar.empty_db_defaults",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_get_check_in_calendar",
+          "args": {
+            "request": {
+              "exam_id": null,
+              "year": 2026,
+              "month": 11
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_check_in_calendar",
+          "args": {
+            "request": {
+              "exam_id": null,
+              "year": 2026,
+              "month": 11,
+              "daily_target": 4294967295
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.calendar.month_year_bounds_rollover",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "今日",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "甲"
+                },
+                {
+                  "key": "B",
+                  "content": "乙"
+                },
+                {
+                  "key": "C",
+                  "content": "丙"
+                },
+                {
+                  "key": "D",
+                  "content": "丁"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": null,
+              "difficulty": "easy",
+              "tags": [],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "user_answer": "B",
+              "client_request_id": "req-calendar.month_year_bounds_rollover-1"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_check_in_calendar",
+          "args": {
+            "request": {
+              "exam_id": null,
+              "year": 2026,
+              "month": 12
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_check_in_calendar",
+          "args": {
+            "request": {
+              "exam_id": null,
+              "year": 2025,
+              "month": 12
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_check_in_calendar",
+          "args": {
+            "request": {
+              "exam_id": null,
+              "year": 9999,
+              "month": 12
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_check_in_calendar",
+          "args": {
+            "request": {
+              "exam_id": null,
+              "year": 1970,
+              "month": 1
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.calendar.err_month_zero",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_get_check_in_calendar",
+          "args": {
+            "request": {
+              "exam_id": null,
+              "year": 2026,
+              "month": 0
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.calendar.err_month_13",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_get_check_in_calendar",
+          "args": {
+            "request": {
+              "exam_id": null,
+              "year": 2026,
+              "month": 13
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.calendar.err_year_1969",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_get_check_in_calendar",
+          "args": {
+            "request": {
+              "exam_id": null,
+              "year": 1969,
+              "month": 1
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.calendar.err_year_10000",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_get_check_in_calendar",
+          "args": {
+            "request": {
+              "exam_id": null,
+              "year": 10000,
+              "month": 1
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.calendar.err_month_negative",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_get_check_in_calendar",
+          "args": {
+            "request": {
+              "exam_id": null,
+              "year": 2026,
+              "month": -1
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.calendar.err_missing_month",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_get_check_in_calendar",
+          "args": {
+            "request": {
+              "exam_id": null,
+              "year": 2026
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.calendar.err_missing_year",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_get_check_in_calendar",
+          "args": {
+            "request": {
+              "exam_id": null,
+              "month": 11
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.calendar.err_daily_target_negative",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_get_check_in_calendar",
+          "args": {
+            "request": {
+              "exam_id": null,
+              "year": 2026,
+              "month": 11,
+              "daily_target": -1
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.calendar.err_daily_target_string",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_get_check_in_calendar",
+          "args": {
+            "request": {
+              "exam_id": null,
+              "year": 2026,
+              "month": 11,
+              "daily_target": "10"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.calendar.err_missing_request",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_get_check_in_calendar",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

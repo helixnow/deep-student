@@ -65,6 +65,10 @@ vi.mock('@/features/chat/skills/progressiveDisclosure', () => ({
   unloadSkill: vi.fn(),
 }));
 
+vi.mock('@/features/chat/skills/hostResources', () => ({
+  ensureHostSkillContent: vi.fn(async () => {}),
+}));
+
 vi.mock('@/features/chat/skills/runtimeAdmission', () => ({
   getSkillRuntimeAdmissionWithDependencies: (skill: { id: string }) => {
     if (skill.id === 'external-skill') {

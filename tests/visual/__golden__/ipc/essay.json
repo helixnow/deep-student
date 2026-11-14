@@ -1,0 +1,34 @@
+{
+  "scene": "essay",
+  "steps": [
+    {
+      "name": "boot",
+      "order": "sequence",
+      "calls": [
+        "listen:anki_generation_event",
+        "import_builtin_templates()",
+        "get_all_custom_templates()",
+        "get_default_template_id()",
+        "listen:tauri://close-requested",
+        "dstu_list(options{limit,sortBy,sortOrder,typeFilter},path)",
+        "dstu_watch(path)",
+        "listen:dstu:change",
+        "dstu_get(path)",
+        "get_setting(key)",
+        "save_setting(key,value)",
+        "essay_grading_get_session(sessionId)",
+        "essay_grading_get_rounds(sessionId)",
+        "listen:tauri://drag-enter",
+        "essay_grading_get_modes()",
+        "essay_grading_get_models()",
+        "listen:tauri://drag-over",
+        "listen:tauri://drag-drop",
+        "listen:tauri://drag-leave",
+        "unlisten:tauri://drag-enter",
+        "unlisten:tauri://drag-drop",
+        "unlisten:tauri://drag-over",
+        "unlisten:tauri://drag-leave"
+      ]
+    }
+  ]
+}

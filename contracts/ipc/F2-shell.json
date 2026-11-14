@@ -1,0 +1,1189 @@
+{
+  "lane": "F2-shell",
+  "generator": "deep-student/contracts-extract@1.6.0",
+  "commands": [
+    {
+      "name": "copy_file",
+      "lane": "F2-shell",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 4264,
+        "fn": "copy_file"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "sourcePath",
+          "rustName": "source_path",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "destPath",
+          "rustName": "dest_path",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "window"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "export_unified_backup_data",
+      "lane": "F2-shell",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 6552,
+        "fn": "export_unified_backup_data"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "options",
+          "rustName": "options",
+          "schema": {
+            "x-rust": "serde_json::Value"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "get_app_data_dir",
+      "lane": "F2-shell",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 562,
+        "fn": "get_app_data_dir"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "string"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "get_app_version",
+      "lane": "F2-shell",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 499,
+        "fn": "get_app_version"
+      },
+      "async": true,
+      "args": [],
+      "injected": [],
+      "result": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "get_file_size",
+      "lane": "F2-shell",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 4193,
+        "fn": "get_file_size"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "path",
+          "rustName": "path",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "window"
+        }
+      ],
+      "result": {
+        "type": "integer",
+        "x-int": "u64",
+        "minimum": 0
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "get_prevent_sleep",
+      "lane": "F2-shell",
+      "rust": {
+        "file": "src/cmd/power.rs",
+        "line": 77,
+        "fn": "get_prevent_sleep"
+      },
+      "async": false,
+      "args": [],
+      "injected": [],
+      "result": {
+        "type": "boolean"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "hash_file",
+      "lane": "F2-shell",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 4259,
+        "fn": "hash_file"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "path",
+          "rustName": "path",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "window"
+        }
+      ],
+      "result": {
+        "type": "string"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "install_apk",
+      "lane": "F2-shell",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 532,
+        "fn": "install_apk"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "path",
+          "rustName": "path",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "load_webview_settings",
+      "lane": "F2-shell",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 7508,
+        "fn": "load_webview_settings"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "open_file_externally",
+      "lane": "F2-shell",
+      "rust": {
+        "file": "src/external_file_opener.rs",
+        "line": 176,
+        "fn": "open_file_externally"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "path",
+          "rustName": "path",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "mode",
+          "rustName": "mode",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "type": "string"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "open_system_permission_settings",
+      "lane": "F2-shell",
+      "rust": {
+        "file": "src/system_permissions.rs",
+        "line": 129,
+        "fn": "open_system_permission_settings"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "permission",
+          "rustName": "permission",
+          "schema": {
+            "$ref": "#/$defs/SystemPermissionSettingsTarget"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "pdfstream_check_access",
+      "lane": "F2-shell",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 4212,
+        "fn": "pdfstream_check_access"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "path",
+          "rustName": "path",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/PdfStreamAccess"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "read_file_bytes",
+      "lane": "F2-shell",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 4171,
+        "fn": "read_file_bytes"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "path",
+          "rustName": "path",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "maxBytes",
+          "rustName": "max_bytes",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u64",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "window"
+        }
+      ],
+      "result": {
+        "x-rust": "tauri::ipc::Response",
+        "x-binary": true,
+        "description": "InvokeResponseBody：Raw 字节时前端收到 ArrayBuffer"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "read_file_text",
+      "lane": "F2-shell",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 4149,
+        "fn": "read_file_text"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "path",
+          "rustName": "path",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "window"
+        }
+      ],
+      "result": {
+        "type": "string"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "save_text_to_file",
+      "lane": "F2-shell",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 4271,
+        "fn": "save_text_to_file"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "path",
+          "rustName": "path",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "content",
+          "rustName": "content",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "window"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "save_webview_settings",
+      "lane": "F2-shell",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 7475,
+        "fn": "save_webview_settings"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "settings",
+          "rustName": "settings",
+          "schema": {
+            "x-rust": "serde_json::Value"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "set_android_immersive_mode",
+      "lane": "F2-shell",
+      "rust": {
+        "file": "src/system_bars.rs",
+        "line": 43,
+        "fn": "set_android_immersive_mode"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "enabled",
+          "rustName": "enabled",
+          "schema": {
+            "type": "boolean"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "set_backend_sentry_enabled",
+      "lane": "F2-shell",
+      "rust": {
+        "file": "src/lib.rs",
+        "line": 330,
+        "fn": "set_backend_sentry_enabled"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "enabled",
+          "rustName": "enabled",
+          "schema": {
+            "type": "boolean"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::BackendSentryState"
+        },
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "boolean"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "set_prevent_sleep",
+      "lane": "F2-shell",
+      "rust": {
+        "file": "src/cmd/power.rs",
+        "line": 26,
+        "fn": "set_prevent_sleep"
+      },
+      "async": false,
+      "args": [
+        {
+          "key": "enabled",
+          "rustName": "enabled",
+          "schema": {
+            "type": "boolean"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [],
+      "result": {
+        "type": "boolean"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "set_sidebar_vibrancy",
+      "lane": "F2-shell",
+      "rust": {
+        "file": "src/cmd/window_effects.rs",
+        "line": 171,
+        "fn": "set_sidebar_vibrancy"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "enabled",
+          "rustName": "enabled",
+          "schema": {
+            "type": "boolean"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "webview-window"
+        }
+      ],
+      "result": {
+        "type": "boolean"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "set_window_appearance",
+      "lane": "F2-shell",
+      "rust": {
+        "file": "src/cmd/window_effects.rs",
+        "line": 214,
+        "fn": "set_window_appearance"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "dark",
+          "rustName": "dark",
+          "schema": {
+            "type": "boolean"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "webview-window"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "sync_titlebar_sidebar_material",
+      "lane": "F2-shell",
+      "rust": {
+        "file": "src/cmd/window_effects.rs",
+        "line": 270,
+        "fn": "sync_titlebar_sidebar_material"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "enabled",
+          "rustName": "enabled",
+          "schema": {
+            "type": "boolean"
+          },
+          "optional": false
+        },
+        {
+          "key": "width",
+          "rustName": "width",
+          "schema": {
+            "type": "number",
+            "x-float": "f64"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "webview-window"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "updater_install_supported",
+      "lane": "F2-shell",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 515,
+        "fn": "updater_install_supported"
+      },
+      "async": false,
+      "args": [],
+      "injected": [],
+      "result": {
+        "type": "boolean"
+      },
+      "frontend": "app"
+    }
+  ],
+  "events": [
+    {
+      "name": "backup-jobs-resumable",
+      "dynamic": false,
+      "payload": {
+        "type": "array",
+        "items": {
+          "$ref": "_shared.json#/$defs/PersistedJob"
+        }
+      },
+      "emitters": [
+        {
+          "file": "src/lib.rs",
+          "line": 1445,
+          "fn": "run",
+          "lane": "F2-shell",
+          "method": "emit",
+          "note": "receiver `app_handle` type not inferred; accepted because the event name is static"
+        }
+      ]
+    },
+    {
+      "name": "data-governance-migration-status",
+      "dynamic": false,
+      "payload": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "success": {
+                "type": "boolean"
+              },
+              "error": {
+                "type": "string"
+              },
+              "degraded_mode": {
+                "type": "boolean"
+              },
+              "maintenance_mode_forced": {
+                "type": "boolean"
+              },
+              "restore_activation_failed": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "success",
+              "error",
+              "degraded_mode",
+              "maintenance_mode_forced",
+              "restore_activation_failed"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "success": {
+                "type": "boolean"
+              },
+              "error": {
+                "type": "string"
+              },
+              "degraded_mode": {
+                "type": "boolean"
+              },
+              "maintenance_mode_forced": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "success",
+              "error",
+              "degraded_mode",
+              "maintenance_mode_forced"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "success": {
+                "type": "boolean"
+              },
+              "global_version": {
+                "type": "integer",
+                "x-int": "u64",
+                "minimum": 0
+              },
+              "migrations_applied": {
+                "type": "integer",
+                "x-int": "usize",
+                "minimum": 0
+              },
+              "duration_ms": {
+                "type": "integer",
+                "x-int": "u64",
+                "minimum": 0
+              },
+              "warnings": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "has_warnings": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "success",
+              "global_version",
+              "migrations_applied",
+              "duration_ms",
+              "warnings",
+              "has_warnings"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "success": {
+                "type": "boolean"
+              },
+              "global_version": {
+                "type": "integer",
+                "x-int": "u64",
+                "minimum": 0
+              },
+              "migrations_applied": {
+                "type": "integer",
+                "x-int": "usize",
+                "minimum": 0
+              },
+              "duration_ms": {
+                "type": "integer",
+                "x-int": "u64",
+                "minimum": 0
+              },
+              "warnings": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "success",
+              "global_version",
+              "migrations_applied",
+              "duration_ms",
+              "warnings"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "success": {
+                "type": "boolean"
+              },
+              "recovered": {
+                "type": "boolean"
+              },
+              "error": {
+                "type": "string"
+              },
+              "maintenance_mode_forced": {
+                "type": "boolean"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "success",
+              "recovered",
+              "error",
+              "maintenance_mode_forced",
+              "message"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "x-note": "emitters send different payload shapes"
+      },
+      "emitters": [
+        {
+          "file": "src/lib.rs",
+          "line": 1117,
+          "fn": "run",
+          "lane": "F2-shell",
+          "method": "emit",
+          "note": "receiver `app_handle` type not inferred; accepted because the event name is static"
+        },
+        {
+          "file": "src/lib.rs",
+          "line": 1133,
+          "fn": "run",
+          "lane": "F2-shell",
+          "method": "emit",
+          "note": "receiver `app_handle` type not inferred; accepted because the event name is static"
+        },
+        {
+          "file": "src/lib.rs",
+          "line": 1180,
+          "fn": "run",
+          "lane": "F2-shell",
+          "method": "emit",
+          "note": "receiver `app_handle` type not inferred; accepted because the event name is static"
+        },
+        {
+          "file": "src/lib.rs",
+          "line": 1212,
+          "fn": "run",
+          "lane": "F2-shell",
+          "method": "emit",
+          "note": "receiver `app_handle` type not inferred; accepted because the event name is static"
+        },
+        {
+          "file": "src/lib.rs",
+          "line": 1284,
+          "fn": "run",
+          "lane": "F2-shell",
+          "method": "emit",
+          "note": "receiver `app_handle` type not inferred; accepted because the event name is static"
+        }
+      ]
+    },
+    {
+      "name": "mcp_tools_changed",
+      "dynamic": false,
+      "payload": {
+        "type": "object",
+        "properties": {
+          "ts": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ts"
+        ],
+        "additionalProperties": false
+      },
+      "emitters": [
+        {
+          "file": "src/lib.rs",
+          "line": 3853,
+          "fn": "init_mcp_client",
+          "lane": "F2-shell",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "menu://close-window",
+      "dynamic": false,
+      "payload": {
+        "type": "null"
+      },
+      "emitters": [
+        {
+          "file": "src/menu.rs",
+          "line": 214,
+          "fn": "handle_menu_event",
+          "lane": "F2-shell",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "menu://command-palette",
+      "dynamic": false,
+      "payload": {
+        "type": "null"
+      },
+      "emitters": [
+        {
+          "file": "src/menu.rs",
+          "line": 214,
+          "fn": "handle_menu_event",
+          "lane": "F2-shell",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "menu://documentation",
+      "dynamic": false,
+      "payload": {
+        "type": "null"
+      },
+      "emitters": [
+        {
+          "file": "src/menu.rs",
+          "line": 214,
+          "fn": "handle_menu_event",
+          "lane": "F2-shell",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "menu://new-session",
+      "dynamic": false,
+      "payload": {
+        "type": "null"
+      },
+      "emitters": [
+        {
+          "file": "src/menu.rs",
+          "line": 214,
+          "fn": "handle_menu_event",
+          "lane": "F2-shell",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "menu://preferences",
+      "dynamic": false,
+      "payload": {
+        "type": "null"
+      },
+      "emitters": [
+        {
+          "file": "src/menu.rs",
+          "line": 214,
+          "fn": "handle_menu_event",
+          "lane": "F2-shell",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "menu://report-issue",
+      "dynamic": false,
+      "payload": {
+        "type": "null"
+      },
+      "emitters": [
+        {
+          "file": "src/menu.rs",
+          "line": 214,
+          "fn": "handle_menu_event",
+          "lane": "F2-shell",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "menu://toggle-sidebar",
+      "dynamic": false,
+      "payload": {
+        "type": "null"
+      },
+      "emitters": [
+        {
+          "file": "src/menu.rs",
+          "line": 214,
+          "fn": "handle_menu_event",
+          "lane": "F2-shell",
+          "method": "emit"
+        }
+      ]
+    }
+  ],
+  "$defs": {
+    "PdfStreamAccess": {
+      "type": "object",
+      "properties": {
+        "available": {
+          "type": "boolean"
+        },
+        "size": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u64",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "available",
+        "size",
+        "reason"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::commands::PdfStreamAccess"
+    },
+    "SystemPermissionSettingsTarget": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "notifications",
+            "microphone"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "notifications": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "notifications"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "microphone": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "microphone"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "x-also-accepts": "externally tagged map form {\"<Variant>\": null}",
+      "x-rust": "deep_student_lib::system_permissions::SystemPermissionSettingsTarget"
+    }
+  }
+}

@@ -19,6 +19,7 @@ export interface RatingDescriptor {
   /** 现场可读的评分判断标准（F09），避免用户凭感觉把「忘了」打成 Hard */
   hintKey: string;
   tone: string;
+  dotClass: string;
 }
 
 export const RATING_DESCRIPTORS: RatingDescriptor[] = [
@@ -26,25 +27,29 @@ export const RATING_DESCRIPTORS: RatingDescriptor[] = [
     value: 1,
     labelKey: 'session.again',
     hintKey: 'session.againHint',
-    tone: 'border-destructive/40 text-destructive hover:bg-destructive/10',
+    tone: 'border-transparent bg-transparent text-foreground/85 hover:bg-destructive/[0.06] hover:text-destructive focus-visible:text-destructive',
+    dotClass: 'bg-destructive',
   },
   {
     value: 2,
     labelKey: 'session.hard',
     hintKey: 'session.hardHint',
-    tone: 'border-amber-500/40 text-amber-700 dark:text-amber-400 hover:bg-amber-500/10',
+    tone: 'border-transparent bg-transparent text-foreground/85 hover:bg-amber-500/[0.07] hover:text-amber-700 dark:hover:text-amber-400 focus-visible:text-amber-700 dark:focus-visible:text-amber-400',
+    dotClass: 'bg-amber-500',
   },
   {
     value: 3,
     labelKey: 'session.good',
     hintKey: 'session.goodHint',
-    tone: 'border-emerald-500/40 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/10',
+    tone: 'border-transparent bg-transparent text-foreground/85 hover:bg-emerald-500/[0.07] hover:text-emerald-700 dark:hover:text-emerald-400 focus-visible:text-emerald-700 dark:focus-visible:text-emerald-400',
+    dotClass: 'bg-emerald-500',
   },
   {
     value: 4,
     labelKey: 'session.easy',
     hintKey: 'session.easyHint',
-    tone: 'border-sky-500/40 text-sky-700 dark:text-sky-400 hover:bg-sky-500/10',
+    tone: 'border-transparent bg-transparent text-foreground/85 hover:bg-sky-500/[0.07] hover:text-sky-700 dark:hover:text-sky-400 focus-visible:text-sky-700 dark:focus-visible:text-sky-400',
+    dotClass: 'bg-sky-500',
   },
 ];
 
@@ -70,14 +75,17 @@ export const RatingBar: React.FC<RatingBarProps> = ({
 
   if (!flipped) {
     return (
-      <div className="wb-fc-ratebar" data-mode="reveal">
+      <div
+        className="wb-fc-ratebar mx-auto w-full max-w-xl rounded-2xl border border-border/55 bg-background/85 p-1.5 backdrop-blur-md shadow-[0_12px_32px_-12px_rgba(15,23,42,0.16)]"
+        data-mode="reveal"
+      >
         <DsButton
           type="button"
-          variant="primary"
+          variant="ghost"
           disabled={disabled}
           onClick={onShowAnswer}
           aria-keyshortcuts="Space"
-          className="wb-fc-show-answer h-auto min-h-11 w-full gap-2"
+          className="wb-fc-show-answer h-auto min-h-11 w-full gap-2 rounded-xl border-transparent bg-foreground/[0.04] font-medium text-foreground hover:bg-foreground/[0.08]"
         >
           <Eye size={16} aria-hidden="true" />
           <span>{t('review.showAnswer')}</span>
@@ -89,7 +97,11 @@ export const RatingBar: React.FC<RatingBarProps> = ({
 
   return (
     // F09 评分标准不再常驻一行：挂在评分栏与各按钮的悬停提示上
-    <div className="wb-fc-ratebar" data-mode="rate" title={t('review.ratingGuide')}>
+    <div
+      className="wb-fc-ratebar mx-auto w-full max-w-xl rounded-2xl border border-border/55 bg-background/85 p-1.5 backdrop-blur-md shadow-[0_12px_32px_-12px_rgba(15,23,42,0.16)]"
+      data-mode="rate"
+      title={t('review.ratingGuide')}
+    >
       {RATING_DESCRIPTORS.map((rating) => {
         const preview = previews?.[rating.value];
         const intervalLabel = preview ? formatInterval(preview.intervalMs) : null;
@@ -99,27 +111,37 @@ export const RatingBar: React.FC<RatingBarProps> = ({
           <DsButton
             key={rating.value}
             type="button"
-            variant="default"
+            variant="ghost"
             disabled={disabled}
             data-pressed={pressedRating === rating.value ? 'true' : undefined}
+            data-rating={rating.value}
             aria-keyshortcuts={String(rating.value)}
             onClick={(event) => onRate(rating.value, event)}
             className={cn(
-              'wb-fc-rate-btn h-auto min-h-12 min-w-0 flex-col gap-0.5 px-1 py-1.5 text-xs',
+              'wb-fc-rate-btn group h-auto min-h-12 min-w-0 flex-col justify-center gap-1 rounded-xl px-2 py-2 text-xs shadow-none',
               rating.tone,
             )}
             aria-label={label}
             title={`${label} · ${hint}${intervalLabel ? ` · ${intervalLabel}` : ''}`}
           >
-            <kbd aria-hidden="true" className="wb-fc-keycap wb-fc-keycap--corner">
-              {rating.value}
-            </kbd>
-            <span className="wb-fc-rate-label">{label}</span>
             {intervalLabel ? (
-              <span className="wb-fc-rate-interval">
+              <span className="wb-fc-rate-interval font-mono text-[11px] tabular-nums text-muted-foreground transition-colors group-hover:text-current">
                 {t('session.intervalHint', { interval: intervalLabel })}
               </span>
             ) : null}
+            <span className="inline-flex items-center justify-center gap-1.5">
+              <span
+                aria-hidden="true"
+                className={cn(
+                  'wb-fc-rate-dot h-1.5 w-1.5 shrink-0 rounded-full opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-[pressed=true]:opacity-100',
+                  rating.dotClass,
+                )}
+              />
+              <kbd aria-hidden="true" className="wb-fc-keycap">
+                {rating.value}
+              </kbd>
+              <span className="wb-fc-rate-label text-xs font-medium">{label}</span>
+            </span>
           </DsButton>
         );
       })}

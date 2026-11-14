@@ -125,6 +125,20 @@ describe('RecoveryCenter', () => {
     expect(await screen.findByText(/活动数据已准备好|data:recovery\.resolved_title/)).toBeInTheDocument();
   });
 
+  it('keeps a user-selected timeline when the window regains focus', async () => {
+    render(<RecoveryCenter mode="startup" />);
+
+    fireEvent.click(await screen.findByRole('button', {
+      name: /升级前的旧版数据|data:recovery\.candidate_legacy/,
+    }));
+    fireEvent.focus(window);
+    await waitFor(() => expect(mockGetStatus).toHaveBeenCalledTimes(2));
+    fireEvent.click(await screen.findByText(/继续确认|data:recovery\.continue/));
+    fireEvent.click(screen.getByText(/确认并准备重启|data:recovery\.confirm_activate/));
+
+    await waitFor(() => expect(mockResolve).toHaveBeenCalledWith('legacy'));
+  });
+
   it('renders a healthy inline state when no recovery is pending', async () => {
     mockGetStatus.mockResolvedValue({
       recovery_required: false,

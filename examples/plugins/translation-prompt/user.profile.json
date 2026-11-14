@@ -1,0 +1,11 @@
+{
+  "$comment": "示例用户 profile：放在 <应用数据目录>/plugins/user.profile.json 即可在官方插件之外加载本插件（host/kernel/profile.ts loadStartupProfile）。module 改成本目录 index.ts 的绝对路径；官方 profile 里的 dstu.translation 提供本插件注入的 translation 服务。",
+  "extends": "official",
+  "plugins": [
+    {
+      "id": "example.translation-prompt",
+      "module": "./index.ts",
+      "config": { "prompt": "Translate for a nursing student. Keep drug names in English." }
+    }
+  ]
+}

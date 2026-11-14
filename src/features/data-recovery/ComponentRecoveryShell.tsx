@@ -12,12 +12,25 @@ import { useTranslation } from 'react-i18next';
 import { WindowControls } from '@/components/WindowControls';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { DsButton } from '@/components/ui/DsButton';
+import { useComponentReasonText } from '@/components/system-status/useComponentReasonText';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/shad/Tabs';
 import { getMobileShellCssVars } from '@/app/shell/mobileShell';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { isMobilePlatform } from '@/utils/platform';
 import type { StartupComponentIssue } from '@/stores/systemStatusStore';
 import { exportStartupRecoveryReport, retryRecoveryStartup } from './dataRecoveryApi';
+import { describeComponentRecovery, type ComponentRecoveryDescription } from './recoveryDescription';
+
+const RECOVERY_TABS = ['status', 'next'] as const;
+
+const DESCRIPTION_KEYS = {
+  kept: 'data:recovery.component_recovery_description',
+  restored: 'data:recovery.component_recovery_description_restored',
+  removed: 'data:recovery.component_recovery_description_removed',
+  restore_failed: 'data:recovery.component_recovery_description_restore_failed',
+  mixed: 'data:recovery.component_recovery_description_mixed',
+} as const satisfies Record<ComponentRecoveryDescription, string>;
+type RecoveryTab = (typeof RECOVERY_TABS)[number];
 
 interface ComponentRecoveryShellProps {
   components: StartupComponentIssue[];
@@ -31,9 +44,11 @@ export const ComponentRecoveryShell: React.FC<ComponentRecoveryShellProps> = ({
   onDebugExit,
 }) => {
   const { t } = useTranslation(['data']);
+  const reasonText = useComponentReasonText();
   const affected = components.filter((component) => component.status !== 'healthy');
   const healthy = components.filter((component) => component.status === 'healthy');
   const [exportError, setExportError] = useState<string | null>(null);
+  const [tab, setTab] = useState<RecoveryTab>('status');
   // 对齐 App.tsx 标题栏契约：窗口控制与拖拽区仅在桌面平台且非小屏渲染，
   // 移动端顶栏只保留标题并避让系统安全区。
   const { isSmallScreen } = useBreakpoint();
@@ -82,19 +97,24 @@ export const ComponentRecoveryShell: React.FC<ComponentRecoveryShellProps> = ({
                   {t('data:recovery.component_recovery_title')}
                 </h1>
                 <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                  {t('data:recovery.component_recovery_description')}
+                  {/* RUST-FIX(RF-W09-recovery-description-by-outcome): Rust 版无论恢复做了什么都写“数据文件仍在原位置，没有被当作空数据覆盖” */}
+                  {t(DESCRIPTION_KEYS[describeComponentRecovery(affected)])}
                 </p>
               </div>
             </div>
           </div>
 
-          <Tabs defaultValue="status" className="mt-6">
-            <TabsList>
-              <TabsTrigger value="status">{t('data:recovery.component_tab_status')}</TabsTrigger>
-              <TabsTrigger value="next">{t('data:recovery.component_tab_next')}</TabsTrigger>
+          <Tabs value={tab} onValueChange={(value) => setTab(value as RecoveryTab)} className="mt-6">
+            {/* RUST-FIX(RF-W09-recovery-shell-tab-roles): Rust 版两个标签是普通 button，没有 tablist/tab/aria-selected，读屏软件不知道哪个被选中（语义与方向键现由共享 Tabs 提供） */}
+            <TabsList aria-orientation="horizontal" aria-label={t('data:recovery.component_recovery_title')}>
+              {RECOVERY_TABS.map((value) => (
+                <TabsTrigger key={value} value={value}>
+                  {t(value === 'status' ? 'data:recovery.component_tab_status' : 'data:recovery.component_tab_next')}
+                </TabsTrigger>
+              ))}
             </TabsList>
 
-            <TabsContent value="status">
+            <TabsContent value="status" tabIndex={0}>
               <div className="space-y-3">
                 {affected.map((component) => (
                   <div
@@ -111,7 +131,7 @@ export const ComponentRecoveryShell: React.FC<ComponentRecoveryShellProps> = ({
                           </span>
                         </div>
                         <p className="mt-1 break-words text-sm leading-6 text-muted-foreground">
-                          {component.reason || t('data:recovery.component_unknown_reason')}
+                          {reasonText(component.reason) ?? t('data:recovery.component_unknown_reason')}
                         </p>
                       </div>
                     </div>
@@ -129,7 +149,7 @@ export const ComponentRecoveryShell: React.FC<ComponentRecoveryShellProps> = ({
               </div>
             </TabsContent>
 
-            <TabsContent value="next">
+            <TabsContent value="next" tabIndex={0}>
               <div className="rounded-[var(--radius-shell-panel)] border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-panel)] p-5">
                 <div className="flex items-start gap-3">
                   <Warning className="mt-0.5 shrink-0 text-warning" size={18} />

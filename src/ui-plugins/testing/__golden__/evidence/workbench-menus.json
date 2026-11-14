@@ -1,0 +1,1043 @@
+{
+  "registry": [
+    "chat:single",
+    "chat-session:multi",
+    "textbook:multi",
+    "exam:single",
+    "translation:single",
+    "essay:single",
+    "image:multi",
+    "file:multi",
+    "notes:single",
+    "files:single",
+    "file-preview:multi",
+    "aiDashboard:single",
+    "todo:single",
+    "skills:single",
+    "templates:single",
+    "taskDashboard:single",
+    "flashcards:single",
+    "media:single",
+    "settings:single",
+    "pomodoro:single",
+    "sandbox:single",
+    "browser:single"
+  ],
+  "empty": {
+    "desktop": {
+      "桌面菜单": {
+        "rows": [
+          {
+            "label": "新建对话",
+            "testId": null,
+            "shortcut": null,
+            "disabled": false,
+            "checked": null,
+            "danger": false,
+            "submenu": false
+          },
+          {
+            "label": "打开资源库",
+            "testId": null,
+            "shortcut": null,
+            "disabled": false,
+            "checked": null,
+            "danger": false,
+            "submenu": false
+          },
+          {
+            "label": "全部应用…",
+            "testId": null,
+            "shortcut": null,
+            "disabled": false,
+            "checked": null,
+            "danger": false,
+            "submenu": false
+          },
+          "—",
+          {
+            "label": "整理窗口",
+            "testId": null,
+            "shortcut": null,
+            "disabled": true,
+            "checked": null,
+            "danger": false,
+            "submenu": false
+          },
+          {
+            "label": "平铺全部窗口",
+            "testId": null,
+            "shortcut": null,
+            "disabled": true,
+            "checked": null,
+            "danger": false,
+            "submenu": false
+          },
+          {
+            "label": "恢复窗口",
+            "testId": null,
+            "shortcut": "Ctrl+Alt+D",
+            "disabled": true,
+            "checked": null,
+            "danger": false,
+            "submenu": false
+          },
+          {
+            "label": "窗口俯瞰",
+            "testId": null,
+            "shortcut": "Ctrl+Alt+E",
+            "disabled": true,
+            "checked": null,
+            "danger": false,
+            "submenu": false
+          },
+          "—",
+          {
+            "label": "桌面壁纸",
+            "testId": null,
+            "shortcut": null,
+            "disabled": false,
+            "checked": null,
+            "danger": false,
+            "submenu": true
+          },
+          {
+            "label": "视觉材质",
+            "testId": null,
+            "shortcut": null,
+            "disabled": false,
+            "checked": null,
+            "danger": false,
+            "submenu": true
+          },
+          {
+            "label": "显示桌面组件",
+            "testId": "wb-desk-menu-widgets",
+            "shortcut": null,
+            "disabled": false,
+            "checked": "true",
+            "danger": false,
+            "submenu": false
+          },
+          "—",
+          {
+            "label": "键盘快捷键",
+            "testId": "wb-desk-menu-shortcuts",
+            "shortcut": "?",
+            "disabled": false,
+            "checked": null,
+            "danger": false,
+            "submenu": false
+          },
+          {
+            "label": "重新查看引导",
+            "testId": "wb-desk-menu-replay-tour",
+            "shortcut": null,
+            "disabled": false,
+            "checked": null,
+            "danger": false,
+            "submenu": false
+          },
+          {
+            "label": "桌面设置…",
+            "testId": null,
+            "shortcut": null,
+            "disabled": false,
+            "checked": null,
+            "danger": false,
+            "submenu": false
+          }
+        ],
+        "submenus": {
+          "桌面壁纸": [
+            [
+              {
+                "label": "薄雾雪山",
+                "testId": null,
+                "shortcut": null,
+                "disabled": false,
+                "checked": "false",
+                "danger": false,
+                "submenu": false
+              },
+              {
+                "label": "山间雾林",
+                "testId": null,
+                "shortcut": null,
+                "disabled": false,
+                "checked": "false",
+                "danger": false,
+                "submenu": false
+              },
+              {
+                "label": "雪山静水",
+                "testId": null,
+                "shortcut": null,
+                "disabled": false,
+                "checked": "false",
+                "danger": false,
+                "submenu": false
+              },
+              {
+                "label": "冬日山脊",
+                "testId": null,
+                "shortcut": null,
+                "disabled": false,
+                "checked": "false",
+                "danger": false,
+                "submenu": false
+              },
+              {
+                "label": "极光",
+                "testId": null,
+                "shortcut": null,
+                "disabled": false,
+                "checked": "false",
+                "danger": false,
+                "submenu": false
+              },
+              "—",
+              {
+                "label": "管理壁纸…",
+                "testId": "wb-desk-menu-manage-wallpaper",
+                "shortcut": null,
+                "disabled": false,
+                "checked": null,
+                "danger": false,
+                "submenu": false
+              }
+            ]
+          ],
+          "视觉材质": []
+        }
+      }
+    },
+    "dock": {
+      "chat": {
+        "wb-dock-context-menu": {
+          "rows": [
+            {
+              "label": "打开",
+              "testId": null,
+              "shortcut": null,
+              "disabled": false,
+              "checked": null,
+              "danger": false,
+              "submenu": false
+            },
+            "—",
+            {
+              "label": "固定到 Dock",
+              "testId": null,
+              "shortcut": null,
+              "disabled": false,
+              "checked": null,
+              "danger": false,
+              "submenu": false
+            }
+          ]
+        }
+      },
+      "notes": {
+        "wb-dock-context-menu": {
+          "rows": [
+            {
+              "label": "打开",
+              "testId": null,
+              "shortcut": null,
+              "disabled": false,
+              "checked": null,
+              "danger": false,
+              "submenu": false
+            },
+            "—",
+            {
+              "label": "固定到 Dock",
+              "testId": null,
+              "shortcut": null,
+              "disabled": false,
+              "checked": null,
+              "danger": false,
+              "submenu": false
+            }
+          ]
+        }
+      },
+      "files": {
+        "wb-dock-context-menu": {
+          "rows": [
+            {
+              "label": "打开",
+              "testId": null,
+              "shortcut": null,
+              "disabled": false,
+              "checked": null,
+              "danger": false,
+              "submenu": false
+            },
+            "—",
+            {
+              "label": "固定到 Dock",
+              "testId": null,
+              "shortcut": null,
+              "disabled": false,
+              "checked": null,
+              "danger": false,
+              "submenu": false
+            }
+          ]
+        }
+      },
+      "settings": {
+        "wb-dock-context-menu": {
+          "rows": [
+            {
+              "label": "打开",
+              "testId": null,
+              "shortcut": null,
+              "disabled": false,
+              "checked": null,
+              "danger": false,
+              "submenu": false
+            },
+            "—",
+            {
+              "label": "固定到 Dock",
+              "testId": null,
+              "shortcut": null,
+              "disabled": false,
+              "checked": null,
+              "danger": false,
+              "submenu": false
+            }
+          ]
+        }
+      }
+    },
+    "menubar": {
+      "buttons": [
+        "学习桌面 菜单",
+        "窗口"
+      ],
+      "wb-menubar-appmenu": {
+        "学习桌面 菜单": {
+          "rows": [
+            {
+              "label": "全部应用",
+              "testId": "wb-menubar-app-all-apps",
+              "shortcut": null,
+              "disabled": false,
+              "checked": null,
+              "danger": false,
+              "submenu": false
+            }
+          ]
+        }
+      },
+      "wb-menubar-windowmenu": {
+        "窗口": {
+          "rows": [
+            {
+              "label": "没有打开的窗口",
+              "testId": "wb-menubar-window-empty",
+              "shortcut": null,
+              "disabled": true,
+              "checked": null,
+              "danger": false,
+              "submenu": false
+            },
+            "—",
+            {
+              "label": "平铺到左半屏",
+              "testId": "wb-menubar-window-tile-left",
+              "shortcut": null,
+              "disabled": true,
+              "checked": null,
+              "danger": false,
+              "submenu": false
+            },
+            {
+              "label": "平铺到右半屏",
+              "testId": "wb-menubar-window-tile-right",
+              "shortcut": null,
+              "disabled": true,
+              "checked": null,
+              "danger": false,
+              "submenu": false
+            },
+            {
+              "label": "最大化",
+              "testId": "wb-menubar-window-maximize",
+              "shortcut": null,
+              "disabled": true,
+              "checked": null,
+              "danger": false,
+              "submenu": false
+            }
+          ]
+        }
+      }
+    },
+    "brand": {
+      "学习桌面菜单": {
+        "rows": [
+          {
+            "label": "重命名桌面…",
+            "testId": "wb-menubar-brand-rename",
+            "shortcut": null,
+            "disabled": false,
+            "checked": null,
+            "danger": false,
+            "submenu": false
+          },
+          "—",
+          {
+            "label": "全部应用",
+            "testId": "wb-menubar-brand-apps",
+            "shortcut": null,
+            "disabled": false,
+            "checked": null,
+            "danger": false,
+            "submenu": false
+          },
+          {
+            "label": "键盘快捷键",
+            "testId": "wb-menubar-brand-shortcuts",
+            "shortcut": "?",
+            "disabled": false,
+            "checked": null,
+            "danger": false,
+            "submenu": false
+          },
+          {
+            "label": "系统设置…",
+            "testId": "wb-menubar-brand-settings",
+            "shortcut": null,
+            "disabled": false,
+            "checked": null,
+            "danger": false,
+            "submenu": false
+          },
+          "—",
+          {
+            "label": "退出学习桌面",
+            "testId": "wb-menubar-brand-exit",
+            "shortcut": null,
+            "disabled": false,
+            "checked": null,
+            "danger": false,
+            "submenu": false
+          }
+        ]
+      }
+    }
+  },
+  "windows": {
+    "desktop": {
+      "桌面菜单": {
+        "rows": [
+          {
+            "label": "新建对话",
+            "testId": null,
+            "shortcut": null,
+            "disabled": false,
+            "checked": null,
+            "danger": false,
+            "submenu": false
+          },
+          {
+            "label": "打开资源库",
+            "testId": null,
+            "shortcut": null,
+            "disabled": false,
+            "checked": null,
+            "danger": false,
+            "submenu": false
+          },
+          {
+            "label": "全部应用…",
+            "testId": null,
+            "shortcut": null,
+            "disabled": false,
+            "checked": null,
+            "danger": false,
+            "submenu": false
+          },
+          "—",
+          {
+            "label": "整理窗口",
+            "testId": null,
+            "shortcut": null,
+            "disabled": false,
+            "checked": null,
+            "danger": false,
+            "submenu": false
+          },
+          {
+            "label": "平铺全部窗口",
+            "testId": null,
+            "shortcut": null,
+            "disabled": false,
+            "checked": null,
+            "danger": false,
+            "submenu": false
+          },
+          {
+            "label": "显示桌面",
+            "testId": null,
+            "shortcut": "Ctrl+Alt+D",
+            "disabled": false,
+            "checked": null,
+            "danger": false,
+            "submenu": false
+          },
+          {
+            "label": "窗口俯瞰",
+            "testId": null,
+            "shortcut": "Ctrl+Alt+E",
+            "disabled": false,
+            "checked": null,
+            "danger": false,
+            "submenu": false
+          },
+          "—",
+          {
+            "label": "桌面壁纸",
+            "testId": null,
+            "shortcut": null,
+            "disabled": false,
+            "checked": null,
+            "danger": false,
+            "submenu": true
+          },
+          {
+            "label": "视觉材质",
+            "testId": null,
+            "shortcut": null,
+            "disabled": false,
+            "checked": null,
+            "danger": false,
+            "submenu": true
+          },
+          {
+            "label": "显示桌面组件",
+            "testId": "wb-desk-menu-widgets",
+            "shortcut": null,
+            "disabled": false,
+            "checked": "true",
+            "danger": false,
+            "submenu": false
+          },
+          "—",
+          {
+            "label": "键盘快捷键",
+            "testId": "wb-desk-menu-shortcuts",
+            "shortcut": "?",
+            "disabled": false,
+            "checked": null,
+            "danger": false,
+            "submenu": false
+          },
+          {
+            "label": "重新查看引导",
+            "testId": "wb-desk-menu-replay-tour",
+            "shortcut": null,
+            "disabled": false,
+            "checked": null,
+            "danger": false,
+            "submenu": false
+          },
+          {
+            "label": "桌面设置…",
+            "testId": null,
+            "shortcut": null,
+            "disabled": false,
+            "checked": null,
+            "danger": false,
+            "submenu": false
+          }
+        ],
+        "submenus": {
+          "桌面壁纸": [
+            [
+              {
+                "label": "薄雾雪山",
+                "testId": null,
+                "shortcut": null,
+                "disabled": false,
+                "checked": "false",
+                "danger": false,
+                "submenu": false
+              },
+              {
+                "label": "山间雾林",
+                "testId": null,
+                "shortcut": null,
+                "disabled": false,
+                "checked": "false",
+                "danger": false,
+                "submenu": false
+              },
+              {
+                "label": "雪山静水",
+                "testId": null,
+                "shortcut": null,
+                "disabled": false,
+                "checked": "false",
+                "danger": false,
+                "submenu": false
+              },
+              {
+                "label": "冬日山脊",
+                "testId": null,
+                "shortcut": null,
+                "disabled": false,
+                "checked": "false",
+                "danger": false,
+                "submenu": false
+              },
+              {
+                "label": "极光",
+                "testId": null,
+                "shortcut": null,
+                "disabled": false,
+                "checked": "false",
+                "danger": false,
+                "submenu": false
+              },
+              "—",
+              {
+                "label": "管理壁纸…",
+                "testId": "wb-desk-menu-manage-wallpaper",
+                "shortcut": null,
+                "disabled": false,
+                "checked": null,
+                "danger": false,
+                "submenu": false
+              }
+            ]
+          ],
+          "视觉材质": []
+        }
+      }
+    },
+    "dock": {
+      "chat": {
+        "wb-dock-context-menu": {
+          "rows": [
+            {
+              "label": "打开",
+              "testId": null,
+              "shortcut": null,
+              "disabled": true,
+              "checked": null,
+              "danger": false,
+              "submenu": false
+            },
+            "—",
+            {
+              "label": "chat已最小化",
+              "testId": null,
+              "shortcut": null,
+              "disabled": false,
+              "checked": null,
+              "danger": false,
+              "submenu": false
+            },
+            "—",
+            {
+              "label": "固定到 Dock",
+              "testId": null,
+              "shortcut": null,
+              "disabled": false,
+              "checked": null,
+              "danger": false,
+              "submenu": false
+            },
+            {
+              "label": "关闭全部窗口",
+              "testId": null,
+              "shortcut": null,
+              "disabled": false,
+              "checked": null,
+              "danger": true,
+              "submenu": false
+            }
+          ]
+        }
+      },
+      "notes": {
+        "wb-dock-context-menu": {
+          "rows": [
+            {
+              "label": "打开",
+              "testId": null,
+              "shortcut": null,
+              "disabled": true,
+              "checked": null,
+              "danger": false,
+              "submenu": false
+            },
+            "—",
+            {
+              "label": "笔记",
+              "testId": null,
+              "shortcut": null,
+              "disabled": false,
+              "checked": null,
+              "danger": false,
+              "submenu": false
+            },
+            "—",
+            {
+              "label": "固定到 Dock",
+              "testId": null,
+              "shortcut": null,
+              "disabled": false,
+              "checked": null,
+              "danger": false,
+              "submenu": false
+            },
+            {
+              "label": "关闭全部窗口",
+              "testId": null,
+              "shortcut": null,
+              "disabled": false,
+              "checked": null,
+              "danger": true,
+              "submenu": false
+            }
+          ]
+        }
+      },
+      "files": {
+        "wb-dock-context-menu": {
+          "rows": [
+            {
+              "label": "打开",
+              "testId": null,
+              "shortcut": null,
+              "disabled": false,
+              "checked": null,
+              "danger": false,
+              "submenu": false
+            },
+            "—",
+            {
+              "label": "固定到 Dock",
+              "testId": null,
+              "shortcut": null,
+              "disabled": false,
+              "checked": null,
+              "danger": false,
+              "submenu": false
+            }
+          ]
+        }
+      },
+      "settings": {
+        "wb-dock-context-menu": {
+          "rows": [
+            {
+              "label": "打开",
+              "testId": null,
+              "shortcut": null,
+              "disabled": false,
+              "checked": null,
+              "danger": false,
+              "submenu": false
+            },
+            "—",
+            {
+              "label": "固定到 Dock",
+              "testId": null,
+              "shortcut": null,
+              "disabled": false,
+              "checked": null,
+              "danger": false,
+              "submenu": false
+            }
+          ]
+        }
+      }
+    },
+    "menubar": {
+      "buttons": [
+        "笔记 菜单",
+        "窗口"
+      ],
+      "wb-menubar-appmenu": {
+        "笔记 菜单": {
+          "rows": [
+            {
+              "label": "新建窗口",
+              "testId": "wb-menubar-app-new-window",
+              "shortcut": null,
+              "disabled": false,
+              "checked": null,
+              "danger": false,
+              "submenu": false
+            },
+            "—",
+            {
+              "label": "关闭窗口",
+              "testId": "wb-menubar-app-close-window",
+              "shortcut": null,
+              "disabled": false,
+              "checked": null,
+              "danger": false,
+              "submenu": false
+            },
+            {
+              "label": "关闭全部窗口",
+              "testId": "wb-menubar-app-close-all",
+              "shortcut": null,
+              "disabled": false,
+              "checked": null,
+              "danger": false,
+              "submenu": false
+            }
+          ]
+        }
+      },
+      "wb-menubar-windowmenu": {
+        "窗口": {
+          "rows": [
+            {
+              "label": "对话 · 已最小化",
+              "testId": "wb-menubar-window-item-win:chat",
+              "shortcut": null,
+              "disabled": false,
+              "checked": "false",
+              "danger": false,
+              "submenu": false
+            },
+            {
+              "label": "笔记",
+              "testId": "wb-menubar-window-item-win:notes",
+              "shortcut": null,
+              "disabled": false,
+              "checked": "true",
+              "danger": false,
+              "submenu": false
+            },
+            "—",
+            {
+              "label": "平铺到左半屏",
+              "testId": "wb-menubar-window-tile-left",
+              "shortcut": null,
+              "disabled": false,
+              "checked": null,
+              "danger": false,
+              "submenu": false
+            },
+            {
+              "label": "平铺到右半屏",
+              "testId": "wb-menubar-window-tile-right",
+              "shortcut": null,
+              "disabled": false,
+              "checked": null,
+              "danger": false,
+              "submenu": false
+            },
+            {
+              "label": "最大化",
+              "testId": "wb-menubar-window-maximize",
+              "shortcut": null,
+              "disabled": false,
+              "checked": null,
+              "danger": false,
+              "submenu": false
+            }
+          ]
+        }
+      }
+    },
+    "brand": {
+      "学习桌面菜单": {
+        "rows": [
+          {
+            "label": "重命名桌面…",
+            "testId": "wb-menubar-brand-rename",
+            "shortcut": null,
+            "disabled": false,
+            "checked": null,
+            "danger": false,
+            "submenu": false
+          },
+          "—",
+          {
+            "label": "全部应用",
+            "testId": "wb-menubar-brand-apps",
+            "shortcut": null,
+            "disabled": false,
+            "checked": null,
+            "danger": false,
+            "submenu": false
+          },
+          {
+            "label": "键盘快捷键",
+            "testId": "wb-menubar-brand-shortcuts",
+            "shortcut": "?",
+            "disabled": false,
+            "checked": null,
+            "danger": false,
+            "submenu": false
+          },
+          {
+            "label": "系统设置…",
+            "testId": "wb-menubar-brand-settings",
+            "shortcut": null,
+            "disabled": false,
+            "checked": null,
+            "danger": false,
+            "submenu": false
+          },
+          "—",
+          {
+            "label": "退出学习桌面",
+            "testId": "wb-menubar-brand-exit",
+            "shortcut": null,
+            "disabled": false,
+            "checked": null,
+            "danger": false,
+            "submenu": false
+          }
+        ]
+      }
+    }
+  },
+  "dockWithDefaultPins": {
+    "pinned": [
+      "chat",
+      "files",
+      "settings",
+      "todo"
+    ],
+    "chat": {
+      "wb-dock-context-menu": {
+        "rows": [
+          {
+            "label": "打开",
+            "testId": null,
+            "shortcut": null,
+            "disabled": false,
+            "checked": null,
+            "danger": false,
+            "submenu": false
+          },
+          "—",
+          {
+            "label": "从 Dock 移除",
+            "testId": null,
+            "shortcut": null,
+            "disabled": false,
+            "checked": null,
+            "danger": false,
+            "submenu": false
+          }
+        ]
+      }
+    },
+    "notes": {
+      "wb-dock-context-menu": {
+        "rows": [
+          {
+            "label": "打开",
+            "testId": null,
+            "shortcut": null,
+            "disabled": false,
+            "checked": null,
+            "danger": false,
+            "submenu": false
+          },
+          "—",
+          {
+            "label": "固定到 Dock",
+            "testId": null,
+            "shortcut": null,
+            "disabled": false,
+            "checked": null,
+            "danger": false,
+            "submenu": false
+          }
+        ]
+      }
+    },
+    "files": {
+      "wb-dock-context-menu": {
+        "rows": [
+          {
+            "label": "打开",
+            "testId": null,
+            "shortcut": null,
+            "disabled": false,
+            "checked": null,
+            "danger": false,
+            "submenu": false
+          },
+          "—",
+          {
+            "label": "从 Dock 移除",
+            "testId": null,
+            "shortcut": null,
+            "disabled": false,
+            "checked": null,
+            "danger": false,
+            "submenu": false
+          }
+        ]
+      }
+    },
+    "settings": {
+      "wb-dock-context-menu": {
+        "rows": [
+          {
+            "label": "打开",
+            "testId": null,
+            "shortcut": null,
+            "disabled": false,
+            "checked": null,
+            "danger": false,
+            "submenu": false
+          },
+          "—",
+          {
+            "label": "从 Dock 移除",
+            "testId": null,
+            "shortcut": null,
+            "disabled": false,
+            "checked": null,
+            "danger": false,
+            "submenu": false
+          }
+        ]
+      }
+    },
+    "todo": {
+      "wb-dock-context-menu": {
+        "rows": [
+          {
+            "label": "打开",
+            "testId": null,
+            "shortcut": null,
+            "disabled": false,
+            "checked": null,
+            "danger": false,
+            "submenu": false
+          },
+          "—",
+          {
+            "label": "从 Dock 移除",
+            "testId": null,
+            "shortcut": null,
+            "disabled": false,
+            "checked": null,
+            "danger": false,
+            "submenu": false
+          }
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "id": "RF-P5-workshop-assembly", "kind": "deliberate", "status": "proposed",
+  "title": "配对工坊 UI 根装配",
+  "rust": { "file": "src/features/settings/components/plugins/PluginsTab.tsx", "behavior": "没有插件工坊入口" },
+  "fix": { "files": ["src/app/pluginWorkshop.ts"], "behavior": "以真实配对 UI caller 装配管理入口和聊天确认卡片" },
+  "evidence": "src/app/__tests__/pluginWorkshop.test.ts",
+  "userVisible": "插件管理创作入口可打开仅激活工坊技能的新会话，原草稿不变",
+  "dataCompat": "复用现有会话与 Host 插件管理，不改 profile 格式",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [{ "file": "src/app/__tests__/pluginWorkshop.test.ts", "name": "RF-P5-workshop-assembly: uses the paired workshop caller and revokes manager binding on unload" }]
+}

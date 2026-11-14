@@ -1,0 +1,33 @@
+{
+  "id": "RF-W09-mindmap-descendant-count-linear",
+  "kind": "rust-bug",
+  "status": "proposed",
+  "title": "思维导图后代数缓存在一次布局里从不命中，每个节点都重数整棵子树；改为按子树统计缓存，结果不变、冷缓存线性",
+  "rust": {
+    "file": "src/features/mindmap/utils/layout/countDescendants.ts",
+    "line": 24,
+    "behavior": "参照仓 deep-student（快照 21c9d808）的 countAllDescendants 以（节点，剩余深度）为缓存键。布局引擎和画布右键菜单都以 depth=0 调用（LayoutEngine.countAllDescendants 的各引擎调用点、CanvasContextMenu.tsx:726），而子树里的节点此前只以剩余深度 499、498… 缓存过，于是一次布局中每个节点都缓存未命中、重新递归整棵子树，工作量是各子树大小之和，并给每个节点分配一个 Map；链状深树每个节点要下探 500 层、Map 里攒到 500 个条目。参照仓自带的 layoutDescendants.perf.test.ts 在这份实现上就会失败（本机单跑 3/3：1000 节点链的冷缓存 207–293ms，不带缓存只要 14–37ms；服务器 B 趟 405ms，阈值 80ms）"
+  },
+  "fix": {
+    "files": ["src/features/mindmap/utils/layout/countDescendants.ts"],
+    "behavior": "按节点身份缓存整棵子树的后代总数与高度（迭代计算，子孙一并缓存，不会栈溢出），本次调用可数的层数（MAX_TREE_DEPTH - depth + 1）不小于子树高度时直接返回总数。子树比层数预算更深时才需要截断：对该预算一次遍历整棵子树，把恰好在下方 预算+1 层的节点连同其子树从对应祖先身上扣掉，得到子树里每个深节点的截断计数并按（节点，层数）缓存。同一节点经两条路径可达（不是树）时按定义递归，深度仍受上限约束。返回值与按定义的无缓存计数逐一相同"
+  },
+  "evidence": "文件头注释写明“WeakMap 缓存，O(n) / 布局”，perf 测试注释写明“冷缓存：首次填满 WeakMap，仍为 O(n) 节点写入”，实现与之矛盾：缓存在布局的调用方式下不命中，带缓存的冷路径比不带缓存慢一个数量级。Linux 全量 B 趟（INT 390f244b）fe 段 layoutDescendants.perf.test.ts 失败（cached-cold 1000 took 405.02ms，uncached 99.21ms），本机单跑同样失败，与负载无关。新增 countDescendants.linear.test.ts 用计数的 children getter 衡量工作量：3000 节点扇出树一次布局，原实现读 34050 次，上限 3n=9000；修正后通过。修正后本机 1000 / 3000 节点链冷缓存约 1ms / 2–3ms",
+  "userVisible": "只有速度：大导图或很深的导图布局、右键删除确认里的子主题数计算更快。显示的数字不变",
+  "dataCompat": "不涉及",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "src/features/mindmap/utils/layout/__tests__/countDescendants.linear.test.ts",
+      "name": "RF-W09-mindmap-descendant-count-linear: a layout pass over a bushy tree reads each node's children a bounded number of times"
+    },
+    {
+      "file": "src/features/mindmap/utils/layout/__tests__/countDescendants.linear.test.ts",
+      "name": "RF-W09-mindmap-descendant-count-linear: matches the depth-limited definition for every node and depth, on bushy trees and on chains deeper than the limit"
+    },
+    {
+      "file": "src/features/mindmap/utils/layout/__tests__/countDescendants.linear.test.ts",
+      "name": "RF-W09-mindmap-descendant-count-linear: a repeated pass over a chain deeper than the limit is answered from the cache"
+    }
+  ]
+}

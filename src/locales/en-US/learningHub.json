@@ -540,7 +540,7 @@
     "noSheets": "This workbook contains no previewable sheets",
     "encryptedOrLegacy": "This file is encrypted (password-protected) or uses a legacy binary format (.doc/.xls/.ppt) and cannot be previewed. Download it and open with Office",
     "invalidFormat": "This file is not a valid Office document and may be corrupted",
-    "rowsTruncatedInfo": "Showing first {{shown}} of {{total}} rows",
+    "rowsTruncatedInfo": "Previewing first {{shown}} of {{total}} rows",
     "colsTruncatedInfo": "Showing first {{shown}} of {{total}} columns",
     "emptySheet": "This sheet has no displayable cell content (it may be blank or contain only charts)",
     "selectionLabel": "Selected cells {{range}}",
@@ -1788,5 +1788,41 @@
   },
   "mediaChapters": {
     "current": "Chapter: {{title}}"
+  },
+  "sourceImageViewer": {
+    "zoomOut": "Zoom out",
+    "zoomIn": "Zoom in",
+    "fitWidth": "Fit width",
+    "returnToSource": "Back to source",
+    "lazyPlaceholder": "Waiting to enter viewport to load source image",
+    "loading": "Loading source image",
+    "retryLoad": "Retry",
+    "openSource": "Open source",
+    "pageRegionLabel": "Page {{page}} · Region {{startPct}}%–{{endPct}}%",
+    "pageLabel": "Page {{page}}",
+    "unitLabel": "Section {{unit}}",
+    "imageLabel": "Source image {{imageId}}",
+    "invalidRefLabel": "Invalid reference",
+    "noLoaderConfigured": "Source image loader not configured",
+    "errorFileDeleted": "Local material file was deleted or cannot be accessed",
+    "errorDigestMismatch": "Material updated; source image digest mismatch",
+    "errorDecode": "Failed to decode source image. Retry or open the source document",
+    "errorInvalidRef": "Invalid source image reference format",
+    "errorMissing": "Matching source image not found",
+    "regionHighlight": "Source image highlighted region"
+  },
+  "textPreview": {
+    "undoAgentCoedit": "Undo AI co-edit"
+  },
+  "spaceMount": {
+    "menuMountToSpace": "Mount to Study Space...",
+    "menuUnmountFromSpace": "Unmount from Current Space",
+    "pickerTitle": "Mount to Study Space",
+    "pickerSubtitle": "Keeps original folder location with zero file or vector duplication.",
+    "alreadyMounted": "Mounted",
+    "canonicalOwner": "Home Space",
+    "mountSuccess": "Mounted to \"{{name}}\"",
+    "unmountSuccess": "Unmounted from Study Space",
+    "noSpacesAvailable": "No Study Spaces available yet. Create one in the Chat sidebar first."
   }
 }

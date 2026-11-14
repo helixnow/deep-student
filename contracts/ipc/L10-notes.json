@@ -1,0 +1,6674 @@
+{
+  "lane": "L10-notes",
+  "generator": "deep-student/contracts-extract@1.6.0",
+  "commands": [
+    {
+      "name": "canvas_note_append",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 1385,
+        "fn": "canvas_note_append"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "subject",
+          "rustName": "_subject",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "noteId",
+          "rustName": "noteId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "content",
+          "rustName": "content",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "section",
+          "rustName": "section",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "canvas_note_read",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 1363,
+        "fn": "canvas_note_read"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "subject",
+          "rustName": "_subject",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "noteId",
+          "rustName": "noteId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "section",
+          "rustName": "section",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "string"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "canvas_note_replace",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 1410,
+        "fn": "canvas_note_replace"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "subject",
+          "rustName": "_subject",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "noteId",
+          "rustName": "noteId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "search",
+          "rustName": "search",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "replace",
+          "rustName": "replace",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "isRegex",
+          "rustName": "isRegex",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "integer",
+        "x-int": "u32",
+        "minimum": 0,
+        "maximum": 4294967295
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "canvas_note_set",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 1437,
+        "fn": "canvas_note_set"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "subject",
+          "rustName": "_subject",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "noteId",
+          "rustName": "noteId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "content",
+          "rustName": "content",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "chat_v2_canvas_edit_ack",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/chat_v2/handlers/canvas_handlers.rs",
+        "line": 49,
+        "fn": "chat_v2_canvas_edit_ack"
+      },
+      "async": false,
+      "args": [
+        {
+          "key": "requestId",
+          "rustName": "request_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "chat_v2_canvas_edit_result",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/chat_v2/handlers/canvas_handlers.rs",
+        "line": 28,
+        "fn": "chat_v2_canvas_edit_result"
+      },
+      "async": false,
+      "args": [
+        {
+          "key": "result",
+          "rustName": "result",
+          "schema": {
+            "$ref": "#/$defs/CanvasAIEditResult"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "notes_assets_bulk_delete",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 2167,
+        "fn": "notes_assets_bulk_delete"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "paths",
+          "rustName": "paths",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "integer",
+        "x-int": "usize",
+        "minimum": 0
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "notes_assets_index_scan",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 1972,
+        "fn": "notes_assets_index_scan"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "subject",
+          "rustName": "subject",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "noteId",
+          "rustName": "noteId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "integer",
+        "x-int": "usize",
+        "minimum": 0
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "notes_assets_scan_orphans",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 2004,
+        "fn": "notes_assets_scan_orphans"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "subject",
+          "rustName": "subject",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "notes_create",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 1206,
+        "fn": "notes_create"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "subject",
+          "rustName": "_subject",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "note",
+          "rustName": "note",
+          "schema": {
+            "$ref": "#/$defs/NewNotePayload"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        },
+        {
+          "kind": "window"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/NoteItem"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "notes_db_stats",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 2960,
+        "fn": "notes_db_stats"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/NotesDbStats"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "notes_db_vacuum",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 3020,
+        "fn": "notes_db_vacuum"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "boolean"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "notes_delete",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 1342,
+        "fn": "notes_delete"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "subject",
+          "rustName": "subject",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "id",
+          "rustName": "id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "boolean"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "notes_delete_asset",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 1898,
+        "fn": "notes_delete_asset"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "relativePath",
+          "rustName": "relative_path",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "boolean"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "notes_editor_begin",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 397,
+        "fn": "notes_editor_begin"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "participantId",
+          "rustName": "participant_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "operationId",
+          "rustName": "operation_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "noteIds",
+          "rustName": "note_ids",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "webview"
+        },
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/LeaseStatus"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "notes_editor_finish",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 478,
+        "fn": "notes_editor_finish"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "lease",
+          "rustName": "lease",
+          "schema": {
+            "$ref": "_shared.json#/$defs/NoteLeaseAuth"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "webview"
+        },
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/LeaseStatus"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "notes_editor_flush",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 457,
+        "fn": "notes_editor_flush"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "lease",
+          "rustName": "lease",
+          "schema": {
+            "$ref": "_shared.json#/$defs/NoteLeaseAuth"
+          },
+          "optional": false
+        },
+        {
+          "key": "noteId",
+          "rustName": "note_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "capabilities",
+          "rustName": "capabilities",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "webview"
+        },
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/LeaseNote"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "notes_editor_freeze_ack",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 428,
+        "fn": "notes_editor_freeze_ack"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "lease",
+          "rustName": "lease",
+          "schema": {
+            "$ref": "_shared.json#/$defs/NoteLeaseAuth"
+          },
+          "optional": false
+        },
+        {
+          "key": "draft",
+          "rustName": "draft",
+          "schema": {
+            "$ref": "#/$defs/FrozenDraft"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "webview"
+        },
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/LeaseStatus"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "notes_editor_heartbeat",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 368,
+        "fn": "notes_editor_heartbeat"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "participantId",
+          "rustName": "participant_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "webview"
+        },
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/ParticipantStatus"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "notes_editor_lease_status",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 421,
+        "fn": "notes_editor_lease_status"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "token",
+          "rustName": "token",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/LeaseStatus"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "x-option": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "notes_editor_refresh_ack",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 493,
+        "fn": "notes_editor_refresh_ack"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "lease",
+          "rustName": "lease",
+          "schema": {
+            "$ref": "_shared.json#/$defs/NoteLeaseAuth"
+          },
+          "optional": false
+        },
+        {
+          "key": "updatedAt",
+          "rustName": "updated_at",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "webview"
+        },
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/LeaseStatus"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "notes_editor_register",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 350,
+        "fn": "notes_editor_register"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "noteId",
+          "rustName": "note_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "webview"
+        },
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/ParticipantStatus"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "notes_editor_release",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 509,
+        "fn": "notes_editor_release"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "lease",
+          "rustName": "lease",
+          "schema": {
+            "$ref": "_shared.json#/$defs/NoteLeaseAuth"
+          },
+          "optional": false
+        },
+        {
+          "key": "cancel",
+          "rustName": "cancel",
+          "schema": {
+            "type": "boolean"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "webview"
+        },
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/LeaseCancellation"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "notes_editor_unregister",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 380,
+        "fn": "notes_editor_unregister"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "participantId",
+          "rustName": "participant_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "webview"
+        },
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/LeaseCancellation"
+        }
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "notes_empty_trash",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 1595,
+        "fn": "notes_empty_trash"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "subject",
+          "rustName": "_subject",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::lance_store::VfsLanceStore>"
+        }
+      ],
+      "result": {
+        "type": "integer",
+        "x-int": "usize",
+        "minimum": 0
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "notes_enable_columns",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 628,
+        "fn": "notes_enable_columns"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "noteId",
+          "rustName": "note_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "expectedUpdatedAt",
+          "rustName": "expected_updated_at",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "lease",
+          "rustName": "lease",
+          "schema": {
+            "anyOf": [
+              {
+                "$ref": "_shared.json#/$defs/NoteLeaseAuth"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "webview"
+        },
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        },
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/NoteFormatStatus"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "notes_export",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 2363,
+        "fn": "notes_export"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "request",
+          "rustName": "request",
+          "schema": {
+            "$ref": "#/$defs/NotesExportCommandRequest"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        },
+        {
+          "kind": "window"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/NotesExportCommandResponse"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "notes_export_single",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 2447,
+        "fn": "notes_export_single"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "request",
+          "rustName": "request",
+          "schema": {
+            "$ref": "#/$defs/NotesExportSingleCommandRequest"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        },
+        {
+          "kind": "window"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/NotesExportCommandResponse"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "notes_get",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 1327,
+        "fn": "notes_get"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "subject",
+          "rustName": "subject",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "id",
+          "rustName": "id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/NoteItem"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "notes_get_backlinks",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 3384,
+        "fn": "notes_get_backlinks"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "subject",
+          "rustName": "_subject",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "noteId",
+          "rustName": "noteId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/NoteBacklink"
+        }
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "notes_get_format",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 595,
+        "fn": "notes_get_format"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "noteId",
+          "rustName": "note_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/NoteFormatStatus"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "notes_get_outgoing_links",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 3403,
+        "fn": "notes_get_outgoing_links"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "subject",
+          "rustName": "_subject",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "noteId",
+          "rustName": "noteId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/NoteOutgoingLink"
+        }
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "notes_get_pref",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 2326,
+        "fn": "notes_get_pref"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "key",
+          "rustName": "key",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "x-option": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "notes_get_subject_rag_config",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 2230,
+        "fn": "notes_get_subject_rag_config"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "subject",
+          "rustName": "subject",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/NotesSubjectRagConfig"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "notes_hard_delete",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 1462,
+        "fn": "notes_hard_delete"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "subject",
+          "rustName": "subject",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "id",
+          "rustName": "id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::lance_store::VfsLanceStore>"
+        }
+      ],
+      "result": {
+        "type": "boolean"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "notes_history_current",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 926,
+        "fn": "notes_history_current"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "noteId",
+          "rustName": "note_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/NoteHistoryCurrent"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "notes_history_get",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 1032,
+        "fn": "notes_history_get"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "noteId",
+          "rustName": "note_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "versionId",
+          "rustName": "version_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/NoteRevision"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "notes_history_get_retention",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 934,
+        "fn": "notes_history_get_retention"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/NoteHistoryRetention"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "notes_history_list",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 1002,
+        "fn": "notes_history_list"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "noteId",
+          "rustName": "note_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "cursor",
+          "rustName": "cursor",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "i64"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "limit",
+          "rustName": "limit",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "pinnedOnly",
+          "rustName": "pinned_only",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/NoteHistoryPage"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "notes_history_restore_copy",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 1077,
+        "fn": "notes_history_restore_copy"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "noteId",
+          "rustName": "note_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "versionId",
+          "rustName": "version_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        },
+        {
+          "kind": "window"
+        }
+      ],
+      "result": {
+        "$ref": "_shared.json#/$defs/DstuNode"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "notes_history_restore_current",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 972,
+        "fn": "notes_history_restore_current"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "noteId",
+          "rustName": "note_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "versionId",
+          "rustName": "version_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "expectedUpdatedAt",
+          "rustName": "expected_updated_at",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "selection",
+          "rustName": "selection",
+          "schema": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/NoteHistorySelection"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "lease",
+          "rustName": "lease",
+          "schema": {
+            "anyOf": [
+              {
+                "$ref": "_shared.json#/$defs/NoteLeaseAuth"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "webview"
+        },
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        },
+        {
+          "kind": "window"
+        }
+      ],
+      "result": {
+        "$ref": "_shared.json#/$defs/DstuNode"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "notes_history_restore_selection_copy",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 952,
+        "fn": "notes_history_restore_selection_copy"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "noteId",
+          "rustName": "note_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "versionId",
+          "rustName": "version_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "selection",
+          "rustName": "selection",
+          "schema": {
+            "$ref": "#/$defs/NoteHistorySelection"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        },
+        {
+          "kind": "window"
+        }
+      ],
+      "result": {
+        "$ref": "_shared.json#/$defs/DstuNode"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "notes_history_set_pinned",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 1054,
+        "fn": "notes_history_set_pinned"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "noteId",
+          "rustName": "note_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "versionId",
+          "rustName": "version_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "pinned",
+          "rustName": "pinned",
+          "schema": {
+            "type": "boolean"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/NoteRevisionSummary"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "notes_history_set_retention",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 941,
+        "fn": "notes_history_set_retention"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "policy",
+          "rustName": "policy",
+          "schema": {
+            "$ref": "#/$defs/NoteHistoryRetention__De"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/NoteHistoryRetention"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "notes_import",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 2544,
+        "fn": "notes_import"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "request",
+          "rustName": "request",
+          "schema": {
+            "$ref": "#/$defs/NotesImportCommandRequest"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        },
+        {
+          "kind": "window"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/NotesImportCommandResponse"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "notes_import_markdown",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 2668,
+        "fn": "notes_import_markdown"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "request",
+          "rustName": "request",
+          "schema": {
+            "$ref": "#/$defs/NotesImportMarkdownRequest"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        },
+        {
+          "kind": "window"
+        }
+      ],
+      "result": {
+        "$ref": "_shared.json#/$defs/DstuNode"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "notes_import_markdown_batch",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 2722,
+        "fn": "notes_import_markdown_batch"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "request",
+          "rustName": "request",
+          "schema": {
+            "$ref": "#/$defs/NotesImportMarkdownBatchRequest"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        },
+        {
+          "kind": "window"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/NotesImportMarkdownBatchResponse"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "notes_invalidate_resource_refs",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 914,
+        "fn": "notes_invalidate_resource_refs"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "resourceId",
+          "rustName": "resource_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "integer",
+        "x-int": "usize",
+        "minimum": 0
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "notes_list",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 1110,
+        "fn": "notes_list"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "subject",
+          "rustName": "_subject",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "limit",
+          "rustName": "limit",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "offset",
+          "rustName": "offset",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/NoteItem"
+        }
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "notes_list_advanced",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 1162,
+        "fn": "notes_list_advanced"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "subject",
+          "rustName": "_subject",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "options",
+          "rustName": "options",
+          "schema": {
+            "$ref": "#/$defs/NotesListAdvancedOptions"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/NotesListAdvancedResponse"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "notes_list_assets",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 1879,
+        "fn": "notes_list_assets"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "subject",
+          "rustName": "subject",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "noteId",
+          "rustName": "noteId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "x-rust": "serde_json::Value"
+        }
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "notes_list_deleted",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 1782,
+        "fn": "notes_list_deleted"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "subject",
+          "rustName": "_subject",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "page",
+          "rustName": "page",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "i64"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "pageSize",
+          "rustName": "page_size",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "i64"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/NotesListAdvancedResponse"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "notes_list_meta",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 1128,
+        "fn": "notes_list_meta"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "subject",
+          "rustName": "_subject",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/NoteItem"
+        }
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "notes_list_referencing_resource",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 835,
+        "fn": "notes_list_referencing_resource"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "resourceIds",
+          "rustName": "resource_ids",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/NoteReferencingResource"
+        }
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "notes_list_tags",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 3040,
+        "fn": "notes_list_tags"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "subject",
+          "rustName": "_subject",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "notes_mentions_search",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 3202,
+        "fn": "notes_mentions_search"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "subject",
+          "rustName": "subject",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "keyword",
+          "rustName": "keyword",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "limit",
+          "rustName": "limit",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/NotesMentionSearchResponse"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "notes_migrate_blocks",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 677,
+        "fn": "notes_migrate_blocks"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "noteId",
+          "rustName": "note_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "expectedUpdatedAt",
+          "rustName": "expected_updated_at",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "content",
+          "rustName": "content",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "lease",
+          "rustName": "lease",
+          "schema": {
+            "anyOf": [
+              {
+                "$ref": "_shared.json#/$defs/NoteLeaseAuth"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "webview"
+        },
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        },
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "$ref": "_shared.json#/$defs/VfsNote"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "notes_rag_rebuild_fts_index",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 2212,
+        "fn": "notes_rag_rebuild_fts_index"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "integer",
+        "x-int": "usize",
+        "minimum": 0
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "notes_rebuild_links",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 3435,
+        "fn": "notes_rebuild_links"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "subject",
+          "rustName": "_subject",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "batchSize",
+          "rustName": "batchSize",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/NotesRebuildLinksResponse"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "notes_reference_status",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 899,
+        "fn": "notes_reference_status"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "resourceId",
+          "rustName": "resource_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "locator",
+          "rustName": "locator",
+          "schema": {
+            "$ref": "#/$defs/NoteLocator__De"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/NoteReferenceStatus"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "notes_relation_delete",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 888,
+        "fn": "notes_relation_delete"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "id",
+          "rustName": "id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "expectedRevision",
+          "rustName": "expected_revision",
+          "schema": {
+            "type": "integer",
+            "x-int": "i64"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "boolean"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "notes_relation_get",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 730,
+        "fn": "notes_relation_get"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "id",
+          "rustName": "id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/NoteRelation"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "x-option": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "notes_relation_list",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 744,
+        "fn": "notes_relation_list"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "noteId",
+          "rustName": "note_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/NoteRelation"
+        }
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "notes_relation_put",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 874,
+        "fn": "notes_relation_put"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "request",
+          "rustName": "request",
+          "schema": {
+            "$ref": "#/$defs/NoteRelationPut"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/NoteRelation"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "notes_resolve_asset_path",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 1926,
+        "fn": "notes_resolve_asset_path"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "relativePath",
+          "rustName": "relative_path",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "string"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "notes_restore",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 1836,
+        "fn": "notes_restore"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "subject",
+          "rustName": "subject",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "id",
+          "rustName": "id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        },
+        {
+          "kind": "window"
+        }
+      ],
+      "result": {
+        "type": "boolean"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "notes_review_save_as",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 648,
+        "fn": "notes_review_save_as"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "operationId",
+          "rustName": "operation_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "sourceNoteId",
+          "rustName": "source_note_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "markdown",
+          "rustName": "markdown",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "expectedUpdatedAt",
+          "rustName": "expected_updated_at",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "capabilities",
+          "rustName": "capabilities",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "lease",
+          "rustName": "lease",
+          "schema": {
+            "anyOf": [
+              {
+                "$ref": "_shared.json#/$defs/NoteLeaseAuth"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "webview"
+        },
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        },
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/ReviewSaveResult"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "notes_save_asset",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 1858,
+        "fn": "notes_save_asset"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "subject",
+          "rustName": "subject",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "noteId",
+          "rustName": "note_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "base64Data",
+          "rustName": "base64_data",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "defaultExt",
+          "rustName": "default_ext",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "notes_search",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 3129,
+        "fn": "notes_search"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "subject",
+          "rustName": "_subject",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "keyword",
+          "rustName": "keyword",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "limit",
+          "rustName": "limit",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "i64"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/NotesSearchHit"
+        }
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "notes_set_favorite",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 1310,
+        "fn": "notes_set_favorite"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "subject",
+          "rustName": "subject",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "id",
+          "rustName": "id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "favorite",
+          "rustName": "favorite",
+          "schema": {
+            "type": "boolean"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/NoteItem"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "notes_set_pref",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 2313,
+        "fn": "notes_set_pref"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "key",
+          "rustName": "key",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "value",
+          "rustName": "value",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "boolean"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "notes_state_delete",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 720,
+        "fn": "notes_state_delete"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "request",
+          "rustName": "request",
+          "schema": {
+            "$ref": "#/$defs/NoteStateDelete"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        },
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/NoteState"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "notes_state_get",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 696,
+        "fn": "notes_state_get"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "request",
+          "rustName": "request",
+          "schema": {
+            "$ref": "#/$defs/NoteStateKey"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/NoteState"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "x-option": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "notes_state_list",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 703,
+        "fn": "notes_state_list"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "request",
+          "rustName": "request",
+          "schema": {
+            "$ref": "#/$defs/NoteStateList"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/NoteState"
+        }
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "notes_state_put",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 710,
+        "fn": "notes_state_put"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "request",
+          "rustName": "request",
+          "schema": {
+            "$ref": "#/$defs/NoteStatePut"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        },
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/NoteState"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "notes_transfer_blocks",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 556,
+        "fn": "notes_transfer_blocks"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "request",
+          "rustName": "request",
+          "schema": {
+            "$ref": "#/$defs/TransferBlocksRequest"
+          },
+          "optional": false
+        },
+        {
+          "key": "lease",
+          "rustName": "lease",
+          "schema": {
+            "anyOf": [
+              {
+                "$ref": "_shared.json#/$defs/NoteLeaseAuth"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "webview"
+        },
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        },
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/TransferResult"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "notes_undo_transfer",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 572,
+        "fn": "notes_undo_transfer"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "operationId",
+          "rustName": "operation_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "expectedSourceUpdatedAt",
+          "rustName": "expected_source_updated_at",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "expectedTargetUpdatedAt",
+          "rustName": "expected_target_updated_at",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "lease",
+          "rustName": "lease",
+          "schema": {
+            "anyOf": [
+              {
+                "$ref": "_shared.json#/$defs/NoteLeaseAuth"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "webview"
+        },
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        },
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/TransferResult"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "notes_unlinked_mentions",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 3469,
+        "fn": "notes_unlinked_mentions"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "subject",
+          "rustName": "_subject",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "noteId",
+          "rustName": "noteId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "limit",
+          "rustName": "limit",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/NotesSearchHit"
+        }
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "notes_update",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 1245,
+        "fn": "notes_update"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "subject",
+          "rustName": "_subject",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "note",
+          "rustName": "note",
+          "schema": {
+            "$ref": "#/$defs/UpdateNotePayload"
+          },
+          "optional": false
+        },
+        {
+          "key": "lease",
+          "rustName": "lease",
+          "schema": {
+            "anyOf": [
+              {
+                "$ref": "_shared.json#/$defs/NoteLeaseAuth"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "webview"
+        },
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        },
+        {
+          "kind": "window"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/NoteItem"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "notes_update_subject_rag_config",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 2260,
+        "fn": "notes_update_subject_rag_config"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "subject",
+          "rustName": "subject",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "cfg",
+          "rustName": "cfg",
+          "schema": {
+            "$ref": "#/$defs/NotesSubjectRagConfig__De"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "boolean"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "rag_rebuild_fts_index",
+      "lane": "L10-notes",
+      "rust": {
+        "file": "src/cmd/notes.rs",
+        "line": 2203,
+        "fn": "rag_rebuild_fts_index"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "integer",
+        "x-int": "usize",
+        "minimum": 0
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    }
+  ],
+  "events": [
+    {
+      "name": "canvas:ai-edit-request",
+      "dynamic": false,
+      "payload": {
+        "$ref": "#/$defs/CanvasAIEditRequest"
+      },
+      "emitters": [
+        {
+          "file": "src/chat_v2/tools/canvas_executor.rs",
+          "line": 1742,
+          "fn": "execute_write_frontend",
+          "lane": "L10-notes",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "notes-import-progress",
+      "dynamic": false,
+      "payload": {
+        "$ref": "#/$defs/dstu_notes__notes_exporter__ImportProgress"
+      },
+      "emitters": [
+        {
+          "file": "src/cmd/notes.rs",
+          "line": 2580,
+          "fn": "notes_import",
+          "lane": "L10-notes",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "notes:format-changed",
+      "dynamic": false,
+      "payload": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/NoteFormatStatus"
+          },
+          {
+            "$ref": "_shared.json#/$defs/VfsNote"
+          }
+        ],
+        "x-note": "emitters send different payload shapes"
+      },
+      "emitters": [
+        {
+          "file": "src/cmd/notes.rs",
+          "line": 644,
+          "fn": "notes_enable_columns",
+          "lane": "L10-notes",
+          "method": "emit"
+        },
+        {
+          "file": "src/cmd/notes.rs",
+          "line": 691,
+          "fn": "notes_migrate_blocks",
+          "lane": "L10-notes",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "notes:lease-changed",
+      "dynamic": false,
+      "payload": {
+        "$ref": "#/$defs/LeaseStatus"
+      },
+      "emitters": [
+        {
+          "file": "src/cmd/notes.rs",
+          "line": 364,
+          "fn": "notes_editor_register",
+          "lane": "L10-notes",
+          "method": "emit"
+        },
+        {
+          "file": "src/cmd/notes.rs",
+          "line": 418,
+          "fn": "notes_editor_begin",
+          "lane": "L10-notes",
+          "method": "emit"
+        },
+        {
+          "file": "src/cmd/notes.rs",
+          "line": 454,
+          "fn": "notes_editor_freeze_ack",
+          "lane": "L10-notes",
+          "method": "emit"
+        },
+        {
+          "file": "src/cmd/notes.rs",
+          "line": 490,
+          "fn": "notes_editor_finish",
+          "lane": "L10-notes",
+          "method": "emit"
+        },
+        {
+          "file": "src/cmd/notes.rs",
+          "line": 506,
+          "fn": "notes_editor_refresh_ack",
+          "lane": "L10-notes",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "notes:lease-ended",
+      "dynamic": false,
+      "payload": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/LeaseCancellation"
+          },
+          {
+            "x-unresolved": "payload type of `event` not determinable statically"
+          }
+        ],
+        "x-note": "emitters send different payload shapes"
+      },
+      "emitters": [
+        {
+          "file": "src/cmd/notes.rs",
+          "line": 393,
+          "fn": "notes_editor_unregister",
+          "lane": "L10-notes",
+          "method": "emit"
+        },
+        {
+          "file": "src/cmd/notes.rs",
+          "line": 448,
+          "fn": "notes_editor_freeze_ack",
+          "lane": "L10-notes",
+          "method": "emit"
+        },
+        {
+          "file": "src/cmd/notes.rs",
+          "line": 522,
+          "fn": "notes_editor_release",
+          "lane": "L10-notes",
+          "method": "emit"
+        },
+        {
+          "file": "src/cmd/notes.rs",
+          "line": 548,
+          "fn": "cleanup_note_editor_leases",
+          "lane": "L10-notes",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "notes:review-saved",
+      "dynamic": false,
+      "payload": {
+        "$ref": "#/$defs/ReviewSaveResult"
+      },
+      "emitters": [
+        {
+          "file": "src/cmd/notes.rs",
+          "line": 673,
+          "fn": "notes_review_save_as",
+          "lane": "L10-notes",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "notes:state-changed",
+      "dynamic": false,
+      "payload": {
+        "$ref": "#/$defs/NoteState"
+      },
+      "emitters": [
+        {
+          "file": "src/cmd/notes.rs",
+          "line": 717,
+          "fn": "notes_state_put",
+          "lane": "L10-notes",
+          "method": "emit"
+        },
+        {
+          "file": "src/cmd/notes.rs",
+          "line": 727,
+          "fn": "notes_state_delete",
+          "lane": "L10-notes",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "notes:transfer-completed",
+      "dynamic": false,
+      "payload": {
+        "$ref": "#/$defs/TransferResult"
+      },
+      "emitters": [
+        {
+          "file": "src/cmd/notes.rs",
+          "line": 568,
+          "fn": "notes_transfer_blocks",
+          "lane": "L10-notes",
+          "method": "emit"
+        },
+        {
+          "file": "src/cmd/notes.rs",
+          "line": 591,
+          "fn": "notes_undo_transfer",
+          "lane": "L10-notes",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "todo://changed",
+      "dynamic": false,
+      "payload": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "source": {
+                "type": "string"
+              },
+              "action": {
+                "type": "string"
+              },
+              "entityIds": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "runId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "source",
+              "action",
+              "entityIds",
+              "runId"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "source": {
+                "type": "string"
+              },
+              "action": {
+                "type": "string"
+              },
+              "entityIds": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "source",
+              "action",
+              "entityIds"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "source": {
+                "type": "string"
+              },
+              "action": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "source",
+              "action"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "x-note": "emitters send different payload shapes"
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-agent/src/chat_v2/automations.rs",
+          "line": 2606,
+          "fn": "create_automation_todo",
+          "lane": "L06-agent-orchestration",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-vfs/src/vfs/todo_handlers.rs",
+          "line": 31,
+          "fn": "emit_todo_changed",
+          "lane": "L13-vfs-api",
+          "method": "emit"
+        },
+        {
+          "file": "src/chat_v2/tools/user_todo_executor.rs",
+          "line": 274,
+          "fn": "emit_todo_changed",
+          "lane": "L10-notes",
+          "method": "emit"
+        }
+      ]
+    }
+  ],
+  "$defs": {
+    "CanvasAIEditRequest": {
+      "type": "object",
+      "properties": {
+        "requestId": {
+          "type": "string"
+        },
+        "noteId": {
+          "type": "string"
+        },
+        "operation": {
+          "$ref": "#/$defs/CanvasEditOperation"
+        },
+        "content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "search": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "replace": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "isRegex": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "section": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        }
+      },
+      "required": [
+        "requestId",
+        "noteId",
+        "operation"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::chat_v2::tools::canvas_executor::CanvasAIEditRequest"
+    },
+    "CanvasAIEditResult": {
+      "type": "object",
+      "properties": {
+        "requestId": {
+          "type": "string"
+        },
+        "success": {
+          "type": "boolean"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "affectedCount": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "usize",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "replaceCount": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "usize",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "beforePreview": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "afterPreview": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "addedContent": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "requestId",
+        "success"
+      ],
+      "x-rust": "deep_student_lib::chat_v2::tools::canvas_executor::CanvasAIEditResult"
+    },
+    "CanvasEditOperation": {
+      "type": "string",
+      "enum": [
+        "append",
+        "replace",
+        "set"
+      ],
+      "x-rust": "deep_student_lib::chat_v2::tools::canvas_executor::CanvasEditOperation"
+    },
+    "FrozenDraft": {
+      "type": "object",
+      "properties": {
+        "markdown": {
+          "type": "string"
+        },
+        "expected_updated_at": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "markdown",
+        "expected_updated_at"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_vfs::vfs::repos::note_lease_repo::FrozenDraft"
+    },
+    "ImportStage": {
+      "type": "string",
+      "enum": [
+        "parsing",
+        "importing_notes",
+        "importing_attachments",
+        "importing_preferences",
+        "done"
+      ],
+      "x-rust": "dstu_notes::notes_exporter::ImportStage"
+    },
+    "LeaseCancellation": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string"
+        },
+        "note_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "token",
+        "note_ids",
+        "reason"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_vfs::vfs::repos::note_lease_repo::LeaseCancellation"
+    },
+    "LeaseNote": {
+      "type": "object",
+      "properties": {
+        "note_id": {
+          "type": "string"
+        },
+        "updated_at": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "note_id",
+        "updated_at"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_vfs::vfs::repos::note_lease_repo::LeaseNote"
+    },
+    "LeaseStatus": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string"
+        },
+        "operation_id": {
+          "type": "string"
+        },
+        "owner_id": {
+          "type": "string"
+        },
+        "phase": {
+          "type": "string"
+        },
+        "expires_at": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/LeaseNote"
+          }
+        },
+        "waiting_for": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "token",
+        "operation_id",
+        "owner_id",
+        "phase",
+        "expires_at",
+        "notes",
+        "waiting_for"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_vfs::vfs::repos::note_lease_repo::LeaseStatus"
+    },
+    "MentionIrecCardHit": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "insight": {
+          "type": "string"
+        },
+        "subject": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "mistake_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "insight",
+        "subject",
+        "tags",
+        "mistake_id"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::cmd::notes::MentionIrecCardHit"
+    },
+    "MentionMistakeHit": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "subject": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "summary": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "subject",
+        "title",
+        "summary",
+        "tags"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::cmd::notes::MentionMistakeHit"
+    },
+    "MentionNoteHit": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "snippet": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "snippet",
+        "tags"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::cmd::notes::MentionNoteHit"
+    },
+    "NewNotePayload": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "content_md": {
+          "type": "string"
+        },
+        "tags": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "title",
+        "content_md"
+      ],
+      "x-rust": "deep_student_lib::cmd::notes::NewNotePayload"
+    },
+    "NoteAssetRef": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "value"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_vfs::vfs::repos::note_revision_repo::NoteAssetRef"
+    },
+    "NoteBacklink": {
+      "type": "object",
+      "properties": {
+        "sourceId": {
+          "type": "string"
+        },
+        "sourceTitle": {
+          "type": "string"
+        },
+        "heading": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "alias": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "position": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "sourceUpdatedAt": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sourceId",
+        "sourceTitle",
+        "heading",
+        "alias",
+        "position",
+        "sourceUpdatedAt"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_vfs::vfs::repos::note_repo::NoteBacklink"
+    },
+    "NoteFormatStatus": {
+      "type": "object",
+      "properties": {
+        "note_id": {
+          "type": "string"
+        },
+        "content_format": {
+          "type": "string"
+        },
+        "format_version": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "serializer_version": {
+          "type": "string"
+        },
+        "baseline_version_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "required_capabilities": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "updated_at": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "note_id",
+        "content_format",
+        "format_version",
+        "serializer_version",
+        "baseline_version_id",
+        "required_capabilities",
+        "updated_at"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::cmd::notes::NoteFormatStatus"
+    },
+    "NoteHistoryCurrent": {
+      "type": "object",
+      "properties": {
+        "content_md": {
+          "type": "string"
+        },
+        "updated_at": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "content_md",
+        "updated_at",
+        "title"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_vfs::vfs::repos::note_history_restore::NoteHistoryCurrent"
+    },
+    "NoteHistoryPage": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/NoteRevisionSummary"
+          }
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "i64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "items",
+        "next_cursor"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_vfs::vfs::repos::note_revision_repo::NoteHistoryPage"
+    },
+    "NoteHistoryRetention": {
+      "type": "object",
+      "properties": {
+        "edit_bucket_seconds": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "max_edit_versions": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "i64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "edit_bucket_seconds",
+        "max_edit_versions"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_vfs::vfs::repos::note_history_restore::NoteHistoryRetention"
+    },
+    "NoteHistoryRetention__De": {
+      "type": "object",
+      "properties": {
+        "edit_bucket_seconds": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "max_edit_versions": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "i64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "edit_bucket_seconds"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_vfs::vfs::repos::note_history_restore::NoteHistoryRetention"
+    },
+    "NoteHistorySelection": {
+      "type": "object",
+      "properties": {
+        "start_line": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "end_line": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "start_line",
+        "end_line"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_vfs::vfs::repos::note_history_restore::NoteHistorySelection"
+    },
+    "NoteItem": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "content_md": {
+          "type": "string"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "updated_at": {
+          "type": "string"
+        },
+        "is_favorite": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "content_md",
+        "tags",
+        "created_at",
+        "updated_at",
+        "is_favorite"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_notes::notes_manager::NoteItem"
+    },
+    "NoteLocator": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "whole"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "block"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "value"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "page"
+            },
+            "value": {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            }
+          },
+          "required": [
+            "type",
+            "value"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "card"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "value"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "question"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "value"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "x-rust": "dstu_vfs::vfs::repos::note_relation_repo::NoteLocator"
+    },
+    "NoteLocator__De": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "whole"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "block"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "page"
+            },
+            "value": {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            }
+          },
+          "required": [
+            "type",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "card"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "question"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "value"
+          ]
+        }
+      ],
+      "x-rust": "dstu_vfs::vfs::repos::note_relation_repo::NoteLocator"
+    },
+    "NoteOutgoingLink": {
+      "type": "object",
+      "properties": {
+        "targetId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "targetTitle": {
+          "type": "string"
+        },
+        "heading": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "alias": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "position": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "linkType": {
+          "type": "string"
+        },
+        "resolved": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "targetId",
+        "targetTitle",
+        "heading",
+        "alias",
+        "position",
+        "linkType",
+        "resolved"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_vfs::vfs::repos::note_repo::NoteOutgoingLink"
+    },
+    "NoteReferenceStatus": {
+      "type": "object",
+      "properties": {
+        "resource_exists": {
+          "type": "boolean"
+        },
+        "locator_exists": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "resource_exists",
+        "locator_exists"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_vfs::vfs::repos::note_relation_repo::NoteReferenceStatus"
+    },
+    "NoteReferencingResource": {
+      "type": "object",
+      "properties": {
+        "noteId": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "type": "string"
+        },
+        "via": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "noteId",
+        "title",
+        "updatedAt",
+        "via"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::cmd::notes::NoteReferencingResource"
+    },
+    "NoteRelation": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "note_id": {
+          "type": "string"
+        },
+        "block_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "type": {
+          "$ref": "#/$defs/NoteRelationType"
+        },
+        "resource_id": {
+          "type": "string"
+        },
+        "locator": {
+          "$ref": "#/$defs/NoteLocator"
+        },
+        "revision": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "invalidated_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "updated_at": {
+          "type": "string"
+        },
+        "reference": {
+          "$ref": "#/$defs/NoteReferenceStatus"
+        }
+      },
+      "required": [
+        "id",
+        "note_id",
+        "block_id",
+        "type",
+        "resource_id",
+        "locator",
+        "revision",
+        "invalidated_at",
+        "created_at",
+        "updated_at",
+        "reference"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_vfs::vfs::repos::note_relation_repo::NoteRelation"
+    },
+    "NoteRelationPut": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "note_id": {
+          "type": "string"
+        },
+        "block_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "type": {
+          "$ref": "#/$defs/NoteRelationType__De"
+        },
+        "resource_id": {
+          "type": "string"
+        },
+        "locator": {
+          "$ref": "#/$defs/NoteLocator__De"
+        },
+        "expected_revision": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "i64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "id",
+        "note_id",
+        "type",
+        "resource_id",
+        "locator"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_vfs::vfs::repos::note_relation_repo::NoteRelationPut"
+    },
+    "NoteRelationType": {
+      "type": "string",
+      "enum": [
+        "source",
+        "card",
+        "mistake"
+      ],
+      "x-rust": "dstu_vfs::vfs::repos::note_relation_repo::NoteRelationType"
+    },
+    "NoteRelationType__De": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "source",
+            "card",
+            "mistake"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "source": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "source"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "card": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "card"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "mistake": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "mistake"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "x-also-accepts": "externally tagged map form {\"<Variant>\": null}",
+      "x-rust": "dstu_vfs::vfs::repos::note_relation_repo::NoteRelationType"
+    },
+    "NoteRevision": {
+      "type": "object",
+      "properties": {
+        "version_id": {
+          "type": "string"
+        },
+        "note_id": {
+          "type": "string"
+        },
+        "parent_version_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "restored_from_version_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "title": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "pinned": {
+          "type": "boolean"
+        },
+        "content_bytes": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "content_md": {
+          "type": "string"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "props": {
+          "anyOf": [
+            {
+              "x-rust": "serde_json::Value"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "asset_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/NoteAssetRef"
+          }
+        },
+        "content_format": {
+          "type": "string"
+        },
+        "format_version": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "serializer_version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "version_id",
+        "note_id",
+        "parent_version_id",
+        "restored_from_version_id",
+        "title",
+        "source",
+        "created_at",
+        "pinned",
+        "content_bytes",
+        "content_md",
+        "tags",
+        "props",
+        "asset_refs",
+        "content_format",
+        "format_version",
+        "serializer_version"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_vfs::vfs::repos::note_revision_repo::NoteRevision"
+    },
+    "NoteRevisionSummary": {
+      "type": "object",
+      "properties": {
+        "version_id": {
+          "type": "string"
+        },
+        "note_id": {
+          "type": "string"
+        },
+        "parent_version_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "restored_from_version_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "title": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "pinned": {
+          "type": "boolean"
+        },
+        "content_bytes": {
+          "type": "integer",
+          "x-int": "i64"
+        }
+      },
+      "required": [
+        "version_id",
+        "note_id",
+        "parent_version_id",
+        "restored_from_version_id",
+        "title",
+        "source",
+        "created_at",
+        "pinned",
+        "content_bytes"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_vfs::vfs::repos::note_revision_repo::NoteRevisionSummary"
+    },
+    "NoteState": {
+      "type": "object",
+      "properties": {
+        "note_id": {
+          "type": "string"
+        },
+        "type": {
+          "$ref": "#/$defs/NoteStateType"
+        },
+        "key": {
+          "type": "string"
+        },
+        "value": {
+          "x-rust": "serde_json::Value"
+        },
+        "revision": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "deleted": {
+          "type": "boolean"
+        },
+        "updated_at": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "note_id",
+        "type",
+        "key",
+        "value",
+        "revision",
+        "deleted",
+        "updated_at"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_vfs::vfs::repos::note_state_repo::NoteState"
+    },
+    "NoteStateDelete": {
+      "type": "object",
+      "properties": {
+        "note_id": {
+          "type": "string"
+        },
+        "type": {
+          "$ref": "#/$defs/NoteStateType__De"
+        },
+        "key": {
+          "type": "string"
+        },
+        "expected_revision": {
+          "type": "integer",
+          "x-int": "i64"
+        }
+      },
+      "required": [
+        "note_id",
+        "type",
+        "key",
+        "expected_revision"
+      ],
+      "x-rust": "dstu_vfs::vfs::repos::note_state_repo::NoteStateDelete"
+    },
+    "NoteStateKey": {
+      "type": "object",
+      "properties": {
+        "note_id": {
+          "type": "string"
+        },
+        "type": {
+          "$ref": "#/$defs/NoteStateType__De"
+        },
+        "key": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "note_id",
+        "type",
+        "key"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_vfs::vfs::repos::note_state_repo::NoteStateKey"
+    },
+    "NoteStateList": {
+      "type": "object",
+      "properties": {
+        "note_id": {
+          "type": "string"
+        },
+        "type": {
+          "$ref": "#/$defs/NoteStateType__De"
+        },
+        "include_deleted": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "note_id",
+        "type"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_vfs::vfs::repos::note_state_repo::NoteStateList"
+    },
+    "NoteStatePut": {
+      "type": "object",
+      "properties": {
+        "note_id": {
+          "type": "string"
+        },
+        "type": {
+          "$ref": "#/$defs/NoteStateType__De"
+        },
+        "key": {
+          "type": "string"
+        },
+        "expected_revision": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "i64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "value": {
+          "x-rust": "serde_json::Value"
+        }
+      },
+      "required": [
+        "note_id",
+        "type",
+        "key",
+        "value"
+      ],
+      "x-rust": "dstu_vfs::vfs::repos::note_state_repo::NoteStatePut"
+    },
+    "NoteStateType": {
+      "type": "string",
+      "enum": [
+        "review",
+        "draft"
+      ],
+      "x-rust": "dstu_vfs::vfs::repos::note_state_repo::NoteStateType"
+    },
+    "NoteStateType__De": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "review",
+            "draft"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "review": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "review"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "draft": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "draft"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "x-also-accepts": "externally tagged map form {\"<Variant>\": null}",
+      "x-rust": "dstu_vfs::vfs::repos::note_state_repo::NoteStateType"
+    },
+    "NotesDbStats": {
+      "type": "object",
+      "properties": {
+        "db_path": {
+          "type": "string"
+        },
+        "file_size_bytes": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "total_notes": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "total_versions": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "total_assets": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "total_asset_bytes": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "db_path",
+        "file_size_bytes",
+        "total_notes",
+        "total_versions",
+        "total_assets",
+        "total_asset_bytes"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::cmd::notes::NotesDbStats"
+    },
+    "NotesExportCommandRequest": {
+      "type": "object",
+      "properties": {
+        "subjects": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "output_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "include_versions": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "x-rust": "deep_student_lib::cmd::notes::NotesExportCommandRequest"
+    },
+    "NotesExportCommandResponse": {
+      "type": "object",
+      "properties": {
+        "output_path": {
+          "type": "string"
+        },
+        "note_count": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "attachment_count": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "output_path",
+        "note_count",
+        "attachment_count"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::cmd::notes::NotesExportCommandResponse"
+    },
+    "NotesExportSingleCommandRequest": {
+      "type": "object",
+      "properties": {
+        "subject": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "note_id": {
+          "type": "string"
+        },
+        "output_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "include_versions": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "note_id"
+      ],
+      "x-rust": "deep_student_lib::cmd::notes::NotesExportSingleCommandRequest"
+    },
+    "NotesImportCommandRequest": {
+      "type": "object",
+      "properties": {
+        "file_path": {
+          "type": "string"
+        },
+        "conflict_strategy": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "file_path"
+      ],
+      "x-rust": "deep_student_lib::cmd::notes::NotesImportCommandRequest"
+    },
+    "NotesImportCommandResponse": {
+      "type": "object",
+      "properties": {
+        "subject_count": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "note_count": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "attachment_count": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "skipped_count": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "overwritten_count": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "subject_count",
+        "note_count",
+        "attachment_count",
+        "skipped_count",
+        "overwritten_count"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::cmd::notes::NotesImportCommandResponse"
+    },
+    "NotesImportMarkdownBatchFailure": {
+      "type": "object",
+      "properties": {
+        "file_path": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "file_path",
+        "message"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::cmd::notes::NotesImportMarkdownBatchFailure"
+    },
+    "NotesImportMarkdownBatchItem": {
+      "type": "object",
+      "properties": {
+        "filePath": {
+          "type": "string"
+        },
+        "titleHint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "filePath"
+      ],
+      "x-rust": "deep_student_lib::cmd::notes::NotesImportMarkdownBatchItem"
+    },
+    "NotesImportMarkdownBatchRequest": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/NotesImportMarkdownBatchItem"
+          }
+        },
+        "folderId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "x-rust": "deep_student_lib::cmd::notes::NotesImportMarkdownBatchRequest"
+    },
+    "NotesImportMarkdownBatchResponse": {
+      "type": "object",
+      "properties": {
+        "imported": {
+          "type": "array",
+          "items": {
+            "$ref": "_shared.json#/$defs/DstuNode"
+          }
+        },
+        "failed": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/NotesImportMarkdownBatchFailure"
+          }
+        }
+      },
+      "required": [
+        "imported",
+        "failed"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::cmd::notes::NotesImportMarkdownBatchResponse"
+    },
+    "NotesImportMarkdownRequest": {
+      "type": "object",
+      "properties": {
+        "filePath": {
+          "type": "string"
+        },
+        "titleHint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "folderId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "filePath"
+      ],
+      "x-rust": "deep_student_lib::cmd::notes::NotesImportMarkdownRequest"
+    },
+    "NotesListAdvancedOptions": {
+      "type": "object",
+      "properties": {
+        "tags": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "date_start": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "date_end": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "has_assets": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "sort_by": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "sort_dir": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "page": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "i64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "page_size": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "i64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "keyword": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "include_deleted": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "only_deleted": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "x-rust": "deep_student_lib::cmd::notes::NotesListAdvancedOptions"
+    },
+    "NotesListAdvancedResponse": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/NoteItem"
+          }
+        },
+        "total": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "page": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "page_size": {
+          "type": "integer",
+          "x-int": "i64"
+        }
+      },
+      "required": [
+        "items",
+        "total",
+        "page",
+        "page_size"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::cmd::notes::NotesListAdvancedResponse"
+    },
+    "NotesMentionSearchResponse": {
+      "type": "object",
+      "properties": {
+        "notes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/MentionNoteHit"
+          }
+        },
+        "mistakes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/MentionMistakeHit"
+          }
+        },
+        "irec_cards": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/MentionIrecCardHit"
+          }
+        }
+      },
+      "required": [
+        "notes",
+        "mistakes",
+        "irec_cards"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::cmd::notes::NotesMentionSearchResponse"
+    },
+    "NotesRebuildLinksResponse": {
+      "type": "object",
+      "properties": {
+        "noteCount": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "linkCount": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "noteCount",
+        "linkCount"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::cmd::notes::NotesRebuildLinksResponse"
+    },
+    "NotesSearchHit": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "snippet": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "snippet"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::cmd::notes::NotesSearchHit"
+    },
+    "NotesSubjectRagConfig": {
+      "type": "object",
+      "properties": {
+        "chunk_size": {
+          "type": "integer",
+          "x-int": "i32",
+          "minimum": -2147483648,
+          "maximum": 2147483647
+        },
+        "chunk_overlap": {
+          "type": "integer",
+          "x-int": "i32",
+          "minimum": -2147483648,
+          "maximum": 2147483647
+        },
+        "min_chunk_size": {
+          "type": "integer",
+          "x-int": "i32",
+          "minimum": -2147483648,
+          "maximum": 2147483647
+        },
+        "rerank_enabled": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "chunk_size",
+        "chunk_overlap",
+        "min_chunk_size",
+        "rerank_enabled"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::cmd::notes::NotesSubjectRagConfig"
+    },
+    "NotesSubjectRagConfig__De": {
+      "type": "object",
+      "properties": {
+        "chunk_size": {
+          "type": "integer",
+          "x-int": "i32",
+          "minimum": -2147483648,
+          "maximum": 2147483647
+        },
+        "chunk_overlap": {
+          "type": "integer",
+          "x-int": "i32",
+          "minimum": -2147483648,
+          "maximum": 2147483647
+        },
+        "min_chunk_size": {
+          "type": "integer",
+          "x-int": "i32",
+          "minimum": -2147483648,
+          "maximum": 2147483647
+        },
+        "rerank_enabled": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "chunk_size",
+        "chunk_overlap",
+        "min_chunk_size",
+        "rerank_enabled"
+      ],
+      "x-rust": "deep_student_lib::cmd::notes::NotesSubjectRagConfig"
+    },
+    "ParticipantStatus": {
+      "type": "object",
+      "properties": {
+        "participant_id": {
+          "type": "string"
+        },
+        "expires_at": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "active_lease": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LeaseStatus"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "participant_id",
+        "expires_at",
+        "active_lease"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_vfs::vfs::repos::note_lease_repo::ParticipantStatus"
+    },
+    "ReviewSaveResult": {
+      "type": "object",
+      "properties": {
+        "noteId": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "markdown": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "noteId",
+        "revision",
+        "markdown",
+        "updatedAt"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_vfs::vfs::repos::note_review_repo::ReviewSaveResult"
+    },
+    "TransferBlocksRequest": {
+      "type": "object",
+      "properties": {
+        "operation_id": {
+          "type": "string"
+        },
+        "source_note_id": {
+          "type": "string"
+        },
+        "target_note_id": {
+          "type": "string"
+        },
+        "expected_source_updated_at": {
+          "type": "string"
+        },
+        "expected_target_updated_at": {
+          "type": "string"
+        },
+        "source_content": {
+          "type": "string"
+        },
+        "target_content": {
+          "type": "string"
+        },
+        "block_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "operation_id",
+        "source_note_id",
+        "target_note_id",
+        "expected_source_updated_at",
+        "expected_target_updated_at",
+        "source_content",
+        "target_content",
+        "block_ids"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_vfs::vfs::repos::note_transfer_repo::TransferBlocksRequest"
+    },
+    "TransferResult": {
+      "type": "object",
+      "properties": {
+        "operation_id": {
+          "type": "string"
+        },
+        "source_note_id": {
+          "type": "string"
+        },
+        "target_note_id": {
+          "type": "string"
+        },
+        "source_updated_at": {
+          "type": "string"
+        },
+        "target_updated_at": {
+          "type": "string"
+        },
+        "source_version_id": {
+          "type": "string"
+        },
+        "target_version_id": {
+          "type": "string"
+        },
+        "undone": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "operation_id",
+        "source_note_id",
+        "target_note_id",
+        "source_updated_at",
+        "target_updated_at",
+        "source_version_id",
+        "target_version_id",
+        "undone"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_vfs::vfs::repos::note_transfer_repo::TransferResult"
+    },
+    "UpdateNotePayload": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "content_md": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "tags": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "should_reindex": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "content_hash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "force_reindex": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "expected_updated_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "capabilities": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "x-rust": "deep_student_lib::cmd::notes::UpdateNotePayload"
+    },
+    "dstu_notes__notes_exporter__ImportProgress": {
+      "type": "object",
+      "properties": {
+        "stage": {
+          "$ref": "#/$defs/ImportStage"
+        },
+        "progress": {
+          "type": "integer",
+          "x-int": "u8",
+          "minimum": 0,
+          "maximum": 255
+        },
+        "current_item": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "processed": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "total": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "stage",
+        "progress",
+        "current_item",
+        "processed",
+        "total"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_notes::notes_exporter::ImportProgress"
+    }
+  }
+}

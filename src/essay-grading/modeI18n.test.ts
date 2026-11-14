@@ -115,19 +115,18 @@ describe('modeI18n', () => {
     }
   });
 
-  it('source table mirrors the Rust built-in modes (types.rs)', () => {
-    const rust = readFileSync(
-      resolve(__dirname, '../../src-tauri/crates/dstu-tutor/src/essay_grading/types.rs'),
+  it('source table mirrors the Host built-in modes (builtin_modes_data.ts)', () => {
+    const host = readFileSync(
+      resolve(__dirname, '../../host/plugins/llm/src/essay_grading/builtin_modes_data.ts'),
       'utf8'
     );
-    const body = rust.slice(rust.indexOf('pub fn get_builtin_grading_modes'), rust.indexOf('pub fn get_default_grading_mode'));
-    const blocks = body.split(/GradingMode \{\s*id: "/).slice(1);
+    const blocks = host.split(/\n {2}\{\n {4}id: "/).slice(1);
     const parsed: Record<string, { name: string; description: string; dims: string[] }> = {};
     for (const block of blocks) {
       const id = block.slice(0, block.indexOf('"'));
-      const name = /name: "([^"]*)"\.to_string\(\)/.exec(block)?.[1] ?? '';
-      const description = /description: "([^"]*)"\.to_string\(\)/.exec(block)?.[1] ?? '';
-      const dims = [...block.matchAll(/ScoreDimension \{ name: "([^"]*)"/g)].map((m) => m[1]);
+      const name = /\n {4}name: "([^"]*)"/.exec(block)?.[1] ?? '';
+      const description = /\n {4}description: "([^"]*)"/.exec(block)?.[1] ?? '';
+      const dims = [...block.matchAll(/\{ name: "([^"]*)", maxScore/g)].map((m) => m[1]);
       parsed[id] = { name, description, dims };
     }
     expect(Object.keys(parsed).sort()).toEqual(Object.keys(BUILTIN_MODE_SOURCE).sort());

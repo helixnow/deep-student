@@ -1,0 +1,4 @@
+{
+  "$comment": "测试用：只加载本插件，不给 config（取 Config 的默认提示词）；translation 服务由测试宿主提供替身。",
+  "plugins": [{ "id": "example.translation-prompt", "module": "./index.ts" }]
+}

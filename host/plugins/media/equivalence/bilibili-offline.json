@@ -1,0 +1,888 @@
+{
+  "domain": "media-docs",
+  "commands": [
+    "media_bilibili_transport_status",
+    "media_bilibili_transport_configure",
+    "media_bilibili_bridge_pair",
+    "media_bilibili_bridge_approve",
+    "media_bilibili_bridge_disconnect",
+    "media_bilibili_auth_status",
+    "media_bilibili_logout",
+    "media_bilibili_login_qr_poll",
+    "media_bilibili_cancel",
+    "media_bilibili_probe",
+    "media_bilibili_create",
+    "media_bilibili_import_subtitle",
+    "media_bilibili_link_get",
+    "media_bilibili_stream_quality",
+    "media_transcribe_start",
+    "media_transcribe_cancel",
+    "media_progress_set",
+    "media_library_list"
+  ],
+  "scenarios": [
+    {
+      "id": "bili.transport.configure_validation",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "media_bilibili_transport_status",
+          "args": {}
+        },
+        {
+          "cmd": "media_bilibili_transport_configure",
+          "args": {
+            "config": {
+              "mode": "proxy",
+              "proxyUrl": null,
+              "proxyInAuto": false
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "media_bilibili_transport_configure",
+          "args": {
+            "config": {
+              "mode": "proxy",
+              "proxyUrl": "",
+              "proxyInAuto": false
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "media_bilibili_transport_configure",
+          "args": {
+            "config": {
+              "mode": "auto",
+              "proxyUrl": "not a url",
+              "proxyInAuto": false
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "media_bilibili_transport_configure",
+          "args": {
+            "config": {
+              "mode": "proxy",
+              "proxyUrl": "http://user:pass@127.0.0.1:9/",
+              "proxyInAuto": false
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "media_bilibili_transport_configure",
+          "args": {
+            "config": {
+              "mode": "proxy",
+              "proxyUrl": "socks5://127.0.0.1:9/",
+              "proxyInAuto": false
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "media_bilibili_transport_configure",
+          "args": {
+            "config": {
+              "mode": "proxy",
+              "proxyUrl": "http://127.0.0.1:9/path",
+              "proxyInAuto": false
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "media_bilibili_transport_configure",
+          "args": {
+            "config": {
+              "mode": "proxy",
+              "proxyUrl": "http://127.0.0.1:9/?a=1",
+              "proxyInAuto": false
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "media_bilibili_transport_configure",
+          "args": {
+            "config": {
+              "mode": "proxy",
+              "proxyUrl": "http://127.0.0.1:9/#frag",
+              "proxyInAuto": false
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "media_bilibili_transport_status",
+          "args": {}
+        },
+        {
+          "cmd": "media_bilibili_transport_configure",
+          "args": {
+            "config": {
+              "mode": "direct",
+              "proxyUrl": null,
+              "proxyInAuto": false
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "media_bilibili_transport_configure",
+          "args": {
+            "config": {
+              "mode": "auto",
+              "proxyUrl": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "media_bilibili_transport_configure",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "media_bilibili_transport_configure",
+          "args": {
+            "config": {
+              "mode": "native",
+              "proxyUrl": null,
+              "proxyInAuto": false
+            }
+          }
+        },
+        {
+          "cmd": "media_bilibili_transport_status",
+          "args": {}
+        },
+        {
+          "cmd": "media_bilibili_transport_configure",
+          "args": {
+            "config": {
+              "mode": {
+                "browser_bridge": null
+              },
+              "proxyInAuto": false
+            }
+          }
+        },
+        {
+          "cmd": "media_bilibili_transport_status",
+          "args": {}
+        },
+        {
+          "cmd": "media_bilibili_transport_configure",
+          "args": {
+            "config": {
+              "mode": "auto",
+              "proxyUrl": "https://127.0.0.1:9/",
+              "proxyInAuto": true
+            }
+          }
+        },
+        {
+          "cmd": "media_bilibili_transport_status",
+          "args": {}
+        },
+        {
+          "cmd": "media_bilibili_transport_configure",
+          "args": {
+            "config": {
+              "mode": "proxy",
+              "proxyUrl": "http://127.0.0.1:9",
+              "proxyInAuto": false
+            }
+          }
+        },
+        {
+          "cmd": "media_bilibili_transport_status",
+          "args": {}
+        },
+        {
+          "cmd": "media_bilibili_transport_configure",
+          "args": {
+            "config": {
+              "mode": "auto",
+              "proxyUrl": "",
+              "proxyInAuto": false
+            }
+          }
+        },
+        {
+          "cmd": "media_bilibili_transport_status",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "bili.bridge.pair_approve_disconnect",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "media_bilibili_bridge_approve",
+          "args": {
+            "connectionId": "w0-no-connection"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "media_bilibili_bridge_pair",
+          "args": {}
+        },
+        {
+          "cmd": "media_bilibili_transport_status",
+          "args": {}
+        },
+        {
+          "cmd": "media_bilibili_bridge_approve",
+          "args": {
+            "connectionId": "w0-no-connection"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "media_bilibili_bridge_approve",
+          "args": {
+            "connectionId": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "media_bilibili_bridge_pair",
+          "args": {}
+        },
+        {
+          "cmd": "media_bilibili_bridge_disconnect",
+          "args": {}
+        },
+        {
+          "cmd": "media_bilibili_transport_status",
+          "args": {}
+        },
+        {
+          "cmd": "media_bilibili_bridge_disconnect",
+          "args": {}
+        },
+        {
+          "cmd": "media_bilibili_bridge_approve",
+          "args": {
+            "connectionId": "w0-no-connection"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "media_bilibili_bridge_approve",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "bili.auth.logged_out_and_qr_key",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "media_bilibili_auth_status",
+          "args": {}
+        },
+        {
+          "cmd": "media_bilibili_logout",
+          "args": {}
+        },
+        {
+          "cmd": "media_bilibili_auth_status",
+          "args": {}
+        },
+        {
+          "cmd": "media_bilibili_login_qr_poll",
+          "args": {
+            "qrcodeKey": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "media_bilibili_login_qr_poll",
+          "args": {
+            "qrcodeKey": "abc123"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "media_bilibili_login_qr_poll",
+          "args": {
+            "qrcodeKey": "aaaaaaaaaaaaaaa"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "media_bilibili_login_qr_poll",
+          "args": {
+            "qrcodeKey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "media_bilibili_login_qr_poll",
+          "args": {
+            "qrcodeKey": "w0-qrcode-key-0000000000"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "media_bilibili_login_qr_poll",
+          "args": {
+            "qrcodeKey": "w0qrcodekey00000 000000"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "media_bilibili_login_qr_poll",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "media_bilibili_cancel",
+          "args": {
+            "taskId": "w0-unknown-task"
+          }
+        },
+        {
+          "cmd": "media_bilibili_cancel",
+          "args": {
+            "taskId": ""
+          }
+        },
+        {
+          "cmd": "media_bilibili_cancel",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "bili.link.parse_errors_offline",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "media_bilibili_transport_configure",
+          "args": {
+            "config": {
+              "mode": "proxy",
+              "proxyUrl": "http://127.0.0.1:9/",
+              "proxyInAuto": false
+            }
+          }
+        },
+        {
+          "cmd": "media_bilibili_probe",
+          "args": {
+            "input": "",
+            "page": null,
+            "taskId": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "media_bilibili_probe",
+          "args": {
+            "input": "   \n"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "media_bilibili_probe",
+          "args": {
+            "input": "https://www.bilibili.com/bangumi/play/ep12345"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "media_bilibili_probe",
+          "args": {
+            "input": "https://www.bilibili.com/cheese/play/ss100"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "media_bilibili_probe",
+          "args": {
+            "input": "https://live.bilibili.com/21452505"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "media_bilibili_probe",
+          "args": {
+            "input": "https://www.bilibili.com/audio/au12345"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "media_bilibili_probe",
+          "args": {
+            "input": "这不是链接 hello"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "media_bilibili_probe",
+          "args": {
+            "input": "https://www.bilibili.com/video/BV1xx411c7m"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "media_bilibili_probe",
+          "args": {
+            "input": "av0"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "media_bilibili_create",
+          "args": {
+            "input": "",
+            "page": null,
+            "lan": null,
+            "taskId": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "media_bilibili_create",
+          "args": {
+            "input": "https://www.bilibili.com/bangumi/play/ep12345",
+            "page": 1,
+            "lan": "zh-CN",
+            "taskId": "w0-task-c"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "media_bilibili_create",
+          "args": {
+            "input": "plain words"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "media_bilibili_probe",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "media_bilibili_create",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "media_bilibili_probe",
+          "args": {
+            "input": "BV1xx411c7mD",
+            "page": -1
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "bili.link.network_refused_via_proxy",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "media_bilibili_transport_configure",
+          "args": {
+            "config": {
+              "mode": "proxy",
+              "proxyUrl": "http://127.0.0.1:9/",
+              "proxyInAuto": false
+            }
+          }
+        },
+        {
+          "cmd": "media_bilibili_probe",
+          "args": {
+            "input": "https://www.bilibili.com/video/BV1xx411c7mD?p=2",
+            "page": null,
+            "taskId": "w0-task-p"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "media_bilibili_probe",
+          "args": {
+            "input": "av170001",
+            "page": 1
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "media_bilibili_probe",
+          "args": {
+            "input": "https://b23.tv/w0short"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "media_bilibili_create",
+          "args": {
+            "input": "BV1xx411c7mD",
+            "page": null,
+            "lan": null,
+            "taskId": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "media_bilibili_cancel",
+          "args": {
+            "taskId": "w0-task-p"
+          }
+        },
+        {
+          "cmd": "media_bilibili_transport_status",
+          "args": {}
+        },
+        {
+          "cmd": "media_bilibili_transport_configure",
+          "args": {
+            "config": {
+              "mode": "browser_bridge",
+              "proxyUrl": null,
+              "proxyInAuto": false
+            }
+          }
+        },
+        {
+          "cmd": "media_bilibili_probe",
+          "args": {
+            "input": "BV1xx411c7mD"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "media_bilibili_create",
+          "args": {
+            "input": "BV1xx411c7mD"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "media_bilibili_transport_configure",
+          "args": {
+            "config": {
+              "mode": "auto",
+              "proxyUrl": null,
+              "proxyInAuto": false
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "bili.link_item.offline_descriptor",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "media_bilibili_transport_configure",
+          "args": {
+            "config": {
+              "mode": "proxy",
+              "proxyUrl": "http://127.0.0.1:9/",
+              "proxyInAuto": false
+            }
+          }
+        },
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "w0-asr-guard",
+                "name": "w0-asr-guard",
+                "providerType": "custom",
+                "apiKey": "",
+                "authMode": "none",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "model": "w0-asr-guard-model",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "enabled": true,
+                "supportsTools": false,
+                "isMultimodal": false,
+                "isReasoning": false,
+                "isEmbedding": false,
+                "isReranker": false,
+                "contextWindow": 32768,
+                "maxOutputTokens": 256
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "save_model_assignments",
+          "args": {
+            "assignments": {
+              "voice_input_asr_model_config_id": "w0-asr-guard"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "W0 离线链接.bilibili",
+              "mimeType": "application/json",
+              "base64Content": "eyJraW5kIjogImJpbGliaWxpIiwgInZlcnNpb24iOiAxLCAiYnZpZCI6ICJCVjF4eDQxMWM3bUQiLCAiYWlkIjogMTcwMDAxLCAiY2lkIjogMjc5Nzg2LCAicGFnZSI6IDEsICJwYWdlQ291bnQiOiAxLCAidGl0bGUiOiAiVzAg56a757q/6ZO+5o6lIiwgInBhcnQiOiAiIiwgIm93bmVyIjogIncwLW93bmVyIiwgImNvdmVyIjogImh0dHA6Ly9pMC5oZHNsYi5jb20vYmZzL2FyY2hpdmUvdzAuanBnIiwgImR1cmF0aW9uTXMiOiAxMjAwLCAidXJsIjogImh0dHBzOi8vZXhhbXBsZS5pbnZhbGlkL25vdC1ub3JtYWxpemVkIn0="
+            }
+          }
+        },
+        {
+          "cmd": "media_bilibili_link_get",
+          "args": {
+            "resourceId": "${3.file.id}"
+          }
+        },
+        {
+          "cmd": "media_bilibili_link_get",
+          "args": {
+            "resourceId": "${3.file.resourceId}"
+          }
+        },
+        {
+          "cmd": "media_transcribe_start",
+          "args": {
+            "resourceId": "${3.file.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "media_transcribe_cancel",
+          "args": {
+            "resourceId": "${3.file.id}"
+          }
+        },
+        {
+          "cmd": "media_progress_set",
+          "args": {
+            "resourceId": "${3.file.id}",
+            "positionMs": 600,
+            "durationMs": 1200
+          }
+        },
+        {
+          "cmd": "media_library_list",
+          "args": {
+            "limit": null
+          }
+        },
+        {
+          "cmd": "media_bilibili_stream_quality",
+          "args": {
+            "fileId": "${3.file.id}",
+            "qn": null,
+            "epoch": null,
+            "attempt": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "media_bilibili_import_subtitle",
+          "args": {
+            "resourceId": "${3.file.id}",
+            "input": "BV1xx411c7mD",
+            "page": null,
+            "lan": null,
+            "taskId": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "media_bilibili_import_subtitle",
+          "args": {
+            "resourceId": "${3.file.id}",
+            "input": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "w0-not-link.wav",
+              "mimeType": "audio/wav",
+              "base64Content": "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"
+            }
+          }
+        },
+        {
+          "cmd": "media_bilibili_link_get",
+          "args": {
+            "resourceId": "${13.file.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "media_bilibili_stream_quality",
+          "args": {
+            "fileId": "${13.file.id}",
+            "qn": 80
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_upload_file",
+          "args": {
+            "params": {
+              "name": "w0-bad.bilibili",
+              "mimeType": "application/json",
+              "base64Content": "eyJraW5kIjoiYmlsaWJpbGkiLCJ2ZXJzaW9uIjoxLCJidmlkIjoibm90LWEtYnZpZCJ9"
+            }
+          }
+        },
+        {
+          "cmd": "media_bilibili_link_get",
+          "args": {
+            "resourceId": "${16.file.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "media_bilibili_link_get",
+          "args": {
+            "resourceId": "file_w0missing"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "media_bilibili_import_subtitle",
+          "args": {
+            "resourceId": "file_w0missing",
+            "input": "BV1xx411c7mD"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "media_bilibili_stream_quality",
+          "args": {
+            "fileId": "file_w0missing",
+            "qn": 64,
+            "epoch": 0,
+            "attempt": 0
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "media_bilibili_stream_quality",
+          "args": {
+            "fileId": "res_w0bad"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "media_bilibili_stream_quality",
+          "args": {
+            "fileId": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "media_bilibili_stream_quality",
+          "args": {
+            "fileId": "file_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "media_bilibili_stream_quality",
+          "args": {
+            "fileId": "file_w0/../x"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "media_bilibili_stream_quality",
+          "args": {
+            "fileId": "file_w0%2Fx"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "media_bilibili_link_get",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "media_bilibili_stream_quality",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "media_bilibili_import_subtitle",
+          "args": {
+            "resourceId": "file_w0missing"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "media_bilibili_transport_configure",
+          "args": {
+            "config": {
+              "mode": "auto",
+              "proxyUrl": null,
+              "proxyInAuto": false
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

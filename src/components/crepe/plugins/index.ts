@@ -6,6 +6,15 @@
  */
 
 import type { Crepe } from '@milkdown/crepe';
+import type { SlotEntry } from '@/ui-kernel/slots';
+import {
+  editorContributions,
+  editorEntriesForPurpose,
+  resolveEditorExtensionGroups,
+  type EditorContributionError,
+  type EditorExtensionContribution,
+  type EditorPurpose,
+} from '@/ui-plugins/official/editor/editorSlots';
 
 // 插件导入
 import { automd } from '@milkdown/plugin-automd';
@@ -27,9 +36,12 @@ import { defaultWikilinkGetNotes } from './wikilink/defaultGetNotes';
 import { blockIdentityPlugin } from './blockIdentity';
 import { blockSelectionPlugin } from './blockSelection';
 import { typedPlaceholderPlugin } from './typedPlaceholder';
-import { columnsPlugin, type ColumnsOptions } from './columns';
+import { listItemHasCheckedPlugin } from './listItemHasChecked';
+import { columnsPlugin } from './columns';
+import { inlineCardsPlugin } from './inlineCards';
 import { canonicalDocumentPlugin } from '../canonicalDocument';
 import { crepeExecuteCommand, crepeCommandBindingsPlugin } from '../commandRegistry';
+import type { CrepePluginsOptions } from './options';
 
 // Prism 核心必须先导入，组件依赖全局 Prism 对象
 import 'prismjs';
@@ -53,146 +65,97 @@ import 'prismjs/components/prism-json';
 import 'prismjs/components/prism-yaml';
 import 'prismjs/components/prism-markdown';
 
-/**
- * 插件配置选项
- */
-export interface CrepePluginsOptions {
-  /** Registration always reads layouts; writes require the current host's confirmed grant. */
-  columns?: ColumnsOptions;
-  /** 启用自动 Markdown 格式化（输入 **text** 自动粗体等） */
-  automd?: boolean;
-  /**
-   * [[wikilink]] 插件。`false` 关闭；对象可覆盖 getNotes / resolve。
-   * 默认：启用；getNotes 走 DSTU listNotes；resolve 默认全部 resolved（宿主可注入索引判定）。
-   */
-  wikilink?: boolean | WikilinkPluginConfig;
-  /**
-   * @mention 插件。`false` 关闭；对象可覆盖 searchNotes。
-   * 默认：启用；searchNotes 走 DSTU notesDstuAdapter.searchNotes。
-   */
-  mention?: boolean | MentionPluginConfig;
-  /** Callout 块，默认启用 */
-  callout?: boolean;
-  /** Toggle 折叠块，默认启用 */
-  toggle?: boolean;
-  /** 粘贴 URL 智能链接（prepend 优先于 clipboard），默认启用 */
-  pasteLink?: boolean;
-  /** 图片点击放大，默认启用 */
-  imageLightbox?: boolean;
-  /** Mod-K 链接快捷键，默认启用 */
-  linkKeymap?: boolean;
-  /**
-   * pdfref:// 来源行回链（点击回到 PDF 对应页），默认启用。
-   * 纯 click 拦截 + pdf-ref:open 派发，无 UI、无数据依赖。
-   */
-  pdfRefLink?: boolean;
-  /**
-   * 媒体时间戳回链（`[媒体@id:mm:ss]` 文本标记 / mediaref:// 链接 → 打开音视频并跳转），
-   * 默认启用。装饰 + click 拦截 + media-ref:open 派发。
-   */
-  mediaRefLink?: boolean;
+export type { CrepePluginsOptions } from './options';
+
+type ExtensionFactory = EditorExtensionContribution['create'];
+
+function officialEntry(id: string, order: number, create: ExtensionFactory): SlotEntry<EditorExtensionContribution> {
+  return { id, order, owner: 'dstu.ui.editor', origin: 'builtin', value: { create } };
 }
 
+const enabled = (flag: boolean | undefined) => flag ?? true;
+
 /**
- * 应用额外插件到 Crepe 实例
- * 注意：需要在 crepe.create() 之前调用
+ * 官方编辑器插件栈（`editor.extensions`，契约见 ui-kernel/contracts/editor.ts）。
+ * 每个编辑器实例按 order 调用一次工厂；顺序即 Milkdown 的注册顺序。
+ */
+export const officialEditorExtensionEntries: readonly SlotEntry<EditorExtensionContribution>[] = [
+  // 自动 Markdown 格式化：输入 **text** 自动应用粗体，输入 `code` 自动应用代码等
+  officialEntry('editor:automd', 10, ({ options }) => (enabled(options.automd) ? automd : null)),
+  // 查找高亮（FindReplacePanel 通过 transaction meta 驱动）
+  officialEntry('editor:search-highlight', 20, () => searchHighlightPlugin),
+  // ACR AI 光标 / 插入高亮（noteDriver 经 agentInsert / agentSignal 驱动）— R1-12
+  officialEntry('editor:agent-highlight', 30, () => agentHighlightPlugin),
+  // A5：粘贴 URL 智能链接（内部 prepend prosePluginsCtx，须在 create 前注册）
+  officialEntry('editor:paste-link', 40, ({ options }) => (enabled(options.pasteLink) ? pasteLinkPlugin() : null)),
+  // A3 / A4：Callout + Toggle（remark 各吃白名单 marker，互不吞噬）
+  officialEntry('editor:callout', 50, ({ options }) => (enabled(options.callout) ? calloutPlugin() : null)),
+  officialEntry('editor:toggle', 60, ({ options }) => (enabled(options.toggle) ? togglePlugin() : null)),
+  // A2：[[wikilink]]
+  officialEntry('editor:wikilink', 70, ({ options }) => {
+    if (options.wikilink === false) return null;
+    const config: WikilinkPluginConfig = typeof options.wikilink === 'object' && options.wikilink ? options.wikilink : {};
+    return wikilinkPlugin({
+      getNotes: config.getNotes ?? defaultWikilinkGetNotes,
+      resolve: config.resolve,
+      maxSuggestions: config.maxSuggestions,
+    });
+  }),
+  // A8：@mention（默认 DSTU searchNotes）
+  officialEntry('editor:mention', 80, ({ options }) => {
+    if (options.mention === false) return null;
+    const config: MentionPluginConfig = typeof options.mention === 'object' && options.mention ? options.mention : {};
+    return mentionPlugin({
+      searchNotes: config.searchNotes,
+      maxSuggestions: config.maxSuggestions,
+      debounceMs: config.debounceMs,
+    });
+  }),
+  // A6：图片 lightbox
+  officialEntry('editor:image-lightbox', 90, ({ options }) => (enabled(options.imageLightbox) ? imageLightboxPlugin() : null)),
+  // A7：Mod-K 链接快捷键（依赖 LinkTooltip feature）
+  officialEntry('editor:link-keymap', 100, ({ options }) => (enabled(options.linkKeymap) ? linkKeymapPlugin() : null)),
+  // pdfref:// / note:// 内部链接保留 href（Milkdown 默认把非 http 协议清空，回链与提及点击失效）
+  officialEntry('editor:internal-link-schema', 110, () => internalLinkSchema),
+  // r5-S4：pdfref:// 来源行回链（点击回到 PDF 对应页，复用 pdf-ref:open 链路）
+  officialEntry('editor:pdf-ref', 120, ({ options }) => (enabled(options.pdfRefLink) ? pdfRefPlugin() : null)),
+  // 讲义笔记的 [媒体@id:mm:ss] 锚点 / mediaref:// 链接 → 音视频跳到该时间
+  officialEntry('editor:media-ref', 130, ({ options }) => (enabled(options.mediaRefLink) ? mediaRefPlugin() : null)),
+  officialEntry('editor:columns', 140, ({ options }) => columnsPlugin(options.columns)),
+  officialEntry('editor:block-identity', 150, () => blockIdentityPlugin()),
+  // Notion 式块选择：Esc 选块、↑↓/Shift 扩选、Backspace 删除、Mod-D 复制
+  officialEntry('editor:block-selection', 160, () => blockSelectionPlugin()),
+  officialEntry('editor:typed-placeholder', 170, () => typedPlaceholderPlugin()),
+  officialEntry('editor:canonical-document', 180, () => canonicalDocumentPlugin),
+  officialEntry('editor:command-execute', 190, () => crepeExecuteCommand),
+  officialEntry('editor:command-bindings', 200, () => crepeCommandBindingsPlugin),
+  // 列表项「本项或后代已勾选」写成 data-has-checked（只有属性，供样式代替 :has()）
+  officialEntry('editor:list-item-has-checked', 210, () => listItemHasCheckedPlugin()),
+  // RemNote 式内联制卡胶囊指示器（默认关闭，仅在显式开启 inlineCards 时挂载）
+  officialEntry('editor:inline-cards', 220, ({ options }) => (
+    options.inlineCards ? inlineCardsPlugin(options.inlineCards) : null
+  )),
+];
+
+for (const entry of officialEditorExtensionEntries) editorContributions.announce({ slot: 'editor.extensions', entry });
+
+const ignoreErrors: EditorContributionError = () => {};
+
+/**
+ * 应用编辑器插件到 Crepe 实例（每个实例调用一次，须在 crepe.create() 之前）。
+ * `entries` 缺省为官方插件栈；CrepeEditor 有 UI 内核时传入 `editor.extensions` 槽位。
  */
 export const applyCrepePlugins = (
   crepe: Crepe,
-  options: CrepePluginsOptions = {}
+  options: CrepePluginsOptions = {},
+  entries: readonly SlotEntry<EditorExtensionContribution>[] = officialEditorExtensionEntries,
+  onError: EditorContributionError = ignoreErrors,
+  purpose: EditorPurpose = 'editor',
 ): void => {
-  const {
-    automd: enableAutomd = true,
-    wikilink: wikilinkOpts = true,
-    mention: mentionOpts = true,
-    callout: enableCallout = true,
-    toggle: enableToggle = true,
-    pasteLink: enablePasteLink = true,
-    imageLightbox: enableImageLightbox = true,
-    linkKeymap: enableLinkKeymap = true,
-    pdfRefLink: enablePdfRefLink = true,
-    mediaRefLink: enableMediaRefLink = true,
-  } = options;
-
-  // 自动 Markdown 格式化
-  // 输入 **text** 自动应用粗体，输入 `code` 自动应用代码等
-  if (enableAutomd) {
-    crepe.editor.use(automd);
-  }
-
-  // 查找高亮（FindReplacePanel 通过 transaction meta 驱动）
-  crepe.editor.use(searchHighlightPlugin);
-
-  // ACR AI 光标 / 插入高亮（noteDriver 经 agentInsert / agentSignal 驱动）— R1-12
-  crepe.editor.use(agentHighlightPlugin);
-
-  // A5：粘贴 URL 智能链接（内部 prepend prosePluginsCtx，须在 create 前注册）
-  if (enablePasteLink) {
-    crepe.editor.use(pasteLinkPlugin());
-  }
-
-  // A3 / A4：Callout + Toggle（remark 各吃白名单 marker，互不吞噬）
-  if (enableCallout) {
-    crepe.editor.use(calloutPlugin());
-  }
-  if (enableToggle) {
-    crepe.editor.use(togglePlugin());
-  }
-
-  // A2：[[wikilink]]
-  if (wikilinkOpts !== false) {
-    const config: WikilinkPluginConfig =
-      typeof wikilinkOpts === 'object' && wikilinkOpts ? wikilinkOpts : {};
-    crepe.editor.use(
-      wikilinkPlugin({
-        getNotes: config.getNotes ?? defaultWikilinkGetNotes,
-        resolve: config.resolve,
-        maxSuggestions: config.maxSuggestions,
-      }),
-    );
-  }
-
-  // A8：@mention（默认 DSTU searchNotes）
-  if (mentionOpts !== false) {
-    const config: MentionPluginConfig =
-      typeof mentionOpts === 'object' && mentionOpts ? mentionOpts : {};
-    crepe.editor.use(
-      mentionPlugin({
-        searchNotes: config.searchNotes,
-        maxSuggestions: config.maxSuggestions,
-        debounceMs: config.debounceMs,
-      }),
-    );
-  }
-
-  // A6：图片 lightbox
-  if (enableImageLightbox) {
-    crepe.editor.use(imageLightboxPlugin());
-  }
-
-  // A7：Mod-K 链接快捷键（依赖 LinkTooltip feature）
-  if (enableLinkKeymap) {
-    crepe.editor.use(linkKeymapPlugin());
-  }
-
-  // pdfref:// / note:// 内部链接保留 href（Milkdown 默认把非 http 协议清空，回链与提及点击失效）
-  crepe.editor.use(internalLinkSchema);
-
-  // r5-S4：pdfref:// 来源行回链（点击回到 PDF 对应页，复用 pdf-ref:open 链路）
-  if (enablePdfRefLink) {
-    crepe.editor.use(pdfRefPlugin());
-  }
-
-  // 讲义笔记的 [媒体@id:mm:ss] 锚点 / mediaref:// 链接 → 音视频跳到该时间
-  if (enableMediaRefLink) {
-    crepe.editor.use(mediaRefPlugin());
-  }
-  crepe.editor.use(columnsPlugin(options.columns));
-  crepe.editor.use(blockIdentityPlugin());
-  // Notion 式块选择：Esc 选块、↑↓/Shift 扩选、Backspace 删除、Mod-D 复制
-  crepe.editor.use(blockSelectionPlugin());
-  crepe.editor.use(typedPlaceholderPlugin());
-  crepe.editor.use(canonicalDocumentPlugin).use(crepeExecuteCommand).use(crepeCommandBindingsPlugin);
+  // RUST-FIX(RF-W18-diff-extension-purpose): omitted purposes means ['editor'].
+  for (const group of resolveEditorExtensionGroups(
+    editorEntriesForPurpose(entries, purpose), { options, purpose }, onError,
+  )) crepe.editor.use(group);
 };
 
 /**
@@ -209,4 +172,5 @@ export const defaultPluginOptions: CrepePluginsOptions = {
   linkKeymap: true,
   pdfRefLink: true,
   mediaRefLink: true,
+  inlineCards: false,
 };

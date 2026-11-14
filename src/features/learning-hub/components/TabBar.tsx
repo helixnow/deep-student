@@ -5,11 +5,12 @@
  * 标签页过多时显示左右滚动箭头按钮。
  * 使用 @dnd-kit/sortable 实现水平拖拽重排。
  * 使用自定义 ResourceIcons 替代 Lucide 图标。
+ * 标签右键菜单的行来自 `app.menu` 的 finder.tab，本文件渲染并提供动作。
  */
 
 import React, { useCallback, useRef, useState, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { CaretLeft, CaretRight, DotsThree, PushPin, PushPinSlash, SidebarSimple, X } from '@phosphor-icons/react';
+import { CaretLeft, CaretRight, DotsThree, PushPin, SidebarSimple, X } from '@phosphor-icons/react';
 import {
   DndContext,
   closestCenter,
@@ -32,6 +33,10 @@ import type { ResourceType } from '../types';
 import { useTranslation } from 'react-i18next';
 import { NoteGlyph } from '@/features/notes/components/NoteGlyph';
 import { localizeEssayTitle } from '@/essay-grading/modeI18n';
+import type { AppMenuFinderTab } from '@/ui-sdk';
+import type { ResolvedAppMenuRow } from '@/ui-plugins/official/menu/appMenu';
+import { officialTabBarMenuEntries } from '@/ui-plugins/official/menu/tabBarMenu';
+import { useFinderMenuRows } from './appMenuHost';
 import {
   NoteIcon,
   TextbookIcon,
@@ -84,6 +89,44 @@ const TAB_ICON_MAP: Record<string, React.FC<ResourceIconProps>> = {
 
 const getTabIcon = (type: ResourceType): React.FC<ResourceIconProps> =>
   TAB_ICON_MAP[type] || GenericFileIcon;
+
+// ============================================================================
+// 标签右键菜单行：`app.menu` 的 finder.tab（官方行见 ui-plugins/official/menu/tabBarMenu.tsx）
+// ============================================================================
+
+const TAB_MENU_ROW = 'flex items-center gap-2 w-full px-3 py-1.5 text-xs hover:bg-[var(--interactive-hover)] text-left [@media(pointer:coarse)]:min-h-11';
+const TAB_MENU_ROW_TOGGLED = 'flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left [@media(pointer:coarse)]:min-h-11';
+
+/** 一行菜单：无图标的行留出图标宽度；停用的行不执行（菜单由 document click 关闭） */
+function TabMenuRow({ row, onDone }: { row: ResolvedAppMenuRow; onDone: () => void }) {
+  if (row.kind === 'separator') return <div className="h-px bg-border my-1" role="separator" />;
+  const { run, disabled } = row;
+  // 声明了 disabled 的行（可停用的行）类名是另一种写法、hover 在末尾；「在右侧打开」的 disabled 属性排在 class 前。
+  // 两处都不影响显示，只为与迁移前的 DOM 逐字相同
+  const className = disabled === undefined
+    ? TAB_MENU_ROW
+    : cn(TAB_MENU_ROW_TOGGLED, disabled ? 'opacity-40 cursor-default' : 'hover:bg-[var(--interactive-hover)]');
+  const onClick = () => {
+    if (disabled) return;
+    run?.();
+    if (row.closeOnRun !== false) onDone();
+  };
+  const content = (
+    <>
+      {row.icon ?? <span className="w-[14px]" />}
+      {row.suffix ? `${row.label} · ${row.suffix}` : row.label}
+    </>
+  );
+  return row.id === 'open-right'
+    ? <button role="menuitem" disabled={disabled} className={className} data-testid={row.testId} onClick={onClick}>{content}</button>
+    : <button role="menuitem" className={className} disabled={disabled} data-testid={row.testId} onClick={onClick}>{content}</button>;
+}
+
+function TabMenuRows({ context, onDone }: { context: AppMenuFinderTab; onDone: () => void }) {
+  // RUST-FIX(RF-W18-finder-menu-contributions): preserve tab shell while consuming slot rows.
+  const rows = useFinderMenuRows('finder.tab', context, officialTabBarMenuEntries);
+  return <>{rows.map((row) => <TabMenuRow key={row.key} row={row} onDone={onDone} />)}</>;
+}
 
 // ============================================================================
 // TabItem 子组件
@@ -332,83 +375,28 @@ const TabItem: React.FC<TabItemProps> = React.memo(({
             visibility: ctxMenuPos ? 'visible' : 'hidden',
           }}
         >
-          {/* 📱 移动端不支持分屏（父级不传 onSplitView/onCloseSplitView），隐藏无效入口，避免点击无反应 */}
-          {isSplitRight ? (
-            onCloseSplitView && (
-              <button
-                role="menuitem"
-                className="flex items-center gap-2 w-full px-3 py-1.5 text-xs hover:bg-[var(--interactive-hover)] text-left [@media(pointer:coarse)]:min-h-11"
-                onClick={() => { onCloseSplitView(); setCtxMenu(null); }}
-              >
-                <SidebarSimple size={14} />
-                {t('learningHub:splitView.close')}
-              </button>
-            )
-          ) : (
-            onSplitView && (
-              <button
-                role="menuitem"
-                disabled={!canSplit}
-                className={cn(
-                  'flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left [@media(pointer:coarse)]:min-h-11',
-                  canSplit ? 'hover:bg-[var(--interactive-hover)]' : 'opacity-40 cursor-default',
-                )}
-                onClick={() => { if (canSplit) { onSplitView(); setCtxMenu(null); } }}
-              >
-                <SidebarSimple size={14} />
-                {t('learningHub:splitView.openRight')}
-              </button>
-            )
-          )}
-          {onTogglePin && (
-            <button
-              role="menuitem"
-              className="flex items-center gap-2 w-full px-3 py-1.5 text-xs hover:bg-[var(--interactive-hover)] text-left [@media(pointer:coarse)]:min-h-11"
-              onClick={() => { onTogglePin(); setCtxMenu(null); }}
-            >
-              {tab.isPinned ? <PushPinSlash size={14} /> : <PushPin size={14} />}
-              {tab.isPinned
-                ? t('learningHub:tabBar.unpin')
-                : t('learningHub:tabBar.pin')}
-            </button>
-          )}
-          <div className="h-px bg-border my-1" role="separator" />
-          <button
-            role="menuitem"
-            className="flex items-center gap-2 w-full px-3 py-1.5 text-xs hover:bg-[var(--interactive-hover)] text-left [@media(pointer:coarse)]:min-h-11"
-            onClick={() => { onClose(); setCtxMenu(null); }}
-          >
-            <svg width="12" height="12" viewBox="0 0 10 10" fill="none">
-              <path d="M2.5 2.5L7.5 7.5M7.5 2.5L2.5 7.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-            </svg>
-            {t('common:actions.close')}
-          </button>
-          {onCloseOthers && (
-            <button
-              role="menuitem"
-              className="flex items-center gap-2 w-full px-3 py-1.5 text-xs hover:bg-[var(--interactive-hover)] text-left [@media(pointer:coarse)]:min-h-11"
-              onClick={() => { onCloseOthers(); setCtxMenu(null); }}
-            >
-              <span className="w-[14px]" />
-              {t('learningHub:tabBar.closeOthers')}
-            </button>
-          )}
-          {onCloseRight && (
-            <button
-              role="menuitem"
-              className={cn(
-                'flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left [@media(pointer:coarse)]:min-h-11',
-                hasTabsToRight
-                  ? 'hover:bg-[var(--interactive-hover)]'
-                  : 'opacity-40 cursor-default',
-              )}
-              disabled={!hasTabsToRight}
-              onClick={() => { if (hasTabsToRight) { onCloseRight(); setCtxMenu(null); } }}
-            >
-              <span className="w-[14px]" />
-              {t('learningHub:tabBar.closeRight')}
-            </button>
-          )}
+          {/* 📱 移动端不支持分屏（父级不传 onSplitView/onCloseSplitView），分屏行不出现 */}
+          <TabMenuRows
+            context={{
+              tabId: tab.tabId,
+              resourceType: tab.type,
+              resourceId: tab.resourceId,
+              title: tab.title,
+              dstuPath: tab.dstuPath,
+              active: isActive,
+              pinned: Boolean(tab.isPinned),
+              splitRight: Boolean(isSplitRight),
+              canSplit: Boolean(canSplit),
+              hasClosableToRight: Boolean(hasTabsToRight),
+              close: onClose,
+              openSplitView: onSplitView,
+              closeSplitView: onCloseSplitView,
+              togglePin: onTogglePin,
+              closeOthers: onCloseOthers,
+              closeRight: onCloseRight,
+            }}
+            onDone={() => setCtxMenu(null)}
+          />
         </div>,
         document.body
       )}

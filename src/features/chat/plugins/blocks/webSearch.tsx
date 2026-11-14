@@ -5,12 +5,16 @@
  * 自执行注册：import 即注册
  */
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { cn } from '@/utils/cn';
-import { Globe, CircleNotch, WarningCircle, MagnifyingGlass } from '@phosphor-icons/react';
+import { Globe } from '@phosphor-icons/react';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
 import { SourceList } from './components/SourceList';
+import {
+  RetrievalBlockShell,
+  RetrievalErrorNotice,
+  RetrievalQueryRow,
+} from './components/RetrievalBlockShell';
 import { convertBackendSources, type BackendSourceInfo } from './components/types';
 
 /**
@@ -55,12 +59,20 @@ const WebSearchBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStr
   // 状态判断
   const isPending = block.status === 'pending';
   const isRunning = block.status === 'running' || isStreaming;
+  const isActive = isPending || isRunning;
   const isError = block.status === 'error';
   const isSuccess = block.status === 'success';
+  const [isExpanded, setIsExpanded] = useState(true);
+
+  const durationMs =
+    block.startedAt && block.endedAt
+      ? block.endedAt - block.startedAt
+      : data?.durationMs;
 
   // 统计信息
   const statsText = useMemo(() => {
-    if (!isSuccess || sources.length === 0) return null;
+    if (!isSuccess) return null;
+    if (sources.length === 0) return t('blocks.webSearch.noResults');
     if (totalResults > sources.length) {
       return t('blocks.webSearch.stats', {
         shown: sources.length,
@@ -70,122 +82,48 @@ const WebSearchBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStr
     return t('blocks.webSearch.statsSimple', { count: sources.length });
   }, [isSuccess, sources.length, totalResults, t]);
 
+  const statusText = isActive
+    ? t('blocks.webSearch.searching')
+    : isError
+      ? t('blocks.webSearch.error')
+      : statsText;
+
+  const hasBody = Boolean(query) || isError || (isSuccess && sources.length > 0);
+
   return (
-    <div
-      className={cn(
-        'rounded-lg border',
-        'bg-muted/30 border-border/50',
-        'dark:bg-muted/20 dark:border-border/30',
-        'transition-colors'
-      )}
-    >
-      {/* 头部（min-w-0/truncate 收缩保护，防窄屏溢出） */}
-      <div
-        className={cn(
-          'flex min-w-0 items-center gap-2 px-3 py-2',
-          'border-b border-border/30'
-        )}
-      >
-        {/* 图标 */}
-        <div
-          className={cn(
-            'flex-shrink-0 flex items-center justify-center',
-            'w-6 h-6 rounded bg-success/10'
-          )}
-        >
-          <Globe size={16} className="text-success" />
-        </div>
-
-        {/* 标题 */}
-        <span className="min-w-0 truncate font-medium text-sm text-foreground">
-          {t('blocks.webSearch.title')}
-        </span>
-
-        {/* 搜索引擎标签 */}
-        {searchEngine && isSuccess && (
-          <span
-            className={cn(
-              'min-w-0 max-w-[40%] truncate px-2 py-0.5 rounded-full',
-              'bg-success/10 text-success text-xs'
-            )}
-          >
+    <RetrievalBlockShell
+      icon={Globe}
+      title={t('blocks.webSearch.title')}
+      statusText={statusText}
+      badge={
+        searchEngine && isSuccess ? (
+          <span className="min-w-0 max-w-[40%] shrink-0 truncate rounded-md bg-muted/60 px-1.5 py-0.5 text-2xs font-medium text-muted-foreground">
             {searchEngine}
           </span>
-        )}
-
-        {/* 状态指示器 */}
-        {(isPending || isRunning) && (
-          <span className="flex shrink-0 items-center gap-1 ml-auto text-xs text-muted-foreground">
-            <CircleNotch size={12} className="animate-spin" />
-            <span>{t('blocks.webSearch.searching')}</span>
-          </span>
-        )}
-
-        {isError && (
-          <span className="flex shrink-0 items-center gap-1 ml-auto text-xs text-destructive">
-            <WarningCircle size={12} />
-            <span>{t('blocks.webSearch.error')}</span>
-          </span>
-        )}
-
-        {isSuccess && statsText && (
-          <span className="ml-auto shrink-0 text-xs text-muted-foreground">
-            {statsText}
-          </span>
-        )}
-      </div>
-
-      {/* 内容区域 */}
-      <div className="p-3">
-        {/* 查询信息 */}
-        {query && (
-          <div className="flex items-center gap-2 mb-3 text-sm text-muted-foreground">
-            <MagnifyingGlass size={16} />
-            <span className="truncate" title={query}>
-              {query}
-            </span>
-          </div>
-        )}
-
-        {/* 加载状态 */}
-        {(isPending || isRunning) && (
-          <div className="flex items-center justify-center py-6">
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <CircleNotch size={20} className="animate-spin" />
-              <span className="text-sm">{t('blocks.webSearch.loading')}</span>
-            </div>
-          </div>
-        )}
-
-        {/* 错误状态 */}
-        {isError && (
-          <div className="flex items-center justify-center py-6">
-            <div className="flex items-center gap-2 text-destructive">
-              <WarningCircle size={20} />
-              <span className="text-sm">
-                {block.error || t('blocks.webSearch.errorMessage')}
-              </span>
-            </div>
-          </div>
-        )}
-
-        {/* 成功状态：来源列表 */}
-        {isSuccess && sources.length > 0 && (
-          <SourceList
-            sources={sources}
-            maxVisible={3}
-            defaultExpanded={false}
-          />
-        )}
-
-        {/* 成功但无结果 */}
-        {isSuccess && sources.length === 0 && (
-          <div className="flex items-center justify-center py-6 text-muted-foreground">
-            <span className="text-sm">{t('blocks.webSearch.noResults')}</span>
-          </div>
-        )}
-      </div>
-    </div>
+        ) : undefined
+      }
+      isActive={!!isActive}
+      isError={isError}
+      isSuccess={isSuccess}
+      durationMs={durationMs}
+      collapsible={hasBody}
+      isExpanded={isExpanded}
+      onToggleExpand={() => setIsExpanded((prev) => !prev)}
+    >
+      {hasBody ? (
+        <>
+          {query && <RetrievalQueryRow query={query} />}
+          {isError && (
+            <RetrievalErrorNotice
+              message={block.error || t('blocks.webSearch.errorMessage')}
+            />
+          )}
+          {isSuccess && sources.length > 0 && (
+            <SourceList sources={sources} maxVisible={3} defaultExpanded={false} />
+          )}
+        </>
+      ) : null}
+    </RetrievalBlockShell>
   );
 });
 

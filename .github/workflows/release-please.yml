@@ -42,7 +42,7 @@ jobs:
           GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          BRANCH=$(gh pr list --state open --base main --head release-please--branches--main--components--deep-student --json headRefName --jq '.[0].headRefName // empty')
+          BRANCH=$(gh pr list --state open --base main --json headRefName --jq '[.[] | select(.headRefName | startswith("release-please--branches--main"))][0].headRefName // empty')
           echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         if: steps.pr.outputs.branch != ''
@@ -50,29 +50,7 @@ jobs:
           ref: ${{ steps.pr.outputs.branch }}
           token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
           fetch-depth: 0
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
-        if: steps.pr.outputs.branch != ''
-        with:
-          node-version: '22'
-          cache: npm
-      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
-        if: steps.pr.outputs.branch != ''
-        with:
-          toolchain: '1.98.1'
-      - name: Prepare versioned locks and notices before PR validation
-        if: steps.pr.outputs.branch != ''
-        env:
-          PR_BRANCH: ${{ steps.pr.outputs.branch }}
-        run: |
-          npm ci --legacy-peer-deps
-          npm run release:prepare
-          git add src-tauri/Cargo.lock legal/THIRD_PARTY_NOTICES.txt
-          if ! git diff --cached --quiet; then
-            git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
-              commit -m 'chore(release): prepare locked dependency metadata'
-            git push origin "HEAD:$PR_BRANCH"
-          fi
-      - name: Validate the prepared PR even when GITHUB_TOKEN suppresses PR events
+      - name: Validate the release PR even when GITHUB_TOKEN suppresses PR events
         if: steps.pr.outputs.branch != ''
         env:
           GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
@@ -86,7 +64,7 @@ jobs:
               --json databaseId,status,conclusion \
               --jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "in_progress" or .conclusion == "success")] | .[0].databaseId // empty')
             if [ -n "$EXISTING" ]; then
-              echo "CI for prepared PR $SHA already exists: run $EXISTING"
+              echo "CI for release PR $SHA already exists: run $EXISTING"
               exit 0
             fi
             gh workflow run ci.yml --ref "$PR_BRANCH"

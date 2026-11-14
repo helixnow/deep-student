@@ -1,76 +1,43 @@
-# 数据库迁移兼容性门禁（reusable，fail-closed）
-#
-# 分层设计（详见 scripts/migration-ci/README.md）：
-#   PR/branch push : ci.yml migration-gate（静态 + 生产测试 + 代表性 fixture）
-#   main/nightly   : migration-nightly.yml（全量 fixture + 故障注入 + 规模）
-#   release/rebuild: 本 workflow —— fail-closed，绝不允许无 fixture 出包
-#
-# 审查 F2 修复：此前只有 release.yml 挂了本门禁，rebuild-release.yml 可以
-# 绕过 fail-closed 直接出包。抽成 reusable 后两条发布路径共用同一实现。
-#
-# 调用方需 `secrets: inherit`（MIGRATION_FIXTURE_* secrets）。
-
+# Database migration compatibility gate (reusable, fail-closed)
 name: Migration Compatibility Gate (reusable)
 
 on:
   workflow_call:
     inputs:
       source_sha:
-        description: '已解析的不可变源码 SHA；留空仅兼容历史独立补发调用'
+        description: 'Immutable 40-char source commit SHA'
         required: false
         type: string
         default: ''
       tag_name:
-        description: '待发布的 tag（如 v0.9.42）'
+        description: 'Release tag (e.g. v0.20.0)'
         required: true
         type: string
       allow_missing_fixtures:
-        description: '仅供手动恢复发布：外部 full fixture 未配置时，在生产迁移测试通过后继续'
+        description: 'Manual recovery override: run production host migration tests without external full fixtures'
         required: false
-        default: false
         type: boolean
+        default: false
 
 permissions:
   contents: read
 
 jobs:
   gate:
-    # Use the same Linux ABI and cache namespace as CI/nightly. Shutdown/143
-    # alone is not proof of OOM; the resource monitor records actual pressure.
     runs-on: ${{ vars.LINUX_BUILD_RUNNER || 'ubuntu-22.04' }}
-    timeout-minutes: 90
+    timeout-minutes: 60
     env:
-      CARGO_INCREMENTAL: 0
-      # 降低巨型测试二进制并行链接峰值，避免 OOM killer 终止 runner agent。
-      CARGO_BUILD_JOBS: '2'
-      CARGO_PROFILE_DEV_DEBUG: '0'
-      CARGO_PROFILE_TEST_DEBUG: '0'
-      RUSTFLAGS: -C link-arg=-fuse-ld=lld
-      SCCACHE_GHA_ENABLED: 'true'
-      SCCACHE_IDLE_TIMEOUT: '0'
-      SCCACHE_IGNORE_SERVER_IO_ERROR: '1'
       RELEASE_SOURCE_SHA: ${{ inputs.source_sha }}
       RELEASE_WORKFLOW_SHA: ${{ github.workflow_sha }}
+      NODE_OPTIONS: '--max-old-space-size=4096'
     steps:
-      - name: Free disk space
-        run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
-          sudo docker image prune --all --force
-
-      # 与 ci.yml rust-test-build 的 R07 缓解一致：链接高峰先落 swap，
-      # 避免 16GB runner 在 release 长编译中被整体回收。
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ inputs.source_sha || inputs.tag_name }}
           fetch-depth: 0
 
-      # Rebuilds intentionally execute the tagged production migration code,
-      # but old tags may predate the checked-in release fixtures, harness
-      # template synchronization, or currently reviewed release-requirements
-      # waiver dates. Overlay only release-gate data/tooling from the caller
-      # revision; no application or migration source comes from main.
       - name: Checkout release tooling from workflow revision
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ github.workflow_sha }}
           path: .release-tooling
@@ -79,80 +46,29 @@ jobs:
             scripts/migration-ci
             .github/actions
 
-      - name: Verify and prepare migration release resources
+      - name: Overlay release requirements from workflow revision
         run: |
-          bash .release-tooling/scripts/ci/prepare-linux-release.sh
-          bash .release-tooling/scripts/ci/install-linux-deps.sh
-          cp .release-tooling/scripts/migration-ci/run-fixture-upgrades.sh scripts/migration-ci/run-fixture-upgrades.sh
-          cp .release-tooling/scripts/migration-ci/run-migration-tests.sh scripts/migration-ci/run-migration-tests.sh
-
-      - name: Overlay release gate inputs from workflow revision
-        run: |
-          FIXTURE_PATH="src-tauri/tests/migration-fixtures/full"
-          if git cat-file -e "${GITHUB_SHA}:${FIXTURE_PATH}" 2>/dev/null; then
-            git checkout "$GITHUB_SHA" -- "$FIXTURE_PATH"
-            echo "✅ Release fixtures loaded from workflow revision ${GITHUB_SHA}"
-          else
-            echo "ℹ️ No checked-in full fixtures at workflow revision ${GITHUB_SHA}; external fixture configuration is required"
-          fi
-
-          HARNESS_TEMPLATE="scripts/migration-ci/fixture-upgrade-harness.rs"
-          if git cat-file -e "${GITHUB_SHA}:${HARNESS_TEMPLATE}" 2>/dev/null; then
-            git checkout "$GITHUB_SHA" -- "$HARNESS_TEMPLATE"
-            echo "✅ Fixture harness template loaded from workflow revision ${GITHUB_SHA}"
-          fi
-
           REQUIREMENTS="scripts/migration-ci/release-requirements.json"
-          if git cat-file -e "${GITHUB_SHA}:${REQUIREMENTS}" 2>/dev/null; then
-            git checkout "$GITHUB_SHA" -- "$REQUIREMENTS"
-            echo "✅ Release requirements loaded from workflow revision ${GITHUB_SHA}"
+          if [ -f ".release-tooling/${REQUIREMENTS}" ]; then
+            cp ".release-tooling/${REQUIREMENTS}" "${REQUIREMENTS}"
           fi
 
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
-          node-version: 22
+          node-version: '24'
+          cache: npm
 
-      - name: Print gate tool manifest
-        run: |
-          echo "=== Migration gate tool manifest ==="
-          echo "node            : $(node --version)"
-          echo "actions         : checkout v7.0.0 / setup-node v6.5.0 / rust-toolchain stable / rust-cache v2.9.1 / cache-apt-pkgs v1.6.3 / upload-artifact v7.0.1 (all SHA-pinned)"
+      - name: Verify pinned release source before installing dependencies
+        if: ${{ inputs.source_sha != '' }}
+        shell: bash
+        run: node .release-tooling/scripts/ci/release-contracts.mjs source
 
-      - name: Static migration gate (lock manifest + dangerous SQL)
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Static migration gate
         run: node scripts/check-migrations.mjs
 
-      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
-        with:
-          toolchain: '1.98.1'
-
-      - uses: Mozilla-Actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba
-        continue-on-error: true
-      - run: bash .release-tooling/scripts/ci/prepare-sccache.sh
-
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-        with:
-          workspaces: src-tauri
-          # key 前缀随钉版镜像走；shared-key 与 ci.yml / migration-nightly.yml
-          # 的迁移门禁共享 tests 缓存，避免 release 每次从零编译完整依赖图。
-          key: ubuntu-22.04-lld-test-debug0
-          shared-key: tests
-          cache-on-failure: true
-
-      # build.rs 的 Tauri ACL 校验要求 Linux 侧存在 libpdfium.so，
-      # 与 ci.yml 的 ubuntu cargo job 保持一致，预先下载。
-      - name: Prepare target-specific pdfium
-        run: |
-          if [ -f "src-tauri/resources/pdfium/libpdfium.so" ]; then
-            echo "Using existing pdfium: $(du -h --apparent-size src-tauri/resources/pdfium/libpdfium.so | cut -f1)"
-          else
-            bash scripts/download-pdfium.sh linux-x64
-          fi
-          test -f "src-tauri/resources/pdfium/libpdfium.so" || { echo "::error::libpdfium.so missing after prepare"; exit 1; }
-
-      # 生产统一迁移框架测试（src/data_governance/migration*），
-      # run-migration-tests.sh 解析 cargo 汇总并强制通过数 >= --min-tests，
-      # 杜绝 "0 passed; 0 failed" 假绿。
-      # fail-closed：release 绝不允许在没跑 fixture 升级的情况下出包
       - name: Fetch full fixture tier (fail-closed)
         if: ${{ !inputs.allow_missing_fixtures }}
         id: fixtures
@@ -167,36 +83,32 @@ jobs:
       - name: Record manual fixture override
         if: ${{ inputs.allow_missing_fixtures }}
         run: |
-          echo "::warning::Explicit fixture override selected; production migration tests below remain required."
+          echo "::warning::Explicit fixture override selected; host migration tests remain required."
 
-      - name: Production migration tests (non-zero count enforced)
+      - name: Production host migration tests (non-zero count enforced)
         run: |
-          bash .release-tooling/scripts/ci/with-resource-monitor.sh bash scripts/migration-ci/run-migration-tests.sh \
-            --min-tests 50 --count-out "$RUNNER_TEMP/migration-test-count.json"
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/migration-reports"
+          npx vitest run -c vitest.host.config.ts \
+            host/platform/storage/tests/migration-compat.test.ts \
+            host/platform/storage/tests/migration-integration.test.ts \
+            host/plugins/backup/tests/migration-behavior.test.ts \
+            host/e2e/data-compat/migrations.test.ts \
+            --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/migration-reports/host-migration-tests.json"
+          node -e 'const fs = require("fs"); const r = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); if (!(r.numPassedTests >= 50)) { console.error("only " + r.numPassedTests + " migration tests passed"); process.exit(1); } fs.writeFileSync(process.argv[2], JSON.stringify({ passed: r.numPassedTests, migration_test_count: r.numPassedTests }));' \
+            "$RUNNER_TEMP/migration-reports/host-migration-tests.json" "$RUNNER_TEMP/migration-test-count.json"
 
-      - name: Compile fixture executable once for both modes
+      - name: Upgrade and fault-injection fixture tests
         if: ${{ !inputs.allow_missing_fixtures }}
-        run: bash .release-tooling/scripts/ci/with-resource-monitor.sh node .release-tooling/scripts/ci/test-binary.mjs migration_fixture_upgrade_gate MIGRATION_GATE_BINARY
-
-      - name: Full fixture upgrades
-        if: ${{ !inputs.allow_missing_fixtures }}
+        env:
+          MIGRATION_FIXTURE_ROOT: ${{ steps.fixtures.outputs.fixture_root }}
         run: |
-          bash scripts/migration-ci/run-fixture-upgrades.sh \
-            --fixture-root "${{ steps.fixtures.outputs.fixture_root }}" \
-            --mode upgrade \
-            --report "$RUNNER_TEMP/migration-reports/full-upgrade.jsonl"
+          set -euo pipefail
+          for mode in upgrade fault; do
+            MIGRATION_GATE_MODE="$mode" npx vitest run -c vitest.host.config.ts \
+              host/platform/storage/tests/migration-integration.test.ts -t 'MIGRATION_FIXTURE_ROOT'
+          done
 
-      - name: Fault-injection gate (corrupted DBs must surface failure)
-        if: ${{ !inputs.allow_missing_fixtures }}
-        run: |
-          bash scripts/migration-ci/run-fixture-upgrades.sh \
-            --fixture-root "${{ steps.fixtures.outputs.fixture_root }}" \
-            --mode fault \
-            --report "$RUNNER_TEMP/migration-reports/full-fault.jsonl"
-
-      # 真实产物升级 E2E 的诚实门禁：capability check + requirement manifest。
-      # 仓库暂无 upgrade-E2E driver ⇒ 依赖带过期日期的 waiver；waiver 过期
-      # 或 driver 落地却未执行 ⇒ 本步失败，release 被阻断。
       - name: Verify release requirements (artifact upgrade E2E manifest)
         run: |
           node scripts/migration-ci/verify-release-requirements.mjs \
@@ -206,6 +118,7 @@ jobs:
       - name: Generate migration compatibility report
         if: always()
         run: |
+          mkdir -p "$RUNNER_TEMP/migration-reports"
           ARGS=(
             --out "$RUNNER_TEMP/migration-reports/migration-compatibility-report.json"
             --candidate-commit "$(git rev-parse HEAD)"
@@ -217,18 +130,13 @@ jobs:
           )
           [ -f "$RUNNER_TEMP/migration-test-count.json" ] && \
             ARGS+=(--test-count-file "$RUNNER_TEMP/migration-test-count.json")
-          [ -f "$RUNNER_TEMP/migration-reports/full-upgrade.jsonl" ] && \
-            ARGS+=(--harness-report "$RUNNER_TEMP/migration-reports/full-upgrade.jsonl")
-          [ -f "$RUNNER_TEMP/migration-reports/full-fault.jsonl" ] && \
-            ARGS+=(--harness-report "$RUNNER_TEMP/migration-reports/full-fault.jsonl")
           [ -f "$RUNNER_TEMP/migration-reports/release-requirements-result.json" ] && \
             ARGS+=(--requirements-result "$RUNNER_TEMP/migration-reports/release-requirements-result.json")
           node scripts/migration-ci/generate-report.mjs "${ARGS[@]}"
 
-      # 失败也上传：报告本身就是发布决策的证据链
       - name: Upload migration compatibility report
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: migration-compatibility-report
           path: ${{ runner.temp }}/migration-reports/
@@ -241,10 +149,3 @@ jobs:
         with:
           stage: migration
           policy: ${{ inputs.allow_missing_fixtures }}
-
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        if: always()
-        with:
-          name: resource-diagnostics-migration
-          path: ${{ runner.temp }}/release-resource-metrics.log
-          overwrite: true

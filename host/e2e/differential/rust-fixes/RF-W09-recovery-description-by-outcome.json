@@ -1,0 +1,27 @@
+{
+  "id": "RF-W09-recovery-description-by-outcome",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main-agent",
+  "approvedAt": "2026-11-07T13:00:00+08:00",
+  "title": "恢复页说明按各组件实际恢复结果选句，不再笼统承诺“数据文件仍在原位置，没有被当作空数据覆盖”（data.json:543）",
+  "rust": {
+    "file": "src/features/data-recovery/ComponentRecoveryShell.tsx",
+    "line": 99,
+    "behavior": "Rust 快照 21c9d808 的恢复页说明固定为 data:recovery.component_recovery_description（zh-CN data.json:543）：“…数据文件仍在原位置，没有被当作空数据覆盖。”不管协调器实际做了什么。Rust coordinator.rs:375-401 在单库失败时会从启动快照覆盖该库（1004-1008）、把它当作迁移前不存在而删除（1038-1046）或恢复失败；这些情况下这句话都不成立"
+  },
+  "fix": {
+    "files": ["src/features/data-recovery/ComponentRecoveryShell.tsx"],
+    "behavior": "describeComponentRecovery（recoveryDescription.ts）按 componentReason.ts 解析各受影响组件的原因：文件未动（Host 的 kept in place、结构读取失败）或只是依赖跳过时保留原句；全部为已从快照恢复（含 Rust lib.rs 的“迁移失败后已恢复旧版数据结构”）、全部为删除失败升级新建的文件、全部为恢复失败时各用一句（component_recovery_description_restored / _removed / _restore_failed）；多种结果并存、原因为空或认不出时用 _mixed，只说明“各数据组件的处理结果见下方说明”。第一句不变，zh-CN 与 en-US 同步"
+  },
+  "evidence": "W12-PROGRESS #20 复现：恢复界面写着“数据文件仍在原位置，没有被当作空数据覆盖”，原因文本却是 “Restored this database from the startup snapshot.”，而 vfs.db 实际已被删除，再次启动后用户进入空资料库。INTEGRATION-NOTES 09:55（W20 交接）：data.json:543 的固定文案只在“没动”时成立，要求按情况显示。W20 修好 #20 之后 Host 只在本次启动的快照上恢复，但“已从快照恢复”“已删除新建文件”“恢复失败”三种结果仍会出现，固定文案对它们同样不成立。",
+  "userVisible": "能：恢复页标题下的说明在已从快照恢复、删除了失败升级新建的文件、自动恢复未完成、或情况混合时换成对应的句子；文件未动的场景（W12 冒烟 ⑪）文字不变。",
+  "dataCompat": "只改前端显示；不改 IPC 载荷、落库数据、同步载荷与备份格式。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "src/features/data-recovery/__tests__/recoveryDescription.test.tsx",
+      "name": "RF-W09-recovery-description-by-outcome: no longer says the files are in place after a restore, a removal or a failed restore"
+    }
+  ]
+}

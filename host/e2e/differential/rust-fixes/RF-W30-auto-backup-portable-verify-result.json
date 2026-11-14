@@ -1,0 +1,24 @@
+{
+  "id": "RF-W30-auto-backup-portable-verify-result",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T15:30:00+08:00",
+  "title": "自动备份剥离密钥后的便携归档校验结果为无效时让本次尝试失败，不再照常发布 ZIP",
+  "rust": {
+    "file": "src-tauri/src/backup_config.rs",
+    "line": 503,
+    "behavior": "剥离 crypto/ 并改写清单后调用 manager.verify_with_assets(&manifest).map_err(...)?，只把 Err 映射成“便携归档剥离密钥后校验失败”；verify_with_assets 对校验和不符、资产缺失等问题返回 Ok(BackupVerifyResult { is_valid: false, .. })，这个结果被丢弃，随后照常导出 ZIP、写回 last_success_at 并报告“自动便携归档已发布”"
+  },
+  "fix": {
+    "files": ["host/plugins/backup/src/auto-backup-scheduler.ts"],
+    "behavior": "isValid=false 时抛出“便携归档剥离密钥后校验失败: <数据库错误; 资产校验失败 [路径]: 消息>”，走与其他失败相同的路径：last_error 记该消息、1 小时后重试、任务 failed，不导出 ZIP、不写 last_auto_backup_time"
+  },
+  "evidence": "crates/dstu-sync/src/data_governance/backup/mod.rs:4622-4645 的 verify_with_assets 把数据库校验错误和资产错误收进 Ok(BackupVerifyResult { is_valid: false, .. })，只有备份目录不存在才返回 Err，所以 backup_config.rs:503 的 map_err(...)? 拦不住校验不通过的情况。这次校验的目的是确认剥离密钥、改写清单后的目录仍是一致的可导入归档（backup_config.rs:496-505 的注释与错误文案）；创建备份时的校验（mod.rs:5381-5391 的 verify 返回 Err；Host backup-manager.ts:514-520 检查 isValid）都把校验不通过当失败处理。漏掉后会把校验不通过的归档作为成功的恢复点发布并参与轮转，可能挤掉更早的有效备份。",
+  "userVisible": "剥离密钥后的归档校验不通过时，这次自动备份记为失败（任务列表显示失败、1 小时后重试），不会产生新的 auto-backup-*.zip，也不会因轮转删掉旧备份",
+  "dataCompat": "无格式变化",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    { "file": "host/plugins/backup/tests/auto-backup-scheduler.test.ts", "name": "RF-W30-auto-backup-portable-verify-result: an invalid post-strip verification fails the attempt instead of publishing the archive" }
+  ]
+}

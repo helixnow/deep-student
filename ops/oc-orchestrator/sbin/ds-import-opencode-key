@@ -1,0 +1,15 @@
+#!/bin/bash
+# 以 dsdev 运行：把 OpenCode Go API key 作为 OpenCode Console 的一个账号（标签 Key1，非当前账号）导入。
+# 用法：import-key.sh <标签>   （key 从标准输入读入，不出现在命令行或日志里）
+set -euo pipefail
+LABEL="$1"
+KEY="$(cat)"
+ID="cred_$(head -c 64 /dev/urandom | tr -dc 'A-Za-z0-9' | head -c 26)"
+TMP="$(mktemp)"
+chmod 600 "$TMP"
+jq -n --arg id "$ID" --arg lbl "$LABEL" --arg key "$KEY" \
+  '[{"id": $id, "integrationID": "opencode", "label": $lbl, "active": false, "value": {"type": "key", "key": $key}}]' > "$TMP"
+opencode auth import "$TMP"
+rm -f "$TMP"
+opencode auth list
+sqlite3 -readonly ~/.local/share/opencode/opencode.db "select label, active, json_extract(value,'\$.type') from credential where integration_id='opencode'"

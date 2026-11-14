@@ -1,0 +1,24 @@
+{
+  "id": "RF-W08-zip-export-creates-missing-output-parent",
+  "kind": "deliberate",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T09:20+08:00",
+  "title": "导出 ZIP 到尚不存在的目录时自动创建，而不是报 IO 错误",
+  "rust": {
+    "file": "src-tauri/crates/dstu-sync/src/data_governance/backup/zip_export.rs",
+    "line": 722,
+    "behavior": "ensure_zip_output_outside_source 对输出父目录做 canonicalize，父目录不存在时直接返回 IO 错误（No such file or directory），导出失败"
+  },
+  "fix": {
+    "files": ["host/plugins/backup/src/zip.ts"],
+    "behavior": "对最深的已存在祖先做 realpath 后拼回缺失部分，再做“不在备份源目录内”的检查（符号链接别名同样拦截），然后创建父目录并导出"
+  },
+  "evidence": "缺失的父目录无法是指向源目录的符号链接，安全检查不受影响；自动创建能让用户直接导出到新目录。按产品决策登记（Rust 测试 test_export_with_custom_output_path 用的父目录本身存在）。",
+  "userVisible": "能：指定一个还不存在的文件夹作为导出位置时，新版会建目录并导出成功，Rust 版报“系统找不到指定的路径”一类 IO 错误。",
+  "dataCompat": "不改变备份格式或任何落库数据。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    { "file": "host/plugins/backup/tests/rust-fixes.test.ts", "name": "RF-W08-zip-export-creates-missing-output-parent: exporting into a folder that does not exist yet creates it" }
+  ]
+}

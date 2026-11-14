@@ -1,0 +1,17 @@
+{
+  "lane": "F1-fixture",
+  "generator": "hand-written fixture",
+  "commands": [{
+    "name": "fixture_raw_json",
+    "lane": "F1-fixture",
+    "rust": { "file": "fixture.rs", "line": 1, "fn": "fixture_raw_json" },
+    "async": true,
+    "args": [{ "key": "mode", "rustName": "mode", "schema": { "type": "string" }, "optional": false }],
+    "injected": [],
+    "result": { "x-rust": "serde_json::Value" },
+    "error": { "x-rust": "serde_json::Value" },
+    "frontend": "none"
+  }],
+  "events": [],
+  "$defs": {}
+}

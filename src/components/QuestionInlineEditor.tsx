@@ -785,7 +785,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
       ref={containerRef}
       data-question-inline-editor
       className={cn(
-        'mt-1.5 border border-border/60 rounded-lg bg-card/80 overflow-hidden',
+        'mt-1.5 border border-border/45 rounded-2xl bg-card/70 overflow-hidden',
         'ui-drop-in flex max-h-full flex-col',
         className
       )}

@@ -1,0 +1,164 @@
+<div>
+  <div class="flex flex-col h-full p-4 space-y-4 overflow-hidden">
+    <div class="flex items-center justify-between flex-shrink-0">
+      <div class="flex items-center gap-2">
+        <svg size=20 icon="M117.25,157.92a60,60,0,1" class="text-primary">
+        <h3 class="text-lg font-semibold">
+          "多 Agent 调试"
+      <div class="flex items-center gap-2">
+        <button class="ui-press-coarse inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-ui font-medium leading-none transition-[background-color,border-color,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit border-[color:var(--button-plain-border)] bg-[var(--button-plain-bg)] text-muted-foreground hover:bg-[var(--button-plain-hover-bg)] hover:text-foreground active:bg-[var(--button-plain-active-bg)] h-[var(--touch-target-size)] px-[var(--button-padding-x-sm)] text-ui lg:h-[var(--button-height-sm)] lg:text-xs max-lg:[&_svg]:h-[18px] max-lg:[&_svg]:w-[18px] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:min-h-11" disabled="">
+          <svg size=16 icon="M240,56v48a8,8,0,0,1-8,8">
+        <button class="ui-press-coarse inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-ui font-medium leading-none transition-[background-color,border-color,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit border-[color:var(--button-plain-border)] bg-[var(--button-plain-bg)] text-muted-foreground hover:bg-[var(--button-plain-hover-bg)] hover:text-foreground active:bg-[var(--button-plain-active-bg)] h-[var(--touch-target-size)] px-[var(--button-padding-x-sm)] text-ui lg:h-[var(--button-height-sm)] lg:text-xs max-lg:[&_svg]:h-[18px] max-lg:[&_svg]:w-[18px] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:min-h-11">
+          <svg size=16 icon="M216,32H88a8,8,0,0,0-8,8" class="mr-1">
+          "复制日志"
+        <button class="ui-press-coarse inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-ui font-medium leading-none transition-[background-color,border-color,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit border-[color:var(--button-destructive-border)] bg-[var(--button-destructive-bg)] text-destructive-foreground hover:bg-[var(--button-destructive-hover-bg)] active:bg-[var(--button-destructive-active-bg)] h-[var(--touch-target-size)] px-[var(--button-padding-x-sm)] text-ui lg:h-[var(--button-height-sm)] lg:text-xs max-lg:[&_svg]:h-[18px] max-lg:[&_svg]:w-[18px] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:min-h-11">
+          <svg size=16 icon="M216,48H176V40a24,24,0,0">
+    <div class="flex gap-1 flex-shrink-0">
+      <button class="ui-press-coarse inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-ui font-medium leading-none transition-[background-color,border-color,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit border-[color:var(--button-plain-border)] bg-[var(--button-plain-bg)] text-muted-foreground hover:bg-[var(--button-plain-hover-bg)] hover:text-foreground active:bg-[var(--button-plain-active-bg)] h-[var(--touch-target-size)] px-[var(--button-padding-x-sm)] text-ui lg:h-[var(--button-height-sm)] lg:text-xs max-lg:[&_svg]:h-[18px] max-lg:[&_svg]:w-[18px] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:min-h-11">
+        <svg size=16 icon="M216,72H131.31L104,44.69" class="mr-1">
+        "监控"
+      <button class="ui-press-coarse inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-ui font-medium leading-none transition-[background-color,border-color,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit border-[color:var(--button-plain-border)] bg-[var(--button-plain-bg)] text-muted-foreground hover:bg-[var(--button-plain-hover-bg)] hover:text-foreground active:bg-[var(--button-plain-active-bg)] h-[var(--touch-target-size)] px-[var(--button-padding-x-sm)] text-ui lg:h-[var(--button-height-sm)] lg:text-xs max-lg:[&_svg]:h-[18px] max-lg:[&_svg]:w-[18px] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:min-h-11">
+        <svg size=16 icon="M232.4,114.49,88.32,26.3" class="mr-1">
+        "调试"
+      <button class="ui-press-coarse inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-ui font-medium leading-none transition-[background-color,border-color,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit border-[color:var(--button-plain-border)] bg-[var(--button-plain-bg)] text-muted-foreground hover:bg-[var(--button-plain-hover-bg)] hover:text-foreground active:bg-[var(--button-plain-active-bg)] h-[var(--touch-target-size)] px-[var(--button-padding-x-sm)] text-ui lg:h-[var(--button-height-sm)] lg:text-xs max-lg:[&_svg]:h-[18px] max-lg:[&_svg]:w-[18px] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:min-h-11">
+        <svg size=16 icon="M213.66,82.34l-56-56A8,8" class="mr-1">
+        "日志 ("
+        "0"
+        ")"
+    <div class="shrink-0 bg-border/40">
+    <div class="flex-1 overflow-auto space-y-4">
+      <div class="rounded-[var(--radius-card)] border border-border/40 bg-background text-foreground overflow-hidden min-w-0 shadow-none">
+        <div class="flex flex-col space-y-1.5 p-4 py-2">
+          <h3 class="font-semibold leading-none tracking-tight text-sm flex items-center gap-2">
+            <svg size=16 icon="M216,72H131.31L104,44.69">
+            "工作区状态"
+        <div class="p-4 pt-0 py-2">
+          <div class="text-center text-muted-foreground py-4">
+            <svg size=32 icon="M216,72H131.31L104,44.69" class="mx-auto mb-2 opacity-50">
+            <p>
+              "暂无活跃工作区"
+            <p class="text-xs">
+              "使用\"调试\"面板创建工作区"
+      <div class="rounded-[var(--radius-card)] border border-border/40 bg-background text-foreground overflow-hidden min-w-0 shadow-none">
+        <div class="flex flex-col space-y-1.5 p-4 py-2">
+          <h3 class="font-semibold leading-none tracking-tight text-sm flex items-center gap-2">
+            <svg size=16 icon="M200,48H136V16a8,8,0,0,0">
+            "Agent 列表 ("
+            "0"
+            ")"
+        <div class="p-4 pt-0 py-2">
+          <div class="text-center text-muted-foreground py-4">
+            <svg size=32 icon="M200,48H136V16a8,8,0,0,0" class="mx-auto mb-2 opacity-50">
+            <p>
+              "暂无 Agent"
+      <div class="rounded-[var(--radius-card)] border border-border/40 bg-background text-foreground overflow-hidden min-w-0 shadow-none">
+        <div class="flex flex-col space-y-1.5 p-4 py-2">
+          <h3 class="font-semibold leading-none tracking-tight text-sm flex items-center gap-2">
+            <svg size=16 icon="M216,48H40A16,16,0,0,0,2">
+            "最近消息 ("
+            "0"
+            ")"
+        <div class="p-4 pt-0 py-2">
+          <div class="text-center text-muted-foreground py-4">
+            <svg size=32 icon="M216,48H40A16,16,0,0,0,2" class="mx-auto mb-2 opacity-50">
+            <p>
+              "暂无消息"
+----
+<div>
+  <div class="flex flex-col h-full p-4 space-y-4 overflow-hidden">
+    <div class="flex items-center justify-between flex-shrink-0">
+      <div class="flex items-center gap-2">
+        <svg size=20 icon="M117.25,157.92a60,60,0,1" class="text-primary">
+        <h3 class="text-lg font-semibold">
+          "多 Agent 调试"
+      <div class="flex items-center gap-2">
+        <button class="ui-press-coarse inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-ui font-medium leading-none transition-[background-color,border-color,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit border-[color:var(--button-plain-border)] bg-[var(--button-plain-bg)] text-muted-foreground hover:bg-[var(--button-plain-hover-bg)] hover:text-foreground active:bg-[var(--button-plain-active-bg)] h-[var(--touch-target-size)] px-[var(--button-padding-x-sm)] text-ui lg:h-[var(--button-height-sm)] lg:text-xs max-lg:[&_svg]:h-[18px] max-lg:[&_svg]:w-[18px] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:min-h-11" disabled="">
+          <svg size=16 icon="M240,56v48a8,8,0,0,1-8,8">
+        <button class="ui-press-coarse inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-ui font-medium leading-none transition-[background-color,border-color,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit border-[color:var(--button-plain-border)] bg-[var(--button-plain-bg)] text-muted-foreground hover:bg-[var(--button-plain-hover-bg)] hover:text-foreground active:bg-[var(--button-plain-active-bg)] h-[var(--touch-target-size)] px-[var(--button-padding-x-sm)] text-ui lg:h-[var(--button-height-sm)] lg:text-xs max-lg:[&_svg]:h-[18px] max-lg:[&_svg]:w-[18px] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:min-h-11">
+          <svg size=16 icon="M216,32H88a8,8,0,0,0-8,8" class="mr-1">
+          "复制日志"
+        <button class="ui-press-coarse inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-ui font-medium leading-none transition-[background-color,border-color,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit border-[color:var(--button-destructive-border)] bg-[var(--button-destructive-bg)] text-destructive-foreground hover:bg-[var(--button-destructive-hover-bg)] active:bg-[var(--button-destructive-active-bg)] h-[var(--touch-target-size)] px-[var(--button-padding-x-sm)] text-ui lg:h-[var(--button-height-sm)] lg:text-xs max-lg:[&_svg]:h-[18px] max-lg:[&_svg]:w-[18px] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:min-h-11">
+          <svg size=16 icon="M216,48H176V40a24,24,0,0">
+    <div class="flex gap-1 flex-shrink-0">
+      <button class="ui-press-coarse inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-ui font-medium leading-none transition-[background-color,border-color,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit border-[color:var(--button-plain-border)] bg-[var(--button-plain-bg)] text-muted-foreground hover:bg-[var(--button-plain-hover-bg)] hover:text-foreground active:bg-[var(--button-plain-active-bg)] h-[var(--touch-target-size)] px-[var(--button-padding-x-sm)] text-ui lg:h-[var(--button-height-sm)] lg:text-xs max-lg:[&_svg]:h-[18px] max-lg:[&_svg]:w-[18px] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:min-h-11">
+        <svg size=16 icon="M216,72H131.31L104,44.69" class="mr-1">
+        "监控"
+      <button class="ui-press-coarse inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-ui font-medium leading-none transition-[background-color,border-color,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit border-[color:var(--button-plain-border)] bg-[var(--button-plain-bg)] text-muted-foreground hover:bg-[var(--button-plain-hover-bg)] hover:text-foreground active:bg-[var(--button-plain-active-bg)] h-[var(--touch-target-size)] px-[var(--button-padding-x-sm)] text-ui lg:h-[var(--button-height-sm)] lg:text-xs max-lg:[&_svg]:h-[18px] max-lg:[&_svg]:w-[18px] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:min-h-11">
+        <svg size=16 icon="M232.4,114.49,88.32,26.3" class="mr-1">
+        "调试"
+      <button class="ui-press-coarse inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-ui font-medium leading-none transition-[background-color,border-color,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit border-[color:var(--button-plain-border)] bg-[var(--button-plain-bg)] text-muted-foreground hover:bg-[var(--button-plain-hover-bg)] hover:text-foreground active:bg-[var(--button-plain-active-bg)] h-[var(--touch-target-size)] px-[var(--button-padding-x-sm)] text-ui lg:h-[var(--button-height-sm)] lg:text-xs max-lg:[&_svg]:h-[18px] max-lg:[&_svg]:w-[18px] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:min-h-11">
+        <svg size=16 icon="M213.66,82.34l-56-56A8,8" class="mr-1">
+        "日志 ("
+        "0"
+        ")"
+    <div class="shrink-0 bg-border/40">
+    <div class="flex-1 overflow-auto space-y-4">
+      <div class="rounded-[var(--radius-card)] border border-border/40 bg-background text-foreground overflow-hidden min-w-0 shadow-none">
+        <div class="flex flex-col space-y-1.5 p-4 py-2">
+          <h3 class="font-semibold leading-none tracking-tight text-sm">
+            "预设调试 Prompt"
+        <div class="p-4 pt-0 py-2 space-y-2">
+          <div class="flex items-center justify-between p-2 bg-muted/50 rounded hover:bg-muted transition-colors">
+            <div class="flex-1 min-w-0 mr-2">
+              <div class="font-medium text-sm">
+                "创建工作区"
+              <p class="text-xs text-muted-foreground truncate">
+                "创建一个新的多 Agent 工作区"
+            <button class="ui-press-coarse inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-ui font-medium leading-none transition-[background-color,border-color,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit border-[color:var(--button-plain-border)] bg-[var(--button-plain-bg)] text-muted-foreground hover:bg-[var(--button-plain-hover-bg)] hover:text-foreground active:bg-[var(--button-plain-active-bg)] h-[var(--touch-target-size)] px-[var(--button-padding-x-sm)] text-ui lg:h-[var(--button-height-sm)] lg:text-xs max-lg:[&_svg]:h-[18px] max-lg:[&_svg]:w-[18px] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:min-h-11">
+              <svg size=16 icon="M232.4,114.49,88.32,26.3">
+          <div class="flex items-center justify-between p-2 bg-muted/50 rounded hover:bg-muted transition-colors">
+            <div class="flex-1 min-w-0 mr-2">
+              <div class="font-medium text-sm">
+                "创建研究 Agent"
+              <p class="text-xs text-muted-foreground truncate">
+                "创建一个负责调研的 Worker Agent"
+            <button class="ui-press-coarse inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-ui font-medium leading-none transition-[background-color,border-color,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit border-[color:var(--button-plain-border)] bg-[var(--button-plain-bg)] text-muted-foreground hover:bg-[var(--button-plain-hover-bg)] hover:text-foreground active:bg-[var(--button-plain-active-bg)] h-[var(--touch-target-size)] px-[var(--button-padding-x-sm)] text-ui lg:h-[var(--button-height-sm)] lg:text-xs max-lg:[&_svg]:h-[18px] max-lg:[&_svg]:w-[18px] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:min-h-11">
+              <svg size=16 icon="M232.4,114.49,88.32,26.3">
+          <div class="flex items-center justify-between p-2 bg-muted/50 rounded hover:bg-muted transition-colors">
+            <div class="flex-1 min-w-0 mr-2">
+              <div class="font-medium text-sm">
+                "创建写作 Agent"
+              <p class="text-xs text-muted-foreground truncate">
+                "创建一个负责写作的 Worker Agent"
+            <button class="ui-press-coarse inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-ui font-medium leading-none transition-[background-color,border-color,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit border-[color:var(--button-plain-border)] bg-[var(--button-plain-bg)] text-muted-foreground hover:bg-[var(--button-plain-hover-bg)] hover:text-foreground active:bg-[var(--button-plain-active-bg)] h-[var(--touch-target-size)] px-[var(--button-padding-x-sm)] text-ui lg:h-[var(--button-height-sm)] lg:text-xs max-lg:[&_svg]:h-[18px] max-lg:[&_svg]:w-[18px] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:min-h-11">
+              <svg size=16 icon="M232.4,114.49,88.32,26.3">
+          <div class="flex items-center justify-between p-2 bg-muted/50 rounded hover:bg-muted transition-colors">
+            <div class="flex-1 min-w-0 mr-2">
+              <div class="font-medium text-sm">
+                "完整工作流测试"
+              <p class="text-xs text-muted-foreground truncate">
+                "创建工作区并启动完整的多 Agent 协作流程"
+            <button class="ui-press-coarse inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-ui font-medium leading-none transition-[background-color,border-color,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit border-[color:var(--button-plain-border)] bg-[var(--button-plain-bg)] text-muted-foreground hover:bg-[var(--button-plain-hover-bg)] hover:text-foreground active:bg-[var(--button-plain-active-bg)] h-[var(--touch-target-size)] px-[var(--button-padding-x-sm)] text-ui lg:h-[var(--button-height-sm)] lg:text-xs max-lg:[&_svg]:h-[18px] max-lg:[&_svg]:w-[18px] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:min-h-11">
+              <svg size=16 icon="M232.4,114.49,88.32,26.3">
+          <div class="flex items-center justify-between p-2 bg-muted/50 rounded hover:bg-muted transition-colors">
+            <div class="flex-1 min-w-0 mr-2">
+              <div class="font-medium text-sm">
+                "查询工作区状态"
+              <p class="text-xs text-muted-foreground truncate">
+                "查询当前工作区的 Agent 和消息"
+            <button class="ui-press-coarse inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-ui font-medium leading-none transition-[background-color,border-color,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit border-[color:var(--button-plain-border)] bg-[var(--button-plain-bg)] text-muted-foreground hover:bg-[var(--button-plain-hover-bg)] hover:text-foreground active:bg-[var(--button-plain-active-bg)] h-[var(--touch-target-size)] px-[var(--button-padding-x-sm)] text-ui lg:h-[var(--button-height-sm)] lg:text-xs max-lg:[&_svg]:h-[18px] max-lg:[&_svg]:w-[18px] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:min-h-11">
+              <svg size=16 icon="M232.4,114.49,88.32,26.3">
+      <div class="rounded-[var(--radius-card)] border border-border/40 bg-background text-foreground overflow-hidden min-w-0 shadow-none">
+        <div class="flex flex-col space-y-1.5 p-4 py-2">
+          <h3 class="font-semibold leading-none tracking-tight text-sm">
+            "自定义 Prompt"
+        <div class="p-4 pt-0 py-2 space-y-2">
+          <textarea class="rounded-[var(--radius-shell-control)] text-sm [@media(pointer:coarse)]:text-lg text-foreground transition-colors border border-[color:var(--input-shell-border)] bg-[color:var(--input-shell-surface)] px-3 py-2 placeholder:text-muted-foreground/50 hover:bg-[color:var(--surface-panel-strong)] focus:border-[color:var(--border)] focus:bg-background focus:outline-none focus:ring-0 focus-visible:border-[color:var(--border)] focus-visible:bg-background focus-visible:outline-none focus-visible:ring-0 disabled:cursor-not-allowed disabled:opacity-50 flex w-full min-h-[80px] resize-y min-h-[100px] text-sm">
+          <button class="ui-press-coarse inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-ui font-medium leading-none transition-[background-color,border-color,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit border-[color:var(--button-plain-border)] bg-[var(--button-plain-bg)] text-muted-foreground hover:bg-[var(--button-plain-hover-bg)] hover:text-foreground active:bg-[var(--button-plain-active-bg)] h-[var(--touch-target-size)] px-[var(--button-padding-x)] text-base lg:h-[var(--button-height)] lg:text-ui max-lg:[&_svg]:h-[18px] max-lg:[&_svg]:w-[18px] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] w-full [@media(pointer:coarse)]:min-h-11" disabled="">
+            <svg size=16 icon="M231.87,114l-168-95.89A1" class="mr-2">
+            "发送到聊天"
+      <div class="rounded-[var(--radius-card)] border border-border/40 bg-background text-foreground overflow-hidden min-w-0 shadow-none bg-muted/30">
+        <div class="p-4 pt-0 py-3 text-xs text-muted-foreground">
+          <p class="font-medium mb-2">
+            "💡 调试流程"
+          <ol class="list-decimal list-inside space-y-1">
+            <li>
+              "点击\"创建工作区\"启动多 Agent 环境"
+            <li>
+              "使用\"创建研究 Agent\"添加专业 Worker"
+            <li>
+              "在\"监控\"面板观察 Agent 状态变化"
+            <li>
+              "查看\"日志\"面板追踪完整执行流程"
+            <li>
+              "发现问题时点击\"复制日志\"导出"

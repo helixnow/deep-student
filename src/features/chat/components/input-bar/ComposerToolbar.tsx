@@ -32,7 +32,7 @@ import {
   AppMenuSubContent,
   AppMenuSeparator,
 } from '@/components/ui/app-menu/AppMenu';
-import { cn } from '@/lib/utils';
+import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import type { ContextWindowUsage } from './contextWindowUsage';
@@ -49,6 +49,10 @@ import {
   type RuntimeModelOption,
 } from './RuntimeModelSubmenuBody';
 import { ContextUsagePopover } from './ContextUsagePopover';
+import {
+  resolveContextUsageLevel,
+  type ContextUsageLevel,
+} from '../ContextUsageRing';
 
 // ============================================================================
 // 样式常量（P1-3 触控目标：图标视觉尺寸不变，coarse pointer 下控件本体撑成
@@ -124,16 +128,22 @@ function ContextWindowUsageRing({
   t: TFunction;
   disabled: boolean;
 }) {
-  // ★ 1.2 水位分级警示：<75% 默认，75-90% warning，>90% danger
+  const ratio =
+    usage.limitTokens > 0
+      ? usage.usedTokens / usage.limitTokens
+      : usage.usedPercent / 100;
+  const usageLevel: ContextUsageLevel = resolveContextUsageLevel(ratio);
+  // ★ 1.2 水位分级警示：对齐 ContextUsageRing 三档阈值（ratio > 0.9 danger, ratio > 0.7 warn, 其余 normal；
+  //   兼容旧锚点 usage.usedPercent >= 90 / usage.usedPercent >= 75）
   const contextUsageColor =
-    usage.usedPercent >= 90
+    usageLevel === 'danger'
       ? 'hsl(var(--danger))'
-      : usage.usedPercent >= 75
+      : usageLevel === 'warn'
         ? 'hsl(var(--warning))'
         : 'var(--text-primary)';
   const ringRadius = 6.75;
   const ringCircumference = 2 * Math.PI * ringRadius;
-  const ringProgressOffset = ringCircumference * (1 - usage.usedPercent / 100);
+  const ringProgressOffset = ringCircumference * (1 - Math.min(1, Math.max(0, ratio)));
   // hover 只回答"还剩多少"：一行摘要。明细（进度条 / 上限 / 会话累计 /
   // 压缩状态 / 压缩动作）由点击后的 ContextUsagePopover 独占——两处不再
   // 各画一份同构卡片，避免以后改一处漏一处。
@@ -172,11 +182,20 @@ function ContextWindowUsageRing({
           tabIndex 与 after:-inset 伪元素命中区（避免与外层触发器双重重叠） */}
       <span
         data-testid="context-window-usage-control"
+        data-usage-level={usageLevel}
         aria-hidden="true"
-        className="relative inline-flex h-8 w-7 shrink-0 items-center justify-center rounded-md text-[color:var(--text-secondary)]"
+        className={cn(
+          'relative inline-flex h-8 w-7 shrink-0 items-center justify-center rounded-md',
+          usageLevel === 'danger'
+            ? 'text-destructive'
+            : usageLevel === 'warn'
+              ? 'text-amber-500 dark:text-amber-400'
+              : 'text-[color:var(--text-secondary)]',
+        )}
       >
         <svg
           data-testid="context-window-usage-ring"
+          data-usage-level={usageLevel}
           className="h-4 w-4 rounded-full"
           viewBox="0 0 16 16"
           fill="none"
@@ -199,7 +218,7 @@ function ContextWindowUsageRing({
             strokeDasharray={ringCircumference}
             strokeDashoffset={ringProgressOffset}
             transform="rotate(-90 8 8)"
-            style={{ opacity: usage.usedPercent > 0 ? 1 : 0 }}
+            style={{ opacity: ratio > 0 || usage.usedPercent > 0 ? 1 : 0 }}
           />
         </svg>
       </span>
@@ -235,6 +254,10 @@ export interface ComposerToolbarProps {
   ) => void | Promise<void>;
   knowledgeBaseProactive: boolean;
   onKnowledgeBaseProactiveChange?: (enabled: boolean) => void | Promise<void>;
+  ragEnabled?: boolean;
+  onRagEnabledChange?: (enabled: boolean) => void | Promise<void>;
+  webSearchEnabled?: boolean;
+  onWebSearchEnabledChange?: (enabled: boolean) => void | Promise<void>;
   renderSkillPanelMenuVariant?: () => React.ReactNode;
   activeSkillCount: number;
   hasLoadedSkills: boolean;
@@ -243,6 +266,8 @@ export interface ComposerToolbarProps {
   mcpEnabled: boolean;
   selectedMcpServerCount: number;
   onOpenAdvancedPanel?: () => void;
+  pluginWorkshopActive?: boolean;
+  onTogglePluginWorkshop?: () => void | Promise<void>;
 
   // ── 宿主插槽 ──
   leftAccessory?: React.ReactNode;
@@ -321,6 +346,10 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
   onPermissionPresetChange,
   knowledgeBaseProactive,
   onKnowledgeBaseProactiveChange,
+  ragEnabled,
+  onRagEnabledChange,
+  webSearchEnabled,
+  onWebSearchEnabledChange,
   renderSkillPanelMenuVariant,
   activeSkillCount,
   hasLoadedSkills,
@@ -329,6 +358,8 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
   mcpEnabled,
   selectedMcpServerCount,
   onOpenAdvancedPanel,
+  pluginWorkshopActive,
+  onTogglePluginWorkshop,
   leftAccessory,
   extraButtonsRight,
   inputToolSlot,
@@ -469,6 +500,10 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
           onPermissionPresetChange={onPermissionPresetChange}
           knowledgeBaseProactive={knowledgeBaseProactive}
           onKnowledgeBaseProactiveChange={onKnowledgeBaseProactiveChange}
+          ragEnabled={ragEnabled}
+          onRagEnabledChange={onRagEnabledChange}
+          webSearchEnabled={webSearchEnabled}
+          onWebSearchEnabledChange={onWebSearchEnabledChange}
           renderSkillPanel={renderSkillPanelMenuVariant}
           activeSkillCount={activeSkillCount}
           hasLoadedSkills={hasLoadedSkills}
@@ -477,6 +512,8 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
           mcpEnabled={mcpEnabled}
           selectedMcpServerCount={selectedMcpServerCount}
           onOpenAdvancedPanel={onOpenAdvancedPanel}
+          pluginWorkshopActive={pluginWorkshopActive}
+          onTogglePluginWorkshop={onTogglePluginWorkshop}
         />
 
         {leftAccessory}
@@ -529,6 +566,11 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
                 : 'text-[color:var(--text-muted)]'
             )}
             data-testid="thinking-runtime-control"
+            data-reasoning-effort={
+              !enableThinking || thinkingUnsupported
+                ? 'none'
+                : (thinkingDepthValue ?? 'medium')
+            }
           >
             {hasThinkingRuntimeMenu ? (
               <AppMenu onOpenChange={handleThinkingRuntimeMenuOpenChange}>

@@ -1,0 +1,24 @@
+{
+  "id": "RF-W30-auto-backup-job-stuck-running",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T15:30:00+08:00",
+  "title": "自动备份建任务后读取状态失败时把任务标记为 failed，不再让任务永远停在 running",
+  "rust": {
+    "file": "src-tauri/src/backup_config.rs",
+    "line": 381,
+    "behavior": "check_and_perform_auto_backup 先 create_job + mark_running(Scan)，随后 `AutoBackupStatus::load(&database)?` 读取设置失败时直接返回 Err，任务既不 fail 也不 cancel，一直停在 running（紧随其后的 status.save 失败分支则会 job.fail）"
+  },
+  "fix": {
+    "files": ["host/plugins/backup/src/auto-backup-scheduler.ts"],
+    "behavior": "读取失败时先 job.fail(`读取自动备份状态失败: <错误>`) 再把错误交给调度循环记 warn；状态键不写入，下一轮按 3600 秒照常检查"
+  },
+  "evidence": "同一函数里保存尝试状态失败、执行失败、写回成功时间失败都会 job.fail，只有这一处遗漏。停在 running 的导出任务会出现在 data_governance_list_backup_jobs 里，前端备份面板一直显示“自动灾备：正在建立一致性快照”，任务持久化文件留在磁盘上，直到 4 小时超时或下次启动被当成可恢复任务。",
+  "userVisible": "设置数据库读取失败时，备份任务列表里这次自动备份显示为失败（消息“读取自动备份状态失败: …”），而不是一直显示进行中",
+  "dataCompat": "无格式变化",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    { "file": "host/plugins/backup/tests/auto-backup-scheduler.test.ts", "name": "RF-W30-auto-backup-job-stuck-running: a status read failure after the job is created fails the job instead of leaving it running" }
+  ]
+}

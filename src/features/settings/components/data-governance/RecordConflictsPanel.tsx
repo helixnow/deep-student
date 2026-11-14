@@ -11,16 +11,17 @@
  * 让用户能看到并手动决策原本会被 LWW 丢弃的数据。
  */
 
+import { useRefreshOnReturn } from '@/hooks/useRefreshOnReturn';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Warning, CheckCircle, PencilSimple, CircleNotch, ArrowClockwise, Trash } from '@phosphor-icons/react';
+import { CheckCircle, PencilSimple, CircleNotch, Trash } from '@phosphor-icons/react';
 import * as DataGovernanceApi from '@/api/dataGovernance';
 import type { RecordConflictRow, SyncSnapshotBatchRow } from '@/api/dataGovernance';
 import { getDatabaseDisplayName } from '@/types/dataGovernance';
 import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Textarea } from '@/components/ui/shad/Textarea';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/shad/Card';
+import { GroupTitle } from '../settingsTabPrimitives';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { unifiedConfirm } from '@/utils/unifiedDialogs';
 import { getErrorMessage } from '@/utils/errorUtils';
@@ -283,6 +284,8 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
     }
   }, [t]);
 
+  useRefreshOnReturn(() => { void refresh(); void refreshSnapshots(); });
+
   useEffect(() => {
     void refreshSnapshots();
   }, [refreshSnapshots, refreshSignal]);
@@ -340,72 +343,58 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
   }, [refresh]);
 
   return (
-    <Card>
-      {/* 400px 窄屏：标题与操作簇上下堆叠，避免按钮列被压成竖排细条 */}
-      <CardHeader className="flex flex-col items-start justify-between gap-2 sm:flex-row">
-        <div>
-          <CardTitle className="flex items-center gap-2">
-            <Warning size={16} className="text-warning" />
+    <section className="min-w-0">
+      <GroupTitle
+        title={
+          <span className="tabular-nums">
             {/* 标题只报未解决冲突总数；「已加载 X/Y」的分页细节留给下方加载更多按钮 */}
             {t('sync:record_conflict_panel.title', {
               count: Math.max(totalGroups, pairs.length),
             })}
-          </CardTitle>
-          <CardDescription>
-            {t('data:governance.conflict_panel_desc')}
-          </CardDescription>
-          {/* [R11-history] 「可撤销」人话：批量/库级覆盖前自动快照，误操作可回退 */}
-          <CardDescription>
-            {t('sync:record_conflict_panel.undoable_hint')}
-          </CardDescription>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <DsButton
-            variant="outline"
-            size="sm"
-            onClick={() => void handleBulkResolve('keep_local')}
-            disabled={loading || pairs.length === 0}
-            className="max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
-          >
-            {t('data:governance.conflict_bulk_keep_local')}
-          </DsButton>
-          <DsButton
-            variant="outline"
-            size="sm"
-            onClick={() => void handleBulkResolve('keep_cloud')}
-            disabled={loading || pairs.length === 0}
-            className="max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
-          >
-            {t('data:governance.conflict_bulk_use_cloud')}
-          </DsButton>
-          <DsButton
-            variant="outline"
-            size="sm"
-            onClick={refresh}
-            disabled={loading}
-            className="max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
-          >
-            {loading ? (
-              <CircleNotch size={14} className="mr-1.5 animate-spin" />
-            ) : (
-              <ArrowClockwise size={14} className="mr-1.5" />
-            )}
-            {t('common:actions.refresh')}
-          </DsButton>
-          <DsButton
-            variant="outline"
-            size="sm"
-            onClick={handlePurgeResolved}
-            disabled={purging}
-            className="max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
-            title={t('data:governance.conflict_purge_title')}
-          >
-            <Trash size={14} className="mr-1.5" />
-            {t('data:governance.conflict_purge_button')}
-          </DsButton>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-3">
+          </span>
+        }
+        description={
+          <div className="space-y-0.5">
+            <p>{t('data:governance.conflict_panel_desc')}</p>
+            {/* [R11-history] 「可撤销」人话：批量/库级覆盖前自动快照，误操作可回退 */}
+            <p>{t('sync:record_conflict_panel.undoable_hint')}</p>
+          </div>
+        }
+        actions={
+          <>
+            <DsButton
+              variant="outline"
+              size="sm"
+              onClick={() => void handleBulkResolve('keep_local')}
+              disabled={loading || pairs.length === 0}
+              className="max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
+            >
+              {t('data:governance.conflict_bulk_keep_local')}
+            </DsButton>
+            <DsButton
+              variant="outline"
+              size="sm"
+              onClick={() => void handleBulkResolve('keep_cloud')}
+              disabled={loading || pairs.length === 0}
+              className="max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
+            >
+              {t('data:governance.conflict_bulk_use_cloud')}
+            </DsButton>
+            <DsButton
+              variant="outline"
+              size="sm"
+              onClick={handlePurgeResolved}
+              disabled={purging}
+              className="max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
+              title={t('data:governance.conflict_purge_title')}
+            >
+              <Trash size={14} className="mr-1.5" />
+              {t('data:governance.conflict_purge_button')}
+            </DsButton>
+          </>
+        }
+      />
+      <div className="rounded-2xl bg-muted p-4 space-y-3">
         {pairs.length === 0 && !loading && (
           <div className="text-sm text-muted-foreground flex items-center gap-2 py-4">
             <CheckCircle size={16} className="text-success" />
@@ -579,16 +568,6 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
             <div className="text-sm font-medium">
               {t('data:governance.snapshot_section_title')}
             </div>
-            <DsButton
-              variant="ghost"
-              size="sm"
-              onClick={() => void refreshSnapshots()}
-              disabled={rollingBackBatch !== null}
-              className="h-7 text-xs"
-            >
-              <ArrowClockwise size={12} className="mr-1" />
-              {t('common:actions.refresh')}
-            </DsButton>
           </div>
           <div className="text-xs text-muted-foreground">
             {t('data:governance.snapshot_section_desc')}
@@ -634,8 +613,8 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
             );
           })}
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
 };
 

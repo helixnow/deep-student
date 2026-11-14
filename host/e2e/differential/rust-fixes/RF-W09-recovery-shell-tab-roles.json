@@ -1,0 +1,27 @@
+{
+  "id": "RF-W09-recovery-shell-tab-roles",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main-agent",
+  "approvedAt": "2026-11-07T10:12:00+08:00",
+  "title": "组件恢复界面的两个标签缺少标签页语义（tablist / tab / aria-selected / 面板归属与键盘切换）",
+  "rust": {
+    "file": "src/features/data-recovery/ComponentRecoveryShell.tsx",
+    "line": 93,
+    "behavior": "Rust 快照 21c9d808 中“组件状态 / 下一步”两个标签渲染为普通 button，所在容器没有 role=tablist，面板 role=tabpanel 但没有 id 与 aria-labelledby；读屏软件把它们读成两个普通按钮，不知道哪个被选中；方向键不能切换"
+  },
+  "fix": {
+    "files": ["src/features/data-recovery/ComponentRecoveryShell.tsx"],
+    "behavior": "容器 role=tablist（带名称、横向），标签 role=tab、aria-selected、漫游 tabIndex，选中标签的 aria-controls 指向面板，面板 aria-labelledby 指回标签；左右方向键 / Home / End 切换并移动焦点。做法与 SettingsCategoryHeader 手工补齐的语义一致"
+  },
+  "evidence": "W12 冒烟 #24（ComponentRecoveryShell.tsx:93-94）。同一共享 Tabs 组件的另一使用方 SettingsCategoryHeader.tsx 已手工补齐 role、aria-selected、tabIndex 与方向键，说明 Rust 版自己认定这些是必需的。恢复界面在数据库升级失败时是用户唯一能看到的界面，读屏用户需要能找到“下一步”里的重试与导出诊断。",
+  "userVisible": "能：读屏软件把两个标签读作“标签页，已选中/未选中”；键盘用户可用方向键切换，Tab 键只停在当前标签上。视觉不变。",
+  "dataCompat": "不改变落库数据、同步载荷与备份格式。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "src/features/data-recovery/__tests__/ComponentRecoveryShell.tabs.test.tsx",
+      "name": "RF-W09-recovery-shell-tab-roles: ComponentRecoveryShell tabs"
+    }
+  ]
+}

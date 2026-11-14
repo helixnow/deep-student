@@ -1,0 +1,34 @@
+{
+  "id": "RF-W02-skills-path-realpath-ancestor",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T09:20+08:00",
+  "title": "技能路径校验：不存在的目标按最深的已存在祖先做 realpath，与已 canonicalize 的允许根同口径比较",
+  "rust": {
+    "file": "src-tauri/crates/dstu-agent/src/chat_v2/skills.rs",
+    "line": 285,
+    "behavior": "validate_skill_path 对已存在的路径和允许根用 canonicalize()（解析符号链接），对不存在的路径（新建技能目录、SKILL.md）只做纯词法 normalize_path。两边口径不一致：允许根位于符号链接下时（macOS 的 /var → /private/var、符号链接的 home），新建目标的词法路径不以 canonicalize 后的根开头，合法创建被误拒；反过来，根内的符号链接指向根外时，经由它的尚不存在目标在词法上仍在根内，被放行，之后的写入落到根外。"
+  },
+  "fix": {
+    "files": [
+      "host/plugins/agent-skills/src/files.ts"
+    ],
+    "behavior": "不存在的路径（以及不存在的允许根）先找到最深的已存在祖先，对它 realpath（去 verbatim 前缀）后拼回剩余组件，再做按组件的包含判断。已存在路径的处理与 Rust 相同。"
+  },
+  "evidence": "与 Rust 自身注释矛盾：同一函数的 P2 修复注释写明两种口径混用会让“新安装目标（不存在 → 逻辑规范化）vs 已存在 base（→ canonicalize）”的前缀比较恒为 false、误拒合法安装，但只统一了 Windows verbatim 前缀，没有处理符号链接；函数文档的安全机制第 1 条称用 canonicalize 处理符号链接，而不存在的目标完全绕过了这一条。复现：macOS 上 home 在 tmpdir（/var/folders/…）下，validatePath(<home>/.deep-student/skills/new/SKILL.md) 在 Rust 口径下报 Path traversal detected；技能根内放一个指向根外的目录符号链接 escape，validatePath(<base>/escape/new/SKILL.md) 在 Rust 口径下通过。",
+  "g3": {
+    "affects": false,
+    "selectors": []
+  },
+  "tests": [
+    {
+      "file": "host/plugins/agent-skills/tests/files.test.ts",
+      "name": "RF-W02-skills-path-realpath-ancestor: a not-yet-created target under a symlinked base resolves like its realpath-ed base (macOS /var → /private/var)"
+    },
+    {
+      "file": "host/plugins/agent-skills/tests/files.test.ts",
+      "name": "RF-W02-skills-path-realpath-ancestor: a not-yet-created target behind a symlink that leaves the base is rejected"
+    }
+  ]
+}

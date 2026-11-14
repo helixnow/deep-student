@@ -24,8 +24,14 @@ import {
   TextAa,
   X,
   CircleNotch,
+  DotsSixVertical,
+  TreeStructure,
+  Cards,
+  NotePencil,
 } from '@phosphor-icons/react';
-import { cn } from '@/lib/utils';
+import { cn } from '@/utils/cn';
+import { getAppKernel } from '@/ui-kernel/bootstrap';
+import type { AnchorEdgeRecord, AnchorEdgeSourceKind } from '@/ui-kernel/contracts/interop';
 import { DsButton } from '@/components/ui/DsButton';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -35,6 +41,120 @@ import type {
   TranscriptStatus,
 } from './mediaTranscriptApi';
 import { formatTranscriptClock } from './mediaRefTime';
+import {
+  backlinkCountParts,
+  buildCueDragLabel,
+  buildMediaExcerptPayload,
+  buildMediaSemanticAnchor,
+  CUE_PULSE_DURATION_MS,
+  findCueIndexForMs,
+  mediaAutoExcerptKey,
+  setCompactCueDragImage,
+  sharedMediaExcerptGuard,
+  type AnchorBacklinkSummary,
+} from './mediaInteropBridge';
+import {
+  enrichMediaExcerptWithKeyframe,
+  type CueBranchTint,
+} from './mediaKeyframeExcerpt';
+
+/** 字幕区跨插件互操作上下文：拖拽引用 / 划选即入图的锚点资源 */
+export interface TranscriptInteropOptions {
+  /** 锚点主资源 id（VFS file_*） */
+  resourceId: string;
+  /** 别名资源 id（DSTU sourceId） */
+  aliasResourceId?: string;
+  /** 人类可读的音视频名（摘录来源标注） */
+  mediaTitle?: string;
+  /** 「划选即入图」：点选 / 划选字幕即送入当前导图或笔记 */
+  autoExcerptActive?: boolean;
+  /** 可选视频元素访问器：视频播放时自动附带当前关键帧缩略图 */
+  getVideoElement?: () => HTMLVideoElement | null;
+}
+
+const SOURCE_ICON: Record<AnchorEdgeSourceKind, React.ElementType> = {
+  mindmap: TreeStructure,
+  flashcard: Cards,
+  note: NotePencil,
+  qbank: NotePencil,
+};
+
+const stopPropagation = (event: React.SyntheticEvent) => {
+  event.stopPropagation();
+};
+
+/** 字幕段反向链接胶囊：`1 导图 · 2 闪卡`；单条直接回到引用方，多条展开列表 */
+const CueBacklinkPill = memo(function CueBacklinkPill({ summary }: { summary: AnchorBacklinkSummary }) {
+  const { t } = useTranslation(['mediaStudio']);
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const parts = backlinkCountParts(summary);
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (rootRef.current && event.target instanceof Node && rootRef.current.contains(event.target)) return;
+      setOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('pointerdown', onPointerDown, true);
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown, true);
+      window.removeEventListener('keydown', onKeyDown, true);
+    };
+  }, [open]);
+
+  const reveal = useCallback((edge: AnchorEdgeRecord) => {
+    setOpen(false);
+    void getAppKernel().anchors.reveal(edge.sourceAnchorUri, { splitIfClosed: true, pulse: true });
+  }, []);
+
+  if (parts.length === 0) return null;
+  const countLabel = parts.map((part) => t(`mediaStudio:interop.backlink_${part.kind}`, { count: part.count })).join(' · ');
+
+  return (
+    <div ref={rootRef} className="relative" onPointerDown={stopPropagation} onMouseDown={stopPropagation} onMouseUp={stopPropagation} onDoubleClick={stopPropagation} onClick={stopPropagation}>
+      <button
+        type="button"
+        data-testid="cue-backlink-pill"
+        aria-expanded={summary.edges.length > 1 ? open : undefined}
+        onClick={() => {
+          if (summary.edges.length === 1) reveal(summary.edges[0]);
+          else setOpen((prev) => !prev);
+        }}
+        className="inline-flex items-center gap-1.5 rounded-full border border-border/35 bg-card/90 px-2 py-0.5 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+      >
+        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" aria-hidden="true" />
+        <span className="font-mono tabular-nums">{countLabel}</span>
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full z-20 mt-1 min-w-[180px] max-w-[260px] rounded-lg border border-border/35 bg-card p-1.5 text-xs shadow-sm">
+          <ul>
+            {summary.edges.map((edge, index) => {
+              const Icon = SOURCE_ICON[edge.sourceKind] ?? NotePencil;
+              return (
+                <li key={edge.edgeId}>
+                  {index > 0 && <div className="mx-1.5 h-px bg-border/35" aria-hidden="true" />}
+                  <button
+                    type="button"
+                    onClick={() => reveal(edge)}
+                    className="flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left transition-colors hover:bg-foreground/[0.04]"
+                  >
+                    <Icon size={14} className="shrink-0 text-muted-foreground" aria-hidden="true" />
+                    <span className="min-w-0 flex-1 truncate">{edge.sourceLabel || countLabel}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+});
 
 /** 手动滚动后暂停自动跟随的时长 */
 export const FOLLOW_PAUSE_AFTER_USER_SCROLL_MS = 4000;
@@ -117,6 +237,13 @@ interface RowProps {
   selected: boolean;
   onToggle: (seg: TranscriptSegment, range: boolean) => void;
   textSize: TranscriptTextSize;
+  /** 提供时显示拖拽把手（拖入导图 / 笔记） */
+  onExcerptDragStart?: (seg: TranscriptSegment, event: React.DragEvent<HTMLButtonElement>) => void;
+  onExcerptDragEnd?: () => void;
+  /** 定位脉冲（anchors.reveal 命中本段） */
+  pulsed: boolean;
+  backlinks?: AnchorBacklinkSummary;
+  branchTint?: CueBranchTint;
 }
 
 const TranscriptRow = memo(function TranscriptRow({
@@ -130,17 +257,37 @@ const TranscriptRow = memo(function TranscriptRow({
   selected,
   onToggle,
   textSize,
+  onExcerptDragStart,
+  onExcerptDragEnd,
+  pulsed,
+  backlinks,
+  branchTint,
 }: RowProps) {
-  const { t } = useTranslation(['learningHub']);
+  const { t } = useTranslation(['learningHub', 'mediaStudio']);
   const time = formatTranscriptClock(seg.startMs);
   const failed = seg.status === 'failed';
   const selectable = selecting && !failed;
   return (
     <li
       ref={(el) => registerRow(seg.idx, el)}
-      className="group/row relative"
+      className={cn(
+        'group/row relative rounded-lg transition-colors duration-300 motion-reduce:transition-none',
+        pulsed && 'bg-primary/12 ring-1 ring-primary/30',
+      )}
+      style={!pulsed && branchTint ? { backgroundColor: branchTint.tintBackground } : undefined}
       data-segment-idx={seg.idx}
+      data-cue-index={seg.idx}
+      data-cue-pulse={pulsed ? 'true' : undefined}
+      data-cue-branch-token={branchTint?.branchColorToken}
     >
+      {branchTint && (
+        <span
+          aria-hidden="true"
+          data-testid="cue-branch-tint"
+          className="pointer-events-none absolute bottom-1.5 left-0.5 top-1.5 w-[2.5px] rounded-full"
+          style={{ backgroundColor: branchTint.accentColor }}
+        />
+      )}
       <button
         type="button"
         onClick={(event) => {
@@ -162,8 +309,10 @@ const TranscriptRow = memo(function TranscriptRow({
           'transition-colors duration-150 motion-reduce:transition-none',
           'outline-none focus-visible:ring-2 focus-visible:ring-ring/40',
           selectable && selected
-            ? 'bg-primary/10'
-            : active && !selecting ? 'bg-primary/10' : 'hover:bg-[var(--interactive-hover)]',
+            ? 'bg-primary/[0.08]'
+            : active && !selecting
+              ? 'bg-primary/[0.07] text-foreground font-medium rounded-lg'
+              : 'hover:bg-foreground/[0.035]',
           selecting && !selectable && 'opacity-50',
         )}
       >
@@ -174,17 +323,18 @@ const TranscriptRow = memo(function TranscriptRow({
         ) : null}
         <span
           className={cn(
-            'mt-px shrink-0 font-mono text-[11px] tabular-nums leading-5',
-            active ? 'text-primary' : 'text-muted-foreground',
+            'mt-px shrink-0 font-mono tabular-nums text-xs text-muted-foreground leading-5',
+            active && 'text-primary font-medium',
           )}
         >
           {time}
         </span>
         <span
+          data-cue-text=""
           className={cn(
             'min-w-0 flex-1 break-words pr-6',
             TEXT_SIZE_CLASS[textSize],
-            failed ? 'italic text-muted-foreground' : active ? 'text-foreground' : 'text-foreground/85',
+            failed ? 'italic text-muted-foreground' : active ? 'text-foreground font-medium' : 'text-foreground/85',
           )}
         >
           {failed ? t('learningHub:mediaTranscript.segmentFailed') : highlight(seg.text, query)}
@@ -206,6 +356,31 @@ const TranscriptRow = memo(function TranscriptRow({
         >
           <Copy size={13} aria-hidden="true" />
         </button>
+      )}
+      {!failed && !selecting && onExcerptDragStart && (
+        <button
+          type="button"
+          draggable
+          onDragStart={(event) => onExcerptDragStart(seg, event)}
+          onDragEnd={onExcerptDragEnd}
+          aria-label={t('mediaStudio:interop.drag_cue')}
+          title={t('mediaStudio:interop.drag_cue')}
+          data-testid="cue-drag-handle"
+          className={cn(
+            'absolute right-8 top-1 flex h-6 w-6 cursor-grab items-center justify-center rounded-md text-muted-foreground',
+            'opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 focus-visible:opacity-100',
+            'hover:bg-[var(--interactive-hover)] hover:text-foreground active:cursor-grabbing',
+            'outline-none focus-visible:ring-2 focus-visible:ring-ring/40',
+            '[@media(pointer:coarse)]:hidden',
+          )}
+        >
+          <DotsSixVertical size={13} aria-hidden="true" />
+        </button>
+      )}
+      {backlinks && backlinks.total > 0 && (
+        <div className="flex justify-end px-2.5 pb-1">
+          <CueBacklinkPill summary={backlinks} />
+        </div>
       )}
     </li>
   );
@@ -233,6 +408,14 @@ export interface TranscriptPanelProps {
   onQuoteSelection?: (segments: TranscriptSegment[]) => void;
   /** 选中段 → 制卡 */
   onMakeCardsFromSelection?: (segments: TranscriptSegment[]) => void;
+  /** 跨插件互操作：拖拽引用与「划选即入图」 */
+  interop?: TranscriptInteropOptions;
+  /** 各段的反向链接汇总（key = 段 idx） */
+  cueBacklinks?: ReadonlyMap<number, AnchorBacklinkSummary>;
+  /** 各段关联思维导图分支语义微染色（key = 段 idx） */
+  cueBranchTints?: ReadonlyMap<number, CueBranchTint>;
+  /** 定位脉冲请求：nonce 单调递增，新请求取消旧脉冲 */
+  pulsedCue?: { startMs: number; nonce: number } | null;
 }
 
 export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
@@ -252,6 +435,10 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
   className,
   onQuoteSelection,
   onMakeCardsFromSelection,
+  interop,
+  cueBacklinks,
+  cueBranchTints,
+  pulsedCue,
 }) => {
   const { t } = useTranslation(['learningHub']);
   const [query, setQuery] = useState('');
@@ -319,8 +506,16 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
     lastUserScrollAtRef.current = 0;
     if (searching) setQuery('');
     // 清空搜索后行需要先渲染出来
-    window.requestAnimationFrame(() => scrollRowIntoView(activeSegmentIdx, true));
+    if (followRafRef.current !== null) window.cancelAnimationFrame(followRafRef.current);
+    followRafRef.current = window.requestAnimationFrame(() => {
+      followRafRef.current = null;
+      scrollRowIntoView(activeSegmentIdx, true);
+    });
   }, [searching, activeSegmentIdx, scrollRowIntoView]);
+  const followRafRef = useRef<number | null>(null);
+  useEffect(() => () => {
+    if (followRafRef.current !== null) window.cancelAnimationFrame(followRafRef.current);
+  }, []);
 
   const copy = useCallback(
     async (text: string) => {
@@ -390,6 +585,122 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
     [exitSelecting, selectedSegments],
   );
 
+  // ---------------------------------------------------------------- 跨插件摘录
+  const buildCuePayload = useCallback((cues: readonly TranscriptSegment[], text: string) => {
+    if (!interop || cues.length === 0) return null;
+    const first = cues[0];
+    const anchor = buildMediaSemanticAnchor({
+      resourceId: interop.resourceId,
+      aliasResourceId: interop.aliasResourceId,
+      startMs: first.startMs,
+      endMs: Math.max(...cues.map((cue) => cue.endMs)),
+      quote: text,
+      mediaTitle: interop.mediaTitle,
+    });
+    const basePayload = buildMediaExcerptPayload({ text, anchor, mediaTitle: interop.mediaTitle });
+    return enrichMediaExcerptWithKeyframe(basePayload, interop.getVideoElement?.());
+  }, [interop]);
+
+  const emitAutoExcerpt = useCallback((cues: readonly TranscriptSegment[], text: string) => {
+    if (!interop?.autoExcerptActive || cues.length === 0 || cues.some((cue) => cue.status !== 'done')
+      || Array.from(text.replace(/\s/g, '')).length < 2) return;
+    const key = mediaAutoExcerptKey(interop.resourceId, cues[0].startMs, text);
+    if (!sharedMediaExcerptGuard.shouldEmitAuto(key)) return;
+    const payload = buildCuePayload(cues, text.trim());
+    if (payload) getAppKernel().dnd.emitAutoExcerpt(payload);
+  }, [interop, buildCuePayload]);
+
+  const handleSeekRow = useCallback((seg: TranscriptSegment) => {
+    // 点选字幕即入图：有划选文本时让划选路径接管，避免同一手势送两次
+    const domSelection = typeof window !== 'undefined' ? window.getSelection() : null;
+    if (domSelection && !domSelection.isCollapsed && domSelection.toString().trim()
+      && domSelection.anchorNode && listRef.current?.contains(domSelection.anchorNode)) return;
+    onSeek(seg);
+    emitAutoExcerpt([seg], seg.text);
+  }, [onSeek, emitAutoExcerpt]);
+
+  const endOwnedDragRef = useRef<(() => void) | null>(null);
+  const handleExcerptDragStart = useCallback((seg: TranscriptSegment, event: React.DragEvent<HTMLButtonElement>) => {
+    const payload = buildCuePayload([seg], seg.text.trim());
+    if (!payload) {
+      event.preventDefault();
+      return;
+    }
+    endOwnedDragRef.current = sharedMediaExcerptGuard.beginDrag();
+    if (!getAppKernel().dnd.startExcerptDrag(event.nativeEvent, payload)) {
+      endOwnedDragRef.current?.();
+      endOwnedDragRef.current = null;
+      event.preventDefault();
+      return;
+    }
+    setCompactCueDragImage(event.dataTransfer, buildCueDragLabel(formatTranscriptClock(seg.startMs), seg.text));
+  }, [buildCuePayload]);
+
+  const handleExcerptDragEnd = useCallback(() => {
+    endOwnedDragRef.current?.();
+    endOwnedDragRef.current = null;
+  }, []);
+
+  useEffect(() => handleExcerptDragEnd, [handleExcerptDragEnd, interop?.resourceId]);
+
+  // 划选字幕文本：选区落在一段或连续几段内时送入（拖拽进行中不送）
+  const handleListMouseUp = useCallback((event: React.MouseEvent) => {
+    if (!interop?.autoExcerptActive || selecting) return;
+    if (event.button !== 0 || !(event.target instanceof Element) || !event.target.closest('[data-cue-text]')) return;
+    const list = listRef.current;
+    const domSelection = window.getSelection();
+    if (!list || !domSelection || domSelection.isCollapsed || domSelection.rangeCount === 0) return;
+    const text = domSelection.toString().trim();
+    if (text.length < 2) return;
+    const range = domSelection.getRangeAt(0);
+    if (!list.contains(range.startContainer) || !list.contains(range.endContainer)) return;
+    const idxOf = (node: Node) => {
+      const element = node instanceof Element ? node : node.parentElement;
+      if (!element?.closest('[data-cue-text]')) return null;
+      const raw = element?.closest('[data-cue-index]')?.getAttribute('data-cue-index');
+      return raw === undefined || raw === null ? null : Number(raw);
+    };
+    const fromIdx = idxOf(range.startContainer);
+    const toIdx = idxOf(range.endContainer);
+    if (fromIdx === null || toIdx === null) return;
+    const lo = Math.min(fromIdx, toIdx);
+    const hi = Math.max(fromIdx, toIdx);
+    const cues = displaySegments.filter((seg) => seg.status === 'done' && seg.idx >= lo && seg.idx <= hi);
+    emitAutoExcerpt(cues, text);
+  }, [interop, selecting, displaySegments, emitAutoExcerpt]);
+
+  // ---------------------------------------------------------------- 定位脉冲（anchors.reveal）
+  const [pulsedIdx, setPulsedIdx] = useState<number | null>(null);
+  const pulseTimerRef = useRef<number | null>(null);
+  const pulseTargetIdx = pulsedCue ? findCueIndexForMs(displaySegments, pulsedCue.startMs) : null;
+  useEffect(() => {
+    const idx = pulseTargetIdx;
+    if (pulseTimerRef.current !== null) window.clearTimeout(pulseTimerRef.current);
+    pulseTimerRef.current = null;
+    if (idx === null) {
+      setPulsedIdx(null);
+      return;
+    }
+    // 搜索过滤掉目标段时先清空搜索，让目标行渲染出来
+    if (query.trim() && !visibleSegments.some((seg) => seg.idx === idx)) setQuery('');
+    setPulsedIdx(idx);
+    lastUserScrollAtRef.current = 0;
+    const raf = window.requestAnimationFrame(() => {
+      rowsRef.current.get(idx)?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+    });
+    pulseTimerRef.current = window.setTimeout(() => {
+      pulseTimerRef.current = null;
+      setPulsedIdx(null);
+    }, CUE_PULSE_DURATION_MS);
+    return () => {
+      window.cancelAnimationFrame(raf);
+      if (pulseTimerRef.current !== null) window.clearTimeout(pulseTimerRef.current);
+      pulseTimerRef.current = null;
+    };
+    // 字幕可能晚于定位请求到达；目标 idx 到位后才启动脉冲，不因无关段更新反复闪烁。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pulsedCue?.nonce, pulseTargetIdx]);
+
   const running = status === 'running' || status === 'queued';
   const stageKey = progress?.stage && STAGE_KEYS.has(progress.stage) ? progress.stage : 'unknown';
   const percent = progress
@@ -405,85 +716,20 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
       aria-label={t('learningHub:mediaTranscript.panelTitle')}
       className={cn(
         'flex min-h-0 flex-col bg-background',
-        bordered && (layout === 'side' ? 'border-l border-border' : 'border-t border-border'),
+        bordered && (layout === 'side' ? 'border-l border-border/35' : 'border-t border-border/35'),
         className,
       )}
     >
-      {/* 头部：标题 + 计数 + 复制 / 定位 */}
-      <div className="flex h-10 shrink-0 items-center gap-1 px-3">
+      {/* 统一紧凑工具行：合并搜索框、段数统计与字号/选段/定位/复制操作，消除双行工具条叠加 */}
+      <div className="flex shrink-0 items-center gap-1.5 px-3 py-1.5 border-b border-border/25">
         {!hideTitle && (
-          <h3 className="text-sm font-medium text-foreground">
+          <h3 className="shrink-0 text-sm font-medium text-foreground">
             {t('learningHub:mediaTranscript.panelTitle')}
           </h3>
         )}
-        <span className={cn('text-xs tabular-nums text-muted-foreground', !hideTitle && 'ml-1')}>
-          {searching
-            ? t('learningHub:mediaTranscript.searchResults', { count: visibleSegments.length })
-            : t('learningHub:mediaTranscript.segmentCount', { count: displaySegments.length })}
-        </span>
-        <div className="flex-1" />
-        <DsButton
-          variant="ghost"
-          size="sm"
-          iconOnly
-          onClick={cycleTextSize}
-          aria-label={t('learningHub:mediaTranscript.textSize', { size: t(`learningHub:mediaTranscript.textSizeLabel.${textSize}`) })}
-          title={t('learningHub:mediaTranscript.textSize', { size: t(`learningHub:mediaTranscript.textSizeLabel.${textSize}`) })}
-          data-transcript-text-size={textSize}
-          className="h-8 w-8 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
-        >
-          <TextAa size={15} aria-hidden="true" />
-        </DsButton>
-        {canSelect && (
-          <DsButton
-            variant="ghost"
-            size="sm"
-            iconOnly
-            onClick={() => (selecting ? exitSelecting() : setSelecting(true))}
-            disabled={!selecting && doneCount === 0}
-            aria-pressed={selecting}
-            aria-label={selecting ? t('learningHub:mediaTranscript.selectDone') : t('learningHub:mediaTranscript.selectMode')}
-            title={selecting ? t('learningHub:mediaTranscript.selectDone') : t('learningHub:mediaTranscript.selectMode')}
-            data-transcript-select-toggle=""
-            className={cn(
-              'h-8 w-8 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11',
-              selecting && 'bg-primary/10 text-primary',
-            )}
-          >
-            <ListChecks size={15} aria-hidden="true" />
-          </DsButton>
-        )}
-        <DsButton
-          variant="ghost"
-          size="sm"
-          iconOnly
-          onClick={handleFollow}
-          disabled={activeSegmentIdx < 0}
-          aria-label={t('learningHub:mediaTranscript.follow')}
-          title={t('learningHub:mediaTranscript.follow')}
-          className="h-8 w-8 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
-        >
-          <Crosshair size={15} aria-hidden="true" />
-        </DsButton>
-        <DsButton
-          variant="ghost"
-          size="sm"
-          iconOnly
-          onClick={handleCopyAll}
-          disabled={doneCount === 0}
-          aria-label={t('learningHub:mediaTranscript.copyAll')}
-          title={t('learningHub:mediaTranscript.copyAll')}
-          className="h-8 w-8 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
-        >
-          <Copy size={15} aria-hidden="true" />
-        </DsButton>
-      </div>
-
-      {/* 搜索 */}
-      <div className="shrink-0 px-3 pb-2">
-        <div className="relative flex items-center">
+        <div className="relative flex min-w-0 flex-1 items-center">
           <MagnifyingGlass
-            size={14}
+            size={13}
             className="pointer-events-none absolute left-2.5 text-muted-foreground"
             aria-hidden="true"
           />
@@ -500,7 +746,7 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
             placeholder={t('learningHub:mediaTranscript.searchPlaceholder')}
             aria-label={t('learningHub:mediaTranscript.searchLabel')}
             className={cn(
-              'h-8 w-full rounded-md border border-border bg-background pl-8 pr-8 text-sm text-foreground',
+              'h-7 w-full rounded-md border border-border/30 bg-foreground/[0.025] pl-7 pr-7 text-xs text-foreground',
               'placeholder:text-muted-foreground [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-base',
               'outline-none focus-visible:ring-2 focus-visible:ring-ring/30',
               '[&::-webkit-search-cancel-button]:hidden',
@@ -511,17 +757,77 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
               type="button"
               onClick={() => setQuery('')}
               aria-label={t('learningHub:mediaTranscript.clearSearch')}
-              className="absolute right-1.5 flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:text-foreground"
+              className="absolute right-1.5 flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:text-foreground"
             >
-              <X size={12} aria-hidden="true" />
+              <X size={11} aria-hidden="true" />
             </button>
           )}
         </div>
+        <span className="shrink-0 text-[11px] font-mono tabular-nums text-muted-foreground">
+          {searching
+            ? t('learningHub:mediaTranscript.searchResults', { count: visibleSegments.length })
+            : t('learningHub:mediaTranscript.segmentCount', { count: displaySegments.length })}
+        </span>
+        <DsButton
+          variant="ghost"
+          size="sm"
+          iconOnly
+          onClick={cycleTextSize}
+          aria-label={t('learningHub:mediaTranscript.textSize', { size: t(`learningHub:mediaTranscript.textSizeLabel.${textSize}`) })}
+          title={t('learningHub:mediaTranscript.textSize', { size: t(`learningHub:mediaTranscript.textSizeLabel.${textSize}`) })}
+          data-transcript-text-size={textSize}
+          className="h-7 w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
+        >
+          <TextAa size={14} aria-hidden="true" />
+        </DsButton>
+        {canSelect && (
+          <DsButton
+            variant="ghost"
+            size="sm"
+            iconOnly
+            onClick={() => (selecting ? exitSelecting() : setSelecting(true))}
+            disabled={!selecting && doneCount === 0}
+            aria-pressed={selecting}
+            aria-label={selecting ? t('learningHub:mediaTranscript.selectDone') : t('learningHub:mediaTranscript.selectMode')}
+            title={selecting ? t('learningHub:mediaTranscript.selectDone') : t('learningHub:mediaTranscript.selectMode')}
+            data-transcript-select-toggle=""
+            className={cn(
+              'h-7 w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11',
+              selecting && 'bg-primary/10 text-primary',
+            )}
+          >
+            <ListChecks size={14} aria-hidden="true" />
+          </DsButton>
+        )}
+        <DsButton
+          variant="ghost"
+          size="sm"
+          iconOnly
+          onClick={handleFollow}
+          disabled={activeSegmentIdx < 0}
+          aria-label={t('learningHub:mediaTranscript.follow')}
+          title={t('learningHub:mediaTranscript.follow')}
+          className="h-7 w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
+        >
+          <Crosshair size={14} aria-hidden="true" />
+        </DsButton>
+        <DsButton
+          variant="ghost"
+          size="sm"
+          iconOnly
+          onClick={handleCopyAll}
+          disabled={doneCount === 0}
+          aria-label={t('learningHub:mediaTranscript.copyAll')}
+          title={t('learningHub:mediaTranscript.copyAll')}
+          className="h-7 w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
+        >
+          <Copy size={14} aria-hidden="true" />
+        </DsButton>
       </div>
 
       {/* 状态条：进行中 / 部分完成 / 失败 */}
       {running && (
-        <div className="shrink-0 border-y border-border/60 bg-muted/40 px-3 py-2" role="status" aria-live="polite">
+        <div className="shrink-0 border-y border-border/35 bg-foreground/[0.025] px-3 py-2" role="status" aria-live="polite">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <CircleNotch size={13} className="animate-spin text-primary motion-reduce:animate-none" aria-hidden="true" />
             <span className="truncate">
@@ -530,7 +836,7 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
                 : t(`learningHub:mediaTranscript.stage.${stageKey}`)}
             </span>
             {progress && progress.totalSegments > 0 && (
-              <span className="tabular-nums">
+              <span className="font-mono tabular-nums">
                 {t('learningHub:mediaTranscript.progressCount', {
                   completed: progress.completedSegments,
                   total: progress.totalSegments,
@@ -551,7 +857,7 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
             )}
           </div>
           <div
-            className="mt-1.5 h-1 overflow-hidden rounded-full bg-border"
+            className="mt-1.5 h-[3px] overflow-hidden rounded-full bg-foreground/[0.06]"
             role="progressbar"
             aria-valuemin={0}
             aria-valuemax={100}
@@ -566,7 +872,7 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
         </div>
       )}
       {!running && (status === 'partial' || status === 'failed') && (
-        <div className="flex shrink-0 items-center gap-2 border-y border-border/60 bg-muted/40 px-3 py-2 text-xs" role="status">
+        <div className="flex shrink-0 items-center gap-2 border-y border-border/35 bg-foreground/[0.025] px-3 py-2 text-xs" role="status">
           <span className={cn('min-w-0 flex-1', status === 'failed' ? 'text-destructive' : 'text-muted-foreground')}>
             {status === 'failed'
               ? error || t('learningHub:mediaTranscript.failedHint')
@@ -592,6 +898,7 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
         ref={listRef}
         onWheel={markUserScroll}
         onTouchMove={markUserScroll}
+        onMouseUp={interop?.autoExcerptActive ? handleListMouseUp : undefined}
         className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain px-1.5 py-1"
       >
         {visibleSegments.length === 0 ? (
@@ -610,13 +917,18 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
                 seg={seg}
                 active={seg.idx === activeSegmentIdx}
                 query={query}
-                onSeek={onSeek}
+                onSeek={interop?.autoExcerptActive ? handleSeekRow : onSeek}
                 onCopy={handleCopySegment}
                 registerRow={registerRow}
                 selecting={selecting}
                 selected={selectedIdx.has(seg.idx)}
                 onToggle={handleToggle}
                 textSize={textSize}
+                onExcerptDragStart={interop ? handleExcerptDragStart : undefined}
+                onExcerptDragEnd={interop ? handleExcerptDragEnd : undefined}
+                pulsed={pulsedIdx === seg.idx}
+                backlinks={cueBacklinks?.get(seg.idx)}
+                branchTint={cueBranchTints?.get(seg.idx)}
               />
             ))}
           </ul>
@@ -626,7 +938,7 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
       {/* 选段操作条 */}
       {selecting && (
         <div
-          className="flex shrink-0 flex-wrap items-center gap-1.5 border-t border-border/60 bg-background px-3 py-2 pb-[calc(0.5rem+var(--mobile-safe-area-bottom,0px))]"
+          className="flex shrink-0 flex-wrap items-center gap-1.5 border-t border-border/35 bg-background/90 backdrop-blur-sm px-3 py-2 pb-[calc(0.5rem+var(--mobile-safe-area-bottom,0px))]"
           role="toolbar"
           aria-label={t('learningHub:mediaTranscript.selectionToolbar')}
           onKeyDown={(e) => {
@@ -636,7 +948,7 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
             }
           }}
         >
-          <span className="mr-auto text-xs tabular-nums text-muted-foreground" aria-live="polite">
+          <span className="mr-auto text-xs font-mono tabular-nums text-muted-foreground" aria-live="polite">
             {selectedSegments.length > 0
               ? t('learningHub:mediaTranscript.selectedCount', { count: selectedSegments.length })
               : t('learningHub:mediaTranscript.selectHint')}

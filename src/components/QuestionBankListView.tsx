@@ -43,7 +43,6 @@ import {
 import { ExamIcon } from '@/features/learning-hub/icons/ResourceIcons';
 import { useTranslation } from 'react-i18next';
 import type { Question, QuestionBankStats, QuestionStatus, Difficulty, QuestionType } from '@/api/questionBankApi';
-import { ratioToPercent } from '@/components/stats';
 import { QuestionInlineEditor } from './QuestionInlineEditor';
 import { QuestionMaterialView, buildDisplayGroups, type QuestionDisplayGroup } from './QuestionMaterialView';
 import { QuestionStructureManager } from './QuestionStructureManager';
@@ -114,18 +113,18 @@ type PendingInlineEditorAction =
   | { kind: 'question'; index: number }
   | { kind: 'callback'; run: () => void };
 
-const STATUS_CONFIG: Record<QuestionStatus, { labelKey: string; color: string; bg: string }> = {
-  new: { labelKey: 'questionBank.statusShort.new', color: 'text-muted-foreground', bg: 'bg-muted-foreground/20' },
-  in_progress: { labelKey: 'questionBank.statusShort.inProgress', color: 'text-primary', bg: 'bg-primary/10' },
-  mastered: { labelKey: 'questionBank.statusShort.mastered', color: 'text-success', bg: 'bg-success/10' },
-  review: { labelKey: 'questionBank.statusShort.review', color: 'text-warning', bg: 'bg-warning/10' },
+const STATUS_CONFIG: Record<QuestionStatus, { labelKey: string; color: string; dot: string }> = {
+  new: { labelKey: 'questionBank.statusShort.new', color: 'text-muted-foreground', dot: 'bg-muted-foreground/35' },
+  in_progress: { labelKey: 'questionBank.statusShort.inProgress', color: 'text-muted-foreground', dot: 'bg-primary' },
+  mastered: { labelKey: 'questionBank.statusShort.mastered', color: 'text-muted-foreground', dot: 'bg-success' },
+  review: { labelKey: 'questionBank.statusShort.review', color: 'text-muted-foreground', dot: 'bg-warning' },
 };
 
-const DIFFICULTY_CONFIG: Record<Difficulty, { labelKey: string; color: string; pill: string }> = {
-  easy: { labelKey: 'questionBank.difficultyShort.easy', color: 'text-success', pill: 'bg-success/10 text-success' },
-  medium: { labelKey: 'questionBank.difficultyShort.medium', color: 'text-warning', pill: 'bg-warning/10 text-warning' },
-  hard: { labelKey: 'questionBank.difficultyShort.hard', color: 'text-warning', pill: 'bg-warning/15 text-warning' },
-  very_hard: { labelKey: 'questionBank.difficultyShort.veryHard', color: 'text-destructive', pill: 'bg-destructive/10 text-destructive' },
+const DIFFICULTY_CONFIG: Record<Difficulty, { labelKey: string; dot: string }> = {
+  easy: { labelKey: 'questionBank.difficultyShort.easy', dot: 'bg-success/75' },
+  medium: { labelKey: 'questionBank.difficultyShort.medium', dot: 'bg-warning/75' },
+  hard: { labelKey: 'questionBank.difficultyShort.hard', dot: 'bg-warning' },
+  very_hard: { labelKey: 'questionBank.difficultyShort.veryHard', dot: 'bg-destructive/80' },
 };
 
 const VIEW_TYPE_STORAGE_KEY = 'qbank.listView.viewType';
@@ -133,9 +132,9 @@ const VIEW_TYPE_STORAGE_KEY = 'qbank.listView.viewType';
 const readStoredViewType = (): 'grid' | 'list' => {
   try {
     const stored = window.localStorage.getItem(VIEW_TYPE_STORAGE_KEY);
-    return stored === 'list' ? 'list' : 'grid';
+    return stored === 'grid' ? 'grid' : 'list';
   } catch {
-    return 'grid';
+    return 'list';
   }
 };
 
@@ -201,86 +200,6 @@ const HighlightText: React.FC<{ text: string; query?: string }> = ({ text, query
 const staggerStyle = (index: number): React.CSSProperties => ({
   animationDelay: `${Math.min(index, 16) * 24}ms`,
 });
-
-/** 激活筛选条件 chip（可单个移除） */
-const FilterChip: React.FC<{ label: string; onRemove: () => void }> = ({ label, onRemove }) => {
-  const { t } = useTranslation('learningHub');
-  return (
-    <span className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/5 py-0.5 pl-2 pr-1 text-xs text-primary">
-      {label}
-      <DsButton
-        variant="ghost"
-        size="icon"
-        iconOnly
-        onClick={onRemove}
-        className="relative !h-4 !w-4 !p-0 [@media(pointer:coarse)]:!h-7 [@media(pointer:coarse)]:!w-7 [@media(pointer:coarse)]:before:content-[''] [@media(pointer:coarse)]:before:absolute [@media(pointer:coarse)]:before:-inset-2.5 text-primary/70 hover:text-primary hover:bg-primary/10"
-        aria-label={t('exam.library.removeFilter', { label })}
-        title={t('exam.library.removeFilter', { label })}
-      >
-        <X size={10} />
-      </DsButton>
-    </span>
-  );
-};
-
-/** 桌面端统计摘要（移动端隐藏） */
-const StatsSummary: React.FC<{ stats: QuestionBankStats; onStartPractice?: () => void }> = ({ stats, onStartPractice }) => {
-  const { t } = useTranslation('practice');
-  const progressPercent = stats.total > 0 ? (stats.mastered / stats.total) * 100 : 0;
-  
-  return (
-    <div className="hidden sm:flex items-center justify-between gap-6 px-1">
-      <div className="flex items-center gap-6">
-        {/* 进度环和掌握数（轨道用 currentColor + strokeOpacity，进度平滑过渡） */}
-        <div className="flex items-center gap-2">
-          <div className="w-10 h-10 relative text-success">
-            <svg className="w-full h-full transform -rotate-90" viewBox="0 0 40 40" aria-hidden="true">
-              <circle cx="20" cy="20" r="16" fill="none" stroke="currentColor" strokeOpacity={0.18} strokeWidth="3" />
-              <circle
-                cx="20" cy="20" r="16"
-                fill="none" stroke="currentColor" strokeWidth="3"
-                strokeDasharray={`${progressPercent * 1.005} 100.5`}
-                strokeLinecap="round"
-                className="transition-[stroke-dasharray] duration-500 ease-out motion-reduce:transition-none"
-/>
-            </svg>
-            <div className="absolute inset-0 flex items-center justify-center">
-              <span className="text-[10px] font-semibold tabular-nums text-foreground">{Math.round(progressPercent)}%</span>
-            </div>
-          </div>
-          <div className="text-sm whitespace-nowrap">
-            <span className="text-muted-foreground">{t('questionBank.masteredLabel')} </span>
-            <span className="font-medium tabular-nums">{stats.mastered}</span>
-            <span className="text-muted-foreground tabular-nums">/ {stats.total}</span>
-          </div>
-        </div>
-
-        <div className="w-px h-3.5 bg-border/60" aria-hidden="true" />
-
-        {/* 待复习 */}
-        {stats.review > 0 && (
-          <div className="flex items-center gap-1.5 text-sm text-warning">
-            <span className="w-1.5 h-1.5 rounded-full bg-warning" aria-hidden="true" />
-            <span className="tabular-nums">{t('questionBank.pendingReview', { count: stats.review })}</span>
-          </div>
-        )}
-        
-        {/* 正确率 */}
-        <div className="text-sm text-muted-foreground">
-          {t('questionBank.correctRate')} <span className="font-medium text-foreground tabular-nums">{ratioToPercent(stats.correctRate)}%</span>
-        </div>
-      </div>
-      
-      {/* 开始做题按钮 */}
-      {onStartPractice && (
-        <DsButton variant="ghost" size="sm" onClick={onStartPractice} className="text-primary hover:bg-primary/10 [@media(pointer:coarse)]:!h-11">
-          <Play size={14} />
-          {t('questionBank.startPractice')}
-        </DsButton>
-      )}
-    </div>
-  );
-};
 
 /** 行 hover 浮现的快捷操作（收藏 / 查看答案 / 编辑 / 删除二段式确认），桌面 hover 显示、触屏常显 */
 const RowHoverActions: React.FC<{
@@ -408,15 +327,12 @@ const QuestionGridCard: React.FC<{
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (isEditMode) { onSelect?.(!isSelected, e.shiftKey); } else { onClick(); } } }}
       style={staggerStyle(listIndex)}
       className={cn(
-        'ui-rise-in group relative flex flex-col p-4 rounded-lg text-left cursor-pointer',
+        'ui-rise-in group relative flex flex-col p-4 rounded-xl text-left cursor-pointer',
         // 长列表渲染优化：视口外卡片跳过渲染（记忆上次尺寸避免滚动条跳动）
         '[content-visibility:auto] [contain-intrinsic-size:auto_150px]',
-        'transition-[background-color,border-color,color,box-shadow,transform] duration-200',
-        'border border-border/40 bg-card/30 hover:border-border/70 hover:bg-[var(--interactive-hover)]',
-        'hover:shadow-[var(--shadow-card)] hover:-translate-y-0.5 motion-reduce:transition-none motion-reduce:hover:translate-y-0',
-        status === 'mastered' && 'bg-success/5',
-        status === 'review' && 'bg-warning/5',
-        isSelected && 'ring-2 ring-primary/50 bg-primary/5'
+        'transition-colors duration-150',
+        'border border-border/40 bg-card/30 hover:border-border/70 hover:bg-foreground/[0.03]',
+        isSelected && 'ring-1 ring-primary/50 border-primary/40 bg-primary/[0.04]'
       )}
     >
       <div className="flex items-center justify-between mb-2">
@@ -428,18 +344,18 @@ const QuestionGridCard: React.FC<{
             {isSelected && <Check size={12} />}
           </div>
         ) : (
-          <span className="text-sm font-medium text-muted-foreground">
+          <span className="font-mono text-xs font-medium tabular-nums text-muted-foreground">
             {question.questionLabel || `${index + 1}`}
           </span>
         )}
         <div className="flex items-center gap-1.5">
           {question.isFavorite && !actionProps.onToggleFavorite && (
-            <Star size={14} className="fill-warning text-warning" />
+            <Star size={13} className="fill-warning text-warning" />
           )}
           {hasAttempt && (
             <div className={cn(
               'w-4 h-4 rounded-full flex items-center justify-center',
-              isCorrect ? 'bg-success/20 text-success' : 'bg-destructive/20 text-destructive'
+              isCorrect ? 'bg-success/15 text-success' : 'bg-destructive/15 text-destructive'
             )}>
               {isCorrect ? <Check size={10} /> : <X size={10} />}
             </div>
@@ -452,35 +368,36 @@ const QuestionGridCard: React.FC<{
       </div>
       
       {question.images && question.images.length > 0 && (
-        <div className="flex items-center gap-1 mb-1.5 text-xs text-muted-foreground">
+        <div className="flex items-center gap-1 mb-1.5 font-mono text-xs tabular-nums text-muted-foreground">
           <ImageIcon size={12} />
           <span>{question.images.length}</span>
         </div>
       )}
-      <p className="text-sm text-foreground/80 line-clamp-2 flex-1 mb-3 leading-relaxed">
+      <p className="text-sm text-foreground/85 line-clamp-2 flex-1 mb-3 leading-relaxed">
         <HighlightText
           text={question.content || question.ocrText || t('practice:questionBank.noContent')}
           query={highlight}
         />
       </p>
       
-      <div className="flex flex-wrap items-center gap-1.5 text-xs">
+      <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+        <span className="inline-flex items-center gap-1.5">
+          <span className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', STATUS_CONFIG[status].dot)} aria-hidden="true" />
+          <span>{t(`practice:${STATUS_CONFIG[status].labelKey}`)}</span>
+        </span>
         {question.questionType && question.questionType !== 'other' && (
-          <span className={cn('rounded px-1.5 py-0.5 font-medium', typeMeta.pill)}>
+          <span className="rounded-md bg-foreground/[0.04] px-1.5 py-0.5 text-[11px] text-muted-foreground">
             {t(typeMeta.labelKey)}
           </span>
         )}
         {question.difficulty && (
-          <span className={cn('rounded px-1.5 py-0.5 font-medium', DIFFICULTY_CONFIG[question.difficulty].pill)}>
+          <span className="rounded-md bg-foreground/[0.04] px-1.5 py-0.5 text-[11px] text-muted-foreground">
             {t(`practice:${DIFFICULTY_CONFIG[question.difficulty].labelKey}`)}
           </span>
         )}
-        <span className={cn(STATUS_CONFIG[status].color)}>
-          {t(`practice:${STATUS_CONFIG[status].labelKey}`)}
-        </span>
       </div>
       
-      <CaretRight size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground/0 group-hover:text-muted-foreground/60 [@media(pointer:coarse)]:text-muted-foreground/40 transition-[background-color,border-color,color,box-shadow]" />
+      <CaretRight size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground/0 group-hover:text-muted-foreground/50 [@media(pointer:coarse)]:text-muted-foreground/40 transition-colors" />
     </div>
   );
 };
@@ -510,11 +427,11 @@ const QuestionListRow: React.FC<{
       onClick={(e) => { if (isEditMode) { onSelect?.(!isSelected, e.shiftKey); } else { onClick(); } }}
       style={staggerStyle(listIndex)}
       className={cn(
-        'ui-rise-in group w-full !justify-start gap-4 !px-3 !py-3 !h-auto !rounded-lg',
+        'ui-rise-in group w-full !justify-start gap-3.5 !px-3 !py-2.5 !h-auto !rounded-lg transition-colors',
         // 长列表渲染优化：视口外行跳过渲染（记忆上次尺寸避免滚动条跳动）
-        '[content-visibility:auto] [contain-intrinsic-size:auto_48px]',
-        !isSelected && 'hover:bg-[var(--interactive-hover)]',
-        isSelected && 'bg-primary/5'
+        '[content-visibility:auto] [contain-intrinsic-size:auto_44px]',
+        !isSelected && 'hover:bg-foreground/[0.035]',
+        isSelected && 'bg-primary/[0.06]'
       )}
     >
       {isEditMode ? (
@@ -525,41 +442,41 @@ const QuestionListRow: React.FC<{
           {isSelected && <Check size={12} />}
         </div>
       ) : (
-        <span className="text-sm font-medium text-muted-foreground w-8 flex-shrink-0">
+        <span className="font-mono text-xs font-medium tabular-nums text-muted-foreground w-8 flex-shrink-0 text-left">
           {question.questionLabel || `${index + 1}`}
         </span>
       )}
       
-      <div className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', STATUS_CONFIG[status].bg)} />
+      <div className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', STATUS_CONFIG[status].dot)} aria-hidden="true" />
       
       {question.images && question.images.length > 0 && (
         <ImageIcon size={14} className="flex-shrink-0 text-muted-foreground" />
       )}
-      <span className="flex-1 text-sm truncate text-foreground/80">
+      <span className="flex-1 text-sm truncate text-foreground/85 text-left">
         <HighlightText
           text={question.content || question.ocrText || t('practice:questionBank.noContent')}
           query={highlight}
         />
       </span>
       
-      <div className="flex items-center gap-2 flex-shrink-0">
+      <div className="flex items-center gap-1.5 flex-shrink-0">
         {question.questionType && question.questionType !== 'other' && (
-          <span className={cn('hidden md:inline-block rounded px-1.5 py-0.5 text-[11px] font-medium', typeMeta.pill)}>
+          <span className="hidden md:inline-block rounded-md bg-foreground/[0.04] px-1.5 py-0.5 text-[11px] text-muted-foreground">
             {t(typeMeta.labelKey)}
           </span>
         )}
         {question.difficulty && (
-          <span className={cn('hidden sm:inline-block rounded px-1.5 py-0.5 text-[11px] font-medium', DIFFICULTY_CONFIG[question.difficulty].pill)}>
+          <span className="hidden sm:inline-block rounded-md bg-foreground/[0.04] px-1.5 py-0.5 text-[11px] text-muted-foreground">
             {t(`practice:${DIFFICULTY_CONFIG[question.difficulty].labelKey}`)}
           </span>
         )}
         {question.isFavorite && !actionProps.onToggleFavorite && (
-          <Star size={14} className="fill-warning text-warning" />
+          <Star size={13} className="fill-warning text-warning" />
         )}
         {hasAttempt && (
           <div className={cn(
             'w-4 h-4 rounded-full flex items-center justify-center',
-            isCorrect ? 'bg-success/20 text-success' : 'bg-destructive/20 text-destructive'
+            isCorrect ? 'bg-success/15 text-success' : 'bg-destructive/15 text-destructive'
           )}>
             {isCorrect ? <Check size={10} /> : <X size={10} />}
           </div>
@@ -570,7 +487,7 @@ const QuestionListRow: React.FC<{
         )}
       </div>
       
-      <CaretRight size={16} className="text-muted-foreground/0 group-hover:text-muted-foreground/60 [@media(pointer:coarse)]:text-muted-foreground/40 transition-[background-color,border-color,color,box-shadow] flex-shrink-0" />
+      <CaretRight size={14} className="text-muted-foreground/0 group-hover:text-muted-foreground/50 [@media(pointer:coarse)]:text-muted-foreground/40 transition-colors flex-shrink-0" />
     </DsButton>
   );
 };
@@ -1341,58 +1258,27 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
   
   return (
     <div className={cn('flex flex-col h-full', className)} aria-busy={isLoading}>
-      {/* 桌面端：统计摘要 */}
-      {stats && (
-        <div className="flex-shrink-0 px-4 py-4 border-b border-border/40 hidden sm:block">
-          <StatsSummary stats={stats} onStartPractice={() => handleQuestionClick(0)} />
-        </div>
-      )}
-      {/* 移动端：紧凑单行统计 */}
-      {stats && (
-        <div className="flex sm:hidden flex-shrink-0 items-center justify-between gap-2 px-3 py-2 border-b border-border/40 text-xs">
-          <span className="text-muted-foreground tabular-nums">
-            {t('practice:questionBank.all')} {stats.total}
-          </span>
-          <span className="flex items-center gap-1 text-success tabular-nums">
-            <span className="w-1.5 h-1.5 rounded-full bg-success" aria-hidden="true" />
-            {t('practice:questionBank.masteredFilter')} {stats.mastered}
-          </span>
-          <span className="flex items-center gap-1 text-warning tabular-nums">
-            <span className="w-1.5 h-1.5 rounded-full bg-warning" aria-hidden="true" />
-            {t('practice:questionBank.needsReview')} {stats.review}
-          </span>
-          <DsButton
-            variant="primary"
-            size="sm"
-            onClick={() => handleQuestionClick(0)}
-            className="!h-8 !px-2.5 !py-0 [@media(pointer:coarse)]:!h-11 text-xs gap-1"
-          >
-            <Play size={12} weight="fill" />
-            {t('practice:questionBank.startPractice')}
-          </DsButton>
-        </div>
-      )}
-      
-      {/* 搜索和视图切换 */}
-      <div className="flex-shrink-0 px-3 sm:px-4 py-3">
-        <div className="flex items-center gap-2">
-          <div className="relative flex-1 min-w-0">
-            <MagnifyingGlass size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60" />
+      {/* 单行/1.5行紧凑轻顶栏：搜索 + 内联不折行状态/难度/题型筛选 + 视图/管理操作 */}
+      <div className="flex-shrink-0 border-b border-border/35 bg-background/95 px-3 sm:px-4 py-2 backdrop-blur-sm">
+        <div className="flex flex-wrap lg:flex-nowrap items-center gap-x-2 gap-y-1.5">
+          {/* 左侧：紧凑搜索框 */}
+          <div className="order-1 relative flex-1 sm:flex-initial sm:w-52 lg:w-56 min-w-[140px] max-w-xs">
+            <MagnifyingGlass size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/60" />
             <Input
               type="search"
               value={searchQuery}
               onChange={(e) => handleSearchChange(e.target.value)}
               placeholder={t('practice:questionBank.searchPlaceholder')}
               className={cn(
-                'pl-9 h-8 sm:h-9 [@media(pointer:coarse)]:!h-11 bg-muted/30 border-transparent focus:border-border focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors text-sm [@media(pointer:coarse)]:text-base',
+                'pl-8 h-8 [@media(pointer:coarse)]:!h-11 bg-muted/30 border-transparent focus:border-border focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors text-xs sm:text-sm [@media(pointer:coarse)]:text-base',
                 '[&::-webkit-search-cancel-button]:hidden',
-                (searchQuery || isLoading) && 'pr-8'
+                (searchQuery || isLoading) && 'pr-7'
               )}
             />
             {isLoading ? (
               <CircleNotch
-                size={14}
-                className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-muted-foreground"
+                size={13}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 animate-spin text-muted-foreground"
                 aria-label={t('common:loading')}
               />
             ) : searchQuery ? (
@@ -1401,7 +1287,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
                 size="icon"
                 iconOnly
                 onClick={handleSearchClear}
-                className="!absolute !right-1.5 !top-1/2 !-translate-y-1/2 !h-5 !w-5 !p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
+                className="!absolute !right-1 !top-1/2 !-translate-y-1/2 !h-5 !w-5 !p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
                 aria-label={t('learningHub:exam.library.clearSearch')}
                 title={t('learningHub:exam.library.clearSearch')}
               >
@@ -1409,84 +1295,176 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
               </DsButton>
             ) : null}
           </div>
-          
-          <div className="flex items-center p-0.5 rounded-md bg-muted/30 flex-shrink-0">
-            <DsButton
-              variant="ghost"
-              size="sm"
-              onClick={() => handleViewTypeChange('grid')}
-              className={cn('ui-state-colors h-7 w-7 p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11', viewType === 'grid' && 'bg-background shadow-sm')}
-              aria-label={t('learningHub:exam.library.gridView')}
-              title={t('learningHub:exam.library.gridView')}
-            >
-              <GridNine size={14} />
+
+          {/* 中间：单行横向不折行滚动的状态/难度/题型微胶囊（绝不折成多行） */}
+          <div className="order-3 lg:order-2 w-full lg:w-auto lg:flex-1 min-w-0 flex items-center gap-1 overflow-x-auto overscroll-x-contain scrollbar-none flex-nowrap">
+            <DsButton variant="ghost" size="sm" onClick={() => handleStatusToggle('all')} className={cn('ui-state-colors flex-shrink-0 !h-7 !px-2 !py-0 [@media(pointer:coarse)]:!min-h-11 !rounded-md text-xs tabular-nums', statusFilter === 'all' ? 'bg-foreground/[0.07] text-foreground font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.035]')}>
+              {t('practice:questionBank.all')} <span className="font-mono ml-0.5">{questions.length}</span>
             </DsButton>
-            <DsButton
-              variant="ghost"
-              size="sm"
-              onClick={() => handleViewTypeChange('list')}
-              className={cn('ui-state-colors h-7 w-7 p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11', viewType === 'list' && 'bg-background shadow-sm')}
-              aria-label={t('learningHub:exam.library.listView')}
-              title={t('learningHub:exam.library.listView')}
-            >
-              <List size={14} />
+            {stats && (stats.newCount > 0 || statusFilter === 'new') && (
+              <DsButton variant="ghost" size="sm" onClick={() => handleStatusToggle('new')} className={cn('ui-state-colors flex-shrink-0 !h-7 !px-2 !py-0 [@media(pointer:coarse)]:!min-h-11 !rounded-md text-xs tabular-nums gap-1.5', statusFilter === 'new' ? 'bg-foreground/[0.07] text-foreground font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.035]')}>
+                <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/35" aria-hidden="true" />
+                {t('practice:questionBank.newQuestions')} <span className="font-mono">{stats.newCount}</span>
+              </DsButton>
+            )}
+            {stats && (stats.review > 0 || statusFilter === 'review') && (
+              <DsButton variant="ghost" size="sm" onClick={() => handleStatusToggle('review')} className={cn('ui-state-colors flex-shrink-0 !h-7 !px-2 !py-0 [@media(pointer:coarse)]:!min-h-11 !rounded-md text-xs tabular-nums gap-1.5', statusFilter === 'review' ? 'bg-foreground/[0.07] text-foreground font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.035]')}>
+                <span className="w-1.5 h-1.5 rounded-full bg-warning" aria-hidden="true" />
+                {t('practice:questionBank.needsReview')} <span className="font-mono">{stats.review}</span>
+              </DsButton>
+            )}
+            {stats && (stats.mastered > 0 || statusFilter === 'mastered') && (
+              <DsButton variant="ghost" size="sm" onClick={() => handleStatusToggle('mastered')} className={cn('ui-state-colors flex-shrink-0 !h-7 !px-2 !py-0 [@media(pointer:coarse)]:!min-h-11 !rounded-md text-xs tabular-nums gap-1.5', statusFilter === 'mastered' ? 'bg-foreground/[0.07] text-foreground font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.035]')}>
+                <span className="w-1.5 h-1.5 rounded-full bg-success" aria-hidden="true" />
+                {t('practice:questionBank.masteredFilter')} <span className="font-mono">{stats.mastered}</span>
+              </DsButton>
+            )}
+
+            <div className="w-px h-3 bg-border/45 mx-0.5 flex-shrink-0" aria-hidden="true" />
+
+            <DsButton variant="ghost" size="sm" onClick={() => handleDifficultyToggle('easy')} className={cn('ui-state-colors flex-shrink-0 !h-7 !px-2 !py-0 [@media(pointer:coarse)]:!min-h-11 !rounded-md text-xs', difficultyFilter === 'easy' ? 'bg-foreground/[0.07] text-foreground font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.035]')}>
+              {t('practice:questionBank.difficultyShort.easy')}
             </DsButton>
+            <DsButton variant="ghost" size="sm" onClick={() => handleDifficultyToggle('medium')} className={cn('ui-state-colors flex-shrink-0 !h-7 !px-2 !py-0 [@media(pointer:coarse)]:!min-h-11 !rounded-md text-xs', difficultyFilter === 'medium' ? 'bg-foreground/[0.07] text-foreground font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.035]')}>
+              {t('practice:questionBank.difficultyShort.medium')}
+            </DsButton>
+            <DsButton variant="ghost" size="sm" onClick={() => handleDifficultyToggle('hard')} className={cn('ui-state-colors flex-shrink-0 !h-7 !px-2 !py-0 [@media(pointer:coarse)]:!min-h-11 !rounded-md text-xs', difficultyFilter === 'hard' ? 'bg-foreground/[0.07] text-foreground font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.035]')}>
+              {t('practice:questionBank.difficultyShort.hard')}
+            </DsButton>
+            <DsButton variant="ghost" size="sm" onClick={() => handleDifficultyToggle('very_hard')} className={cn('ui-state-colors flex-shrink-0 !h-7 !px-2 !py-0 [@media(pointer:coarse)]:!min-h-11 !rounded-md text-xs', difficultyFilter === 'very_hard' ? 'bg-foreground/[0.07] text-foreground font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.035]')}>
+              {t('practice:questionBank.difficultyShort.veryHard')}
+            </DsButton>
+
+            {/* 题型筛选（数据驱动：仅展示当前数据集中出现过的题型，含新题型） */}
+            {presentTypes.length >= 2 && (
+              <>
+                <div className="w-px h-3 bg-border/45 mx-0.5 flex-shrink-0" aria-hidden="true" />
+                {presentTypes.map((type) => {
+                  const meta = getQuestionTypeMeta(type);
+                  return (
+                    <DsButton
+                      key={type}
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleTypeToggle(type as QuestionType)}
+                      className={cn(
+                        'ui-state-colors flex-shrink-0 !h-7 !px-2 !py-0 [@media(pointer:coarse)]:!min-h-11 !rounded-md text-xs',
+                        typeFilter === type
+                          ? 'bg-foreground/[0.07] text-foreground font-medium'
+                          : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.035]'
+                      )}
+                      aria-pressed={typeFilter === type}
+                    >
+                      {t(meta.labelKey)}
+                    </DsButton>
+                  );
+                })}
+              </>
+            )}
+
+            {/* 轻量内联清除筛选按钮（不再撑开第二层 FilterChip 横条） */}
+            {hasActiveFilters && (
+              <DsButton
+                variant="ghost"
+                size="sm"
+                onClick={clearFilters}
+                className="flex-shrink-0 !h-7 !px-2 !py-0 [@media(pointer:coarse)]:!min-h-[44px] [@media(pointer:coarse)]:!px-3 text-xs text-primary hover:bg-primary/10 gap-1"
+              >
+                <X size={12} />
+                {t('learningHub:exam.library.clearAllFilters')}
+              </DsButton>
+            )}
           </div>
-          
-          {/* 收藏和书签按钮 */}
-          <DsButton variant="ghost" size="icon" iconOnly onClick={handleFavoriteToggle} className={cn('!h-7 !w-7 !p-1.5 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 flex-shrink-0', showFavoriteOnly ? 'bg-warning/20 text-warning' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')} aria-label={t('learningHub:exam.tab.favorites', { defaultValue: '收藏' })} title={t('learningHub:exam.tab.favorites', { defaultValue: '收藏' })}>
-            <Star className={cn('w-4 h-4', showFavoriteOnly && 'fill-current')} />
-          </DsButton>
 
-          {/* 题组与共享材料结构管理 */}
-          {examId && onUpdateQuestion && !isEditMode && (
-            <DsButton
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                const openManager = () => setStructureManagerOpen(true);
-                if (!requestInlineEditorDiscard({ kind: 'callback', run: openManager })) return;
-                openManager();
-              }}
-              className="lg:!h-7 !px-2 !py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)] flex-shrink-0"
-              aria-label={t('practice:questionBank.structure.trigger', { defaultValue: '题组与材料' })}
-              aria-haspopup="dialog"
-              aria-expanded={structureManagerOpen}
-              title={t('practice:questionBank.structure.trigger', { defaultValue: '题组与材料' })}
-            >
-              <TreeStructure size={14} className="sm:mr-1" />
-              <span className="hidden sm:inline">
-                {t('practice:questionBank.structure.trigger', { defaultValue: '题组与材料' })}
-              </span>
+          {/* 右侧：收藏、结构管理、批量管理、列表/网格切换、开始练习 */}
+          <div className="order-2 lg:order-3 ml-auto lg:ml-0 flex items-center gap-1 flex-shrink-0">
+            <DsButton variant="ghost" size="icon" iconOnly onClick={handleFavoriteToggle} className={cn('!h-7 !w-7 !p-1.5 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 flex-shrink-0', showFavoriteOnly ? 'bg-warning/20 text-warning' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')} aria-label={t('learningHub:exam.tab.favorites', { defaultValue: '收藏' })} title={t('learningHub:exam.tab.favorites', { defaultValue: '收藏' })}>
+              <Star className={cn('w-4 h-4', showFavoriteOnly && 'fill-current')} />
             </DsButton>
-          )}
 
-          {/* 新建题目入口统一在题目集顶栏「添加题目」菜单（ExamContentView），工具栏不再重复一个「+」 */}
+            {/* 题组与共享材料结构管理 */}
+            {examId && onUpdateQuestion && !isEditMode && (
+              <DsButton
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  const openManager = () => setStructureManagerOpen(true);
+                  if (!requestInlineEditorDiscard({ kind: 'callback', run: openManager })) return;
+                  openManager();
+                }}
+                className="!h-7 !px-2 !py-0 [@media(pointer:coarse)]:!h-11 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)] flex-shrink-0"
+                aria-label={t('practice:questionBank.structure.trigger', { defaultValue: '题组与材料' })}
+                aria-haspopup="dialog"
+                aria-expanded={structureManagerOpen}
+                title={t('practice:questionBank.structure.trigger', { defaultValue: '题组与材料' })}
+              >
+                <TreeStructure size={14} className="sm:mr-1" />
+                <span className="hidden sm:inline">
+                  {t('practice:questionBank.structure.trigger', { defaultValue: '题组与材料' })}
+                </span>
+              </DsButton>
+            )}
 
-          {/* 编辑模式按钮 */}
-          {hasBatchOperations && !isEditMode && (
-            <DsButton
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                const openBatchMode = () => setIsEditMode(true);
-                if (!requestInlineEditorDiscard({ kind: 'callback', run: openBatchMode })) return;
-                openBatchMode();
-              }}
-              className="!h-7 !px-2 !py-1 [@media(pointer:coarse)]:!h-11 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)] flex-shrink-0"
-              aria-label={t('exam_sheet:questionBank.manage', { defaultValue: '管理' })}
-            >
-              <ListChecks size={14} className="mr-1" />
-              <span className="hidden sm:inline">{t('exam_sheet:questionBank.manage')}</span>
-            </DsButton>
-          )}
+            {/* 编辑模式按钮 */}
+            {hasBatchOperations && !isEditMode && (
+              <DsButton
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  const openBatchMode = () => setIsEditMode(true);
+                  if (!requestInlineEditorDiscard({ kind: 'callback', run: openBatchMode })) return;
+                  openBatchMode();
+                }}
+                className="!h-7 !px-2 !py-0 [@media(pointer:coarse)]:!h-11 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)] flex-shrink-0"
+                aria-label={t('exam_sheet:questionBank.manage', { defaultValue: '管理' })}
+              >
+                <ListChecks size={14} className="sm:mr-1" />
+                <span className="hidden sm:inline">{t('exam_sheet:questionBank.manage')}</span>
+              </DsButton>
+            )}
+
+            <div className="flex items-center p-0.5 rounded-md bg-muted/30 flex-shrink-0">
+              <DsButton
+                variant="ghost"
+                size="sm"
+                onClick={() => handleViewTypeChange('list')}
+                className={cn('ui-state-colors h-6 w-6 p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11', viewType === 'list' && 'bg-background shadow-sm')}
+                aria-label={t('learningHub:exam.library.listView')}
+                title={t('learningHub:exam.library.listView')}
+              >
+                <List size={14} />
+              </DsButton>
+              <DsButton
+                variant="ghost"
+                size="sm"
+                onClick={() => handleViewTypeChange('grid')}
+                className={cn('ui-state-colors h-6 w-6 p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11', viewType === 'grid' && 'bg-background shadow-sm')}
+                aria-label={t('learningHub:exam.library.gridView')}
+                title={t('learningHub:exam.library.gridView')}
+              >
+                <GridNine size={14} />
+              </DsButton>
+            </div>
+
+            {stats && (
+              <DsButton
+                variant="ghost"
+                size="sm"
+                onClick={() => handleQuestionClick(0)}
+                className="!h-7 !px-2.5 !py-0 [@media(pointer:coarse)]:!h-11 text-xs text-primary hover:bg-primary/10 gap-1 flex-shrink-0"
+              >
+                <Play size={12} weight="fill" />
+                <span className="hidden sm:inline">{t('practice:questionBank.startPractice')}</span>
+              </DsButton>
+            )}
+          </div>
         </div>
-        
+
         {/* 未保存草稿的内联确认条（替代原模态确认框） */}
         {pendingEditorAction !== null && (
           <div
             role="alert"
-            className="ui-drop-in mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2"
+            className="ui-drop-in mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2"
           >
             <Warning size={15} className="flex-shrink-0 text-warning" />
             <span className="min-w-0 flex-1 text-xs text-foreground">
@@ -1510,115 +1488,6 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
                 {t('learningHub:exam.library.discardAndContinue')}
               </DsButton>
             </div>
-          </div>
-        )}
-        
-        {/* 筛选 Tab — ui-state-colors 让选中态颜色平滑过渡；
-            激活中的筛选即使计数归零也保留 chip，避免筛选项凭空消失无法取消 */}
-        <div className="flex flex-wrap items-center gap-1.5 mt-3">
-          <DsButton variant="ghost" size="sm" onClick={() => handleStatusToggle('all')} className={cn('ui-state-colors !h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-11 !rounded-md text-xs', statusFilter === 'all' ? 'bg-accent text-accent-foreground font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')}>
-            {t('practice:questionBank.all')} {questions.length}
-          </DsButton>
-          {stats && (stats.newCount > 0 || statusFilter === 'new') && (
-            <DsButton variant="ghost" size="sm" onClick={() => handleStatusToggle('new')} className={cn('ui-state-colors !h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-11 !rounded-md text-xs', statusFilter === 'new' ? 'bg-accent text-accent-foreground font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')}>
-              {t('practice:questionBank.newQuestions')} {stats.newCount}
-            </DsButton>
-          )}
-          {stats && (stats.review > 0 || statusFilter === 'review') && (
-            <DsButton variant="ghost" size="sm" onClick={() => handleStatusToggle('review')} className={cn('ui-state-colors !h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-11 !rounded-md text-xs', statusFilter === 'review' ? 'bg-accent text-accent-foreground font-medium' : 'text-warning hover:bg-warning/10')}>
-              {t('practice:questionBank.needsReview')} {stats.review}
-            </DsButton>
-          )}
-          {stats && (stats.mastered > 0 || statusFilter === 'mastered') && (
-            <DsButton variant="ghost" size="sm" onClick={() => handleStatusToggle('mastered')} className={cn('ui-state-colors !h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-11 !rounded-md text-xs', statusFilter === 'mastered' ? 'bg-accent text-accent-foreground font-medium' : 'text-success hover:bg-success/10')}>
-              {t('practice:questionBank.masteredFilter')} {stats.mastered}
-            </DsButton>
-          )}
-
-          <div className="w-px h-3 bg-border/60 mx-1" />
-
-          <DsButton variant="ghost" size="sm" onClick={() => handleDifficultyToggle('easy')} className={cn('ui-state-colors !h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-11 !rounded-md text-xs', difficultyFilter === 'easy' ? 'bg-accent text-accent-foreground font-medium' : 'text-success hover:bg-success/10')}>
-            {t('practice:questionBank.difficultyShort.easy')}
-          </DsButton>
-          <DsButton variant="ghost" size="sm" onClick={() => handleDifficultyToggle('medium')} className={cn('ui-state-colors !h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-11 !rounded-md text-xs', difficultyFilter === 'medium' ? 'bg-accent text-accent-foreground font-medium' : 'text-warning hover:bg-warning/10')}>
-            {t('practice:questionBank.difficultyShort.medium')}
-          </DsButton>
-          <DsButton variant="ghost" size="sm" onClick={() => handleDifficultyToggle('hard')} className={cn('ui-state-colors !h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-11 !rounded-md text-xs', difficultyFilter === 'hard' ? 'bg-accent text-accent-foreground font-medium' : 'text-warning hover:bg-warning/10')}>
-            {t('practice:questionBank.difficultyShort.hard')}
-          </DsButton>
-          <DsButton variant="ghost" size="sm" onClick={() => handleDifficultyToggle('very_hard')} className={cn('ui-state-colors !h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-11 !rounded-md text-xs', difficultyFilter === 'very_hard' ? 'bg-accent text-accent-foreground font-medium' : 'text-destructive hover:bg-destructive/10')}>
-            {t('practice:questionBank.difficultyShort.veryHard')}
-          </DsButton>
-
-          {/* 题型筛选（数据驱动：仅展示当前数据集中出现过的题型，含新题型） */}
-          {presentTypes.length >= 2 && (
-            <>
-              <div className="w-px h-3 bg-border/60 mx-1" />
-              {presentTypes.map((type) => {
-                const meta = getQuestionTypeMeta(type);
-                return (
-                  <DsButton
-                    key={type}
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleTypeToggle(type as QuestionType)}
-                    className={cn(
-                      'ui-state-colors !h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-11 !rounded-md text-xs',
-                      typeFilter === type
-                        ? 'bg-accent text-accent-foreground font-medium'
-                        : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]'
-                    )}
-                    aria-pressed={typeFilter === type}
-                  >
-                    {t(meta.labelKey)}
-                  </DsButton>
-                );
-              })}
-            </>
-          )}
-        </div>
-
-        {/* 激活筛选条件 chip：每个条件可单独移除，一键清除全部 */}
-        {hasActiveFilters && (
-          <div className="ui-drop-in flex flex-wrap items-center gap-1.5 mt-2">
-            {debouncedSearch && (
-              <FilterChip
-                label={t('learningHub:exam.library.filterSearchChip', { query: debouncedSearch })}
-                onRemove={handleSearchClear}
-              />
-            )}
-            {statusFilter !== 'all' && (
-              <FilterChip
-                label={t(`practice:${STATUS_CONFIG[statusFilter].labelKey}`)}
-                onRemove={() => handleStatusToggle(statusFilter)}
-              />
-            )}
-            {difficultyFilter !== 'all' && (
-              <FilterChip
-                label={t(`practice:${DIFFICULTY_CONFIG[difficultyFilter].labelKey}`)}
-                onRemove={() => handleDifficultyToggle(difficultyFilter)}
-              />
-            )}
-            {typeFilter !== 'all' && (
-              <FilterChip
-                label={t(getQuestionTypeMeta(typeFilter).labelKey)}
-                onRemove={() => handleTypeToggle(typeFilter)}
-              />
-            )}
-            {showFavoriteOnly && (
-              <FilterChip
-                label={t('learningHub:exam.library.filterFavoriteChip')}
-                onRemove={handleFavoriteToggle}
-              />
-            )}
-            <DsButton
-              variant="ghost"
-              size="sm"
-              onClick={clearFilters}
-              className="!h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-[44px] [@media(pointer:coarse)]:!px-3 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
-            >
-              {t('learningHub:exam.library.clearAllFilters')}
-            </DsButton>
           </div>
         )}
       </div>

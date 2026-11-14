@@ -13,6 +13,7 @@
 import type { ContextTypeDefinition, Resource, ContentBlock } from '../types';
 import { createTextBlock } from '../types';
 import { t } from '@/utils/i18n';
+import { getOfficialResourceTypeUi } from '@/shared/resource-types/lookup';
 
 // ============================================================================
 // 常量定义
@@ -122,21 +123,8 @@ function escapeXmlContent(str: string): string {
 /**
  * 根据 itemType 获取对应的 XML 标签名
  */
-function getItemXmlTag(itemType: string): string {
-  switch (itemType) {
-    case 'note':
-      return 'note_item';
-    case 'textbook':
-      return 'textbook_item';
-    case 'exam':
-      return 'exam_item';
-    case 'translation':
-      return 'translation_item';
-    case 'essay':
-      return 'essay_item';
-    default:
-      return 'resource_item';
-  }
+export function getItemXmlTag(itemType: string): string {
+  return getOfficialResourceTypeUi(itemType)?.xmlTag ?? 'resource_item';
 }
 
 /**

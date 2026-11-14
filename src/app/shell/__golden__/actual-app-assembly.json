@@ -1,0 +1,3056 @@
+{
+  "baseline": "e73e0d98",
+  "sequence": [
+    "chat-v2",
+    "dashboard",
+    "settings",
+    "task-dashboard",
+    "skills-management",
+    "data-management",
+    "template-management",
+    "ui-lab",
+    "learning-hub",
+    "media",
+    "sandbox-workbench",
+    "pdf-reader",
+    "todo",
+    "flashcards",
+    "crepe-demo",
+    "chat-v2-test",
+    "llm-playground",
+    "settings",
+    "learning-hub",
+    "chat-v2"
+  ],
+  "scenarios": [
+    {
+      "small": false,
+      "steps": [
+        {
+          "view": "chat-v2",
+          "layers": [
+            {
+              "id": "chat-v2",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col desktop-shell-content-enter opacity-100 z-10 pointer-events-auto",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px;",
+              "pages": [
+                "LazyChatV2Page"
+              ],
+              "scaffolds": 0
+            }
+          ],
+          "chrome": [
+            {
+              "role": "app-shell",
+              "layer": null,
+              "slot": null,
+              "class": "relative flex h-dvh w-full overflow-hidden font-sans text-foreground",
+              "style": "--mobile-safe-area-top: var(--android-safe-area-top, env(safe-area-inset-top, 0px)); --mobile-safe-area-bottom: var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)); --mobile-safe-area-left: var(--android-safe-area-left, env(safe-area-inset-left, 0px)); --mobile-safe-area-right: var(--android-safe-area-right, env(safe-area-inset-right, 0px)); --mobile-header-height: 56px; --mobile-header-total-height: calc(56px + var(--android-safe-area-top, env(safe-area-inset-top, 0px))); --sidebar-width: 260px; --sidebar-expanded-width: 260px; --sidebar-collapsed-width: 260px; --shell-navigation-width: 260px; --shell-sidebar-translate-x: 0px; --shell-titlebar-height: 40px; --desktop-titlebar-height: 40px; --shell-navigation-surface-width: 260px; --shell-titlebar-content-height: 40px; --topbar-safe-area: 0px;"
+            },
+            {
+              "role": null,
+              "layer": "window-chrome",
+              "slot": null,
+              "class": "desktop-shell-titlebar fixed top-0 left-0 right-0 flex motion-reduce:transition-none",
+              "style": "padding-top: 0px; height: 40px; min-height: 40px;"
+            },
+            {
+              "role": null,
+              "layer": null,
+              "slot": "chat-search",
+              "class": "flex h-full min-w-0 flex-1 items-center justify-end",
+              "style": null
+            },
+            {
+              "role": null,
+              "layer": "workspace",
+              "slot": null,
+              "class": "desktop-shell-workspace flex flex-1 flex-col h-full min-w-0 relative overflow-hidden",
+              "style": "padding-top: 40px;"
+            }
+          ]
+        },
+        {
+          "view": "dashboard",
+          "layers": [
+            {
+              "id": "dashboard",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col overflow-hidden desktop-shell-content-enter opacity-100 z-10 pointer-events-auto",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px;",
+              "pages": [
+                "LazySOTADashboard"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "chat-v2",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyChatV2Page"
+              ],
+              "scaffolds": 0
+            }
+          ],
+          "chrome": [
+            {
+              "role": "app-shell",
+              "layer": null,
+              "slot": null,
+              "class": "relative flex h-dvh w-full overflow-hidden font-sans text-foreground",
+              "style": "--mobile-safe-area-top: var(--android-safe-area-top, env(safe-area-inset-top, 0px)); --mobile-safe-area-bottom: var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)); --mobile-safe-area-left: var(--android-safe-area-left, env(safe-area-inset-left, 0px)); --mobile-safe-area-right: var(--android-safe-area-right, env(safe-area-inset-right, 0px)); --mobile-header-height: 56px; --mobile-header-total-height: calc(56px + var(--android-safe-area-top, env(safe-area-inset-top, 0px))); --sidebar-width: 260px; --sidebar-expanded-width: 260px; --sidebar-collapsed-width: 260px; --shell-navigation-width: 260px; --shell-sidebar-translate-x: 0px; --shell-titlebar-height: 40px; --desktop-titlebar-height: 40px; --shell-navigation-surface-width: 260px; --shell-titlebar-content-height: 40px; --topbar-safe-area: 0px;"
+            },
+            {
+              "role": null,
+              "layer": "window-chrome",
+              "slot": null,
+              "class": "desktop-shell-titlebar fixed top-0 left-0 right-0 flex motion-reduce:transition-none",
+              "style": "padding-top: 0px; height: 40px; min-height: 40px;"
+            },
+            {
+              "role": null,
+              "layer": null,
+              "slot": "chat-search",
+              "class": "flex h-full min-w-0 flex-1 items-center justify-end",
+              "style": null
+            },
+            {
+              "role": null,
+              "layer": "workspace",
+              "slot": null,
+              "class": "desktop-shell-workspace flex flex-1 flex-col h-full min-w-0 relative overflow-hidden",
+              "style": "padding-top: 40px;"
+            }
+          ]
+        },
+        {
+          "view": "settings",
+          "layers": [
+            {
+              "id": "dashboard",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col overflow-hidden opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazySOTADashboard"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "settings",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col overflow-hidden desktop-shell-content-enter opacity-100 z-10 pointer-events-auto",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px;",
+              "pages": [
+                "LazySettings"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "chat-v2",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyChatV2Page"
+              ],
+              "scaffolds": 0
+            }
+          ],
+          "chrome": [
+            {
+              "role": "app-shell",
+              "layer": null,
+              "slot": null,
+              "class": "relative flex h-dvh w-full overflow-hidden font-sans text-foreground",
+              "style": "--mobile-safe-area-top: var(--android-safe-area-top, env(safe-area-inset-top, 0px)); --mobile-safe-area-bottom: var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)); --mobile-safe-area-left: var(--android-safe-area-left, env(safe-area-inset-left, 0px)); --mobile-safe-area-right: var(--android-safe-area-right, env(safe-area-inset-right, 0px)); --mobile-header-height: 56px; --mobile-header-total-height: calc(56px + var(--android-safe-area-top, env(safe-area-inset-top, 0px))); --sidebar-width: 260px; --sidebar-expanded-width: 260px; --sidebar-collapsed-width: 260px; --shell-navigation-width: 260px; --shell-sidebar-translate-x: 0px; --shell-titlebar-height: 40px; --desktop-titlebar-height: 40px; --shell-navigation-surface-width: 260px; --shell-titlebar-content-height: 40px; --topbar-safe-area: 0px;"
+            },
+            {
+              "role": null,
+              "layer": "window-chrome",
+              "slot": null,
+              "class": "desktop-shell-titlebar fixed top-0 left-0 right-0 flex motion-reduce:transition-none",
+              "style": "padding-top: 0px; height: 40px; min-height: 40px;"
+            },
+            {
+              "role": null,
+              "layer": null,
+              "slot": "chat-search",
+              "class": "flex h-full min-w-0 flex-1 items-center justify-end",
+              "style": null
+            },
+            {
+              "role": null,
+              "layer": "workspace",
+              "slot": null,
+              "class": "desktop-shell-workspace flex flex-1 flex-col h-full min-w-0 relative overflow-hidden",
+              "style": "padding-top: 40px;"
+            }
+          ]
+        },
+        {
+          "view": "task-dashboard",
+          "layers": [
+            {
+              "id": "dashboard",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col overflow-hidden opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazySOTADashboard"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "settings",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col overflow-hidden opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazySettings"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "task-dashboard",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col desktop-shell-content-enter opacity-100 z-10 pointer-events-auto",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px;",
+              "pages": [
+                "AnkiTasksApp"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "chat-v2",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyChatV2Page"
+              ],
+              "scaffolds": 0
+            }
+          ],
+          "chrome": [
+            {
+              "role": "app-shell",
+              "layer": null,
+              "slot": null,
+              "class": "relative flex h-dvh w-full overflow-hidden font-sans text-foreground",
+              "style": "--mobile-safe-area-top: var(--android-safe-area-top, env(safe-area-inset-top, 0px)); --mobile-safe-area-bottom: var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)); --mobile-safe-area-left: var(--android-safe-area-left, env(safe-area-inset-left, 0px)); --mobile-safe-area-right: var(--android-safe-area-right, env(safe-area-inset-right, 0px)); --mobile-header-height: 56px; --mobile-header-total-height: calc(56px + var(--android-safe-area-top, env(safe-area-inset-top, 0px))); --sidebar-width: 260px; --sidebar-expanded-width: 260px; --sidebar-collapsed-width: 260px; --shell-navigation-width: 260px; --shell-sidebar-translate-x: 0px; --shell-titlebar-height: 40px; --desktop-titlebar-height: 40px; --shell-navigation-surface-width: 260px; --shell-titlebar-content-height: 40px; --topbar-safe-area: 0px;"
+            },
+            {
+              "role": null,
+              "layer": "window-chrome",
+              "slot": null,
+              "class": "desktop-shell-titlebar fixed top-0 left-0 right-0 flex motion-reduce:transition-none",
+              "style": "padding-top: 0px; height: 40px; min-height: 40px;"
+            },
+            {
+              "role": null,
+              "layer": null,
+              "slot": "chat-search",
+              "class": "flex h-full min-w-0 flex-1 items-center justify-end",
+              "style": null
+            },
+            {
+              "role": null,
+              "layer": "workspace",
+              "slot": null,
+              "class": "desktop-shell-workspace flex flex-1 flex-col h-full min-w-0 relative overflow-hidden",
+              "style": "padding-top: 40px;"
+            }
+          ]
+        },
+        {
+          "view": "skills-management",
+          "layers": [
+            {
+              "id": "dashboard",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col overflow-hidden opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazySOTADashboard"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "settings",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col overflow-hidden opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazySettings"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "task-dashboard",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "AnkiTasksApp"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "skills-management",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col desktop-shell-content-enter opacity-100 z-10 pointer-events-auto",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px;",
+              "pages": [
+                "LazySkillsManagementPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "chat-v2",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyChatV2Page"
+              ],
+              "scaffolds": 0
+            }
+          ],
+          "chrome": [
+            {
+              "role": "app-shell",
+              "layer": null,
+              "slot": null,
+              "class": "relative flex h-dvh w-full overflow-hidden font-sans text-foreground",
+              "style": "--mobile-safe-area-top: var(--android-safe-area-top, env(safe-area-inset-top, 0px)); --mobile-safe-area-bottom: var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)); --mobile-safe-area-left: var(--android-safe-area-left, env(safe-area-inset-left, 0px)); --mobile-safe-area-right: var(--android-safe-area-right, env(safe-area-inset-right, 0px)); --mobile-header-height: 56px; --mobile-header-total-height: calc(56px + var(--android-safe-area-top, env(safe-area-inset-top, 0px))); --sidebar-width: 260px; --sidebar-expanded-width: 260px; --sidebar-collapsed-width: 260px; --shell-navigation-width: 260px; --shell-sidebar-translate-x: 0px; --shell-titlebar-height: 40px; --desktop-titlebar-height: 40px; --shell-navigation-surface-width: 260px; --shell-titlebar-content-height: 40px; --topbar-safe-area: 0px;"
+            },
+            {
+              "role": null,
+              "layer": "window-chrome",
+              "slot": null,
+              "class": "desktop-shell-titlebar fixed top-0 left-0 right-0 flex motion-reduce:transition-none",
+              "style": "padding-top: 0px; height: 40px; min-height: 40px;"
+            },
+            {
+              "role": null,
+              "layer": null,
+              "slot": "skills-toolbar",
+              "class": "h-full min-w-0 flex-1",
+              "style": null
+            },
+            {
+              "role": null,
+              "layer": null,
+              "slot": "chat-search",
+              "class": "flex h-full min-w-0 flex-1 items-center justify-end",
+              "style": null
+            },
+            {
+              "role": null,
+              "layer": "workspace",
+              "slot": null,
+              "class": "desktop-shell-workspace flex flex-1 flex-col h-full min-w-0 relative overflow-hidden",
+              "style": "padding-top: 40px;"
+            }
+          ]
+        },
+        {
+          "view": "data-management",
+          "layers": [
+            {
+              "id": "dashboard",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col overflow-hidden opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazySOTADashboard"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "settings",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col overflow-hidden opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazySettings"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "task-dashboard",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "AnkiTasksApp"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "skills-management",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazySkillsManagementPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "data-management",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col desktop-shell-content-enter opacity-100 z-10 pointer-events-auto",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px;",
+              "pages": [
+                "LazyDataImportExport",
+                "LazyImportConversationDialog"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "chat-v2",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyChatV2Page"
+              ],
+              "scaffolds": 0
+            }
+          ],
+          "chrome": [
+            {
+              "role": "app-shell",
+              "layer": null,
+              "slot": null,
+              "class": "relative flex h-dvh w-full overflow-hidden font-sans text-foreground",
+              "style": "--mobile-safe-area-top: var(--android-safe-area-top, env(safe-area-inset-top, 0px)); --mobile-safe-area-bottom: var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)); --mobile-safe-area-left: var(--android-safe-area-left, env(safe-area-inset-left, 0px)); --mobile-safe-area-right: var(--android-safe-area-right, env(safe-area-inset-right, 0px)); --mobile-header-height: 56px; --mobile-header-total-height: calc(56px + var(--android-safe-area-top, env(safe-area-inset-top, 0px))); --sidebar-width: 260px; --sidebar-expanded-width: 260px; --sidebar-collapsed-width: 260px; --shell-navigation-width: 260px; --shell-sidebar-translate-x: 0px; --shell-titlebar-height: 40px; --desktop-titlebar-height: 40px; --shell-navigation-surface-width: 260px; --shell-titlebar-content-height: 40px; --topbar-safe-area: 0px;"
+            },
+            {
+              "role": null,
+              "layer": "window-chrome",
+              "slot": null,
+              "class": "desktop-shell-titlebar fixed top-0 left-0 right-0 flex motion-reduce:transition-none",
+              "style": "padding-top: 0px; height: 40px; min-height: 40px;"
+            },
+            {
+              "role": null,
+              "layer": null,
+              "slot": "chat-search",
+              "class": "flex h-full min-w-0 flex-1 items-center justify-end",
+              "style": null
+            },
+            {
+              "role": null,
+              "layer": "workspace",
+              "slot": null,
+              "class": "desktop-shell-workspace flex flex-1 flex-col h-full min-w-0 relative overflow-hidden",
+              "style": "padding-top: 40px;"
+            }
+          ]
+        },
+        {
+          "view": "template-management",
+          "layers": [
+            {
+              "id": "dashboard",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col overflow-hidden opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazySOTADashboard"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "settings",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col overflow-hidden opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazySettings"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "task-dashboard",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "AnkiTasksApp"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "skills-management",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazySkillsManagementPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "data-management",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyDataImportExport",
+                "LazyImportConversationDialog"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "template-management",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col desktop-shell-content-enter opacity-100 z-10 pointer-events-auto",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px;",
+              "pages": [
+                "LazyTemplateManagementPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "chat-v2",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyChatV2Page"
+              ],
+              "scaffolds": 0
+            }
+          ],
+          "chrome": [
+            {
+              "role": "app-shell",
+              "layer": null,
+              "slot": null,
+              "class": "relative flex h-dvh w-full overflow-hidden font-sans text-foreground",
+              "style": "--mobile-safe-area-top: var(--android-safe-area-top, env(safe-area-inset-top, 0px)); --mobile-safe-area-bottom: var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)); --mobile-safe-area-left: var(--android-safe-area-left, env(safe-area-inset-left, 0px)); --mobile-safe-area-right: var(--android-safe-area-right, env(safe-area-inset-right, 0px)); --mobile-header-height: 56px; --mobile-header-total-height: calc(56px + var(--android-safe-area-top, env(safe-area-inset-top, 0px))); --sidebar-width: 260px; --sidebar-expanded-width: 260px; --sidebar-collapsed-width: 260px; --shell-navigation-width: 260px; --shell-sidebar-translate-x: 0px; --shell-titlebar-height: 40px; --desktop-titlebar-height: 40px; --shell-navigation-surface-width: 260px; --shell-titlebar-content-height: 40px; --topbar-safe-area: 0px;"
+            },
+            {
+              "role": null,
+              "layer": "window-chrome",
+              "slot": null,
+              "class": "desktop-shell-titlebar fixed top-0 left-0 right-0 flex motion-reduce:transition-none",
+              "style": "padding-top: 0px; height: 40px; min-height: 40px;"
+            },
+            {
+              "role": null,
+              "layer": null,
+              "slot": "chat-search",
+              "class": "flex h-full min-w-0 flex-1 items-center justify-end",
+              "style": null
+            },
+            {
+              "role": null,
+              "layer": "workspace",
+              "slot": null,
+              "class": "desktop-shell-workspace flex flex-1 flex-col h-full min-w-0 relative overflow-hidden",
+              "style": "padding-top: 40px;"
+            }
+          ]
+        },
+        {
+          "view": "ui-lab",
+          "layers": [
+            {
+              "id": "dashboard",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col overflow-hidden opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazySOTADashboard"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "settings",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col overflow-hidden opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazySettings"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "task-dashboard",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "AnkiTasksApp"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "skills-management",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazySkillsManagementPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "data-management",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyDataImportExport",
+                "LazyImportConversationDialog"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "template-management",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyTemplateManagementPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "ui-lab",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col desktop-shell-content-enter opacity-100 z-10 pointer-events-auto",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px;",
+              "pages": [
+                "LazyStyleDebugPage"
+              ],
+              "scaffolds": 1
+            },
+            {
+              "id": "chat-v2",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyChatV2Page"
+              ],
+              "scaffolds": 0
+            }
+          ],
+          "chrome": [
+            {
+              "role": "app-shell",
+              "layer": null,
+              "slot": null,
+              "class": "relative flex h-dvh w-full overflow-hidden font-sans text-foreground",
+              "style": "--mobile-safe-area-top: var(--android-safe-area-top, env(safe-area-inset-top, 0px)); --mobile-safe-area-bottom: var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)); --mobile-safe-area-left: var(--android-safe-area-left, env(safe-area-inset-left, 0px)); --mobile-safe-area-right: var(--android-safe-area-right, env(safe-area-inset-right, 0px)); --mobile-header-height: 56px; --mobile-header-total-height: calc(56px + var(--android-safe-area-top, env(safe-area-inset-top, 0px))); --sidebar-width: 260px; --sidebar-expanded-width: 260px; --sidebar-collapsed-width: 260px; --shell-navigation-width: 260px; --shell-sidebar-translate-x: 0px; --shell-titlebar-height: 40px; --desktop-titlebar-height: 40px; --shell-navigation-surface-width: 260px; --shell-titlebar-content-height: 40px; --topbar-safe-area: 0px;"
+            },
+            {
+              "role": null,
+              "layer": "window-chrome",
+              "slot": null,
+              "class": "desktop-shell-titlebar fixed top-0 left-0 right-0 flex motion-reduce:transition-none",
+              "style": "padding-top: 0px; height: 40px; min-height: 40px;"
+            },
+            {
+              "role": null,
+              "layer": null,
+              "slot": "chat-search",
+              "class": "flex h-full min-w-0 flex-1 items-center justify-end",
+              "style": null
+            },
+            {
+              "role": null,
+              "layer": "workspace",
+              "slot": null,
+              "class": "desktop-shell-workspace flex flex-1 flex-col h-full min-w-0 relative overflow-hidden",
+              "style": "padding-top: 40px;"
+            }
+          ]
+        },
+        {
+          "view": "learning-hub",
+          "layers": [
+            {
+              "id": "settings",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col overflow-hidden opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazySettings"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "task-dashboard",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "AnkiTasksApp"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "skills-management",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazySkillsManagementPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "data-management",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyDataImportExport",
+                "LazyImportConversationDialog"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "template-management",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyTemplateManagementPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "ui-lab",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyStyleDebugPage"
+              ],
+              "scaffolds": 1
+            },
+            {
+              "id": "learning-hub",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col desktop-shell-content-enter opacity-100 z-10 pointer-events-auto",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px;",
+              "pages": [
+                "LazyLearningHubPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "chat-v2",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyChatV2Page"
+              ],
+              "scaffolds": 0
+            }
+          ],
+          "chrome": [
+            {
+              "role": "app-shell",
+              "layer": null,
+              "slot": null,
+              "class": "relative flex h-dvh w-full overflow-hidden font-sans text-foreground",
+              "style": "--mobile-safe-area-top: var(--android-safe-area-top, env(safe-area-inset-top, 0px)); --mobile-safe-area-bottom: var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)); --mobile-safe-area-left: var(--android-safe-area-left, env(safe-area-inset-left, 0px)); --mobile-safe-area-right: var(--android-safe-area-right, env(safe-area-inset-right, 0px)); --mobile-header-height: 56px; --mobile-header-total-height: calc(56px + var(--android-safe-area-top, env(safe-area-inset-top, 0px))); --sidebar-width: 260px; --sidebar-expanded-width: 260px; --sidebar-collapsed-width: 260px; --shell-navigation-width: 260px; --shell-sidebar-translate-x: 0px; --shell-titlebar-height: 40px; --desktop-titlebar-height: 40px; --shell-navigation-surface-width: 260px; --shell-titlebar-content-height: 40px; --topbar-safe-area: 0px;"
+            },
+            {
+              "role": null,
+              "layer": "window-chrome",
+              "slot": null,
+              "class": "desktop-shell-titlebar fixed top-0 left-0 right-0 flex motion-reduce:transition-none",
+              "style": "padding-top: 0px; height: 40px; min-height: 40px;"
+            },
+            {
+              "role": null,
+              "layer": null,
+              "slot": "learning-hub-toolbar",
+              "class": "h-full min-w-0 flex-1",
+              "style": null
+            },
+            {
+              "role": null,
+              "layer": null,
+              "slot": "chat-search",
+              "class": "flex h-full min-w-0 flex-1 items-center justify-end",
+              "style": null
+            },
+            {
+              "role": null,
+              "layer": "workspace",
+              "slot": null,
+              "class": "desktop-shell-workspace flex flex-1 flex-col h-full min-w-0 relative overflow-hidden",
+              "style": "padding-top: 40px;"
+            }
+          ]
+        },
+        {
+          "view": "media",
+          "layers": [
+            {
+              "id": "task-dashboard",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "AnkiTasksApp"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "skills-management",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazySkillsManagementPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "data-management",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyDataImportExport",
+                "LazyImportConversationDialog"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "template-management",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyTemplateManagementPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "ui-lab",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyStyleDebugPage"
+              ],
+              "scaffolds": 1
+            },
+            {
+              "id": "learning-hub",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyLearningHubPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "media",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col desktop-shell-content-enter opacity-100 z-10 pointer-events-auto",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px;",
+              "pages": [
+                "LazyMediaStudioPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "chat-v2",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyChatV2Page"
+              ],
+              "scaffolds": 0
+            }
+          ],
+          "chrome": [
+            {
+              "role": "app-shell",
+              "layer": null,
+              "slot": null,
+              "class": "relative flex h-dvh w-full overflow-hidden font-sans text-foreground",
+              "style": "--mobile-safe-area-top: var(--android-safe-area-top, env(safe-area-inset-top, 0px)); --mobile-safe-area-bottom: var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)); --mobile-safe-area-left: var(--android-safe-area-left, env(safe-area-inset-left, 0px)); --mobile-safe-area-right: var(--android-safe-area-right, env(safe-area-inset-right, 0px)); --mobile-header-height: 56px; --mobile-header-total-height: calc(56px + var(--android-safe-area-top, env(safe-area-inset-top, 0px))); --sidebar-width: 260px; --sidebar-expanded-width: 260px; --sidebar-collapsed-width: 260px; --shell-navigation-width: 260px; --shell-sidebar-translate-x: 0px; --shell-titlebar-height: 40px; --desktop-titlebar-height: 40px; --shell-navigation-surface-width: 260px; --shell-titlebar-content-height: 40px; --topbar-safe-area: 0px;"
+            },
+            {
+              "role": null,
+              "layer": "window-chrome",
+              "slot": null,
+              "class": "desktop-shell-titlebar fixed top-0 left-0 right-0 flex motion-reduce:transition-none",
+              "style": "padding-top: 0px; height: 40px; min-height: 40px;"
+            },
+            {
+              "role": null,
+              "layer": null,
+              "slot": "media-toolbar",
+              "class": "h-full min-w-0 flex-1",
+              "style": null
+            },
+            {
+              "role": null,
+              "layer": null,
+              "slot": "chat-search",
+              "class": "flex h-full min-w-0 flex-1 items-center justify-end",
+              "style": null
+            },
+            {
+              "role": null,
+              "layer": "workspace",
+              "slot": null,
+              "class": "desktop-shell-workspace flex flex-1 flex-col h-full min-w-0 relative overflow-hidden",
+              "style": "padding-top: 40px;"
+            }
+          ]
+        },
+        {
+          "view": "sandbox-workbench",
+          "layers": [
+            {
+              "id": "skills-management",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazySkillsManagementPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "data-management",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyDataImportExport",
+                "LazyImportConversationDialog"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "template-management",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyTemplateManagementPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "ui-lab",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyStyleDebugPage"
+              ],
+              "scaffolds": 1
+            },
+            {
+              "id": "learning-hub",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyLearningHubPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "media",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyMediaStudioPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "sandbox-workbench",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col desktop-shell-content-enter opacity-100 z-10 pointer-events-auto",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px;",
+              "pages": [
+                "LazySandboxWorkbenchPage"
+              ],
+              "scaffolds": 1
+            },
+            {
+              "id": "chat-v2",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyChatV2Page"
+              ],
+              "scaffolds": 0
+            }
+          ],
+          "chrome": [
+            {
+              "role": "app-shell",
+              "layer": null,
+              "slot": null,
+              "class": "relative flex h-dvh w-full overflow-hidden font-sans text-foreground",
+              "style": "--mobile-safe-area-top: var(--android-safe-area-top, env(safe-area-inset-top, 0px)); --mobile-safe-area-bottom: var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)); --mobile-safe-area-left: var(--android-safe-area-left, env(safe-area-inset-left, 0px)); --mobile-safe-area-right: var(--android-safe-area-right, env(safe-area-inset-right, 0px)); --mobile-header-height: 56px; --mobile-header-total-height: calc(56px + var(--android-safe-area-top, env(safe-area-inset-top, 0px))); --sidebar-width: 260px; --sidebar-expanded-width: 260px; --sidebar-collapsed-width: 260px; --shell-navigation-width: 260px; --shell-sidebar-translate-x: 0px; --shell-titlebar-height: 40px; --desktop-titlebar-height: 40px; --shell-navigation-surface-width: 260px; --shell-titlebar-content-height: 40px; --topbar-safe-area: 0px;"
+            },
+            {
+              "role": null,
+              "layer": "window-chrome",
+              "slot": null,
+              "class": "desktop-shell-titlebar fixed top-0 left-0 right-0 flex motion-reduce:transition-none",
+              "style": "padding-top: 0px; height: 40px; min-height: 40px;"
+            },
+            {
+              "role": null,
+              "layer": null,
+              "slot": "chat-search",
+              "class": "flex h-full min-w-0 flex-1 items-center justify-end",
+              "style": null
+            },
+            {
+              "role": null,
+              "layer": "workspace",
+              "slot": null,
+              "class": "desktop-shell-workspace flex flex-1 flex-col h-full min-w-0 relative overflow-hidden",
+              "style": "padding-top: 40px;"
+            }
+          ]
+        },
+        {
+          "view": "pdf-reader",
+          "layers": [
+            {
+              "id": "data-management",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyDataImportExport",
+                "LazyImportConversationDialog"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "template-management",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyTemplateManagementPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "ui-lab",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyStyleDebugPage"
+              ],
+              "scaffolds": 1
+            },
+            {
+              "id": "learning-hub",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyLearningHubPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "media",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyMediaStudioPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "sandbox-workbench",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazySandboxWorkbenchPage"
+              ],
+              "scaffolds": 1
+            },
+            {
+              "id": "pdf-reader",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col desktop-shell-content-enter opacity-100 z-10 pointer-events-auto",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px;",
+              "pages": [
+                "LazyPdfReader"
+              ],
+              "scaffolds": 1
+            },
+            {
+              "id": "chat-v2",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyChatV2Page"
+              ],
+              "scaffolds": 0
+            }
+          ],
+          "chrome": [
+            {
+              "role": "app-shell",
+              "layer": null,
+              "slot": null,
+              "class": "relative flex h-dvh w-full overflow-hidden font-sans text-foreground",
+              "style": "--mobile-safe-area-top: var(--android-safe-area-top, env(safe-area-inset-top, 0px)); --mobile-safe-area-bottom: var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)); --mobile-safe-area-left: var(--android-safe-area-left, env(safe-area-inset-left, 0px)); --mobile-safe-area-right: var(--android-safe-area-right, env(safe-area-inset-right, 0px)); --mobile-header-height: 56px; --mobile-header-total-height: calc(56px + var(--android-safe-area-top, env(safe-area-inset-top, 0px))); --sidebar-width: 260px; --sidebar-expanded-width: 260px; --sidebar-collapsed-width: 260px; --shell-navigation-width: 260px; --shell-sidebar-translate-x: 0px; --shell-titlebar-height: 40px; --desktop-titlebar-height: 40px; --shell-navigation-surface-width: 260px; --shell-titlebar-content-height: 40px; --topbar-safe-area: 0px;"
+            },
+            {
+              "role": null,
+              "layer": "window-chrome",
+              "slot": null,
+              "class": "desktop-shell-titlebar fixed top-0 left-0 right-0 flex motion-reduce:transition-none",
+              "style": "padding-top: 0px; height: 40px; min-height: 40px;"
+            },
+            {
+              "role": null,
+              "layer": null,
+              "slot": "chat-search",
+              "class": "flex h-full min-w-0 flex-1 items-center justify-end",
+              "style": null
+            },
+            {
+              "role": null,
+              "layer": "workspace",
+              "slot": null,
+              "class": "desktop-shell-workspace flex flex-1 flex-col h-full min-w-0 relative overflow-hidden",
+              "style": "padding-top: 40px;"
+            }
+          ]
+        },
+        {
+          "view": "todo",
+          "layers": [
+            {
+              "id": "template-management",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyTemplateManagementPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "ui-lab",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyStyleDebugPage"
+              ],
+              "scaffolds": 1
+            },
+            {
+              "id": "learning-hub",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyLearningHubPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "media",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyMediaStudioPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "sandbox-workbench",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazySandboxWorkbenchPage"
+              ],
+              "scaffolds": 1
+            },
+            {
+              "id": "pdf-reader",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyPdfReader"
+              ],
+              "scaffolds": 1
+            },
+            {
+              "id": "todo",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col desktop-shell-content-enter opacity-100 z-10 pointer-events-auto",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px;",
+              "pages": [
+                "LazyTodoPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "chat-v2",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyChatV2Page"
+              ],
+              "scaffolds": 0
+            }
+          ],
+          "chrome": [
+            {
+              "role": "app-shell",
+              "layer": null,
+              "slot": null,
+              "class": "relative flex h-dvh w-full overflow-hidden font-sans text-foreground",
+              "style": "--mobile-safe-area-top: var(--android-safe-area-top, env(safe-area-inset-top, 0px)); --mobile-safe-area-bottom: var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)); --mobile-safe-area-left: var(--android-safe-area-left, env(safe-area-inset-left, 0px)); --mobile-safe-area-right: var(--android-safe-area-right, env(safe-area-inset-right, 0px)); --mobile-header-height: 56px; --mobile-header-total-height: calc(56px + var(--android-safe-area-top, env(safe-area-inset-top, 0px))); --sidebar-width: 260px; --sidebar-expanded-width: 260px; --sidebar-collapsed-width: 260px; --shell-navigation-width: 260px; --shell-sidebar-translate-x: 0px; --shell-titlebar-height: 40px; --desktop-titlebar-height: 40px; --shell-navigation-surface-width: 260px; --shell-titlebar-content-height: 40px; --topbar-safe-area: 0px;"
+            },
+            {
+              "role": null,
+              "layer": "window-chrome",
+              "slot": null,
+              "class": "desktop-shell-titlebar fixed top-0 left-0 right-0 flex motion-reduce:transition-none",
+              "style": "padding-top: 0px; height: 40px; min-height: 40px;"
+            },
+            {
+              "role": null,
+              "layer": null,
+              "slot": "todo-toolbar",
+              "class": "h-full min-w-0 flex-1",
+              "style": null
+            },
+            {
+              "role": null,
+              "layer": null,
+              "slot": "chat-search",
+              "class": "flex h-full min-w-0 flex-1 items-center justify-end",
+              "style": null
+            },
+            {
+              "role": null,
+              "layer": "workspace",
+              "slot": null,
+              "class": "desktop-shell-workspace flex flex-1 flex-col h-full min-w-0 relative overflow-hidden",
+              "style": "padding-top: 40px;"
+            }
+          ]
+        },
+        {
+          "view": "flashcards",
+          "layers": [
+            {
+              "id": "ui-lab",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyStyleDebugPage"
+              ],
+              "scaffolds": 1
+            },
+            {
+              "id": "learning-hub",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyLearningHubPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "media",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyMediaStudioPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "sandbox-workbench",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazySandboxWorkbenchPage"
+              ],
+              "scaffolds": 1
+            },
+            {
+              "id": "pdf-reader",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyPdfReader"
+              ],
+              "scaffolds": 1
+            },
+            {
+              "id": "todo",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyTodoPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "flashcards",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col desktop-shell-content-enter opacity-100 z-10 pointer-events-auto",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px;",
+              "pages": [
+                "LazyFlashcardsPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "chat-v2",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyChatV2Page"
+              ],
+              "scaffolds": 0
+            }
+          ],
+          "chrome": [
+            {
+              "role": "app-shell",
+              "layer": null,
+              "slot": null,
+              "class": "relative flex h-dvh w-full overflow-hidden font-sans text-foreground",
+              "style": "--mobile-safe-area-top: var(--android-safe-area-top, env(safe-area-inset-top, 0px)); --mobile-safe-area-bottom: var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)); --mobile-safe-area-left: var(--android-safe-area-left, env(safe-area-inset-left, 0px)); --mobile-safe-area-right: var(--android-safe-area-right, env(safe-area-inset-right, 0px)); --mobile-header-height: 56px; --mobile-header-total-height: calc(56px + var(--android-safe-area-top, env(safe-area-inset-top, 0px))); --sidebar-width: 260px; --sidebar-expanded-width: 260px; --sidebar-collapsed-width: 260px; --shell-navigation-width: 260px; --shell-sidebar-translate-x: 0px; --shell-titlebar-height: 40px; --desktop-titlebar-height: 40px; --shell-navigation-surface-width: 260px; --shell-titlebar-content-height: 40px; --topbar-safe-area: 0px;"
+            },
+            {
+              "role": null,
+              "layer": "window-chrome",
+              "slot": null,
+              "class": "desktop-shell-titlebar fixed top-0 left-0 right-0 flex motion-reduce:transition-none",
+              "style": "padding-top: 0px; height: 40px; min-height: 40px;"
+            },
+            {
+              "role": null,
+              "layer": null,
+              "slot": "chat-search",
+              "class": "flex h-full min-w-0 flex-1 items-center justify-end",
+              "style": null
+            },
+            {
+              "role": null,
+              "layer": "workspace",
+              "slot": null,
+              "class": "desktop-shell-workspace flex flex-1 flex-col h-full min-w-0 relative overflow-hidden",
+              "style": "padding-top: 40px;"
+            }
+          ]
+        },
+        {
+          "view": "crepe-demo",
+          "layers": [
+            {
+              "id": "learning-hub",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyLearningHubPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "media",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyMediaStudioPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "sandbox-workbench",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazySandboxWorkbenchPage"
+              ],
+              "scaffolds": 1
+            },
+            {
+              "id": "pdf-reader",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyPdfReader"
+              ],
+              "scaffolds": 1
+            },
+            {
+              "id": "todo",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyTodoPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "flashcards",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyFlashcardsPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "crepe-demo",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col desktop-shell-content-enter opacity-100 z-10 pointer-events-auto",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px;",
+              "pages": [
+                "LazyCrepeDemoPage"
+              ],
+              "scaffolds": 1
+            },
+            {
+              "id": "chat-v2",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyChatV2Page"
+              ],
+              "scaffolds": 0
+            }
+          ],
+          "chrome": [
+            {
+              "role": "app-shell",
+              "layer": null,
+              "slot": null,
+              "class": "relative flex h-dvh w-full overflow-hidden font-sans text-foreground",
+              "style": "--mobile-safe-area-top: var(--android-safe-area-top, env(safe-area-inset-top, 0px)); --mobile-safe-area-bottom: var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)); --mobile-safe-area-left: var(--android-safe-area-left, env(safe-area-inset-left, 0px)); --mobile-safe-area-right: var(--android-safe-area-right, env(safe-area-inset-right, 0px)); --mobile-header-height: 56px; --mobile-header-total-height: calc(56px + var(--android-safe-area-top, env(safe-area-inset-top, 0px))); --sidebar-width: 260px; --sidebar-expanded-width: 260px; --sidebar-collapsed-width: 260px; --shell-navigation-width: 260px; --shell-sidebar-translate-x: 0px; --shell-titlebar-height: 40px; --desktop-titlebar-height: 40px; --shell-navigation-surface-width: 260px; --shell-titlebar-content-height: 40px; --topbar-safe-area: 0px;"
+            },
+            {
+              "role": null,
+              "layer": "window-chrome",
+              "slot": null,
+              "class": "desktop-shell-titlebar fixed top-0 left-0 right-0 flex motion-reduce:transition-none",
+              "style": "padding-top: 0px; height: 40px; min-height: 40px;"
+            },
+            {
+              "role": null,
+              "layer": null,
+              "slot": "chat-search",
+              "class": "flex h-full min-w-0 flex-1 items-center justify-end",
+              "style": null
+            },
+            {
+              "role": null,
+              "layer": "workspace",
+              "slot": null,
+              "class": "desktop-shell-workspace flex flex-1 flex-col h-full min-w-0 relative overflow-hidden",
+              "style": "padding-top: 40px;"
+            }
+          ]
+        },
+        {
+          "view": "chat-v2-test",
+          "layers": [
+            {
+              "id": "media",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyMediaStudioPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "sandbox-workbench",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazySandboxWorkbenchPage"
+              ],
+              "scaffolds": 1
+            },
+            {
+              "id": "pdf-reader",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyPdfReader"
+              ],
+              "scaffolds": 1
+            },
+            {
+              "id": "todo",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyTodoPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "flashcards",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyFlashcardsPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "crepe-demo",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyCrepeDemoPage"
+              ],
+              "scaffolds": 1
+            },
+            {
+              "id": "chat-v2-test",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col desktop-shell-content-enter opacity-100 z-10 pointer-events-auto",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px;",
+              "pages": [
+                "LazyChatV2IntegrationTest"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "chat-v2",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyChatV2Page"
+              ],
+              "scaffolds": 0
+            }
+          ],
+          "chrome": [
+            {
+              "role": "app-shell",
+              "layer": null,
+              "slot": null,
+              "class": "relative flex h-dvh w-full overflow-hidden font-sans text-foreground",
+              "style": "--mobile-safe-area-top: var(--android-safe-area-top, env(safe-area-inset-top, 0px)); --mobile-safe-area-bottom: var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)); --mobile-safe-area-left: var(--android-safe-area-left, env(safe-area-inset-left, 0px)); --mobile-safe-area-right: var(--android-safe-area-right, env(safe-area-inset-right, 0px)); --mobile-header-height: 56px; --mobile-header-total-height: calc(56px + var(--android-safe-area-top, env(safe-area-inset-top, 0px))); --sidebar-width: 260px; --sidebar-expanded-width: 260px; --sidebar-collapsed-width: 260px; --shell-navigation-width: 260px; --shell-sidebar-translate-x: 0px; --shell-titlebar-height: 40px; --desktop-titlebar-height: 40px; --shell-navigation-surface-width: 260px; --shell-titlebar-content-height: 40px; --topbar-safe-area: 0px;"
+            },
+            {
+              "role": null,
+              "layer": "window-chrome",
+              "slot": null,
+              "class": "desktop-shell-titlebar fixed top-0 left-0 right-0 flex motion-reduce:transition-none",
+              "style": "padding-top: 0px; height: 40px; min-height: 40px;"
+            },
+            {
+              "role": null,
+              "layer": null,
+              "slot": "chat-search",
+              "class": "flex h-full min-w-0 flex-1 items-center justify-end",
+              "style": null
+            },
+            {
+              "role": null,
+              "layer": "workspace",
+              "slot": null,
+              "class": "desktop-shell-workspace flex flex-1 flex-col h-full min-w-0 relative overflow-hidden",
+              "style": "padding-top: 40px;"
+            }
+          ]
+        },
+        {
+          "view": "llm-playground",
+          "layers": [
+            {
+              "id": "sandbox-workbench",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazySandboxWorkbenchPage"
+              ],
+              "scaffolds": 1
+            },
+            {
+              "id": "pdf-reader",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyPdfReader"
+              ],
+              "scaffolds": 1
+            },
+            {
+              "id": "todo",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyTodoPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "flashcards",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyFlashcardsPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "crepe-demo",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyCrepeDemoPage"
+              ],
+              "scaffolds": 1
+            },
+            {
+              "id": "chat-v2-test",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyChatV2IntegrationTest"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "llm-playground",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col desktop-shell-content-enter opacity-100 z-10 pointer-events-auto",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px;",
+              "pages": [
+                "LazyLLMOutputPlayground"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "chat-v2",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyChatV2Page"
+              ],
+              "scaffolds": 0
+            }
+          ],
+          "chrome": [
+            {
+              "role": "app-shell",
+              "layer": null,
+              "slot": null,
+              "class": "relative flex h-dvh w-full overflow-hidden font-sans text-foreground",
+              "style": "--mobile-safe-area-top: var(--android-safe-area-top, env(safe-area-inset-top, 0px)); --mobile-safe-area-bottom: var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)); --mobile-safe-area-left: var(--android-safe-area-left, env(safe-area-inset-left, 0px)); --mobile-safe-area-right: var(--android-safe-area-right, env(safe-area-inset-right, 0px)); --mobile-header-height: 56px; --mobile-header-total-height: calc(56px + var(--android-safe-area-top, env(safe-area-inset-top, 0px))); --sidebar-width: 260px; --sidebar-expanded-width: 260px; --sidebar-collapsed-width: 260px; --shell-navigation-width: 260px; --shell-sidebar-translate-x: 0px; --shell-titlebar-height: 40px; --desktop-titlebar-height: 40px; --shell-navigation-surface-width: 260px; --shell-titlebar-content-height: 40px; --topbar-safe-area: 0px;"
+            },
+            {
+              "role": null,
+              "layer": "window-chrome",
+              "slot": null,
+              "class": "desktop-shell-titlebar fixed top-0 left-0 right-0 flex motion-reduce:transition-none",
+              "style": "padding-top: 0px; height: 40px; min-height: 40px;"
+            },
+            {
+              "role": null,
+              "layer": null,
+              "slot": "chat-search",
+              "class": "flex h-full min-w-0 flex-1 items-center justify-end",
+              "style": null
+            },
+            {
+              "role": null,
+              "layer": "workspace",
+              "slot": null,
+              "class": "desktop-shell-workspace flex flex-1 flex-col h-full min-w-0 relative overflow-hidden",
+              "style": "padding-top: 40px;"
+            }
+          ]
+        },
+        {
+          "view": "settings",
+          "layers": [
+            {
+              "id": "settings",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col overflow-hidden desktop-shell-content-enter-rev opacity-100 z-10 pointer-events-auto",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px;",
+              "pages": [
+                "LazySettings"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "pdf-reader",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyPdfReader"
+              ],
+              "scaffolds": 1
+            },
+            {
+              "id": "todo",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyTodoPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "flashcards",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyFlashcardsPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "crepe-demo",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyCrepeDemoPage"
+              ],
+              "scaffolds": 1
+            },
+            {
+              "id": "chat-v2-test",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyChatV2IntegrationTest"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "llm-playground",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyLLMOutputPlayground"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "chat-v2",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyChatV2Page"
+              ],
+              "scaffolds": 0
+            }
+          ],
+          "chrome": [
+            {
+              "role": "app-shell",
+              "layer": null,
+              "slot": null,
+              "class": "relative flex h-dvh w-full overflow-hidden font-sans text-foreground",
+              "style": "--mobile-safe-area-top: var(--android-safe-area-top, env(safe-area-inset-top, 0px)); --mobile-safe-area-bottom: var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)); --mobile-safe-area-left: var(--android-safe-area-left, env(safe-area-inset-left, 0px)); --mobile-safe-area-right: var(--android-safe-area-right, env(safe-area-inset-right, 0px)); --mobile-header-height: 56px; --mobile-header-total-height: calc(56px + var(--android-safe-area-top, env(safe-area-inset-top, 0px))); --sidebar-width: 260px; --sidebar-expanded-width: 260px; --sidebar-collapsed-width: 260px; --shell-navigation-width: 260px; --shell-sidebar-translate-x: 0px; --shell-titlebar-height: 40px; --desktop-titlebar-height: 40px; --shell-navigation-surface-width: 260px; --shell-titlebar-content-height: 40px; --topbar-safe-area: 0px;"
+            },
+            {
+              "role": null,
+              "layer": "window-chrome",
+              "slot": null,
+              "class": "desktop-shell-titlebar fixed top-0 left-0 right-0 flex motion-reduce:transition-none",
+              "style": "padding-top: 0px; height: 40px; min-height: 40px;"
+            },
+            {
+              "role": null,
+              "layer": null,
+              "slot": "chat-search",
+              "class": "flex h-full min-w-0 flex-1 items-center justify-end",
+              "style": null
+            },
+            {
+              "role": null,
+              "layer": "workspace",
+              "slot": null,
+              "class": "desktop-shell-workspace flex flex-1 flex-col h-full min-w-0 relative overflow-hidden",
+              "style": "padding-top: 40px;"
+            }
+          ]
+        },
+        {
+          "view": "learning-hub",
+          "layers": [
+            {
+              "id": "settings",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col overflow-hidden opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazySettings"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "learning-hub",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col desktop-shell-content-enter opacity-100 z-10 pointer-events-auto",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px;",
+              "pages": [
+                "LazyLearningHubPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "pdf-reader",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyPdfReader"
+              ],
+              "scaffolds": 1
+            },
+            {
+              "id": "flashcards",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyFlashcardsPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "crepe-demo",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyCrepeDemoPage"
+              ],
+              "scaffolds": 1
+            },
+            {
+              "id": "chat-v2-test",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyChatV2IntegrationTest"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "llm-playground",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyLLMOutputPlayground"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "chat-v2",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyChatV2Page"
+              ],
+              "scaffolds": 0
+            }
+          ],
+          "chrome": [
+            {
+              "role": "app-shell",
+              "layer": null,
+              "slot": null,
+              "class": "relative flex h-dvh w-full overflow-hidden font-sans text-foreground",
+              "style": "--mobile-safe-area-top: var(--android-safe-area-top, env(safe-area-inset-top, 0px)); --mobile-safe-area-bottom: var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)); --mobile-safe-area-left: var(--android-safe-area-left, env(safe-area-inset-left, 0px)); --mobile-safe-area-right: var(--android-safe-area-right, env(safe-area-inset-right, 0px)); --mobile-header-height: 56px; --mobile-header-total-height: calc(56px + var(--android-safe-area-top, env(safe-area-inset-top, 0px))); --sidebar-width: 260px; --sidebar-expanded-width: 260px; --sidebar-collapsed-width: 260px; --shell-navigation-width: 260px; --shell-sidebar-translate-x: 0px; --shell-titlebar-height: 40px; --desktop-titlebar-height: 40px; --shell-navigation-surface-width: 260px; --shell-titlebar-content-height: 40px; --topbar-safe-area: 0px;"
+            },
+            {
+              "role": null,
+              "layer": "window-chrome",
+              "slot": null,
+              "class": "desktop-shell-titlebar fixed top-0 left-0 right-0 flex motion-reduce:transition-none",
+              "style": "padding-top: 0px; height: 40px; min-height: 40px;"
+            },
+            {
+              "role": null,
+              "layer": null,
+              "slot": "learning-hub-toolbar",
+              "class": "h-full min-w-0 flex-1",
+              "style": null
+            },
+            {
+              "role": null,
+              "layer": null,
+              "slot": "chat-search",
+              "class": "flex h-full min-w-0 flex-1 items-center justify-end",
+              "style": null
+            },
+            {
+              "role": null,
+              "layer": "workspace",
+              "slot": null,
+              "class": "desktop-shell-workspace flex flex-1 flex-col h-full min-w-0 relative overflow-hidden",
+              "style": "padding-top: 40px;"
+            }
+          ]
+        },
+        {
+          "view": "chat-v2",
+          "layers": [
+            {
+              "id": "settings",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col overflow-hidden opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazySettings"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "learning-hub",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyLearningHubPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "pdf-reader",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyPdfReader"
+              ],
+              "scaffolds": 1
+            },
+            {
+              "id": "flashcards",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyFlashcardsPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "crepe-demo",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyCrepeDemoPage"
+              ],
+              "scaffolds": 1
+            },
+            {
+              "id": "chat-v2-test",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyChatV2IntegrationTest"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "llm-playground",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyLLMOutputPlayground"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "chat-v2",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col desktop-shell-content-enter-rev opacity-100 z-10 pointer-events-auto",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px;",
+              "pages": [
+                "LazyChatV2Page"
+              ],
+              "scaffolds": 0
+            }
+          ],
+          "chrome": [
+            {
+              "role": "app-shell",
+              "layer": null,
+              "slot": null,
+              "class": "relative flex h-dvh w-full overflow-hidden font-sans text-foreground",
+              "style": "--mobile-safe-area-top: var(--android-safe-area-top, env(safe-area-inset-top, 0px)); --mobile-safe-area-bottom: var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)); --mobile-safe-area-left: var(--android-safe-area-left, env(safe-area-inset-left, 0px)); --mobile-safe-area-right: var(--android-safe-area-right, env(safe-area-inset-right, 0px)); --mobile-header-height: 56px; --mobile-header-total-height: calc(56px + var(--android-safe-area-top, env(safe-area-inset-top, 0px))); --sidebar-width: 260px; --sidebar-expanded-width: 260px; --sidebar-collapsed-width: 260px; --shell-navigation-width: 260px; --shell-sidebar-translate-x: 0px; --shell-titlebar-height: 40px; --desktop-titlebar-height: 40px; --shell-navigation-surface-width: 260px; --shell-titlebar-content-height: 40px; --topbar-safe-area: 0px;"
+            },
+            {
+              "role": null,
+              "layer": "window-chrome",
+              "slot": null,
+              "class": "desktop-shell-titlebar fixed top-0 left-0 right-0 flex motion-reduce:transition-none",
+              "style": "padding-top: 0px; height: 40px; min-height: 40px;"
+            },
+            {
+              "role": null,
+              "layer": null,
+              "slot": "chat-search",
+              "class": "flex h-full min-w-0 flex-1 items-center justify-end",
+              "style": null
+            },
+            {
+              "role": null,
+              "layer": "workspace",
+              "slot": null,
+              "class": "desktop-shell-workspace flex flex-1 flex-col h-full min-w-0 relative overflow-hidden",
+              "style": "padding-top: 40px;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "small": true,
+      "steps": [
+        {
+          "view": "chat-v2",
+          "layers": [
+            {
+              "id": "chat-v2",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col desktop-shell-content-enter opacity-100 z-10 pointer-events-auto",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px;",
+              "pages": [
+                "LazyChatV2Page"
+              ],
+              "scaffolds": 0
+            }
+          ],
+          "chrome": [
+            {
+              "role": "app-shell",
+              "layer": null,
+              "slot": null,
+              "class": "relative flex h-dvh w-full overflow-hidden font-sans text-foreground",
+              "style": "--mobile-safe-area-top: var(--android-safe-area-top, env(safe-area-inset-top, 0px)); --mobile-safe-area-bottom: var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)); --mobile-safe-area-left: var(--android-safe-area-left, env(safe-area-inset-left, 0px)); --mobile-safe-area-right: var(--android-safe-area-right, env(safe-area-inset-right, 0px)); --mobile-header-height: 56px; --mobile-header-total-height: calc(56px + var(--android-safe-area-top, env(safe-area-inset-top, 0px))); --sidebar-width: 0px; --sidebar-expanded-width: 0px; --sidebar-collapsed-width: 0px; --shell-navigation-width: 0px; --shell-sidebar-translate-x: 0px; --shell-titlebar-height: 40px; --desktop-titlebar-height: 40px; --shell-navigation-surface-width: 0px; --shell-titlebar-content-height: 40px; --topbar-safe-area: 0px;"
+            },
+            {
+              "role": null,
+              "layer": "workspace",
+              "slot": null,
+              "class": "desktop-shell-workspace flex flex-1 flex-col h-full min-w-0 relative overflow-hidden",
+              "style": "padding-top: 0px;"
+            }
+          ]
+        },
+        {
+          "view": "dashboard",
+          "layers": [
+            {
+              "id": "dashboard",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col overflow-hidden desktop-shell-content-enter opacity-100 z-10 pointer-events-auto",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px;",
+              "pages": [
+                "LazySOTADashboard"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "chat-v2",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyChatV2Page"
+              ],
+              "scaffolds": 0
+            }
+          ],
+          "chrome": [
+            {
+              "role": "app-shell",
+              "layer": null,
+              "slot": null,
+              "class": "relative flex h-dvh w-full overflow-hidden font-sans text-foreground",
+              "style": "--mobile-safe-area-top: var(--android-safe-area-top, env(safe-area-inset-top, 0px)); --mobile-safe-area-bottom: var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)); --mobile-safe-area-left: var(--android-safe-area-left, env(safe-area-inset-left, 0px)); --mobile-safe-area-right: var(--android-safe-area-right, env(safe-area-inset-right, 0px)); --mobile-header-height: 56px; --mobile-header-total-height: calc(56px + var(--android-safe-area-top, env(safe-area-inset-top, 0px))); --sidebar-width: 0px; --sidebar-expanded-width: 0px; --sidebar-collapsed-width: 0px; --shell-navigation-width: 0px; --shell-sidebar-translate-x: 0px; --shell-titlebar-height: 40px; --desktop-titlebar-height: 40px; --shell-navigation-surface-width: 0px; --shell-titlebar-content-height: 40px; --topbar-safe-area: 0px;"
+            },
+            {
+              "role": null,
+              "layer": "workspace",
+              "slot": null,
+              "class": "desktop-shell-workspace flex flex-1 flex-col h-full min-w-0 relative overflow-hidden",
+              "style": "padding-top: 0px;"
+            }
+          ]
+        },
+        {
+          "view": "settings",
+          "layers": [
+            {
+              "id": "dashboard",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col overflow-hidden opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazySOTADashboard"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "settings",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col overflow-hidden desktop-shell-content-enter opacity-100 z-10 pointer-events-auto",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px;",
+              "pages": [
+                "LazySettings"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "chat-v2",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyChatV2Page"
+              ],
+              "scaffolds": 0
+            }
+          ],
+          "chrome": [
+            {
+              "role": "app-shell",
+              "layer": null,
+              "slot": null,
+              "class": "relative flex h-dvh w-full overflow-hidden font-sans text-foreground",
+              "style": "--mobile-safe-area-top: var(--android-safe-area-top, env(safe-area-inset-top, 0px)); --mobile-safe-area-bottom: var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)); --mobile-safe-area-left: var(--android-safe-area-left, env(safe-area-inset-left, 0px)); --mobile-safe-area-right: var(--android-safe-area-right, env(safe-area-inset-right, 0px)); --mobile-header-height: 56px; --mobile-header-total-height: calc(56px + var(--android-safe-area-top, env(safe-area-inset-top, 0px))); --sidebar-width: 0px; --sidebar-expanded-width: 0px; --sidebar-collapsed-width: 0px; --shell-navigation-width: 0px; --shell-sidebar-translate-x: 0px; --shell-titlebar-height: 40px; --desktop-titlebar-height: 40px; --shell-navigation-surface-width: 0px; --shell-titlebar-content-height: 40px; --topbar-safe-area: 0px;"
+            },
+            {
+              "role": null,
+              "layer": "workspace",
+              "slot": null,
+              "class": "desktop-shell-workspace flex flex-1 flex-col h-full min-w-0 relative overflow-hidden",
+              "style": "padding-top: 0px;"
+            }
+          ]
+        },
+        {
+          "view": "task-dashboard",
+          "layers": [
+            {
+              "id": "dashboard",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col overflow-hidden opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazySOTADashboard"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "settings",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col overflow-hidden opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazySettings"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "task-dashboard",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col desktop-shell-content-enter opacity-100 z-10 pointer-events-auto",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px;",
+              "pages": [
+                "AnkiTasksApp"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "chat-v2",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyChatV2Page"
+              ],
+              "scaffolds": 0
+            }
+          ],
+          "chrome": [
+            {
+              "role": "app-shell",
+              "layer": null,
+              "slot": null,
+              "class": "relative flex h-dvh w-full overflow-hidden font-sans text-foreground",
+              "style": "--mobile-safe-area-top: var(--android-safe-area-top, env(safe-area-inset-top, 0px)); --mobile-safe-area-bottom: var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)); --mobile-safe-area-left: var(--android-safe-area-left, env(safe-area-inset-left, 0px)); --mobile-safe-area-right: var(--android-safe-area-right, env(safe-area-inset-right, 0px)); --mobile-header-height: 56px; --mobile-header-total-height: calc(56px + var(--android-safe-area-top, env(safe-area-inset-top, 0px))); --sidebar-width: 0px; --sidebar-expanded-width: 0px; --sidebar-collapsed-width: 0px; --shell-navigation-width: 0px; --shell-sidebar-translate-x: 0px; --shell-titlebar-height: 40px; --desktop-titlebar-height: 40px; --shell-navigation-surface-width: 0px; --shell-titlebar-content-height: 40px; --topbar-safe-area: 0px;"
+            },
+            {
+              "role": null,
+              "layer": "workspace",
+              "slot": null,
+              "class": "desktop-shell-workspace flex flex-1 flex-col h-full min-w-0 relative overflow-hidden",
+              "style": "padding-top: 0px;"
+            }
+          ]
+        },
+        {
+          "view": "skills-management",
+          "layers": [
+            {
+              "id": "settings",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col overflow-hidden opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazySettings"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "task-dashboard",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "AnkiTasksApp"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "skills-management",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col desktop-shell-content-enter opacity-100 z-10 pointer-events-auto",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px;",
+              "pages": [
+                "LazySkillsManagementPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "chat-v2",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyChatV2Page"
+              ],
+              "scaffolds": 0
+            }
+          ],
+          "chrome": [
+            {
+              "role": "app-shell",
+              "layer": null,
+              "slot": null,
+              "class": "relative flex h-dvh w-full overflow-hidden font-sans text-foreground",
+              "style": "--mobile-safe-area-top: var(--android-safe-area-top, env(safe-area-inset-top, 0px)); --mobile-safe-area-bottom: var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)); --mobile-safe-area-left: var(--android-safe-area-left, env(safe-area-inset-left, 0px)); --mobile-safe-area-right: var(--android-safe-area-right, env(safe-area-inset-right, 0px)); --mobile-header-height: 56px; --mobile-header-total-height: calc(56px + var(--android-safe-area-top, env(safe-area-inset-top, 0px))); --sidebar-width: 0px; --sidebar-expanded-width: 0px; --sidebar-collapsed-width: 0px; --shell-navigation-width: 0px; --shell-sidebar-translate-x: 0px; --shell-titlebar-height: 40px; --desktop-titlebar-height: 40px; --shell-navigation-surface-width: 0px; --shell-titlebar-content-height: 40px; --topbar-safe-area: 0px;"
+            },
+            {
+              "role": null,
+              "layer": "workspace",
+              "slot": null,
+              "class": "desktop-shell-workspace flex flex-1 flex-col h-full min-w-0 relative overflow-hidden",
+              "style": "padding-top: 0px;"
+            }
+          ]
+        },
+        {
+          "view": "data-management",
+          "layers": [
+            {
+              "id": "task-dashboard",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "AnkiTasksApp"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "skills-management",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazySkillsManagementPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "data-management",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col desktop-shell-content-enter opacity-100 z-10 pointer-events-auto",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px;",
+              "pages": [
+                "LazyDataImportExport",
+                "LazyImportConversationDialog"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "chat-v2",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyChatV2Page"
+              ],
+              "scaffolds": 0
+            }
+          ],
+          "chrome": [
+            {
+              "role": "app-shell",
+              "layer": null,
+              "slot": null,
+              "class": "relative flex h-dvh w-full overflow-hidden font-sans text-foreground",
+              "style": "--mobile-safe-area-top: var(--android-safe-area-top, env(safe-area-inset-top, 0px)); --mobile-safe-area-bottom: var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)); --mobile-safe-area-left: var(--android-safe-area-left, env(safe-area-inset-left, 0px)); --mobile-safe-area-right: var(--android-safe-area-right, env(safe-area-inset-right, 0px)); --mobile-header-height: 56px; --mobile-header-total-height: calc(56px + var(--android-safe-area-top, env(safe-area-inset-top, 0px))); --sidebar-width: 0px; --sidebar-expanded-width: 0px; --sidebar-collapsed-width: 0px; --shell-navigation-width: 0px; --shell-sidebar-translate-x: 0px; --shell-titlebar-height: 40px; --desktop-titlebar-height: 40px; --shell-navigation-surface-width: 0px; --shell-titlebar-content-height: 40px; --topbar-safe-area: 0px;"
+            },
+            {
+              "role": null,
+              "layer": "workspace",
+              "slot": null,
+              "class": "desktop-shell-workspace flex flex-1 flex-col h-full min-w-0 relative overflow-hidden",
+              "style": "padding-top: 0px;"
+            }
+          ]
+        },
+        {
+          "view": "template-management",
+          "layers": [
+            {
+              "id": "skills-management",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazySkillsManagementPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "data-management",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyDataImportExport",
+                "LazyImportConversationDialog"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "template-management",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col desktop-shell-content-enter opacity-100 z-10 pointer-events-auto",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px;",
+              "pages": [
+                "LazyTemplateManagementPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "chat-v2",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyChatV2Page"
+              ],
+              "scaffolds": 0
+            }
+          ],
+          "chrome": [
+            {
+              "role": "app-shell",
+              "layer": null,
+              "slot": null,
+              "class": "relative flex h-dvh w-full overflow-hidden font-sans text-foreground",
+              "style": "--mobile-safe-area-top: var(--android-safe-area-top, env(safe-area-inset-top, 0px)); --mobile-safe-area-bottom: var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)); --mobile-safe-area-left: var(--android-safe-area-left, env(safe-area-inset-left, 0px)); --mobile-safe-area-right: var(--android-safe-area-right, env(safe-area-inset-right, 0px)); --mobile-header-height: 56px; --mobile-header-total-height: calc(56px + var(--android-safe-area-top, env(safe-area-inset-top, 0px))); --sidebar-width: 0px; --sidebar-expanded-width: 0px; --sidebar-collapsed-width: 0px; --shell-navigation-width: 0px; --shell-sidebar-translate-x: 0px; --shell-titlebar-height: 40px; --desktop-titlebar-height: 40px; --shell-navigation-surface-width: 0px; --shell-titlebar-content-height: 40px; --topbar-safe-area: 0px;"
+            },
+            {
+              "role": null,
+              "layer": "workspace",
+              "slot": null,
+              "class": "desktop-shell-workspace flex flex-1 flex-col h-full min-w-0 relative overflow-hidden",
+              "style": "padding-top: 0px;"
+            }
+          ]
+        },
+        {
+          "view": "ui-lab",
+          "layers": [
+            {
+              "id": "data-management",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyDataImportExport",
+                "LazyImportConversationDialog"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "template-management",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyTemplateManagementPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "ui-lab",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col desktop-shell-content-enter opacity-100 z-10 pointer-events-auto",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px;",
+              "pages": [
+                "LazyStyleDebugPage"
+              ],
+              "scaffolds": 1
+            },
+            {
+              "id": "chat-v2",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyChatV2Page"
+              ],
+              "scaffolds": 0
+            }
+          ],
+          "chrome": [
+            {
+              "role": "app-shell",
+              "layer": null,
+              "slot": null,
+              "class": "relative flex h-dvh w-full overflow-hidden font-sans text-foreground",
+              "style": "--mobile-safe-area-top: var(--android-safe-area-top, env(safe-area-inset-top, 0px)); --mobile-safe-area-bottom: var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)); --mobile-safe-area-left: var(--android-safe-area-left, env(safe-area-inset-left, 0px)); --mobile-safe-area-right: var(--android-safe-area-right, env(safe-area-inset-right, 0px)); --mobile-header-height: 56px; --mobile-header-total-height: calc(56px + var(--android-safe-area-top, env(safe-area-inset-top, 0px))); --sidebar-width: 0px; --sidebar-expanded-width: 0px; --sidebar-collapsed-width: 0px; --shell-navigation-width: 0px; --shell-sidebar-translate-x: 0px; --shell-titlebar-height: 40px; --desktop-titlebar-height: 40px; --shell-navigation-surface-width: 0px; --shell-titlebar-content-height: 40px; --topbar-safe-area: 0px;"
+            },
+            {
+              "role": null,
+              "layer": "workspace",
+              "slot": null,
+              "class": "desktop-shell-workspace flex flex-1 flex-col h-full min-w-0 relative overflow-hidden",
+              "style": "padding-top: 0px;"
+            }
+          ]
+        },
+        {
+          "view": "learning-hub",
+          "layers": [
+            {
+              "id": "template-management",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyTemplateManagementPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "ui-lab",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyStyleDebugPage"
+              ],
+              "scaffolds": 1
+            },
+            {
+              "id": "learning-hub",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col desktop-shell-content-enter opacity-100 z-10 pointer-events-auto",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px;",
+              "pages": [
+                "LazyLearningHubPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "chat-v2",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyChatV2Page"
+              ],
+              "scaffolds": 0
+            }
+          ],
+          "chrome": [
+            {
+              "role": "app-shell",
+              "layer": null,
+              "slot": null,
+              "class": "relative flex h-dvh w-full overflow-hidden font-sans text-foreground",
+              "style": "--mobile-safe-area-top: var(--android-safe-area-top, env(safe-area-inset-top, 0px)); --mobile-safe-area-bottom: var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)); --mobile-safe-area-left: var(--android-safe-area-left, env(safe-area-inset-left, 0px)); --mobile-safe-area-right: var(--android-safe-area-right, env(safe-area-inset-right, 0px)); --mobile-header-height: 56px; --mobile-header-total-height: calc(56px + var(--android-safe-area-top, env(safe-area-inset-top, 0px))); --sidebar-width: 0px; --sidebar-expanded-width: 0px; --sidebar-collapsed-width: 0px; --shell-navigation-width: 0px; --shell-sidebar-translate-x: 0px; --shell-titlebar-height: 40px; --desktop-titlebar-height: 40px; --shell-navigation-surface-width: 0px; --shell-titlebar-content-height: 40px; --topbar-safe-area: 0px;"
+            },
+            {
+              "role": null,
+              "layer": "workspace",
+              "slot": null,
+              "class": "desktop-shell-workspace flex flex-1 flex-col h-full min-w-0 relative overflow-hidden",
+              "style": "padding-top: 0px;"
+            }
+          ]
+        },
+        {
+          "view": "media",
+          "layers": [
+            {
+              "id": "ui-lab",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyStyleDebugPage"
+              ],
+              "scaffolds": 1
+            },
+            {
+              "id": "learning-hub",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyLearningHubPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "media",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col desktop-shell-content-enter opacity-100 z-10 pointer-events-auto",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px;",
+              "pages": [
+                "LazyMediaStudioPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "chat-v2",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyChatV2Page"
+              ],
+              "scaffolds": 0
+            }
+          ],
+          "chrome": [
+            {
+              "role": "app-shell",
+              "layer": null,
+              "slot": null,
+              "class": "relative flex h-dvh w-full overflow-hidden font-sans text-foreground",
+              "style": "--mobile-safe-area-top: var(--android-safe-area-top, env(safe-area-inset-top, 0px)); --mobile-safe-area-bottom: var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)); --mobile-safe-area-left: var(--android-safe-area-left, env(safe-area-inset-left, 0px)); --mobile-safe-area-right: var(--android-safe-area-right, env(safe-area-inset-right, 0px)); --mobile-header-height: 56px; --mobile-header-total-height: calc(56px + var(--android-safe-area-top, env(safe-area-inset-top, 0px))); --sidebar-width: 0px; --sidebar-expanded-width: 0px; --sidebar-collapsed-width: 0px; --shell-navigation-width: 0px; --shell-sidebar-translate-x: 0px; --shell-titlebar-height: 40px; --desktop-titlebar-height: 40px; --shell-navigation-surface-width: 0px; --shell-titlebar-content-height: 40px; --topbar-safe-area: 0px;"
+            },
+            {
+              "role": null,
+              "layer": "workspace",
+              "slot": null,
+              "class": "desktop-shell-workspace flex flex-1 flex-col h-full min-w-0 relative overflow-hidden",
+              "style": "padding-top: 0px;"
+            }
+          ]
+        },
+        {
+          "view": "sandbox-workbench",
+          "layers": [
+            {
+              "id": "learning-hub",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyLearningHubPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "media",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyMediaStudioPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "sandbox-workbench",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col desktop-shell-content-enter opacity-100 z-10 pointer-events-auto",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px;",
+              "pages": [
+                "LazySandboxWorkbenchPage"
+              ],
+              "scaffolds": 1
+            },
+            {
+              "id": "chat-v2",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyChatV2Page"
+              ],
+              "scaffolds": 0
+            }
+          ],
+          "chrome": [
+            {
+              "role": "app-shell",
+              "layer": null,
+              "slot": null,
+              "class": "relative flex h-dvh w-full overflow-hidden font-sans text-foreground",
+              "style": "--mobile-safe-area-top: var(--android-safe-area-top, env(safe-area-inset-top, 0px)); --mobile-safe-area-bottom: var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)); --mobile-safe-area-left: var(--android-safe-area-left, env(safe-area-inset-left, 0px)); --mobile-safe-area-right: var(--android-safe-area-right, env(safe-area-inset-right, 0px)); --mobile-header-height: 56px; --mobile-header-total-height: calc(56px + var(--android-safe-area-top, env(safe-area-inset-top, 0px))); --sidebar-width: 0px; --sidebar-expanded-width: 0px; --sidebar-collapsed-width: 0px; --shell-navigation-width: 0px; --shell-sidebar-translate-x: 0px; --shell-titlebar-height: 40px; --desktop-titlebar-height: 40px; --shell-navigation-surface-width: 0px; --shell-titlebar-content-height: 40px; --topbar-safe-area: 0px;"
+            },
+            {
+              "role": null,
+              "layer": "workspace",
+              "slot": null,
+              "class": "desktop-shell-workspace flex flex-1 flex-col h-full min-w-0 relative overflow-hidden",
+              "style": "padding-top: 0px;"
+            }
+          ]
+        },
+        {
+          "view": "pdf-reader",
+          "layers": [
+            {
+              "id": "media",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyMediaStudioPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "sandbox-workbench",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazySandboxWorkbenchPage"
+              ],
+              "scaffolds": 1
+            },
+            {
+              "id": "pdf-reader",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col desktop-shell-content-enter opacity-100 z-10 pointer-events-auto",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px;",
+              "pages": [
+                "LazyPdfReader"
+              ],
+              "scaffolds": 1
+            },
+            {
+              "id": "chat-v2",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyChatV2Page"
+              ],
+              "scaffolds": 0
+            }
+          ],
+          "chrome": [
+            {
+              "role": "app-shell",
+              "layer": null,
+              "slot": null,
+              "class": "relative flex h-dvh w-full overflow-hidden font-sans text-foreground",
+              "style": "--mobile-safe-area-top: var(--android-safe-area-top, env(safe-area-inset-top, 0px)); --mobile-safe-area-bottom: var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)); --mobile-safe-area-left: var(--android-safe-area-left, env(safe-area-inset-left, 0px)); --mobile-safe-area-right: var(--android-safe-area-right, env(safe-area-inset-right, 0px)); --mobile-header-height: 56px; --mobile-header-total-height: calc(56px + var(--android-safe-area-top, env(safe-area-inset-top, 0px))); --sidebar-width: 0px; --sidebar-expanded-width: 0px; --sidebar-collapsed-width: 0px; --shell-navigation-width: 0px; --shell-sidebar-translate-x: 0px; --shell-titlebar-height: 40px; --desktop-titlebar-height: 40px; --shell-navigation-surface-width: 0px; --shell-titlebar-content-height: 40px; --topbar-safe-area: 0px;"
+            },
+            {
+              "role": null,
+              "layer": "workspace",
+              "slot": null,
+              "class": "desktop-shell-workspace flex flex-1 flex-col h-full min-w-0 relative overflow-hidden",
+              "style": "padding-top: 0px;"
+            }
+          ]
+        },
+        {
+          "view": "todo",
+          "layers": [
+            {
+              "id": "sandbox-workbench",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazySandboxWorkbenchPage"
+              ],
+              "scaffolds": 1
+            },
+            {
+              "id": "pdf-reader",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyPdfReader"
+              ],
+              "scaffolds": 1
+            },
+            {
+              "id": "todo",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col desktop-shell-content-enter opacity-100 z-10 pointer-events-auto",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px;",
+              "pages": [
+                "LazyTodoPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "chat-v2",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyChatV2Page"
+              ],
+              "scaffolds": 0
+            }
+          ],
+          "chrome": [
+            {
+              "role": "app-shell",
+              "layer": null,
+              "slot": null,
+              "class": "relative flex h-dvh w-full overflow-hidden font-sans text-foreground",
+              "style": "--mobile-safe-area-top: var(--android-safe-area-top, env(safe-area-inset-top, 0px)); --mobile-safe-area-bottom: var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)); --mobile-safe-area-left: var(--android-safe-area-left, env(safe-area-inset-left, 0px)); --mobile-safe-area-right: var(--android-safe-area-right, env(safe-area-inset-right, 0px)); --mobile-header-height: 56px; --mobile-header-total-height: calc(56px + var(--android-safe-area-top, env(safe-area-inset-top, 0px))); --sidebar-width: 0px; --sidebar-expanded-width: 0px; --sidebar-collapsed-width: 0px; --shell-navigation-width: 0px; --shell-sidebar-translate-x: 0px; --shell-titlebar-height: 40px; --desktop-titlebar-height: 40px; --shell-navigation-surface-width: 0px; --shell-titlebar-content-height: 40px; --topbar-safe-area: 0px;"
+            },
+            {
+              "role": null,
+              "layer": "workspace",
+              "slot": null,
+              "class": "desktop-shell-workspace flex flex-1 flex-col h-full min-w-0 relative overflow-hidden",
+              "style": "padding-top: 0px;"
+            }
+          ]
+        },
+        {
+          "view": "flashcards",
+          "layers": [
+            {
+              "id": "pdf-reader",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyPdfReader"
+              ],
+              "scaffolds": 1
+            },
+            {
+              "id": "todo",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyTodoPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "flashcards",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col desktop-shell-content-enter opacity-100 z-10 pointer-events-auto",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px;",
+              "pages": [
+                "LazyFlashcardsPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "chat-v2",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyChatV2Page"
+              ],
+              "scaffolds": 0
+            }
+          ],
+          "chrome": [
+            {
+              "role": "app-shell",
+              "layer": null,
+              "slot": null,
+              "class": "relative flex h-dvh w-full overflow-hidden font-sans text-foreground",
+              "style": "--mobile-safe-area-top: var(--android-safe-area-top, env(safe-area-inset-top, 0px)); --mobile-safe-area-bottom: var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)); --mobile-safe-area-left: var(--android-safe-area-left, env(safe-area-inset-left, 0px)); --mobile-safe-area-right: var(--android-safe-area-right, env(safe-area-inset-right, 0px)); --mobile-header-height: 56px; --mobile-header-total-height: calc(56px + var(--android-safe-area-top, env(safe-area-inset-top, 0px))); --sidebar-width: 0px; --sidebar-expanded-width: 0px; --sidebar-collapsed-width: 0px; --shell-navigation-width: 0px; --shell-sidebar-translate-x: 0px; --shell-titlebar-height: 40px; --desktop-titlebar-height: 40px; --shell-navigation-surface-width: 0px; --shell-titlebar-content-height: 40px; --topbar-safe-area: 0px;"
+            },
+            {
+              "role": null,
+              "layer": "workspace",
+              "slot": null,
+              "class": "desktop-shell-workspace flex flex-1 flex-col h-full min-w-0 relative overflow-hidden",
+              "style": "padding-top: 0px;"
+            }
+          ]
+        },
+        {
+          "view": "crepe-demo",
+          "layers": [
+            {
+              "id": "pdf-reader",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyPdfReader"
+              ],
+              "scaffolds": 1
+            },
+            {
+              "id": "flashcards",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyFlashcardsPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "crepe-demo",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col desktop-shell-content-enter opacity-100 z-10 pointer-events-auto",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px;",
+              "pages": [
+                "LazyCrepeDemoPage"
+              ],
+              "scaffolds": 1
+            },
+            {
+              "id": "chat-v2",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyChatV2Page"
+              ],
+              "scaffolds": 0
+            }
+          ],
+          "chrome": [
+            {
+              "role": "app-shell",
+              "layer": null,
+              "slot": null,
+              "class": "relative flex h-dvh w-full overflow-hidden font-sans text-foreground",
+              "style": "--mobile-safe-area-top: var(--android-safe-area-top, env(safe-area-inset-top, 0px)); --mobile-safe-area-bottom: var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)); --mobile-safe-area-left: var(--android-safe-area-left, env(safe-area-inset-left, 0px)); --mobile-safe-area-right: var(--android-safe-area-right, env(safe-area-inset-right, 0px)); --mobile-header-height: 56px; --mobile-header-total-height: calc(56px + var(--android-safe-area-top, env(safe-area-inset-top, 0px))); --sidebar-width: 0px; --sidebar-expanded-width: 0px; --sidebar-collapsed-width: 0px; --shell-navigation-width: 0px; --shell-sidebar-translate-x: 0px; --shell-titlebar-height: 40px; --desktop-titlebar-height: 40px; --shell-navigation-surface-width: 0px; --shell-titlebar-content-height: 40px; --topbar-safe-area: 0px;"
+            },
+            {
+              "role": null,
+              "layer": "workspace",
+              "slot": null,
+              "class": "desktop-shell-workspace flex flex-1 flex-col h-full min-w-0 relative overflow-hidden",
+              "style": "padding-top: 0px;"
+            }
+          ]
+        },
+        {
+          "view": "chat-v2-test",
+          "layers": [
+            {
+              "id": "pdf-reader",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyPdfReader"
+              ],
+              "scaffolds": 1
+            },
+            {
+              "id": "crepe-demo",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyCrepeDemoPage"
+              ],
+              "scaffolds": 1
+            },
+            {
+              "id": "chat-v2-test",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col desktop-shell-content-enter opacity-100 z-10 pointer-events-auto",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px;",
+              "pages": [
+                "LazyChatV2IntegrationTest"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "chat-v2",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyChatV2Page"
+              ],
+              "scaffolds": 0
+            }
+          ],
+          "chrome": [
+            {
+              "role": "app-shell",
+              "layer": null,
+              "slot": null,
+              "class": "relative flex h-dvh w-full overflow-hidden font-sans text-foreground",
+              "style": "--mobile-safe-area-top: var(--android-safe-area-top, env(safe-area-inset-top, 0px)); --mobile-safe-area-bottom: var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)); --mobile-safe-area-left: var(--android-safe-area-left, env(safe-area-inset-left, 0px)); --mobile-safe-area-right: var(--android-safe-area-right, env(safe-area-inset-right, 0px)); --mobile-header-height: 56px; --mobile-header-total-height: calc(56px + var(--android-safe-area-top, env(safe-area-inset-top, 0px))); --sidebar-width: 0px; --sidebar-expanded-width: 0px; --sidebar-collapsed-width: 0px; --shell-navigation-width: 0px; --shell-sidebar-translate-x: 0px; --shell-titlebar-height: 40px; --desktop-titlebar-height: 40px; --shell-navigation-surface-width: 0px; --shell-titlebar-content-height: 40px; --topbar-safe-area: 0px;"
+            },
+            {
+              "role": null,
+              "layer": "workspace",
+              "slot": null,
+              "class": "desktop-shell-workspace flex flex-1 flex-col h-full min-w-0 relative overflow-hidden",
+              "style": "padding-top: 0px;"
+            }
+          ]
+        },
+        {
+          "view": "llm-playground",
+          "layers": [
+            {
+              "id": "pdf-reader",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyPdfReader"
+              ],
+              "scaffolds": 1
+            },
+            {
+              "id": "chat-v2-test",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyChatV2IntegrationTest"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "llm-playground",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col desktop-shell-content-enter opacity-100 z-10 pointer-events-auto",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px;",
+              "pages": [
+                "LazyLLMOutputPlayground"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "chat-v2",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyChatV2Page"
+              ],
+              "scaffolds": 0
+            }
+          ],
+          "chrome": [
+            {
+              "role": "app-shell",
+              "layer": null,
+              "slot": null,
+              "class": "relative flex h-dvh w-full overflow-hidden font-sans text-foreground",
+              "style": "--mobile-safe-area-top: var(--android-safe-area-top, env(safe-area-inset-top, 0px)); --mobile-safe-area-bottom: var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)); --mobile-safe-area-left: var(--android-safe-area-left, env(safe-area-inset-left, 0px)); --mobile-safe-area-right: var(--android-safe-area-right, env(safe-area-inset-right, 0px)); --mobile-header-height: 56px; --mobile-header-total-height: calc(56px + var(--android-safe-area-top, env(safe-area-inset-top, 0px))); --sidebar-width: 0px; --sidebar-expanded-width: 0px; --sidebar-collapsed-width: 0px; --shell-navigation-width: 0px; --shell-sidebar-translate-x: 0px; --shell-titlebar-height: 40px; --desktop-titlebar-height: 40px; --shell-navigation-surface-width: 0px; --shell-titlebar-content-height: 40px; --topbar-safe-area: 0px;"
+            },
+            {
+              "role": null,
+              "layer": "workspace",
+              "slot": null,
+              "class": "desktop-shell-workspace flex flex-1 flex-col h-full min-w-0 relative overflow-hidden",
+              "style": "padding-top: 0px;"
+            }
+          ]
+        },
+        {
+          "view": "settings",
+          "layers": [
+            {
+              "id": "settings",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col overflow-hidden desktop-shell-content-enter-rev opacity-100 z-10 pointer-events-auto",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px;",
+              "pages": [
+                "LazySettings"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "pdf-reader",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyPdfReader"
+              ],
+              "scaffolds": 1
+            },
+            {
+              "id": "llm-playground",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyLLMOutputPlayground"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "chat-v2",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyChatV2Page"
+              ],
+              "scaffolds": 0
+            }
+          ],
+          "chrome": [
+            {
+              "role": "app-shell",
+              "layer": null,
+              "slot": null,
+              "class": "relative flex h-dvh w-full overflow-hidden font-sans text-foreground",
+              "style": "--mobile-safe-area-top: var(--android-safe-area-top, env(safe-area-inset-top, 0px)); --mobile-safe-area-bottom: var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)); --mobile-safe-area-left: var(--android-safe-area-left, env(safe-area-inset-left, 0px)); --mobile-safe-area-right: var(--android-safe-area-right, env(safe-area-inset-right, 0px)); --mobile-header-height: 56px; --mobile-header-total-height: calc(56px + var(--android-safe-area-top, env(safe-area-inset-top, 0px))); --sidebar-width: 0px; --sidebar-expanded-width: 0px; --sidebar-collapsed-width: 0px; --shell-navigation-width: 0px; --shell-sidebar-translate-x: 0px; --shell-titlebar-height: 40px; --desktop-titlebar-height: 40px; --shell-navigation-surface-width: 0px; --shell-titlebar-content-height: 40px; --topbar-safe-area: 0px;"
+            },
+            {
+              "role": null,
+              "layer": "workspace",
+              "slot": null,
+              "class": "desktop-shell-workspace flex flex-1 flex-col h-full min-w-0 relative overflow-hidden",
+              "style": "padding-top: 0px;"
+            }
+          ]
+        },
+        {
+          "view": "learning-hub",
+          "layers": [
+            {
+              "id": "settings",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col overflow-hidden opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazySettings"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "learning-hub",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col desktop-shell-content-enter opacity-100 z-10 pointer-events-auto",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px;",
+              "pages": [
+                "LazyLearningHubPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "pdf-reader",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyPdfReader"
+              ],
+              "scaffolds": 1
+            },
+            {
+              "id": "chat-v2",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyChatV2Page"
+              ],
+              "scaffolds": 0
+            }
+          ],
+          "chrome": [
+            {
+              "role": "app-shell",
+              "layer": null,
+              "slot": null,
+              "class": "relative flex h-dvh w-full overflow-hidden font-sans text-foreground",
+              "style": "--mobile-safe-area-top: var(--android-safe-area-top, env(safe-area-inset-top, 0px)); --mobile-safe-area-bottom: var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)); --mobile-safe-area-left: var(--android-safe-area-left, env(safe-area-inset-left, 0px)); --mobile-safe-area-right: var(--android-safe-area-right, env(safe-area-inset-right, 0px)); --mobile-header-height: 56px; --mobile-header-total-height: calc(56px + var(--android-safe-area-top, env(safe-area-inset-top, 0px))); --sidebar-width: 0px; --sidebar-expanded-width: 0px; --sidebar-collapsed-width: 0px; --shell-navigation-width: 0px; --shell-sidebar-translate-x: 0px; --shell-titlebar-height: 40px; --desktop-titlebar-height: 40px; --shell-navigation-surface-width: 0px; --shell-titlebar-content-height: 40px; --topbar-safe-area: 0px;"
+            },
+            {
+              "role": null,
+              "layer": "workspace",
+              "slot": null,
+              "class": "desktop-shell-workspace flex flex-1 flex-col h-full min-w-0 relative overflow-hidden",
+              "style": "padding-top: 0px;"
+            }
+          ]
+        },
+        {
+          "view": "chat-v2",
+          "layers": [
+            {
+              "id": "settings",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col overflow-hidden opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazySettings"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "learning-hub",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyLearningHubPage"
+              ],
+              "scaffolds": 0
+            },
+            {
+              "id": "pdf-reader",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col opacity-0 z-0 pointer-events-none",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px; visibility: hidden; content-visibility: hidden;",
+              "pages": [
+                "LazyPdfReader"
+              ],
+              "scaffolds": 1
+            },
+            {
+              "id": "chat-v2",
+              "class": "page-container desktop-shell-view-layer absolute inset-0 flex flex-col desktop-shell-content-enter-rev opacity-100 z-10 pointer-events-auto",
+              "style": "position: absolute; top: 0px; right: 0px; bottom: 0px; left: 0px;",
+              "pages": [
+                "LazyChatV2Page"
+              ],
+              "scaffolds": 0
+            }
+          ],
+          "chrome": [
+            {
+              "role": "app-shell",
+              "layer": null,
+              "slot": null,
+              "class": "relative flex h-dvh w-full overflow-hidden font-sans text-foreground",
+              "style": "--mobile-safe-area-top: var(--android-safe-area-top, env(safe-area-inset-top, 0px)); --mobile-safe-area-bottom: var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)); --mobile-safe-area-left: var(--android-safe-area-left, env(safe-area-inset-left, 0px)); --mobile-safe-area-right: var(--android-safe-area-right, env(safe-area-inset-right, 0px)); --mobile-header-height: 56px; --mobile-header-total-height: calc(56px + var(--android-safe-area-top, env(safe-area-inset-top, 0px))); --sidebar-width: 0px; --sidebar-expanded-width: 0px; --sidebar-collapsed-width: 0px; --shell-navigation-width: 0px; --shell-sidebar-translate-x: 0px; --shell-titlebar-height: 40px; --desktop-titlebar-height: 40px; --shell-navigation-surface-width: 0px; --shell-titlebar-content-height: 40px; --topbar-safe-area: 0px;"
+            },
+            {
+              "role": null,
+              "layer": "workspace",
+              "slot": null,
+              "class": "desktop-shell-workspace flex flex-1 flex-col h-full min-w-0 relative overflow-hidden",
+              "style": "padding-top: 0px;"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

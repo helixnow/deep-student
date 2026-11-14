@@ -1,0 +1,321 @@
+{
+ "blocks": [
+  {
+   "key": "academic_search",
+   "component": "component",
+   "onAbort": "mark-error",
+   "type": "academic_search"
+  },
+  {
+   "key": "anki_cards",
+   "component": "component",
+   "onAbort": "keep-content",
+   "type": "anki_cards"
+  },
+  {
+   "key": "ask_user",
+   "component": "component",
+   "onAbort": "keep-content",
+   "type": "ask_user"
+  },
+  {
+   "key": "compaction_summary",
+   "component": "component",
+   "onAbort": "keep-content",
+   "type": "compaction_summary"
+  },
+  {
+   "key": "content",
+   "component": "component",
+   "onAbort": "keep-content",
+   "type": "content"
+  },
+  {
+   "key": "generative_ui",
+   "component": "function",
+   "onAbort": "keep-content",
+   "type": "generative_ui"
+  },
+  {
+   "key": "generic",
+   "component": "component",
+   "onAbort": "mark-error",
+   "type": "generic"
+  },
+  {
+   "key": "image_gen",
+   "component": "component",
+   "onAbort": "mark-error",
+   "type": "image_gen"
+  },
+  {
+   "key": "insight_recall",
+   "component": "component",
+   "onAbort": "mark-error",
+   "type": "insight_recall"
+  },
+  {
+   "key": "mcp_tool",
+   "component": "component",
+   "onAbort": "mark-error",
+   "type": "mcp_tool"
+  },
+  {
+   "key": "memory",
+   "component": "component",
+   "onAbort": "mark-error",
+   "type": "memory"
+  },
+  {
+   "key": "multimodal_rag",
+   "component": "component",
+   "onAbort": "mark-error",
+   "type": "multimodal_rag"
+  },
+  {
+   "key": "paper_save",
+   "component": "component",
+   "onAbort": "mark-error",
+   "type": "paper_save"
+  },
+  {
+   "key": "qbank_questions",
+   "component": "component",
+   "onAbort": "keep-content",
+   "type": "qbank_questions"
+  },
+  {
+   "key": "rag",
+   "component": "component",
+   "onAbort": "mark-error",
+   "type": "rag"
+  },
+  {
+   "key": "sleep",
+   "component": "component",
+   "onAbort": "keep-content",
+   "type": "sleep"
+  },
+  {
+   "key": "subagent_embed",
+   "component": "component",
+   "onAbort": "keep-content",
+   "type": "subagent_embed"
+  },
+  {
+   "key": "subagent_retry",
+   "component": "component",
+   "onAbort": "keep-content",
+   "type": "subagent_retry"
+  },
+  {
+   "key": "template_preview",
+   "component": "component",
+   "onAbort": "keep-content",
+   "type": "template_preview"
+  },
+  {
+   "key": "thinking",
+   "component": "component",
+   "onAbort": "keep-content",
+   "type": "thinking"
+  },
+  {
+   "key": "todo_list",
+   "component": "component",
+   "onAbort": "keep-content",
+   "type": "todo_list"
+  },
+  {
+   "key": "tool_limit",
+   "component": "component",
+   "onAbort": "keep-content",
+   "type": "tool_limit"
+  },
+  {
+   "key": "web_search",
+   "component": "component",
+   "onAbort": "mark-error",
+   "type": "web_search"
+  },
+  {
+   "key": "workbench_ops",
+   "component": "component",
+   "onAbort": "keep-content",
+   "type": "workbench_ops"
+  },
+  {
+   "key": "workspace_injection",
+   "component": "component",
+   "onAbort": "keep-content",
+   "type": "workspace_injection"
+  },
+  {
+   "key": "workspace_send",
+   "component": "component",
+   "onAbort": "mark-error",
+   "type": "workspace_send"
+  },
+  {
+   "key": "workspace_status",
+   "component": "component",
+   "onAbort": "mark-error",
+   "type": "workspace_status"
+  }
+ ],
+ "events": [
+  {
+   "key": "academic_search",
+   "onChunk": "function",
+   "onEnd": "function",
+   "onError": "function",
+   "onStart": "function"
+  },
+  {
+   "key": "anki_cards",
+   "onChunk": "function",
+   "onEnd": "function",
+   "onError": "function",
+   "onStart": "function"
+  },
+  {
+   "key": "content",
+   "onChunk": "function",
+   "onEnd": "function",
+   "onError": "function",
+   "onStart": "function"
+  },
+  {
+   "key": "generative_ui",
+   "onChunk": "function",
+   "onEnd": "function",
+   "onError": "function",
+   "onStart": "function"
+  },
+  {
+   "key": "image_gen",
+   "onChunk": "function",
+   "onEnd": "function",
+   "onError": "function",
+   "onStart": "function"
+  },
+  {
+   "key": "insight_recall",
+   "onChunk": "function",
+   "onEnd": "function",
+   "onError": "function",
+   "onStart": "function"
+  },
+  {
+   "key": "memory",
+   "onChunk": "function",
+   "onEnd": "function",
+   "onError": "function",
+   "onStart": "function"
+  },
+  {
+   "key": "multimodal_rag",
+   "onChunk": "function",
+   "onEnd": "function",
+   "onError": "function",
+   "onStart": "function"
+  },
+  {
+   "key": "plan_gate",
+   "onEnd": "function",
+   "onError": "function",
+   "onStart": "function"
+  },
+  {
+   "key": "rag",
+   "onChunk": "function",
+   "onEnd": "function",
+   "onError": "function",
+   "onStart": "function"
+  },
+  {
+   "key": "thinking",
+   "onChunk": "function",
+   "onEnd": "function",
+   "onError": "function",
+   "onStart": "function"
+  },
+  {
+   "key": "tool_approval_request",
+   "deliverTerminalByBlockId": true,
+   "onEnd": "function",
+   "onError": "function",
+   "onStart": "function"
+  },
+  {
+   "key": "tool_call",
+   "onChunk": "function",
+   "onEnd": "function",
+   "onError": "function",
+   "onStart": "function"
+  },
+  {
+   "key": "tool_call_preparing",
+   "onChunk": "function",
+   "onEnd": "function",
+   "onError": "function",
+   "onStart": "function"
+  },
+  {
+   "key": "tool_limit",
+   "onEnd": "function",
+   "onError": "function",
+   "onStart": "function"
+  },
+  {
+   "key": "web_search",
+   "onChunk": "function",
+   "onEnd": "function",
+   "onError": "function",
+   "onStart": "function"
+  },
+  {
+   "key": "workspace_injection",
+   "onChunk": "function",
+   "onEnd": "function",
+   "onError": "function",
+   "onStart": "function"
+  }
+ ],
+ "modes": [
+  {
+   "key": "analysis",
+   "buildSystemPrompt": "function",
+   "config": {
+    "autoStartFirstMessage": true,
+    "ocrTiming": "before",
+    "requiresOcr": true
+   },
+   "extends": "chat",
+   "getEnabledTools": "function",
+   "name": "analysis",
+   "onInit": "function",
+   "onSendMessage": "function",
+   "renderHeader": "function"
+  },
+  {
+   "key": "chat",
+   "buildSystemPrompt": "function",
+   "config": {
+    "autoStartFirstMessage": false,
+    "enabledTools": [
+     "rag",
+     "web_search",
+     "memory"
+    ],
+    "requiresOcr": false
+   },
+   "getEnabledTools": "function",
+   "name": "chat",
+   "onInit": "function",
+   "renderAdvancedPanel": "function",
+   "renderMcpPanel": "function",
+   "renderModelPanel": "function"
+  }
+ ]
+}

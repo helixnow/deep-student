@@ -1,0 +1,29 @@
+{
+  "id": "RF-W06-agent-block-request-level-error-page",
+  "kind": "deliberate",
+  "status": "approved",
+  "approvedBy": "main-agent",
+  "approvedAt": "2026-11-07T09:40:00+08:00",
+  "title": "Agent 控制内置浏览器时，经 DNS 判定拦下的顶层导航在请求层取消，页面显示 Chromium 的 ERR_BLOCKED_BY_CLIENT 错误页，而不是停在原页",
+  "rust": {
+    "file": "src-tauri/crates/dstu-browser/src/browser/window.rs",
+    "line": 362,
+    "behavior": "wry 的 on_navigation 回调是同步的：navigation_allowed 在 UI 线程上阻塞完成 DNS 判定（validate_agent_target，window.rs:255-276），返回 false 时 WebView 不发起导航，页面停在原页；同时回调 on_navigation_blocked"
+  },
+  "fix": {
+    "files": ["electron/shell/browser-agent-guard.ts"],
+    "behavior": "will-navigate / will-redirect 同步拦下策略与地址字面量（与 Rust 一样停在原页）；需要 DNS 的判定放在 webRequest.onBeforeRequest（主框架，每个重定向跳都会触发），命中时 cancel 请求并回调 navigation-blocked（原因文案与 Rust 相同）。Chromium 对被取消的主框架请求在被拦 URL 上提交 ERR_BLOCKED_BY_CLIENT 错误页"
+  },
+  "evidence": "平台约束而非 Rust bug：Electron 的 will-navigate / will-redirect 只能同步 preventDefault，不能等待异步 DNS 结果；唯一能异步决定放行与否的位置是请求层，而请求层取消在 Chromium 里就是提交错误页。拦截范围、判定规则、超时与 busy 语义、navigation-blocked 的 URL 与原因都与 Rust 相同（electron/tests/browser-agent-guard-host.test.ts 用真实 Electron 覆盖重定向到内网、解析失败、重绑定、页面发起的 localhost 导航），不同的只有被拦之后页面停在哪里。最初实现在 W06 提交 924eb5fb，当时记作“有意偏离”（electron/W06-PROGRESS.md）。",
+  "userVisible": "能：Agent 浏览时遇到被拦的内网目标，内置浏览器显示“网页被屏蔽”（ERR_BLOCKED_BY_CLIENT）错误页并停在被拦 URL 上，而 Rust 版停留在拦截前的页面。用户自己浏览不受影响（防护只在 Agent 控制时开启）。",
+  "dataCompat": "不改变落库数据、同步载荷与备份格式；navigation-blocked 事件的字段与原因文案不变。",
+  "commits": ["924eb5fb"],
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "electron/tests/browser-agent-guard.test.ts",
+      "name": "RF-W06-agent-block-request-level-error-page: a DNS-blocked main-frame request is cancelled at the request layer and reported once"
+    }
+  ],
+  "notes": "真实 Electron 的端到端证据：electron/tests/browser-agent-guard-host.test.ts（agentRedirectDns / agentDnsFailure / agentInsecureHttp 的 outcome 为 ERR_BLOCKED_BY_CLIENT）。"
+}

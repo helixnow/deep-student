@@ -1,0 +1,33 @@
+{
+  "id": "RF-W07-slot-state-unreadable-no-infer",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main-agent",
+  "approvedAt": "2026-11-07T09:40:00+08:00",
+  "title": "state.json 存在但暂时读不出来时报错进入恢复外壳，不再按目录 mtime 推断活动插槽并覆盖 state.json",
+  "rust": {
+    "file": "src-tauri/crates/dstu-storage/src/data_space.rs",
+    "line": 1308,
+    "behavior": "read_state 对 state.json 的非 NotFound 读错误（Windows 共享冲突、杀毒/备份软件短暂加锁、EACCES、EIO）只记 error 日志，随后与“损坏/不存在”走同一路径：infer_active_slot_from_dirs 按两个槽的最新 mtime 选活动槽，并用 write_state 把 { active: 推断值, pending: null } 覆盖写回 state.json"
+  },
+  "fix": {
+    "files": ["host/platform/storage/locations.ts"],
+    "behavior": "state.json 读取失败且错误码不是 ENOENT/EISDIR 时抛错：不推断、不写盘；启动时由 DataSpaceStartup 记为 data_space_init 失败、业务库保持关闭，可重试。文件缺失、内容损坏、state.json.tmp 的处理与 Rust 相同"
+  },
+  "evidence": "与 Rust 自身意图矛盾：data_space.rs:1344 注释写明第 3 步只用于“两个文件都损坏/不存在”，读错误既不是损坏也不是缺失。后果是数据位置被静默改变且持久化：非活动槽的 mtime 更新（恢复暂存、切槽前的旧槽、同步写入）时，一次瞬时读错误就会把用户切到另一个数据空间；覆盖写回还会丢掉 pending（已安排的切槽）和 restore_cutover_pending（恢复切换租约），用户看到的是“数据不见了”或恢复中断。复现：slotA 为活动槽并带 pending 与租约、slotB 的数据更新，让 state.json 的读取抛 EBUSY；修复前 readState 返回 slotB 并把 state.json 改写为 {active: slotB, pending: null}。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "host/platform/storage/tests/slot-state-unreadable.test.ts",
+      "name": "RF-W07-slot-state-unreadable-no-infer: a transiently unreadable state.json is an error, never an mtime guess written over it"
+    },
+    {
+      "file": "host/platform/storage/tests/slot-state-unreadable.test.ts",
+      "name": "RF-W07-slot-state-unreadable-no-infer: startup keeps business databases closed and reports data_space_init instead of switching slots"
+    },
+    {
+      "file": "host/platform/storage/tests/slot-state-unreadable.test.ts",
+      "name": "RF-W07-slot-state-unreadable-no-infer: missing or corrupt state.json still recovers by inference like Rust"
+    }
+  ]
+}

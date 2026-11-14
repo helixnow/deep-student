@@ -14,6 +14,15 @@ import tailwindcss from "tailwindcss";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
 import autoprefixer from "autoprefixer";
+import {
+  listOfficialPlugins,
+  OFFICIAL_PLUGINS_MODULE,
+  OFFICIAL_PLUGINS_VIRTUAL_ID,
+  renderOfficialPluginsModule,
+  selectOfficialPlugins,
+  targetPlatform,
+} from "./src/platform/official-plugins";
+import { failOnCircularChunk, manualChunks } from "./src/platform/chunk-strategy";
 
 /**
  * OS 模式交互延迟落盘：POST/GET `/__wb_interaction_trace`
@@ -185,6 +194,46 @@ export function resolveDevServerFsAllow(cwd: string): string[] {
 const keptCMapGlobs: string[] = JSON.parse(
   fs.readFileSync(path.join(process.cwd(), 'config', 'pdfjs-local-assets.json'), 'utf8'),
 ).keptCMapGlobs;
+/**
+ * 分包策略（manualChunks / failOnCircularChunk / computeStartupBootGroup）在
+ * `src/platform/chunk-strategy.ts`，桌面构建与 WebUI/PWA 构建共用同一份规则。
+ * 这里保留同名 re-export：现有测试与脚本仍从 `vite.config.ts` 引入。
+ */
+export { computeStartupBootGroup, failOnCircularChunk, manualChunks } from './src/platform/chunk-strategy';
+
+/**
+ * FE-A5：构建时的官方 UI 插件表。`src/ui-plugins/official/plugins.ts`（遍历全部插件目录）在构建中换成虚拟模块
+ * `virtual:ds-official-plugins`，只静态导入 `meta.platforms` 含 `VITE_DS_PLATFORM`（缺省 desktop）的插件，生产构建
+ * 另外去掉 `meta.devOnly` 的插件，别的平台专属插件目录因此不进包。dev server 不替换（HMR 照常，内核运行时跳过）。
+ * 去掉的插件只留一个元数据桩（`excludedOfficialUiPlugins`），内核照样把它记为已跳过。
+ */
+function officialUiPluginsPlugin(): Plugin {
+  let root = process.cwd();
+  let production = true;
+  return {
+    name: 'ds-official-ui-plugins',
+    apply: 'build',
+    enforce: 'pre',
+    configResolved(config) {
+      root = config.root;
+      production = config.isProduction;
+    },
+    resolveId(source, importer) {
+      if (source === 'virtual:ds-official-plugins') return OFFICIAL_PLUGINS_VIRTUAL_ID;
+      if (!importer || !source.startsWith('.')) return null;
+      const target = normalizePath(path.resolve(path.dirname(importer.split('?')[0]), source)).replace(/\.ts$/, '');
+      return target === normalizePath(path.join(root, OFFICIAL_PLUGINS_MODULE)).replace(/\.ts$/, '') ? OFFICIAL_PLUGINS_VIRTUAL_ID : null;
+    },
+    load(id) {
+      if (id !== OFFICIAL_PLUGINS_VIRTUAL_ID) return null;
+      const platform = targetPlatform(process.env.VITE_DS_PLATFORM);
+      const { included, excluded } = selectOfficialPlugins(listOfficialPlugins(root), { platform, production });
+      for (const { plugin } of excluded) this.addWatchFile(path.join(root, plugin.file));
+      for (const plugin of included) this.addWatchFile(path.join(root, plugin.file));
+      return renderOfficialPluginsModule(root, included, excluded.map(({ plugin }) => plugin));
+    },
+  };
+}
 
 // Node 环境变量（避免 TS 提示）
 const host = (process as any)?.env?.TAURI_DEV_HOST;
@@ -207,6 +256,7 @@ export default defineConfig(({ command, mode }) => ({
         }
       },
     },
+    officialUiPluginsPlugin(),
     react(),
     workbenchInteractionTracePlugin(),
     legalNoticesDevPlugin(),
@@ -303,11 +353,9 @@ export default defineConfig(({ command, mode }) => ({
           overlay: false,
         },
     watch: {
-      // 3. tell vite to ignore watching `src-tauri`
       // 以及仓库根下的生成/产物目录（开轮询时监听集合里每个文件都会被周期性 stat；
       // tmp/ 曾堆积 ~89 万个基准测试产物，轮询直接占满 dev server 主线程）。
       ignored: [
-        "**/src-tauri/**",
         "**/tmp/**",
         "**/dist/**",
         "**/dist-demo/**",
@@ -438,113 +486,9 @@ export default defineConfig(({ command, mode }) => ({
         // 🚀 P1-4 性能优化：手动分包策略，将 vendor 依赖分离为独立的长期缓存 chunk
         // 大库（mermaid / exceljs / echarts / recharts / xyflow）多为路由级 lazy 或按需动态 import；
         // 独立 chunk 避免打进主包并利于长期缓存。
-        manualChunks(id: string) {
-          // Vite 运行时辅助（__vitePreload / modulepreload polyfill）必须独立成组：
-          // 它们被所有含动态 import 的 chunk 静态引用，若被 Rollup 并入
-          // vendor-milkdown 之类的重 chunk（实测如此），首屏每个 chunk 都会
-          // 静态 import 它 → 整个 milkdown 编辑器被迫随首屏加载。
-          if (id.includes('vite/preload-helper') || id.includes('vite/modulepreload-polyfill')) {
-            return 'vite-runtime';
-          }
-          if (!id.includes('node_modules')) return;
-          // Keep React DOM and its scheduler in one dependency-only chunk.
-          // Splitting scheduler into vendor-micro let Rollup place React DOM in
-          // vendor-recharts, creating a cycle that invoked scheduler before its
-          // CommonJS exports were initialized (startup stuck on the HTML logo).
-          if (/node_modules\/(react|react-dom|react-is|scheduler|use-sync-external-store)\//.test(id)) {
-            return 'vendor-react';
-          }
-          // 微型通用库必须显式归组（先于各重库规则）：
-          // 否则 manualChunks 函数式的"独占依赖合并"会把 uuid / es-toolkit
-          // 卷进 vendor-mermaid / vendor-recharts 等重 chunk——首屏代码
-          // 一旦 import 它们（src/utils/shared.ts 就用 uuid），整个重 chunk
-          // 会以静态 import 边被拉进首屏。
-          if (
-            id.includes('node_modules/uuid/') ||
-            id.includes('node_modules/es-toolkit/') ||
-            id.includes('node_modules/nanoid/') ||
-            id.includes('node_modules/dompurify/') ||
-            id.includes('node_modules/invariant/') ||
-            id.includes('node_modules/tippy.js/') ||
-            id.includes('node_modules/react-redux/') ||
-            id.includes('node_modules/reselect/') ||
-            // tslib：echarts 与 react-remove-scroll（Select / Dialog）共用；不归组时 Rollup 把它放进 vendor-pptx，
-            // 任何带下拉框的页面都会顺带下载 1.3MB 的 PPTX 预览与 echarts
-            id.includes('node_modules/tslib/') ||
-            id.includes('node_modules/redux/') ||
-            id.includes('@floating-ui/')
-          ) {
-            return 'vendor-micro';
-          }
-          // d3 家族必须独立：@xyflow/react（聊天思维导图卡片，首屏正当需求）
-          // 与 recharts（懒加载统计图）共用 d3-*——不拆出来 d3 会被并入
-          // vendor-recharts，xyflow 一加载就把整个 recharts 拖进首屏。
-          if (id.includes('node_modules/d3-')) {
-            return 'vendor-d3';
-          }
-          // i18n
-          if (id.includes('i18next') || id.includes('react-i18next')) {
-            return 'vendor-i18n';
-          }
-          if (id.includes('pdfjs-dist')) {
-            return 'vendor-pdfjs';
-          }
-          // mermaid 图表库本体（refractor/lang/mermaid.js 只是 2KB 语法高亮规则，
-          // 必须排除——否则它落入本 chunk，会把 6MB+ 的 mermaid 拽进聊天代码块的首屏静态图）
-          if (id.includes('mermaid') && !id.includes('refractor')) {
-            return 'vendor-mermaid';
-          }
-          // Excel 预览（RichDocumentPreview → lazy XlsxPreview）
-          if (id.includes('node_modules/exceljs') || id.includes('/exceljs/')) {
-            return 'vendor-exceljs';
-          }
-          // PPTX 预览及其依赖 echarts（pptx-preview → echarts）
-          if (
-            id.includes('pptx-preview') ||
-            id.includes('node_modules/echarts') ||
-            id.includes('/echarts/')
-          ) {
-            return 'vendor-pptx';
-          }
-          // DOCX 预览
-          if (id.includes('docx-preview')) {
-            return 'vendor-docx';
-          }
-          // 图表（仪表盘 / LLM usage / stats）
-          if (id.includes('node_modules/recharts') || id.includes('/recharts/')) {
-            return 'vendor-recharts';
-          }
-          // 导图画布（mindmap 路由 lazy 加载）
-          if (id.includes('@xyflow/')) {
-            return 'vendor-xyflow';
-          }
-          // Provider 品牌图标（@lobehub/icons，传递依赖 lucide-react）
-          if (id.includes('@lobehub/icons') || id.includes('lucide-react')) {
-            return 'vendor-lobehub-icons';
-          }
-          // KaTeX（chat markdown / mindmap LaTeX 渲染共用，~270KB）
-          if (id.includes('node_modules/katex') || id.includes('rehype-katex')) {
-            return 'vendor-katex';
-          }
-          // Milkdown 编辑器全家桶（仅笔记编辑场景加载）
-          if (id.includes('@milkdown') || id.includes('milkdown') || id.includes('prosemirror')) {
-            return 'vendor-milkdown';
-          }
-          // Markdown 处理生态 + 微型工具库：chat 的 react-markdown 渲染与
-          // milkdown 编辑器共用同一套 unified/mdast/micromark/vfile——
-          // 此规则必须在 milkdown 规则之后、且不匹配它们会触发 Rollup 的
-          // "独占依赖合并"把它们卷进 vendor-milkdown，导致首屏为聊天渲染
-          // 被迫加载 4MB+ 的 milkdown 编辑器本体。
-          if (
-            id.includes('lodash-es') ||
-            id.includes('node_modules/clsx') ||
-            id.includes('node_modules/immer') ||
-            /node_modules\/(unified|remark-|rehype-|mdast|hast|micromark|vfile|zwitch|bail|trough|devlop|comma-separated-tokens|property-information|space-separated-tokens|decode-named-character-reference|character-entities)/.test(id)
-          ) {
-            return 'vendor-markdown-shared';
-          }
-        },
-      }
+        manualChunks,
+      },
+      onLog: failOnCircularChunk,
     }
   },
 

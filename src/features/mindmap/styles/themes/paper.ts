@@ -2,51 +2,52 @@ import type { IStyleTheme } from '../../registry/types';
 import { PAPER_LIGHT_PALETTE } from './palettes';
 
 /**
- * 纸墨主题（亮色）
+ * Paper 日光亚麻（Heptabase / Craft 书卷风 - 亮色）
  *
- * 宣纸底 + 墨色文字的书卷气主题。
- * 暖米色画布 / 浓墨根节点 / 纸白分支卡片是主题 identity，
- * 有意不跟随应用背景（与 colorful 渐变同理），因此保留硬编码色值。
- * i18n key：themes.paper（由外壳子代理补充翻译）。
+ * 温润蛋壳暖灰画布（#F5F4EE）+ 深焙咖啡炭墨根节点（#2C2825）+
+ * 暖白亚麻边一级卡片（#FDFCFB / #E4DFD5），彻底告别发黄陈旧感。
  */
 export const paperTheme: IStyleTheme = {
   id: 'paper',
   name: 'themes.paper',
   node: {
     root: {
-      // 浓墨底、宣纸字（identity 色）
-      background: '#2F2A24',
-      foreground: '#F7F2E7',
+      background: '#2C2825',
+      foreground: '#F7F5F0',
       border: 'transparent',
-      borderRadius: 4,
+      borderRadius: 10,
       fontSize: 18,
       fontWeight: '600',
       padding: '10px 20px',
+      shadow: '0 4px 14px -2px rgba(44, 40, 37, 0.12)',
     },
     branch: {
-      background: '#FFFDF7',
-      foreground: '#3B3630',
-      border: '1px solid #D8CFBC',
-      borderRadius: 4,
+      background: '#FDFCFB',
+      foreground: '#332F2B',
+      border: '1px solid #E4DFD5',
+      borderRadius: 8,
       fontSize: 15,
-      padding: '6px 12px',
+      fontWeight: '500',
+      padding: '7px 14px',
+      shadow: '0 1px 3px 0 rgba(44, 40, 37, 0.04)',
     },
     leaf: {
       background: 'transparent',
-      foreground: '#5A5243',
+      foreground: '#575049',
       border: 'transparent',
-      borderRadius: 4,
+      borderRadius: 6,
       fontSize: 14,
       padding: '4px 8px',
     },
   },
   edge: {
     type: 'bezier',
-    stroke: '#C4B99F',
+    stroke: '#CFC8B8',
+    strokeActive: '#8C6239',
     strokeWidth: 1.5,
   },
   palette: PAPER_LIGHT_PALETTE,
   canvas: {
-    background: '#F6F1E4',
+    background: '#F5F4EE',
   },
 };

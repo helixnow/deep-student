@@ -1,0 +1,27 @@
+{
+  "id": "RF-W32-community-consent-ledger",
+  "kind": "deliberate",
+  "status": "proposed",
+  "title": "社区插件安装前须在主窗口本地页确认 ID、版本与服务权限：Host 侧同意账本按固定路径记录，缺记录、版本或权限摘要不匹配即 CONSENT_REQUIRED，扩权不获新增权限",
+  "rust": {
+    "file": "src-tauri/src/plugins/manager.rs",
+    "line": 269,
+    "behavior": "Rust 版没有社区插件的安装流程与同意记录：manager.rs 只管理随应用发布的内置通道插件的启停（set_enabled 写 plugin.<id>.enabled 设置），用户 profile 里的插件条目由宿主在启动时直接装载（profile.ts loadStartupProfile），没有安装确认、没有权限清单，也没有按版本/权限变化的再确认。docs/plugins/SECURITY.md 第 6 节明确写着“现在没有同意记录（K3）”：谁能写 plugins 目录，谁就能在下次启动时在 Host 进程里执行代码"
+  },
+  "fix": {
+    "files": [
+      "host/kernel/community-consent.ts"
+    ],
+    "behavior": "新增独立的 Host 侧同意账本模块（无 runtime/profile 依赖）：记录固定写在 <dataDir>/community-consent.json（在 plugins/ 之外，路径只由 Host 提供的 dataDir 决定，不读 payload 路径）。权限集合规范化为去重 + 码点排序的精确字符串，摘要为规范化 JSON 数组的 SHA256；subject 的 id/version 精确匹配，不做 semver 范围。evaluate 在缺记录、版本变化、权限摘要变化时返回 matched:false + CONSENT_REQUIRED，grantedPermissions 只给“本次声明 ∩ 既往同意”的交集，且不构成装载许可；grant 只在同目录临时文件 wx 600 + fsync + rename 原子替换该 id 的记录后返回，保留其它 id，进程内按解析后路径串行化；read 文件缺失返回空数组，JSON/摘要损坏或 I/O 失败一律拒绝（fail closed）。W01 独占的可信命令负责“主窗口且本地来源”的授权与陈旧确认校验，本模块自身不做授权，也不作为社区服务暴露"
+  },
+  "evidence": "K3/K7（PLUGIN-CLOSEOUT-BRIEF 第 2 条）：W32 从 W01 切出同意账本纯模块与独立测试，profile/runtime 与命令接线归 W01。资产的安装流程、同意弹窗与重载由 W34/W35/W17 接入，本提交只提供可被 W01 调用的账本语义，尚未接线，运行时目前没有差异。文件权限 600、plugins 外路径、拒绝改写损坏文件、写失败保留旧记录在测试里各有一例：host/kernel/tests/community-consent.test.ts（reproduced：把 plugins 目录下的同名文件当账本、忽略摘要、或改成非原子写，对应用例变红）。同一 id 的旧记录在再同意后整体替换而非累加，权限缩减同样要求再确认（摘要不同）。本能力不使同进程同意等于物理隔离：K4–K6 未实现，插件仍与 Host 同进程运行",
+  "userVisible": "接线后（W01 命令 + W35 安装/管理界面）用户首次安装或升级社区插件时会看到同意弹窗，列出插件 ID、版本与 service 权限；确认后写入账本并重新装载；版本或权限变化（含扩权）会再次要求确认，且只获得与既往同意的交集。未接线前界面与 Rust 一致，没有新增提示。删除 community-consent.json 会让所有社区插件重新要求同意",
+  "dataCompat": "新增一个位于应用数据目录、plugins 之外的 community-consent.json（schemaVersion 1，记录 id/version/permissions/permissionsDigest），不改变落库数据、同步载荷与备份格式；Rust 版与旧版 Electron 不读这个文件，删除它也只会导致重新同意，不丢用户数据",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "host/kernel/tests/community-consent.test.ts",
+      "name": "RF-W32-community-consent-ledger: K3 Host-owned community consent ledger"
+    }
+  ]
+}

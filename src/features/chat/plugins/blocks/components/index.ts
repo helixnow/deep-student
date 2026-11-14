@@ -7,6 +7,7 @@
 // 知识检索组件
 export * from './SourceCard';
 export * from './SourceList';
+export * from './RetrievalBlockShell';
 export * from './CitationPopover';
 export * from './types';
 

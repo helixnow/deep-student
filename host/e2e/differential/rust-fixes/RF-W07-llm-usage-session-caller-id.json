@@ -1,0 +1,31 @@
+{
+  "id": "RF-W07-llm-usage-session-caller-id",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T08:52+08:00",
+  "title": "llm_usage_session_summary 按 session_id 列过滤，不再查询不存在的 caller_id 列",
+  "rust": {
+    "file": "src-tauri/crates/dstu-storage/src/llm_usage/repo.rs",
+    "line": 464,
+    "behavior": "get_session_usage 写成 WHERE caller_id = ?1，而 8 个 llm_usage 迁移都没有 caller_id 列，调用必然报 no such column: caller_id"
+  },
+  "fix": {
+    "files": ["host/platform/storage/llm-usage-repo.ts"],
+    "behavior": "getSessionUsage 用 WHERE session_id = ?；schema 不变、不加迁移"
+  },
+  "evidence": "用户可见错误结果：会话用量汇总命令在 Rust 中总是失败（X1 报 no such column: caller_id）。与 Rust 自身意图矛盾：record.caller_id 在写入时存进 session_id 列（repo.rs:49/73、collector.rs:299），读取时也由 session_id 映射回 caller_id（repo.rs:497/523），repo.rs:450 注释写明 caller_id = session_id。修复前 tests/llm-usage-session-summary.test.ts 两条均以同一错误失败。",
+  "g3": {
+    "affects": true,
+    "selectors": [
+      { "scenario": "storage.llm_usage.*", "surface": "ipc", "command": "llm_usage_session_summary" }
+    ]
+  },
+  "notes": "G3：选择器不带 jsonPath。A 的 llm_usage_session_summary 返回错误（no such column: caller_id），B 返回汇总对象，差异记录是 outcome-kind；g3-rust-fixes.mjs 的 placeCovered 对 outcome-kind 只认不带 jsonPath 的 ipc 选择器（place.path 为 null），写了 jsonPath 就永远不会豁免。命中的场景是 storage/equivalence/llm-usage.json 的 session_summary.empty、session_summary.arg_errors（两侧都在参数解析处报错，本无差异）和 llm-usage.seeded.json 的 seeded.recent_and_session（同场景的 llm_usage_recent 不在豁免内）。",
+  "tests": [
+    {
+      "file": "host/platform/storage/tests/llm-usage-session-summary.test.ts",
+      "name": "RF-W07-llm-usage-session-caller-id: fresh database: session summary aggregates rows written with withCallerId (session_id column)"
+    }
+  ]
+}

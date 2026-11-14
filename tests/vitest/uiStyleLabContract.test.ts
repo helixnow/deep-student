@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { readAppShellSource } from '@/app/__tests__/appShellSources';
+import { readOfficialShellEntries } from '@/app/__tests__/officialShellEntries';
 
 const readSource = (file: string) => readFileSync(resolve(process.cwd(), file), 'utf-8');
 
@@ -12,13 +13,21 @@ describe('UI style lab navigation contract', () => {
   const modernSidebarSource = readSource('src/components/ModernSidebar.tsx');
   const appSource = readAppShellSource();
 
-  it('registers ui-lab as a supported app view and sidebar destination', () => {
+  it('registers ui-lab as a supported app view and sidebar destination', async () => {
     expect(navigationTypesSource).toContain("| 'ui-lab'");
     expect(canonicalViewSource).toContain("'ui-lab'");
     expect(navigationConfigSource).toContain("view: 'ui-lab'");
     expect(navigationConfigSource).toContain("'sidebar:navigation.ui_lab'");
-    expect(modernSidebarSource).toContain("'ui-lab'");
-    expect(appSource).toContain("renderViewLayer('ui-lab'");
+    const { views, nav } = await readOfficialShellEntries();
+    const uiLabNav = nav.find((item) => item.viewId === 'ui-lab');
+    expect(uiLabNav?.labelKey).toBe('sidebar:navigation.ui_lab');
+    expect(uiLabNav?.desktop?.placement).toBe('primary');
+    expect(uiLabNav?.visible?.({ dev: false, uiLabEnabled: true })).toBe(true);
+    expect(uiLabNav?.visible?.({ dev: false, uiLabEnabled: false })).toBe(false);
+    expect(modernSidebarSource).toContain("const navEntries = useSlot<ShellNavItem>('nav');");
+    expect(views.get('ui-lab')?.contentKey).toBe('styleDebugContent');
+    expect(appSource).toMatch(/const viewContents: Record<string, React\.ReactNode> = \{[^}]*\bstyleDebugContent\b/);
+    expect(appSource).toContain('content={value.contentKey ? viewContents[value.contentKey] : undefined}');
   });
 
   const styleDebugSource = [

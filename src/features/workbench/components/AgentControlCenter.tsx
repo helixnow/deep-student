@@ -549,11 +549,13 @@ export function AgentControlDockEntry({
                 {/* Automation scheduling status card (always visible, three states) */}
                 <div
                   className={cn(
-                    'mx-3 mb-2 flex flex-col gap-1.5 rounded-lg border px-2.5 py-2 transition-colors duration-150',
+                    'flex flex-col gap-1.5 transition-colors duration-150',
                     automationState === 'running' &&
-                      'border-[var(--border-soft,hsl(var(--border)/38%))]',
-                    automationState === 'paused' && 'border-amber-500/45 bg-amber-500/10',
-                    automationState === 'tripped' && 'border-red-500/45 bg-red-500/10',
+                      'border-t border-border/35 px-3 py-2',
+                    automationState === 'paused' &&
+                      'mx-3 mb-2 rounded-lg border border-warning/45 bg-warning/10 px-2.5 py-2',
+                    automationState === 'tripped' &&
+                      'mx-3 mb-2 rounded-lg border border-destructive/45 bg-destructive/10 px-2.5 py-2',
                   )}
                   data-testid="wb-agent-automation-card"
                   data-state={automationState}
@@ -562,13 +564,13 @@ export function AgentControlDockEntry({
                     <span
                       aria-hidden="true"
                       className={cn(
-                        'h-2 w-2 shrink-0 rounded-full transition-colors duration-150',
-                        automationState === 'running' && 'bg-emerald-500',
-                        automationState === 'paused' && 'bg-amber-500',
-                        automationState === 'tripped' && 'bg-red-500',
+                        'h-1.5 w-1.5 shrink-0 rounded-full transition-colors duration-150',
+                        automationState === 'running' && 'bg-success',
+                        automationState === 'paused' && 'bg-warning',
+                        automationState === 'tripped' && 'bg-destructive',
                       )}
                     />
-                    <span className="flex items-center gap-1 text-xs font-semibold">
+                    <span className="wb-agent-capabilities-title flex items-center gap-1">
                       <Lightning size={12} weight="duotone" aria-hidden="true" />
                       {t('agentControlCenter.automationCard.title')}
                     </span>

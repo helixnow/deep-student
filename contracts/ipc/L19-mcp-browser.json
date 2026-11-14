@@ -1,0 +1,5594 @@
+{
+  "lane": "L19-mcp-browser",
+  "generator": "deep-student/contracts-extract@1.6.0",
+  "commands": [
+    {
+      "name": "browser_back",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "crates/dstu-browser/src/cmd/browser.rs",
+        "line": 158,
+        "fn": "browser_back"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "sessionId",
+          "rustName": "sessionId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_browser::browser::service::BrowserService>"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/BrowserStateResult"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "browser_click",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "crates/dstu-browser/src/cmd/browser.rs",
+        "line": 390,
+        "fn": "browser_click"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "sessionId",
+          "rustName": "sessionId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "ref",
+          "rustName": "ref",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_browser::browser::service::BrowserService>"
+        }
+      ],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "browser_close",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "crates/dstu-browser/src/cmd/browser.rs",
+        "line": 210,
+        "fn": "browser_close"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "sessionId",
+          "rustName": "sessionId",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_browser::browser::service::BrowserService>"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "browser_content_user_input",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "crates/dstu-browser/src/cmd/browser.rs",
+        "line": 317,
+        "fn": "browser_content_user_input"
+      },
+      "async": false,
+      "args": [
+        {
+          "key": "sessionId",
+          "rustName": "sessionId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "nonce",
+          "rustName": "nonce",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "kind",
+          "rustName": "kind",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "webview"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_browser::browser::service::BrowserService>"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "browser_focus",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "crates/dstu-browser/src/cmd/browser.rs",
+        "line": 232,
+        "fn": "browser_focus"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "sessionId",
+          "rustName": "sessionId",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_browser::browser::service::BrowserService>"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "browser_forward",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "crates/dstu-browser/src/cmd/browser.rs",
+        "line": 168,
+        "fn": "browser_forward"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "sessionId",
+          "rustName": "sessionId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_browser::browser::service::BrowserService>"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/BrowserStateResult"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "browser_get_state",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "crates/dstu-browser/src/cmd/browser.rs",
+        "line": 191,
+        "fn": "browser_get_state"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "sessionId",
+          "rustName": "sessionId",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_browser::browser::service::BrowserService>"
+        }
+      ],
+      "result": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/BrowserStateResult"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "x-option": "null"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "browser_get_surface_host_mode",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "crates/dstu-browser/src/cmd/browser.rs",
+        "line": 310,
+        "fn": "browser_get_surface_host_mode"
+      },
+      "async": false,
+      "args": [],
+      "injected": [],
+      "result": {
+        "type": "string"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "browser_list_downloads",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "crates/dstu-browser/src/cmd/browser.rs",
+        "line": 443,
+        "fn": "browser_list_downloads"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "sessionId",
+          "rustName": "sessionId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_browser::browser::service::BrowserService>"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/BrowserDownloadObservation"
+        }
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "browser_list_task_downloads",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "crates/dstu-browser/src/cmd/browser.rs",
+        "line": 454,
+        "fn": "browser_list_task_downloads"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "chatSessionId",
+          "rustName": "chatSessionId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_browser::browser::service::BrowserService>"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/BrowserDownloadObservation"
+        }
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "browser_navigate",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "crates/dstu-browser/src/cmd/browser.rs",
+        "line": 134,
+        "fn": "browser_navigate"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "sessionId",
+          "rustName": "sessionId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "url",
+          "rustName": "url",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "replace",
+          "rustName": "replace",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "fromAgent",
+          "rustName": "fromAgent",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_browser::browser::service::BrowserService>"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/BrowserStateResult"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "browser_open_session",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "crates/dstu-browser/src/cmd/browser.rs",
+        "line": 109,
+        "fn": "browser_open_session"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "url",
+          "rustName": "url",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "displayName",
+          "rustName": "displayName",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "chatSessionId",
+          "rustName": "chatSessionId",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "reuseExisting",
+          "rustName": "reuseExisting",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "fromAgent",
+          "rustName": "fromAgent",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_browser::browser::service::BrowserService>"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/BrowserStateResult"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "browser_release_surface_focus",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "crates/dstu-browser/src/cmd/browser.rs",
+        "line": 250,
+        "fn": "browser_release_surface_focus"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "sessionId",
+          "rustName": "sessionId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_browser::browser::service::BrowserService>"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "browser_reload",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "crates/dstu-browser/src/cmd/browser.rs",
+        "line": 178,
+        "fn": "browser_reload"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "sessionId",
+          "rustName": "sessionId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "hard",
+          "rustName": "hard",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_browser::browser::service::BrowserService>"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/BrowserStateResult"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "browser_scroll",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "crates/dstu-browser/src/cmd/browser.rs",
+        "line": 464,
+        "fn": "browser_scroll"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "sessionId",
+          "rustName": "sessionId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "direction",
+          "rustName": "direction",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "amount",
+          "rustName": "amount",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "i32",
+                "minimum": -2147483648,
+                "maximum": 2147483647
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "ref",
+          "rustName": "ref",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_browser::browser::service::BrowserService>"
+        }
+      ],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "browser_set_input_files",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "crates/dstu-browser/src/cmd/browser.rs",
+        "line": 426,
+        "fn": "browser_set_input_files"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "sessionId",
+          "rustName": "sessionId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "ref",
+          "rustName": "ref",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "files",
+          "rustName": "files",
+          "schema": {
+            "x-rust": "serde_json::Value"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_browser::browser::service::BrowserService>"
+        }
+      ],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "browser_set_surface_bounds",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "crates/dstu-browser/src/cmd/browser.rs",
+        "line": 262,
+        "fn": "browser_set_surface_bounds"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "sessionId",
+          "rustName": "sessionId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "x",
+          "rustName": "x",
+          "schema": {
+            "type": "number",
+            "x-float": "f64"
+          },
+          "optional": false
+        },
+        {
+          "key": "y",
+          "rustName": "y",
+          "schema": {
+            "type": "number",
+            "x-float": "f64"
+          },
+          "optional": false
+        },
+        {
+          "key": "width",
+          "rustName": "width",
+          "schema": {
+            "type": "number",
+            "x-float": "f64"
+          },
+          "optional": false
+        },
+        {
+          "key": "height",
+          "rustName": "height",
+          "schema": {
+            "type": "number",
+            "x-float": "f64"
+          },
+          "optional": false
+        },
+        {
+          "key": "viewportWidth",
+          "rustName": "viewportWidth",
+          "schema": {
+            "type": "number",
+            "x-float": "f64"
+          },
+          "optional": false
+        },
+        {
+          "key": "viewportHeight",
+          "rustName": "viewportHeight",
+          "schema": {
+            "type": "number",
+            "x-float": "f64"
+          },
+          "optional": false
+        },
+        {
+          "key": "occlusions",
+          "rustName": "occlusions",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/SurfaceCssOcclusion"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "inputOcclusions",
+          "rustName": "inputOcclusions",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/SurfaceCssOcclusion"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "sequence",
+          "rustName": "sequence",
+          "schema": {
+            "type": "integer",
+            "x-int": "u64",
+            "minimum": 0
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_browser::browser::service::BrowserService>"
+        }
+      ],
+      "result": {
+        "type": "string"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "browser_set_surface_visibility",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "crates/dstu-browser/src/cmd/browser.rs",
+        "line": 295,
+        "fn": "browser_set_surface_visibility"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "sessionId",
+          "rustName": "sessionId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "visible",
+          "rustName": "visible",
+          "schema": {
+            "type": "boolean"
+          },
+          "optional": false
+        },
+        {
+          "key": "focus",
+          "rustName": "focus",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_browser::browser::service::BrowserService>"
+        }
+      ],
+      "result": {
+        "type": "string"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "browser_snapshot",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "crates/dstu-browser/src/cmd/browser.rs",
+        "line": 357,
+        "fn": "browser_snapshot"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "sessionId",
+          "rustName": "sessionId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "maxChars",
+          "rustName": "maxChars",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_browser::browser::service::BrowserService>"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/BrowserSnapshotResult"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "browser_take_over",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "crates/dstu-browser/src/cmd/browser.rs",
+        "line": 335,
+        "fn": "browser_take_over"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_browser::browser::service::BrowserService>"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/BrowserStateResult"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "browser_type",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "crates/dstu-browser/src/cmd/browser.rs",
+        "line": 406,
+        "fn": "browser_type"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "sessionId",
+          "rustName": "sessionId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "ref",
+          "rustName": "ref",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "text",
+          "rustName": "text",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "submit",
+          "rustName": "submit",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_browser::browser::service::BrowserService>"
+        }
+      ],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "cancel_mcp_oauth",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "crates/dstu-mcp/src/mcp/commands.rs",
+        "line": 43,
+        "fn": "cancel_mcp_oauth"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "serverId",
+          "rustName": "server_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "delete_setting",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "src/cmd/web_search.rs",
+        "line": 572,
+        "fn": "delete_setting"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "key",
+          "rustName": "key",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "boolean"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "delete_settings_by_prefix",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "src/cmd/web_search.rs",
+        "line": 593,
+        "fn": "delete_settings_by_prefix"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "prefix",
+          "rustName": "prefix",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "integer",
+        "x-int": "usize",
+        "minimum": 0
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "detect_tool_conflicts",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "src/cmd/web_search.rs",
+        "line": 284,
+        "fn": "detect_tool_conflicts"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/ToolConflict"
+        }
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "export_mcp_config",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 7025,
+        "fn": "export_mcp_config"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "config",
+          "rustName": "_config",
+          "schema": {
+            "$ref": "#/$defs/McpConfig__De"
+          },
+          "optional": false
+        },
+        {
+          "key": "format",
+          "rustName": "_format",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "string"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "get_cn_whitelist_config",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "src/cmd/web_search.rs",
+        "line": 235,
+        "fn": "get_cn_whitelist_config"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "get_feature_flags",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "src/cmd/web_search.rs",
+        "line": 363,
+        "fn": "get_feature_flags"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "get_mcp_config",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 7003,
+        "fn": "get_mcp_config"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/McpConfig"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "get_mcp_oauth_access_token",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "crates/dstu-mcp/src/mcp/commands.rs",
+        "line": 81,
+        "fn": "get_mcp_oauth_access_token"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "serverId",
+          "rustName": "server_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "resourceUrl",
+          "rustName": "resource_url",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "x-option": "null"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "get_mcp_oauth_status",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "crates/dstu-mcp/src/mcp/commands.rs",
+        "line": 61,
+        "fn": "get_mcp_oauth_status"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "serverId",
+          "rustName": "server_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "resourceUrl",
+          "rustName": "resource_url",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/McpOAuthStatus"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "get_mcp_status",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "src/cmd/mcp.rs",
+        "line": 25,
+        "fn": "get_mcp_status"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "get_mcp_stdio_allow_unapproved",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "src/cmd/mcp.rs",
+        "line": 792,
+        "fn": "get_mcp_stdio_allow_unapproved"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "boolean"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "get_mcp_tools",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "src/cmd/mcp.rs",
+        "line": 58,
+        "fn": "get_mcp_tools"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "x-rust": "serde_json::Value"
+        }
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "get_provider_strategies_config",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "src/cmd/web_search.rs",
+        "line": 318,
+        "fn": "get_provider_strategies_config"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "get_security_status",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "src/cmd/web_search.rs",
+        "line": 210,
+        "fn": "get_security_status"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "get_setting",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "src/cmd/web_search.rs",
+        "line": 562,
+        "fn": "get_setting"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "key",
+          "rustName": "key",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "x-option": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "get_settings_by_prefix",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "src/cmd/web_search.rs",
+        "line": 581,
+        "fn": "get_settings_by_prefix"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "prefix",
+          "rustName": "prefix",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "type": "array",
+          "prefixItems": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "items": false,
+          "minItems": 3,
+          "maxItems": 3
+        }
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "get_tools_namespace_config",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "src/cmd/web_search.rs",
+        "line": 291,
+        "fn": "get_tools_namespace_config"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "import_mcp_config",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "src/commands.rs",
+        "line": 7016,
+        "fn": "import_mcp_config"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "path",
+          "rustName": "_path",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/McpConfig"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "is_feature_enabled",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "src/cmd/web_search.rs",
+        "line": 454,
+        "fn": "is_feature_enabled"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "featureName",
+          "rustName": "feature_name",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "userId",
+          "rustName": "user_id",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "boolean"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "mcp_stdio_close",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "src/cmd/mcp.rs",
+        "line": 654,
+        "fn": "mcp_stdio_close"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "sessionId",
+          "rustName": "session_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "mcp_stdio_send",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "src/cmd/mcp.rs",
+        "line": 639,
+        "fn": "mcp_stdio_send"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "sessionId",
+          "rustName": "session_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "payload",
+          "rustName": "payload",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "mcp_stdio_start",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "src/cmd/mcp.rs",
+        "line": 553,
+        "fn": "mcp_stdio_start"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "command",
+          "rustName": "command",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "args",
+          "rustName": "args",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "optional": false
+        },
+        {
+          "key": "env",
+          "rustName": "env",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "x-key-order": "unspecified"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "framing",
+          "rustName": "framing",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "cwd",
+          "rustName": "cwd",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "window"
+        },
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "string"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "network_probe",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "src/cmd/network.rs",
+        "line": 38,
+        "fn": "network_probe"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "url",
+          "rustName": "url",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "method",
+          "rustName": "method",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "timeoutMs",
+          "rustName": "timeout_ms",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u64",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [],
+      "result": {
+        "$ref": "#/$defs/NetworkProbeResult"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "preheat_mcp_tools",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "src/cmd/mcp.rs",
+        "line": 822,
+        "fn": "preheat_mcp_tools"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "window"
+        },
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "reload_mcp_client",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "src/cmd/mcp.rs",
+        "line": 784,
+        "fn": "reload_mcp_client"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "revoke_mcp_oauth",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "crates/dstu-mcp/src/mcp/commands.rs",
+        "line": 49,
+        "fn": "revoke_mcp_oauth"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "serverId",
+          "rustName": "server_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "save_mcp_config",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "src/cmd/mcp.rs",
+        "line": 688,
+        "fn": "save_mcp_config"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "config",
+          "rustName": "config",
+          "schema": {
+            "x-rust": "serde_json::Value"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "boolean"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "save_provider_strategies_config",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "src/cmd/web_search.rs",
+        "line": 344,
+        "fn": "save_provider_strategies_config"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "strategies",
+          "rustName": "strategies",
+          "schema": {
+            "$ref": "#/$defs/ProviderStrategies"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "boolean"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "save_setting",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "src/cmd/web_search.rs",
+        "line": 541,
+        "fn": "save_setting"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "key",
+          "rustName": "key",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "value",
+          "rustName": "value",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        },
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "type": "boolean"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "set_mcp_stdio_allow_unapproved",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "src/cmd/mcp.rs",
+        "line": 801,
+        "fn": "set_mcp_stdio_allow_unapproved"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "enabled",
+          "rustName": "enabled",
+          "schema": {
+            "type": "boolean"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "start_mcp_oauth",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "crates/dstu-mcp/src/mcp/commands.rs",
+        "line": 15,
+        "fn": "start_mcp_oauth"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "serverId",
+          "rustName": "server_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "resourceUrl",
+          "rustName": "resource_url",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "clientId",
+          "rustName": "client_id",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "clientSecret",
+          "rustName": "client_secret",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "scopes",
+          "rustName": "scopes",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/StartOAuthOutcome"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "test_all_search_engines",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "src/cmd/web_search.rs",
+        "line": 87,
+        "fn": "test_all_search_engines"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "test_mcp_connection",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "src/cmd/mcp.rs",
+        "line": 65,
+        "fn": "test_mcp_connection"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "command",
+          "rustName": "command",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "args",
+          "rustName": "args",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "optional": false
+        },
+        {
+          "key": "env",
+          "rustName": "env",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "x-key-order": "unspecified"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "cwd",
+          "rustName": "cwd",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "framing",
+          "rustName": "framing",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        },
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "test_mcp_http",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "src/cmd/mcp.rs",
+        "line": 172,
+        "fn": "test_mcp_http"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "endpoint",
+          "rustName": "endpoint",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "apiKey",
+          "rustName": "api_key",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "env",
+          "rustName": "env",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "x-key-order": "unspecified"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "test_mcp_sse",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "src/cmd/mcp.rs",
+        "line": 142,
+        "fn": "test_mcp_sse"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "endpoint",
+          "rustName": "endpoint",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "apiKey",
+          "rustName": "api_key",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "env",
+          "rustName": "env",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "x-key-order": "unspecified"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "test_mcp_websocket",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "src/cmd/mcp.rs",
+        "line": 119,
+        "fn": "test_mcp_websocket"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "url",
+          "rustName": "url",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "env",
+          "rustName": "env",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "x-key-order": "unspecified"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "test_rmcp_streamable_http",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "src/cmd/mcp.rs",
+        "line": 671,
+        "fn": "test_rmcp_streamable_http"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "url",
+          "rustName": "url",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "apiKey",
+          "rustName": "api_key",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none",
+      "x-rust-registered": false
+    },
+    {
+      "name": "test_search_engine",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "src/cmd/web_search.rs",
+        "line": 478,
+        "fn": "test_search_engine"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "engine",
+          "rustName": "engine",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "test_web_search_connectivity",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "src/cmd/web_search.rs",
+        "line": 43,
+        "fn": "test_web_search_connectivity"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "engine",
+          "rustName": "engine",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "update_feature_flag",
+      "lane": "L19-mcp-browser",
+      "rust": {
+        "file": "src/cmd/web_search.rs",
+        "line": 397,
+        "fn": "update_feature_flag"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "featureName",
+          "rustName": "feature_name",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "action",
+          "rustName": "action",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "value",
+          "rustName": "value",
+          "schema": {
+            "anyOf": [
+              {
+                "x-rust": "serde_json::Value"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "x-rust": "serde_json::Value"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    }
+  ],
+  "events": [
+    {
+      "name": "browser:closed",
+      "dynamic": false,
+      "payload": {
+        "$ref": "#/$defs/BrowserClosedPayload"
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-browser/src/browser/events.rs",
+          "line": 108,
+          "fn": "emit_closed",
+          "lane": "L19-mcp-browser",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "browser:content-user-input",
+      "dynamic": false,
+      "payload": {
+        "$ref": "#/$defs/BrowserContentUserInputPayload"
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-browser/src/browser/events.rs",
+          "line": 126,
+          "fn": "emit_content_user_input",
+          "lane": "L19-mcp-browser",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "browser:control-mode-changed",
+      "dynamic": false,
+      "payload": {
+        "$ref": "#/$defs/BrowserControlModeChangedPayload"
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-browser/src/browser/events.rs",
+          "line": 120,
+          "fn": "emit_control_mode_changed",
+          "lane": "L19-mcp-browser",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "browser:navigated",
+      "dynamic": false,
+      "payload": {
+        "$ref": "#/$defs/BrowserNavigatedPayload"
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-browser/src/browser/events.rs",
+          "line": 96,
+          "fn": "emit_navigated",
+          "lane": "L19-mcp-browser",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "browser:navigation-blocked",
+      "dynamic": false,
+      "payload": {
+        "$ref": "#/$defs/BrowserNavigationBlockedPayload"
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-browser/src/browser/events.rs",
+          "line": 102,
+          "fn": "emit_navigation_blocked",
+          "lane": "L19-mcp-browser",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "browser:title-changed",
+      "dynamic": false,
+      "payload": {
+        "$ref": "#/$defs/BrowserTitleChangedPayload"
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-browser/src/browser/events.rs",
+          "line": 114,
+          "fn": "emit_title_changed",
+          "lane": "L19-mcp-browser",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "mcp-bridge-request",
+      "dynamic": false,
+      "payload": {
+        "type": "object",
+        "properties": {
+          "correlationId": {
+            "type": "string"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "serverId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "args": {
+            "x-rust": "serde_json::Value"
+          },
+          "timeoutMs": {
+            "type": "integer",
+            "x-int": "u64",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "correlationId",
+          "tool",
+          "serverId",
+          "args",
+          "timeoutMs"
+        ],
+        "additionalProperties": false
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-mcp/src/tools/mod.rs",
+          "line": 472,
+          "fn": "call_frontend_mcp_tool",
+          "lane": "L19-mcp-browser",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "mcp-test-progress",
+      "dynamic": false,
+      "payload": {
+        "type": "object",
+        "properties": {
+          "step": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "step"
+        ],
+        "additionalProperties": false
+      },
+      "emitters": [
+        {
+          "file": "src/cmd/mcp.rs",
+          "line": 76,
+          "fn": "test_mcp_connection",
+          "lane": "L19-mcp-browser",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "vfs-index-progress",
+      "dynamic": false,
+      "payload": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string"
+              },
+              "resourceId": {
+                "type": "string"
+              },
+              "blockId": {
+                "type": "string"
+              },
+              "chunks": {
+                "type": "integer",
+                "x-int": "usize",
+                "minimum": 0
+              },
+              "embeddingDim": {
+                "type": "integer",
+                "x-int": "usize",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "type",
+              "resourceId",
+              "blockId",
+              "chunks",
+              "embeddingDim"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string"
+              },
+              "resourceId": {
+                "type": "string"
+              },
+              "blockId": {
+                "type": "string"
+              },
+              "current": {
+                "x-unresolved": "json! value `done` type not determinable statically"
+              },
+              "total": {
+                "x-unresolved": "json! value `total` type not determinable statically"
+              },
+              "progress": {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              }
+            },
+            "required": [
+              "type",
+              "resourceId",
+              "blockId",
+              "current",
+              "total",
+              "progress"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string"
+              },
+              "resourceId": {
+                "type": "string"
+              },
+              "blockId": {
+                "type": "string"
+              },
+              "error": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "resourceId",
+              "blockId",
+              "error"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string"
+              },
+              "resourceId": {
+                "type": "string"
+              },
+              "blockId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "resourceId",
+              "blockId"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string"
+              },
+              "resourceId": {
+                "type": "string"
+              },
+              "chunkCount": {
+                "type": "integer",
+                "x-int": "usize",
+                "minimum": 0
+              },
+              "current": {
+                "type": "integer",
+                "x-int": "usize",
+                "minimum": 0
+              },
+              "total": {
+                "type": "integer",
+                "x-int": "usize",
+                "minimum": 0
+              },
+              "progress": {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "resourceId",
+              "chunkCount",
+              "current",
+              "total",
+              "progress",
+              "message"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string"
+              },
+              "resourceId": {
+                "type": "string"
+              },
+              "chunkCount": {
+                "type": "integer",
+                "x-int": "usize",
+                "minimum": 0
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "resourceId",
+              "chunkCount",
+              "message"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string"
+              },
+              "resourceId": {
+                "type": "string"
+              },
+              "chunksProcessed": {
+                "type": "integer",
+                "x-int": "usize",
+                "minimum": 0
+              },
+              "chunksTotal": {
+                "type": "integer",
+                "x-int": "usize",
+                "minimum": 0
+              },
+              "progress": {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "resourceId",
+              "chunksProcessed",
+              "chunksTotal",
+              "progress",
+              "message"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string"
+              },
+              "resourceId": {
+                "type": "string"
+              },
+              "current": {
+                "type": "integer",
+                "x-int": "usize",
+                "minimum": 0
+              },
+              "total": {
+                "type": "integer",
+                "x-int": "usize",
+                "minimum": 0
+              },
+              "chunksProcessed": {
+                "type": "integer",
+                "x-int": "usize",
+                "minimum": 0
+              },
+              "chunksTotal": {
+                "type": "integer",
+                "x-int": "usize",
+                "minimum": 0
+              },
+              "progress": {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "resourceId",
+              "current",
+              "total",
+              "chunksProcessed",
+              "chunksTotal",
+              "progress",
+              "message"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string"
+              },
+              "resourceId": {
+                "type": "string"
+              },
+              "current": {
+                "type": "integer",
+                "x-int": "usize",
+                "minimum": 0
+              },
+              "total": {
+                "type": "integer",
+                "x-int": "usize",
+                "minimum": 0
+              },
+              "progress": {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "resourceId",
+              "current",
+              "total",
+              "progress",
+              "message"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string"
+              },
+              "resourceId": {
+                "type": "string"
+              },
+              "error": {
+                "type": "string"
+              },
+              "current": {
+                "type": "integer",
+                "x-int": "usize",
+                "minimum": 0
+              },
+              "total": {
+                "type": "integer",
+                "x-int": "usize",
+                "minimum": 0
+              },
+              "progress": {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "resourceId",
+              "error",
+              "current",
+              "total",
+              "progress",
+              "message"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string"
+              },
+              "resourceId": {
+                "type": "string"
+              },
+              "error": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "resourceId",
+              "error",
+              "message"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string"
+              },
+              "resourceId": {
+                "type": "string"
+              },
+              "fileId": {
+                "type": "string"
+              },
+              "currentPage": {
+                "type": "integer",
+                "x-int": "usize",
+                "minimum": 0
+              },
+              "totalPages": {
+                "type": "integer",
+                "x-int": "usize",
+                "minimum": 0
+              },
+              "successCount": {
+                "type": "integer",
+                "x-int": "usize",
+                "minimum": 0
+              },
+              "percent": {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "resourceId",
+              "fileId",
+              "currentPage",
+              "totalPages",
+              "successCount",
+              "percent",
+              "message"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string"
+              },
+              "resourceId": {
+                "type": "string"
+              },
+              "fileId": {
+                "type": "string"
+              },
+              "success": {
+                "type": "boolean"
+              },
+              "successCount": {
+                "type": "integer",
+                "x-int": "usize",
+                "minimum": 0
+              },
+              "failCount": {
+                "type": "integer",
+                "x-int": "usize",
+                "minimum": 0
+              },
+              "totalPages": {
+                "type": "integer",
+                "x-int": "usize",
+                "minimum": 0
+              },
+              "textLength": {
+                "type": "integer",
+                "x-int": "usize",
+                "minimum": 0
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "resourceId",
+              "fileId",
+              "success",
+              "successCount",
+              "failCount",
+              "totalPages",
+              "textLength",
+              "message"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string"
+              },
+              "resourceId": {
+                "type": "string"
+              },
+              "fileId": {
+                "type": "string"
+              },
+              "success": {
+                "type": "boolean"
+              },
+              "successCount": {
+                "type": "integer"
+              },
+              "failCount": {
+                "type": "integer",
+                "x-int": "usize",
+                "minimum": 0
+              },
+              "totalPages": {
+                "type": "integer",
+                "x-int": "usize",
+                "minimum": 0
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "resourceId",
+              "fileId",
+              "success",
+              "successCount",
+              "failCount",
+              "totalPages",
+              "message"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string"
+              },
+              "resourceId": {
+                "type": "string"
+              },
+              "fileId": {
+                "type": "string"
+              },
+              "totalPages": {
+                "type": "integer",
+                "x-int": "usize",
+                "minimum": 0
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "resourceId",
+              "fileId",
+              "totalPages",
+              "message"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string"
+              },
+              "resourceId": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "resourceId",
+              "message"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string"
+              },
+              "successCount": {
+                "type": "integer",
+                "x-int": "usize",
+                "minimum": 0
+              },
+              "failCount": {
+                "type": "integer",
+                "x-int": "usize",
+                "minimum": 0
+              },
+              "total": {
+                "type": "integer",
+                "x-int": "usize",
+                "minimum": 0
+              },
+              "progress": {
+                "type": "integer"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "successCount",
+              "failCount",
+              "total",
+              "progress",
+              "message"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string"
+              },
+              "total": {
+                "type": "integer",
+                "x-int": "usize",
+                "minimum": 0
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "total",
+              "message"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "x-note": "emitters send different payload shapes"
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+          "line": 3189,
+          "fn": "vfs_reindex_resource",
+          "lane": "L13-vfs-api",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+          "line": 3223,
+          "fn": "vfs_reindex_resource",
+          "lane": "L13-vfs-api",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+          "line": 3242,
+          "fn": "vfs_reindex_resource",
+          "lane": "L13-vfs-api",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+          "line": 3255,
+          "fn": "vfs_reindex_resource",
+          "lane": "L13-vfs-api",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+          "line": 3903,
+          "fn": "vfs_batch_index_pending",
+          "lane": "L13-vfs-api",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+          "line": 3941,
+          "fn": "vfs_batch_index_pending",
+          "lane": "L13-vfs-api",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+          "line": 3968,
+          "fn": "vfs_batch_index_pending",
+          "lane": "L13-vfs-api",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+          "line": 3991,
+          "fn": "vfs_batch_index_pending",
+          "lane": "L13-vfs-api",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+          "line": 4007,
+          "fn": "vfs_batch_index_pending",
+          "lane": "L13-vfs-api",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-vfs/src/vfs/handlers.rs",
+          "line": 4024,
+          "fn": "vfs_batch_index_pending",
+          "lane": "L13-vfs-api",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-vfs/src/vfs/indexing.rs",
+          "line": 3562,
+          "fn": "try_auto_ocr_pdf_pages",
+          "lane": "L12-vfs-index",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-vfs/src/vfs/indexing.rs",
+          "line": 3683,
+          "fn": "try_auto_ocr_pdf_pages",
+          "lane": "L12-vfs-index",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-vfs/src/vfs/indexing.rs",
+          "line": 3729,
+          "fn": "try_auto_ocr_pdf_pages",
+          "lane": "L12-vfs-index",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-vfs/src/vfs/indexing.rs",
+          "line": 3837,
+          "fn": "try_auto_ocr_pdf_pages",
+          "lane": "L12-vfs-index",
+          "method": "emit"
+        },
+        {
+          "file": "src/chat_v2/tools/index_webpage_executor.rs",
+          "line": 252,
+          "fn": "execute_rebuild",
+          "lane": "L19-mcp-browser",
+          "method": "emit"
+        },
+        {
+          "file": "src/chat_v2/tools/index_webpage_executor.rs",
+          "line": 274,
+          "fn": "execute_rebuild",
+          "lane": "L19-mcp-browser",
+          "method": "emit"
+        },
+        {
+          "file": "src/chat_v2/tools/index_webpage_executor.rs",
+          "line": 294,
+          "fn": "execute_rebuild",
+          "lane": "L19-mcp-browser",
+          "method": "emit"
+        },
+        {
+          "file": "src/chat_v2/tools/index_webpage_executor.rs",
+          "line": 325,
+          "fn": "execute_rebuild",
+          "lane": "L19-mcp-browser",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "{}-closed",
+      "dynamic": true,
+      "payload": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-mcp/src/mcp/stdio_proxy.rs",
+          "line": 107,
+          "fn": "start_stdio_session",
+          "lane": "L19-mcp-browser",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "{}-error",
+      "dynamic": true,
+      "payload": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "additionalProperties": false
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-mcp/src/mcp/stdio_proxy.rs",
+          "line": 91,
+          "fn": "start_stdio_session",
+          "lane": "L19-mcp-browser",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "{}-message",
+      "dynamic": true,
+      "payload": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "x-unresolved": "json! value `payload` type not determinable statically"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "additionalProperties": false
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-mcp/src/mcp/stdio_proxy.rs",
+          "line": 85,
+          "fn": "start_stdio_session",
+          "lane": "L19-mcp-browser",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "{}_web_search",
+      "dynamic": true,
+      "payload": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "sources": {
+                "type": "array",
+                "items": {
+                  "x-rust": "serde_json::Value"
+                }
+              },
+              "stage": {
+                "type": "string"
+              },
+              "tool_name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "sources",
+              "stage",
+              "tool_name"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "sources": {
+                "type": "array",
+                "items": {
+                  "x-rust": "serde_json::Value"
+                }
+              },
+              "tool_name": {
+                "type": "string"
+              },
+              "timestamp": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "sources",
+              "tool_name",
+              "timestamp"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "sources": {
+                "x-rust": "serde_json::Value"
+              },
+              "stage": {
+                "type": "string"
+              },
+              "tool_name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "sources",
+              "stage",
+              "tool_name"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "x-note": "emitters send different payload shapes"
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-llm/src/llm_manager/mod.rs",
+          "line": 5324,
+          "fn": "emit_specialized_source_events",
+          "lane": "L02-llm-manager",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-llm/src/llm_manager/mod.rs",
+          "line": 5384,
+          "fn": "emit_specialized_source_events",
+          "lane": "L02-llm-manager",
+          "method": "emit"
+        },
+        {
+          "file": "crates/dstu-llm/src/llm_manager/model2_pipeline.rs",
+          "line": 7004,
+          "fn": "call_unified_model_2_stream_with_config",
+          "lane": "L02-llm-manager",
+          "method": "emit",
+          "note": "receiver `sink` type not inferred; accepted because the event name is static"
+        },
+        {
+          "file": "crates/dstu-mcp/src/tools/mod.rs",
+          "line": 1141,
+          "fn": "invoke",
+          "lane": "L19-mcp-browser",
+          "method": "emit"
+        }
+      ]
+    }
+  ],
+  "$defs": {
+    "BrowserClosedPayload": {
+      "type": "object",
+      "properties": {
+        "sessionId": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "at": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sessionId",
+        "label",
+        "reason",
+        "at"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_browser::browser::events::BrowserClosedPayload"
+    },
+    "BrowserContentUserInputPayload": {
+      "type": "object",
+      "properties": {
+        "sessionId": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "at": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sessionId",
+        "label",
+        "kind",
+        "at"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_browser::browser::events::BrowserContentUserInputPayload"
+    },
+    "BrowserControlModeChangedPayload": {
+      "type": "object",
+      "properties": {
+        "sessionId": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "controlMode": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "at": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sessionId",
+        "label",
+        "controlMode",
+        "reason",
+        "at"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_browser::browser::events::BrowserControlModeChangedPayload"
+    },
+    "BrowserDownloadObservation": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "browserSessionId": {
+          "type": "string"
+        },
+        "chatSessionId": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "filename": {
+          "type": "string"
+        },
+        "state": {
+          "$ref": "#/$defs/BrowserDownloadState"
+        },
+        "rootId": {
+          "type": "string"
+        },
+        "relativePath": {
+          "type": "string"
+        },
+        "locator": {
+          "type": "string"
+        },
+        "sha256": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "sizeBytes": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u64",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "startedAt": {
+          "type": "string"
+        },
+        "finishedAt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "objectHandle": {
+          "anyOf": [
+            {
+              "$ref": "_shared.json#/$defs/TaskObjectHandle"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "id",
+        "browserSessionId",
+        "chatSessionId",
+        "url",
+        "filename",
+        "state",
+        "rootId",
+        "relativePath",
+        "locator",
+        "sha256",
+        "sizeBytes",
+        "error",
+        "startedAt",
+        "finishedAt",
+        "objectHandle"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_browser::browser::service::BrowserDownloadObservation"
+    },
+    "BrowserDownloadState": {
+      "type": "string",
+      "enum": [
+        "started",
+        "processing",
+        "completed",
+        "failed"
+      ],
+      "x-rust": "dstu_browser::browser::service::BrowserDownloadState"
+    },
+    "BrowserNavigatedPayload": {
+      "type": "object",
+      "properties": {
+        "sessionId": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "canGoBack": {
+          "type": "boolean"
+        },
+        "canGoForward": {
+          "type": "boolean"
+        },
+        "loading": {
+          "type": "boolean"
+        },
+        "at": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sessionId",
+        "label",
+        "url",
+        "title",
+        "canGoBack",
+        "canGoForward",
+        "loading",
+        "at"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_browser::browser::events::BrowserNavigatedPayload"
+    },
+    "BrowserNavigationBlockedPayload": {
+      "type": "object",
+      "properties": {
+        "sessionId": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "currentUrl": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "canGoBack": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "canGoForward": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "historyIndex": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "usize",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "at": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sessionId",
+        "label",
+        "url",
+        "reason",
+        "currentUrl",
+        "title",
+        "canGoBack",
+        "canGoForward",
+        "historyIndex",
+        "at"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_browser::browser::events::BrowserNavigationBlockedPayload"
+    },
+    "BrowserSnapshotResult": {
+      "type": "object",
+      "properties": {
+        "sessionId": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "snapshot": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sessionId",
+        "url",
+        "title",
+        "snapshot"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_browser::cmd::browser::BrowserSnapshotResult"
+    },
+    "BrowserStateResult": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "canGoBack": {
+          "type": "boolean"
+        },
+        "canGoForward": {
+          "type": "boolean"
+        },
+        "loading": {
+          "type": "boolean"
+        },
+        "alive": {
+          "type": "boolean"
+        },
+        "controlMode": {
+          "$ref": "#/$defs/ControlMode"
+        },
+        "historyIndex": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "historyLen": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "chatSessionId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "profilePath": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "type": "string"
+        },
+        "history": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/HistoryEntry"
+          }
+        },
+        "agentAutomationSupported": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "title",
+        "url",
+        "canGoBack",
+        "canGoForward",
+        "loading",
+        "alive",
+        "controlMode",
+        "historyIndex",
+        "historyLen",
+        "chatSessionId",
+        "profilePath",
+        "createdAt",
+        "updatedAt",
+        "history",
+        "agentAutomationSupported"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_browser::cmd::browser::BrowserStateResult"
+    },
+    "BrowserTitleChangedPayload": {
+      "type": "object",
+      "properties": {
+        "sessionId": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "at": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sessionId",
+        "label",
+        "title",
+        "url",
+        "at"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_browser::browser::events::BrowserTitleChangedPayload"
+    },
+    "ConflictResolution": {
+      "type": "string",
+      "enum": [
+        "UseLocal",
+        "UseMcp",
+        "UseNamespace"
+      ],
+      "x-rust": "dstu_mcp::tools::ConflictResolution"
+    },
+    "ControlMode": {
+      "type": "string",
+      "enum": [
+        "user",
+        "agent"
+      ],
+      "x-rust": "dstu_browser::browser::session::ControlMode"
+    },
+    "HistoryEntry": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "visitedAt": {
+          "type": "string",
+          "format": "date-time",
+          "x-rust": "chrono::DateTime<chrono::Utc>",
+          "x-format": "RFC 3339, SecondsFormat::AutoSi, Z for UTC"
+        }
+      },
+      "required": [
+        "url",
+        "title",
+        "visitedAt"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_browser::browser::session::HistoryEntry"
+    },
+    "McpConfig": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "protocol_version": {
+          "type": "string"
+        },
+        "transport": {
+          "$ref": "#/$defs/McpTransportConfig"
+        },
+        "tools": {
+          "$ref": "#/$defs/McpToolsConfig"
+        },
+        "performance": {
+          "$ref": "#/$defs/McpPerformanceConfig"
+        }
+      },
+      "required": [
+        "enabled",
+        "protocol_version",
+        "transport",
+        "tools",
+        "performance"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_mcp::mcp::config::McpConfig"
+    },
+    "McpConfig__De": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "protocol_version": {
+          "type": "string"
+        },
+        "transport": {
+          "$ref": "#/$defs/McpTransportConfig__De"
+        },
+        "tools": {
+          "$ref": "#/$defs/McpToolsConfig__De"
+        },
+        "performance": {
+          "$ref": "#/$defs/McpPerformanceConfig__De"
+        }
+      },
+      "required": [
+        "enabled",
+        "transport",
+        "tools",
+        "performance"
+      ],
+      "x-rust": "dstu_mcp::mcp::config::McpConfig"
+    },
+    "McpFraming": {
+      "type": "string",
+      "enum": [
+        "jsonl",
+        "content_length"
+      ],
+      "x-rust": "dstu_mcp::mcp::config::McpFraming"
+    },
+    "McpFraming__De": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "jsonl",
+            "content_length"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "jsonl": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "jsonl"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "content_length": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "content_length"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "x-also-accepts": "externally tagged map form {\"<Variant>\": null}",
+      "x-rust": "dstu_mcp::mcp::config::McpFraming"
+    },
+    "McpOAuthStatus": {
+      "type": "object",
+      "properties": {
+        "server_id": {
+          "type": "string"
+        },
+        "authorized": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "server_id",
+        "authorized"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_mcp::mcp::commands::McpOAuthStatus"
+    },
+    "McpPerformanceConfig": {
+      "type": "object",
+      "properties": {
+        "timeout_ms": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "rate_limit_per_second": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "cache_max_size": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "cache_ttl_ms": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "timeout_ms",
+        "rate_limit_per_second",
+        "cache_max_size",
+        "cache_ttl_ms"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_mcp::mcp::config::McpPerformanceConfig"
+    },
+    "McpPerformanceConfig__De": {
+      "type": "object",
+      "properties": {
+        "timeout_ms": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "rate_limit_per_second": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "cache_max_size": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "cache_ttl_ms": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "timeout_ms",
+        "rate_limit_per_second",
+        "cache_max_size",
+        "cache_ttl_ms"
+      ],
+      "x-rust": "dstu_mcp::mcp::config::McpPerformanceConfig"
+    },
+    "McpToolsConfig": {
+      "type": "object",
+      "properties": {
+        "cache_ttl_ms": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "advertise_all_tools": {
+          "type": "boolean"
+        },
+        "whitelist": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "blacklist": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "cache_ttl_ms",
+        "advertise_all_tools",
+        "whitelist",
+        "blacklist"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_mcp::mcp::config::McpToolsConfig"
+    },
+    "McpToolsConfig__De": {
+      "type": "object",
+      "properties": {
+        "cache_ttl_ms": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "advertise_all_tools": {
+          "type": "boolean"
+        },
+        "whitelist": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "blacklist": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "cache_ttl_ms",
+        "advertise_all_tools",
+        "whitelist",
+        "blacklist"
+      ],
+      "x-rust": "dstu_mcp::mcp::config::McpToolsConfig"
+    },
+    "McpTransportConfig": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "stdio"
+            },
+            "command": {
+              "type": "string"
+            },
+            "args": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "port": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "x-int": "u16",
+                  "minimum": 0,
+                  "maximum": 65535
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "x-option": "omit"
+            },
+            "working_dir": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "x-rust": "std::path::PathBuf"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "x-option": "omit"
+            },
+            "framing": {
+              "$ref": "#/$defs/McpFraming"
+            },
+            "env": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              },
+              "x-key-order": "unspecified"
+            }
+          },
+          "required": [
+            "type",
+            "command",
+            "args",
+            "framing",
+            "env"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "websocket"
+            },
+            "url": {
+              "type": "string"
+            },
+            "env": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              },
+              "x-key-order": "unspecified"
+            }
+          },
+          "required": [
+            "type",
+            "url",
+            "env"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "sse"
+            },
+            "endpoint": {
+              "type": "string"
+            },
+            "api_key": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "x-option": "omit"
+            },
+            "oauth": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/OAuthConfig"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "x-option": "omit"
+            },
+            "headers": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              },
+              "x-key-order": "unspecified"
+            }
+          },
+          "required": [
+            "type",
+            "endpoint",
+            "headers"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "http"
+            },
+            "url": {
+              "type": "string"
+            },
+            "api_key": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "x-option": "omit"
+            },
+            "oauth": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/OAuthConfig"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "x-option": "omit"
+            },
+            "headers": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              },
+              "x-key-order": "unspecified"
+            }
+          },
+          "required": [
+            "type",
+            "url",
+            "headers"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "streamable_http"
+            },
+            "url": {
+              "type": "string"
+            },
+            "api_key": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "x-option": "omit"
+            },
+            "oauth": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/OAuthConfig"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "x-option": "omit"
+            },
+            "headers": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              },
+              "x-key-order": "unspecified"
+            }
+          },
+          "required": [
+            "type",
+            "url",
+            "headers"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "x-rust": "dstu_mcp::mcp::config::McpTransportConfig"
+    },
+    "McpTransportConfig__De": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "stdio"
+            },
+            "command": {
+              "type": "string"
+            },
+            "args": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "port": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "x-int": "u16",
+                  "minimum": 0,
+                  "maximum": 65535
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "x-option": "null"
+            },
+            "working_dir": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "x-rust": "std::path::PathBuf"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "x-option": "null"
+            },
+            "framing": {
+              "$ref": "#/$defs/McpFraming__De"
+            },
+            "env": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              },
+              "x-key-order": "unspecified"
+            }
+          },
+          "required": [
+            "type",
+            "command",
+            "args",
+            "framing"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "websocket"
+            },
+            "url": {
+              "type": "string"
+            },
+            "env": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              },
+              "x-key-order": "unspecified"
+            }
+          },
+          "required": [
+            "type",
+            "url"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "sse"
+            },
+            "endpoint": {
+              "type": "string"
+            },
+            "api_key": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "x-option": "null"
+            },
+            "oauth": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/OAuthConfig__De"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "x-option": "null"
+            },
+            "headers": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              },
+              "x-key-order": "unspecified"
+            }
+          },
+          "required": [
+            "type",
+            "endpoint"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "http"
+            },
+            "url": {
+              "type": "string"
+            },
+            "api_key": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "x-option": "null"
+            },
+            "oauth": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/OAuthConfig__De"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "x-option": "null"
+            },
+            "headers": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              },
+              "x-key-order": "unspecified"
+            }
+          },
+          "required": [
+            "type",
+            "url"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "streamable_http"
+            },
+            "url": {
+              "type": "string"
+            },
+            "api_key": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "x-option": "null"
+            },
+            "oauth": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/OAuthConfig__De"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "x-option": "null"
+            },
+            "headers": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              },
+              "x-key-order": "unspecified"
+            }
+          },
+          "required": [
+            "type",
+            "url"
+          ]
+        }
+      ],
+      "x-rust": "dstu_mcp::mcp::config::McpTransportConfig"
+    },
+    "NetworkProbeResult": {
+      "type": "object",
+      "properties": {
+        "ok": {
+          "type": "boolean"
+        },
+        "statusCode": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u16",
+              "minimum": 0,
+              "maximum": 65535
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "rttMs": {
+          "type": "integer",
+          "x-int": "u64",
+          "minimum": 0
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "ok",
+        "statusCode",
+        "rttMs",
+        "error"
+      ],
+      "additionalProperties": false,
+      "x-rust": "deep_student_lib::cmd::network::NetworkProbeResult"
+    },
+    "OAuthConfig": {
+      "type": "object",
+      "properties": {
+        "client_id": {
+          "type": "string"
+        },
+        "auth_url": {
+          "type": "string"
+        },
+        "token_url": {
+          "type": "string"
+        },
+        "redirect_uri": {
+          "type": "string"
+        },
+        "scopes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "client_secret": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        }
+      },
+      "required": [
+        "client_id",
+        "auth_url",
+        "token_url",
+        "redirect_uri",
+        "scopes"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_mcp::mcp::config::OAuthConfig"
+    },
+    "OAuthConfig__De": {
+      "type": "object",
+      "properties": {
+        "client_id": {
+          "type": "string"
+        },
+        "auth_url": {
+          "type": "string"
+        },
+        "token_url": {
+          "type": "string"
+        },
+        "redirect_uri": {
+          "type": "string"
+        },
+        "scopes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "client_secret": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "x-rust": "dstu_mcp::mcp::config::OAuthConfig"
+    },
+    "ProviderStrategies": {
+      "type": "object",
+      "properties": {
+        "default": {
+          "$ref": "#/$defs/ProviderStrategy"
+        },
+        "bing_rss": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProviderStrategy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "google_cse": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProviderStrategy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "serpapi": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProviderStrategy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "tavily": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProviderStrategy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "brave": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProviderStrategy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "searxng": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProviderStrategy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "zhipu": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProviderStrategy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "bocha": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProviderStrategy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "deepseek": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProviderStrategy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "default"
+      ],
+      "x-rust": "dstu_mcp::tools::web_search::ProviderStrategies"
+    },
+    "ProviderStrategy": {
+      "type": "object",
+      "properties": {
+        "timeout_ms": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u64",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "max_retries": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "initial_retry_delay_ms": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u64",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "max_retry_delay_ms": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u64",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "backoff_multiplier": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "max_concurrent_requests": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "rate_limit_per_minute": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "cache_enabled": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "cache_ttl_seconds": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u64",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "cache_max_entries": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "usize",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "special_handling": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SpecialHandling"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "x-rust": "dstu_mcp::tools::web_search::ProviderStrategy"
+    },
+    "SpecialHandling": {
+      "type": "object",
+      "properties": {
+        "handle_429_retry_after": {
+          "type": "boolean"
+        },
+        "exponential_backoff_on_5xx": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "handle_429_retry_after",
+        "exponential_backoff_on_5xx"
+      ],
+      "x-rust": "dstu_mcp::tools::web_search::SpecialHandling"
+    },
+    "StartOAuthOutcome": {
+      "type": "object",
+      "properties": {
+        "server_id": {
+          "type": "string"
+        },
+        "token_type": {
+          "type": "string"
+        },
+        "expires_at": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time",
+              "x-rust": "chrono::DateTime<chrono::Utc>",
+              "x-format": "RFC 3339, SecondsFormat::AutoSi, Z for UTC"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "authorization_url": {
+          "type": "string"
+        },
+        "redirect_uri": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "server_id",
+        "token_type",
+        "expires_at",
+        "authorization_url",
+        "redirect_uri"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_mcp::mcp::auth::StartOAuthOutcome"
+    },
+    "SurfaceCssOcclusion": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "type": "number",
+          "x-float": "f64"
+        },
+        "y": {
+          "type": "number",
+          "x-float": "f64"
+        },
+        "width": {
+          "type": "number",
+          "x-float": "f64"
+        },
+        "height": {
+          "type": "number",
+          "x-float": "f64"
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "width",
+        "height"
+      ],
+      "x-rust": "dstu_browser::browser::service::SurfaceCssOcclusion"
+    },
+    "ToolConflict": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "local_available": {
+          "type": "boolean"
+        },
+        "mcp_available": {
+          "type": "boolean"
+        },
+        "suggested_mcp_name": {
+          "type": "string"
+        },
+        "resolution": {
+          "$ref": "#/$defs/ConflictResolution"
+        }
+      },
+      "required": [
+        "name",
+        "local_available",
+        "mcp_available",
+        "suggested_mcp_name",
+        "resolution"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_mcp::tools::ToolConflict"
+    }
+  }
+}

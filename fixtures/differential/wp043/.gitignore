@@ -1,0 +1,6 @@
+# Working profiles may be emitted by instrumented build scripts/proc macros.
+# Completed build profiles are retained losslessly in builds/<job>/*.tar.gz.
+/build-profiles/
+/build-profiles-preserved/
+/builds/*/build-script-profraw.tar.gz
+/runs/

@@ -1,0 +1,32 @@
+[
+  {
+    "card": "到期卡片",
+    "calls": [
+      "openTodayReviewTarget:cards"
+    ]
+  },
+  {
+    "card": "错题复习",
+    "calls": [
+      "openTodayReviewTarget:mistakes"
+    ]
+  },
+  {
+    "card": "待复习笔记",
+    "calls": [
+      "openTodayReviewTarget:notes"
+    ]
+  },
+  {
+    "card": "今日待办",
+    "calls": [
+      "onNavigate:todo"
+    ]
+  },
+  {
+    "card": "运行中任务",
+    "calls": [
+      "onNavigate:task-dashboard"
+    ]
+  }
+]

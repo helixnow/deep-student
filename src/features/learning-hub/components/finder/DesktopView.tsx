@@ -4,7 +4,7 @@
  * 显示用户添加的桌面快捷方式，支持：
  * - 网格布局显示快捷方式
  * - 点击打开对应应用/资源
- * - 右键菜单管理快捷方式
+ * - 右键菜单管理快捷方式（菜单行来自 `app.menu` 的 finder.desktop / finder.desktopShortcut，本文件渲染并提供动作）
  * - 拖拽排序（待实现）
  *
  * @since 2026-01-31
@@ -14,7 +14,7 @@ import React, { useCallback, useState, useRef, useEffect, useLayoutEffect, useMe
 import { createPortal } from 'react-dom';
 import { Z_INDEX } from '@/config/zIndex';
 import { useTranslation } from 'react-i18next';
-import { Plus, Trash, PencilSimple, Check, X, ArrowSquareOut, Gear, FolderOpen, DotsThree } from '@phosphor-icons/react';
+import { Plus, Check, X, FolderOpen, DotsThree } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
@@ -31,6 +31,7 @@ import {
   type AppType,
   type DesktopRootConfig,
   getPresetAppShortcuts,
+  resolveShortcutName,
   useDesktopShortcutName,
 } from '../../stores/desktopStore';
 import type { QuickAccessType } from '../../stores/finderStore';
@@ -41,6 +42,9 @@ import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { FolderPickerDialog } from './FolderPickerDialog';
 import { folderApi } from '@/dstu';
 import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
+import type { ResolvedAppMenuRow } from '@/ui-plugins/official/menu/appMenu';
+import { officialFinderDesktopMenuEntries } from '@/ui-plugins/official/menu/finderDesktopMenu';
+import { useFinderMenuRows } from '../appMenuHost';
 
 /** 创建资源类型 */
 export type CreateResourceType = 'note' | 'exam' | 'essay' | 'translation' | 'mindmap';
@@ -79,6 +83,71 @@ interface DesktopContextMenuProps {
   onRenameShortcut?: (shortcut: DesktopShortcut) => void;
   onRemoveShortcut?: (shortcut: DesktopShortcut) => void;
   onSetDesktopRoot?: () => void;
+}
+
+// 学习桌面 wb-desk-menu 同款菜单行（样式见 workbench DesktopContextMenu.css）；执行后 `onDone` 关闭菜单
+// （`closeOnRun: false` 的行自己关）
+function DesktopMenuRow({ row, onDone }: { row: ResolvedAppMenuRow; onDone: () => void }) {
+  if (row.kind === 'separator') return <div className="wb-desk-menu-sep" role="separator" />;
+  const { run } = row;
+  const check = row.checked ? <Check size={13} weight="bold" /> : null;
+  return (
+    <button
+      type="button"
+      role={row.radio ? 'menuitemradio' : row.checked !== undefined ? 'menuitemcheckbox' : 'menuitem'}
+      aria-checked={row.checked}
+      className={cn('wb-desk-menu-item [@media(pointer:coarse)]:min-h-11', row.danger && 'wb-desk-menu-item--danger')}
+      disabled={row.disabled}
+      data-testid={row.testId}
+      onClick={() => {
+        run?.();
+        if (row.closeOnRun !== false) onDone();
+      }}
+    >
+      <span className="wb-desk-menu-item-icon" aria-hidden="true">{row.radio ? check : row.icon}</span>
+      <span className="wb-desk-menu-item-label">{row.suffix ? `${row.label} · ${row.suffix}` : row.label}</span>
+      {row.shortcut && <span className="wb-desk-menu-item-shortcut" aria-hidden="true">{row.shortcut}</span>}
+      {!row.radio && row.checked !== undefined && <span className="wb-desk-menu-item-check" aria-hidden="true">{check}</span>}
+    </button>
+  );
+}
+
+// 快捷方式卡片的菜单行：`app.menu` 的 finder.desktopShortcut（官方行见 ui-plugins/official/menu/finderDesktopMenu.tsx）
+function ShortcutMenuRows({ shortcut, onDone, onOpen, onRename, onRemove }: {
+  shortcut: DesktopShortcut;
+  onDone: () => void;
+  onOpen?: (shortcut: DesktopShortcut) => void;
+  onRename?: (shortcut: DesktopShortcut) => void;
+  onRemove?: (shortcut: DesktopShortcut) => void;
+}) {
+  const { resourceId, resourceType, folderId, quickAccessType, appType } = shortcut.target;
+  // RUST-FIX(RF-W18-finder-menu-contributions): preserve the card menu shell and official effects.
+  const rows = useFinderMenuRows('finder.desktopShortcut', {
+    shortcutId: shortcut.id,
+    shortcutType: shortcut.type,
+    name: resolveShortcutName(shortcut),
+    target: { resourceId, resourceType, folderId, quickAccessType, appType },
+    open: () => onOpen?.(shortcut),
+    beginRename: () => onRename?.(shortcut),
+    remove: () => onRemove?.(shortcut),
+  }, officialFinderDesktopMenuEntries);
+  return <>{rows.map((row) => <DesktopMenuRow key={row.key} row={row} onDone={onDone} />)}</>;
+}
+
+// 空白区域的菜单行：`app.menu` 的 finder.desktop；当前根目录那一行留在菜单里
+function BlankAreaMenuRows({ desktopRoot, onDone, onAddShortcut, onSetDesktopRoot }: {
+  desktopRoot: DesktopRootConfig;
+  onDone: () => void;
+  onAddShortcut: () => void;
+  onSetDesktopRoot?: () => void;
+}) {
+  const { folderId, folderName, folderPath } = desktopRoot;
+  const rows = useFinderMenuRows('finder.desktop', {
+    desktopRoot: { folderId, folderName, folderPath },
+    addShortcut: onAddShortcut,
+    chooseRootFolder: () => onSetDesktopRoot?.(),
+  }, officialFinderDesktopMenuEntries);
+  return <>{rows.map((row) => <DesktopMenuRow key={row.key} row={row} onDone={onDone} />)}</>;
 }
 
 function DesktopContextMenu({
@@ -174,34 +243,6 @@ function DesktopContextMenu({
 
   if (!state.open) return null;
 
-  // 学习桌面 wb-desk-menu 同款菜单行（样式见 workbench DesktopContextMenu.css）
-  const MenuItem = ({
-    icon,
-    label,
-    onClick,
-    danger = false,
-  }: {
-    icon: React.ReactNode;
-    label: string;
-    onClick: () => void;
-    danger?: boolean;
-  }) => (
-    <button
-      type="button"
-      role="menuitem"
-      className={cn(
-        'wb-desk-menu-item [@media(pointer:coarse)]:min-h-11',
-        danger && 'wb-desk-menu-item--danger'
-      )}
-      onClick={() => { onClick(); onClose(); }}
-    >
-      <span className="wb-desk-menu-item-icon" aria-hidden="true">{icon}</span>
-      <span className="wb-desk-menu-item-label">{label}</span>
-    </button>
-  );
-
-  const Separator = () => <div className="wb-desk-menu-sep" role="separator" />;
-
   return createPortal(
     <div
       ref={menuRef}
@@ -236,40 +277,20 @@ function DesktopContextMenu({
         <div aria-hidden className="mx-auto my-2 h-1 w-10 rounded-full bg-muted-foreground/25" />
       )}
       {state.target ? (
-        // 快捷方式右键菜单
-        <>
-          <MenuItem
-            icon={<ArrowSquareOut size={15} weight="duotone" />}
-            label={t('desktop.open')}
-            onClick={() => onOpenShortcut?.(state.target!)}
-          />
-          <Separator />
-          <MenuItem
-            icon={<PencilSimple size={15} weight="duotone" />}
-            label={t('desktop.rename')}
-            onClick={() => onRenameShortcut?.(state.target!)}
-          />
-          <Separator />
-          <MenuItem
-            icon={<Trash size={15} weight="duotone" />}
-            label={t('desktop.remove')}
-            onClick={() => onRemoveShortcut?.(state.target!)}
-            danger
-          />
-        </>
+        <ShortcutMenuRows
+          shortcut={state.target}
+          onDone={onClose}
+          onOpen={onOpenShortcut}
+          onRename={onRenameShortcut}
+          onRemove={onRemoveShortcut}
+        />
       ) : (
-        // 空白区域右键菜单
         <>
-          <MenuItem
-            icon={<Plus size={15} weight="duotone" />}
-            label={t('desktop.addShortcut')}
-            onClick={onAddShortcut}
-          />
-          <Separator />
-          <MenuItem
-            icon={<Gear size={15} weight="duotone" />}
-            label={t('desktop.setRootFolder')}
-            onClick={() => onSetDesktopRoot?.()}
+          <BlankAreaMenuRows
+            desktopRoot={desktopRoot}
+            onDone={onClose}
+            onAddShortcut={onAddShortcut}
+            onSetDesktopRoot={onSetDesktopRoot}
           />
           {/* 显示当前桌面根目录 */}
           <div className="px-3 py-1.5 text-xs text-muted-foreground">

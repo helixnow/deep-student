@@ -1,0 +1,1101 @@
+{
+  "baseline": "d3943bae5708e92f15f2a38de4510f72b2f77ae6",
+  "consumer": {
+    "path": "src/features/settings/components/SettingsShellSidebar.tsx",
+    "source": "import React, { useState } from 'react';\nimport { SettingsSidebar } from './SettingsSidebar';\nimport { useSettingsNavigation } from './useSettingsNavigation';\nimport { useSettingsShellStore } from '@/stores/settingsShellStore';\n\ninterface SettingsShellSidebarProps {\n  isSmallScreen: boolean;\n  globalLeftPanelCollapsed: boolean;\n  setSidebarOpen?: (open: boolean) => void;\n  onBack?: () => void;\n}\n\nexport const SettingsShellSidebar: React.FC<SettingsShellSidebarProps> = ({\n  isSmallScreen,\n  globalLeftPanelCollapsed,\n  setSidebarOpen,\n  onBack,\n}) => {\n  const [sidebarSearchQuery, setSidebarSearchQuery] = useState('');\n  const [sidebarSearchFocused, setSidebarSearchFocused] = useState(false);\n  const [internalSidebarOpen, setInternalSidebarOpen] = useState(false);\n  const { sidebarNavItems, sidebarCategories, settingsSearchIndex } = useSettingsNavigation();\n  const activeTab = useSettingsShellStore((state) => state.activeTab);\n  const setActiveTab = useSettingsShellStore((state) => state.setActiveTab);\n\n  return (\n    <SettingsSidebar\n      isSmallScreen={isSmallScreen}\n      globalLeftPanelCollapsed={globalLeftPanelCollapsed}\n      desktopMode=\"slot\"\n      sidebarSearchQuery={sidebarSearchQuery}\n      setSidebarSearchQuery={setSidebarSearchQuery}\n      sidebarSearchFocused={sidebarSearchFocused}\n      setSidebarSearchFocused={setSidebarSearchFocused}\n      settingsSearchIndex={settingsSearchIndex}\n      sidebarNavItems={sidebarNavItems}\n      sidebarCategories={sidebarCategories}\n      activeTab={activeTab}\n      setActiveTab={setActiveTab}\n      setSidebarOpen={setSidebarOpen ?? setInternalSidebarOpen}\n      onBack={onBack}\n    />\n  );\n};\n"
+  },
+  "navigation": {
+    "path": "src/features/settings/components/useSettingsNavigation.tsx",
+    "reference": "settings.json#/navigation"
+  },
+  "cases": [
+    {
+      "input": {
+        "isMobile": false,
+        "isSmallScreen": false,
+        "globalLeftPanelCollapsed": false,
+        "externalSidebarControl": false,
+        "withBack": false
+      },
+      "initial": {
+        "isSmallScreen": false,
+        "globalLeftPanelCollapsed": false,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": "",
+        "sidebarSearchFocused": false,
+        "activeTab": "apis",
+        "hasBack": false,
+        "navigationRef": "settings.json#/navigation/desktop"
+      },
+      "afterActions": {
+        "isSmallScreen": false,
+        "globalLeftPanelCollapsed": false,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": " OCR ",
+        "sidebarSearchFocused": true,
+        "activeTab": "document-processing",
+        "hasBack": false,
+        "navigationRef": "settings.json#/navigation/desktop"
+      },
+      "effects": {
+        "externalOpen": [],
+        "backCalls": 0
+      }
+    },
+    {
+      "input": {
+        "isMobile": false,
+        "isSmallScreen": false,
+        "globalLeftPanelCollapsed": false,
+        "externalSidebarControl": false,
+        "withBack": true
+      },
+      "initial": {
+        "isSmallScreen": false,
+        "globalLeftPanelCollapsed": false,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": "",
+        "sidebarSearchFocused": false,
+        "activeTab": "apis",
+        "hasBack": true,
+        "navigationRef": "settings.json#/navigation/desktop"
+      },
+      "afterActions": {
+        "isSmallScreen": false,
+        "globalLeftPanelCollapsed": false,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": " OCR ",
+        "sidebarSearchFocused": true,
+        "activeTab": "document-processing",
+        "hasBack": true,
+        "navigationRef": "settings.json#/navigation/desktop"
+      },
+      "effects": {
+        "externalOpen": [],
+        "backCalls": 1
+      }
+    },
+    {
+      "input": {
+        "isMobile": false,
+        "isSmallScreen": false,
+        "globalLeftPanelCollapsed": false,
+        "externalSidebarControl": true,
+        "withBack": false
+      },
+      "initial": {
+        "isSmallScreen": false,
+        "globalLeftPanelCollapsed": false,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": "",
+        "sidebarSearchFocused": false,
+        "activeTab": "apis",
+        "hasBack": false,
+        "navigationRef": "settings.json#/navigation/desktop"
+      },
+      "afterActions": {
+        "isSmallScreen": false,
+        "globalLeftPanelCollapsed": false,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": " OCR ",
+        "sidebarSearchFocused": true,
+        "activeTab": "document-processing",
+        "hasBack": false,
+        "navigationRef": "settings.json#/navigation/desktop"
+      },
+      "effects": {
+        "externalOpen": [
+          true
+        ],
+        "backCalls": 0
+      }
+    },
+    {
+      "input": {
+        "isMobile": false,
+        "isSmallScreen": false,
+        "globalLeftPanelCollapsed": false,
+        "externalSidebarControl": true,
+        "withBack": true
+      },
+      "initial": {
+        "isSmallScreen": false,
+        "globalLeftPanelCollapsed": false,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": "",
+        "sidebarSearchFocused": false,
+        "activeTab": "apis",
+        "hasBack": true,
+        "navigationRef": "settings.json#/navigation/desktop"
+      },
+      "afterActions": {
+        "isSmallScreen": false,
+        "globalLeftPanelCollapsed": false,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": " OCR ",
+        "sidebarSearchFocused": true,
+        "activeTab": "document-processing",
+        "hasBack": true,
+        "navigationRef": "settings.json#/navigation/desktop"
+      },
+      "effects": {
+        "externalOpen": [
+          true
+        ],
+        "backCalls": 1
+      }
+    },
+    {
+      "input": {
+        "isMobile": false,
+        "isSmallScreen": false,
+        "globalLeftPanelCollapsed": true,
+        "externalSidebarControl": false,
+        "withBack": false
+      },
+      "initial": {
+        "isSmallScreen": false,
+        "globalLeftPanelCollapsed": true,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": "",
+        "sidebarSearchFocused": false,
+        "activeTab": "apis",
+        "hasBack": false,
+        "navigationRef": "settings.json#/navigation/desktop"
+      },
+      "afterActions": {
+        "isSmallScreen": false,
+        "globalLeftPanelCollapsed": true,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": " OCR ",
+        "sidebarSearchFocused": true,
+        "activeTab": "document-processing",
+        "hasBack": false,
+        "navigationRef": "settings.json#/navigation/desktop"
+      },
+      "effects": {
+        "externalOpen": [],
+        "backCalls": 0
+      }
+    },
+    {
+      "input": {
+        "isMobile": false,
+        "isSmallScreen": false,
+        "globalLeftPanelCollapsed": true,
+        "externalSidebarControl": false,
+        "withBack": true
+      },
+      "initial": {
+        "isSmallScreen": false,
+        "globalLeftPanelCollapsed": true,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": "",
+        "sidebarSearchFocused": false,
+        "activeTab": "apis",
+        "hasBack": true,
+        "navigationRef": "settings.json#/navigation/desktop"
+      },
+      "afterActions": {
+        "isSmallScreen": false,
+        "globalLeftPanelCollapsed": true,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": " OCR ",
+        "sidebarSearchFocused": true,
+        "activeTab": "document-processing",
+        "hasBack": true,
+        "navigationRef": "settings.json#/navigation/desktop"
+      },
+      "effects": {
+        "externalOpen": [],
+        "backCalls": 1
+      }
+    },
+    {
+      "input": {
+        "isMobile": false,
+        "isSmallScreen": false,
+        "globalLeftPanelCollapsed": true,
+        "externalSidebarControl": true,
+        "withBack": false
+      },
+      "initial": {
+        "isSmallScreen": false,
+        "globalLeftPanelCollapsed": true,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": "",
+        "sidebarSearchFocused": false,
+        "activeTab": "apis",
+        "hasBack": false,
+        "navigationRef": "settings.json#/navigation/desktop"
+      },
+      "afterActions": {
+        "isSmallScreen": false,
+        "globalLeftPanelCollapsed": true,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": " OCR ",
+        "sidebarSearchFocused": true,
+        "activeTab": "document-processing",
+        "hasBack": false,
+        "navigationRef": "settings.json#/navigation/desktop"
+      },
+      "effects": {
+        "externalOpen": [
+          true
+        ],
+        "backCalls": 0
+      }
+    },
+    {
+      "input": {
+        "isMobile": false,
+        "isSmallScreen": false,
+        "globalLeftPanelCollapsed": true,
+        "externalSidebarControl": true,
+        "withBack": true
+      },
+      "initial": {
+        "isSmallScreen": false,
+        "globalLeftPanelCollapsed": true,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": "",
+        "sidebarSearchFocused": false,
+        "activeTab": "apis",
+        "hasBack": true,
+        "navigationRef": "settings.json#/navigation/desktop"
+      },
+      "afterActions": {
+        "isSmallScreen": false,
+        "globalLeftPanelCollapsed": true,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": " OCR ",
+        "sidebarSearchFocused": true,
+        "activeTab": "document-processing",
+        "hasBack": true,
+        "navigationRef": "settings.json#/navigation/desktop"
+      },
+      "effects": {
+        "externalOpen": [
+          true
+        ],
+        "backCalls": 1
+      }
+    },
+    {
+      "input": {
+        "isMobile": false,
+        "isSmallScreen": true,
+        "globalLeftPanelCollapsed": false,
+        "externalSidebarControl": false,
+        "withBack": false
+      },
+      "initial": {
+        "isSmallScreen": true,
+        "globalLeftPanelCollapsed": false,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": "",
+        "sidebarSearchFocused": false,
+        "activeTab": "apis",
+        "hasBack": false,
+        "navigationRef": "settings.json#/navigation/desktop"
+      },
+      "afterActions": {
+        "isSmallScreen": true,
+        "globalLeftPanelCollapsed": false,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": " OCR ",
+        "sidebarSearchFocused": true,
+        "activeTab": "document-processing",
+        "hasBack": false,
+        "navigationRef": "settings.json#/navigation/desktop"
+      },
+      "effects": {
+        "externalOpen": [],
+        "backCalls": 0
+      }
+    },
+    {
+      "input": {
+        "isMobile": false,
+        "isSmallScreen": true,
+        "globalLeftPanelCollapsed": false,
+        "externalSidebarControl": false,
+        "withBack": true
+      },
+      "initial": {
+        "isSmallScreen": true,
+        "globalLeftPanelCollapsed": false,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": "",
+        "sidebarSearchFocused": false,
+        "activeTab": "apis",
+        "hasBack": true,
+        "navigationRef": "settings.json#/navigation/desktop"
+      },
+      "afterActions": {
+        "isSmallScreen": true,
+        "globalLeftPanelCollapsed": false,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": " OCR ",
+        "sidebarSearchFocused": true,
+        "activeTab": "document-processing",
+        "hasBack": true,
+        "navigationRef": "settings.json#/navigation/desktop"
+      },
+      "effects": {
+        "externalOpen": [],
+        "backCalls": 1
+      }
+    },
+    {
+      "input": {
+        "isMobile": false,
+        "isSmallScreen": true,
+        "globalLeftPanelCollapsed": false,
+        "externalSidebarControl": true,
+        "withBack": false
+      },
+      "initial": {
+        "isSmallScreen": true,
+        "globalLeftPanelCollapsed": false,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": "",
+        "sidebarSearchFocused": false,
+        "activeTab": "apis",
+        "hasBack": false,
+        "navigationRef": "settings.json#/navigation/desktop"
+      },
+      "afterActions": {
+        "isSmallScreen": true,
+        "globalLeftPanelCollapsed": false,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": " OCR ",
+        "sidebarSearchFocused": true,
+        "activeTab": "document-processing",
+        "hasBack": false,
+        "navigationRef": "settings.json#/navigation/desktop"
+      },
+      "effects": {
+        "externalOpen": [
+          true
+        ],
+        "backCalls": 0
+      }
+    },
+    {
+      "input": {
+        "isMobile": false,
+        "isSmallScreen": true,
+        "globalLeftPanelCollapsed": false,
+        "externalSidebarControl": true,
+        "withBack": true
+      },
+      "initial": {
+        "isSmallScreen": true,
+        "globalLeftPanelCollapsed": false,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": "",
+        "sidebarSearchFocused": false,
+        "activeTab": "apis",
+        "hasBack": true,
+        "navigationRef": "settings.json#/navigation/desktop"
+      },
+      "afterActions": {
+        "isSmallScreen": true,
+        "globalLeftPanelCollapsed": false,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": " OCR ",
+        "sidebarSearchFocused": true,
+        "activeTab": "document-processing",
+        "hasBack": true,
+        "navigationRef": "settings.json#/navigation/desktop"
+      },
+      "effects": {
+        "externalOpen": [
+          true
+        ],
+        "backCalls": 1
+      }
+    },
+    {
+      "input": {
+        "isMobile": false,
+        "isSmallScreen": true,
+        "globalLeftPanelCollapsed": true,
+        "externalSidebarControl": false,
+        "withBack": false
+      },
+      "initial": {
+        "isSmallScreen": true,
+        "globalLeftPanelCollapsed": true,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": "",
+        "sidebarSearchFocused": false,
+        "activeTab": "apis",
+        "hasBack": false,
+        "navigationRef": "settings.json#/navigation/desktop"
+      },
+      "afterActions": {
+        "isSmallScreen": true,
+        "globalLeftPanelCollapsed": true,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": " OCR ",
+        "sidebarSearchFocused": true,
+        "activeTab": "document-processing",
+        "hasBack": false,
+        "navigationRef": "settings.json#/navigation/desktop"
+      },
+      "effects": {
+        "externalOpen": [],
+        "backCalls": 0
+      }
+    },
+    {
+      "input": {
+        "isMobile": false,
+        "isSmallScreen": true,
+        "globalLeftPanelCollapsed": true,
+        "externalSidebarControl": false,
+        "withBack": true
+      },
+      "initial": {
+        "isSmallScreen": true,
+        "globalLeftPanelCollapsed": true,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": "",
+        "sidebarSearchFocused": false,
+        "activeTab": "apis",
+        "hasBack": true,
+        "navigationRef": "settings.json#/navigation/desktop"
+      },
+      "afterActions": {
+        "isSmallScreen": true,
+        "globalLeftPanelCollapsed": true,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": " OCR ",
+        "sidebarSearchFocused": true,
+        "activeTab": "document-processing",
+        "hasBack": true,
+        "navigationRef": "settings.json#/navigation/desktop"
+      },
+      "effects": {
+        "externalOpen": [],
+        "backCalls": 1
+      }
+    },
+    {
+      "input": {
+        "isMobile": false,
+        "isSmallScreen": true,
+        "globalLeftPanelCollapsed": true,
+        "externalSidebarControl": true,
+        "withBack": false
+      },
+      "initial": {
+        "isSmallScreen": true,
+        "globalLeftPanelCollapsed": true,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": "",
+        "sidebarSearchFocused": false,
+        "activeTab": "apis",
+        "hasBack": false,
+        "navigationRef": "settings.json#/navigation/desktop"
+      },
+      "afterActions": {
+        "isSmallScreen": true,
+        "globalLeftPanelCollapsed": true,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": " OCR ",
+        "sidebarSearchFocused": true,
+        "activeTab": "document-processing",
+        "hasBack": false,
+        "navigationRef": "settings.json#/navigation/desktop"
+      },
+      "effects": {
+        "externalOpen": [
+          true
+        ],
+        "backCalls": 0
+      }
+    },
+    {
+      "input": {
+        "isMobile": false,
+        "isSmallScreen": true,
+        "globalLeftPanelCollapsed": true,
+        "externalSidebarControl": true,
+        "withBack": true
+      },
+      "initial": {
+        "isSmallScreen": true,
+        "globalLeftPanelCollapsed": true,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": "",
+        "sidebarSearchFocused": false,
+        "activeTab": "apis",
+        "hasBack": true,
+        "navigationRef": "settings.json#/navigation/desktop"
+      },
+      "afterActions": {
+        "isSmallScreen": true,
+        "globalLeftPanelCollapsed": true,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": " OCR ",
+        "sidebarSearchFocused": true,
+        "activeTab": "document-processing",
+        "hasBack": true,
+        "navigationRef": "settings.json#/navigation/desktop"
+      },
+      "effects": {
+        "externalOpen": [
+          true
+        ],
+        "backCalls": 1
+      }
+    },
+    {
+      "input": {
+        "isMobile": true,
+        "isSmallScreen": false,
+        "globalLeftPanelCollapsed": false,
+        "externalSidebarControl": false,
+        "withBack": false
+      },
+      "initial": {
+        "isSmallScreen": false,
+        "globalLeftPanelCollapsed": false,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": "",
+        "sidebarSearchFocused": false,
+        "activeTab": "apis",
+        "hasBack": false,
+        "navigationRef": "settings.json#/navigation/mobile"
+      },
+      "afterActions": {
+        "isSmallScreen": false,
+        "globalLeftPanelCollapsed": false,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": " OCR ",
+        "sidebarSearchFocused": true,
+        "activeTab": "document-processing",
+        "hasBack": false,
+        "navigationRef": "settings.json#/navigation/mobile"
+      },
+      "effects": {
+        "externalOpen": [],
+        "backCalls": 0
+      }
+    },
+    {
+      "input": {
+        "isMobile": true,
+        "isSmallScreen": false,
+        "globalLeftPanelCollapsed": false,
+        "externalSidebarControl": false,
+        "withBack": true
+      },
+      "initial": {
+        "isSmallScreen": false,
+        "globalLeftPanelCollapsed": false,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": "",
+        "sidebarSearchFocused": false,
+        "activeTab": "apis",
+        "hasBack": true,
+        "navigationRef": "settings.json#/navigation/mobile"
+      },
+      "afterActions": {
+        "isSmallScreen": false,
+        "globalLeftPanelCollapsed": false,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": " OCR ",
+        "sidebarSearchFocused": true,
+        "activeTab": "document-processing",
+        "hasBack": true,
+        "navigationRef": "settings.json#/navigation/mobile"
+      },
+      "effects": {
+        "externalOpen": [],
+        "backCalls": 1
+      }
+    },
+    {
+      "input": {
+        "isMobile": true,
+        "isSmallScreen": false,
+        "globalLeftPanelCollapsed": false,
+        "externalSidebarControl": true,
+        "withBack": false
+      },
+      "initial": {
+        "isSmallScreen": false,
+        "globalLeftPanelCollapsed": false,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": "",
+        "sidebarSearchFocused": false,
+        "activeTab": "apis",
+        "hasBack": false,
+        "navigationRef": "settings.json#/navigation/mobile"
+      },
+      "afterActions": {
+        "isSmallScreen": false,
+        "globalLeftPanelCollapsed": false,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": " OCR ",
+        "sidebarSearchFocused": true,
+        "activeTab": "document-processing",
+        "hasBack": false,
+        "navigationRef": "settings.json#/navigation/mobile"
+      },
+      "effects": {
+        "externalOpen": [
+          true
+        ],
+        "backCalls": 0
+      }
+    },
+    {
+      "input": {
+        "isMobile": true,
+        "isSmallScreen": false,
+        "globalLeftPanelCollapsed": false,
+        "externalSidebarControl": true,
+        "withBack": true
+      },
+      "initial": {
+        "isSmallScreen": false,
+        "globalLeftPanelCollapsed": false,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": "",
+        "sidebarSearchFocused": false,
+        "activeTab": "apis",
+        "hasBack": true,
+        "navigationRef": "settings.json#/navigation/mobile"
+      },
+      "afterActions": {
+        "isSmallScreen": false,
+        "globalLeftPanelCollapsed": false,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": " OCR ",
+        "sidebarSearchFocused": true,
+        "activeTab": "document-processing",
+        "hasBack": true,
+        "navigationRef": "settings.json#/navigation/mobile"
+      },
+      "effects": {
+        "externalOpen": [
+          true
+        ],
+        "backCalls": 1
+      }
+    },
+    {
+      "input": {
+        "isMobile": true,
+        "isSmallScreen": false,
+        "globalLeftPanelCollapsed": true,
+        "externalSidebarControl": false,
+        "withBack": false
+      },
+      "initial": {
+        "isSmallScreen": false,
+        "globalLeftPanelCollapsed": true,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": "",
+        "sidebarSearchFocused": false,
+        "activeTab": "apis",
+        "hasBack": false,
+        "navigationRef": "settings.json#/navigation/mobile"
+      },
+      "afterActions": {
+        "isSmallScreen": false,
+        "globalLeftPanelCollapsed": true,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": " OCR ",
+        "sidebarSearchFocused": true,
+        "activeTab": "document-processing",
+        "hasBack": false,
+        "navigationRef": "settings.json#/navigation/mobile"
+      },
+      "effects": {
+        "externalOpen": [],
+        "backCalls": 0
+      }
+    },
+    {
+      "input": {
+        "isMobile": true,
+        "isSmallScreen": false,
+        "globalLeftPanelCollapsed": true,
+        "externalSidebarControl": false,
+        "withBack": true
+      },
+      "initial": {
+        "isSmallScreen": false,
+        "globalLeftPanelCollapsed": true,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": "",
+        "sidebarSearchFocused": false,
+        "activeTab": "apis",
+        "hasBack": true,
+        "navigationRef": "settings.json#/navigation/mobile"
+      },
+      "afterActions": {
+        "isSmallScreen": false,
+        "globalLeftPanelCollapsed": true,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": " OCR ",
+        "sidebarSearchFocused": true,
+        "activeTab": "document-processing",
+        "hasBack": true,
+        "navigationRef": "settings.json#/navigation/mobile"
+      },
+      "effects": {
+        "externalOpen": [],
+        "backCalls": 1
+      }
+    },
+    {
+      "input": {
+        "isMobile": true,
+        "isSmallScreen": false,
+        "globalLeftPanelCollapsed": true,
+        "externalSidebarControl": true,
+        "withBack": false
+      },
+      "initial": {
+        "isSmallScreen": false,
+        "globalLeftPanelCollapsed": true,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": "",
+        "sidebarSearchFocused": false,
+        "activeTab": "apis",
+        "hasBack": false,
+        "navigationRef": "settings.json#/navigation/mobile"
+      },
+      "afterActions": {
+        "isSmallScreen": false,
+        "globalLeftPanelCollapsed": true,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": " OCR ",
+        "sidebarSearchFocused": true,
+        "activeTab": "document-processing",
+        "hasBack": false,
+        "navigationRef": "settings.json#/navigation/mobile"
+      },
+      "effects": {
+        "externalOpen": [
+          true
+        ],
+        "backCalls": 0
+      }
+    },
+    {
+      "input": {
+        "isMobile": true,
+        "isSmallScreen": false,
+        "globalLeftPanelCollapsed": true,
+        "externalSidebarControl": true,
+        "withBack": true
+      },
+      "initial": {
+        "isSmallScreen": false,
+        "globalLeftPanelCollapsed": true,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": "",
+        "sidebarSearchFocused": false,
+        "activeTab": "apis",
+        "hasBack": true,
+        "navigationRef": "settings.json#/navigation/mobile"
+      },
+      "afterActions": {
+        "isSmallScreen": false,
+        "globalLeftPanelCollapsed": true,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": " OCR ",
+        "sidebarSearchFocused": true,
+        "activeTab": "document-processing",
+        "hasBack": true,
+        "navigationRef": "settings.json#/navigation/mobile"
+      },
+      "effects": {
+        "externalOpen": [
+          true
+        ],
+        "backCalls": 1
+      }
+    },
+    {
+      "input": {
+        "isMobile": true,
+        "isSmallScreen": true,
+        "globalLeftPanelCollapsed": false,
+        "externalSidebarControl": false,
+        "withBack": false
+      },
+      "initial": {
+        "isSmallScreen": true,
+        "globalLeftPanelCollapsed": false,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": "",
+        "sidebarSearchFocused": false,
+        "activeTab": "apis",
+        "hasBack": false,
+        "navigationRef": "settings.json#/navigation/mobile"
+      },
+      "afterActions": {
+        "isSmallScreen": true,
+        "globalLeftPanelCollapsed": false,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": " OCR ",
+        "sidebarSearchFocused": true,
+        "activeTab": "document-processing",
+        "hasBack": false,
+        "navigationRef": "settings.json#/navigation/mobile"
+      },
+      "effects": {
+        "externalOpen": [],
+        "backCalls": 0
+      }
+    },
+    {
+      "input": {
+        "isMobile": true,
+        "isSmallScreen": true,
+        "globalLeftPanelCollapsed": false,
+        "externalSidebarControl": false,
+        "withBack": true
+      },
+      "initial": {
+        "isSmallScreen": true,
+        "globalLeftPanelCollapsed": false,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": "",
+        "sidebarSearchFocused": false,
+        "activeTab": "apis",
+        "hasBack": true,
+        "navigationRef": "settings.json#/navigation/mobile"
+      },
+      "afterActions": {
+        "isSmallScreen": true,
+        "globalLeftPanelCollapsed": false,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": " OCR ",
+        "sidebarSearchFocused": true,
+        "activeTab": "document-processing",
+        "hasBack": true,
+        "navigationRef": "settings.json#/navigation/mobile"
+      },
+      "effects": {
+        "externalOpen": [],
+        "backCalls": 1
+      }
+    },
+    {
+      "input": {
+        "isMobile": true,
+        "isSmallScreen": true,
+        "globalLeftPanelCollapsed": false,
+        "externalSidebarControl": true,
+        "withBack": false
+      },
+      "initial": {
+        "isSmallScreen": true,
+        "globalLeftPanelCollapsed": false,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": "",
+        "sidebarSearchFocused": false,
+        "activeTab": "apis",
+        "hasBack": false,
+        "navigationRef": "settings.json#/navigation/mobile"
+      },
+      "afterActions": {
+        "isSmallScreen": true,
+        "globalLeftPanelCollapsed": false,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": " OCR ",
+        "sidebarSearchFocused": true,
+        "activeTab": "document-processing",
+        "hasBack": false,
+        "navigationRef": "settings.json#/navigation/mobile"
+      },
+      "effects": {
+        "externalOpen": [
+          true
+        ],
+        "backCalls": 0
+      }
+    },
+    {
+      "input": {
+        "isMobile": true,
+        "isSmallScreen": true,
+        "globalLeftPanelCollapsed": false,
+        "externalSidebarControl": true,
+        "withBack": true
+      },
+      "initial": {
+        "isSmallScreen": true,
+        "globalLeftPanelCollapsed": false,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": "",
+        "sidebarSearchFocused": false,
+        "activeTab": "apis",
+        "hasBack": true,
+        "navigationRef": "settings.json#/navigation/mobile"
+      },
+      "afterActions": {
+        "isSmallScreen": true,
+        "globalLeftPanelCollapsed": false,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": " OCR ",
+        "sidebarSearchFocused": true,
+        "activeTab": "document-processing",
+        "hasBack": true,
+        "navigationRef": "settings.json#/navigation/mobile"
+      },
+      "effects": {
+        "externalOpen": [
+          true
+        ],
+        "backCalls": 1
+      }
+    },
+    {
+      "input": {
+        "isMobile": true,
+        "isSmallScreen": true,
+        "globalLeftPanelCollapsed": true,
+        "externalSidebarControl": false,
+        "withBack": false
+      },
+      "initial": {
+        "isSmallScreen": true,
+        "globalLeftPanelCollapsed": true,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": "",
+        "sidebarSearchFocused": false,
+        "activeTab": "apis",
+        "hasBack": false,
+        "navigationRef": "settings.json#/navigation/mobile"
+      },
+      "afterActions": {
+        "isSmallScreen": true,
+        "globalLeftPanelCollapsed": true,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": " OCR ",
+        "sidebarSearchFocused": true,
+        "activeTab": "document-processing",
+        "hasBack": false,
+        "navigationRef": "settings.json#/navigation/mobile"
+      },
+      "effects": {
+        "externalOpen": [],
+        "backCalls": 0
+      }
+    },
+    {
+      "input": {
+        "isMobile": true,
+        "isSmallScreen": true,
+        "globalLeftPanelCollapsed": true,
+        "externalSidebarControl": false,
+        "withBack": true
+      },
+      "initial": {
+        "isSmallScreen": true,
+        "globalLeftPanelCollapsed": true,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": "",
+        "sidebarSearchFocused": false,
+        "activeTab": "apis",
+        "hasBack": true,
+        "navigationRef": "settings.json#/navigation/mobile"
+      },
+      "afterActions": {
+        "isSmallScreen": true,
+        "globalLeftPanelCollapsed": true,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": " OCR ",
+        "sidebarSearchFocused": true,
+        "activeTab": "document-processing",
+        "hasBack": true,
+        "navigationRef": "settings.json#/navigation/mobile"
+      },
+      "effects": {
+        "externalOpen": [],
+        "backCalls": 1
+      }
+    },
+    {
+      "input": {
+        "isMobile": true,
+        "isSmallScreen": true,
+        "globalLeftPanelCollapsed": true,
+        "externalSidebarControl": true,
+        "withBack": false
+      },
+      "initial": {
+        "isSmallScreen": true,
+        "globalLeftPanelCollapsed": true,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": "",
+        "sidebarSearchFocused": false,
+        "activeTab": "apis",
+        "hasBack": false,
+        "navigationRef": "settings.json#/navigation/mobile"
+      },
+      "afterActions": {
+        "isSmallScreen": true,
+        "globalLeftPanelCollapsed": true,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": " OCR ",
+        "sidebarSearchFocused": true,
+        "activeTab": "document-processing",
+        "hasBack": false,
+        "navigationRef": "settings.json#/navigation/mobile"
+      },
+      "effects": {
+        "externalOpen": [
+          true
+        ],
+        "backCalls": 0
+      }
+    },
+    {
+      "input": {
+        "isMobile": true,
+        "isSmallScreen": true,
+        "globalLeftPanelCollapsed": true,
+        "externalSidebarControl": true,
+        "withBack": true
+      },
+      "initial": {
+        "isSmallScreen": true,
+        "globalLeftPanelCollapsed": true,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": "",
+        "sidebarSearchFocused": false,
+        "activeTab": "apis",
+        "hasBack": true,
+        "navigationRef": "settings.json#/navigation/mobile"
+      },
+      "afterActions": {
+        "isSmallScreen": true,
+        "globalLeftPanelCollapsed": true,
+        "desktopMode": "slot",
+        "sidebarSearchQuery": " OCR ",
+        "sidebarSearchFocused": true,
+        "activeTab": "document-processing",
+        "hasBack": true,
+        "navigationRef": "settings.json#/navigation/mobile"
+      },
+      "effects": {
+        "externalOpen": [
+          true
+        ],
+        "backCalls": 1
+      }
+    }
+  ]
+}

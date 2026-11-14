@@ -1,0 +1,14 @@
+{
+  "name": "deepstudent-plugin-translation-prompt-undeclared",
+  "version": "1.0.0",
+  "private": true,
+  "description": "测试夹具：与 ../../../ 同一个插件模块，但清单漏了 service:translation 权限",
+  "type": "module",
+  "engines": { "deepStudent": "^0.11" },
+  "deepStudent": {
+    "manifestVersion": 1,
+    "id": "example.translation-prompt",
+    "platforms": ["desktop"],
+    "host": "./index.ts"
+  }
+}

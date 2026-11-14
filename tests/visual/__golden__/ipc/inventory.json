@@ -1,0 +1,1046 @@
+{
+  "add_ocr_engine(configId,model,name)": [
+    "data-sync"
+  ],
+  "chat_v2_automation_summary()": [
+    "shell-desktop"
+  ],
+  "chat_v2_count_sessions(groupId,status)": [
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "chat_v2_count_sessions(status)": [
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "chat_v2_create_session(groupId,metadata{chatV2Draft},mode,title)": [
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "chat_v2_delete_session(sessionId)": [
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "chat_v2_freeze_available_skills_snapshot(sessionId,snapshot)": [
+    "chat",
+    "paper-search",
+    "research-memory",
+    "shell-chat"
+  ],
+  "chat_v2_get_session(sessionId)": [
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "chat_v2_goal_get(sessionId)": [
+    "chat",
+    "paper-search",
+    "research-memory",
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "chat_v2_has_active_stream(sessionId)": [
+    "chat",
+    "paper-search",
+    "research-memory",
+    "shell-chat"
+  ],
+  "chat_v2_kill_switch_status()": [
+    "shell-desktop"
+  ],
+  "chat_v2_list_groups(status)": [
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "chat_v2_list_runtime_roots()": [
+    "chat",
+    "notes",
+    "paper-search",
+    "research-memory",
+    "shell-chat",
+    "shell-desktop",
+    "skills-mcp"
+  ],
+  "chat_v2_list_sessions(groupId,limit,offset,status)": [
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "chat_v2_list_sessions(status)": [
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "chat_v2_load_session(sessionId,tailLimit)": [
+    "chat",
+    "paper-search",
+    "research-memory",
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "chat_v2_save_session(sessionId,sessionState{activeSkillIdsJson,chatParams,features,inputValue,loadedSkillIdsJson,modeState,panelStates,pendingContextRefsJson,sessionId,skillStateJson,updatedAt})": [
+    "chat",
+    "paper-search",
+    "research-memory",
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "chat_v2_send_message(request{assistantMessageId,content,options,pathMap,sessionId,userContextRefs,userMessageId})": [
+    "chat",
+    "shell-chat"
+  ],
+  "chat_v2_send_message(request{assistantMessageId,content,options,sessionId,userMessageId})": [
+    "paper-search",
+    "research-memory",
+    "shell-chat"
+  ],
+  "chat_v2_stage_context_attachments(items[]{displayName,resourceId,sourceId},sessionId)": [
+    "chat",
+    "shell-chat"
+  ],
+  "chat_v2_upsert_streaming_block(blockId,blockType,content,messageId,sessionId)": [
+    "shell-chat"
+  ],
+  "cloud_config_ssot_get()": [
+    "data-sync"
+  ],
+  "data_governance_get_audit_logs(limit)": [
+    "data-sync"
+  ],
+  "data_governance_get_backup_list()": [
+    "data-sync"
+  ],
+  "data_governance_get_maintenance_status()": [
+    "data-sync",
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "data_governance_get_migration_status()": [
+    "data-sync",
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "data_governance_list_backup_jobs()": [
+    "data-sync"
+  ],
+  "data_governance_list_resumable_jobs()": [
+    "data-sync"
+  ],
+  "data_governance_run_health_check()": [
+    "data-sync"
+  ],
+  "dstu_folder_get_tree()": [
+    "notes"
+  ],
+  "dstu_folder_list()": [
+    "notes"
+  ],
+  "dstu_get(path)": [
+    "essay",
+    "notes",
+    "question-bank",
+    "reading-translation"
+  ],
+  "dstu_get_content(path)": [
+    "notes"
+  ],
+  "dstu_list(options{isFavorite},path)": [
+    "learning-hub",
+    "notes"
+  ],
+  "dstu_list(options{limit,offset,sortBy,sortOrder,typeFilter},path)": [
+    "notes"
+  ],
+  "dstu_list(options{limit,offset,typeFilter},path)": [
+    "chat",
+    "notes",
+    "paper-search",
+    "productivity",
+    "research-memory",
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "dstu_list(options{limit,sortBy,sortOrder,typeFilter},path)": [
+    "essay",
+    "question-bank"
+  ],
+  "dstu_list(options{sortBy,sortOrder},path)": [
+    "learning-hub"
+  ],
+  "dstu_search(options{limit,typeFilter},query)": [
+    "notes"
+  ],
+  "dstu_watch(path)": [
+    "chat",
+    "essay",
+    "learning-hub",
+    "media",
+    "mindmap",
+    "notes",
+    "question-bank",
+    "shell-desktop"
+  ],
+  "emit:chat_v2_event_demo-anki-cards": [
+    "shell-chat"
+  ],
+  "emit:chat_v2_event_demo-bilingual": [
+    "shell-chat"
+  ],
+  "emit:chat_v2_event_demo-paper-search": [
+    "paper-search"
+  ],
+  "emit:chat_v2_event_demo-pdf-deepread": [
+    "chat"
+  ],
+  "emit:chat_v2_event_demo-research-mode": [
+    "research-memory"
+  ],
+  "emit:chat_v2_session_demo-anki-cards": [
+    "shell-chat"
+  ],
+  "emit:chat_v2_session_demo-bilingual": [
+    "shell-chat"
+  ],
+  "emit:chat_v2_session_demo-paper-search": [
+    "paper-search"
+  ],
+  "emit:chat_v2_session_demo-pdf-deepread": [
+    "chat"
+  ],
+  "emit:chat_v2_session_demo-research-mode": [
+    "research-memory"
+  ],
+  "emit:pomodoro-mini:state": [
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "essay_grading_get_models()": [
+    "essay"
+  ],
+  "essay_grading_get_modes()": [
+    "essay"
+  ],
+  "essay_grading_get_rounds(sessionId)": [
+    "essay"
+  ],
+  "essay_grading_get_session(sessionId)": [
+    "essay"
+  ],
+  "fsrs_get_due(limit)": [
+    "flashcards",
+    "shell-desktop"
+  ],
+  "fsrs_get_review_statistics(days)": [
+    "flashcards",
+    "shell-desktop"
+  ],
+  "fsrs_get_scheduler_config()": [
+    "flashcards",
+    "shell-desktop"
+  ],
+  "fsrs_get_stats()": [
+    "chat",
+    "flashcards",
+    "paper-search",
+    "productivity",
+    "research-memory",
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "get_all_custom_templates()": [
+    "anki",
+    "chat",
+    "essay",
+    "flashcards",
+    "notes",
+    "paper-search",
+    "question-bank",
+    "reading-translation",
+    "research-memory",
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "get_anki_stats()": [
+    "anki"
+  ],
+  "get_api_configurations()": [
+    "chat",
+    "data-sync",
+    "models",
+    "paper-search",
+    "research-memory",
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "get_available_ocr_models()": [
+    "data-sync"
+  ],
+  "get_backup_config()": [
+    "data-sync"
+  ],
+  "get_default_template_id()": [
+    "anki",
+    "chat",
+    "essay",
+    "flashcards",
+    "notes",
+    "paper-search",
+    "question-bank",
+    "reading-translation",
+    "research-memory",
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "get_document_tasks(documentId)": [
+    "chat",
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "get_exam_sheet_session_detail(request{session_id})": [
+    "question-bank"
+  ],
+  "get_model_assignments()": [
+    "chat",
+    "data-sync",
+    "models",
+    "paper-search",
+    "research-memory",
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "get_model_profiles()": [
+    "chat",
+    "data-sync",
+    "models",
+    "paper-search",
+    "research-memory",
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "get_prevent_sleep()": [
+    "anki"
+  ],
+  "get_setting(key)": [
+    "anki",
+    "chat",
+    "data-sync",
+    "essay",
+    "flashcards",
+    "learning-hub",
+    "media",
+    "mindmap",
+    "models",
+    "notes",
+    "paper-search",
+    "productivity",
+    "question-bank",
+    "reading-translation",
+    "research-memory",
+    "shell-chat",
+    "shell-desktop",
+    "skills-mcp"
+  ],
+  "get_vendor_configs()": [
+    "data-sync",
+    "models"
+  ],
+  "import_builtin_templates()": [
+    "anki",
+    "chat",
+    "essay",
+    "flashcards",
+    "notes",
+    "paper-search",
+    "question-bank",
+    "reading-translation",
+    "research-memory",
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "insight_list(limit,offset,status)": [
+    "notes"
+  ],
+  "list_anki_library_cards(request{includeDecks,page,pageSize})": [
+    "flashcards",
+    "shell-desktop"
+  ],
+  "list_document_sessions(limit)": [
+    "anki",
+    "shell-desktop"
+  ],
+  "listen:anki_generation_event": [
+    "anki",
+    "chat",
+    "essay",
+    "notes",
+    "paper-search",
+    "question-bank",
+    "reading-translation",
+    "research-memory",
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "listen:backup-jobs-resumable": [
+    "data-sync"
+  ],
+  "listen:canvas:ai-edit-request": [
+    "notes"
+  ],
+  "listen:chat_v2://automations_changed": [
+    "shell-desktop"
+  ],
+  "listen:chat_v2://kill_switch_changed": [
+    "shell-desktop"
+  ],
+  "listen:chat_v2_automation_run_completed": [
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "listen:chat_v2_event_demo-anki-cards": [
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "listen:chat_v2_event_demo-bilingual": [
+    "shell-chat"
+  ],
+  "listen:chat_v2_event_demo-draft-<id>-0": [
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "listen:chat_v2_event_demo-draft-<id>-1": [
+    "shell-chat"
+  ],
+  "listen:chat_v2_event_demo-paper-search": [
+    "paper-search"
+  ],
+  "listen:chat_v2_event_demo-pdf-deepread": [
+    "chat"
+  ],
+  "listen:chat_v2_event_demo-research-mode": [
+    "research-memory"
+  ],
+  "listen:chat_v2_llm_request_body": [
+    "chat",
+    "paper-search",
+    "research-memory",
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "listen:chat_v2_session_demo-anki-cards": [
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "listen:chat_v2_session_demo-bilingual": [
+    "shell-chat"
+  ],
+  "listen:chat_v2_session_demo-draft-<id>-0": [
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "listen:chat_v2_session_demo-draft-<id>-1": [
+    "shell-chat"
+  ],
+  "listen:chat_v2_session_demo-paper-search": [
+    "paper-search"
+  ],
+  "listen:chat_v2_session_demo-pdf-deepread": [
+    "chat"
+  ],
+  "listen:chat_v2_session_demo-research-mode": [
+    "research-memory"
+  ],
+  "listen:data-governance-migration-status": [
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "listen:data-governance-sync-progress": [
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "listen:dstu:change": [
+    "chat",
+    "essay",
+    "learning-hub",
+    "media",
+    "mindmap",
+    "notes",
+    "question-bank",
+    "shell-desktop"
+  ],
+  "listen:media-processing-completed": [
+    "chat",
+    "media",
+    "paper-search",
+    "research-memory",
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "listen:media-processing-error": [
+    "chat",
+    "media",
+    "paper-search",
+    "research-memory",
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "listen:media-processing-progress": [
+    "chat",
+    "media",
+    "paper-search",
+    "research-memory",
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "listen:menu://close-window": [
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "listen:menu://command-palette": [
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "listen:menu://documentation": [
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "listen:menu://new-session": [
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "listen:menu://preferences": [
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "listen:menu://report-issue": [
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "listen:menu://toggle-sidebar": [
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "listen:mm_index_progress": [
+    "learning-hub"
+  ],
+  "listen:notes:lease-changed": [
+    "notes"
+  ],
+  "listen:notes:lease-ended": [
+    "notes"
+  ],
+  "listen:pdf-annotations:changed": [
+    "reading-translation"
+  ],
+  "listen:pdf-processing-completed": [
+    "chat",
+    "paper-search",
+    "research-memory",
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "listen:pdf-processing-error": [
+    "chat",
+    "paper-search",
+    "research-memory",
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "listen:pdf-processing-progress": [
+    "chat",
+    "paper-search",
+    "research-memory",
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "listen:pomodoro-mini:command": [
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "listen:pomodoro-mini:ready": [
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "listen:qbank_generation_task_event": [
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "listen:review://changed": [
+    "question-bank"
+  ],
+  "listen:skill-lifecycle-bridge-request": [
+    "chat",
+    "notes",
+    "paper-search",
+    "research-memory",
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "listen:super_session_changed": [
+    "chat",
+    "notes",
+    "paper-search",
+    "research-memory",
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "listen:super_session_inbox_changed": [
+    "chat",
+    "notes",
+    "paper-search",
+    "research-memory",
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "listen:tauri://close-requested": [
+    "chat",
+    "essay",
+    "learning-hub",
+    "media",
+    "mindmap",
+    "notes",
+    "paper-search",
+    "productivity",
+    "question-bank",
+    "reading-translation",
+    "research-memory",
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "listen:tauri://drag-drop": [
+    "chat",
+    "essay",
+    "learning-hub",
+    "media",
+    "notes",
+    "paper-search",
+    "research-memory",
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "listen:tauri://drag-enter": [
+    "chat",
+    "essay",
+    "learning-hub",
+    "media",
+    "notes",
+    "paper-search",
+    "research-memory",
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "listen:tauri://drag-leave": [
+    "chat",
+    "essay",
+    "learning-hub",
+    "media",
+    "notes",
+    "paper-search",
+    "research-memory",
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "listen:tauri://drag-over": [
+    "chat",
+    "essay",
+    "learning-hub",
+    "media",
+    "notes",
+    "paper-search",
+    "research-memory",
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "listen:todo://changed": [
+    "productivity",
+    "shell-desktop"
+  ],
+  "listen:vfs-index-progress": [
+    "learning-hub"
+  ],
+  "listen:workspace_agent_completion": [
+    "chat",
+    "notes",
+    "paper-search",
+    "research-memory",
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "listen:workspace_agent_joined": [
+    "chat",
+    "notes",
+    "paper-search",
+    "research-memory",
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "listen:workspace_agent_left": [
+    "chat",
+    "notes",
+    "paper-search",
+    "research-memory",
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "listen:workspace_agent_status_changed": [
+    "chat",
+    "notes",
+    "paper-search",
+    "research-memory",
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "listen:workspace_closed": [
+    "chat",
+    "notes",
+    "paper-search",
+    "research-memory",
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "listen:workspace_coordinator_awakened": [
+    "chat",
+    "notes",
+    "paper-search",
+    "research-memory",
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "listen:workspace_document_updated": [
+    "chat",
+    "notes",
+    "paper-search",
+    "research-memory",
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "listen:workspace_message_received": [
+    "chat",
+    "notes",
+    "paper-search",
+    "research-memory",
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "listen:workspace_subagent_retry": [
+    "chat",
+    "notes",
+    "paper-search",
+    "research-memory",
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "listen:workspace_warning": [
+    "chat",
+    "notes",
+    "paper-search",
+    "research-memory",
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "listen:workspace_worker_ready": [
+    "chat",
+    "notes",
+    "paper-search",
+    "research-memory",
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "llm_usage_session_summary(sessionId)": [
+    "chat",
+    "paper-search",
+    "research-memory",
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "log_debug_message(message)": [
+    "shell-desktop"
+  ],
+  "mastery_get_overview(limit)": [
+    "chat",
+    "paper-search",
+    "research-memory",
+    "shell-chat"
+  ],
+  "media_library_list()": [
+    "media"
+  ],
+  "media_study_ledger(includeCardIds,resourceIds)": [
+    "media"
+  ],
+  "memory_get_config()": [
+    "learning-hub",
+    "notes"
+  ],
+  "notes_editor_register(noteId)": [
+    "notes"
+  ],
+  "notes_get_backlinks(noteId)": [
+    "notes"
+  ],
+  "notes_get_format(noteId)": [
+    "notes"
+  ],
+  "notes_get_pref(key)": [
+    "notes"
+  ],
+  "notes_list_tags(subject)": [
+    "notes"
+  ],
+  "notes_relation_list(noteId)": [
+    "notes"
+  ],
+  "notes_state_list(request{include_deleted,note_id,type})": [
+    "notes"
+  ],
+  "openai_codex_auth_status()": [
+    "data-sync",
+    "models"
+  ],
+  "plugin:path|resolve_directory(directory)": [
+    "data-sync",
+    "models",
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "plugin:updater|check()": [
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "plugin:webview|set_webview_zoom(label,value)": [
+    "data-sync",
+    "models"
+  ],
+  "plugin:window|get_all_windows()": [
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "pomodoro_today_stats()": [
+    "productivity"
+  ],
+  "qbank_get_stats(examId)": [
+    "question-bank"
+  ],
+  "qbank_list_authoring_drafts(examId)": [
+    "question-bank"
+  ],
+  "qbank_list_questions(request{exam_id,filters,page,page_size})": [
+    "question-bank"
+  ],
+  "review_plan_get_stats(examId)": [
+    "chat",
+    "paper-search",
+    "productivity",
+    "question-bank",
+    "research-memory",
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "save_model_assignments(assignments{anki_card_model_config_id,chat_title_model_config_id,compaction_model_config_id,embedding_model_config_id,exam_sheet_ocr_model_config_id,image_generation_model_config_id,memory_decision_model_config_id,model2_config_id,qbank_ai_generation_model_config_id,qbank_ai_grading_model_config_id,reranker_model_config_id,review_analysis_model_config_id,translation_display_mode,translation_model_config_id,vl_embedding_model_config_id,vl_reranker_model_config_id,voice_input_asr_model_config_id})": [
+    "data-sync"
+  ],
+  "save_setting(key,value)": [
+    "anki",
+    "chat",
+    "data-sync",
+    "essay",
+    "flashcards",
+    "learning-hub",
+    "media",
+    "mindmap",
+    "models",
+    "notes",
+    "paper-search",
+    "productivity",
+    "question-bank",
+    "reading-translation",
+    "research-memory",
+    "shell-chat",
+    "shell-desktop",
+    "skills-mcp"
+  ],
+  "save_webview_settings(settings{i18nextLng})": [
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "set_sidebar_vibrancy(enabled)": [
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "set_window_appearance(dark)": [
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "skill_list_directories(path)": [
+    "chat",
+    "notes",
+    "paper-search",
+    "research-memory",
+    "shell-chat",
+    "shell-desktop",
+    "skills-mcp"
+  ],
+  "skill_list_package_files(path)": [
+    "skills-mcp"
+  ],
+  "skill_read_file(path)": [
+    "skills-mcp"
+  ],
+  "super_session_get_state()": [
+    "chat",
+    "notes",
+    "paper-search",
+    "research-memory",
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "sync_titlebar_sidebar_material(enabled,width)": [
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "todo_counts_snapshot()": [
+    "productivity"
+  ],
+  "todo_ensure_inbox(title)": [
+    "productivity"
+  ],
+  "todo_get_active_summary()": [
+    "productivity"
+  ],
+  "todo_list_all_pending()": [
+    "shell-desktop"
+  ],
+  "todo_list_lists()": [
+    "productivity",
+    "shell-desktop"
+  ],
+  "todo_list_reminders()": [
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "todo_list_today(includeCompleted)": [
+    "productivity",
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "todo_trash_counts()": [
+    "productivity"
+  ],
+  "unlisten:media-processing-completed": [
+    "chat",
+    "paper-search",
+    "research-memory",
+    "shell-chat"
+  ],
+  "unlisten:media-processing-error": [
+    "chat",
+    "paper-search",
+    "research-memory",
+    "shell-chat"
+  ],
+  "unlisten:media-processing-progress": [
+    "chat",
+    "paper-search",
+    "research-memory",
+    "shell-chat"
+  ],
+  "unlisten:mm_index_progress": [
+    "learning-hub"
+  ],
+  "unlisten:pdf-processing-completed": [
+    "chat",
+    "paper-search",
+    "research-memory",
+    "shell-chat"
+  ],
+  "unlisten:pdf-processing-error": [
+    "chat",
+    "paper-search",
+    "research-memory",
+    "shell-chat"
+  ],
+  "unlisten:pdf-processing-progress": [
+    "chat",
+    "paper-search",
+    "research-memory",
+    "shell-chat"
+  ],
+  "unlisten:super_session_changed": [
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "unlisten:tauri://drag-drop": [
+    "essay",
+    "learning-hub",
+    "media",
+    "notes",
+    "shell-chat"
+  ],
+  "unlisten:tauri://drag-enter": [
+    "essay",
+    "learning-hub",
+    "media",
+    "notes",
+    "shell-chat"
+  ],
+  "unlisten:tauri://drag-leave": [
+    "essay",
+    "learning-hub",
+    "media",
+    "notes",
+    "shell-chat"
+  ],
+  "unlisten:tauri://drag-over": [
+    "essay",
+    "learning-hub",
+    "media",
+    "notes",
+    "shell-chat"
+  ],
+  "unlisten:vfs-index-progress": [
+    "learning-hub"
+  ],
+  "update_ocr_engine_priority(engineList[]{configId,enabled})": [
+    "data-sync"
+  ],
+  "vfs_get_all_index_status(folderId,limit,offset,resourceType,stateFilter)": [
+    "learning-hub"
+  ],
+  "vfs_get_attachment_content(attachmentId)": [
+    "reading-translation"
+  ],
+  "vfs_get_embedding_readiness()": [
+    "learning-hub"
+  ],
+  "vfs_get_file_blob_path(id)": [
+    "reading-translation"
+  ],
+  "vfs_get_mindmap(mindmapId)": [
+    "chat",
+    "mindmap"
+  ],
+  "vfs_get_mindmap_content(mindmapId)": [
+    "chat",
+    "mindmap"
+  ],
+  "vfs_get_resource(resourceId)": [
+    "chat",
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "vfs_resolve_resource_refs(refs[]{injectModes,name,resourceHash,sourceId,type})": [
+    "shell-chat",
+    "shell-desktop"
+  ],
+  "vfs_resolve_resource_refs(refs[]{name,resourceHash,sourceId,type})": [
+    "chat",
+    "shell-chat"
+  ],
+  "vfs_resource_exists(resourceId)": [
+    "chat",
+    "shell-chat"
+  ],
+  "workspace_list_all(sessionId)": [
+    "chat",
+    "paper-search",
+    "research-memory",
+    "shell-chat",
+    "shell-desktop"
+  ]
+}

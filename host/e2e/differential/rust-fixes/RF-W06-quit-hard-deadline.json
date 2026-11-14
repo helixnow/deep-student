@@ -1,0 +1,38 @@
+{
+  "id": "RF-W06-quit-hard-deadline",
+  "kind": "deliberate",
+  "status": "proposed",
+  "title": "退出有绝对上限：Host 关停卡住时，外壳在 HOST_QUIT_DEADLINE_MS（11 s）时强制结束 Host 并退出，不会再按退出也退不掉",
+  "rust": {
+    "file": "src-tauri/src/lib.rs",
+    "line": 3256,
+    "behavior": "ExitRequested 回调里 block_on(PluginManager::shutdown_all()) 再 block_on(flush 日志 + background_tasks::shutdown())，没有总上限；关停期间事件循环被占住，第二次退出请求不会被处理。任何一步挂起，进程就一直不退出，只能从任务管理器 / 强制退出结束"
+  },
+  "fix": {
+    "files": ["electron/app-lifecycle.ts"],
+    "behavior": "lifecycle.quit 照旧先 markExiting、再等 HostSupervisor.shutdown（8 s 时 kill，POSIX 上是 SIGTERM，而 Host 接管了 SIGTERM）；另起一个 HOST_QUIT_DEADLINE_MS = HOST_SHUTDOWN_BUDGET_MS + 3000 的计时器，到点时 Host 还没退出就 HostSupervisor.forceKill（SIGKILL，Windows 上 TerminateProcess），然后照常 relaunch（重启时）并 app.exit(code)。Host 按时退出时计时器清掉，行为与改动前相同"
+  },
+  "evidence": "Electron 版的关停分在两个进程：before-quit 一律 preventDefault（为了与 Rust 一样不让第二次退出打断关停，L02 复核 W06 e6729de2 F3），所以 Host 卡住时第二次 Cmd+Q 也被拦下；HostSupervisor.shutdown 到预算只发 SIGTERM，Host 在 host/kernel/main.ts 的 SIGTERM 处理里只是再调一次 session.shutdown()，进程能否结束取决于 Electron 内部是否补发 SIGKILL。Rust 在同样的挂起下同样退不出去，这里有意不照搬。",
+  "userVisible": "只在 Host 关停超过 11 秒（正常上限约 5.5 秒）时有区别：应用在 11 秒时退出，而不是一直挂着要用户强制结束。正常退出、重启、process 插件 exit 的退出码不变。",
+  "dataCompat": "不改变落库数据、同步载荷与备份格式。被强制结束的 Host 与 Rust 进程被用户强制结束时一样，可能丢掉最后一段未落盘的日志；数据库写入由 SQLite 事务保证。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "electron/tests/app-lifecycle.test.ts",
+      "name": "RF-W06-quit-hard-deadline: Cmd+Q waits for the Host up to the deadline, a second Cmd+Q is still held, then the Host is killed and the app exits"
+    },
+    {
+      "file": "electron/tests/app-lifecycle.test.ts",
+      "name": "RF-W06-quit-hard-deadline: plugin:process exit and restart keep their exit code and relaunch at the deadline"
+    },
+    {
+      "file": "electron/tests/app-lifecycle.test.ts",
+      "name": "RF-W06-quit-hard-deadline: a Host that shuts down in time is not killed and the app exits exactly once"
+    },
+    {
+      "file": "electron/tests/host-shutdown-budget.test.ts",
+      "name": "RF-W06-quit-hard-deadline: forceKill sends SIGKILL to a Host that ignored both shutdown and the SIGTERM kill, and does nothing once it has exited"
+    }
+  ],
+  "notes": "W01 dde2f603 进 INT 后，Host 收到 SIGTERM 6 s 后自己 process.exit(1)（host/kernel/main.ts SIGTERM_EXIT_DEADLINE_MS），即关停开始后 14 s；外壳的上限是 11 s，两者都不是有序结束。Host 的事件循环被同步代码卡死时它自己的兜底不会触发，所以外壳的 SIGKILL 仍然需要。"
+}

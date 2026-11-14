@@ -1,0 +1,31 @@
+{
+  "id": "RF-W05-streaming-adapter-block-round-id",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main-agent",
+  "approvedAt": "2026-11-08T00:45:00Z",
+  "title": "ChatV2StreamingAdapter 的 content / thinking / web_search 块事件统一携带 roundId 与 skillStateVersion 元数据",
+  "rust": {
+    "file": "src-tauri/crates/dstu-agent/src/chat_v2/pipeline/llm_adapter.rs",
+    "line": 394,
+    "behavior": "tool_loop.rs:660 创建 ChatV2LLMAdapter 时传入 skill_state_version 与 Some(format!(\"tool-round-{recursion_depth}\"))，但 llm_adapter.rs 只在 on_tool_call_start (line 1390/1397) 调用 register_block_event_meta / emit_tool_call_preparing_with_meta 携带 round_id 与 skill_state_version；ensure_content_started / ensure_thinking_started / emit_chunk / emit_end / emit_error (lines 394, 415, 432, 572, 1176, 1206, 1231) 漏传 round_id 与 skill_state_version，导致 content/thinking 块事件缺少所属工具轮次标识"
+  },
+  "fix": {
+    "files": ["host/plugins/chat-pipeline/src/llm-adapter.ts"],
+    "behavior": "ChatV2StreamingAdapter.eventMeta() 将 { skillStateVersion, roundId } 统一传给 emitStart / emitChunk / emitEnd / emitError / emitToolCallPreparingStart，使同一工具轮次内的 content、thinking、web_search 与 tool_call_preparing 事件一致带有 roundId（及非 null 时的 skillStateVersion）"
+  },
+  "evidence": "tool_loop.rs:660 在每轮（含第 0 轮文本回合）构造 ChatV2LLMAdapter 时显式传入 round_id = Some(\"tool-round-0\") 和 skill_state_version，并在紧邻的 skill_injection_audit 事件（tool_loop.rs:582）发出 roundId: \"tool-round-0\"；llm_adapter.rs 保存了这两个字段却只在 tool_call_preparing 事件上传给 emitter，属于遗漏。host/e2e/streaming/normal-answer.test.ts:102、cancel-after-partial.test.ts:130、error-after-partial.test.ts:134、thinking.test.ts:126 均验证 content/thinking 事件携带 roundId: 'tool-round-0'",
+  "g3": {
+    "affects": true,
+    "selectors": [
+      { "scenario": "*", "surface": "event", "event": "chat_v2_event_*", "jsonPath": "$.payload.roundId" },
+      { "scenario": "*", "surface": "event", "event": "chat_v2_event_*", "jsonPath": "$.payload.skillStateVersion" }
+    ]
+  },
+  "tests": [
+    {
+      "file": "host/plugins/chat-pipeline/tests/llm-adapter.test.ts",
+      "name": "RF-W05-streaming-adapter-block-round-id: content and thinking block events carry roundId and skillStateVersion metadata"
+    }
+  ]
+}

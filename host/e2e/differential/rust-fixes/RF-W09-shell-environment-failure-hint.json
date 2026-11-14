@@ -1,0 +1,43 @@
+{
+  "id": "RF-W09-shell-environment-failure-hint",
+  "kind": "deliberate",
+  "status": "proposed",
+  "title": "工具卡片遇到本地 shell 执行环境失败（LOCAL_SHELL_ENVIRONMENT_FAILURE）时，在英文原文上方按界面语言提示命令没有运行、原样重试无用（D3 前端一环）",
+  "rust": {
+    "file": "src/features/chat/plugins/blocks/mcpTool.tsx",
+    "line": 333,
+    "behavior": "参照仓 deep-student（快照 21c9d808）的 ToolError 只显示“执行失败”和 block.error 原文。后端 RF-S01-shell-environment-failure 批准后，本地 shell / git_* 工具在 spawn、沙箱准备、RLIMIT 启动器、进程管道失败时报 `LOCAL_SHELL_ENVIRONMENT_FAILURE (stage=…)` 开头的英文说明；卡片照搬这段英文，中文界面的用户看不出命令根本没有运行、也没有改动文件，常会让模型原样重试"
+  },
+  "fix": {
+    "files": [
+      "src/features/chat/plugins/blocks/mcpTool.tsx"
+    ],
+    "behavior": "ToolError 在 error 文本以 `LOCAL_SHELL_ENVIRONMENT_FAILURE (stage=` 开头时（git_commit 第二步可在前面带 `git add succeeded but git commit could not start: ` 前缀；只认开头，命令跑了并失败、stderr/stdout 尾部恰好含这个标记时不提示，A18 复核 W09-19890468 第 4 项），在“执行失败”标题与原文之间多显示一行 chatV2:blocks.mcpTool.shellEnvironmentFailure（文案在 src/locales/zh-CN/chatV2.json 与 en-US/chatV2.json 的 blocks.mcpTool 下）。原文照旧完整显示，重试按钮、去授权入口不变。命令自身的非零退出（`Exit code N`）、超时等不显示。词条取不到时（defaultValue 为空）不显示这一行，退回原来的卡片"
+  },
+  "evidence": "BRIEF §8 D3 的前端闭环（S01 交接 .reports/agent-final/S01-1456-3fb147ca.md:92-105）。后端说明文字是给模型的英文，同一卡片其余文案都走 i18n；没有这一行，中文用户只能读一段英文技术说明。消费方：环境失败只出现在 local_shell_execute 与 git_* 工具，这两类在前端都是 mcp_tool 块（plugins/events/toolCall.ts:240-252、1105-1114），错误统一由 mcpTool.tsx 的 ToolError 显示；shell 的专用结果视图 placement 为 output，只在成功时出现；generic.tsx 只兜底未注册块类型，不会收到这两类工具。历史加载的块读 chat_v2_blocks.error，文本与实时事件相同，同样命中",
+  "userVisible": "能：本地 shell / git_* 工具因执行环境失败报错时，工具卡片在“执行失败”下面多一行提示。中文界面：“本地命令执行环境故障，命令没有运行，也没有改动任何文件。原样重试通常会同样失败。”英文界面：“The local command environment failed; the command did not run and nothing was changed. Retrying it unchanged usually fails the same way.”后端原文仍在下面完整显示。其他工具错误、命令自身的非零退出和超时不变",
+  "dataCompat": "只改前端显示与两个语言文件；不改 IPC 载荷、落库数据、同步载荷与备份格式",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "src/features/chat/plugins/blocks/__tests__/mcpTool.shellEnvironmentFailure.test.tsx",
+      "name": "RF-W09-shell-environment-failure-hint: zh-CN shows the hint under a full environment-failure message, which stays verbatim"
+    },
+    {
+      "file": "src/features/chat/plugins/blocks/__tests__/mcpTool.shellEnvironmentFailure.test.tsx",
+      "name": "RF-W09-shell-environment-failure-hint: en-US shows the hint when git_commit prefixes the environment failure"
+    },
+    {
+      "file": "src/features/chat/plugins/blocks/__tests__/mcpTool.shellEnvironmentFailure.test.tsx",
+      "name": "RF-W09-shell-environment-failure-hint: without the copy in any language the card falls back to the plain error, showing no key"
+    },
+    {
+      "file": "src/features/chat/plugins/blocks/__tests__/mcpTool.shellEnvironmentFailure.test.tsx",
+      "name": "RF-W09-shell-environment-failure-hint: zh-CN shows no hint when a command that did run printed the marker in its output"
+    },
+    {
+      "file": "tests/vitest/chat-v2/shellEnvironmentFailureHint.crosslayer.test.tsx",
+      "name": "RF-W09-shell-environment-failure-hint: a spawn the OS refuses reaches the tool card, through the Host executor and the event bridge, with the hint in both languages"
+    }
+  ]
+}

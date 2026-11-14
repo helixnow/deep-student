@@ -51,6 +51,7 @@ interface TextbookPdfViewerProps {
   onQuoteToChat?: (payload: PdfSelectionPayload) => void;
   /** P0 选区即上下文：源资源 id，透传给 EnhancedPdfViewer → PdfSelectionActions */
   selectionSourceId?: string;
+  toolbarVariant?: 'reader' | 'preview';
   /** @deprecated 自动导出已移除，此参数无效 */
   enableAutoPrepare?: boolean;
 }
@@ -74,6 +75,7 @@ export const TextbookPdfViewer: React.FC<TextbookPdfViewerProps> = ({
   onBookmarksChange,
   onQuoteToChat,
   selectionSourceId,
+  toolbarVariant,
 }) => {
   const { t } = useTranslation(['pdf', 'common', 'textbook']);
   const { isDarkMode } = useTheme();
@@ -281,6 +283,7 @@ export const TextbookPdfViewer: React.FC<TextbookPdfViewerProps> = ({
             onBookmarksChange={onBookmarksChange}
             onQuoteToChat={onQuoteToChat}
             selectionSourceId={selectionSourceId}
+            toolbarVariant={toolbarVariant}
           />
 
         </div>

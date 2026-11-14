@@ -1,0 +1,5 @@
+{
+  "plugins": [
+    { "id": "fixture.startup", "module": "./startup.plugin.ts", "config": { "fail": true } }
+  ]
+}

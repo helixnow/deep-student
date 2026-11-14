@@ -25,9 +25,23 @@ import {
 } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { DsDialog } from '@/components/ui/DsDialog';
+import {
+  SourceImageViewer,
+  buildSourceImageHref,
+  parseSourceImageHref,
+  type ParsedSourceImageRef,
+} from '@/components/shared/SourceImageViewer';
+import {
+  arbitrateAnnotationPointerInput,
+  createTextHighlightAnchor,
+  formatHighlightCitationForPrompt,
+  resolveTextHighlightAnchor,
+  type MaterialTextAnchor,
+} from '@/utils/textHighlightAnchors';
 import { useIsMobile } from '@/hooks/useBreakpoint';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
-import { cn } from '@/lib/utils';
+import { cn } from '@/utils/cn';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 export type SourceBBox = [number, number, number, number];
 
@@ -206,7 +220,7 @@ const RefList: React.FC<{
               layout === 'mobile' ? 'min-w-[152px]' : 'w-full',
               active
                 ? 'border-primary/50 bg-primary/[0.10] text-foreground'
-                : 'border-border/40 bg-muted/20 text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground',
+                : 'border-border/35 bg-muted/20 text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground',
             )}
           >
             <span className="flex items-center gap-1 text-caption font-medium">
@@ -218,7 +232,7 @@ const RefList: React.FC<{
               >
                 {roleLabel}
               </span>
-              <span className="tabular-nums">{pageLabel}</span>
+              <span className="font-mono tabular-nums">{pageLabel}</span>
               {ref.bbox && (
                 <span
                   className="rounded bg-warning/15 px-1 py-px text-2xs text-warning"
@@ -252,6 +266,55 @@ const SourceMeta: React.FC<{
       ? t('questionBank.sourceViewer.pageNumber', { defaultValue: '第 {{page}} 页', page: viewPage })
       : t('questionBank.sourceViewer.noPageShort', { defaultValue: '无页码' });
 
+  const [highlightAnchor, setHighlightAnchor] = useState<MaterialTextAnchor | null>(null);
+  const [citationCopied, setCitationCopied] = useState(false);
+  const textLayerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    setHighlightAnchor(null);
+    setCitationCopied(false);
+  }, [data?.text, viewPage, activeRef?.source_id]);
+
+  const resolvedAnchor = useMemo(() => {
+    if (!highlightAnchor || !data?.text) return null;
+    const res = resolveTextHighlightAnchor(data.text, highlightAnchor);
+    return res.status === 'resolved' ? res : null;
+  }, [highlightAnchor, data?.text]);
+
+  const handleTextLayerSelect = useCallback(() => {
+    if (!data?.text || typeof window === 'undefined') return;
+    const selection = window.getSelection?.();
+    if (!selection || selection.isCollapsed) return;
+    const selectedText = selection.toString().trim();
+    if (!selectedText) return;
+    const container = textLayerRef.current;
+    if (container && selection.anchorNode && !container.contains(selection.anchorNode)) return;
+    const startIdx = data.text.indexOf(selectedText);
+    if (startIdx < 0) return;
+    const anchor = createTextHighlightAnchor(
+      data.text,
+      startIdx,
+      startIdx + selectedText.length,
+      {
+        format: 'pdf',
+        pageOrSegment: viewPage ?? 1,
+      },
+    );
+    setHighlightAnchor(anchor);
+    setCitationCopied(false);
+  }, [data?.text, viewPage]);
+
+  const handleCopyHighlightCitation = useCallback(async () => {
+    if (!highlightAnchor) return;
+    const formatted = formatHighlightCitationForPrompt(highlightAnchor, {
+      materialTitle: data?.source_name || activeRef?.source_id || undefined,
+    });
+    const ok = await copyTextToClipboard(formatted);
+    if (ok) {
+      setCitationCopied(true);
+    }
+  }, [activeRef?.source_id, data?.source_name, highlightAnchor]);
+
   return (
     <div className="space-y-2">
       <div>
@@ -259,10 +322,10 @@ const SourceMeta: React.FC<{
           {data?.source_name || activeRef?.source_id || t('questionBank.sourceViewer.unknownSource', { defaultValue: '未知来源' })}
         </div>
         <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-2xs text-muted-foreground">
-          <span className="tabular-nums">{pageLabel}</span>
+          <span className="font-mono tabular-nums">{pageLabel}</span>
           {data?.source_format && <span className="uppercase">{data.source_format}</span>}
           {data?.page_count != null && (
-            <span>
+            <span className="font-mono tabular-nums">
               {t('questionBank.sourceViewer.pageCount', {
                 defaultValue: '共 {{count}} 页',
                 count: data.page_count,
@@ -295,10 +358,10 @@ const SourceMeta: React.FC<{
                 onClick={() => onSelectPage(page)}
                 aria-pressed={page === viewPage}
                 className={cn(
-                  'ui-state-colors !h-auto min-h-0 !rounded !border !px-1.5 !py-0.5 text-2xs tabular-nums',
+                  'ui-state-colors !h-auto min-h-0 !rounded !border !px-1.5 !py-0.5 text-2xs font-mono tabular-nums',
                   page === viewPage
                     ? 'border-primary/50 bg-primary/10 text-primary'
-                    : 'border-border/40 bg-muted/20 text-muted-foreground hover:text-foreground',
+                    : 'border-border/35 bg-muted/20 text-muted-foreground hover:text-foreground',
                 )}
               >
                 {page}
@@ -326,13 +389,60 @@ const SourceMeta: React.FC<{
 
       {data?.text && (
         <div>
-          <div className="mb-1 text-2xs text-muted-foreground">
-            {viewPage == null
-              ? t('questionBank.sourceViewer.nativeText', { defaultValue: '原生文本' })
-              : t('questionBank.sourceViewer.pageText', { defaultValue: '页面文字层' })}
+          <div className="mb-1 flex items-center justify-between gap-2 text-2xs text-muted-foreground">
+            <span>
+              {viewPage == null
+                ? t('questionBank.sourceViewer.nativeText', { defaultValue: '原生文本' })
+                : t('questionBank.sourceViewer.pageText', { defaultValue: '页面文字层' })}
+            </span>
+            {highlightAnchor && (
+              <DsButton
+                variant="ghost"
+                size="sm"
+                data-testid="source-viewer-copy-citation"
+                onClick={() => void handleCopyHighlightCitation()}
+                className="border border-border/35 bg-background px-1.5 py-0.5 text-2xs text-foreground"
+              >
+                {citationCopied
+                  ? t('questionBank.sourceViewer.citationCopied', { defaultValue: '已复制摘录引用' })
+                  : t('questionBank.sourceViewer.copyCitation', { defaultValue: '复制双锚点引用' })}
+              </DsButton>
+            )}
           </div>
-          <div className="max-h-44 overflow-y-auto whitespace-pre-wrap break-words rounded border border-border/30 bg-muted/20 p-2 text-caption leading-relaxed text-muted-foreground">
-            {data.text}
+          <div
+            ref={textLayerRef}
+            data-testid="source-viewer-text-layer"
+            data-selectable="true"
+            onMouseUp={handleTextLayerSelect}
+            onPointerUp={handleTextLayerSelect}
+            onPointerDown={(e) => {
+              arbitrateAnnotationPointerInput(
+                {
+                  pointerId: e.pointerId,
+                  pointerType: e.pointerType,
+                  type: 'pointerdown',
+                  width: e.width,
+                  height: e.height,
+                },
+                { smartAnnotation: true, format: 'pdf' },
+              );
+            }}
+            className="max-h-44 select-text overflow-y-auto whitespace-pre-wrap break-words rounded border border-border/35 bg-muted/20 p-2 text-caption leading-relaxed text-muted-foreground"
+          >
+            {resolvedAnchor ? (
+              <>
+                {data.text.slice(0, resolvedAnchor.start)}
+                <mark
+                  data-testid="source-viewer-anchored-highlight"
+                  className="rounded bg-primary/20 px-0.5 text-foreground"
+                >
+                  {data.text.slice(resolvedAnchor.start, resolvedAnchor.end)}
+                </mark>
+                {data.text.slice(resolvedAnchor.end)}
+              </>
+            ) : (
+              data.text
+            )}
           </div>
         </div>
       )}
@@ -361,6 +471,7 @@ export const QuestionSourceViewer: React.FC<QuestionSourceViewerProps> = ({
   const [viewPage, setViewPage] = useState<number | null>(null);
   const [data, setData] = useState<SourcePageResult | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [zoomInspectorOpen, setZoomInspectorOpen] = useState(false);
   const [loadState, setLoadState] = useState<LoadState>('idle');
   const [error, setError] = useState<string | null>(null);
   const [errorKind, setErrorKind] = useState<ErrorKind>('legacy');
@@ -617,16 +728,30 @@ export const QuestionSourceViewer: React.FC<QuestionSourceViewerProps> = ({
         data-source-viewer-layout={isMobile ? 'mobile' : 'desktop'}
         className="flex h-full min-h-0 flex-col"
       >
-        <header className="flex shrink-0 items-start gap-3 border-b border-border/40 px-4 py-3 pr-14">
+        <header className="flex shrink-0 items-start gap-3 border-b border-border/35 px-4 py-3 pr-14">
           <div className="min-w-0 flex-1">
             <h2 className="text-sm font-semibold leading-tight text-foreground">
               {t('questionBank.sourceViewer.title', { defaultValue: '原题来源' })}
             </h2>
             <p className="mt-0.5 truncate text-caption text-muted-foreground">
-              {roleLabel} · {sourceTitle} · <span className="tabular-nums">{pageLabel}</span>
+              {roleLabel} · {sourceTitle} · <span className="font-mono tabular-nums">{pageLabel}</span>
             </p>
           </div>
-          <span className="shrink-0 rounded-full bg-muted/40 px-2 py-1 text-2xs tabular-nums text-muted-foreground">
+          {imageUrl && activeSourceId && (
+            <DsButton
+              variant="ghost"
+              size="sm"
+              aria-pressed={zoomInspectorOpen}
+              data-testid="source-viewer-zoom-inspector-toggle"
+              onClick={() => setZoomInspectorOpen((prev) => !prev)}
+              className="px-2 text-2xs"
+            >
+              {zoomInspectorOpen
+                ? t('questionBank.sourceViewer.exitZoomInspector', { defaultValue: '整页预览' })
+                : t('questionBank.sourceViewer.openZoomInspector', { defaultValue: '原图缩放' })}
+            </DsButton>
+          )}
+          <span className="shrink-0 rounded-full bg-muted/40 px-2 py-1 text-2xs font-mono tabular-nums text-muted-foreground">
             {refs.length > 0
               ? t('questionBank.sourceViewer.refPosition', {
                   defaultValue: '{{current}} / {{total}}',
@@ -638,7 +763,7 @@ export const QuestionSourceViewer: React.FC<QuestionSourceViewerProps> = ({
         </header>
 
         {isMobile && refs.length > 0 && (
-          <div className="shrink-0 overflow-hidden border-b border-border/30 bg-muted/10">
+          <div className="shrink-0 overflow-hidden border-b border-border/35 bg-muted/10">
             <RefList refs={refs} activeIndex={activeIndex} layout="mobile" onSelect={setActiveIndex} />
           </div>
         )}
@@ -646,41 +771,71 @@ export const QuestionSourceViewer: React.FC<QuestionSourceViewerProps> = ({
         <div className="flex min-h-0 flex-1 flex-col md:flex-row">
           <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-auto bg-muted/30 p-3">
             {imageUrl ? (
-              <div
-                className="relative m-auto inline-block max-w-full"
-                data-testid="source-page-canvas"
-                data-page-width={data?.width ?? undefined}
-                data-page-height={data?.height ?? undefined}
-              >
-                <img
-                  src={imageUrl}
-                  alt={t('questionBank.sourceViewer.pageImageAlt', {
-                    defaultValue: '{{source}} {{page}} 原题页面',
-                    source: sourceTitle,
-                    page: pageLabel,
-                  })}
-                  draggable={false}
-                  className="block max-h-[52dvh] w-auto max-w-full select-none object-contain md:max-h-[calc(85vh-235px)]"
-                />
-                {bboxStyle && (
-                  <div
-                    data-testid="source-page-bbox"
-                    role="img"
-                    aria-label={t('questionBank.sourceViewer.bboxLabel', { defaultValue: '题目定位区域' })}
-                    className="pointer-events-none absolute rounded-sm border-2 border-primary bg-primary/15 shadow-[0_0_0_1px_rgba(0,0,0,0.25)]"
-                    style={bboxStyle}
+              zoomInspectorOpen && activeSourceId ? (
+                <div className="w-full max-w-full" data-testid="source-page-zoom-inspector">
+                  <SourceImageViewer
+                    href={buildSourceImageHref(
+                      activeSourceId,
+                      viewPage != null && viewPage >= 1
+                        ? bbox
+                          ? `page-${viewPage}-region-${Math.round(bbox[0] * 1000)}-${Math.round(bbox[1] * 1000)}-${Math.max(1, Math.round((bbox[2] - bbox[0]) * 1000))}-${Math.max(1, Math.round((bbox[3] - bbox[1]) * 1000))}`
+                          : `page-${viewPage}`
+                        : 'image-1',
+                    )}
+                    alt={t('questionBank.sourceViewer.pageImageAlt', {
+                      defaultValue: '{{source}} {{page}} 原题页面',
+                      source: sourceTitle,
+                      page: pageLabel,
+                    })}
+                    loader={async (_ref: ParsedSourceImageRef) => ({
+                      status: 'ok',
+                      src: imageUrl,
+                      page: viewPage ?? undefined,
+                    })}
+                    onReturnToSource={(ref) => {
+                      const parsed = parseSourceImageHref(ref.href);
+                      if (parsed?.page) setViewPage(parsed.page);
+                      setZoomInspectorOpen(false);
+                    }}
                   />
-                )}
-              </div>
+                </div>
+              ) : (
+                <div
+                  className="relative m-auto inline-block max-w-full"
+                  data-testid="source-page-canvas"
+                  data-page-width={data?.width ?? undefined}
+                  data-page-height={data?.height ?? undefined}
+                >
+                  <img
+                    src={imageUrl}
+                    alt={t('questionBank.sourceViewer.pageImageAlt', {
+                      defaultValue: '{{source}} {{page}} 原题页面',
+                      source: sourceTitle,
+                      page: pageLabel,
+                    })}
+                    draggable={false}
+                    className="block max-h-[52dvh] w-auto max-w-full select-none object-contain md:max-h-[calc(85vh-235px)]"
+                  />
+                  {bboxStyle && (
+                    <div
+                      data-testid="source-page-bbox"
+                      role="img"
+                      aria-label={t('questionBank.sourceViewer.bboxLabel', { defaultValue: '题目定位区域' })}
+                      className="pointer-events-none absolute rounded-sm border-2 border-primary bg-primary/15 ring-1 ring-background/50"
+                      style={bboxStyle}
+                    />
+                  )}
+                </div>
+              )
             ) : (
               renderEmptyPane()
             )}
           </div>
 
           {!isMobile && (
-            <aside className="flex w-72 shrink-0 flex-col border-l border-border/40 bg-background">
+            <aside className="flex w-72 shrink-0 flex-col border-l border-border/35 bg-background">
               {refs.length > 0 && (
-                <div className="max-h-[42%] shrink-0 overflow-y-auto border-b border-border/30 p-2">
+                <div className="max-h-[42%] shrink-0 overflow-y-auto border-b border-border/35 p-2">
                   <RefList refs={refs} activeIndex={activeIndex} layout="desktop" onSelect={setActiveIndex} />
                 </div>
               )}
@@ -697,7 +852,7 @@ export const QuestionSourceViewer: React.FC<QuestionSourceViewerProps> = ({
         </div>
 
         {isMobile && (data || loadState === 'error') && (
-          <div className="max-h-40 shrink-0 overflow-y-auto border-t border-border/30 bg-background px-3 py-2">
+          <div className="max-h-40 shrink-0 overflow-y-auto border-t border-border/35 bg-background px-3 py-2">
             <SourceMeta
               data={data}
               activeRef={activeRef}
@@ -707,7 +862,7 @@ export const QuestionSourceViewer: React.FC<QuestionSourceViewerProps> = ({
           </div>
         )}
 
-        <footer className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-border/40 bg-muted/20 px-3 py-2">
+        <footer className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-border/35 bg-muted/20 px-3 py-2">
           <div className="flex items-center gap-1">
             <DsButton
               variant="ghost"
@@ -716,11 +871,10 @@ export const QuestionSourceViewer: React.FC<QuestionSourceViewerProps> = ({
               disabled={!canGoPreviousPage}
               onClick={() => setViewPage(availablePages[pageIndex - 1])}
               aria-label={t('questionBank.sourceViewer.previousPage', { defaultValue: '上一页' })}
-              className="!h-7 !w-7"
             >
               <CaretLeft size={14} />
             </DsButton>
-            <span className="min-w-14 text-center text-caption tabular-nums text-muted-foreground">
+            <span className="min-w-14 text-center text-caption font-mono tabular-nums text-muted-foreground">
               {pageLabel}
             </span>
             <DsButton
@@ -730,7 +884,6 @@ export const QuestionSourceViewer: React.FC<QuestionSourceViewerProps> = ({
               disabled={!canGoNextPage}
               onClick={() => setViewPage(availablePages[pageIndex + 1])}
               aria-label={t('questionBank.sourceViewer.nextPage', { defaultValue: '下一页' })}
-              className="!h-7 !w-7"
             >
               <CaretRight size={14} />
             </DsButton>
@@ -744,7 +897,7 @@ export const QuestionSourceViewer: React.FC<QuestionSourceViewerProps> = ({
                 disabled={!canGoPreviousRef}
                 onClick={() => moveRef(-1)}
                 aria-label={t('questionBank.sourceViewer.previousRef', { defaultValue: '上一条来源' })}
-                className="!h-7 !px-2 text-caption"
+                className="px-2 text-caption"
               >
                 <ArrowLeft size={13} className="mr-1" />
                 {t('questionBank.sourceViewer.previousRefShort', { defaultValue: '上一处' })}
@@ -755,7 +908,7 @@ export const QuestionSourceViewer: React.FC<QuestionSourceViewerProps> = ({
                 disabled={!canGoNextRef}
                 onClick={() => moveRef(1)}
                 aria-label={t('questionBank.sourceViewer.nextRef', { defaultValue: '下一条来源' })}
-                className="!h-7 !px-2 text-caption"
+                className="px-2 text-caption"
               >
                 {t('questionBank.sourceViewer.nextRefShort', { defaultValue: '下一处' })}
                 <ArrowRight size={13} className="ml-1" />

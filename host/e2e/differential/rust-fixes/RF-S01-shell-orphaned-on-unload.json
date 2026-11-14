@@ -1,0 +1,32 @@
+{
+  "id": "RF-S01-shell-orphaned-on-unload",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T14:05:00+08:00",
+  "title": "应用退出 / 插件卸载时，agent 正在执行的 shell 命令及其后台子进程成为孤儿进程",
+  "rust": {
+    "file": "src-tauri/crates/dstu-agent/src/chat_v2/tools/shell_sandbox.rs",
+    "line": 182,
+    "behavior": "local_shell_execute 以 setpgid 独立进程组启动，只在超时或运行取消时 terminate_process_group；Command 上的 kill_on_drop(true) 只针对直接子进程 sh，且应用退出走 process::exit 不运行析构。退出时正在运行的命令（agent 起的 dev server、长脚本、sh 下的后台任务）全部留在系统里，父进程变成 1"
+  },
+  "fix": {
+    "files": ["host/plugins/agent-workspace/src/tools/shell-execute.ts", "host/plugins/agent-workspace/index.ts"],
+    "behavior": "LocalShellExecuteExecutor 增加 dispose()：中止执行器生命周期信号，在途命令走与运行取消相同的路径（终止整个进程组，结果为 cancelled，stderr 带 'Command cancelled; sandbox process tree was terminated'），并等待这些调用结束；dispose 之后的调用在 spawn 前报 'Local shell executor was disposed with its plugin; command not started'。agent-workspace 的工具注册 effect 在注销 roster 后调用 shell.dispose()，插件卸载与 Host 退出都经过它。git_* 经同一 shell 通道，一并覆盖"
+  },
+  "evidence": "V09 P2-2（.reports/reviews/V09-*.md）。复现：full_access 下执行 `sleep 30 & echo $! > bg.pid; wait`，随后卸载 agent-workspace 插件（等价于 Host 退出时的插件清理）。修复前 sh 与 sleep 均存活且 PPID=1，直到 20 s 超时都没人回收（测试宿主已释放，计时器也随之消失时则永久存活）；修复后卸载返回前进程组已被 SIGKILL，在途调用以 cancelled 结束。",
+  "g3": {
+    "affects": false,
+    "selectors": []
+  },
+  "tests": [
+    {
+      "file": "host/plugins/agent-workspace/tests/shell-unload-process-group.test.ts",
+      "name": "RF-S01-shell-orphaned-on-unload: unloading the plugin kills a running command and its background children"
+    },
+    {
+      "file": "host/plugins/agent-workspace/tests/shell-unload-process-group.test.ts",
+      "name": "RF-S01-shell-orphaned-on-unload: a shell left over after unload refuses to spawn"
+    }
+  ]
+}

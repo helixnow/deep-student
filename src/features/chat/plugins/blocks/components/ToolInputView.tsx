@@ -50,7 +50,7 @@ const ValueRenderer: React.FC<ValueRendererProps> = ({ value, depth = 0 }) => {
 
   if (typeof value === 'boolean') {
     return (
-      <span className="text-purple-600 dark:text-purple-400">
+      <span className="text-info">
         {value.toString()}
       </span>
     );
@@ -58,7 +58,7 @@ const ValueRenderer: React.FC<ValueRendererProps> = ({ value, depth = 0 }) => {
 
   if (typeof value === 'number') {
     return (
-      <span className="text-blue-600 dark:text-blue-400">{value}</span>
+      <span className="text-primary">{value}</span>
     );
   }
 
@@ -68,7 +68,7 @@ const ValueRenderer: React.FC<ValueRendererProps> = ({ value, depth = 0 }) => {
     const displayValue =
       value.length > maxLength ? value.slice(0, maxLength) + '...' : value;
     return (
-      <span className="text-green-600 dark:text-green-400">
+      <span className="text-success">
         "{displayValue}"
       </span>
     );
@@ -166,7 +166,7 @@ export const ToolInputView: React.FC<ToolInputViewProps> = ({
           <div className="space-y-1">
             {paramKeys.map((key) => (
               <div key={key} className="flex gap-2 text-xs">
-                <span className="text-amber-600 dark:text-amber-400 font-medium shrink-0">
+                <span className="text-warning font-medium shrink-0">
                   {key}:
                 </span>
                 <ValueRenderer value={input[key]} />

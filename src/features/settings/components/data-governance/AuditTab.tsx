@@ -23,6 +23,7 @@ import { Badge } from '@/components/ui/shad/Badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/shad/Table';
 import { AppSelect } from '@/components/ui/app-menu';
 import { settingsQuietTableRowClassName } from '../SettingsCommon';
+import { GroupTitle } from '../settingsTabPrimitives';
 import type {
   AuditLogResponse,
   AuditOperationType,
@@ -144,46 +145,48 @@ export const AuditTab: React.FC<AuditTabProps> = ({
       )}
 
       {/* 过滤器：触控高度由 AppSelect / DsButton 基座契约保证（coarse 指针 44px），调用侧不再叠加 min-h 覆盖 */}
-      <h3 className="text-base font-semibold text-foreground">{t('data:governance.audit_log')}</h3>
-      <div className="flex items-center gap-2">
-        <AppSelect
-          value={operationFilter}
-          onValueChange={(v) => handleFilterChange(v, statusFilter)}
-          options={[
-            { value: 'all', label: t('common:all') },
-            { value: 'Migration', label: t('data:governance.operation_migration') },
-            { value: 'Backup', label: t('data:governance.operation_backup') },
-            { value: 'Restore', label: t('data:governance.operation_restore') },
-            { value: 'Sync', label: t('data:governance.operation_sync') },
-            { value: 'Maintenance', label: t('data:governance.operation_maintenance') },
-          ]}
-          size="sm"
-          variant="outline"
-          width={130}
+      <section className="min-w-0">
+        <GroupTitle
+          title={t('data:governance.audit_log')}
+          actions={
+            <>
+              <AppSelect
+                value={operationFilter}
+                onValueChange={(v) => handleFilterChange(v, statusFilter)}
+                options={[
+                  { value: 'all', label: t('common:all') },
+                  { value: 'Migration', label: t('data:governance.operation_migration') },
+                  { value: 'Backup', label: t('data:governance.operation_backup') },
+                  { value: 'Restore', label: t('data:governance.operation_restore') },
+                  { value: 'Sync', label: t('data:governance.operation_sync') },
+                  { value: 'Maintenance', label: t('data:governance.operation_maintenance') },
+                ]}
+                size="sm"
+                variant="outline"
+                width={130}
+              />
+
+              <AppSelect
+                value={statusFilter}
+                onValueChange={(v) => handleFilterChange(operationFilter, v)}
+                options={[
+                  { value: 'all', label: t('common:all') },
+                  { value: 'Completed', label: t('data:governance.status_completed') },
+                  { value: 'Failed', label: t('data:governance.status_failed') },
+                  { value: 'Started', label: t('data:governance.status_started') },
+                  { value: 'Partial', label: t('data:governance.status_partial') },
+                ]}
+                size="sm"
+                variant="outline"
+                width={130}
+              />
+
+            </>
+          }
         />
 
-        <AppSelect
-          value={statusFilter}
-          onValueChange={(v) => handleFilterChange(operationFilter, v)}
-          options={[
-            { value: 'all', label: t('common:all') },
-            { value: 'Completed', label: t('data:governance.status_completed') },
-            { value: 'Failed', label: t('data:governance.status_failed') },
-            { value: 'Started', label: t('data:governance.status_started') },
-            { value: 'Partial', label: t('data:governance.status_partial') },
-          ]}
-          size="sm"
-          variant="outline"
-          width={130}
-        />
-
-        <DsButton variant="ghost" size="sm" iconOnly onClick={onRefresh} disabled={loading} className="shrink-0" aria-label={t('common:actions.refresh')}>
-          <ArrowClockwise size={14} className={`${loading ? 'animate-spin' : ''}`} />
-        </DsButton>
-      </div>
-
-      {/* 日志列表 */}
-      <div className="hidden md:block">
+        {/* 日志列表 */}
+        <div className="hidden md:block">
         <CustomScrollArea
           orientation="horizontal"
           fullHeight={false}
@@ -202,7 +205,7 @@ export const AuditTab: React.FC<AuditTabProps> = ({
           <TableBody>
             {logs.map((log) => (
               <TableRow key={log.id} className={settingsQuietTableRowClassName}>
-                <TableCell className="text-xs text-muted-foreground py-3 whitespace-nowrap">
+                <TableCell className="text-xs tabular-nums text-muted-foreground py-3 whitespace-nowrap">
                   {formatTimestamp(log.timestamp)}
                 </TableCell>
                 <TableCell className="py-3">
@@ -214,7 +217,7 @@ export const AuditTab: React.FC<AuditTabProps> = ({
                   {log.target}
                 </TableCell>
                 <TableCell className="py-3">{getStatusBadge(log.status)}</TableCell>
-                <TableCell className="text-xs text-muted-foreground py-3 whitespace-nowrap">
+                <TableCell className="text-xs tabular-nums text-muted-foreground py-3 whitespace-nowrap">
                   {log.duration_ms ? formatDuration(log.duration_ms) : '-'}
                 </TableCell>
               </TableRow>
@@ -238,8 +241,8 @@ export const AuditTab: React.FC<AuditTabProps> = ({
         </CustomScrollArea>
       </div>
 
-      <div className="space-y-2 md:hidden">
-        {logs.map((log) => (
+        <div className="space-y-2 rounded-2xl bg-muted p-4 md:hidden">
+          {logs.map((log) => (
           <div key={log.id} className="space-y-2.5 rounded-md border border-border/40 bg-background/50 p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-caption text-muted-foreground">
@@ -270,7 +273,8 @@ export const AuditTab: React.FC<AuditTabProps> = ({
             )}
           </div>
         )}
-      </div>
+        </div>
+      </section>
 
       {/* 分页信息和加载更多 */}
       {logs.length > 0 && (

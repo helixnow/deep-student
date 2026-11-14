@@ -1,0 +1,19 @@
+{
+  "domain": "browser",
+  "commands": ["save_setting","test_web_search_connectivity","test_search_engine"],
+  "scenarios": [
+    {
+      "id": "websearch.pending.searxng_mock_success",
+      "seed": "empty",
+      "search": {"searxng":["success"]},
+      "steps": [
+        {"cmd":"save_setting","args":{"key":"web_search.engine","value":"searxng"}},
+        {"cmd":"save_setting","args":{"key":"web_search.searxng.endpoint","value":"${search.searxngUrl}"}},
+        {"cmd":"test_web_search_connectivity","args":{"engine":null}},
+        {"cmd":"test_search_engine","args":{"engine":"searxng"}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    }
+  ]
+}

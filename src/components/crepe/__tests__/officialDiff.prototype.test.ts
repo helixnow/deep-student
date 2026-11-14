@@ -22,6 +22,10 @@ import { calloutPlugin } from '../plugins/callout';
 import { togglePlugin } from '../plugins/toggle';
 import { createUploadLifecycle } from '../uploadLifecycle';
 
+import { setupMilkdownTimers } from './milkdownTimers';
+
+setupMilkdownTimers();
+
 const customBlockTypes = ['table', 'image-block', 'code_block', 'toggle', 'callout'];
 const fixtures: Array<{ crepe: Crepe; root: HTMLElement; uploads: ReturnType<typeof createUploadLifecycle> }> = [];
 beforeAll(async () => { await i18next.init({ lng: 'zh-CN', resources: {} }); });

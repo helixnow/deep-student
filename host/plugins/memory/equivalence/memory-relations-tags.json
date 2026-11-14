@@ -1,0 +1,205 @@
+{
+  "domain": "memory",
+  "commands": ["memory_add_relation", "memory_remove_relation", "memory_get_related", "memory_update_tags", "memory_get_tags", "memory_write", "memory_delete", "memory_list", "memory_create_root_folder"],
+  "scenarios": [
+    {
+      "id": "memory.relation.add_get_remove",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_write", "args": {"title": "甲", "content": "c"}},
+        {"cmd": "memory_write", "args": {"title": "乙", "content": "c"}},
+        {"cmd": "memory_add_relation", "args": {"noteIdA": "${0.noteId}", "noteIdB": "${1.noteId}"}},
+        {"cmd": "memory_get_related", "args": {"noteId": "${0.noteId}"}},
+        {"cmd": "memory_get_related", "args": {"noteId": "${1.noteId}"}},
+        {"cmd": "memory_get_tags", "args": {"noteId": "${0.noteId}"}},
+        {"cmd": "memory_remove_relation", "args": {"noteIdA": "${1.noteId}", "noteIdB": "${0.noteId}"}},
+        {"cmd": "memory_get_related", "args": {"noteId": "${0.noteId}"}},
+        {"cmd": "memory_get_related", "args": {"noteId": "${1.noteId}"}},
+        {"cmd": "memory_list", "args": {"limit": 100, "offset": 0}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.relation.add_idempotent_and_order",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_write", "args": {"title": "甲", "content": "c"}},
+        {"cmd": "memory_write", "args": {"title": "乙", "content": "c"}},
+        {"cmd": "memory_write", "args": {"title": "丙", "content": "c"}},
+        {"cmd": "memory_add_relation", "args": {"noteIdA": "${0.noteId}", "noteIdB": "${1.noteId}"}},
+        {"cmd": "memory_add_relation", "args": {"noteIdA": "${0.noteId}", "noteIdB": "${1.noteId}"}},
+        {"cmd": "memory_add_relation", "args": {"noteIdA": "${1.noteId}", "noteIdB": "${0.noteId}"}},
+        {"cmd": "memory_add_relation", "args": {"noteIdA": "${0.noteId}", "noteIdB": "${2.noteId}"}},
+        {"cmd": "memory_get_related", "args": {"noteId": "${0.noteId}"}},
+        {"cmd": "memory_get_tags", "args": {"noteId": "${0.noteId}"}},
+        {"cmd": "memory_get_tags", "args": {"noteId": "${1.noteId}"}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.relation.add_errors",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_write", "args": {"title": "甲", "content": "c"}},
+        {"cmd": "memory_add_relation", "args": {"noteIdA": "${0.noteId}", "noteIdB": "${0.noteId}"}, "expect": "error"},
+        {"cmd": "memory_add_relation", "args": {"noteIdA": "note_missing", "noteIdB": "note_missing"}, "expect": "error"},
+        {"cmd": "memory_add_relation", "args": {"noteIdA": "note_missing", "noteIdB": "${0.noteId}"}, "expect": "error"},
+        {"cmd": "memory_add_relation", "args": {"noteIdA": "${0.noteId}", "noteIdB": "note_missing"}, "expect": "error"},
+        {"cmd": "memory_add_relation", "args": {"noteIdA": "", "noteIdB": "${0.noteId}"}, "expect": "error"},
+        {"cmd": "memory_get_tags", "args": {"noteId": "${0.noteId}"}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.relation.outside_root",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_create_root_folder", "args": {"title": "A"}},
+        {"cmd": "memory_write", "args": {"title": "A中", "content": "c"}},
+        {"cmd": "memory_create_root_folder", "args": {"title": "B"}},
+        {"cmd": "memory_write", "args": {"title": "B中", "content": "c"}},
+        {"cmd": "memory_add_relation", "args": {"noteIdA": "${3.noteId}", "noteIdB": "${1.noteId}"}, "expect": "error"},
+        {"cmd": "memory_remove_relation", "args": {"noteIdA": "${3.noteId}", "noteIdB": "${1.noteId}"}, "expect": "error"},
+        {"cmd": "memory_get_related", "args": {"noteId": "${1.noteId}"}, "expect": "error"},
+        {"cmd": "memory_get_tags", "args": {"noteId": "${3.noteId}"}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.relation.remove_noop_and_errors",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_write", "args": {"title": "甲", "content": "c"}},
+        {"cmd": "memory_write", "args": {"title": "乙", "content": "c"}},
+        {"cmd": "memory_remove_relation", "args": {"noteIdA": "${0.noteId}", "noteIdB": "${1.noteId}"}},
+        {"cmd": "memory_remove_relation", "args": {"noteIdA": "${0.noteId}", "noteIdB": "${0.noteId}"}, "expect": "error"},
+        {"cmd": "memory_remove_relation", "args": {"noteIdA": "note_missing", "noteIdB": "note_missing"}, "expect": "error"},
+        {"cmd": "memory_remove_relation", "args": {"noteIdA": "${0.noteId}", "noteIdB": "note_missing"}, "expect": "error"},
+        {"cmd": "memory_get_tags", "args": {"noteId": "${0.noteId}"}},
+        {"cmd": "memory_get_tags", "args": {"noteId": "${1.noteId}"}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.relation.one_sided_ref_after_delete",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_write", "args": {"title": "甲", "content": "c"}},
+        {"cmd": "memory_write", "args": {"title": "乙", "content": "c"}},
+        {"cmd": "memory_add_relation", "args": {"noteIdA": "${0.noteId}", "noteIdB": "${1.noteId}"}},
+        {"cmd": "memory_delete", "args": {"noteId": "${0.noteId}"}},
+        {"cmd": "memory_get_related", "args": {"noteId": "${1.noteId}"}},
+        {"cmd": "memory_remove_relation", "args": {"noteIdA": "${1.noteId}", "noteIdB": "${0.noteId}"}, "expect": "error"},
+        {"cmd": "memory_get_related", "args": {"noteId": "${0.noteId}"}, "expect": "error"}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.relation.bad_args",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_add_relation", "args": {"noteIdA": "a"}, "expect": "error"},
+        {"cmd": "memory_add_relation", "args": {"noteId_a": "a", "noteId_b": "b"}, "expect": "error"},
+        {"cmd": "memory_remove_relation", "args": {"noteIdB": "b"}, "expect": "error"},
+        {"cmd": "memory_get_related", "args": {}, "expect": "error"}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.related.missing",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_get_related", "args": {"noteId": "note_missing"}, "expect": "error"},
+        {"cmd": "memory_get_related", "args": {"noteId": ""}, "expect": "error"}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.tags.update_and_get",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_write", "args": {"title": "甲", "content": "c"}},
+        {"cmd": "memory_get_tags", "args": {"noteId": "${0.noteId}"}},
+        {"cmd": "memory_update_tags", "args": {"noteId": "${0.noteId}", "tags": ["数学", "英语"]}},
+        {"cmd": "memory_get_tags", "args": {"noteId": "${0.noteId}"}},
+        {"cmd": "memory_update_tags", "args": {"noteId": "${0.noteId}", "tags": ["英语", "数学", "英语", " 空格 ", "", "😀"]}},
+        {"cmd": "memory_get_tags", "args": {"noteId": "${0.noteId}"}},
+        {"cmd": "memory_update_tags", "args": {"noteId": "${0.noteId}", "tags": []}},
+        {"cmd": "memory_get_tags", "args": {"noteId": "${0.noteId}"}},
+        {"cmd": "memory_list", "args": {"limit": 100, "offset": 0}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.tags.system_tags_preserved",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_write", "args": {"title": "甲", "content": "c"}},
+        {"cmd": "memory_write", "args": {"title": "乙", "content": "c"}},
+        {"cmd": "memory_add_relation", "args": {"noteIdA": "${0.noteId}", "noteIdB": "${1.noteId}"}},
+        {"cmd": "memory_update_tags", "args": {"noteId": "${0.noteId}", "tags": ["_important", "_stale", "_archived", "_ref:x", " _y", "user"]}},
+        {"cmd": "memory_get_tags", "args": {"noteId": "${0.noteId}"}},
+        {"cmd": "memory_get_related", "args": {"noteId": "${0.noteId}"}},
+        {"cmd": "memory_list", "args": {"limit": 100, "offset": 0}},
+        {"cmd": "memory_update_tags", "args": {"noteId": "${0.noteId}", "tags": []}},
+        {"cmd": "memory_get_tags", "args": {"noteId": "${0.noteId}"}},
+        {"cmd": "memory_add_relation", "args": {"noteIdA": "${0.noteId}", "noteIdB": "${1.noteId}"}},
+        {"cmd": "memory_get_tags", "args": {"noteId": "${0.noteId}"}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.tags.study_type_tag_preserved_via_note",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_write", "args": {"title": "甲", "content": "c"}},
+        {"cmd": "memory_update_tags", "args": {"noteId": "${0.noteId}", "tags": ["_type:study", "_purpose:internalized"]}},
+        {"cmd": "memory_get_tags", "args": {"noteId": "${0.noteId}"}},
+        {"cmd": "memory_list", "args": {"limit": 100, "offset": 0}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.tags.errors",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_update_tags", "args": {"noteId": "note_missing", "tags": ["a"]}, "expect": "error"},
+        {"cmd": "memory_get_tags", "args": {"noteId": "note_missing"}, "expect": "error"},
+        {"cmd": "memory_get_tags", "args": {"noteId": ""}, "expect": "error"},
+        {"cmd": "memory_create_root_folder", "args": {"title": "A"}},
+        {"cmd": "memory_write", "args": {"title": "A中", "content": "c"}},
+        {"cmd": "memory_create_root_folder", "args": {"title": "B"}},
+        {"cmd": "memory_update_tags", "args": {"noteId": "${4.noteId}", "tags": ["a"]}, "expect": "error"},
+        {"cmd": "memory_get_tags", "args": {"noteId": "${4.noteId}"}, "expect": "error"}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "memory.tags.bad_args",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "memory_write", "args": {"title": "甲", "content": "c"}},
+        {"cmd": "memory_update_tags", "args": {"noteId": "${0.noteId}"}, "expect": "error"},
+        {"cmd": "memory_update_tags", "args": {"noteId": "${0.noteId}", "tags": null}, "expect": "error"},
+        {"cmd": "memory_update_tags", "args": {"noteId": "${0.noteId}", "tags": "a"}, "expect": "error"},
+        {"cmd": "memory_update_tags", "args": {"noteId": "${0.noteId}", "tags": [1]}, "expect": "error"},
+        {"cmd": "memory_get_tags", "args": {}, "expect": "error"},
+        {"cmd": "memory_get_tags", "args": {"noteId": "${0.noteId}"}}
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    }
+  ]
+}

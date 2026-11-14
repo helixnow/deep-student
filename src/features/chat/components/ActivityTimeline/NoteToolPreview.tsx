@@ -22,7 +22,6 @@ import {
   CaretRight,
   CheckCircle,
   WarningCircle,
-  CircleNotch,
   Eye,
   ArrowsLeftRight,
 } from '@phosphor-icons/react';
@@ -31,6 +30,7 @@ import { StreamingMarkdownRenderer } from '../renderers';
 import { getReadableToolName } from '@/features/chat/utils/toolDisplayName';
 import { formatToolDurationShort } from '@/features/chat/utils/toolDuration';
 import { TextShimmer } from '../ui/TextShimmer';
+import { ToolActivitySweep } from '../ui/ToolActivitySweep';
 
 // ============================================================================
 // 类型定义
@@ -155,10 +155,9 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = React.memo(({
   const statusInfo = useMemo(() => {
     if (isRunning) {
       return {
-        icon: CircleNotch,
+        icon: null,
         text: t('timeline.noteTool.running'),
-        color: 'text-primary',
-        spin: true,
+        color: 'text-muted-foreground',
       };
     }
     if (isError) {
@@ -166,22 +165,19 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = React.memo(({
         icon: WarningCircle,
         text: t('timeline.noteTool.failed'),
         color: 'text-destructive',
-        spin: false,
       };
     }
     if (isSuccess) {
       return {
-        icon: null,
+        icon: CheckCircle,
         text: t('timeline.noteTool.completed'),
         color: 'text-success',
-        spin: false,
       };
     }
     return {
       icon: null,
       text: t('timeline.noteTool.pending'),
       color: 'text-muted-foreground',
-      spin: false,
     };
   }, [isRunning, isError, isSuccess, t]);
 
@@ -325,7 +321,13 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = React.memo(({
   };
 
   return (
-    <div className={cn('rounded-lg border border-border bg-card/50', className)}>
+    <div
+      className={cn(
+        'rounded-lg border overflow-hidden bg-card dark:bg-card/80',
+        isError ? 'border-destructive/30' : 'border-border/50',
+        className
+      )}
+    >
       {/* 头部 */}
       <DsButton
         variant="ghost"
@@ -333,37 +335,56 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = React.memo(({
         onClick={hasExpandableContent ? () => setIsExpanded(!isExpanded) : undefined}
         aria-expanded={hasExpandableContent ? isExpanded : undefined}
         className={cn(
-          'w-full !justify-between gap-2 !px-3 !py-2 [@media(pointer:coarse)]:!min-h-11',
-          'text-left !rounded-t-lg !rounded-b-none',
-          !hasExpandableContent && 'cursor-default',
-          isExpanded && 'border-b border-border'
+          'w-full !h-auto !justify-between gap-2 !px-3 !py-2.5 [@media(pointer:coarse)]:!min-h-11',
+          'text-left',
+          isExpanded && hasExpandableContent
+            ? '!rounded-t-lg !rounded-b-none border-b border-border/40'
+            : '!rounded-lg',
+          !hasExpandableContent && 'cursor-default'
         )}
       >
-        <div className="flex items-center gap-2 min-w-0">
-          <ToolIcon size={16} className="text-primary flex-shrink-0" />
-          <span className="font-medium text-sm truncate">{toolDisplayName}</span>
-          {statusInfo.icon && (
-            <statusInfo.icon
-              size={14}
-              className={cn('flex-shrink-0', statusInfo.color, statusInfo.spin && 'animate-spin')}
-            />
-          )}
-          {isRunning ? (
-            <TextShimmer
-              className={cn('text-xs', statusInfo.color)}
-              duration={1.5}
-              spread={3}
-            >
-              {statusInfo.text}
-            </TextShimmer>
-          ) : (
-            <>
-              <span className={cn('text-xs', statusInfo.color)}>{statusInfo.text}</span>
-              {durationText && (
-                <span className="text-xs text-muted-foreground">{durationText}</span>
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          <ToolActivitySweep
+            active={isRunning}
+            className="h-7 w-7 shrink-0 justify-center rounded-md bg-muted/70 dark:bg-muted/40"
+          >
+            <ToolIcon size={16} className="text-muted-foreground" />
+          </ToolActivitySweep>
+          <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
+            <ToolActivitySweep active={isRunning} className="min-w-0 max-w-full leading-4">
+              <span className="block text-xs font-medium leading-4 text-muted-foreground truncate">
+                {toolDisplayName}
+              </span>
+            </ToolActivitySweep>
+            <div className="flex items-center gap-1.5 min-w-0">
+              {statusInfo.icon && (
+                <statusInfo.icon
+                  size={13}
+                  className={cn('flex-shrink-0', statusInfo.color)}
+                />
               )}
-            </>
-          )}
+              {isRunning ? (
+                <TextShimmer
+                  className="text-xs leading-4 text-muted-foreground"
+                  duration={1.5}
+                  spread={3}
+                >
+                  {statusInfo.text}
+                </TextShimmer>
+              ) : (
+                <>
+                  <span className={cn('text-xs leading-4', statusInfo.color)}>
+                    {statusInfo.text}
+                  </span>
+                  {durationText && (
+                    <span className="text-xs leading-4 text-muted-foreground tabular-nums">
+                      {durationText}
+                    </span>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
         </div>
         <div className="flex items-center gap-1.5 flex-shrink-0">
           {/* 打开笔记按钮 - 使用 span 避免 button 嵌套，增强点击区域 */}

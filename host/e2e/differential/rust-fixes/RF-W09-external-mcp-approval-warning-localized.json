@@ -1,0 +1,25 @@
+{
+  "id": "RF-W09-external-mcp-approval-warning-localized",
+  "kind": "deliberate",
+  "status": "proposed",
+  "title": "审批栏“外部 MCP 执行、本地沙箱不生效”的风险徽标改走词条，中文界面显示中文，英文界面不变",
+  "rust": {
+    "file": "src/features/chat/components/input-bar/BlockingApprovalBar.tsx",
+    "line": 417,
+    "behavior": "Rust 快照的前端在命令经外部 MCP 服务执行（runtimeScope.executionLocation 以 external 开头）时，审批栏显示红色徽标 “external MCP / local sandbox not enforced”，写死为英文；同一行相邻的 “沙箱内执行 / 无沙箱·宿主机直执” 已走 chatV2:approval.scope.*，中文界面只有这条风险警示是英文"
+  },
+  "fix": {
+    "files": ["src/features/chat/components/input-bar/BlockingApprovalBar.tsx"],
+    "behavior": "新增 chatV2:approval.scope.externalMcpUnenforced（zh-CN “外部 MCP·本地沙箱不生效”，en-US 与原英文逐字相同 “external MCP / local sandbox not enforced”），组件改读该词条，缺词条时仍兜底为原英文。徽标的样式、出现条件和外部 MCP 时隐藏本地沙箱元数据的行为不变"
+  },
+  "evidence": "hardcoded-copy 门禁基线里 BlockingApprovalBar 的 jsx-text 项；审批栏是用户决定是否放行命令的地方，这条警示是唯一没有本地化的风险提示。",
+  "userVisible": "中文界面：经外部 MCP 执行的命令审批栏上，红色风险徽标变为中文。英文界面不变。",
+  "dataCompat": "只改前端显示；不改审批载荷、IPC、落库数据、同步载荷与备份格式。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "tests/vitest/i18n/externalMcpApprovalWarning.test.tsx",
+      "name": "RF-W09-external-mcp-approval-warning-localized: %s approval bar warns in the interface language"
+    }
+  ]
+}

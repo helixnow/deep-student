@@ -14,6 +14,13 @@ import { ChatWindowSkeleton } from './ChatWindowSkeleton';
 
 const ChatAppWindowLazy = React.lazy(() => import('./ChatAppWindow'));
 
+// 与 ChatAppWindow 的下载并行：ChatAppWindow 内部才 React.lazy 加载
+// `@/features/chat/pages`，串行时开聊天窗要等两个大 chunk 依次落地
+// （公网 RTT 150–250ms 下每次往返都叠加在这里）。本壳求值即发起同一
+// specifier 的请求，Rollup 复用同一个 chunk / 同一个 module instance，
+// 不改变懒加载边界（本文件仍不静态引入任何 chat 核心模块）。
+void import('@/features/chat/pages');
+
 export const ChatWindowFrame: React.FC<AppWindowProps> = (props) => (
   <Suspense fallback={<ChatWindowSkeleton />}>
     <ChatAppWindowLazy {...props} />

@@ -1,0 +1,44 @@
+{
+  "id": "RF-W07-pending-memory-candidates-schema",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main-agent",
+  "approvedAt": "2026-11-07T02:38:24Z",
+  "title": "mistakes.db 补齐 pending_memory_candidates（含 subject 列）：新库建表、v0.9.2 旧表补列，记忆候选的写入与读取不再必然失败",
+  "rust": {
+    "file": "src-tauri/src/chat_v2/tools/knowledge_executor.rs",
+    "line": 125,
+    "behavior": "v0.9.2（1813b3c9c）在 database/manager.rs:698-716 用 CREATE TABLE IF NOT EXISTS 建 pending_memory_candidates，列为 id/conversation_id/content/category/origin/user_edited/status/created_at/expires_at，没有 subject；c006f457b（2026-07-20）删掉这段建表且没有迁移接手、也没有 DROP。当前 Rust：新库没有这张表，knowledge_extract 的 DELETE/INSERT 报 no such table（只 warn 后回滚），get/dismiss/mark_pending_memory_candidates 返回 Database 错误；v0.9.2 升级上来的库有表，但 INSERT（knowledge_executor.rs:125）与 SELECT（enhanced_anki.rs:751）都写/读 subject，报 no such column: subject，且 get 在报错前已执行过期 DELETE"
+  },
+  "fix": {
+    "files": ["host/platform/storage/pending-memory-candidates-schema.ts"],
+    "behavior": "ensurePendingMemoryCandidatesSchema(conn)：表不存在时按 v0.9.2 DDL 原文建表并在末尾加 subject TEXT NOT NULL DEFAULT '通用'；表存在但缺 subject 时 ALTER TABLE ADD COLUMN 同一定义（已有行得到 '通用'，与 Rust 写入的固定值一致）；补 idx_pending_mem_conversation/status/expires 三个索引；已是目标形状时不写库。不写 refinery_schema_history、不新增迁移版本，表不在迁移管理范围内因此不进入 schema 指纹。调用点：host/platform/storage/migration/coordinator.ts 的 repairPendingMemoryCandidates，在 mistakes 迁移完成后执行"
+  },
+  "evidence": "Rust 自身两处 SQL 与表定义矛盾：knowledge_executor.rs:125 INSERT (conversation_id, subject, …)、enhanced_anki.rs:751 SELECT subject, …，而唯一出现过的建表（v0.9.2 manager.rs:698-716）从没有 subject，当前版本连建表都没有；anki/equivalence/README.md 的 WP-233 已记录“成功在任何库上都不可达”。后果：AI 提取出的记忆候选从未保存，前端 graphApi 的忽略/标记已保存永远报错。复现：迁移后的 mistakes.db 执行上述 SELECT 报 no such table；执行 v0.9.2 DDL 后报 no such column: subject；修复后 INSERT/SELECT 成功、旧行保留。旧版 Rust 兼容：表与列只是新增，旧版读写都按它自己的 SQL 成功；没有新迁移版本，所以旧版 backup/mod.rs:4890 的“schema 版本高于当前应用”检查不会拒绝恢复 B 的备份，coordinator.rs 的指纹只覆盖迁移管理的对象。",
+  "g3": {
+    "affects": true,
+    "selectors": [
+      { "scenario": "*", "surface": "db", "table": "pending_memory_candidates", "column": "subject" },
+      { "scenario": "g3w.anki.*", "surface": "ipc", "command": "get_pending_memory_candidates" },
+      { "scenario": "g3w.anki.*", "surface": "ipc", "command": "dismiss_pending_memory_candidates" },
+      { "scenario": "anki.memory.*", "surface": "ipc", "command": "dismiss_pending_memory_candidates" },
+      { "scenario": "g3w.anki.*", "surface": "ipc", "command": "mark_pending_memory_candidates_saved" },
+      { "scenario": "anki.memory.*", "surface": "ipc", "command": "mark_pending_memory_candidates_saved" }
+    ]
+  },
+  "notes": "G3：保留 db 选择器 pending_memory_candidates.subject 覆盖 B 端 repairPendingMemoryCandidates 在 mistakes.db 上新建的表/列/schema 及 subject 值差异。三个 ipc 选择器不带 jsonPath：A 报 no such table / no such column: subject，B 成功返回，差异是 outcome-kind，只能由不带 jsonPath 的选择器豁免。ipc scenario 收窄到实际调用这三个命令的场景：anki/equivalence/g3w-anki-02.json（g3w.anki.*）与 memory-candidates.seeded.json（anki.memory.*）。",
+  "tests": [
+    {
+      "file": "host/platform/storage/tests/pending-memory-candidates-schema.test.ts",
+      "name": "RF-W07-pending-memory-candidates-schema: a freshly migrated mistakes.db gets the table with subject, and the Rust INSERT/SELECT succeed"
+    },
+    {
+      "file": "host/platform/storage/tests/pending-memory-candidates-schema.test.ts",
+      "name": "RF-W07-pending-memory-candidates-schema: an upgraded v0.9.2 table keeps its rows and gains subject = 通用"
+    },
+    {
+      "file": "host/platform/storage/tests/pending-memory-candidates-schema.test.ts",
+      "name": "RF-W07-pending-memory-candidates-schema: the repair stays outside refinery history and the schema fingerprint, so a later runAll still succeeds"
+    }
+  ]
+}

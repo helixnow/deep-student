@@ -1,0 +1,17 @@
+[Unit]
+Description=lane 卡住检测（90 秒无事件且无工具进程即记录；连续 30 分钟在原会话重启一次）
+After=network-online.target
+
+[Service]
+User=dsdev
+Group=dsdev
+Slice=dsdev.slice
+WorkingDirectory=/home/dsdev/dev/deep-student
+Environment=PATH=/opt/node26/bin:/home/dsdev/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=HOME=/home/dsdev
+ExecStart=/opt/node26/bin/node /home/dsdev/dev/deep-student/scripts/electron-migration/stall-watch.mjs --threshold-sec 90 --interval-sec 15 --digest-min 100000 --auto-restart-min 30
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

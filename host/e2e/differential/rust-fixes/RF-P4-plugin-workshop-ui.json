@@ -1,0 +1,13 @@
+{
+  "id": "RF-P4-plugin-workshop-ui",
+  "kind": "deliberate",
+  "status": "proposed",
+  "title": "插件工坊确认、进度与托管创作管理",
+  "rust": { "file": "src/features/settings/components/plugins/PluginsTab.tsx", "behavior": "没有插件工坊确认与托管作品管理界面" },
+  "fix": { "files": ["src/features/plugin-workshop/WorkshopConfirmationCard.tsx", "src/features/plugin-workshop/WorkshopCreations.tsx"], "behavior": "显示精确候选版本、能力、信任风险、变化点；生成可取消、安装等待 Host 结果；托管作品支持停用/撤销/恢复/导出，回滚与视觉验证不作未经证实的成功声明" },
+  "evidence": "src/features/plugin-workshop/__tests__/workshop-ui.test.tsx；仅组件与适配器测试，不代表真实 Host 或模型端到端",
+  "userVisible": "新增工坊确认卡片和我的创作列表；完全信任提示同进程风险，视觉未验证明确显示",
+  "dataCompat": "组件不写数据库与 profile；由 Host 适配器提供权威状态与动作",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [{ "file": "src/features/plugin-workshop/__tests__/workshop-ui.test.tsx", "name": "RF-P4-plugin-workshop-ui: shows exact version, capabilities, trust risk and changes; requires an explicit click" }]
+}

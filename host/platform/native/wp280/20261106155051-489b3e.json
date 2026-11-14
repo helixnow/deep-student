@@ -1,0 +1,1 @@
+{"id":"20261106155051-489b3e","cwd":"/home/dsdev/dev/ds-mig/F7-native","cmd":["npx","tsc","-p","tsconfig.host.json","--incremental","--tsBuildInfoFile",".integration.tsbuildinfo"],"from":"F7-native","submittedAt":"2026-11-06T15:50:51.817Z","cls":"typecheck","startedAt":"2026-11-06T15:51:28.806Z","endedAt":"2026-11-06T15:56:36.521Z","code":0}

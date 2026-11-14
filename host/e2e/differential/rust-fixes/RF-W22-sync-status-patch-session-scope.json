@@ -1,0 +1,51 @@
+{
+  "id": "RF-W22-sync-status-patch-session-scope",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T14:25:00+08:00",
+  "title": "chatanki_sync 回写 syncStatus 只找调用会话自己的 anki_cards 块，不再扫全库最新 40 行",
+  "rust": {
+    "file": "src-tauri/src/chat_v2/tools/chatanki_executor.rs",
+    "line": 14243,
+    "behavior": "patch_anki_cards_block_sync_status 用 `SELECT id, tool_output_json FROM chat_v2_blocks WHERE block_type = 'anki_cards' AND tool_output_json IS NOT NULL ORDER BY rowid DESC LIMIT 40` 在所有会话里取最新 40 个制卡块，取第一个 documentId 相同的块写 syncStatus 并发 chunk；不看块属于哪个会话。"
+  },
+  "fix": {
+    "files": ["host/plugins/chatanki/src/sync-executor.ts"],
+    "behavior": "按调用会话（ctx.sessionId）找该会话里最新的、documentId 相同的 anki_cards 块（与 chatanki 其他块回写共用的 findOwnedAnkiCardsBlockId），不设 40 行窗口；找不到就跳过，写入与 chunk 的内容、best-effort 语义和 Map::remove 的键序不变。"
+  },
+  "evidence": "两处错误都与 Rust 自身的约束矛盾：execute_sync 在 chatanki_executor.rs:6183 刚用 verify_document_ownership（:1775，is_document_owned_by_session）校验文档属于调用会话，到 :6459 调 patch_anki_cards_block_sync_status 时却不传会话；同文件其余 anki_cards 块回写都经 find_owned_anki_cards_block_id（:13279，SQL 用 INNER JOIN chat_v2_messages … AND m.session_id = ?1，不设行数上限）按会话归属找块：lookup_hidden_over_limit_count :13324、preflight_card_mutation :13347、persist_and_emit_card_mutation_with :13624、sync_terminal_anki_block_with_db :14345；只有这里（:14238–14270，SQL :14243–14247）全库扫最新 40 行。tests/sync-status-scope-evidence.test.ts 在同一套真实 chat_v2/mistakes 库上把两种行为都跑出来（Rust 模式 = Rust 原 SQL 定位 + 同一个回写函数；本 lane = 真实 builtin-chatanki_sync），起点都是一次界面同步失败后落库的块（syncStatus=error + syncError）：(1) 单会话、全库不足 40 个制卡块：两边写同一块，结果相同；(2) 用真实 chat_v2_branch_session 分支后：Rust 把 synced 写进分支会话里较新的副本，调用会话自己的块保持“同步失败”和旧错误文本，chunk 发给调用会话视图里不存在的块；本 lane 写调用会话自己的块；(3) 其他会话之后又生成了 40 个制卡块：Rust 找不到块，什么都不写；本 lane 写自己的块；(4) 同一个长会话之后又生成了 40 个制卡块：同 (3)；(5) 调用会话删掉了那条制卡消息，只剩分支副本：Rust 写分支副本，本 lane 不写。(6) 用户把会话导出为快照再导入（Rust 前端 sessionExport.ts:69–83 拼快照 + 真实 chat_v2_import_session，块 id 重新生成、documentId 不变）：与 (2) 相同，Rust 写导入会话里的副本，调用会话自己的块保持“同步失败”；测试同时确认导入会话自己同步这份文档会被拒（statusNotFound）。实时界面上两边都看不到差别：ankiCards.ts:551–552 对已结束的块丢弃非卡片变更的 chunk；差别在下次载入会话时出现：synced 显示为“已保存”（ankiCardsBlock.tsx:407），error 继续显示同步失败和错误文本。建议：保留现状（只写调用会话自己的块）。(2)(3)(4)(6) 里 Rust 的结果是用户可见的错误；(5) 里 Rust 写的是调用方无法操作的会话（verify_document_ownership 会拒绝分支会话同步这份文档），且同一个 chunk 也会被界面丢弃。折中方案“先找调用会话，找不到再退回 Rust 的全库 40 行扫描”只在 (5) 与 Rust 一致，代价是重新引入跨会话写入，不建议。",
+  "userVisible": "能。会话分支过、把会话导出成快照又导入过、或者全库在这张卡片块之后又生成过 40 个以上制卡块时，让 AI 同步成功后重新打开会话：Rust 下调用会话的卡片预览仍显示“同步失败”和上次的 AnkiConnect 错误（分支或导入时还会让副本所在会话显示“已保存”）；本 lane 下调用会话的预览显示“已保存”，分支副本不变。只剩分支副本（调用会话删了制卡消息）时，Rust 会把副本标成“已保存”，本 lane 不改。单会话且不足 40 个制卡块时两边一样。",
+  "dataCompat": "不改 schema、同步载荷和备份格式；写入的仍是 chat_v2_blocks.tool_output_json 的 syncStatus/syncError 两个键，只是落在哪一行不同。Rust 版和新版可以互读。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "host/plugins/chatanki/tests/sync-real-host.test.ts",
+      "name": "RF-W22-sync-status-patch-session-scope: the syncStatus write-back stays on the caller session's block"
+    },
+    {
+      "file": "host/plugins/chatanki/tests/sync-status-scope-evidence.test.ts",
+      "name": "RF-W22-sync-status-patch-session-scope evidence 1: one session, under 40 card blocks — Rust and this lane write the same block"
+    },
+    {
+      "file": "host/plugins/chatanki/tests/sync-status-scope-evidence.test.ts",
+      "name": "RF-W22-sync-status-patch-session-scope evidence 2: after a session branch Rust marks the branch copy and leaves the caller's block failed"
+    },
+    {
+      "file": "host/plugins/chatanki/tests/sync-status-scope-evidence.test.ts",
+      "name": "RF-W22-sync-status-patch-session-scope evidence 3: 40 newer card blocks in other sessions push the caller's block out of Rust's window"
+    },
+    {
+      "file": "host/plugins/chatanki/tests/sync-status-scope-evidence.test.ts",
+      "name": "RF-W22-sync-status-patch-session-scope evidence 4: one long session with 40 later card blocks — Rust misses the caller's own block"
+    },
+    {
+      "file": "host/plugins/chatanki/tests/sync-status-scope-evidence.test.ts",
+      "name": "RF-W22-sync-status-patch-session-scope evidence 5: the caller deleted its card message; only a branch copy remains — Rust marks the copy, this lane writes nothing"
+    },
+    {
+      "file": "host/plugins/chatanki/tests/sync-status-scope-evidence.test.ts",
+      "name": "RF-W22-sync-status-patch-session-scope evidence 6: after a snapshot export + re-import Rust marks the imported copy and leaves the caller's block failed"
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>smoke</title></head>
+<body><div id="drag" data-tauri-drag-region style="height:20px"><span id="drag-child">drag</span></div>
+<script>
+(async () => {
+  const I = window.__TAURI_INTERNALS__;
+  const r = { isTauri: window.isTauri === true, label: I.metadata.currentWindow.label };
+  const P = window.__DS_PLATFORM__;
+  const descriptor = Object.getOwnPropertyDescriptor(window, '__DS_PLATFORM__');
+  try { P.kind = 'mobile'; } catch {}
+  try { window.__DS_PLATFORM__ = { kind: 'forged' }; } catch {}
+  r.platform = { value: { ...window.__DS_PLATFORM__ }, frozen: Object.isFrozen(P), writable: descriptor?.writable === true, configurable: descriptor?.configurable === true };
+  try { await I.invoke('nonexistent'); r.nonexistent = 'resolved'; } catch (e) { r.nonexistent = e; }
+  try { await I.invoke('plugin:window|nonexistent'); } catch (e) { r.builtinMissing = e; }
+  r.join = await I.invoke('plugin:path|join', { paths: ['a', 'b'] });
+  r.windows = await I.invoke('plugin:window|get_all_windows');
+  const pixels = [255, 0, 0, 255, 0, 128, 255, 128];
+  const imageRid = await I.invoke('plugin:image|new', { rgba: pixels, width: 2, height: 1 });
+  r.imagePixels = await I.invoke('plugin:image|rgba', { rid: imageRid });
+  r.imageSize = await I.invoke('plugin:image|size', { rid: imageRid });
+  await I.invoke('plugin:resources|close', { rid: imageRid });
+  try { await I.invoke('plugin:image|size', { rid: imageRid }); } catch (e) { r.closedImage = typeof e === 'string' && e.includes('is invalid'); }
+  let resolveEvent;
+  const evt = new Promise((res) => { resolveEvent = res; });
+  r.listenId = await I.invoke('plugin:event|listen', { event: 'smoke://pong', target: { kind: 'Any' }, handler: I.transformCallback(resolveEvent) });
+  await I.invoke('plugin:event|emit', { event: 'smoke://ping', payload: { n: 1 } });
+  r.event = await evt;
+  const appRegion = (id) => getComputedStyle(document.getElementById(id)).getPropertyValue('-webkit-app-region');
+  r.dragCss = { region: appRegion('drag'), child: appRegion('drag-child') };
+  await I.invoke('smoke_report', r, { headers: { origin: 'https://forged.example' } });
+})();
+</script></body></html>

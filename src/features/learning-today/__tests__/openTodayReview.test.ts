@@ -13,7 +13,7 @@ vi.mock('@/features/flashcards/store/fsrsReviewStore', () => ({
   useFsrsReviewStore: { getState: () => flashcards },
 }));
 
-import { openTodayReviewTarget } from '../openTodayReview';
+import { openResourceLibrary, openTodayReviewTarget } from '../openTodayReview';
 import { closeDueMistakesReview, isDueMistakesReviewOpen } from '../dueMistakesReview';
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -62,6 +62,15 @@ describe('openTodayReviewTarget', () => {
     expect(navigations).toEqual([{ view: 'flashcards' }]);
   });
 
+  it('still navigates to flashcards in the classic shell when the Today screen cannot be selected', async () => {
+    isEnabled.mockReturnValue(false);
+    flashcards.setScreen.mockImplementationOnce(() => { throw new Error('store unavailable'); });
+    openTodayReviewTarget('cards');
+    await flush();
+    expect(launch).not.toHaveBeenCalled();
+    expect(navigations).toEqual([{ view: 'flashcards' }]);
+  });
+
   it('opens due notes in the files window on the study desktop', () => {
     isEnabled.mockReturnValue(true);
     openTodayReviewTarget('notes');
@@ -82,5 +91,31 @@ describe('openTodayReviewTarget', () => {
     expect(isDueMistakesReviewOpen()).toBe(true);
     expect(launch).not.toHaveBeenCalled();
     expect(navigations).toEqual([]);
+  });
+});
+
+describe('openResourceLibrary', () => {
+  const navigations: unknown[] = [];
+  const onNavigate = (event: Event) => navigations.push([event.constructor.name, (event as CustomEvent).detail]);
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    navigations.length = 0;
+    window.addEventListener('NAVIGATE_TO_VIEW', onNavigate);
+  });
+  afterEach(() => window.removeEventListener('NAVIGATE_TO_VIEW', onNavigate));
+
+  it('opens the files window on the study desktop', () => {
+    isEnabled.mockReturnValue(true);
+    openResourceLibrary();
+    expect(launch).toHaveBeenCalledWith({ typeId: 'files', reason: 'api' });
+    expect(navigations).toEqual([]);
+  });
+
+  it('navigates the classic shell to the learning hub', () => {
+    isEnabled.mockReturnValue(false);
+    openResourceLibrary();
+    expect(launch).not.toHaveBeenCalled();
+    expect(navigations).toEqual([['CustomEvent', { view: 'learning-hub' }]]);
   });
 });

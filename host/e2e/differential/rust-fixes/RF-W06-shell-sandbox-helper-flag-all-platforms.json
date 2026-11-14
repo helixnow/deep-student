@@ -1,0 +1,31 @@
+{
+  "id": "RF-W06-shell-sandbox-helper-flag-all-platforms",
+  "kind": "deliberate",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T15:02:00+08:00",
+  "title": "应用以内部开关 --deep-student-shell-sandbox-helper 作为第一个参数启动时，macOS/Linux 也和 Windows 一样在申请单实例锁之前拒绝（stderr + 退出码 126），不启动应用",
+  "rust": {
+    "file": "src-tauri/src/main.rs",
+    "line": 5,
+    "behavior": "maybe_run_helper() 只在 #[cfg(windows)] 下先于 run() 执行；macOS/Linux 上带这个开关启动会照常进入 run()：没有运行中的实例时打开应用，有运行中的实例时作为第二实例退出并唤起它的主窗口"
+  },
+  "fix": {
+    "files": ["electron/shell/bootstrap.ts"],
+    "behavior": "runApp 在申请单实例锁之前识别第一个应用参数（打包版 argv[1]，开发态 electron main.ts 之后的第一个）是否为该开关；是则在所有平台上写一行原因到 stderr、以 126 退出，不调用 start()。Windows 的原因是 F7 原生 helper 未接入；macOS/Linux 的原因是这是 Windows 沙箱 helper 的内部开关"
+  },
+  "evidence": "产品决策，不是 Rust bug。这个开关只供 Host 在 Windows 上重新启动应用自身作为沙箱 helper；macOS/Linux 的本地 shell 沙箱不自调用应用，开关只会被手工传入，此时启动整个应用或唤起已运行实例的窗口都没有意义。统一拒绝还让 main.ts 的真实入口能在 macOS/Linux 的 CI 上被端到端验证（electron/tests/sandbox-helper-host.test.ts），Windows 实机目前无法验证。",
+  "userVisible": "几乎不可感知：只有手工在 macOS/Linux 上以该内部开关作为第一个参数启动应用时，应用不再打开（或唤起已运行的窗口），而是在终端输出一行说明并以 126 退出。正常启动、双击、文件关联、第二实例唤起均不受影响。",
+  "dataCompat": "不涉及落库数据、同步载荷与备份格式。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "electron/tests/bootstrap.test.ts",
+      "name": "RF-W06-shell-sandbox-helper-flag-all-platforms: macOS and Linux refuse the flag too (Rust #[cfg(windows)] starts the app there)"
+    },
+    {
+      "file": "electron/tests/sandbox-helper-host.test.ts",
+      "name": "RF-W06-shell-sandbox-helper-flag-all-platforms: the flag as the first app argument exits 126 before the lock and starts nothing"
+    }
+  ]
+}

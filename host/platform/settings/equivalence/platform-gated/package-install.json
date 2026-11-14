@@ -1,0 +1,58 @@
+{
+  "domain": "diagnostics",
+  "commands": [
+    "auto_install_package_manager"
+  ],
+  "scenarios": [
+    {
+      "id": "diagnostics.pm.auto_install.uv",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "auto_install_package_manager",
+          "args": {
+            "managerType": "uv"
+          }
+        },
+        {
+          "cmd": "check_package_manager",
+          "args": {
+            "command": "uv"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "diagnostics.pm.auto_install.cargo",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "auto_install_package_manager",
+          "args": {
+            "managerType": "cargo"
+          }
+        },
+        {
+          "cmd": "check_package_manager",
+          "args": {
+            "command": "cargo"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

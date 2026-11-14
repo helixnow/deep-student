@@ -1,0 +1,2573 @@
+{
+  "lane": "L17-memory-research",
+  "generator": "deep-student/contracts-extract@1.6.0",
+  "commands": [
+    {
+      "name": "memory_add_relation",
+      "lane": "L17-memory-research",
+      "rust": {
+        "file": "crates/dstu-memory/src/memory/handlers.rs",
+        "line": 364,
+        "fn": "memory_add_relation"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "noteIdA",
+          "rustName": "note_id_a",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "noteIdB",
+          "rustName": "note_id_b",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::lance_store::VfsLanceStore>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_llm::llm_manager::LLMManager>"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "memory_batch_delete",
+      "lane": "L17-memory-research",
+      "rust": {
+        "file": "crates/dstu-memory/src/memory/handlers.rs",
+        "line": 478,
+        "fn": "memory_batch_delete"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "noteIds",
+          "rustName": "note_ids",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::lance_store::VfsLanceStore>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_llm::llm_manager::LLMManager>"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/BatchOperationResult"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "memory_batch_move",
+      "lane": "L17-memory-research",
+      "rust": {
+        "file": "crates/dstu-memory/src/memory/handlers.rs",
+        "line": 522,
+        "fn": "memory_batch_move"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "noteIds",
+          "rustName": "note_ids",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "optional": false
+        },
+        {
+          "key": "targetFolderPath",
+          "rustName": "target_folder_path",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::lance_store::VfsLanceStore>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_llm::llm_manager::LLMManager>"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/BatchOperationResult"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "memory_create_root_folder",
+      "lane": "L17-memory-research",
+      "rust": {
+        "file": "crates/dstu-memory/src/memory/handlers.rs",
+        "line": 208,
+        "fn": "memory_create_root_folder"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "title",
+          "rustName": "title",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::lance_store::VfsLanceStore>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_llm::llm_manager::LLMManager>"
+        }
+      ],
+      "result": {
+        "type": "string"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "memory_delete",
+      "lane": "L17-memory-research",
+      "rust": {
+        "file": "crates/dstu-memory/src/memory/handlers.rs",
+        "line": 614,
+        "fn": "memory_delete"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "noteId",
+          "rustName": "note_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::lance_store::VfsLanceStore>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_llm::llm_manager::LLMManager>"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "memory_export_all",
+      "lane": "L17-memory-research",
+      "rust": {
+        "file": "crates/dstu-memory/src/memory/handlers.rs",
+        "line": 688,
+        "fn": "memory_export_all"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::lance_store::VfsLanceStore>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_llm::llm_manager::LLMManager>"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/MemoryExportItem"
+        }
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "memory_get_audit_logs",
+      "lane": "L17-memory-research",
+      "rust": {
+        "file": "crates/dstu-memory/src/memory/handlers.rs",
+        "line": 947,
+        "fn": "memory_get_audit_logs"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "limit",
+          "rustName": "limit",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "offset",
+          "rustName": "offset",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "sourceFilter",
+          "rustName": "source_filter",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "operationFilter",
+          "rustName": "operation_filter",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "successFilter",
+          "rustName": "success_filter",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/MemoryAuditLogItem"
+        }
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "memory_get_config",
+      "lane": "L17-memory-research",
+      "rust": {
+        "file": "crates/dstu-memory/src/memory/handlers.rs",
+        "line": 174,
+        "fn": "memory_get_config"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::lance_store::VfsLanceStore>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_llm::llm_manager::LLMManager>"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/MemoryConfigOutput"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "memory_get_or_create_root_folder",
+      "lane": "L17-memory-research",
+      "rust": {
+        "file": "crates/dstu-memory/src/memory/handlers.rs",
+        "line": 221,
+        "fn": "memory_get_or_create_root_folder"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::lance_store::VfsLanceStore>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_llm::llm_manager::LLMManager>"
+        }
+      ],
+      "result": {
+        "type": "string"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "memory_get_profile",
+      "lane": "L17-memory-research",
+      "rust": {
+        "file": "crates/dstu-memory/src/memory/handlers.rs",
+        "line": 721,
+        "fn": "memory_get_profile"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::lance_store::VfsLanceStore>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_llm::llm_manager::LLMManager>"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/MemoryProfileSection"
+        }
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "memory_get_related",
+      "lane": "L17-memory-research",
+      "rust": {
+        "file": "crates/dstu-memory/src/memory/handlers.rs",
+        "line": 400,
+        "fn": "memory_get_related"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "noteId",
+          "rustName": "note_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::lance_store::VfsLanceStore>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_llm::llm_manager::LLMManager>"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "memory_get_tags",
+      "lane": "L17-memory-research",
+      "rust": {
+        "file": "crates/dstu-memory/src/memory/handlers.rs",
+        "line": 466,
+        "fn": "memory_get_tags"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "noteId",
+          "rustName": "note_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::lance_store::VfsLanceStore>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_llm::llm_manager::LLMManager>"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "memory_get_tree",
+      "lane": "L17-memory-research",
+      "rust": {
+        "file": "crates/dstu-memory/src/memory/handlers.rs",
+        "line": 353,
+        "fn": "memory_get_tree"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::lance_store::VfsLanceStore>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_llm::llm_manager::LLMManager>"
+        }
+      ],
+      "result": {
+        "anyOf": [
+          {
+            "$ref": "_shared.json#/$defs/FolderTreeNode"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "x-option": "null"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "memory_list",
+      "lane": "L17-memory-research",
+      "rust": {
+        "file": "crates/dstu-memory/src/memory/handlers.rs",
+        "line": 337,
+        "fn": "memory_list"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "folderPath",
+          "rustName": "folder_path",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "limit",
+          "rustName": "limit",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "offset",
+          "rustName": "offset",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::lance_store::VfsLanceStore>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_llm::llm_manager::LLMManager>"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/MemoryListItem"
+        }
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "memory_move_to_folder",
+      "lane": "L17-memory-research",
+      "rust": {
+        "file": "crates/dstu-memory/src/memory/handlers.rs",
+        "line": 566,
+        "fn": "memory_move_to_folder"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "noteId",
+          "rustName": "note_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "targetFolderPath",
+          "rustName": "target_folder_path",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::lance_store::VfsLanceStore>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_llm::llm_manager::LLMManager>"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "memory_read",
+      "lane": "L17-memory-research",
+      "rust": {
+        "file": "crates/dstu-memory/src/memory/handlers.rs",
+        "line": 249,
+        "fn": "memory_read"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "noteId",
+          "rustName": "note_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::lance_store::VfsLanceStore>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_llm::llm_manager::LLMManager>"
+        }
+      ],
+      "result": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/MemoryReadOutput"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "x-option": "null"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "memory_remove_relation",
+      "lane": "L17-memory-research",
+      "rust": {
+        "file": "crates/dstu-memory/src/memory/handlers.rs",
+        "line": 382,
+        "fn": "memory_remove_relation"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "noteIdA",
+          "rustName": "note_id_a",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "noteIdB",
+          "rustName": "note_id_b",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::lance_store::VfsLanceStore>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_llm::llm_manager::LLMManager>"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "memory_restore_archived",
+      "lane": "L17-memory-research",
+      "rust": {
+        "file": "crates/dstu-memory/src/memory/handlers.rs",
+        "line": 447,
+        "fn": "memory_restore_archived"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "noteId",
+          "rustName": "note_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::lance_store::VfsLanceStore>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_llm::llm_manager::LLMManager>"
+        }
+      ],
+      "result": {
+        "type": "boolean"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "memory_restore_stale",
+      "lane": "L17-memory-research",
+      "rust": {
+        "file": "crates/dstu-memory/src/memory/handlers.rs",
+        "line": 430,
+        "fn": "memory_restore_stale"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "noteId",
+          "rustName": "note_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::lance_store::VfsLanceStore>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_llm::llm_manager::LLMManager>"
+        }
+      ],
+      "result": {
+        "type": "boolean"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "memory_search",
+      "lane": "L17-memory-research",
+      "rust": {
+        "file": "crates/dstu-memory/src/memory/handlers.rs",
+        "line": 233,
+        "fn": "memory_search"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "query",
+          "rustName": "query",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "topK",
+          "rustName": "top_k",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "usize",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::lance_store::VfsLanceStore>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_llm::llm_manager::LLMManager>"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/MemorySearchResult"
+        }
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "memory_set_auto_create_subfolders",
+      "lane": "L17-memory-research",
+      "rust": {
+        "file": "crates/dstu-memory/src/memory/handlers.rs",
+        "line": 629,
+        "fn": "memory_set_auto_create_subfolders"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "enabled",
+          "rustName": "enabled",
+          "schema": {
+            "type": "boolean"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::lance_store::VfsLanceStore>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_llm::llm_manager::LLMManager>"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "memory_set_auto_extract_frequency",
+      "lane": "L17-memory-research",
+      "rust": {
+        "file": "crates/dstu-memory/src/memory/handlers.rs",
+        "line": 655,
+        "fn": "memory_set_auto_extract_frequency"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "frequency",
+          "rustName": "frequency",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::lance_store::VfsLanceStore>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_llm::llm_manager::LLMManager>"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "memory_set_default_category",
+      "lane": "L17-memory-research",
+      "rust": {
+        "file": "crates/dstu-memory/src/memory/handlers.rs",
+        "line": 642,
+        "fn": "memory_set_default_category"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "category",
+          "rustName": "category",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::lance_store::VfsLanceStore>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_llm::llm_manager::LLMManager>"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "memory_set_privacy_mode",
+      "lane": "L17-memory-research",
+      "rust": {
+        "file": "crates/dstu-memory/src/memory/handlers.rs",
+        "line": 197,
+        "fn": "memory_set_privacy_mode"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "enabled",
+          "rustName": "enabled",
+          "schema": {
+            "type": "boolean"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::lance_store::VfsLanceStore>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_llm::llm_manager::LLMManager>"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "memory_set_root_folder",
+      "lane": "L17-memory-research",
+      "rust": {
+        "file": "crates/dstu-memory/src/memory/handlers.rs",
+        "line": 184,
+        "fn": "memory_set_root_folder"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "folderId",
+          "rustName": "folder_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::lance_store::VfsLanceStore>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_llm::llm_manager::LLMManager>"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "memory_to_anki_document",
+      "lane": "L17-memory-research",
+      "rust": {
+        "file": "crates/dstu-memory/src/memory/handlers.rs",
+        "line": 973,
+        "fn": "memory_to_anki_document"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "folderPath",
+          "rustName": "folder_path",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "purposeFilter",
+          "rustName": "purpose_filter",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "limit",
+          "rustName": "limit",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::lance_store::VfsLanceStore>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_llm::llm_manager::LLMManager>"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/MemoryAnkiDocument"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "memory_update_by_id",
+      "lane": "L17-memory-research",
+      "rust": {
+        "file": "crates/dstu-memory/src/memory/handlers.rs",
+        "line": 584,
+        "fn": "memory_update_by_id"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "noteId",
+          "rustName": "note_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "title",
+          "rustName": "title",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "content",
+          "rustName": "content",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::lance_store::VfsLanceStore>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_llm::llm_manager::LLMManager>"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/MemoryWriteOutput"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "memory_update_tags",
+      "lane": "L17-memory-research",
+      "rust": {
+        "file": "crates/dstu-memory/src/memory/handlers.rs",
+        "line": 412,
+        "fn": "memory_update_tags"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "noteId",
+          "rustName": "note_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "tags",
+          "rustName": "tags",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::lance_store::VfsLanceStore>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_llm::llm_manager::LLMManager>"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "memory_write",
+      "lane": "L17-memory-research",
+      "rust": {
+        "file": "crates/dstu-memory/src/memory/handlers.rs",
+        "line": 276,
+        "fn": "memory_write"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "noteId",
+          "rustName": "note_id",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "folderPath",
+          "rustName": "folder_path",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "title",
+          "rustName": "title",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "content",
+          "rustName": "content",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "mode",
+          "rustName": "mode",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::lance_store::VfsLanceStore>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_llm::llm_manager::LLMManager>"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/MemoryWriteOutput"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "memory_write_batch",
+      "lane": "L17-memory-research",
+      "rust": {
+        "file": "crates/dstu-memory/src/memory/handlers.rs",
+        "line": 815,
+        "fn": "memory_write_batch"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "items",
+          "rustName": "items",
+          "schema": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/MemoryBatchWriteItemInput"
+            }
+          },
+          "optional": false
+        },
+        {
+          "key": "defaultFolderPath",
+          "rustName": "default_folder_path",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "defaultMemoryType",
+          "rustName": "default_memory_type",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "defaultMemoryPurpose",
+          "rustName": "default_memory_purpose",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::lance_store::VfsLanceStore>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_llm::llm_manager::LLMManager>"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/MemoryBatchWriteOutput"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "memory_write_smart",
+      "lane": "L17-memory-research",
+      "rust": {
+        "file": "crates/dstu-memory/src/memory/handlers.rs",
+        "line": 761,
+        "fn": "memory_write_smart"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "folderPath",
+          "rustName": "folder_path",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "title",
+          "rustName": "title",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "content",
+          "rustName": "content",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "memoryType",
+          "rustName": "memory_type",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "memoryPurpose",
+          "rustName": "memory_purpose",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "idempotencyKey",
+          "rustName": "idempotency_key",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::lance_store::VfsLanceStore>"
+        },
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_llm::llm_manager::LLMManager>"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/SmartWriteOutput"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "quick_assistant_apply_enabled",
+      "lane": "L17-memory-research",
+      "rust": {
+        "file": "src/quick_assistant.rs",
+        "line": 273,
+        "fn": "quick_assistant_apply_enabled"
+      },
+      "async": false,
+      "args": [
+        {
+          "key": "enabled",
+          "rustName": "enabled",
+          "schema": {
+            "type": "boolean"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "quick_assistant_hide",
+      "lane": "L17-memory-research",
+      "rust": {
+        "file": "src/quick_assistant.rs",
+        "line": 264,
+        "fn": "quick_assistant_hide"
+      },
+      "async": false,
+      "args": [],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "quick_assistant_show",
+      "lane": "L17-memory-research",
+      "rust": {
+        "file": "src/quick_assistant.rs",
+        "line": 256,
+        "fn": "quick_assistant_show"
+      },
+      "async": false,
+      "args": [],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "frontend": "app"
+    }
+  ],
+  "events": [
+    {
+      "name": "hpias_event",
+      "dynamic": false,
+      "payload": {
+        "x-rust": "serde_json::Value"
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-research/src/hpias/events.rs",
+          "line": 25,
+          "fn": "emit_raw",
+          "lane": "L17-memory-research",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "memory://changed",
+      "dynamic": false,
+      "payload": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "source": {
+                "type": "string"
+              },
+              "action": {
+                "type": "string"
+              },
+              "entityIds": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "runId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "source",
+              "action",
+              "entityIds",
+              "runId"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "source": {
+                "type": "string"
+              },
+              "action": {
+                "type": "string"
+              },
+              "entityIds": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "source",
+              "action",
+              "entityIds"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "x-note": "emitters send different payload shapes"
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-memory/src/memory/handlers.rs",
+          "line": 89,
+          "fn": "emit_memory_changed",
+          "lane": "L17-memory-research",
+          "method": "emit"
+        },
+        {
+          "file": "src/chat_v2/tools/memory_executor.rs",
+          "line": 440,
+          "fn": "emit_memory_changed",
+          "lane": "L17-memory-research",
+          "method": "emit"
+        }
+      ]
+    },
+    {
+      "name": "quick-assistant://shown",
+      "dynamic": false,
+      "payload": {
+        "type": "null"
+      },
+      "emitters": [
+        {
+          "file": "src/quick_assistant.rs",
+          "line": 193,
+          "fn": "show",
+          "lane": "L17-memory-research",
+          "method": "emit",
+          "note": "receiver `window` type not inferred; accepted because the event name is static"
+        }
+      ]
+    }
+  ],
+  "$defs": {
+    "BatchOperationResult": {
+      "type": "object",
+      "properties": {
+        "total": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "succeeded": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "failed": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "total",
+        "succeeded",
+        "failed",
+        "errors"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_memory::memory::handlers::BatchOperationResult"
+    },
+    "MemoryAnkiDocument": {
+      "type": "object",
+      "properties": {
+        "documentContent": {
+          "type": "string"
+        },
+        "memoryCount": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "documentName": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "documentContent",
+        "memoryCount",
+        "documentName"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_memory::memory::handlers::MemoryAnkiDocument"
+    },
+    "MemoryAuditLogItem": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "timestamp": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "operation": {
+          "type": "string"
+        },
+        "success": {
+          "type": "boolean"
+        },
+        "noteId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "contentPreview": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "folder": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "event": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "confidence": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f32"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "sessionId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "durationMs": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "i64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "id",
+        "timestamp",
+        "source",
+        "operation",
+        "success",
+        "noteId",
+        "title",
+        "contentPreview",
+        "folder",
+        "event",
+        "confidence",
+        "reason",
+        "sessionId",
+        "durationMs"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_memory::memory::audit_log::MemoryAuditLogItem"
+    },
+    "MemoryBatchWriteItemInput": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "content": {
+          "type": "string"
+        },
+        "folderPath": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "memoryType": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "memoryPurpose": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "idempotencyKey": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "title",
+        "content"
+      ],
+      "x-rust": "dstu_memory::memory::handlers::MemoryBatchWriteItemInput"
+    },
+    "MemoryBatchWriteItemResult": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "noteId": {
+          "type": "string"
+        },
+        "event": {
+          "type": "string"
+        },
+        "isNew": {
+          "type": "boolean"
+        },
+        "confidence": {
+          "type": "number",
+          "x-float": "f32"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "resourceId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "downgraded": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "title",
+        "noteId",
+        "event",
+        "isNew",
+        "confidence",
+        "reason",
+        "downgraded"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_memory::memory::handlers::MemoryBatchWriteItemResult"
+    },
+    "MemoryBatchWriteOutput": {
+      "type": "object",
+      "properties": {
+        "total": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "succeeded": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "failed": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "added": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "updated": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "skipped": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "filtered": {
+          "type": "integer",
+          "x-int": "usize",
+          "minimum": 0
+        },
+        "results": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/MemoryBatchWriteItemResult"
+          }
+        }
+      },
+      "required": [
+        "total",
+        "succeeded",
+        "failed",
+        "added",
+        "updated",
+        "skipped",
+        "filtered",
+        "results"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_memory::memory::handlers::MemoryBatchWriteOutput"
+    },
+    "MemoryConfigOutput": {
+      "type": "object",
+      "properties": {
+        "memoryRootFolderId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "memoryRootFolderTitle": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "autoCreateSubfolders": {
+          "type": "boolean"
+        },
+        "defaultCategory": {
+          "type": "string"
+        },
+        "privacyMode": {
+          "type": "boolean"
+        },
+        "autoExtractFrequency": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "memoryRootFolderId",
+        "memoryRootFolderTitle",
+        "autoCreateSubfolders",
+        "defaultCategory",
+        "privacyMode",
+        "autoExtractFrequency"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_memory::memory::service::MemoryConfigOutput"
+    },
+    "MemoryExportItem": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "content": {
+          "type": "string"
+        },
+        "folder": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "title",
+        "content",
+        "folder",
+        "updatedAt"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_memory::memory::handlers::MemoryExportItem"
+    },
+    "MemoryListItem": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "folderPath": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "type": "string"
+        },
+        "hits": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "isImportant": {
+          "type": "boolean"
+        },
+        "isStale": {
+          "type": "boolean"
+        },
+        "isArchived": {
+          "type": "boolean"
+        },
+        "needsDedupReview": {
+          "type": "boolean"
+        },
+        "memoryType": {
+          "type": "string"
+        },
+        "memoryPurpose": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "folderPath",
+        "updatedAt",
+        "hits",
+        "isImportant",
+        "isStale",
+        "isArchived",
+        "needsDedupReview",
+        "memoryType",
+        "memoryPurpose"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_memory::memory::service::MemoryListItem"
+    },
+    "MemoryProfileSection": {
+      "type": "object",
+      "properties": {
+        "category": {
+          "type": "string"
+        },
+        "content": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "category",
+        "content"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_memory::memory::handlers::MemoryProfileSection"
+    },
+    "MemoryReadOutput": {
+      "type": "object",
+      "properties": {
+        "noteId": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "content": {
+          "type": "string"
+        },
+        "folderPath": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "noteId",
+        "title",
+        "content",
+        "folderPath",
+        "updatedAt"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_memory::memory::handlers::MemoryReadOutput"
+    },
+    "MemorySearchResult": {
+      "type": "object",
+      "properties": {
+        "noteId": {
+          "type": "string"
+        },
+        "noteTitle": {
+          "type": "string"
+        },
+        "folderPath": {
+          "type": "string"
+        },
+        "chunkText": {
+          "type": "string"
+        },
+        "score": {
+          "type": "number",
+          "x-float": "f32"
+        },
+        "updatedAt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        }
+      },
+      "required": [
+        "noteId",
+        "noteTitle",
+        "folderPath",
+        "chunkText",
+        "score"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_memory::memory::service::MemorySearchResult"
+    },
+    "MemoryWriteOutput": {
+      "type": "object",
+      "properties": {
+        "noteId": {
+          "type": "string"
+        },
+        "isNew": {
+          "type": "boolean"
+        },
+        "resourceId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "noteId",
+        "isNew",
+        "resourceId"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_memory::memory::service::MemoryWriteOutput"
+    },
+    "SmartWriteOutput": {
+      "type": "object",
+      "properties": {
+        "noteId": {
+          "type": "string"
+        },
+        "event": {
+          "type": "string"
+        },
+        "isNew": {
+          "type": "boolean"
+        },
+        "confidence": {
+          "type": "number",
+          "x-float": "f32"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "resourceId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "downgraded": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "noteId",
+        "event",
+        "isNew",
+        "confidence",
+        "reason",
+        "downgraded"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_memory::memory::service::SmartWriteOutput"
+    }
+  }
+}

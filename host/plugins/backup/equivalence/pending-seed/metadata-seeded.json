@@ -1,0 +1,31 @@
+{
+  "domain": "backup",
+  "commands": [
+    "data_governance_get_schema_registry",
+    "data_governance_get_maintenance_status"
+  ],
+  "scenarios": [
+    {
+      "id": "backup.metadata.seeded.live_vfs_not_sqlite",
+      "seed": "l21-live-vfs-not-sqlite",
+      "steps": [
+        {
+          "cmd": "data_governance_get_schema_registry",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "data_governance_get_maintenance_status",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

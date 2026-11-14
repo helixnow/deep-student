@@ -1,0 +1,30 @@
+{
+  "id": "RF-W05-variant-loaded-skill-ids-truncation",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main-agent",
+  "approvedAt": "2026-11-07T09:50:00+08:00",
+  "title": "多变体管线 load_skills 结果超出 30k 预算后，渐进披露仍从截断后的结果读取 loaded_skill_ids",
+  "rust": {
+    "file": "src-tauri/crates/dstu-agent/src/chat_v2/pipeline/multi_variant.rs",
+    "line": 1719,
+    "behavior": "与 RF-W02-loaded-skill-ids-truncation（tool_loop.rs:2016）是同一缺陷的变体路径：从已经过 ToolExecutorRegistry 结果预算（30k 字符）处理的 output 里读 result.loaded_skill_ids。结果退化为 {truncated, preview: <JSON 字符串>} 后 loaded_skill_ids 不存在，新加载技能的内嵌工具不会加入该变体下一轮的 tools。"
+  },
+  "fix": {
+    "files": [
+      "host/plugins/chat-pipeline/src/variant-run-single.ts"
+    ],
+    "behavior": "variant-run 的渐进披露改读注册表挂在 PRE_BUDGET_OUTPUT 上的截断前 output（机制由 RF-W02-loaded-skill-ids-truncation 引入）。模型看到的工具结果、落库的块内容与 Rust 相同。"
+  },
+  "evidence": "后果与 RF-W02 相同且用户可见：变体里 load_skills 返回 success、技能状态也写入，但同一轮该变体的模型拿不到技能工具。Rust 自身的 truncation_note 写明预算只控制模型上下文（“The full output was persisted before truncation”），不应影响循环的结构化解析；单变体路径已按 RF-W02 修正，多变体路径保持 Rust 行为会让两条路径对同一输入给出不同的工具集。复现：约 2500 个技能 + 请求一个不存在的技能，经 executeVariantRetry 运行，下一轮请求不含 builtin-ask_user。",
+  "g3": {
+    "affects": false,
+    "selectors": []
+  },
+  "tests": [
+    {
+      "file": "host/plugins/chat-pipeline/tests/variant-skill-disclosure.test.ts",
+      "name": "RF-W05-variant-loaded-skill-ids-truncation: variant load_skills over the 30k result budget still discloses the loaded skill's tools"
+    }
+  ]
+}

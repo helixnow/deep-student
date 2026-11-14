@@ -1,0 +1,628 @@
+<div>
+  <div class="p-4 space-y-4">
+    <div class="flex items-center justify-between gap-4 flex-wrap">
+      <h2 class="text-lg font-semibold flex items-center gap-2">
+        <svg size=20 icon="M104,60A12,12,0,1,1,92,4">
+        "Crepe 拖放调试"
+      <div class="flex items-center gap-2 flex-wrap">
+        <button class="px-3 py-1 [@media(pointer:coarse)]:min-h-11 text-sm rounded flex items-center gap-1 bg-red-500 text-white">
+          <svg size=16 icon="M200,32H160a16,16,0,0,0-">
+          "录制中"
+        <button class="px-3 py-1 [@media(pointer:coarse)]:min-h-11 text-sm rounded bg-gray-200 text-gray-700">
+          <svg size=16 icon="M236.8,188.09,149.35,36.">
+        <button class="px-3 py-1 [@media(pointer:coarse)]:min-h-11 text-sm rounded bg-green-500 text-white">
+          "自动滚动"
+        <button class="px-3 py-1 [@media(pointer:coarse)]:min-h-11 text-sm bg-purple-500 text-white rounded hover:bg-purple-600 flex items-center gap-1">
+          <svg size=16 icon="M221.87,83.16A104.1,104.">
+          "运行诊断"
+        <button class="px-3 py-1 [@media(pointer:coarse)]:min-h-11 text-sm bg-blue-500 text-white rounded hover:bg-blue-600">
+          <svg size=16 icon="M200,32H163.74a47.92,47.">
+        <button class="px-3 py-1 [@media(pointer:coarse)]:min-h-11 text-sm bg-gray-500 text-white rounded hover:bg-gray-600">
+          <svg size=16 icon="M216,48H176V40a24,24,0,0">
+    <div class="border rounded-lg p-3 bg-gradient-to-r from-slate-50 to-blue-50">
+      <div class="text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+        <svg size=16 icon="M247.31,124.76c-.35-.79-">
+        "实时诊断"
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2">
+        <div class="p-2 rounded text-xs bg-green-100 border-green-300 border">
+          <div class="font-medium flex items-center gap-1">
+            <svg size=12 icon="M173.66,98.34a8,8,0,0,1," class="text-green-600">
+            "dragstart"
+          <div class="text-gray-700 mt-0.5">
+            "dragstart 正常触发"
+        <div class="p-2 rounded text-xs bg-red-100 border-red-300 border">
+          <div class="font-medium flex items-center gap-1">
+            <svg size=12 icon="M165.66,101.66,139.31,12" class="text-red-600">
+            "dragover"
+          <div class="text-gray-700 mt-0.5">
+            "dragover 未正确处理"
+          <div class="text-gray-500 mt-0.5">
+            "33% 的 dragover 调用了 preventDefault()，需要接近 100%"
+        <div class="p-2 rounded text-xs bg-green-100 border-green-300 border">
+          <div class="font-medium flex items-center gap-1">
+            <svg size=12 icon="M173.66,98.34a8,8,0,0,1," class="text-green-600">
+            "drop"
+          <div class="text-gray-700 mt-0.5">
+            "drop 事件已触发"
+    <div class="flex flex-wrap gap-2">
+      <button class="px-2 py-1 [@media(pointer:coarse)]:min-h-11 text-xs rounded-full transition-all ring-2 ring-offset-1" style="background-color: rgba(99, 102, 241, 0.125); color: rgb(99, 102, 241);">
+        "mousedown"
+        ":"
+        "2"
+      <button class="px-2 py-1 [@media(pointer:coarse)]:min-h-11 text-xs rounded-full transition-all ring-2 ring-offset-1" style="background-color: rgba(139, 92, 246, 0.125); color: rgb(139, 92, 246);">
+        "mouseup"
+        ":"
+        "1"
+      <button class="px-2 py-1 [@media(pointer:coarse)]:min-h-11 text-xs rounded-full transition-all opacity-50" style="background-color: rgba(168, 85, 247, 0.125); color: rgb(168, 85, 247);">
+        "pointerdown"
+        ":"
+        "1"
+      <button class="px-2 py-1 [@media(pointer:coarse)]:min-h-11 text-xs rounded-full transition-all opacity-50" style="background-color: rgba(192, 132, 252, 0.125); color: rgb(192, 132, 252);">
+        "pointerup"
+        ":"
+        "0"
+      <button class="px-2 py-1 [@media(pointer:coarse)]:min-h-11 text-xs rounded-full transition-all ring-2 ring-offset-1" style="background-color: rgba(34, 197, 94, 0.125); color: rgb(34, 197, 94);">
+        "dragstart"
+        ":"
+        "2"
+      <button class="px-2 py-1 [@media(pointer:coarse)]:min-h-11 text-xs rounded-full transition-all opacity-50" style="background-color: rgba(132, 204, 22, 0.125); color: rgb(132, 204, 22);">
+        "drag"
+        ":"
+        "1"
+      <button class="px-2 py-1 [@media(pointer:coarse)]:min-h-11 text-xs rounded-full transition-all ring-2 ring-offset-1" style="background-color: rgba(234, 179, 8, 0.125); color: rgb(234, 179, 8);">
+        "dragover"
+        ":"
+        "3"
+      <button class="px-2 py-1 [@media(pointer:coarse)]:min-h-11 text-xs rounded-full transition-all ring-2 ring-offset-1" style="background-color: rgba(249, 115, 22, 0.125); color: rgb(249, 115, 22);">
+        "dragenter"
+        ":"
+        "1"
+      <button class="px-2 py-1 [@media(pointer:coarse)]:min-h-11 text-xs rounded-full transition-all ring-2 ring-offset-1" style="background-color: rgba(239, 68, 68, 0.125); color: rgb(239, 68, 68);">
+        "dragleave"
+        ":"
+        "1"
+      <button class="px-2 py-1 [@media(pointer:coarse)]:min-h-11 text-xs rounded-full transition-all ring-2 ring-offset-1" style="background-color: rgba(16, 185, 129, 0.125); color: rgb(16, 185, 129);">
+        "drop"
+        ":"
+        "1"
+      <button class="px-2 py-1 [@media(pointer:coarse)]:min-h-11 text-xs rounded-full transition-all ring-2 ring-offset-1" style="background-color: rgba(6, 182, 212, 0.125); color: rgb(6, 182, 212);">
+        "dragend"
+        ":"
+        "1"
+    <div class="flex items-center gap-4 text-sm">
+      <span class="text-gray-500">
+        "总计:"
+        "14"
+      <span class="text-gray-500">
+        "已过滤:"
+        "12"
+      <span class="text-red-600 font-medium">
+        "问题:"
+        "8"
+    <div class="border rounded-lg overflow-hidden">
+      <div class="bg-gray-100 px-3 py-2 text-sm font-medium text-gray-700">
+        "事件日志"
+      <div class="max-h-[400px] overflow-auto">
+        <div class="divide-y text-xs font-mono">
+          <div class="p-2 hover:bg-gray-50 bg-red-50">
+            <div class="flex items-start gap-2">
+              <svg size=16 icon="M232.4,114.49,88.32,26.3" class="mt-0.5 flex-shrink-0" style="color: rgb(34, 197, 94);">
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span class="text-gray-500">
+                    "10:00:00"
+                    "."
+                    "000"
+                  <span class="px-2 py-0.5 rounded font-medium" style="background-color: rgba(34, 197, 94, 0.125); color: rgb(34, 197, 94);">
+                    "dragstart"
+                  <span class="text-gray-400">
+                    "capture"
+                  <span class="text-gray-500">
+                    "("
+                    "0"
+                    ","
+                    "0"
+                    ")"
+                <div class="text-gray-600 mt-1 truncate" title="system">
+                  "→"
+                  "system"
+                <div class="mt-1 space-y-0.5">
+                  <div class="text-red-600">
+                    "📍 拖放调试插件已激活，等待拖放操作..."
+                <details class="mt-1">
+                  <summary class="cursor-pointer text-blue-600 hover:text-blue-800 [@media(pointer:coarse)]:min-h-11">
+                    "详细信息"
+                  <div class="mt-1 p-2 bg-gray-100 rounded overflow-auto max-h-32">
+                    <div>
+                      <span class="text-gray-500">
+                        "domState:"
+                      "{\"draggableElements\":1,\"blockHandleExists\":true,\"dataDragging\":\"false\",\"blockHandleDraggable\":true,\"blockHandlePointerEvents\":\"auto\",\"blockHandleDataShow\":\"true\",\"operationItemCount\":2,\"pmViewExists\":true,\"pmViewDragging\":{\"slice\":true,\"move\":true},\"pmViewEditable\":true,\"pmSelectionType\":\"NodeSelection\"}"
+              <button class="p-1 text-gray-400 hover:text-gray-600 flex-shrink-0 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11" title="复制日志">
+                <svg size=12 icon="M216,32H88a8,8,0,0,0-8,8">
+          <div class="p-2 hover:bg-gray-50 bg-red-50">
+            <div class="flex items-start gap-2">
+              <svg size=16 icon="M168,132.69,214.08,115l." class="mt-0.5 flex-shrink-0" style="color: rgb(99, 102, 241);">
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span class="text-gray-500">
+                    "10:00:00"
+                    "."
+                    "082"
+                  <span class="px-2 py-0.5 rounded font-medium" style="background-color: rgba(99, 102, 241, 0.125); color: rgb(99, 102, 241);">
+                    "mousedown"
+                  <span class="text-gray-400">
+                    "capture"
+                  <span class="text-gray-500">
+                    "("
+                    "12"
+                    ","
+                    "40"
+                    ")"
+                <div class="text-gray-600 mt-1 truncate" title="div > div.crepe-editor-wrapper > div.milkdown > div.milkdown-block-handle > div.operation-item">
+                  "→"
+                  "div > div.crepe-editor-wrapper > div.milkdown > div.milkdown-block-handle > div.operation-item"
+                <div class="mt-1 space-y-0.5">
+                  <div class="text-red-600">
+                    "⚠️ Block handle 不可见"
+                  <div class="text-red-600">
+                    "📍 mousedown 在 block handle 上"
+                  <div class="text-red-600">
+                    "📍 点击的是拖拽手柄（应触发 dragstart）"
+                <details class="mt-1">
+                  <summary class="cursor-pointer text-blue-600 hover:text-blue-800 [@media(pointer:coarse)]:min-h-11">
+                    "详细信息"
+                  <div class="mt-1 p-2 bg-gray-100 rounded overflow-auto max-h-32">
+                    <div class="mb-1">
+                      <span class="text-gray-500">
+                        "editorState:"
+                      "{\"hasFocus\":false,\"isDragging\":false,\"hasSelection\":false,\"selectionType\":\"NodeSelection\",\"draggingSlice\":true}"
+                    <div>
+                      <span class="text-gray-500">
+                        "domState:"
+                      "{\"draggableElements\":1,\"blockHandleExists\":true,\"dataDragging\":\"false\",\"blockHandleDraggable\":true,\"blockHandlePointerEvents\":\"auto\",\"blockHandleDataShow\":\"true\",\"operationItemCount\":2,\"pmViewExists\":true,\"pmViewDragging\":{\"slice\":true,\"move\":true},\"pmViewEditable\":true,\"pmSelectionType\":\"NodeSelection\"}"
+              <button class="p-1 text-gray-400 hover:text-gray-600 flex-shrink-0 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11" title="复制日志">
+                <svg size=12 icon="M216,32H88a8,8,0,0,0-8,8">
+          <div class="p-2 hover:bg-gray-50 bg-red-50">
+            <div class="flex items-start gap-2">
+              <svg size=16 icon="M168,132.69,214.08,115l." class="mt-0.5 flex-shrink-0" style="color: rgb(99, 102, 241);">
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span class="text-gray-500">
+                    "10:00:00"
+                    "."
+                    "164"
+                  <span class="px-2 py-0.5 rounded font-medium" style="background-color: rgba(99, 102, 241, 0.125); color: rgb(99, 102, 241);">
+                    "mousedown"
+                  <span class="text-gray-400">
+                    "capture"
+                  <span class="text-gray-500">
+                    "("
+                    "4"
+                    ","
+                    "40"
+                    ")"
+                <div class="text-gray-600 mt-1 truncate" title="div > div.crepe-editor-wrapper > div.milkdown > div.milkdown-block-handle > div.operation-item">
+                  "→"
+                  "div > div.crepe-editor-wrapper > div.milkdown > div.milkdown-block-handle > div.operation-item"
+                <div class="mt-1 space-y-0.5">
+                  <div class="text-red-600">
+                    "⚠️ Block handle 不可见"
+                  <div class="text-red-600">
+                    "📍 mousedown 在 block handle 上"
+                  <div class="text-red-600">
+                    "📍 点击的是加号按钮（会触发 slash menu）"
+                <details class="mt-1">
+                  <summary class="cursor-pointer text-blue-600 hover:text-blue-800 [@media(pointer:coarse)]:min-h-11">
+                    "详细信息"
+                  <div class="mt-1 p-2 bg-gray-100 rounded overflow-auto max-h-32">
+                    <div class="mb-1">
+                      <span class="text-gray-500">
+                        "editorState:"
+                      "{\"hasFocus\":false,\"isDragging\":false,\"hasSelection\":false,\"selectionType\":\"NodeSelection\",\"draggingSlice\":true}"
+                    <div>
+                      <span class="text-gray-500">
+                        "domState:"
+                      "{\"draggableElements\":1,\"blockHandleExists\":true,\"dataDragging\":\"false\",\"blockHandleDraggable\":true,\"blockHandlePointerEvents\":\"auto\",\"blockHandleDataShow\":\"true\",\"operationItemCount\":2,\"pmViewExists\":true,\"pmViewDragging\":{\"slice\":true,\"move\":true},\"pmViewEditable\":true,\"pmSelectionType\":\"NodeSelection\"}"
+              <button class="p-1 text-gray-400 hover:text-gray-600 flex-shrink-0 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11" title="复制日志">
+                <svg size=12 icon="M216,32H88a8,8,0,0,0-8,8">
+          <div class="p-2 hover:bg-gray-50 bg-red-50">
+            <div class="flex items-start gap-2">
+              <svg size=16 icon="M168,132.69,214.08,115l." class="mt-0.5 flex-shrink-0" style="color: rgb(139, 92, 246);">
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span class="text-gray-500">
+                    "10:00:00"
+                    "."
+                    "205"
+                  <span class="px-2 py-0.5 rounded font-medium" style="background-color: rgba(139, 92, 246, 0.125); color: rgb(139, 92, 246);">
+                    "mouseup"
+                  <span class="text-gray-400">
+                    "capture"
+                  <span class="text-gray-500">
+                    "("
+                    "30"
+                    ","
+                    "40"
+                    ")"
+                <div class="text-gray-600 mt-1 truncate" title="div > div.crepe-editor-wrapper > div.milkdown > div.ProseMirror > p">
+                  "→"
+                  "div > div.crepe-editor-wrapper > div.milkdown > div.ProseMirror > p"
+                <div class="mt-1 space-y-0.5">
+                  <div class="text-red-600">
+                    "✅ 已设置 NodeSelection"
+                <details class="mt-1">
+                  <summary class="cursor-pointer text-blue-600 hover:text-blue-800 [@media(pointer:coarse)]:min-h-11">
+                    "详细信息"
+                  <div class="mt-1 p-2 bg-gray-100 rounded overflow-auto max-h-32">
+                    <div class="mb-1">
+                      <span class="text-gray-500">
+                        "editorState:"
+                      "{\"hasFocus\":false,\"isDragging\":false,\"hasSelection\":false,\"selectionType\":\"NodeSelection\",\"draggingSlice\":true}"
+                    <div>
+                      <span class="text-gray-500">
+                        "domState:"
+                      "{\"draggableElements\":1,\"blockHandleExists\":true,\"dataDragging\":\"false\",\"blockHandleDraggable\":true,\"blockHandlePointerEvents\":\"auto\",\"blockHandleDataShow\":\"true\",\"operationItemCount\":2,\"pmViewExists\":true,\"pmViewDragging\":{\"slice\":true,\"move\":true},\"pmViewEditable\":true,\"pmSelectionType\":\"NodeSelection\"}"
+              <button class="p-1 text-gray-400 hover:text-gray-600 flex-shrink-0 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11" title="复制日志">
+                <svg size=12 icon="M216,32H88a8,8,0,0,0-8,8">
+          <div class="p-2 hover:bg-gray-50 ">
+            <div class="flex items-start gap-2">
+              <svg size=16 icon="M232.4,114.49,88.32,26.3" class="mt-0.5 flex-shrink-0" style="color: rgb(34, 197, 94);">
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span class="text-gray-500">
+                    "10:00:00"
+                    "."
+                    "246"
+                  <span class="px-2 py-0.5 rounded font-medium" style="background-color: rgba(34, 197, 94, 0.125); color: rgb(34, 197, 94);">
+                    "dragstart"
+                  <span class="text-gray-400">
+                    "capture"
+                  <span class="text-gray-500">
+                    "("
+                    "12"
+                    ","
+                    "40"
+                    ")"
+                <div class="text-gray-600 mt-1 truncate" title="body > div > div.crepe-editor-wrapper > div.milkdown > div.milkdown-block-handle">
+                  "→"
+                  "body > div > div.crepe-editor-wrapper > div.milkdown > div.milkdown-block-handle"
+                <details class="mt-1">
+                  <summary class="cursor-pointer text-blue-600 hover:text-blue-800 [@media(pointer:coarse)]:min-h-11">
+                    "详细信息"
+                  <div class="mt-1 p-2 bg-gray-100 rounded overflow-auto max-h-32">
+                    <div class="mb-1">
+                      <span class="text-gray-500">
+                        "dataTransfer:"
+                      "{\"effectAllowed\":\"move\",\"dropEffect\":\"none\",\"types\":[\"text/html\",\"text/plain\"],\"hasData\":true}"
+                    <div class="mb-1">
+                      <span class="text-gray-500">
+                        "editorState:"
+                      "{\"hasFocus\":false,\"isDragging\":false,\"hasSelection\":false,\"selectionType\":\"NodeSelection\",\"draggingSlice\":true}"
+                    <div>
+                      <span class="text-gray-500">
+                        "domState:"
+                      "{\"draggableElements\":1,\"blockHandleExists\":true,\"dataDragging\":\"false\",\"blockHandleDraggable\":true,\"blockHandlePointerEvents\":\"auto\",\"blockHandleDataShow\":\"true\",\"operationItemCount\":2,\"pmViewExists\":true,\"pmViewDragging\":{\"slice\":true,\"move\":true},\"pmViewEditable\":true,\"pmSelectionType\":\"NodeSelection\"}"
+              <button class="p-1 text-gray-400 hover:text-gray-600 flex-shrink-0 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11" title="复制日志">
+                <svg size=12 icon="M216,32H88a8,8,0,0,0-8,8">
+          <div class="p-2 hover:bg-gray-50 ">
+            <div class="flex items-start gap-2">
+              <svg size=16 icon="M205.66,149.66l-72,72a8," class="mt-0.5 flex-shrink-0" style="color: rgb(249, 115, 22);">
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span class="text-gray-500">
+                    "10:00:00"
+                    "."
+                    "287"
+                  <span class="px-2 py-0.5 rounded font-medium" style="background-color: rgba(249, 115, 22, 0.125); color: rgb(249, 115, 22);">
+                    "dragenter"
+                  <span class="text-gray-400">
+                    "capture"
+                  <span class="text-gray-500">
+                    "("
+                    "40"
+                    ","
+                    "80"
+                    ")"
+                <div class="text-gray-600 mt-1 truncate" title="div > div.crepe-editor-wrapper > div.milkdown > div.ProseMirror > p">
+                  "→"
+                  "div > div.crepe-editor-wrapper > div.milkdown > div.ProseMirror > p"
+                <details class="mt-1">
+                  <summary class="cursor-pointer text-blue-600 hover:text-blue-800 [@media(pointer:coarse)]:min-h-11">
+                    "详细信息"
+                  <div class="mt-1 p-2 bg-gray-100 rounded overflow-auto max-h-32">
+                    <div class="mb-1">
+                      <span class="text-gray-500">
+                        "dataTransfer:"
+                      "{\"effectAllowed\":\"move\",\"dropEffect\":\"none\",\"types\":[\"text/html\"],\"hasData\":true}"
+                    <div class="mb-1">
+                      <span class="text-gray-500">
+                        "editorState:"
+                      "{\"hasFocus\":false,\"isDragging\":false,\"hasSelection\":false,\"selectionType\":\"NodeSelection\",\"draggingSlice\":true}"
+                    <div>
+                      <span class="text-gray-500">
+                        "domState:"
+                      "{\"draggableElements\":1,\"blockHandleExists\":true,\"dataDragging\":\"false\",\"blockHandleDraggable\":true,\"blockHandlePointerEvents\":\"auto\",\"blockHandleDataShow\":\"true\",\"operationItemCount\":2,\"pmViewExists\":true,\"pmViewDragging\":{\"slice\":true,\"move\":true},\"pmViewEditable\":true,\"pmSelectionType\":\"NodeSelection\"}"
+              <button class="p-1 text-gray-400 hover:text-gray-600 flex-shrink-0 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11" title="复制日志">
+                <svg size=12 icon="M216,32H88a8,8,0,0,0-8,8">
+          <div class="p-2 hover:bg-gray-50 ">
+            <div class="flex items-start gap-2">
+              <svg size=16 icon="M221.87,83.16A104.1,104." class="mt-0.5 flex-shrink-0" style="color: rgb(234, 179, 8);">
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span class="text-gray-500">
+                    "10:00:00"
+                    "."
+                    "328"
+                  <span class="px-2 py-0.5 rounded font-medium" style="background-color: rgba(234, 179, 8, 0.125); color: rgb(234, 179, 8);">
+                    "dragover"
+                  <span class="text-gray-400">
+                    "capture"
+                  <span class="text-gray-500">
+                    "("
+                    "40"
+                    ","
+                    "82"
+                    ")"
+                  <span class="px-1.5 py-0.5 bg-red-100 text-red-700 rounded text-[10px]">
+                    "prevented"
+                <div class="text-gray-600 mt-1 truncate" title="div > div.crepe-editor-wrapper > div.milkdown > div.ProseMirror > p">
+                  "→"
+                  "div > div.crepe-editor-wrapper > div.milkdown > div.ProseMirror > p"
+                <details class="mt-1">
+                  <summary class="cursor-pointer text-blue-600 hover:text-blue-800 [@media(pointer:coarse)]:min-h-11">
+                    "详细信息"
+                  <div class="mt-1 p-2 bg-gray-100 rounded overflow-auto max-h-32">
+                    <div class="mb-1">
+                      <span class="text-gray-500">
+                        "dataTransfer:"
+                      "{\"effectAllowed\":\"move\",\"dropEffect\":\"none\",\"types\":[\"text/html\"],\"hasData\":true}"
+                    <div class="mb-1">
+                      <span class="text-gray-500">
+                        "editorState:"
+                      "{\"hasFocus\":false,\"isDragging\":false,\"hasSelection\":false,\"selectionType\":\"NodeSelection\",\"draggingSlice\":true}"
+                    <div>
+                      <span class="text-gray-500">
+                        "domState:"
+                      "{\"draggableElements\":1,\"blockHandleExists\":true,\"dataDragging\":\"false\",\"blockHandleDraggable\":true,\"blockHandlePointerEvents\":\"auto\",\"blockHandleDataShow\":\"true\",\"operationItemCount\":2,\"pmViewExists\":true,\"pmViewDragging\":{\"slice\":true,\"move\":true},\"pmViewEditable\":true,\"pmSelectionType\":\"NodeSelection\"}"
+              <button class="p-1 text-gray-400 hover:text-gray-600 flex-shrink-0 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11" title="复制日志">
+                <svg size=12 icon="M216,32H88a8,8,0,0,0-8,8">
+          <div class="p-2 hover:bg-gray-50 bg-red-50">
+            <div class="flex items-start gap-2">
+              <svg size=16 icon="M221.87,83.16A104.1,104." class="mt-0.5 flex-shrink-0" style="color: rgb(234, 179, 8);">
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span class="text-gray-500">
+                    "10:00:00"
+                    "."
+                    "369"
+                  <span class="px-2 py-0.5 rounded font-medium" style="background-color: rgba(234, 179, 8, 0.125); color: rgb(234, 179, 8);">
+                    "dragover"
+                  <span class="text-gray-400">
+                    "capture"
+                  <span class="text-gray-500">
+                    "("
+                    "40"
+                    ","
+                    "84"
+                    ")"
+                <div class="text-gray-600 mt-1 truncate" title="div > div.crepe-editor-wrapper > div.milkdown > div.ProseMirror > p">
+                  "→"
+                  "div > div.crepe-editor-wrapper > div.milkdown > div.ProseMirror > p"
+                <div class="mt-1 space-y-0.5">
+                  <div class="text-red-600">
+                    "⚠️ dragover 未调用 preventDefault()，可能阻止 drop"
+                <details class="mt-1">
+                  <summary class="cursor-pointer text-blue-600 hover:text-blue-800 [@media(pointer:coarse)]:min-h-11">
+                    "详细信息"
+                  <div class="mt-1 p-2 bg-gray-100 rounded overflow-auto max-h-32">
+                    <div class="mb-1">
+                      <span class="text-gray-500">
+                        "dataTransfer:"
+                      "{\"effectAllowed\":\"move\",\"dropEffect\":\"none\",\"types\":[\"text/html\"],\"hasData\":true}"
+                    <div class="mb-1">
+                      <span class="text-gray-500">
+                        "editorState:"
+                      "{\"hasFocus\":false,\"isDragging\":false,\"hasSelection\":false,\"selectionType\":\"NodeSelection\",\"draggingSlice\":true}"
+                    <div>
+                      <span class="text-gray-500">
+                        "domState:"
+                      "{\"draggableElements\":1,\"blockHandleExists\":true,\"dataDragging\":\"false\",\"blockHandleDraggable\":true,\"blockHandlePointerEvents\":\"auto\",\"blockHandleDataShow\":\"true\",\"operationItemCount\":2,\"pmViewExists\":true,\"pmViewDragging\":{\"slice\":true,\"move\":true},\"pmViewEditable\":true,\"pmSelectionType\":\"NodeSelection\"}"
+              <button class="p-1 text-gray-400 hover:text-gray-600 flex-shrink-0 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11" title="复制日志">
+                <svg size=12 icon="M216,32H88a8,8,0,0,0-8,8">
+          <div class="p-2 hover:bg-gray-50 ">
+            <div class="flex items-start gap-2">
+              <svg size=16 icon="M165.66,101.66,139.31,12" class="mt-0.5 flex-shrink-0" style="color: rgb(239, 68, 68);">
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span class="text-gray-500">
+                    "10:00:00"
+                    "."
+                    "451"
+                  <span class="px-2 py-0.5 rounded font-medium" style="background-color: rgba(239, 68, 68, 0.125); color: rgb(239, 68, 68);">
+                    "dragleave"
+                  <span class="text-gray-400">
+                    "capture"
+                  <span class="text-gray-500">
+                    "("
+                    "40"
+                    ","
+                    "86"
+                    ")"
+                <div class="text-gray-600 mt-1 truncate" title="div > div.crepe-editor-wrapper > div.milkdown > div.ProseMirror > p">
+                  "→"
+                  "div > div.crepe-editor-wrapper > div.milkdown > div.ProseMirror > p"
+                <details class="mt-1">
+                  <summary class="cursor-pointer text-blue-600 hover:text-blue-800 [@media(pointer:coarse)]:min-h-11">
+                    "详细信息"
+                  <div class="mt-1 p-2 bg-gray-100 rounded overflow-auto max-h-32">
+                    <div class="mb-1">
+                      <span class="text-gray-500">
+                        "dataTransfer:"
+                      "{\"effectAllowed\":\"move\",\"dropEffect\":\"none\",\"types\":[\"text/html\"],\"hasData\":true}"
+                    <div class="mb-1">
+                      <span class="text-gray-500">
+                        "editorState:"
+                      "{\"hasFocus\":false,\"isDragging\":false,\"hasSelection\":false,\"selectionType\":\"NodeSelection\",\"draggingSlice\":true}"
+                    <div>
+                      <span class="text-gray-500">
+                        "domState:"
+                      "{\"draggableElements\":1,\"blockHandleExists\":true,\"dataDragging\":\"false\",\"blockHandleDraggable\":true,\"blockHandlePointerEvents\":\"auto\",\"blockHandleDataShow\":\"true\",\"operationItemCount\":2,\"pmViewExists\":true,\"pmViewDragging\":{\"slice\":true,\"move\":true},\"pmViewEditable\":true,\"pmSelectionType\":\"NodeSelection\"}"
+              <button class="p-1 text-gray-400 hover:text-gray-600 flex-shrink-0 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11" title="复制日志">
+                <svg size=12 icon="M216,32H88a8,8,0,0,0-8,8">
+          <div class="p-2 hover:bg-gray-50 bg-red-50">
+            <div class="flex items-start gap-2">
+              <svg size=16 icon="M173.66,98.34a8,8,0,0,1," class="mt-0.5 flex-shrink-0" style="color: rgb(16, 185, 129);">
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span class="text-gray-500">
+                    "10:00:00"
+                    "."
+                    "492"
+                  <span class="px-2 py-0.5 rounded font-medium" style="background-color: rgba(16, 185, 129, 0.125); color: rgb(16, 185, 129);">
+                    "drop"
+                  <span class="text-gray-400">
+                    "capture"
+                  <span class="text-gray-500">
+                    "("
+                    "40"
+                    ","
+                    "88"
+                    ")"
+                  <span class="px-1.5 py-0.5 bg-red-100 text-red-700 rounded text-[10px]">
+                    "prevented"
+                <div class="text-gray-600 mt-1 truncate" title="div > div.crepe-editor-wrapper > div.milkdown > div.ProseMirror > p">
+                  "→"
+                  "div > div.crepe-editor-wrapper > div.milkdown > div.ProseMirror > p"
+                <div class="mt-1 space-y-0.5">
+                  <div class="text-red-600">
+                    "⚠️ drop 被 preventDefault() 阻止"
+                <details class="mt-1">
+                  <summary class="cursor-pointer text-blue-600 hover:text-blue-800 [@media(pointer:coarse)]:min-h-11">
+                    "详细信息"
+                  <div class="mt-1 p-2 bg-gray-100 rounded overflow-auto max-h-32">
+                    <div class="mb-1">
+                      <span class="text-gray-500">
+                        "dataTransfer:"
+                      "{\"effectAllowed\":\"move\",\"dropEffect\":\"none\",\"types\":[\"text/html\"],\"hasData\":true}"
+                    <div class="mb-1">
+                      <span class="text-gray-500">
+                        "editorState:"
+                      "{\"hasFocus\":false,\"isDragging\":false,\"hasSelection\":false,\"selectionType\":\"NodeSelection\",\"draggingSlice\":true}"
+                    <div>
+                      <span class="text-gray-500">
+                        "domState:"
+                      "{\"draggableElements\":1,\"blockHandleExists\":true,\"dataDragging\":\"false\",\"blockHandleDraggable\":true,\"blockHandlePointerEvents\":\"auto\",\"blockHandleDataShow\":\"true\",\"operationItemCount\":2,\"pmViewExists\":true,\"pmViewDragging\":{\"slice\":true,\"move\":true},\"pmViewEditable\":true,\"pmSelectionType\":\"NodeSelection\"}"
+              <button class="p-1 text-gray-400 hover:text-gray-600 flex-shrink-0 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11" title="复制日志">
+                <svg size=12 icon="M216,32H88a8,8,0,0,0-8,8">
+          <div class="p-2 hover:bg-gray-50 ">
+            <div class="flex items-start gap-2">
+              <svg size=16 icon="M200,32H160a16,16,0,0,0-" class="mt-0.5 flex-shrink-0" style="color: rgb(6, 182, 212);">
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span class="text-gray-500">
+                    "10:00:00"
+                    "."
+                    "533"
+                  <span class="px-2 py-0.5 rounded font-medium" style="background-color: rgba(6, 182, 212, 0.125); color: rgb(6, 182, 212);">
+                    "dragend"
+                  <span class="text-gray-400">
+                    "capture"
+                  <span class="text-gray-500">
+                    "("
+                    "40"
+                    ","
+                    "88"
+                    ")"
+                <div class="text-gray-600 mt-1 truncate" title="body > div > div.crepe-editor-wrapper > div.milkdown > div.milkdown-block-handle">
+                  "→"
+                  "body > div > div.crepe-editor-wrapper > div.milkdown > div.milkdown-block-handle"
+                <details class="mt-1">
+                  <summary class="cursor-pointer text-blue-600 hover:text-blue-800 [@media(pointer:coarse)]:min-h-11">
+                    "详细信息"
+                  <div class="mt-1 p-2 bg-gray-100 rounded overflow-auto max-h-32">
+                    <div class="mb-1">
+                      <span class="text-gray-500">
+                        "dataTransfer:"
+                      "{\"effectAllowed\":\"move\",\"dropEffect\":\"none\",\"types\":[],\"hasData\":false}"
+                    <div class="mb-1">
+                      <span class="text-gray-500">
+                        "editorState:"
+                      "{\"hasFocus\":false,\"isDragging\":false,\"hasSelection\":false,\"selectionType\":\"NodeSelection\",\"draggingSlice\":true}"
+                    <div>
+                      <span class="text-gray-500">
+                        "domState:"
+                      "{\"draggableElements\":1,\"blockHandleExists\":true,\"dataDragging\":\"false\",\"blockHandleDraggable\":true,\"blockHandlePointerEvents\":\"auto\",\"blockHandleDataShow\":\"true\",\"operationItemCount\":2,\"pmViewExists\":true,\"pmViewDragging\":{\"slice\":true,\"move\":true},\"pmViewEditable\":true,\"pmSelectionType\":\"NodeSelection\"}"
+              <button class="p-1 text-gray-400 hover:text-gray-600 flex-shrink-0 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11" title="复制日志">
+                <svg size=12 icon="M216,32H88a8,8,0,0,0-8,8">
+          <div class="p-2 hover:bg-gray-50 bg-red-50">
+            <div class="flex items-start gap-2">
+              <svg size=16 icon="M221.87,83.16A104.1,104." class="mt-0.5 flex-shrink-0" style="color: rgb(234, 179, 8);">
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span class="text-gray-500">
+                    "10:00:00"
+                    "."
+                    "574"
+                  <span class="px-2 py-0.5 rounded font-medium" style="background-color: rgba(234, 179, 8, 0.125); color: rgb(234, 179, 8);">
+                    "dragover"
+                  <span class="text-gray-400">
+                    "capture"
+                  <span class="text-gray-500">
+                    "("
+                    "900"
+                    ","
+                    "600"
+                    ")"
+                <div class="text-gray-600 mt-1 truncate" title="html > body">
+                  "→"
+                  "html > body"
+                <div class="mt-1 space-y-0.5">
+                  <div class="text-red-600">
+                    "⚠️ dragover 未调用 preventDefault()，可能阻止 drop"
+                <details class="mt-1">
+                  <summary class="cursor-pointer text-blue-600 hover:text-blue-800 [@media(pointer:coarse)]:min-h-11">
+                    "详细信息"
+                  <div class="mt-1 p-2 bg-gray-100 rounded overflow-auto max-h-32">
+                    <div class="mb-1">
+                      <span class="text-gray-500">
+                        "dataTransfer:"
+                      "{\"effectAllowed\":\"move\",\"dropEffect\":\"none\",\"types\":[],\"hasData\":false}"
+                    <div class="mb-1">
+                      <span class="text-gray-500">
+                        "editorState:"
+                      "{\"hasFocus\":false,\"isDragging\":false,\"hasSelection\":false,\"selectionType\":\"NodeSelection\",\"draggingSlice\":true}"
+                    <div>
+                      <span class="text-gray-500">
+                        "domState:"
+                      "{\"draggableElements\":1,\"blockHandleExists\":true,\"dataDragging\":\"false\",\"blockHandleDraggable\":true,\"blockHandlePointerEvents\":\"auto\",\"blockHandleDataShow\":\"true\",\"operationItemCount\":2,\"pmViewExists\":true,\"pmViewDragging\":{\"slice\":true,\"move\":true},\"pmViewEditable\":true,\"pmSelectionType\":\"NodeSelection\"}"
+              <button class="p-1 text-gray-400 hover:text-gray-600 flex-shrink-0 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11" title="复制日志">
+                <svg size=12 icon="M216,32H88a8,8,0,0,0-8,8">
+    <div class="text-xs text-gray-500 p-3 bg-gray-50 rounded-lg">
+      <div class="font-medium mb-1">
+        "调试步骤："
+      <ol class="list-decimal list-inside space-y-0.5">
+        <li>
+          "在笔记编辑器中输入几行文本"
+        <li>
+          "将鼠标悬停在某一行左侧，等待 block handle（+ 和 ⋮⋮）出现"
+        <li>
+          "按住拖拽手柄（六个点），开始拖动"
+        <li>
+          "观察日志中的"
+          <code class="bg-gray-200 px-1 rounded">
+            "dragstart"
+          "事件"
+        <li>
+          "拖动到目标位置，观察"
+          <code class="bg-gray-200 px-1 rounded">
+            "dragover"
+          "是否有"
+          <code class="bg-gray-200 px-1 rounded">
+            "prevented"
+        <li>
+          "松开鼠标，观察是否有"
+          <code class="bg-gray-200 px-1 rounded">
+            "drop"
+          "事件"
+        <li>
+          "检查「实时诊断」面板中的问题提示"

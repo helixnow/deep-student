@@ -7,7 +7,7 @@
  * - 复习进度条
  * - 空状态：今日无复习时的纯 CSS 完成态插画
  *
- * 🆕 2026-01 新增；2026-07 复习体验改造；2026-07 美术对齐管理页
+ * 2026-01 新增；2026-07 复习体验改造；2026-07 美术对齐管理页
  */
 
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
@@ -146,11 +146,11 @@ const ReviewQueueItem: React.FC<ReviewQueueItemProps> = ({
     <div
       style={staggerStyle(index)}
       className={cn(
-        'ui-rise-in group flex w-full items-center gap-1 rounded-lg border bg-card',
-        'transition-[background-color,border-color,box-shadow] duration-200 ease-standard motion-reduce:transition-none',
+        'ui-rise-in group flex w-full items-center gap-1 rounded-md border-b border-border/35',
+        'transition-[background-color,border-color] duration-150 ease-standard motion-reduce:transition-none',
         isOverdue
-          ? 'border-destructive/30 bg-destructive/5 hover:border-destructive/50'
-          : 'border-border/60 hover:border-border hover:bg-[var(--interactive-hover)]'
+          ? 'bg-destructive/[0.04] hover:bg-destructive/[0.08]'
+          : 'hover:bg-[var(--interactive-hover)]'
       )}
     >
       <button
@@ -158,21 +158,21 @@ const ReviewQueueItem: React.FC<ReviewQueueItemProps> = ({
         onClick={onClick}
         disabled={!onClick}
         className={cn(
-          'flex min-w-0 flex-1 items-center gap-3 rounded-lg p-3 text-left',
+          'flex min-w-0 flex-1 items-center gap-3 rounded-md px-2.5 py-2 text-left',
           'cursor-pointer disabled:cursor-default',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
         )}
       >
-        {/* 状态指示条 */}
-        <div className={cn('h-9 w-1 flex-shrink-0 rounded-full', statusTone.bar)} />
+        {/* 6px 状态语义圆点 */}
+        <div className={cn('h-1.5 w-1.5 flex-shrink-0 rounded-full', statusTone.bar)} />
 
         {/* 题目信息 */}
         <div className="min-w-0 flex-1">
-          <p className="line-clamp-2 text-sm leading-snug text-foreground">
+          <p className="line-clamp-1 text-sm leading-snug text-foreground">
             {question?.content?.slice(0, 80) || t('review:unknownQuestion')}
             {(question?.content?.length || 0) > 80 && '...'}
           </p>
-          <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs">
+          <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs">
             <span className={cn('font-medium', statusTone.text)}>{statusLabel}</span>
             {question && (
               <span className="inline-flex items-center gap-1 text-muted-foreground">
@@ -182,18 +182,18 @@ const ReviewQueueItem: React.FC<ReviewQueueItemProps> = ({
             )}
             {/* 逾期高亮：显示逾期天数 */}
             {isOverdue && overdueDays > 0 && (
-              <span className="font-medium tabular-nums text-destructive">
+              <span className="font-mono font-medium tabular-nums text-destructive">
                 {t('review:queue.overdueDays', { count: overdueDays })}
               </span>
             )}
-            <span className="tabular-nums text-muted-foreground/80">
+            <span className="font-mono tabular-nums text-muted-foreground/80">
               {t('review:interval')}: {plan.interval_days}
               {t('review:days')}
             </span>
             {plan.total_reviews > 0 && (
-              <span className="hidden tabular-nums text-muted-foreground/80 sm:inline">
+              <span className="hidden font-mono tabular-nums text-muted-foreground/80 sm:inline">
                 {t('review:accuracy')}:{' '}
-                {Math.round((plan.total_correct / plan.total_reviews) * 100)}%
+                {Math.round((plan.total_reviews > 0 ? plan.total_correct / plan.total_reviews : 0) * 100)}%
               </span>
             )}
           </div>
@@ -368,15 +368,6 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
   }, [examId, loadDueReviews, refreshStats]);
 
   // 刷新数据
-  const handleRefresh = useCallback(async () => {
-    setIsRefreshing(true);
-    try {
-      await loadDueReviews(examId);
-      await refreshStats(examId);
-    } finally {
-      setIsRefreshing(false);
-    }
-  }, [examId, loadDueReviews, refreshStats]);
 
   // 计算统计数据
   const today = useMemo(() => formatLocalDate(new Date()), []);
@@ -534,8 +525,8 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
   const hasDue = dueReviews.length > 0;
 
   return (
-    <div className={cn('space-y-5 p-4', className)}>
-      {/* 头部标题和刷新按钮 */}
+    <div className={cn('space-y-3 p-4', className)}>
+      {/* 头部标题 + 内联动作 */}
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
           <h2 className="text-base font-semibold text-foreground">
@@ -555,27 +546,15 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
             <Calendar size={14} />
             {t('review:calendar.title')}
           </DsButton>
-          <DsButton
-            variant="ghost"
-            size="icon"
-            onClick={handleRefresh}
-            disabled={isRefreshing}
-            aria-label={t('common:refresh', 'Refresh')}
-            className="h-8 w-8 [@media(pointer:coarse)]:!min-h-[44px] [@media(pointer:coarse)]:!min-w-[44px] text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground"
-          >
-            <ArrowClockwise
-              className={cn('h-4 w-4', isRefreshing && 'animate-spin')}
-            />
-          </DsButton>
         </div>
       </div>
 
-      {/* 统计卡片 */}
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      {/* 紧凑微指标条 */}
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
         <ReviewStatTile
           className="ui-rise-in"
           style={staggerStyle(0)}
-          icon={<Clock size={16} />}
+          icon={<Clock size={14} />}
           label={t('review:stats.dueToday')}
           value={todayCount}
           description={
@@ -590,7 +569,7 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
         <ReviewStatTile
           className="ui-rise-in"
           style={staggerStyle(1)}
-          icon={<Flame size={16} />}
+          icon={<Flame size={14} />}
           label={t('review:stats.totalDue')}
           value={dueReviews.length}
           description={
@@ -605,7 +584,7 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
         <ReviewStatTile
           className="ui-rise-in"
           style={staggerStyle(2)}
-          icon={<Award size={16} />}
+          icon={<Award size={14} />}
           label={t('review:stats.mastered')}
           value={stats?.graduated_count || 0}
           description={`${progressPercent}% ${t('review:stats.ofTotal')}`}
@@ -614,7 +593,7 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
         <ReviewStatTile
           className="ui-rise-in"
           style={staggerStyle(3)}
-          icon={<TrendingUp size={16} />}
+          icon={<TrendingUp size={14} />}
           label={t('review:stats.accuracy')}
           value={`${Math.round((stats?.avg_correct_rate || 0) * 100)}%`}
           description={`${stats?.total_reviews || 0} ${t(
@@ -624,54 +603,39 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
         />
       </div>
 
-      {/* 今日复习卡片 */}
+      {/* 今日复习主操作条（扁平减层，去除多余图标盒与背景光晕） */}
       <div
         className={cn(
-          'ui-rise-in relative overflow-hidden rounded-lg border p-4 sm:p-5',
+          'ui-rise-in rounded-lg border px-3.5 py-3',
           hasDue
-            ? 'border-primary/20 bg-primary/5'
-            : 'border-border/50 bg-muted/20'
+            ? 'border-primary/20 bg-primary/[0.04]'
+            : 'border-border/35 bg-muted/15'
         )}
       >
-        {/* 装饰性光晕（纯 CSS） */}
-        {hasDue && (
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute -right-12 -top-12 h-40 w-40 rounded-full bg-primary/10 blur-2xl"
-          />
-        )}
-
-        <div className="relative flex flex-wrap items-center justify-between gap-4">
-          <div className="flex min-w-0 items-center gap-3.5">
-            <div
-              className={cn(
-                'flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border',
-                hasDue
-                  ? 'border-primary/20 bg-primary/10'
-                  : 'border-success/20 bg-success/10'
-              )}
-            >
-              {hasDue ? (
-                <Target size={20} className="text-primary" />
-              ) : (
-                <CheckCircle size={20} weight="fill" className="text-success" />
-              )}
-            </div>
-            <div className="min-w-0">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2.5">
+            {hasDue ? (
+              <Target size={18} className="shrink-0 text-primary" />
+            ) : (
+              <CheckCircle size={18} weight="fill" className="shrink-0 text-success" />
+            )}
+            <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
               <h3 className="text-sm font-semibold text-foreground">
                 {t('review:todayReview.title')}
               </h3>
               {hasDue ? (
-                <p className="mt-0.5 text-sm text-muted-foreground">
-                  <span className="mr-1 align-middle text-2xl font-semibold tabular-nums text-primary">
+                <p className="text-xs text-muted-foreground">
+                  <span className="mr-1 font-mono text-lg font-semibold tabular-nums text-primary">
                     {dueReviews.length}
                   </span>
                   {t('review:todayReview.itemsUnit')}
                   <span className="mx-1.5 text-border">·</span>
-                  {t('review:todayReview.estimatedTime', { count: estimatedMinutes })}
+                  <span className="font-mono tabular-nums">
+                    {t('review:todayReview.estimatedTime', { count: estimatedMinutes })}
+                  </span>
                 </p>
               ) : (
-                <p className="mt-0.5 text-sm text-muted-foreground">
+                <p className="text-xs text-muted-foreground">
                   {t('review:todayReview.noDue')}
                 </p>
               )}
@@ -681,19 +645,20 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
           {hasDue && (
             <DsButton
               variant="primary"
+              size="sm"
               onClick={handleStartReview}
-              className="min-h-10 [@media(pointer:coarse)]:!min-h-11 gap-2 px-4 shadow-soft"
+              className="min-h-9 [@media(pointer:coarse)]:!min-h-11 gap-1.5 px-3.5"
             >
-              <Play size={16} weight="fill" />
+              <Play size={14} weight="fill" />
               {t('review:startReview')}
-              <CaretRight size={14} className="opacity-70" />
+              <CaretRight size={13} className="opacity-70" />
             </DsButton>
           )}
         </div>
 
         {/* ★ 多窗口隔离：另一题目集的会话进行中，开始复习会替换它（内联提示，无弹窗） */}
         {otherExamSessionActive && hasDue && (
-          <div className="ui-rise-in relative mt-3 flex items-start gap-2 rounded-md border border-warning/30 bg-warning/10 px-3 py-2">
+          <div className="ui-rise-in mt-2.5 flex items-start gap-2 rounded-md border border-warning/30 bg-warning/10 px-3 py-1.5">
             <WarningCircle size={14} className="mt-0.5 shrink-0 text-warning" />
             <p className="text-xs text-warning">
               {t('review:queue.otherSessionNotice')}
@@ -703,39 +668,39 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
 
         {/* 进度条 + SM-2 状态分布 */}
         {stats && stats.total_plans > 0 && (
-          <div className="relative mt-4 space-y-2">
+          <div className="mt-2.5 space-y-1.5">
             <div className="flex items-center justify-between text-xs">
               <span className="text-muted-foreground">
                 {t('review:progress.label')}
               </span>
-              <span className="font-medium tabular-nums text-foreground">
+              <span className="font-mono font-medium tabular-nums text-foreground">
                 {stats.graduated_count}
                 <span className="text-muted-foreground/70"> / {stats.total_plans}</span>
               </span>
             </div>
-            <Progress value={progressPercent} className="h-1.5" />
-            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 pt-0.5 text-[11px] text-muted-foreground">
+            <Progress value={progressPercent} className="h-1" />
+            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                 <span className="flex items-center gap-1.5">
                   <span className="h-1.5 w-1.5 rounded-full bg-primary" />
                   {t('review:status.new')}
-                  <span className="tabular-nums text-foreground/80">{stats.new_count}</span>
+                  <span className="font-mono tabular-nums text-foreground/80">{stats.new_count}</span>
                 </span>
                 <span className="flex items-center gap-1.5">
                   <span className="h-1.5 w-1.5 rounded-full bg-warning" />
                   {t('review:status.learning')}
-                  <span className="tabular-nums text-foreground/80">{stats.learning_count}</span>
+                  <span className="font-mono tabular-nums text-foreground/80">{stats.learning_count}</span>
                 </span>
                 <span className="flex items-center gap-1.5">
                   <span className="h-1.5 w-1.5 rounded-full bg-success" />
                   {t('review:status.reviewing')}
-                  <span className="tabular-nums text-foreground/80">{stats.reviewing_count}</span>
+                  <span className="font-mono tabular-nums text-foreground/80">{stats.reviewing_count}</span>
                 </span>
               </div>
               <span className="flex items-center gap-1.5">
                 <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/60" />
                 {t('review:status.graduated')}
-                <span className="tabular-nums text-foreground/80">{stats.graduated_count}</span>
+                <span className="font-mono tabular-nums text-foreground/80">{stats.graduated_count}</span>
               </span>
             </div>
           </div>
@@ -845,11 +810,11 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
         )
       )}
 
-      {/* 间隔重复原理说明：帮助新用户理解"间隔/状态"从哪来 */}
-      <div className="flex items-start gap-2 rounded-lg border border-info/15 bg-info/5 px-3 py-2.5 text-xs leading-relaxed text-muted-foreground">
-        <Info size={14} className="mt-0.5 shrink-0 text-info" />
+      {/* 间隔重复原理说明：安静单行脚注，去除蓝底边框盒 */}
+      <div className="flex items-center gap-1.5 pt-1 text-xs text-muted-foreground/80">
+        <Info size={13} className="shrink-0 text-info/80" />
         <span>
-          <span className="font-medium text-info">{t('review:tips.sm2Title')}</span>{' '}
+          <span className="font-medium text-foreground/80">{t('review:tips.sm2Title')}</span>{' '}
           {t('review:tips.sm2Desc')}
         </span>
       </div>

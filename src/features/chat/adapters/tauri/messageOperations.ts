@@ -139,7 +139,9 @@ export async function executeRetry(
       if (trimmedOverride && (validIds.size === 0 || validIds.has(trimmedOverride))) {
         options.modelId = trimmedOverride;
         options.model2OverrideId = trimmedOverride;
+        await host.ensureModelMetadataReady(trimmedOverride);
         host.applyRuntimeThinkingCapability(options);
+        host.applyRuntimeContextBudget(options);
       }
     }
 
@@ -319,6 +321,9 @@ export async function executeEditAndResend(
           { notifyUser: true, logDetails: true }
         );
         console.log(LOG_PREFIX, 'Building SendContextRefs for editAndResend:', validContextRefs.length, '(validated from', newContextRefs.length, ')');
+        // All resources may have been removed. Keep the replacement explicit:
+        // undefined asks the backend to restore the original snapshot instead.
+        newContextRefsForBackend = [];
         
         if (validContextRefs.length > 0) {
           const currentModelId = options.modelId;

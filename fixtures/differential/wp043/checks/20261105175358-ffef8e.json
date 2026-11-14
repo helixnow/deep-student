@@ -1,0 +1,1 @@
+{"id":"20261105175358-ffef8e","cwd":"/home/dsdev/dev/ds-mig/X7-differential","cmd":["node","--check","scripts/electron-migration/record/tauri-first-command.mjs"],"from":"X7-differential","submittedAt":"2026-11-05T17:53:58.855Z","cls":"other","startedAt":"2026-11-05T17:55:34.695Z","endedAt":"2026-11-05T17:55:34.803Z","code":0}

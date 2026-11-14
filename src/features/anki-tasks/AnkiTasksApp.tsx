@@ -287,7 +287,7 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
       }, delay);
     };
 
-    // 所有加载入口（首次、轮询、visibility、手动刷新）完成后均重置唯一 timer。
+    // 所有加载入口（首次、轮询、visibility）完成后均重置唯一 timer。
     // 只有最新 generation 能触发该回调，因此旧响应不会改变状态或轮询节奏。
     onLatestLoadSettledRef.current = schedulePoll;
     void load(); // 首次加载完成后，再按实际任务状态安排 5s/30s timer。
@@ -542,11 +542,6 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
                 <ArrowsDownUp size={14} />
                 <span className="text-xs">{sortLabel}</span>
               </DsButton>
-              <CommonTooltip content={t('taskDashboard.refresh')}>
-                <DsButton size="sm" variant="utility" onClick={load} className="h-7 w-7 p-0" aria-label={t('taskDashboard.refresh')}>
-                  <ArrowsClockwise size={14} />
-                </DsButton>
-              </CommonTooltip>
               <CommonTooltip content={t('taskDashboard.recoverStuckHint')}>
                 <DsButton size="sm" variant="utility" onClick={handleRecover} disabled={recovering} className="h-7" aria-label={t('taskDashboard.recoverStuck')}>
                   {recovering
@@ -564,21 +559,21 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
           {/* 左：属性区 */}
           <div className="space-y-0">
             <PropRow icon={<Hash size={14} />} label={t('taskDashboard.propTotalCards')}>
-              <AnimatedNumber value={metrics.totalCards} className="font-semibold" />
+              <AnimatedNumber value={metrics.totalCards} className="font-mono font-semibold tabular-nums" />
               {metrics.avgCards > 0 && (
-                <span className="text-muted-foreground/50 ml-1 text-sm">
+                <span className="text-muted-foreground/50 ml-1 font-mono text-sm tabular-nums">
                   ({t('taskDashboard.avgCardsPerDoc')} {metrics.avgCards})
                 </span>
               )}
             </PropRow>
             <PropRow icon={<FileText size={14} />} label={t('taskDashboard.propDocuments')}>
-              <AnimatedNumber value={metrics.totalDocs} className="font-semibold" />
+              <AnimatedNumber value={metrics.totalDocs} className="font-mono font-semibold tabular-nums" />
             </PropRow>
             <PropRow icon={<TrendUp size={14} />} label={t('taskDashboard.propActiveJobs')}>
               {groups.active.length > 0 ? (
                 <span className="inline-flex items-center gap-1.5">
                   <CircleNotch size={12} className="text-info animate-spin" />
-                  <span className="text-info font-medium">{groups.active.length}</span>
+                  <span className="text-info font-mono font-medium tabular-nums">{groups.active.length}</span>
                   <CommonTooltip content={preventSleep ? t('taskDashboard.preventSleepOn') : t('taskDashboard.preventSleepOff')}>
                     <DsButton
                       size="sm"
@@ -599,11 +594,11 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
               )}
             </PropRow>
             <PropRow icon={<Warning size={14} />} label={t('taskDashboard.propErrorRate')}>
-              <span className={`tabular-nums ${Number(metrics.errorRate) > 0 ? 'text-warning' : ''}`}>
+              <span className={`font-mono tabular-nums ${Number(metrics.errorRate) > 0 ? 'text-warning' : ''}`}>
                 {metrics.errorRate}%
               </span>
               {metrics.failedTasks > 0 && (
-                <span className="text-muted-foreground/40 ml-1">
+                <span className="text-muted-foreground/40 ml-1 font-mono tabular-nums">
                   ({metrics.failedTasks} {t('taskDashboard.segments')})
                 </span>
               )}
@@ -612,7 +607,7 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
                 非模板库总量，文案按此口径诚实标注 */}
             <PropRow icon={<FileText size={14} />} label={t('tasks.templatesUsed')}>
               <CommonTooltip content={t('tasks.templatesUsedHint')}>
-                <span className="tabular-nums cursor-default">
+                <span className="font-mono tabular-nums cursor-default">
                   <AnimatedNumber value={stats?.templateCount ?? 0} />
                 </span>
               </CommonTooltip>
@@ -625,7 +620,7 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
             </PropRow>
             <PropRow icon={<ChartBar size={14} />} label={t('taskDashboard.todayCards')}>
               <span
-                className="inline-flex items-baseline font-medium"
+                className="inline-flex items-baseline font-mono font-medium tabular-nums"
                 title={metrics.todayApprox ? t('tasks.windowApproxHint') : undefined}
               >
                 {metrics.todayApprox && <span className="text-muted-foreground/50 mr-0.5">≈</span>}
@@ -634,7 +629,7 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
               <span className="text-muted-foreground/40 mx-1.5">·</span>
               <span className="text-muted-foreground/60 text-xs">{t('taskDashboard.weekCards')}</span>
               <span
-                className="inline-flex items-baseline ml-1"
+                className="inline-flex items-baseline ml-1 font-mono tabular-nums"
                 title={metrics.weekApprox ? t('tasks.windowApproxHint') : undefined}
               >
                 {metrics.weekApprox && <span className="text-muted-foreground/50 mr-0.5">≈</span>}
@@ -661,7 +656,7 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
                       <div key={i} className="flex items-center gap-2">
                         <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: d.color }} />
                         <span className="text-sm text-muted-foreground">{d.label}</span>
-                        <span className="text-sm text-foreground/70 tabular-nums ml-auto">{d.value}</span>
+                        <span className="font-mono text-sm text-foreground/70 tabular-nums ml-auto">{d.value}</span>
                       </div>
                     ))}
                   </div>
@@ -763,7 +758,7 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
                     <>
                       <span>{labelText}</span>
                       {tabCounts[tab] > 0 && (
-                        <span className="ml-1 text-2xs text-muted-foreground/40 tabular-nums">
+                        <span className="ml-1 font-mono text-2xs text-muted-foreground/40 tabular-nums">
                           {tabCounts[tab]}
                         </span>
                       )}
@@ -798,9 +793,6 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
                 <DsButton size="sm" variant="utility" onClick={cycleSort} aria-label={sortLabel} title={sortLabel}>
                   <ArrowsDownUp size={14} />
                   <span className="text-xs">{sortLabel}</span>
-                </DsButton>
-                <DsButton size="sm" variant="utility" onClick={load} className="w-11 p-0" aria-label={t('taskDashboard.refresh')}>
-                  <ArrowsClockwise size={14} />
                 </DsButton>
                 {/* 触屏无 hover tooltip，纯图标无从得知含义——补文案（工具条 flex-wrap 可换行不溢出） */}
                 <DsButton size="sm" variant="utility" onClick={handleRecover} disabled={recovering} aria-label={t('taskDashboard.recoverStuck')} title={t('taskDashboard.recoverStuckHint')}>
@@ -909,7 +901,7 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
 
               {/* 页脚 */}
               <div className="wb-at-footer">
-                <span>{t('taskDashboard.totalSessions', { count: sortedAndFiltered.length })}</span>
+                <span className="font-mono tabular-nums">{t('taskDashboard.totalSessions', { count: sortedAndFiltered.length })}</span>
                 <span>{t('taskDashboard.footer')}</span>
               </div>
             </>

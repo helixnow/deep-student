@@ -1,0 +1,10 @@
+{
+  "integration": "OpenCode Console",
+  "accounts": [
+    "Default",
+    "Personal",
+    "Key1"
+  ],
+  "cooldownMinutes": 10,
+  "quotaWindowMinutes": 300
+}

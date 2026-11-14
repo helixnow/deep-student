@@ -1,0 +1,10 @@
+{
+  "generator": "host/platform/serde-compat/tests/__fixtures__/rust-sampler --bin default_hasher (std DefaultHasher)",
+  "promotionFingerprint": [
+    [[], "0:d1fba762150c532c"],
+    [[["2026-11-01", ""]], "1:548832727e52ecbd"],
+    [[["2026-11-01", "今天复习了二次函数，配方时符号又错了。"]], "1:60a36a4e7263f314"],
+    [[["2026-11-01", "a"], ["2026-11-02", "bcdefgh"], ["2026-11-03", "12345678"]], "3:d9d882b8e618d96"],
+    [[["2026-11-05", "😀 emoji\n多行\t制表"], ["2026-11-06", "0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz"]], "2:4f03abef4669492e"]
+  ]
+}

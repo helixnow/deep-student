@@ -1,0 +1,24 @@
+{
+  "id": "RF-W08-zip-entry-overflow-aborts-early",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T09:20+08:00",
+  "title": "导入时条目实际解压量一超过中央目录声明大小就中止，不再先写满全局预算",
+  "rust": {
+    "file": "src-tauri/crates/dstu-sync/src/data_governance/backup/zip_export.rs",
+    "line": 833,
+    "behavior": "extract_zip_file_atomically 用 copy_with_actual_size_budget 把条目解压到临时文件，只受 20GiB 全局预算限制（take(remaining + 1)），读到 EOF 后才和声明大小比较；zip 0.6.6 的 deflate 读取器不按声明的未压缩大小截断输出"
+  },
+  "fix": {
+    "files": ["host/platform/zip/core/reader.ts", "host/plugins/backup/src/zip.ts"],
+    "behavior": "条目流在产出超过声明大小的那一块时立即报错，临时文件被删除；错误仍是 'ZIP 条目实际大小与中央目录不一致: <dest> expected=<声明>, actual=<已产出>'，actual 是越界那一刻的字节数"
+  },
+  "evidence": "validate_import_archive 的压缩比检查用的是攻击者可控的声明大小。构造一个声明 1KiB、实际解压出数 GiB 的条目即可通过检查，Rust 会把这些数据全部写进导入目录的临时文件（最多 20GiB）后才报错，可耗尽磁盘；这与 Rust 用声明大小做压缩比与总量策略、并在复制后核对声明大小的意图相矛盾。复现见登记测试。",
+  "userVisible": "只在导入被篡改或损坏的 ZIP 时可感知：报错更快、不会先占用大量磁盘；错误信息里的 actual 是越界时的字节数而不是完整解压量。",
+  "dataCompat": "不改变任何落库数据、同步载荷或备份格式；正常 ZIP 的导入结果与 Rust 完全一致。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    { "file": "host/plugins/backup/tests/rust-fixes.test.ts", "name": "RF-W08-zip-entry-overflow-aborts-early: an entry inflating past its declared size stops at the first overflowing chunk" }
+  ]
+}

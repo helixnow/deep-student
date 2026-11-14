@@ -1,0 +1,55 @@
+{
+  "id": "RF-W23-fs-deny-ntfs-stream-suffix",
+  "kind": "deliberate",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T16:46:00+08:00",
+  "title": "Windows 名称等价：fs / asset 作用域的 deny 另按去掉 NTFS 流后缀（`plugins::$INDEX_ALLOCATION`、`plugins:x`）和 Win32 规范化会去掉的组件末尾点与空格（`\\\\.\\C:\\…\\plugins.`、`…\\plugins `）后的形态匹配；allow 不变",
+  "rust": {
+    "file": "src-tauri/Cargo.toml",
+    "line": 156,
+    "behavior": "tauri-2.11.5 src/scope/fs.rs 的 is_allowed / is_forbidden 用 glob 逐字比较，`$APPDATA\\plugins::$INDEX_ALLOCATION`、`\\\\.\\C:\\…\\$APPDATA\\plugins.` 都不匹配 `$APPDATA\\plugins`。Rust 版的 capability 与 assetProtocol scope 没有 fs deny 条目，所以没有可见后果；Electron 版新增的 deny（RF-W23-fs-deny-host-plugin-dir、RF-W23-fs-deny-browser-profiles、RF-W23-fs-deny-webview-data-user-data）沿用逐字比较后，Windows 上可以用流写法、或带末尾点 / 空格的 `\\\\.\\` 设备路径指向被 deny 的目录"
+  },
+  "fix": {
+    "files": ["electron/shell/scope.ts"],
+    "behavior": "FsScope 在 win32 上判定 deny 时，canonical 与字面形态之外再加入：stripNtfsStreams 后的形态（根之后每个组件从第一个 `:` 起截掉）；再对以上每个形态加入 trimWin32Trailing 后的形态（根之后每个组件去掉末尾的 `.` 和空格，去掉后为空的组件丢弃）。根（`C:\\`、`\\\\?\\C:\\`、`\\\\.\\C:\\`、UNC）不动。全部与 RF-W23-fs-deny-case-insensitive 的折叠叠加。Windows 文件名里不可能出现 `:`，末尾带点或空格的名字经常规 Win32 API 建不出来，所以只会多拒这类名字。allow 不变：允许目录里文件的流（`notes.txt:Zone.Identifier`）照常允许。macOS / Linux 上 `:`、末尾的点和空格都是普通字符，不处理"
+  },
+  "evidence": "1) NTFS 流：`<dir>::$INDEX_ALLOCATION`（以及 `<dir>:$I30:$INDEX_ALLOCATION`）打开的就是目录 `<dir>` 本身，Git CVE-2019-1352 即用 `.git::$INDEX_ALLOCATION` 写入 .git；`\\\\?\\` 前缀（Node 在 Windows 上的 toNamespacedPath）只关闭 Win32 路径规范化，流语法由 NTFS 解析，仍然生效。修复前 `fs-scope-deny-ntfs-stream.test.ts` 中 `$APPDATA\\plugins::$INDEX_ALLOCATION` 判为允许（`1 plugins::$INDEX_ALLOCATION: expected true to be false`），即页面可经 plugin:fs|mkdir 建出 Host 读取的插件目录。2) 末尾点 / 空格（A08 复核 W23-6daff78f 的 MF-1）：Node 的 toNamespacedPath 只给盘符路径和 UNC 加 `\\\\?\\`，`\\\\.\\` 设备路径（含 `//./`、`\\\\.\\UNC\\`、`\\\\.\\GLOBALROOT\\`、`\\\\.\\Volume{…}\\`）原样交给系统（本机 Node v26 实测 `path.win32.toNamespacedPath` 原样返回），Win32 规范化去掉最后一个组件末尾的点和空格、中间组件的一个尾点。`plugins` 尚不存在时（默认如此），`rename <appData>\\staging → \\\\.\\C:\\…\\com.deepstudent.app\\plugins.` 的字面形态与 canonicalizeParent 形态都带尾点，逐字 glob 与折叠都不命中，判为允许，系统却把整个目录落到真正的 plugins；目录已存在时 realpath 经 Win32 规范化解析到真目录，原本就拒绝。修复前 `fs-scope-deny-win32-trailing.test.ts` 中目录不存在时 12 种写法有 10 种判为允许（首个失败 `missing \\\\.\\C:\\Users\\heli\\AppData\\Roaming\\com.deepstudent.app\\plugins.: expected false to be true`），修复后两种磁盘状态下全部拒绝。盘符路径与 `\\\\?\\` 路径不经规范化，`plugins.` 是另一个目录，不是绕过，修复后也一并多拒。测试里的假文件系统按 Win32 规则规范化 `\\\\.\\` 路径；本机是 macOS，没有在真实 Windows 上执行，`shell-builtin-acl.test.ts` 里两例只在 Windows 运行的 e2e 列为交付后跟进",
+  "userVisible": "正常使用感知不到；在 Windows 上，页面脚本用 NTFS 流写法、或带末尾点 / 空格的 `\\\\.\\` 设备路径访问受保护目录（Host 插件目录、内置浏览器会话、WebView 数据）时被拒绝（forbidden path）。名字去掉末尾点和空格后与受保护目录相同的其他路径也会被拒绝，常规 Windows API 建不出这样的名字，前端也没有。",
+  "dataCompat": "不改变落库数据、同步载荷与备份格式。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "electron/tests/fs-scope-deny-ntfs-stream.test.ts",
+      "name": "RF-W23-fs-deny-ntfs-stream-suffix: the stream part of every component after the root is dropped, the root is kept"
+    },
+    {
+      "file": "electron/tests/fs-scope-deny-ntfs-stream.test.ts",
+      "name": "RF-W23-fs-deny-ntfs-stream-suffix: on Windows a stream spelling of plugins / browser-profiles is denied whether the directory exists or not"
+    },
+    {
+      "file": "electron/tests/fs-scope-deny-ntfs-stream.test.ts",
+      "name": "RF-W23-fs-deny-ntfs-stream-suffix: on macOS and Linux a colon is an ordinary character, plugins:x is another entry"
+    },
+    {
+      "file": "electron/tests/fs-scope-deny-win32-trailing.test.ts",
+      "name": "RF-W23-fs-deny-ntfs-stream-suffix: trailing dots and spaces of every component after the root are dropped, the root is kept"
+    },
+    {
+      "file": "electron/tests/fs-scope-deny-win32-trailing.test.ts",
+      "name": "RF-W23-fs-deny-ntfs-stream-suffix: on Windows a \\\\.\\ path with trailing dots or spaces on plugins / browser-profiles is denied whether the directory exists or not"
+    },
+    {
+      "file": "electron/tests/fs-scope-deny-win32-trailing.test.ts",
+      "name": "RF-W23-fs-deny-ntfs-stream-suffix: on macOS and Linux a trailing dot or space names another entry, plugins. stays allowed"
+    },
+    {
+      "file": "host/e2e/security/shell-builtin-acl.test.ts",
+      "name": "RF-W23-fs-deny-ntfs-stream-suffix: while $APPDATA/plugins and a slot's browser-profiles do not exist, a \\\\.\\ path with a trailing dot or space cannot create them"
+    },
+    {
+      "file": "host/e2e/security/shell-builtin-acl.test.ts",
+      "name": "RF-W23-fs-deny-ntfs-stream-suffix: an NTFS stream spelling cannot create, fill or rename into $APPDATA/plugins"
+    }
+  ]
+}

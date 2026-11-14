@@ -156,7 +156,7 @@ export const LinkedResourcesSection: React.FC<{ item: TodoItem; onSaved: () => v
 
       <InlineReveal open={pickerOpen}>
         <div className="min-h-0 overflow-hidden">
-          <div className="space-y-1.5 rounded-[var(--radius-shell-control)] border border-[color:var(--border-default)] p-2">
+          <div className="space-y-1.5 rounded-[var(--radius-shell-control)] border border-border/35 p-2">
             <div className="relative">
               <MagnifyingGlass size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
               <Input

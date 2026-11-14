@@ -41,13 +41,7 @@ import { getErrorMessage } from '@/utils/errorUtils';
 import { VfsErrorCode } from '@/shared/result';
 
 // 类型定义
-import { NOTE_TYPE_ID } from '@/features/chat/context/definitions/note';
-import { TEXTBOOK_TYPE_ID } from '@/features/chat/context/definitions/textbook';
-import { EXAM_TYPE_ID } from '@/features/chat/context/definitions/exam';
-import { ESSAY_TYPE_ID } from '@/features/chat/context/definitions/essay';
-import { TRANSLATION_TYPE_ID } from '@/features/chat/context/definitions/translation';
-import { FILE_TYPE_ID } from '@/features/chat/context/definitions/file';
-import { IMAGE_TYPE_ID } from '@/features/chat/context/definitions/image';
+import { getOfficialResourceTypeUi } from '@/shared/resource-types/lookup';
 
 // ============================================================================
 // 类型定义
@@ -154,49 +148,17 @@ const LOG_PREFIX = '[useReferenceToChat]';
 /**
  * sourceType -> ResourceType 映射
  */
-function getResourceType(sourceType: SourceType): StoreResourceType {
-  switch (sourceType) {
-    case 'note':
-      return 'note';
-    case 'exam':
-      return 'exam';
-    case 'textbook':
-      return 'textbook';
-    case 'essay':
-      return 'essay';
-    case 'translation':
-      return 'translation';
-    case 'file':
-      return 'file';
-    case 'image':
-      return 'image';
-    default:
-      return 'file';
-  }
+export function getResourceType(sourceType: SourceType): StoreResourceType {
+  const mapped = getOfficialResourceTypeUi(sourceType)?.vfsType;
+  return mapped && mapped !== 'mindmap' ? mapped : 'file';
 }
 
 /**
  * sourceType -> typeId 映射
  */
-function getTypeId(sourceType: SourceType): string {
-  switch (sourceType) {
-    case 'note':
-      return NOTE_TYPE_ID;
-    case 'exam':
-      return EXAM_TYPE_ID;
-    case 'textbook':
-      return TEXTBOOK_TYPE_ID;
-    case 'essay':
-      return ESSAY_TYPE_ID;
-    case 'translation':
-      return TRANSLATION_TYPE_ID;
-    case 'file':
-      return FILE_TYPE_ID;
-    case 'image':
-      return IMAGE_TYPE_ID;
-    default:
-      return 'file';
-  }
+export function getTypeId(sourceType: SourceType): string {
+  const mapped = getOfficialResourceTypeUi(sourceType)?.vfsType;
+  return mapped && mapped !== 'mindmap' ? mapped : 'file';
 }
 
 // ============================================================================

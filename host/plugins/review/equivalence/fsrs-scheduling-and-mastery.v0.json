@@ -1,0 +1,207 @@
+{
+  "domain": "review",
+  "commands": ["save_anki_cards", "fsrs_enqueue_cards", "fsrs_update_scheduler_config", "fsrs_get_scheduler_config", "fsrs_preview_intervals", "fsrs_rate", "fsrs_undo_last_review", "fsrs_get_due", "fsrs_get_stats", "fsrs_get_card_memory_history", "fsrs_get_memory_overview", "fsrs_get_review_statistics", "mastery_get_overview"],
+  "scenarios": [
+    {
+      "id": "review.schedule.default-four-ratings",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "save_anki_cards", "args": {"request": {"cards": [{"front": "Again", "back": "1"}, {"front": "Hard", "back": "2"}, {"front": "Good", "back": "3"}, {"front": "Easy", "back": "4"}]}}},
+        {"cmd": "fsrs_enqueue_cards", "args": {"ankiCardIds": "${0.savedIds}"}},
+        {"cmd": "fsrs_preview_intervals", "args": {"cardStateId": "${1.states.0.id}"}},
+        {"cmd": "fsrs_rate", "args": {"cardStateId": "${1.states.0.id}", "rating": 1, "durationMs": null}},
+        {"cmd": "fsrs_rate", "args": {"cardStateId": "${1.states.1.id}", "rating": 2, "durationMs": 0}},
+        {"cmd": "fsrs_rate", "args": {"cardStateId": "${1.states.2.id}", "rating": 3, "durationMs": 1234}},
+        {"cmd": "fsrs_rate", "args": {"cardStateId": "${1.states.3.id}", "rating": 4, "durationMs": 3600001}},
+        {"cmd": "fsrs_get_memory_overview", "args": {"recentLimit": 2}},
+        {"cmd": "fsrs_get_review_statistics", "args": {"days": 7}},
+        {"cmd": "fsrs_get_card_memory_history", "args": {"cardStateId": "${1.states.3.id}"}},
+        {"cmd": "mastery_get_overview", "args": {}}
+      ],
+      "capture": {"events": true, "db": ["*"]}, "normalize": []
+    },
+    {
+      "id": "review.schedule.learning-step-chain-undo",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "save_anki_cards", "args": {"request": {"cards": [{"front": "学习步骤", "back": "2/20/60"}]}}},
+        {"cmd": "fsrs_update_scheduler_config", "args": {"update": {"learningSteps": [2, 20, 60], "enableFuzz": false, "desiredRetention": 0.87}}},
+        {"cmd": "fsrs_enqueue_cards", "args": {"ankiCardIds": "${0.savedIds}"}},
+        {"cmd": "fsrs_preview_intervals", "args": {"cardStateId": "${2.states.0.id}"}},
+        {"cmd": "fsrs_rate", "args": {"cardStateId": "${2.states.0.id}", "rating": 3}},
+        {"cmd": "fsrs_rate", "args": {"cardStateId": "${2.states.0.id}", "rating": 2}},
+        {"cmd": "fsrs_rate", "args": {"cardStateId": "${2.states.0.id}", "rating": 3}},
+        {"cmd": "fsrs_rate", "args": {"cardStateId": "${2.states.0.id}", "rating": 1}},
+        {"cmd": "fsrs_undo_last_review", "args": {"cardStateId": "${2.states.0.id}", "expectedLogId": "${7.logId}"}},
+        {"cmd": "fsrs_rate", "args": {"cardStateId": "${2.states.0.id}", "rating": 3}},
+        {"cmd": "fsrs_preview_intervals", "args": {"cardStateId": "${2.states.0.id}"}},
+        {"cmd": "fsrs_get_card_memory_history", "args": {"cardStateId": "${2.states.0.id}"}}
+      ],
+      "capture": {"events": true, "db": ["*"]}, "normalize": []
+    },
+    {
+      "id": "review.schedule.single-step-hard-and-graduate",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "save_anki_cards", "args": {"request": {"cards": [{"front": "单步", "back": "Hard 1.5 倍"}]}}},
+        {"cmd": "fsrs_update_scheduler_config", "args": {"update": {"learningSteps": [5], "relearningSteps": [10], "maximumInterval": 1, "enableFuzz": false}}},
+        {"cmd": "fsrs_enqueue_cards", "args": {"ankiCardIds": "${0.savedIds}"}},
+        {"cmd": "fsrs_preview_intervals", "args": {"cardStateId": "${2.states.0.id}"}},
+        {"cmd": "fsrs_rate", "args": {"cardStateId": "${2.states.0.id}", "rating": 2}},
+        {"cmd": "fsrs_rate", "args": {"cardStateId": "${2.states.0.id}", "rating": 3}},
+        {"cmd": "fsrs_rate", "args": {"cardStateId": "${2.states.0.id}", "rating": 1}},
+        {"cmd": "fsrs_preview_intervals", "args": {"cardStateId": "${2.states.0.id}"}},
+        {"cmd": "fsrs_rate", "args": {"cardStateId": "${2.states.0.id}", "rating": 2}},
+        {"cmd": "fsrs_rate", "args": {"cardStateId": "${2.states.0.id}", "rating": 3}},
+        {"cmd": "fsrs_get_card_memory_history", "args": {"cardStateId": "${2.states.0.id}"}},
+        {"cmd": "fsrs_get_review_statistics", "args": {"days": 30}}
+      ],
+      "capture": {"events": true, "db": ["*"]}, "normalize": []
+    },
+    {
+      "id": "review.schedule.empty-steps-short-term-review",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "save_anki_cards", "args": {"request": {"cards": [{"front": "空学习步", "back": "直接按天"}]}}},
+        {"cmd": "fsrs_update_scheduler_config", "args": {"update": {"learningSteps": [], "relearningSteps": [], "enableFuzz": false, "maximumInterval": 365}}},
+        {"cmd": "fsrs_enqueue_cards", "args": {"ankiCardIds": "${0.savedIds}"}},
+        {"cmd": "fsrs_rate", "args": {"cardStateId": "${2.states.0.id}", "rating": 3}},
+        {"cmd": "fsrs_rate", "args": {"cardStateId": "${2.states.0.id}", "rating": 1}},
+        {"cmd": "fsrs_rate", "args": {"cardStateId": "${2.states.0.id}", "rating": 2}},
+        {"cmd": "fsrs_rate", "args": {"cardStateId": "${2.states.0.id}", "rating": 4}},
+        {"cmd": "fsrs_preview_intervals", "args": {"cardStateId": "${2.states.0.id}"}},
+        {"cmd": "fsrs_get_card_memory_history", "args": {"cardStateId": "${2.states.0.id}"}},
+        {"cmd": "fsrs_get_review_statistics", "args": {"days": 30}}
+      ],
+      "capture": {"events": true, "db": ["*"]}, "normalize": []
+    },
+    {
+      "id": "review.schedule.leech-auto-suspend-and-undo",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "save_anki_cards", "args": {"request": {"cards": [{"front": "难记卡", "back": "自动暂停"}]}}},
+        {"cmd": "fsrs_update_scheduler_config", "args": {"update": {"leechThreshold": 1, "leechAction": "suspend", "enableFuzz": false}}},
+        {"cmd": "fsrs_enqueue_cards", "args": {"ankiCardIds": "${0.savedIds}"}},
+        {"cmd": "fsrs_get_due", "args": {}},
+        {"cmd": "fsrs_rate", "args": {"cardStateId": "${2.states.0.id}", "rating": 4}},
+        {"cmd": "fsrs_rate", "args": {"cardStateId": "${2.states.0.id}", "rating": 1}},
+        {"cmd": "fsrs_get_stats", "args": {}},
+        {"cmd": "fsrs_rate", "args": {"cardStateId": "${2.states.0.id}", "rating": 3}, "expect": "error"},
+        {"cmd": "fsrs_undo_last_review", "args": {"cardStateId": "${2.states.0.id}", "expectedLogId": "${5.logId}"}},
+        {"cmd": "fsrs_get_stats", "args": {}},
+        {"cmd": "fsrs_get_card_memory_history", "args": {"cardStateId": "${2.states.0.id}"}}
+      ],
+      "capture": {"events": true, "db": ["*"]}, "normalize": []
+    },
+    {
+      "id": "review.schedule.leech-mark-only",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "save_anki_cards", "args": {"request": {"cards": [{"front": "难记卡", "back": "只标记"}]}}},
+        {"cmd": "fsrs_update_scheduler_config", "args": {"update": {"leechThreshold": 1, "leechAction": "mark", "enableFuzz": false}}},
+        {"cmd": "fsrs_enqueue_cards", "args": {"ankiCardIds": "${0.savedIds}"}},
+        {"cmd": "fsrs_rate", "args": {"cardStateId": "${2.states.0.id}", "rating": 4}},
+        {"cmd": "fsrs_rate", "args": {"cardStateId": "${2.states.0.id}", "rating": 1}},
+        {"cmd": "fsrs_preview_intervals", "args": {"cardStateId": "${2.states.0.id}"}},
+        {"cmd": "fsrs_rate", "args": {"cardStateId": "${2.states.0.id}", "rating": 4}},
+        {"cmd": "fsrs_rate", "args": {"cardStateId": "${2.states.0.id}", "rating": 1}},
+        {"cmd": "fsrs_get_stats", "args": {}}
+      ],
+      "capture": {"events": true, "db": ["*"]}, "normalize": []
+    },
+    {
+      "id": "review.schedule.siblings-bury-and-disabled",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "save_anki_cards", "args": {"request": {"cards": [{"front": "同笔记甲", "back": "甲", "fields": {"_note_key": "note-1"}}, {"front": "同笔记乙", "back": "乙", "fields": {"_note_key": "note-1"}}, {"front": "另一笔记", "back": "丙", "fields": {"AnkiNoteId": "note-2"}}]}}},
+        {"cmd": "fsrs_enqueue_cards", "args": {"ankiCardIds": "${0.savedIds}"}},
+        {"cmd": "fsrs_get_due", "args": {}},
+        {"cmd": "fsrs_rate", "args": {"cardStateId": "${1.states.0.id}", "rating": 4}},
+        {"cmd": "fsrs_get_due", "args": {}},
+        {"cmd": "fsrs_get_stats", "args": {}},
+        {"cmd": "fsrs_rate", "args": {"cardStateId": "${1.states.1.id}", "rating": 4}},
+        {"cmd": "fsrs_get_stats", "args": {}},
+        {"cmd": "fsrs_update_scheduler_config", "args": {"update": {"buryNewSiblings": false, "buryReviewSiblings": false}}},
+        {"cmd": "fsrs_rate", "args": {"cardStateId": "${1.states.0.id}", "rating": 3}},
+        {"cmd": "fsrs_get_stats", "args": {}},
+        {"cmd": "fsrs_get_due", "args": {}}
+      ],
+      "capture": {"events": true, "db": ["*"]}, "normalize": []
+    },
+    {
+      "id": "review.schedule.learning-due-with-zero-new-quota",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "save_anki_cards", "args": {"request": {"cards": [{"front": "微步长", "back": "毫秒舍入后已到期"}, {"front": "新卡", "back": "额度隐藏"}]}}},
+        {"cmd": "fsrs_update_scheduler_config", "args": {"update": {"learningSteps": [0.000001, 0.000001], "newPerDay": 0, "reviewsPerDay": 0}}},
+        {"cmd": "fsrs_enqueue_cards", "args": {"ankiCardIds": "${0.savedIds}"}},
+        {"cmd": "fsrs_get_due", "args": {}},
+        {"cmd": "fsrs_rate", "args": {"cardStateId": "${2.states.0.id}", "rating": 1}},
+        {"cmd": "fsrs_get_due", "args": {}},
+        {"cmd": "fsrs_get_stats", "args": {}},
+        {"cmd": "fsrs_update_scheduler_config", "args": {"update": {"newPerDay": 2, "reviewOrder": "random", "newReviewOrder": "mix"}}},
+        {"cmd": "fsrs_get_due", "args": {}},
+        {"cmd": "fsrs_update_scheduler_config", "args": {"update": {"reviewOrder": "retrievability", "newReviewOrder": "before"}}},
+        {"cmd": "fsrs_get_due", "args": {}},
+        {"cmd": "fsrs_update_scheduler_config", "args": {"update": {"reviewOrder": "due", "newReviewOrder": "after"}}},
+        {"cmd": "fsrs_get_due", "args": {}}
+      ],
+      "capture": {"events": true, "db": ["*"]}, "normalize": []
+    },
+    {
+      "id": "review.schedule.explicit-parameters-recompute-reset",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "save_anki_cards", "args": {"request": {"cards": [{"front": "参数重算", "back": "保留 due"}]}}},
+        {"cmd": "fsrs_enqueue_cards", "args": {"ankiCardIds": "${0.savedIds}"}},
+        {"cmd": "fsrs_rate", "args": {"cardStateId": "${1.states.0.id}", "rating": 3}},
+        {"cmd": "fsrs_rate", "args": {"cardStateId": "${1.states.0.id}", "rating": 4}},
+        {"cmd": "fsrs_get_card_memory_history", "args": {"cardStateId": "${1.states.0.id}"}},
+        {"cmd": "fsrs_update_scheduler_config", "args": {"update": {"fsrsParams": [0.212, 1.2931, 2.3065, 8.2956, 6.4133, 0.8334, 3.0194, 0.001, 1.8722, 0.1666, 0.796, 1.4835, 0.0614, 0.2629, 1.6483, 0.6014, 1.8729, 0.5425, 0.0912, 0.0658, 0.1542]}}},
+        {"cmd": "fsrs_get_scheduler_config", "args": {}},
+        {"cmd": "fsrs_get_card_memory_history", "args": {"cardStateId": "${1.states.0.id}"}},
+        {"cmd": "fsrs_update_scheduler_config", "args": {"update": {"fsrsParams": []}}},
+        {"cmd": "fsrs_get_card_memory_history", "args": {"cardStateId": "${1.states.0.id}"}},
+        {"cmd": "fsrs_preview_intervals", "args": {"cardStateId": "${1.states.0.id}"}}
+      ],
+      "capture": {"events": true, "db": ["*"]}, "normalize": []
+    },
+    {
+      "id": "review.mastery.weak-concept-bias-and-revert",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "save_anki_cards", "args": {"request": {"cards": [{"front": "薄弱甲", "back": "甲", "tags": [" ", "代数", "备用"]}, {"front": "薄弱乙", "back": "乙", "tags": ["代数"]}, {"front": "薄弱丙", "back": "丙", "tags": ["代数"]}, {"front": "薄弱丁", "back": "丁", "tags": ["代数"]}]}}},
+        {"cmd": "fsrs_enqueue_cards", "args": {"ankiCardIds": "${0.savedIds}"}},
+        {"cmd": "fsrs_get_due", "args": {}},
+        {"cmd": "mastery_get_overview", "args": {}},
+        {"cmd": "fsrs_rate", "args": {"cardStateId": "${1.states.0.id}", "rating": 1}},
+        {"cmd": "fsrs_rate", "args": {"cardStateId": "${1.states.1.id}", "rating": 1}},
+        {"cmd": "fsrs_rate", "args": {"cardStateId": "${1.states.2.id}", "rating": 1}},
+        {"cmd": "mastery_get_overview", "args": {"limit": 0}},
+        {"cmd": "fsrs_preview_intervals", "args": {"cardStateId": "${1.states.3.id}"}},
+        {"cmd": "fsrs_rate", "args": {"cardStateId": "${1.states.3.id}", "rating": 4}},
+        {"cmd": "mastery_get_overview", "args": {"limit": 30}},
+        {"cmd": "fsrs_undo_last_review", "args": {"cardStateId": "${1.states.3.id}", "expectedLogId": "${9.logId}"}},
+        {"cmd": "mastery_get_overview", "args": {"limit": null}},
+        {"cmd": "fsrs_get_due", "args": {}},
+        {"cmd": "mastery_get_overview", "args": {"limit": 4294967295}}
+      ],
+      "capture": {"events": true, "db": ["*"]}, "normalize": []
+    },
+    {
+      "id": "review.mastery.repeat-item-antifarm-vs-independent",
+      "seed": "empty",
+      "steps": [
+        {"cmd": "save_anki_cards", "args": {"request": {"cards": [{"front": "重复项", "back": "同一卡", "tags": ["repeat"]}, {"front": "独立甲", "back": "甲", "tags": ["independent"]}, {"front": "独立乙", "back": "乙", "tags": ["independent"]}]}}},
+        {"cmd": "fsrs_enqueue_cards", "args": {"ankiCardIds": "${0.savedIds}"}},
+        {"cmd": "fsrs_rate", "args": {"cardStateId": "${1.states.0.id}", "rating": 4}},
+        {"cmd": "fsrs_rate", "args": {"cardStateId": "${1.states.0.id}", "rating": 4}},
+        {"cmd": "fsrs_rate", "args": {"cardStateId": "${1.states.1.id}", "rating": 4}},
+        {"cmd": "fsrs_rate", "args": {"cardStateId": "${1.states.2.id}", "rating": 4}},
+        {"cmd": "mastery_get_overview", "args": {}},
+        {"cmd": "fsrs_get_review_statistics", "args": {"days": 7}}
+      ],
+      "capture": {"events": true, "db": ["*"]}, "normalize": []
+    }
+  ]
+}

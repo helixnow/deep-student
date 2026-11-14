@@ -6,6 +6,7 @@
  * 设计文档: docs/multimodal-user-memory-design.md (Section 8.5)
  */
 
+import { useRefreshOnReturn } from '@/hooks/useRefreshOnReturn';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -37,6 +38,7 @@ import {
 import { AppSelect } from '@/components/ui/app-menu';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { GroupTitle } from './settingsTabPrimitives';
 import { vfsUnifiedIndexApi, type VfsEmbeddingDimension } from '@/api/vfsUnifiedIndexApi';
 import { ApiConfig } from '@/types';
 import {
@@ -169,6 +171,8 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
       setLoading(false);
     }
   }, [t, loadDefaultDimensions]);
+
+  useRefreshOnReturn(loadDimensions, !loading);
 
   useEffect(() => {
     loadDimensions();
@@ -362,39 +366,27 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center sm:justify-between gap-2">
-        <div className="min-w-0">
-          <h3 className="text-base font-semibold text-foreground">
-            {t('settings:dimension_management.title')}
-          </h3>
-          <p className="text-xs text-muted-foreground/70 mt-0.5">
-            {t('settings:dimension_management.description')}
-          </p>
-        </div>
-        <div className="flex items-center gap-1.5 w-full sm:w-auto">
-          <DsButton
-            variant="outline"
-            size="sm"
-            onClick={isAddingNew ? () => setIsAddingNew(false) : handleOpenCreateDialog}
-            className="flex-1 sm:flex-none [@media(pointer:coarse)]:!h-11"
-          >
-            {isAddingNew ? <X size={12} className="mr-1" /> : <Plus size={12} className="mr-1" />}
-            <span>{isAddingNew ? t('common:cancel') : t('settings:dimension_management.create_dimension')}</span>
-          </DsButton>
-          <DsButton
-            variant="outline"
-            size="sm"
-            onClick={loadDimensions}
-            disabled={loading}
-            className="flex-1 sm:flex-none [@media(pointer:coarse)]:!h-11"
-          >
-            {t('common:refresh')}
-          </DsButton>
-        </div>
-      </div>
-      
-      {/* 内联新建维度面板 */}
+    <section className="min-w-0">
+      <GroupTitle
+        title={t('settings:dimension_management.title')}
+        description={t('settings:dimension_management.description')}
+        actions={
+          <>
+            <DsButton
+              variant="outline"
+              size="sm"
+              onClick={isAddingNew ? () => setIsAddingNew(false) : handleOpenCreateDialog}
+              className="flex-1 sm:flex-none [@media(pointer:coarse)]:!h-11"
+            >
+              {isAddingNew ? <X size={12} className="mr-1" /> : <Plus size={12} className="mr-1" />}
+              <span>{isAddingNew ? t('common:cancel') : t('settings:dimension_management.create_dimension')}</span>
+            </DsButton>
+          </>
+        }
+      />
+
+      <div className="rounded-2xl bg-muted px-3 py-3 sm:px-4">
+        {/* 内联新建维度面板 */}
       {isAddingNew && (
         <div className="mb-4 p-4 rounded-lg border border-border/60 bg-muted/20 ui-drop-in">
           <div className="flex items-center justify-between mb-4">
@@ -1017,8 +1009,9 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
           </>
         )}
 
+        </div>
       </div>
-    </div>
+    </section>
   );
 };
 

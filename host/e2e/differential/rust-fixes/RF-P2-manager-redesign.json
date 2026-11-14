@@ -1,0 +1,13 @@
+{
+  "id": "RF-P2-manager-redesign",
+  "kind": "deliberate",
+  "status": "proposed",
+  "title": "插件管理三视图与详情、信任确认和工坊挂载点",
+  "rust": { "file": "src/features/settings/components/plugins/PluginsTab.tsx", "behavior": "原渠道插件页没有独立插件管理三视图、官方功能分组、信任分级与工坊入口。" },
+  "fix": { "files": ["src/features/plugin-manager/PluginManagerPanel.tsx", "src/features/plugin-manager/PluginRow.tsx"], "behavior": "已安装/发现/我的创作；搜索筛选；官方分组默认折叠；单状态摘要与真实运行详情；右侧详情/移动底部弹层；精确主体信任确认。复用设置原语和现有配置表单。" },
+  "evidence": "P2 before 92 component tests and one real Host lifecycle; manager-redesign.test.tsx covers search, grouping, workshop ports and trust confirmation. Browser evidence under .reports/lanes/plugin-workshop/evidence/P2.",
+  "userVisible": "显示名/图标/作者优先，详情包含状态、信任权限、设置、版本与卸载；发现只显示本地来源，网络索引和未提供的回退能力明确说明。",
+  "dataCompat": "沿用 Host profile CAS、安装与同意账本；信任仅经 P1 set-trust 明确确认命令写入。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [{ "file": "src/features/plugin-manager/__tests__/manager-redesign.test.tsx", "name": "RF-P2-manager-redesign: searches display names and authors, filters problems and collapses official groups" }]
+}

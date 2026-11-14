@@ -1,12 +1,15 @@
-import React, { useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { convertFileSrc } from '@tauri-apps/api/core';
+import { convertFileSrc, invoke } from '@tauri-apps/api/core';
+import { vfsFileApi } from '@/api/vfsFileApi';
 import { ShadowDomPreview } from '@/components/ShadowDomPreview';
 import {
   TemplateRenderService,
   type DetailedCardRenderResult,
 } from '@/services/templateRenderService';
 import { applyClozeMarkup, extractClozeOrdinals, type TemplateRenderIssue } from '@/services/ankiTemplateEngine';
+import { getAppKernel } from '@/ui-kernel/bootstrap';
+import { formatAnchorShortLocator, parseSemanticAnchor } from '@/ui-kernel/contracts/interop';
 import { buildCardFaceCss, useCardFaceSurfaceColor, useDocumentDarkMode } from './utils/cardFaceStyles';
 import { cardHtmlNeedsKatex, renderCardFaceLatexHtml, renderCardTemplateMath } from './utils/cardFaceLatex';
 import { useKatexSandboxCss } from './utils/katexSandboxCss';
@@ -18,10 +21,401 @@ import {
   soundNames,
   useCardMediaMap,
 } from './utils/cardMedia';
+import {
+  normalizeOcclusionSpec,
+  occlusionBoxPercentStyle,
+  parseOcclusionSpec,
+  type OcclusionSpec,
+} from './utils/imageOcclusion';
 import type { AnkiCard, CustomAnkiTemplate } from '@/types';
 import { cn } from '@/utils/cn';
 
 export type AnkiCardFace = 'front' | 'back';
+export type OcclusionStudyMode = 'hide-one' | 'hide-all';
+
+export interface OcclusionCardStageProps {
+  spec: OcclusionSpec;
+  side: AnkiCardFace;
+  mode: OcclusionStudyMode;
+  targetClozeIndex: number;
+  imageSrc?: string | null;
+  title?: string;
+  extraNote?: string;
+  sourceAnchorUri?: string;
+  compact?: boolean;
+  className?: string;
+}
+
+const MAX_IMAGE_LRU_ENTRIES = 64;
+const resolvedImageLruCache = new Map<string, string>();
+
+function setImageCache(key: string, value: string): void {
+  if (resolvedImageLruCache.has(key)) {
+    resolvedImageLruCache.delete(key);
+  } else if (resolvedImageLruCache.size >= MAX_IMAGE_LRU_ENTRIES) {
+    const oldest = resolvedImageLruCache.keys().next().value;
+    if (oldest !== undefined) resolvedImageLruCache.delete(oldest);
+  }
+  resolvedImageLruCache.set(key, value);
+}
+
+function getSyncImageSrc(imageRef: string, explicitSrc?: string | null): string | null {
+  if (typeof explicitSrc === 'string' && explicitSrc.trim()) {
+    return explicitSrc.trim();
+  }
+  const ref = imageRef.trim();
+  if (!ref) return null;
+  if (/^(data:|blob:|https?:|asset:)/i.test(ref)) return ref;
+  const cached = resolvedImageLruCache.get(ref);
+  return cached ?? null;
+}
+
+function useResolvedOcclusionImageSrc(imageRef: string, explicitSrc?: string | null): string | null {
+  const syncSrc = getSyncImageSrc(imageRef, explicitSrc);
+  const [asyncSrc, setAsyncSrc] = useState<string | null>(syncSrc);
+
+  useEffect(() => {
+    const immediate = getSyncImageSrc(imageRef, explicitSrc);
+    if (immediate) {
+      setAsyncSrc(immediate);
+      return;
+    }
+    const ref = imageRef.trim();
+    if (!ref) {
+      setAsyncSrc(null);
+      return;
+    }
+
+    let cancelled = false;
+    const load = async () => {
+      try {
+        if (ref.toLowerCase().startsWith('vfs://')) {
+          const fileId = ref.slice('vfs://'.length).trim();
+          if (!fileId) return;
+          const res = await vfsFileApi.getContent(fileId);
+          if (cancelled) return;
+          if (res?.found && typeof res.content === 'string' && res.content.trim()) {
+            const raw = res.content.trim();
+            const url = raw.startsWith('data:') ? raw : `data:image/png;base64,${raw}`;
+            setImageCache(ref, url);
+            setAsyncSrc(url);
+            return;
+          }
+          return;
+        }
+
+        try {
+          const mediaUrl = await invoke<string>('read_anki_media', { path: ref });
+          if (cancelled) return;
+          if (typeof mediaUrl === 'string' && mediaUrl.trim()) {
+            setImageCache(ref, mediaUrl.trim());
+            setAsyncSrc(mediaUrl.trim());
+            return;
+          }
+        } catch {
+          // Fall back to Tauri asset protocol when not in anki_media directory.
+        }
+
+        const converted = convertFileSrc(ref);
+        if (!cancelled && converted) {
+          setImageCache(ref, converted);
+          setAsyncSrc(converted);
+        }
+      } catch {
+        if (!cancelled) setAsyncSrc(null);
+      }
+    };
+
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [imageRef, explicitSrc]);
+
+  return syncSrc ?? asyncSrc;
+}
+
+export const OcclusionCardStage: React.FC<OcclusionCardStageProps> = ({
+  spec,
+  side,
+  mode,
+  targetClozeIndex,
+  imageSrc: explicitImageSrc,
+  title,
+  extraNote,
+  sourceAnchorUri,
+  compact = false,
+  className,
+}) => {
+  const { t } = useTranslation('flashcards');
+  const safeSpec = useMemo(() => normalizeOcclusionSpec(spec), [spec]);
+  const resolvedSrc = useResolvedOcclusionImageSrc(safeSpec?.imageRef ?? spec.imageRef ?? '', explicitImageSrc);
+
+  const activeTarget = useMemo(() => {
+    const boxes = safeSpec?.boxes ?? [];
+    if (boxes.length === 0) return 1;
+    if (Number.isSafeInteger(targetClozeIndex) && boxes.some((b) => b.clozeIndex === targetClozeIndex)) {
+      return targetClozeIndex;
+    }
+    return boxes[0].clozeIndex;
+  }, [safeSpec, targetClozeIndex]);
+
+  const stageIdentity = `${safeSpec?.imageRef ?? ''}:${activeTarget}:${side}:${mode}`;
+  const [peekState, setPeekState] = useState<{ key: string; indices: Set<number> }>(() => ({
+    key: stageIdentity,
+    indices: new Set(),
+  }));
+  const peekedSiblings = peekState.key === stageIdentity ? peekState.indices : new Set<number>();
+
+  const toggleSiblingPeek = useCallback(
+    (clozeIndex: number) => {
+      setPeekState((prev) => {
+        const next = new Set(prev.key === stageIdentity ? prev.indices : []);
+        if (next.has(clozeIndex)) next.delete(clozeIndex);
+        else next.add(clozeIndex);
+        return { key: stageIdentity, indices: next };
+      });
+    },
+    [stageIdentity],
+  );
+
+  const parsedAnchor = useMemo(
+    () => (sourceAnchorUri ? parseSemanticAnchor(sourceAnchorUri) : null),
+    [sourceAnchorUri],
+  );
+  const shortLocator = useMemo(
+    () => (parsedAnchor ? formatAnchorShortLocator(parsedAnchor) : ''),
+    [parsedAnchor],
+  );
+
+  const handleRevealSource = useCallback(
+    (event: React.MouseEvent<HTMLButtonElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!sourceAnchorUri) return;
+      void getAppKernel().anchors.reveal(sourceAnchorUri, { splitIfClosed: true, pulse: true });
+    },
+    [sourceAnchorUri],
+  );
+
+  if (!safeSpec) return null;
+
+  const targetBoxes = safeSpec.boxes.filter((box) => box.clozeIndex === activeTarget);
+  const targetAnswerLabel = targetBoxes
+    .map((box) => box.label.trim())
+    .filter(Boolean)
+    .join(' / ');
+
+  return (
+    <div
+      data-testid="image-occlusion-card-view"
+      data-side={side}
+      data-mode={mode}
+      data-target-cloze={activeTarget}
+      className={cn('flex w-full flex-col items-center gap-3', className)}
+    >
+      {title ? (
+        <div className="flex w-full items-center justify-between gap-2 text-xs text-muted-foreground">
+          <span className="truncate font-medium text-foreground/90">{title}</span>
+          <span className="font-mono tabular-nums text-[11px] text-muted-foreground">
+            #{activeTarget}
+          </span>
+        </div>
+      ) : null}
+
+      <div
+        data-testid="occlusion-stage-frame"
+        className={cn(
+          'relative inline-block w-full overflow-hidden rounded-lg border border-border/35 bg-muted/20',
+          compact ? 'max-w-[420px]' : 'max-w-[680px]',
+        )}
+      >
+        {resolvedSrc ? (
+          <img
+            src={resolvedSrc}
+            alt={title ?? ''}
+            draggable={false}
+            className={cn(
+              'block w-full select-none object-contain',
+              compact ? 'max-h-64' : 'max-h-[440px]',
+            )}
+          />
+        ) : (
+          <div
+            aria-hidden="true"
+            className={cn('w-full bg-muted/30', compact ? 'h-44' : 'h-64')}
+          />
+        )}
+
+        <div
+          data-testid="occlusion-masks-layer"
+          className="pointer-events-none absolute inset-0"
+        >
+          {safeSpec.boxes.map((box, index) => {
+            const posStyle = occlusionBoxPercentStyle(box);
+            const isTarget = box.clozeIndex === activeTarget;
+
+            if (side === 'front') {
+              if (isTarget) {
+                return (
+                  <div
+                    key={`${box.clozeIndex}-${index}`}
+                    data-testid="occlusion-mask-target"
+                    data-mask-role="target"
+                    data-masked="true"
+                    data-cloze-index={box.clozeIndex}
+                    style={posStyle}
+                    className="absolute flex select-none items-center justify-center rounded-[4px] border border-primary/80 bg-primary text-primary-foreground shadow-sm"
+                  >
+                    <span className="font-mono tabular-nums text-xs font-semibold leading-none">
+                      #{box.clozeIndex}
+                    </span>
+                  </div>
+                );
+              }
+
+              if (mode === 'hide-all') {
+                return (
+                  <div
+                    key={`${box.clozeIndex}-${index}`}
+                    data-testid="occlusion-mask-sibling"
+                    data-mask-role="sibling"
+                    data-masked="true"
+                    data-cloze-index={box.clozeIndex}
+                    style={posStyle}
+                    className="absolute flex select-none items-center justify-center rounded-[4px] border border-border/70 bg-muted/95 text-muted-foreground"
+                  >
+                    <span
+                      className="h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/60"
+                      aria-hidden="true"
+                    />
+                  </div>
+                );
+              }
+
+              return (
+                <div
+                  key={`${box.clozeIndex}-${index}`}
+                  data-testid="occlusion-context-unmasked"
+                  data-mask-role="sibling"
+                  data-masked="false"
+                  data-cloze-index={box.clozeIndex}
+                  style={posStyle}
+                  className="pointer-events-none absolute rounded-[4px] border border-dashed border-border/45 bg-transparent"
+                />
+              );
+            }
+
+            // side === 'back'
+            if (isTarget) {
+              return (
+                <div
+                  key={`${box.clozeIndex}-${index}`}
+                  data-testid="occlusion-revealed-target"
+                  data-mask-role="target"
+                  data-masked="false"
+                  data-cloze-index={box.clozeIndex}
+                  style={posStyle}
+                  className="pointer-events-none absolute rounded-[4px] border-2 border-success bg-success/10"
+                />
+              );
+            }
+
+            if (mode === 'hide-all') {
+              const isPeeked = peekedSiblings.has(box.clozeIndex);
+              return (
+                <button
+                  key={`${box.clozeIndex}-${index}`}
+                  type="button"
+                  data-testid="occlusion-back-sibling"
+                  data-mask-role="sibling"
+                  data-masked={isPeeked ? 'false' : 'true'}
+                  data-cloze-index={box.clozeIndex}
+                  style={{ ...posStyle, pointerEvents: 'auto' }}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    toggleSiblingPeek(box.clozeIndex);
+                  }}
+                  className={cn(
+                    'absolute flex items-center justify-center rounded-[4px] transition-colors',
+                    isPeeked
+                      ? 'border border-dashed border-border/55 bg-transparent'
+                      : 'border border-border/50 bg-muted/75 text-muted-foreground hover:bg-muted/60',
+                  )}
+                >
+                  {!isPeeked ? (
+                    <span
+                      className="h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/50"
+                      aria-hidden="true"
+                    />
+                  ) : null}
+                </button>
+              );
+            }
+
+            return (
+              <div
+                key={`${box.clozeIndex}-${index}`}
+                data-testid="occlusion-back-context"
+                data-mask-role="sibling"
+                data-masked="false"
+                data-cloze-index={box.clozeIndex}
+                style={posStyle}
+                className="pointer-events-none absolute rounded-[4px] border border-dashed border-border/35 bg-transparent"
+              />
+            );
+          })}
+        </div>
+      </div>
+
+      {side === 'back' && (targetAnswerLabel || extraNote) ? (
+        <>
+          <div className="h-px w-full bg-border/35" aria-hidden="true" />
+          <div
+            data-testid="occlusion-answer-caption"
+            className="flex w-full flex-col gap-1.5 text-left"
+          >
+            {targetAnswerLabel ? (
+              <div className="flex items-baseline gap-2 text-sm text-foreground">
+                <span className="font-mono tabular-nums text-xs font-semibold text-primary">
+                  #{activeTarget}
+                </span>
+                <span className="font-medium">{targetAnswerLabel}</span>
+              </div>
+            ) : null}
+            {extraNote ? (
+              <p className="whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">
+                {extraNote}
+              </p>
+            ) : null}
+          </div>
+        </>
+      ) : null}
+
+      {parsedAnchor && sourceAnchorUri ? (
+        <div className="flex w-full items-center justify-end">
+          <button
+            type="button"
+            data-testid="occlusion-reveal-source"
+            onPointerDown={(event) => event.stopPropagation()}
+            onMouseDown={(event) => event.stopPropagation()}
+            onClick={handleRevealSource}
+            className="inline-flex items-center gap-1.5 rounded-full border border-border/35 bg-card/90 px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" aria-hidden="true" />
+            <span>{t('occlusion.revealSource', { defaultValue: '回到原处' })}</span>
+            {shortLocator ? (
+              <span className="font-mono tabular-nums text-foreground/85">
+                · {shortLocator}
+              </span>
+            ) : null}
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+};
 
 export interface AnkiTemplateCardFaceProps {
   card: AnkiCard;
@@ -119,18 +513,24 @@ export const AnkiTemplateCardFace: React.FC<AnkiTemplateCardFaceProps> = ({
   onFrameClick,
   onFrameWheel,
 }) => {
+  const rawExtraFields = useMemo<Record<string, string> | null>(() => {
+    const dynamicExtra = (card as AnkiCard & { extraFields?: Record<string, string> }).extraFields;
+    return dynamicExtra ?? card.extra_fields ?? card.fields ?? null;
+  }, [card]);
+  const occlusionSpec = useMemo(() => parseOcclusionSpec(rawExtraFields), [rawExtraFields]);
+
   const darkMode = useDocumentDarkMode();
   const surfaceColor = useCardFaceSurfaceColor();
-  const media = useCardMediaMap(card.images);
+  const media = useCardMediaMap(occlusionSpec ? undefined : card.images);
 
   const rendered = useMemo<DetailedCardRenderResult | null>(() => {
-    if (!template) return null;
+    if (occlusionSpec || !template) return null;
     // renderCardDetailed 内部结构化捕获所有异常，不会抛出；[sound:] 原样保留，下面换成 <audio>
     return TemplateRenderService.renderCardDetailed(card, template, {
       clozeOrdinal: resolveClozeOrdinal(card, template),
       soundStrategy: 'keep',
     });
-  }, [card, template]);
+  }, [card, occlusionSpec, template]);
 
   const faceResult = rendered?.[side] ?? null;
   const htmlContent = faceResult?.html?.trim() || '';
@@ -138,6 +538,7 @@ export const AnkiTemplateCardFace: React.FC<AnkiTemplateCardFaceProps> = ({
   const plainText = fallbackText ?? defaultFaceText(card, side);
   const frontHtml = rendered?.front?.html ?? (template ? '' : defaultFaceText(card, 'front'));
   const faceHtml = useMemo(() => {
+    if (occlusionSpec) return '';
     let html = '';
     if (htmlContent) {
       html = htmlContent;
@@ -151,7 +552,7 @@ export const AnkiTemplateCardFace: React.FC<AnkiTemplateCardFaceProps> = ({
     // 背面不自动重放正面的音频（同 Anki：{{FrontSide}} 里的音频不自动播放）
     const noAutoplay = side === 'back' ? soundNames(frontHtml) : undefined;
     return injectCardMedia(html, media, { noAutoplay });
-  }, [htmlContent, template, plainText, card, side, media, frontHtml]);
+  }, [occlusionSpec, htmlContent, template, plainText, card, side, media, frontHtml]);
   // 卡面公式与聊天侧一致由 KaTeX 自带字体排版（htmlAndMathml + iframe 内 data: 字体），
   // 不依赖设备数学字体（#461）。样式首次下载期间先出纯 MathML，就绪后切换。
   const katexCss = useKatexSandboxCss(cardHtmlNeedsKatex(faceHtml));
@@ -164,15 +565,15 @@ export const AnkiTemplateCardFace: React.FC<AnkiTemplateCardFaceProps> = ({
 
   // fallback 视图：\( \)、\[ \]、$、$$ 公式经 KaTeX 渲染；无公式时保持纯文本零成本
   const latexHtml = useMemo(
-    () => (plainText ? renderCardFaceLatexHtml(plainText) : null),
-    [plainText],
+    () => (!occlusionSpec && plainText ? renderCardFaceLatexHtml(plainText) : null),
+    [occlusionSpec, plainText],
   );
   const imageSrcs = useMemo(
-    () => (card.images ?? [])
+    () => (occlusionSpec ? [] : card.images ?? [])
       .filter((image) => !/\.(mp3|ogg|oga|opus|wav|m4a|aac|flac|webm|mp4)$/i.test(image.trim()))
       .map(resolveCardImageSrc)
       .filter((src): src is string => src != null),
-    [card.images],
+    [occlusionSpec, card.images],
   );
 
   const stageMode = stageHeight != null && stageHeight > 0;
@@ -182,6 +583,36 @@ export const AnkiTemplateCardFace: React.FC<AnkiTemplateCardFaceProps> = ({
     () => buildCardFaceCss(template?.css_style, { darkMode, surfaceColor, stage: stageMode }),
     [template?.css_style, darkMode, surfaceColor, stageMode],
   );
+
+  if (occlusionSpec) {
+    const mode: OcclusionStudyMode = rawExtraFields?._occlusion_mode === 'hide-all'
+      ? 'hide-all'
+      : 'hide-one';
+    const parsedTarget = Number(rawExtraFields?._occlusion_target);
+    const targetClozeIndex = Number.isSafeInteger(parsedTarget) && parsedTarget >= 1
+      ? parsedTarget
+      : (resolveClozeOrdinal(card, template) ?? occlusionSpec.boxes[0]?.clozeIndex ?? 1);
+    const sourceAnchorUri = rawExtraFields?._source_anchor;
+    const extraNote = rawExtraFields?.Extra;
+
+    return (
+      <div
+        className={cn(className)}
+        data-anki-card-face={side}
+        data-render-mode="occlusion"
+      >
+        <OcclusionCardStage
+          spec={occlusionSpec}
+          side={side}
+          mode={mode}
+          targetClozeIndex={targetClozeIndex}
+          extraNote={extraNote}
+          sourceAnchorUri={sourceAnchorUri}
+          compact={compact}
+        />
+      </div>
+    );
+  }
 
   return (
     <div
@@ -202,15 +633,23 @@ export const AnkiTemplateCardFace: React.FC<AnkiTemplateCardFaceProps> = ({
           trustedCss={katexCss ?? undefined}
         />
       ) : (
-        <div className="flex min-w-0 flex-col items-center gap-2">
+        <div className="flex min-w-0 flex-col items-center gap-3">
           {latexHtml ? (
             <div
-              className="whitespace-pre-wrap break-words text-sm font-medium leading-relaxed"
+              className={cn(
+                'whitespace-pre-wrap break-words leading-[1.7] tracking-[-0.01em] text-foreground',
+                compact ? 'text-sm font-normal' : 'max-w-[60ch] text-[18px] font-normal sm:text-[20px]',
+              )}
               // 安全：非公式文本已 HTML 转义，公式为 KaTeX（trust:false）输出
               dangerouslySetInnerHTML={{ __html: latexHtml }}
             />
           ) : (
-            <div className="whitespace-pre-wrap break-words text-sm font-medium leading-relaxed">
+            <div
+              className={cn(
+                'whitespace-pre-wrap break-words leading-[1.7] tracking-[-0.01em] text-foreground',
+                compact ? 'text-sm font-normal' : 'max-w-[60ch] text-[18px] font-normal sm:text-[20px]',
+              )}
+            >
               {plainText || emptyText}
             </div>
           )}

@@ -1,0 +1,36 @@
+{
+  "id": "RF-W23-close-main-quits-with-only-hidden-windows",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T14:05:00+08:00",
+  "title": "Windows / Linux：没有后台驻留条件时关闭主窗口，如果只剩隐藏的窗口（曾呼出过的快速助手小窗），应用退出，不再无窗口残留",
+  "rust": {
+    "file": "src-tauri/src/lib.rs",
+    "line": 1770,
+    "behavior": "主窗口 CloseRequested 时三个驻留条件都不成立：macOS 分支标记退出并 app.exit(0)（注释：否则无窗口的进程会留下后台任务）；Windows / Linux 什么都不做，依赖 Tauri“最后一个窗口关闭才退出”。快速助手小窗首次呼出后一直存在，收起时只是 hide（src-tauri/src/quick_assistant.rs:196-226），所以只要用户用过一次快速助手（quick_assistant.enabled 缺省开启），关主窗口后进程无窗口残留：全局快捷键仍响应，自动化调度器仍在跑（尽管用户关掉了后台驻留）；再次启动应用时第二个进程被单实例锁挡下，single-instance 回调里 get_webview_window(\"main\") 为 None（lib.rs:695-701），什么也不显示，只能去任务管理器结束进程"
+  },
+  "fix": {
+    "files": ["electron/shell/background-residency.ts"],
+    "behavior": "Windows / Linux 上驻留判定为“照常关闭”且由外壳放行关闭时，主窗口 closed 后如果其余窗口里没有用户看得到的（可见或最小化，countShownWindows(BrowserWindow.getAllWindows())），就像 macOS 分支一样标记退出并走有序退出。还有可见或最小化的窗口（例如番茄钟小窗）时保持 Rust 行为，进程继续。后台驻留、页面自己接管关闭、显式退出、macOS 的行为不变"
+  },
+  "evidence": "Rust 自身意图：lib.rs:1771-1778 的注释写明“Background residency being off therefore means 'close quits', otherwise headless jobs would retain a windowless app”，只在 macOS 实现，因为 macOS 关掉最后一个窗口进程也不退出；Windows / Linux 作者以为最后一个窗口关闭就会退出，没有考虑隐藏的快速助手小窗。后果：用户关闭“快速助手后台常驻”与“关闭窗口后驻留后台”后，关主窗口仍留下不可见进程，再次启动没有反应（单实例锁 + 回调找不到 main）。复现：Windows 上按 Ctrl+Shift+Space 呼出再收起快速助手，确认两项后台开关都关闭，关闭主窗口，进程仍在；双击应用图标无反应。Electron 现状同样如此（window-all-closed 只在所有 BrowserWindow 关闭时触发，隐藏窗口不算关闭）",
+  "userVisible": "Windows / Linux：后台驻留条件都不满足时，用过快速助手后再关闭主窗口，应用会真正退出（之后快捷键不再呼出快速助手，与“快速助手后台常驻”关闭的设置一致），再次启动能正常打开主窗口。还有番茄钟等可见小窗时不变。",
+  "dataCompat": "不改变落库数据、同步载荷与备份格式。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "electron/tests/background-residency.test.ts",
+      "name": "RF-W23-close-main-quits-with-only-hidden-windows: on Windows / Linux, closing the main window with no background condition quits when only hidden windows remain"
+    },
+    {
+      "file": "electron/tests/background-residency.test.ts",
+      "name": "RF-W23-close-main-quits-with-only-hidden-windows: a window the user still sees (visible or minimized) keeps the process, as in Rust"
+    },
+    {
+      "file": "electron/tests/background-residency.test.ts",
+      "name": "RF-W23-close-main-quits-with-only-hidden-windows: residency, a page that owns the close, explicit exit and macOS are unchanged"
+    }
+  ],
+  "notes": "生效需要 main.ts 构造 BackgroundResidency 时传 shownWindowCount（W06 接线交接里已包含）；不传时外壳保持 Rust 行为。"
+}

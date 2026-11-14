@@ -21,7 +21,7 @@ import {
   Eye,
   CaretUp,
 } from '@phosphor-icons/react';
-import { cn } from '@/lib/utils';
+import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
@@ -29,6 +29,11 @@ import { dstu } from '@/dstu/api';
 import { openResource } from '@/dstu/openResource';
 import { canRevealInFolder } from '@/utils/systemFileOpener';
 import { computeLineDiff } from '../../utils/lineDiff';
+import {
+  TurnDiffReviewCard,
+  computeUnifiedDiffSummary,
+  type TurnFileDiffEntry,
+} from '../TurnDiffReviewCard';
 import type {
   ChangeAction,
   ChangeCoverageIssue,
@@ -63,6 +68,8 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
   const [savingNoteIds, setSavingNoteIds] = useState<Set<string>>(new Set());
   const [previewChangeId, setPreviewChangeId] = useState<string | null>(null);
   const [preview, setPreview] = useState<ChangePreviewState | null>(null);
+  const [cachedPreviews, setCachedPreviews] = useState<Map<string, ChangePreviewState>>(new Map());
+  const [diffReviewOpen, setDiffReviewOpen] = useState(false);
   // 防止快速切换预览目标时，先发出的慢请求覆盖后发出的快请求结果
   const previewRequestRef = useRef<string | null>(null);
   // 撤销/转存请求进行中的 changeId 集合（ref 同步拦截双击重复 invoke）
@@ -101,11 +108,17 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
         backupContent = backup.content;
       }
       if (previewRequestRef.current !== item.id) return;
-      setPreview({
+      const loadedPreview: ChangePreviewState = {
         loading: false,
         content: current.content,
         truncated: current.truncated,
         backupContent,
+      };
+      setPreview(loadedPreview);
+      setCachedPreviews((prev) => {
+        const next = new Map(prev);
+        next.set(item.id, loadedPreview);
+        return next;
       });
     } catch (error: unknown) {
       if (previewRequestRef.current !== item.id) return;
@@ -113,18 +126,35 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
     }
   }, [previewChangeId, sessionId, closePreview]);
 
-  /** 真实撤销：artifacts 走写备份；workspace 走 hash-bound mutation receipt。 */
-  const revertRuntimeChange = useCallback(async (item: ChangeItem) => {
-    if (!sessionId || !item.relativePath) return;
-    if (revertingIdsRef.current.has(item.id)) return;
+  const canRevertChange = useCallback(
+    (item: ChangeItem, revertedSet: ReadonlySet<string> = revertedIds): boolean => {
+      if (revertedSet.has(item.id)) return false;
+      if (!sessionId || !item.relativePath) return false;
+      const canRevertArtifact =
+        item.rootId === 'artifacts' && Boolean(item.afterHash) && item.action !== 'delete';
+      const canRevertWorkspace = item.rootId === 'workspace' && Boolean(item.receipt);
+      return canRevertArtifact || canRevertWorkspace;
+    },
+    [revertedIds, sessionId],
+  );
+
+  /** 真实撤销：artifacts 走写备份；workspace 走 hash-bound mutation receipt。返回是否真实撤销成功。 */
+  const revertRuntimeChange = useCallback(async (item: ChangeItem): Promise<boolean> => {
+    if (!sessionId || !item.relativePath) return false;
+    if (revertingIdsRef.current.has(item.id)) return false;
+    const canRevertArtifact =
+      item.rootId === 'artifacts' && Boolean(item.afterHash) && item.action !== 'delete';
+    const canRevertWorkspace = item.rootId === 'workspace' && Boolean(item.receipt);
+    if (!canRevertArtifact && !canRevertWorkspace) return false;
+
     revertingIdsRef.current.add(item.id);
     try {
-      if (item.rootId === 'workspace' && item.receipt) {
+      if (canRevertWorkspace && item.receipt) {
         await invoke('chat_v2_revert_workspace_change', {
           sessionId,
           receipt: item.receipt,
         });
-      } else if (item.rootId === 'artifacts' && item.afterHash) {
+      } else if (canRevertArtifact && item.afterHash) {
         await invoke('chat_v2_revert_artifact_write', {
           sessionId,
           relativePath: item.relativePath,
@@ -132,7 +162,7 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
           expectedAfterHash: item.afterHash,
         });
       } else {
-        return;
+        return false;
       }
       setRevertedIds((prev) => {
         const next = new Set(prev);
@@ -151,12 +181,14 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
             ? t('agentPanel.restoreDone')
             : t('agentPanel.revertDone'),
       );
+      return true;
     } catch (error: unknown) {
       showGlobalNotification(
         'error',
         t('agentPanel.revertFailed'),
         getErrorMessage(error),
       );
+      return false;
     } finally {
       revertingIdsRef.current.delete(item.id);
     }
@@ -250,6 +282,58 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
     return computeLineDiff(preview.backupContent, preview.content ?? '');
   }, [preview]);
 
+  const turnDiffEntries = useMemo<TurnFileDiffEntry[]>(() => {
+    return changes.map((item) => {
+      const itemPreview =
+        previewChangeId === item.id && preview && !preview.loading && !preview.error
+          ? preview
+          : cachedPreviews.get(item.id);
+      const rawOldContent = (itemPreview as (ChangePreviewState & { oldContent?: string }) | undefined)?.oldContent;
+      const beforeContent = rawOldContent ?? itemPreview?.backupContent ?? null;
+      const afterContent = itemPreview?.content ?? null;
+      const diffSummary = computeUnifiedDiffSummary(beforeContent, afterContent);
+      const kind =
+        item.action === 'delete'
+          ? 'deleted'
+          : item.action === 'create'
+            ? 'created'
+            : 'modified';
+      return {
+        id: item.id,
+        path: item.relativePath || item.label,
+        kind,
+        beforeContent,
+        afterContent,
+        additions: diffSummary.additions,
+        deletions: diffSummary.deletions,
+        reverted: revertedIds.has(item.id),
+      };
+    });
+  }, [changes, previewChangeId, preview, cachedPreviews, revertedIds]);
+
+  const handleDiffRevertFile = useCallback(async (entryId: string): Promise<boolean> => {
+    const item = changes.find((c) => c.id === entryId);
+    if (!item || !canRevertChange(item)) {
+      return false;
+    }
+    return revertRuntimeChange(item);
+  }, [changes, canRevertChange, revertRuntimeChange]);
+
+  const handleDiffRevertAll = useCallback(async (entries: TurnFileDiffEntry[]): Promise<boolean> => {
+    const targetIds = new Set(entries.map((entry) => entry.id));
+    const pendingItems = changes.filter(
+      (item) => targetIds.has(item.id) && !revertedIds.has(item.id),
+    );
+    const revertableItems = pendingItems.filter((item) => canRevertChange(item));
+    if (revertableItems.length === 0) {
+      return pendingItems.length === 0 && entries.length > 0;
+    }
+    const outcomes = await Promise.all(
+      revertableItems.map((item) => revertRuntimeChange(item)),
+    );
+    return outcomes.every(Boolean) && revertableItems.length === pendingItems.length;
+  }, [changes, revertedIds, canRevertChange, revertRuntimeChange]);
+
   const changeActionLabel = (action: ChangeAction) => t(`agentPanel.changeActions.${action}`);
 
   return (
@@ -262,6 +346,19 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
           </div>
         </div>
       )}
+      {changes.length > 0 && (
+        <div className="flex items-center justify-end px-4 pb-1.5">
+          <button
+            type="button"
+            data-testid="toggle-turn-diff-review-card"
+            aria-expanded={diffReviewOpen}
+            onClick={() => setDiffReviewOpen((prev) => !prev)}
+            className="inline-flex items-center gap-1 rounded border border-border/35 bg-background/60 px-2 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+          >
+            <span>Diff 审阅面板</span>
+          </button>
+        </div>
+      )}
       <div className="flex flex-wrap gap-1.5 px-4 pb-2">
         {changes.map((item) => {
           const ChangeIcon = item.kind === 'note' ? Notebook : FileIcon;
@@ -271,14 +368,7 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
           const clickable = !isReverted && item.kind !== 'document' && (!!item.openId || canReveal);
           const canPreview = canReveal && !isReverted && item.action !== 'delete';
           const isPreviewing = previewChangeId === item.id;
-          const canRevertArtifact = item.rootId === 'artifacts'
-            && !!item.afterHash
-            && item.action !== 'delete';
-          const canRevertWorkspace = item.rootId === 'workspace' && !!item.receipt;
-          const canRevert = !isReverted
-            && !!item.relativePath
-            && !!sessionId
-            && (canRevertArtifact || canRevertWorkspace);
+          const canRevert = canRevertChange(item);
           const savedNoteId = savedNoteIds.get(item.id);
           const isSavingNote = savingNoteIds.has(item.id);
           const canSaveAsNote = !isReverted
@@ -514,6 +604,16 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
               {preview?.content ?? ''}
             </pre>
           )}
+        </div>
+      )}
+
+      {diffReviewOpen && turnDiffEntries.length > 0 && (
+        <div className="mx-4 mb-2">
+          <TurnDiffReviewCard
+            entries={turnDiffEntries}
+            onRevertFile={handleDiffRevertFile}
+            onRevertAll={handleDiffRevertAll}
+          />
         </div>
       )}
     </>

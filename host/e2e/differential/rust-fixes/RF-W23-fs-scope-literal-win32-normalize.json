@@ -1,0 +1,30 @@
+{
+  "id": "RF-W23-fs-scope-literal-win32-normalize",
+  "kind": "deliberate",
+  "status": "proposed",
+  "title": "Windows 上不存在的路径的字面形态按 path.win32.normalize 取：设备前缀或 UNC 前缀后多一个分隔符（\\\\.\\\\C:\\…、\\\\srv\\\\share\\…）不再被压成无盘符的根路径",
+  "rust": {
+    "file": "src-tauri/Cargo.toml",
+    "line": 156,
+    "behavior": "tauri-2.11.5 src/scope/fs.rs 对不存在的路径用 Path::components() 重组后匹配。Rust 的 Windows 前缀解析不认 \\\\.\\\\C: 这种多一个分隔符的写法，但 Rust 版没有 fs deny，所以没有可见后果。Rust 把这种写法的前缀解析成空名的 DeviceNS，不会压成 \\C:；Electron 版原来的 collectComponents 不认这种前缀：\\\\.\\\\C:\\Users\\…\\plugins 的前缀正则匹配不上，空段被丢掉后得到 \\C:\\Users\\…\\plugins；canonicalizeParent 上溯到当前盘根，规范形态成了 \\\\?\\C:\\C:\\Users\\…\\plugins，任何 deny 都不命中，而 Node 交给系统的是 \\\\.\\C:\\Users\\…\\plugins，即 Host 插件目录本身"
+  },
+  "fix": {
+    "files": ["electron/shell/scope.ts"],
+    "behavior": "resolveForMatch 取字面形态（literalForm）时在 win32 上先 path.win32.normalize 再 collectComponents。本条提交时只作用于不存在的路径；RF-W23-fs-deny-symlink-entry 之后，请求本身的字面形态（只进 deny 候选）对所有请求都经过这一步。与 Node 实际交给系统的路径一致：\\\\.\\\\C:\\… 成为 \\\\.\\C:\\…（之后由 canonicalizeParent 经系统 realpath 还原为 \\\\?\\C:\\…，并照常去尾点、剥流、折叠），\\\\srv\\\\share\\… 成为 \\\\srv\\share\\…（Node 发往 \\\\?\\UNC\\srv\\share\\…）。macOS / Linux 不变；已存在的路径本来就经系统 realpath，不变。.. 已被 safePath 拒绝，normalize 不会引入上溯"
+  },
+  "evidence": "A14 复核（.reports/audit/reviews/W23-28d9d042.md 交付后跟进第 1 条，等级中）：用户把 C 盘拖进窗口（main.ts allowDirectory(path, true)）或在目录对话框里选中 C:\\ 后，运行时作用域有 \\\\?\\C:\\**；主窗口页面脚本调 plugin:fs|mkdir \\\\.\\\\C:\\Users\\<u>\\AppData\\Roaming\\com.deepstudent.app\\plugins，deny 不命中、运行时 allow 命中，建出的就是 Host 读取的插件目录，之后 write_text_file 同一写法下的 user.profile.json 同样放行。\\\\localhost\\\\C$\\… 被压成 \\localhost\\C$\\…，按当前盘解析成 C:\\localhost\\C$\\…，也被运行时 allow 放行，而 Node 发往 \\\\?\\UNC\\localhost\\C$\\…。本机 Node v26 实测 path.win32.normalize / toNamespacedPath 对这几种写法的结果与上面一致。修复前 electron/tests/fs-scope-literal-win32.test.ts 两例都失败（首个失败：\\\\.\\\\C:\\Users\\heli\\AppData\\Roaming\\com.deepstudent.app\\plugins: expected false to be true；UNC 一例：expected true to be false），假文件系统按真实 Windows 把无盘符的根路径解析到 C:、非 \\\\?\\ 路径先 normalize。修复后都被拒，\\\\.\\\\C:\\…\\notes.txt 等正常路径仍允许。只在假文件系统上验证，没有 Windows 实机结果",
+  "userVisible": "正常使用感知不到；Windows 上页面脚本用设备前缀或 UNC 前缀后多一个分隔符的写法访问受保护目录时被拒绝（forbidden path）。allow 侧：这类写法落在授权目录里、但路径不存在时，原来因字面形态失真（成了 \\C:\\…）被误拒，现在按 Node 实际访问的位置判定并放行；前端不会用这种写法。scope.ts 也被 asset 协议和 opener 使用，这两处对这类写法同样按 normalize 后的位置判定。",
+  "notes": "撤回依赖：本条（bd3d4b82）的那一行已被 RF-W23-fs-deny-symlink-entry（2a1825b7）搬进 scope.ts 的 literalForm，不能单独 git revert。否决本条时手工把 literalForm 的函数体改回 collectComponents(path, this.platform)，并撤回 electron/tests/__fixtures__/scope-fs.ts 里非 \\\\?\\ 路径先 win32.normalize 的分支；其余两条的撤回步骤见 RF-W23-fs-deny-protected-ancestor 的 notes。",
+  "dataCompat": "不改变落库数据、同步载荷与备份格式。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "electron/tests/fs-scope-literal-win32.test.ts",
+      "name": "RF-W23-fs-scope-literal-win32-normalize: an extra separator after the \\\\.\\ device prefix keeps the drive, so the deny still matches"
+    },
+    {
+      "file": "electron/tests/fs-scope-literal-win32.test.ts",
+      "name": "RF-W23-fs-scope-literal-win32-normalize: an extra separator after a UNC server name stays a UNC path (not C:\\<server>\\…)"
+    }
+  ]
+}

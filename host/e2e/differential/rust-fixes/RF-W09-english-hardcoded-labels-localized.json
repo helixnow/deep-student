@@ -1,0 +1,33 @@
+{
+  "id": "RF-W09-english-hardcoded-labels-localized",
+  "kind": "deliberate",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T14:25:00+08:00",
+  "title": "几处写死为英文的按钮提示、aria-label、图片 alt 与图例改走词条，中文界面显示中文，英文界面不变",
+  "rust": {
+    "file": "src/components/Card3DPreview.tsx",
+    "line": 537,
+    "behavior": "Rust 快照的前端把以下文字写死为英文，中文界面也显示英文：卡片 3D 预览播放/暂停按钮的 title “Play/Pause”（Card3DPreview.tsx:537）与分页圆点 aria-label “Go to card N”（621）；聊天生图块无 alt 时的兜底 “Generated image”（features/chat/plugins/blocks/components/ImagePreview.tsx 两处 img）；题目裁剪对话框原图 alt “Page N”（ImageCropDialog.tsx:312）；数据统计活跃趋势图例 “Tokens”（stats/DataChartsPanel.tsx:597，旁边的 “会话” 已走 llm_usage:sessions）；开发构建 chat-v2 错误边界在错误消息为空时的 “Unknown error”（ErrorBoundary.tsx:120）"
+  },
+  "fix": {
+    "files": [
+      "src/components/Card3DPreview.tsx",
+      "src/features/chat/plugins/blocks/components/ImagePreview.tsx",
+      "src/components/ImageCropDialog.tsx",
+      "src/components/stats/DataChartsPanel.tsx",
+      "src/components/ErrorBoundary.tsx"
+    ],
+    "behavior": "新增 common.card3DPreview.{pause,play,goToCard}、common.question_bank.source_image_page_alt、llm_usage.tokens；生图 alt 复用 chatV2:blocks.imageGen.generatedImage，错误兜底复用 common:error.unknown_error。en-US 的值与原英文逐字相同（Pause、Play、Go to card {{index}}、Generated image、Page {{page}}、Tokens、Unknown error）；zh-CN 为暂停、播放、跳转到第 {{index}} 张卡片、生成图片、第 {{page}} 页、Token 数、未知错误"
+  },
+  "evidence": "hardcoded-copy 门禁基线里的英文硬编码；同一组件里相邻的文字（翻转卡片、会话、裁剪成功等）已按界面语言显示，只剩这几处在中文界面是英文。",
+  "userVisible": "中文界面：卡片预览播放/暂停按钮的悬停提示、读屏器读到的分页圆点名称与图片替代文字、统计页活跃趋势图例变为中文；chat-v2 错误边界的详情行只在开发构建显示。英文界面不变。",
+  "dataCompat": "只改前端显示；不改 IPC 载荷、落库数据、同步载荷与备份格式。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "tests/vitest/i18n/englishHardcodedLabels.test.tsx",
+      "name": "RF-W09-english-hardcoded-labels-localized: %s card preview controls, generated image alt and the other labels"
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "id": "RF-W04-blob-relative-path-escape",
+  "kind": "rust-bug",
+  "status": "proposed",
+  "title": "读 blob 时直接把同步来的 blobs.relative_path 拼到 vfs_blobs 后面：../、绝对路径或符号链接可以指向 blob 目录外的任意文件",
+  "rust": {
+    "file": "src-tauri/crates/dstu-vfs/src/vfs/unified_retriever.rs",
+    "line": 1093,
+    "behavior": "检索命中的 image_url 直接用 db.blobs_dir().join(relative_path)（:1093 词法路由；:1177-1182 向量路由经 VfsBlobRepo::get_blob_path，blob_repo.rs:477 同样直接 join）；handlers.rs:1806 vfs_get_attachment_content 的 img_ 分支 blobs_dir().join(rel) 后读出文件并以 base64 返回；src/cmd/textbooks.rs:812-817 vfs_get_file_blob_path 经 get_blob_path_with_conn 拼出路径，文件存在就交给 pdfstream:// 预览。relative_path 含 .. 时逃出 blob 目录；是绝对路径时 Path::join 整段替换成该绝对路径。"
+  },
+  "fix": {
+    "files": [
+      "host/plugins/vfs-index/src/blob-path.ts",
+      "host/plugins/vfs-index/src/unified-retriever.ts",
+      "host/plugins/vfs-index/src/runtime-adapter.ts",
+      "host/plugins/vfs-handlers/src/attachments.ts",
+      "host/plugins/media/src/vfs-blob-path.ts"
+    ],
+    "behavior": "containedBlobPath 按 Rust 删除路径的 safe_blob_path（blob_repo.rs:894）拒绝空值、绝对路径（POSIX、盘符、UNC）和任一分隔符下的 .. 段，并在 realpath 之后再确认仍在 vfs_blobs 内（目标还不存在时保留词法结果）。不合格时：检索命中保留，只是 imageUrl 为 null；img_ 附件记 warn 并跳过该 blob（最终 found:false）；vfs_get_file_blob_path 返回 null。合法路径的结果与 Rust 相同。"
+  },
+  "evidence": "AL-10（W32 同步安全复核，.reports/handoffs/AUDIT-TO-LANES.md）：blobs 表走记录同步，远端可以改写 relative_path。Rust 自己在删除路径上用 safe_blob_path 拒绝 ..、根目录和盘符前缀（错误文本“blob deletion path must remain relative to vfs_blobs”），说明 relative_path 必须留在 vfs_blobs 内是 Rust 的本意，读路径漏了同样的检查。后果：img_ 附件命令把 blob 目录外的文件内容直接返回给渲染进程；检索来源卡与 pdfstream 预览拿到目录外的路径。复现：blobs 插一行 relative_path='../outside.txt'（或绝对路径、或 vfs_blobs 内指向外部的符号链接），让题目 images_json 或索引单元引用该 hash，调用 vfs_get_attachment_content / 检索 / vfs_get_file_blob_path。",
+  "userVisible": "正常数据无变化。relative_path 越界的 blob：检索结果不再带图片路径，img_ 附件显示为未找到，文件预览路径为空。",
+  "dataCompat": "只改读取，不改落库数据、同步载荷与备份格式。",
+  "notes": "同类的 vfs-repos BlobRepo.getBlobPath（全仓约 30 个调用方，含把 blob 字节发给 OCR/模型的读取）归 W10（RF-W10-blob-path-containment）。按 AL-17，containedBlobPath 保留不换成 vfs-repos 的 resolveBlobPath：后者要 node:fs，这里由调用方注入 realpath，并且对最后一级符号链接也做 realpath 包含判断。RF-W32-blob-relative-path-traversal 修的是同步下载按云端清单写 blob 的一端（dstu-sync mod.rs:11328）；本条修的是本地 blobs 表行被读取时的一端，两者不重叠。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "host/plugins/vfs-index/tests/blob-path.test.ts",
+      "name": "RF-W04-blob-relative-path-escape: rejects parent segments, absolute paths and empty values"
+    },
+    {
+      "file": "host/plugins/vfs-index/tests/blob-path.test.ts",
+      "name": "RF-W04-blob-relative-path-escape: rejects a symlink inside vfs_blobs that resolves outside it"
+    },
+    {
+      "file": "host/plugins/vfs-index/tests/unified-retriever.test.ts",
+      "name": "RF-W04-blob-relative-path-escape: lexical route drops escaping image paths and keeps the hit"
+    },
+    {
+      "file": "host/plugins/vfs-index/tests/unified-retriever.test.ts",
+      "name": "RF-W04-blob-relative-path-escape: vector route drops escaping image paths and keeps the hit"
+    },
+    {
+      "file": "host/plugins/vfs-handlers/tests/attachments.test.ts",
+      "name": "RF-W04-blob-relative-path-escape: img_ reads never leave the blob directory"
+    },
+    {
+      "file": "host/plugins/media/tests/vfs-blob-path.test.ts",
+      "name": "RF-W04-blob-relative-path-escape: vfs_get_file_blob_path never hands out a path outside vfs_blobs"
+    }
+  ]
+}

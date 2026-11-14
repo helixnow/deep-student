@@ -1,0 +1,768 @@
+{
+  "domain": "anki",
+  "commands": [
+    "check_anki_connect_status",
+    "get_anki_deck_names",
+    "anki_get_deck_names",
+    "get_anki_model_names",
+    "create_anki_deck",
+    "import_anki_package",
+    "add_cards_to_anki_connect",
+    "export_cards_as_apkg_with_template",
+    "export_multi_template_apkg",
+    "batch_export_cards",
+    "export_anki_cards",
+    "import_apkg_to_library",
+    "read_anki_media",
+    "save_anki_cards"
+  ],
+  "scenarios": [
+    {
+      "id": "g3w.anki.check_anki_connect_status.anki_connect_unreachable",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "check_anki_connect_status",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.anki.get_anki_deck_names.anki_connect_unreachable",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_anki_deck_names",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.anki.anki_get_deck_names.anki_connect_unreachable",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "anki_get_deck_names",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.anki.get_anki_model_names.anki_connect_unreachable",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_anki_model_names",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.anki.create_anki_deck.anki_connect_unreachable",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "create_anki_deck",
+          "args": {
+            "deckName": "Default"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.anki.import_anki_package.blank_path",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "import_anki_package",
+          "args": {
+            "path": "",
+            "deleteAfter": false
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.anki.import_anki_package.anki_connect_unreachable",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "import_anki_package",
+          "args": {
+            "path": "/w0-missing/deck.apkg",
+            "deleteAfter": false
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.anki.add_cards_to_anki_connect.empty_cards",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "add_cards_to_anki_connect",
+          "args": {
+            "selectedCards": [],
+            "deckName": "Default",
+            "noteType": "Basic"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.anki.add_cards_to_anki_connect.blank_deck_name",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "add_cards_to_anki_connect",
+          "args": {
+            "selectedCards": [
+              {
+                "id": "w0-card-1",
+                "task_id": "",
+                "front": "Q",
+                "back": "A",
+                "text": null,
+                "tags": [],
+                "images": [],
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-01-01T00:00:00.000Z",
+                "updated_at": "2026-01-01T00:00:00.000Z",
+                "extra_fields": {},
+                "template_id": null
+              }
+            ],
+            "deckName": "  ",
+            "noteType": "Basic"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.anki.add_cards_to_anki_connect.blank_note_type",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "add_cards_to_anki_connect",
+          "args": {
+            "selectedCards": [
+              {
+                "id": "w0-card-1",
+                "task_id": "",
+                "front": "Q",
+                "back": "A",
+                "text": null,
+                "tags": [],
+                "images": [],
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-01-01T00:00:00.000Z",
+                "updated_at": "2026-01-01T00:00:00.000Z",
+                "extra_fields": {},
+                "template_id": null
+              }
+            ],
+            "deckName": "Default",
+            "noteType": "  "
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.anki.add_cards_to_anki_connect.missing_template",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "add_cards_to_anki_connect",
+          "args": {
+            "selectedCards": [
+              {
+                "id": "w0-card-1",
+                "task_id": "",
+                "front": "Q",
+                "back": "A",
+                "text": null,
+                "tags": [],
+                "images": [],
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-01-01T00:00:00.000Z",
+                "updated_at": "2026-01-01T00:00:00.000Z",
+                "extra_fields": {},
+                "template_id": "w0-missing-template"
+              }
+            ],
+            "deckName": "Default",
+            "noteType": "Basic"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.anki.export_cards_as_apkg_with_template.empty_cards",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "export_cards_as_apkg_with_template",
+          "args": {
+            "selectedCards": [],
+            "deckName": "Default",
+            "noteType": "Basic",
+            "templateId": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.anki.export_cards_as_apkg_with_template.blank_deck_name",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "export_cards_as_apkg_with_template",
+          "args": {
+            "selectedCards": [
+              {
+                "id": "w0-card-1",
+                "task_id": "",
+                "front": "Q",
+                "back": "A",
+                "text": null,
+                "tags": [],
+                "images": [],
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-01-01T00:00:00.000Z",
+                "updated_at": "2026-01-01T00:00:00.000Z",
+                "extra_fields": {},
+                "template_id": null
+              }
+            ],
+            "deckName": "  ",
+            "noteType": "Basic",
+            "templateId": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.anki.export_cards_as_apkg_with_template.blank_note_type",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "export_cards_as_apkg_with_template",
+          "args": {
+            "selectedCards": [
+              {
+                "id": "w0-card-1",
+                "task_id": "",
+                "front": "Q",
+                "back": "A",
+                "text": null,
+                "tags": [],
+                "images": [],
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-01-01T00:00:00.000Z",
+                "updated_at": "2026-01-01T00:00:00.000Z",
+                "extra_fields": {},
+                "template_id": null
+              }
+            ],
+            "deckName": "Default",
+            "noteType": "  ",
+            "templateId": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.anki.export_multi_template_apkg.empty_cards",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "export_multi_template_apkg",
+          "args": {
+            "cards": [],
+            "deckName": "Default",
+            "outputPath": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.anki.batch_export_cards.unsupported_format",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "batch_export_cards",
+          "args": {
+            "notes": [
+              {
+                "fields": {
+                  "Front": "Q",
+                  "Back": "A"
+                },
+                "tags": [],
+                "images": []
+              }
+            ],
+            "format": "csv",
+            "options": {
+              "deckName": "Default",
+              "includeTags": true,
+              "includeMedia": true
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.anki.batch_export_cards.anki_connect_empty_notes",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "batch_export_cards",
+          "args": {
+            "notes": [],
+            "format": "anki-connect",
+            "options": {
+              "deckName": "Default",
+              "noteType": "Basic"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.anki.batch_export_cards.apkg_empty_notes",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "batch_export_cards",
+          "args": {
+            "notes": [],
+            "format": "apkg",
+            "options": {
+              "deckName": "Default",
+              "noteType": "Basic"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.anki.export_anki_cards.empty_ids",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "export_anki_cards",
+          "args": {
+            "request": {
+              "ids": [],
+              "format": "apkg"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.anki.export_anki_cards.cards_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "export_anki_cards",
+          "args": {
+            "request": {
+              "ids": [
+                "w0-missing-card"
+              ],
+              "format": "json"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.anki.import_apkg_to_library.blank_path",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "import_apkg_to_library",
+          "args": {
+            "path": "  \t\n"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.anki.import_apkg_to_library.missing_path",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "import_apkg_to_library",
+          "args": {
+            "path": "/w0-missing/missing.apkg"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.anki.import_apkg_to_library.directory_path",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "import_apkg_to_library",
+          "args": {
+            "path": "/"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.anki.read_anki_media.outside_media_root",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "read_anki_media",
+          "args": {
+            "path": "/w0-missing/anki_media/cat.png"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.anki.save_anki_cards.empty_cards",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_anki_cards",
+          "args": {
+            "request": {
+              "document_id": "w0-doc-empty",
+              "business_session_id": null,
+              "message_stable_id": null,
+              "block_id": null,
+              "template_id": null,
+              "cards": [],
+              "options": null
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.anki.save_anki_cards.duplicate_ids_in_request",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_anki_cards",
+          "args": {
+            "request": {
+              "document_id": "doc-duplicate-input",
+              "business_session_id": null,
+              "message_stable_id": null,
+              "block_id": null,
+              "template_id": null,
+              "cards": [
+                {
+                  "id": "same-real-id",
+                  "front": "first question",
+                  "back": "first answer",
+                  "text": null,
+                  "tags": [],
+                  "images": [],
+                  "fields": {},
+                  "template_id": null
+                },
+                {
+                  "id": "same-real-id",
+                  "front": "second question",
+                  "back": "second answer",
+                  "text": null,
+                  "tags": [],
+                  "images": [],
+                  "fields": {},
+                  "template_id": null
+                }
+              ],
+              "options": null
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.anki.save_anki_cards.cross_document_id_collision",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_anki_cards",
+          "args": {
+            "request": {
+              "document_id": "doc-owner",
+              "business_session_id": null,
+              "message_stable_id": null,
+              "block_id": null,
+              "template_id": null,
+              "cards": [
+                {
+                  "id": "shared-real-id",
+                  "front": "owner question",
+                  "back": "owner answer",
+                  "text": null,
+                  "tags": [],
+                  "images": [],
+                  "fields": {},
+                  "template_id": null
+                }
+              ],
+              "options": null
+            }
+          }
+        },
+        {
+          "cmd": "save_anki_cards",
+          "args": {
+            "request": {
+              "document_id": "doc-attacker",
+              "business_session_id": null,
+              "message_stable_id": null,
+              "block_id": null,
+              "template_id": null,
+              "cards": [
+                {
+                  "id": "shared-real-id",
+                  "front": "attacker question",
+                  "back": "attacker answer",
+                  "text": null,
+                  "tags": [],
+                  "images": [],
+                  "fields": {},
+                  "template_id": null
+                }
+              ],
+              "options": null
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

@@ -1,0 +1,1820 @@
+{
+  "domain": "qbank",
+  "commands": [
+    "qbank_ai_grade",
+    "qbank_cancel_grading"
+  ],
+  "scenarios": [
+    {
+      "id": "qbank.ai_grade.err_missing_question",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_ai_grade",
+          "args": {
+            "request": {
+              "question_id": "q_doesnotexist",
+              "submission_id": "sub_x",
+              "stream_session_id": "wp052nq",
+              "mode": "grade",
+              "model_config_id": null
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.ai_grade.err_grade_without_submission",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "下列哪个是质数？",
+              "question_type": "short_answer",
+              "options": null,
+              "answer": "略",
+              "structured_data": null,
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "数论"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_ai_grade",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "submission_id": null,
+              "stream_session_id": "wp052nosub",
+              "mode": "grade",
+              "model_config_id": null
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.ai_grade.err_grade_blank_submission",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "下列哪个是质数？",
+              "question_type": "short_answer",
+              "options": null,
+              "answer": "略",
+              "structured_data": null,
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "数论"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_ai_grade",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "submission_id": "   ",
+              "stream_session_id": "wp052blank",
+              "mode": "grade",
+              "model_config_id": null
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.ai_grade.err_submission_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "下列哪个是质数？",
+              "question_type": "short_answer",
+              "options": null,
+              "answer": "略",
+              "structured_data": null,
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "数论"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_ai_grade",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "submission_id": "sub_doesnotexist",
+              "stream_session_id": "wp052subnf",
+              "mode": "grade",
+              "model_config_id": null
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.ai_grade.err_submission_of_other_question",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "简述光合作用的能量转化。",
+              "question_type": "short_answer",
+              "options": null,
+              "answer": "光合作用把光能转化为化学能。",
+              "structured_data": null,
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "生物"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "user_answer": "把光能变成化学能",
+              "client_request_id": "ai-sub-1"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "另一题",
+              "question_type": "short_answer",
+              "options": null,
+              "answer": "略",
+              "structured_data": null,
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "数论"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_ai_grade",
+          "args": {
+            "request": {
+              "question_id": "${3.id}",
+              "submission_id": "${2.submission_id}",
+              "stream_session_id": "wp052other",
+              "mode": "grade",
+              "model_config_id": null
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.ai_grade.err_missing_mode",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_ai_grade",
+          "args": {
+            "request": {
+              "question_id": "q_x",
+              "stream_session_id": "s"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.ai_grade.err_invalid_mode",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_ai_grade",
+          "args": {
+            "request": {
+              "question_id": "q_x",
+              "stream_session_id": "s",
+              "mode": "explain",
+              "model_config_id": null
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.ai_grade.err_no_model_configured",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "简述光合作用的能量转化。",
+              "question_type": "short_answer",
+              "options": null,
+              "answer": "光合作用把光能转化为化学能。",
+              "structured_data": null,
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "生物"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "user_answer": "把光能变成化学能",
+              "client_request_id": "ai-sub-1"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_ai_grade",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "submission_id": "${2.submission_id}",
+              "stream_session_id": "wp052nomodel",
+              "mode": "grade",
+              "model_config_id": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "qbank_get_question",
+          "args": {
+            "questionId": "${1.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.ai_grade.err_explicit_config_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "简述光合作用的能量转化。",
+              "question_type": "short_answer",
+              "options": null,
+              "answer": "光合作用把光能转化为化学能。",
+              "structured_data": null,
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "生物"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "user_answer": "把光能变成化学能",
+              "client_request_id": "ai-sub-1"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_ai_grade",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "submission_id": "${2.submission_id}",
+              "stream_session_id": "wp052cfgnf",
+              "mode": "grade",
+              "model_config_id": "cfg_doesnotexist"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.ai_grade.err_explicit_config_disabled",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "简述光合作用的能量转化。",
+              "question_type": "short_answer",
+              "options": null,
+              "answer": "光合作用把光能转化为化学能。",
+              "structured_data": null,
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "生物"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "user_answer": "把光能变成化学能",
+              "client_request_id": "ai-sub-1"
+            }
+          }
+        },
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "wp052-disabled",
+                "name": "WP052 wp052-disabled",
+                "apiKey": "sk-wp052-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "model": "wp052-model",
+                "isMultimodal": false,
+                "isReasoning": false,
+                "isEmbedding": false,
+                "isReranker": false,
+                "enabled": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "qbank_ai_grade",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "submission_id": "${2.submission_id}",
+              "stream_session_id": "wp052dis",
+              "mode": "grade",
+              "model_config_id": "wp052-disabled"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.ai_grade.err_explicit_config_embedding",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "简述光合作用的能量转化。",
+              "question_type": "short_answer",
+              "options": null,
+              "answer": "光合作用把光能转化为化学能。",
+              "structured_data": null,
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "生物"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "user_answer": "把光能变成化学能",
+              "client_request_id": "ai-sub-1"
+            }
+          }
+        },
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "wp052-embed",
+                "name": "WP052 wp052-embed",
+                "apiKey": "sk-wp052-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "model": "wp052-model",
+                "isMultimodal": false,
+                "isReasoning": false,
+                "isEmbedding": true,
+                "isReranker": false,
+                "enabled": true,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "qbank_ai_grade",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "submission_id": "${2.submission_id}",
+              "stream_session_id": "wp052emb",
+              "mode": "grade",
+              "model_config_id": "wp052-embed"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.ai_grade.err_explicit_config_reranker",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "简述光合作用的能量转化。",
+              "question_type": "short_answer",
+              "options": null,
+              "answer": "光合作用把光能转化为化学能。",
+              "structured_data": null,
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "生物"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "user_answer": "把光能变成化学能",
+              "client_request_id": "ai-sub-1"
+            }
+          }
+        },
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "wp052-rerank",
+                "name": "WP052 wp052-rerank",
+                "apiKey": "sk-wp052-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "model": "wp052-model",
+                "isMultimodal": false,
+                "isReasoning": false,
+                "isEmbedding": false,
+                "isReranker": true,
+                "enabled": true,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "qbank_ai_grade",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "submission_id": "${2.submission_id}",
+              "stream_session_id": "wp052rr",
+              "mode": "grade",
+              "model_config_id": "wp052-rerank"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.ai_grade.err_assignment_config_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "简述光合作用的能量转化。",
+              "question_type": "short_answer",
+              "options": null,
+              "answer": "光合作用把光能转化为化学能。",
+              "structured_data": null,
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "生物"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "user_answer": "把光能变成化学能",
+              "client_request_id": "ai-sub-1"
+            }
+          }
+        },
+        {
+          "cmd": "save_model_assignments",
+          "args": {
+            "assignments": {
+              "qbank_ai_grading_model_config_id": "cfg_doesnotexist"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_ai_grade",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "submission_id": "${2.submission_id}",
+              "stream_session_id": "wp052asgnf",
+              "mode": "grade",
+              "model_config_id": null
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.ai_grade.err_assignment_config_embedding",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "简述光合作用的能量转化。",
+              "question_type": "short_answer",
+              "options": null,
+              "answer": "光合作用把光能转化为化学能。",
+              "structured_data": null,
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "生物"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "user_answer": "把光能变成化学能",
+              "client_request_id": "ai-sub-1"
+            }
+          }
+        },
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "wp052-embed2",
+                "name": "WP052 wp052-embed2",
+                "apiKey": "sk-wp052-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "model": "wp052-model",
+                "isMultimodal": false,
+                "isReasoning": false,
+                "isEmbedding": true,
+                "isReranker": false,
+                "enabled": true,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "save_model_assignments",
+          "args": {
+            "assignments": {
+              "qbank_ai_grading_model_config_id": "wp052-embed2"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_ai_grade",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "submission_id": "${2.submission_id}",
+              "stream_session_id": "wp052asgemb",
+              "mode": "grade",
+              "model_config_id": null
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.ai_grade.err_assignment_config_reranker",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "简述光合作用的能量转化。",
+              "question_type": "short_answer",
+              "options": null,
+              "answer": "光合作用把光能转化为化学能。",
+              "structured_data": null,
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "生物"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "user_answer": "把光能变成化学能",
+              "client_request_id": "ai-sub-1"
+            }
+          }
+        },
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "wp052-rr2",
+                "name": "WP052 wp052-rr2",
+                "apiKey": "sk-wp052-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "model": "wp052-model",
+                "isMultimodal": false,
+                "isReasoning": false,
+                "isEmbedding": false,
+                "isReranker": true,
+                "enabled": true,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "save_model_assignments",
+          "args": {
+            "assignments": {
+              "qbank_ai_grading_model_config_id": "wp052-rr2"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_ai_grade",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "submission_id": "${2.submission_id}",
+              "stream_session_id": "wp052asgrr",
+              "mode": "grade",
+              "model_config_id": null
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.ai_grade.err_model2_disabled",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "简述光合作用的能量转化。",
+              "question_type": "short_answer",
+              "options": null,
+              "answer": "光合作用把光能转化为化学能。",
+              "structured_data": null,
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "生物"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "user_answer": "把光能变成化学能",
+              "client_request_id": "ai-sub-1"
+            }
+          }
+        },
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "wp052-m2off",
+                "name": "WP052 wp052-m2off",
+                "apiKey": "sk-wp052-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "model": "wp052-model",
+                "isMultimodal": false,
+                "isReasoning": false,
+                "isEmbedding": false,
+                "isReranker": false,
+                "enabled": false,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "save_model_assignments",
+          "args": {
+            "assignments": {
+              "model2_config_id": "wp052-m2off"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_ai_grade",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "submission_id": "${2.submission_id}",
+              "stream_session_id": "wp052m2off",
+              "mode": "grade",
+              "model_config_id": null
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.ai_grade.precancelled_grade_returns_null",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "简述光合作用的能量转化。",
+              "question_type": "short_answer",
+              "options": null,
+              "answer": "光合作用把光能转化为化学能。",
+              "structured_data": null,
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "生物"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "user_answer": "把光能变成化学能",
+              "client_request_id": "ai-sub-1"
+            }
+          }
+        },
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "wp052-chat",
+                "name": "WP052 wp052-chat",
+                "apiKey": "sk-wp052-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "model": "wp052-model",
+                "isMultimodal": false,
+                "isReasoning": false,
+                "isEmbedding": false,
+                "isReranker": false,
+                "enabled": true,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "qbank_cancel_grading",
+          "args": {
+            "streamEventName": "qbank_grading_stream_wp052pre"
+          }
+        },
+        {
+          "cmd": "qbank_ai_grade",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "submission_id": "${2.submission_id}",
+              "stream_session_id": "wp052pre",
+              "mode": "grade",
+              "model_config_id": "wp052-chat"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_question",
+          "args": {
+            "questionId": "${1.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.ai_grade.precancelled_analyze_without_submission",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "下列哪个是质数？",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "4"
+                },
+                {
+                  "key": "B",
+                  "content": "7"
+                },
+                {
+                  "key": "C",
+                  "content": "9"
+                },
+                {
+                  "key": "D",
+                  "content": "15"
+                }
+              ],
+              "answer": "B",
+              "structured_data": null,
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "数论"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "wp052-chat",
+                "name": "WP052 wp052-chat",
+                "apiKey": "sk-wp052-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "model": "wp052-model",
+                "isMultimodal": false,
+                "isReasoning": false,
+                "isEmbedding": false,
+                "isReranker": false,
+                "enabled": true,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "qbank_cancel_grading",
+          "args": {
+            "streamEventName": "qbank_grading_stream_wp052prean"
+          }
+        },
+        {
+          "cmd": "qbank_ai_grade",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "submission_id": null,
+              "stream_session_id": "wp052prean",
+              "mode": "analyze",
+              "model_config_id": "wp052-chat"
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.ai_grade.err_connection_refused_explicit",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "简述光合作用的能量转化。",
+              "question_type": "short_answer",
+              "options": null,
+              "answer": "光合作用把光能转化为化学能。",
+              "structured_data": null,
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "生物"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "user_answer": "把光能变成化学能",
+              "client_request_id": "ai-sub-1"
+            }
+          }
+        },
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "wp052-chat",
+                "name": "WP052 wp052-chat",
+                "apiKey": "sk-wp052-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "model": "wp052-model",
+                "isMultimodal": false,
+                "isReasoning": false,
+                "isEmbedding": false,
+                "isReranker": false,
+                "enabled": true,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "qbank_ai_grade",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "submission_id": "${2.submission_id}",
+              "stream_session_id": "wp052refused",
+              "mode": "grade",
+              "model_config_id": "wp052-chat"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "qbank_get_question",
+          "args": {
+            "questionId": "${1.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.ai_grade.err_connection_refused_via_assignment",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "简述光合作用的能量转化。",
+              "question_type": "short_answer",
+              "options": null,
+              "answer": "光合作用把光能转化为化学能。",
+              "structured_data": null,
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "生物"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "user_answer": "把光能变成化学能",
+              "client_request_id": "ai-sub-1"
+            }
+          }
+        },
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "wp052-asg",
+                "name": "WP052 wp052-asg",
+                "apiKey": "sk-wp052-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "model": "wp052-model",
+                "isMultimodal": false,
+                "isReasoning": false,
+                "isEmbedding": false,
+                "isReranker": false,
+                "enabled": true,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "save_model_assignments",
+          "args": {
+            "assignments": {
+              "qbank_ai_grading_model_config_id": "wp052-asg"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_ai_grade",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "submission_id": "${2.submission_id}",
+              "stream_session_id": "wp052refasg",
+              "mode": "grade",
+              "model_config_id": null
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.ai_grade.err_connection_refused_via_model2",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "简述光合作用的能量转化。",
+              "question_type": "short_answer",
+              "options": null,
+              "answer": "光合作用把光能转化为化学能。",
+              "structured_data": null,
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "生物"
+              ],
+              "question_label": null,
+              "card_id": null,
+              "source_type": "manual",
+              "source_ref": null,
+              "images": null,
+              "parent_id": null
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_answer",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "user_answer": "把光能变成化学能",
+              "client_request_id": "ai-sub-1"
+            }
+          }
+        },
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "wp052-m2",
+                "name": "WP052 wp052-m2",
+                "apiKey": "sk-wp052-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "model": "wp052-model",
+                "isMultimodal": false,
+                "isReasoning": false,
+                "isEmbedding": false,
+                "isReranker": false,
+                "enabled": true,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "save_model_assignments",
+          "args": {
+            "assignments": {
+              "model2_config_id": "wp052-m2"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_ai_grade",
+          "args": {
+            "request": {
+              "question_id": "${1.id}",
+              "submission_id": "${2.submission_id}",
+              "stream_session_id": "wp052refm2",
+              "mode": "grade",
+              "model_config_id": null
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.cancel_grading.unknown_stream_ok",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_cancel_grading",
+          "args": {
+            "streamEventName": "qbank_grading_stream_never_started"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.cancel_grading.repeat_and_empty_name",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_cancel_grading",
+          "args": {
+            "streamEventName": "qbank_grading_stream_x"
+          }
+        },
+        {
+          "cmd": "qbank_cancel_grading",
+          "args": {
+            "streamEventName": "qbank_grading_stream_x"
+          }
+        },
+        {
+          "cmd": "qbank_cancel_grading",
+          "args": {
+            "streamEventName": ""
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.cancel_grading.err_missing_arg",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "qbank_cancel_grading",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

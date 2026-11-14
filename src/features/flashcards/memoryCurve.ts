@@ -1,20 +1,24 @@
 /**
  * 闪卡记忆曲线：FSRS 遗忘曲线的取样、坐标轴与后端响应解析。
  *
- * 曲线常数随数据从后端下发，与调度器（rs-fsrs `Parameters::forgetting_curve`）同源：
- * R(t, S) = (1 + factor · t / S)^decay，t 以天计，t = S 时 R = 90%。
+ * V6 使用后端下发的幂律常数；V7 使用与调度器相同的 ts-fsrs 混合曲线和快、慢记忆状态。
  * 单卡历史的画法与 Anki 卡片信息页的遗忘曲线一致：每次复习 R 回到 100%，
  * 之后按该次复习后的稳定性衰减；最后一段越过「此刻」的部分是预测。
  */
 import { invoke } from '@tauri-apps/api/core';
+import { FSRS7Algorithm, FSRS7_DEFAULT_WEIGHTS, FSRS7_MODEL_BOUNDS } from 'ts-fsrs/models/fsrs-7';
 
 export const MS_PER_DAY = 86_400_000;
 const MINUTE = 1 / 1440;
 const HOUR = 1 / 24;
 
-export interface ForgettingCurve {
-  decay: number;
-  factor: number;
+export type ForgettingCurve = { decay: number; factor: number }
+  | { model: 'fsrs-7'; stabilityFast?: number; difficulty?: number };
+
+const fsrs7 = new FSRS7Algorithm(FSRS7_DEFAULT_WEIGHTS, FSRS7_MODEL_BOUNDS);
+function memory7(stability: number, curve: Extract<ForgettingCurve, { model: 'fsrs-7' }>) {
+  return curve.stabilityFast != null && curve.difficulty != null
+    ? { stability, stabilityFast: curve.stabilityFast, difficulty: curve.difficulty } : null;
 }
 
 /** FSRS-4.5 / FSRS-5 的固定常数，后端未下发时回退 */
@@ -36,6 +40,8 @@ export interface MemoryCard {
   reps: number;
   lapses: number;
   lastRating: MemoryRating | null;
+  curve?: ForgettingCurve;
+  desiredRetention?: number;
 }
 
 export interface TrueRetention {
@@ -63,6 +69,7 @@ export interface MemoryReview {
   stabilityAfter: number | null;
   difficultyAfter: number | null;
   dueAfterMs: number | null;
+  curve?: ForgettingCurve;
 }
 
 export interface CardMemoryHistory {
@@ -79,12 +86,20 @@ export interface CardMemoryHistory {
 
 export function retrievability(elapsedDays: number, stability: number, curve: ForgettingCurve = FSRS5_CURVE): number {
   if (!(stability > 0)) return 0;
+  if ('model' in curve) {
+    const memory = memory7(stability, curve);
+    return memory === null ? Number.NaN : fsrs7.curve(elapsedDays, memory).retrievability;
+  }
   return (1 + (curve.factor * Math.max(0, elapsedDays)) / stability) ** curve.decay;
 }
 
 /** 保持率跌到 target 时距上次复习的天数（retrievability 的反函数） */
 export function daysUntilRetention(target: number, stability: number, curve: ForgettingCurve = FSRS5_CURVE): number {
   if (!(stability > 0) || !(target > 0 && target < 1)) return Number.NaN;
+  if ('model' in curve) {
+    const memory = memory7(stability, curve);
+    return memory === null ? Number.NaN : fsrs7.next_interval(memory, target);
+  }
   return (stability / curve.factor) * (target ** (1 / curve.decay) - 1);
 }
 
@@ -128,9 +143,9 @@ export interface RecentRange {
  * 横轴起点取「最早需要看见的时刻」（学习步 / 此刻）向下取整到 1 分钟 / 10 分钟 / 1 小时；
  * 终点至少 1 个月，并留出最远到期点与稳定性的 1.6 倍，让每条曲线都能越过 90% 那条线。
  */
-export function recentRange(cards: MemoryCard[], nowMs: number): RecentRange {
-  let near = Infinity;
-  let far = 0;
+export function recentRange(cards: MemoryCard[], nowMs: number, targetDays?: number): RecentRange {
+  let near = targetDays ?? Infinity;
+  let far = targetDays ?? 0;
   for (const card of cards) {
     if (card.lastReviewMs == null) continue;
     const due = (card.dueMs - card.lastReviewMs) / MS_PER_DAY;
@@ -142,7 +157,8 @@ export function recentRange(cards: MemoryCard[], nowMs: number): RecentRange {
   }
   const minDays = [HOUR, 10 * MINUTE, MINUTE].find((d) => d <= near) ?? MINUTE;
   const target = Math.max(30, far * 1.6);
-  const maxDays = LOG_TICKS.find((tick) => tick.days >= target)?.days ?? LOG_TICKS[LOG_TICKS.length - 1].days;
+  const maxDays = LOG_TICKS.find((tick) => tick.days >= target)?.days
+    ?? Math.max(target, LOG_TICKS[LOG_TICKS.length - 1].days);
   return {
     minDays,
     maxDays,
@@ -154,7 +170,7 @@ export function recentRange(cards: MemoryCard[], nowMs: number): RecentRange {
 export function recentFloor(cards: MemoryCard[], maxDays: number, curve: ForgettingCurve): number {
   let lowest = 1;
   for (const card of cards) {
-    if (card.stability && card.stability > 0) lowest = Math.min(lowest, retrievability(maxDays, card.stability, curve));
+    if (card.stability && card.stability > 0) lowest = Math.min(lowest, retrievability(maxDays, card.stability, card.curve ?? curve));
   }
   return Math.min(0.8, Math.max(0.4, Math.floor(lowest * 10) / 10));
 }
@@ -192,6 +208,7 @@ export interface HistorySegment {
   fromMs: number;
   toMs: number;
   stability: number;
+  curve: ForgettingCurve;
   rating: MemoryRating;
   /** 这次复习前一刻的保持率（上一段的终点）；首段或上一段缺稳定性时为 null */
   recallBefore: number | null;
@@ -212,7 +229,7 @@ export function historyRows(history: CardMemoryHistory): HistoryRow[] {
     const previous = i > 0 ? history.reviews[i - 1] : null;
     const elapsedDays = previous ? (review.reviewMs - previous.reviewMs) / MS_PER_DAY : null;
     const recallBefore = previous && elapsedDays != null && previous.stabilityAfter && previous.stabilityAfter > 0
-      ? retrievability(elapsedDays, previous.stabilityAfter, history.curve)
+      ? retrievability(elapsedDays, previous.stabilityAfter, previous.curve ?? history.curve)
       : null;
     return {
       logId: review.logId,
@@ -234,7 +251,8 @@ export function historySegments(history: CardMemoryHistory, endMs: number): Hist
     if (!stability || !(stability > 0)) return;
     const next = history.reviews[i + 1];
     const toMs = next ? next.reviewMs : Math.max(endMs, review.reviewMs);
-    segments.push({ fromMs: review.reviewMs, toMs, stability, rating: review.rating, recallBefore: rows[i].recallBefore });
+    segments.push({ fromMs: review.reviewMs, toMs, stability, curve: review.curve ?? history.curve,
+      rating: review.rating, recallBefore: rows[i].recallBefore });
   });
   return segments;
 }
@@ -284,6 +302,12 @@ const rating = (value: unknown): MemoryRating | null => (value === 1 || value ==
 
 function parseCurve(value: unknown): ForgettingCurve {
   if (!isObject(value)) return FSRS5_CURVE;
+  if (value.model === 'fsrs-7') {
+    const stabilityFast = num(value.stabilityFast);
+    const difficulty = num(value.difficulty);
+    return stabilityFast != null && stabilityFast > 0 && difficulty != null
+      ? { model: 'fsrs-7', stabilityFast, difficulty } : { model: 'fsrs-7' };
+  }
   const decay = num(value.decay);
   const factor = num(value.factor);
   return decay != null && decay < 0 && factor != null && factor > 0 ? { decay, factor } : FSRS5_CURVE;
@@ -314,6 +338,8 @@ function parseCard(value: unknown): MemoryCard | null {
     reps: num(value.reps) ?? 0,
     lapses: num(value.lapses) ?? 0,
     lastRating: rating(value.lastRating),
+    ...(isObject(value.curve) ? { curve: parseCurve(value.curve) } : {}),
+    ...(num(value.desiredRetention) != null ? { desiredRetention: parseDesiredRetention(value.desiredRetention) } : {}),
   };
 }
 
@@ -360,6 +386,7 @@ export function parseCardMemoryHistory(raw: unknown): CardMemoryHistory | null {
       stabilityAfter: num(item.stabilityAfter),
       difficultyAfter: num(item.difficultyAfter),
       dueAfterMs: num(item.dueAfterMs),
+      ...(isObject(item.curve) && { curve: parseCurve(item.curve) }),
     });
   }
   reviews.sort((a, b) => a.reviewMs - b.reviewMs);

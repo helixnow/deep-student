@@ -9,7 +9,7 @@ import i18n from 'i18next';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { clearAdapterErrorFlag, reportAdapterError } from '../errors/adapterErrorChannel';
 import { handleStreamAbort } from '../../core/middleware/eventBridge';
-import { logMultiVariant } from '@/debug-panel/plugins/MultiVariantDebugPlugin';
+import { logMultiVariant } from '@/shared/debug/channels/multiVariant';
 import { chunkBuffer } from '../../core/middleware/chunkBuffer';
 // 🔧 优化：sessionManager 仅用于获取元数据，不再用于获取 Store 状态
 // 构造函数现在接收 storeApi 参数，消除了循环依赖的核心问题
@@ -18,7 +18,7 @@ import type { SessionEventPayload } from '../types';
 // 🆕 2026-02-16: 工具调用生命周期调试
 import {
   resetRound as resetToolCallRound,
-} from '@/debug-panel/plugins/ToolCallLifecycleDebugPlugin';
+} from '@/shared/debug/channels/toolCallLifecycle';
 import {
   LOG_PREFIX,
   adapterConsole as console,
@@ -41,6 +41,7 @@ import {
   streamErrorMetaPatch,
 } from './streamLifecycle';
 import type { TauriAdapterHost } from './adapterHost';
+import { alignCancelledMessageWithArchive } from './cancelAlignment';
 
 // ★ context_trimmed 提示节流：模块级（按 sessionId 隔离），
 // 适配器重建（会话切换/重连）也不会重置窗口导致刷屏
@@ -456,6 +457,16 @@ export function handleSessionEvent(host: TauriAdapterHost, payload: SessionEvent
             level: 'dev',
             sessionId: host.sessionId,
             message: 'Error in handleStreamAbort after stream_cancelled',
+            cause: err,
+          });
+        });
+        // Host 取消前可能已落盘界面没收到的片段；按存档补齐（只增不删）。
+        alignCancelledMessageWithArchive(host, payload.messageId!).catch((err) => {
+          reportAdapterError({
+            code: 'stream_cleanup_failed',
+            level: 'dev',
+            sessionId: host.sessionId,
+            message: 'Failed to align cancelled message with archive',
             cause: err,
           });
         });

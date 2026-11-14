@@ -1,0 +1,1 @@
+{"id":"20261105140232-c07566","cwd":"/home/dsdev/dev/ds-mig/X7-differential","cmd":["npx","vitest","run","-c","vitest.host.config.ts","host/e2e/differential/"],"from":"X7-differential","submittedAt":"2026-11-05T14:02:32.201Z","cls":"test","startedAt":"2026-11-05T14:08:12.132Z","endedAt":"2026-11-05T14:08:23.156Z","code":0}

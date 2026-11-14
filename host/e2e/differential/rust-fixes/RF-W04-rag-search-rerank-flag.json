@@ -1,0 +1,32 @@
+{
+  "id": "RF-W04-rag-search-rerank-flag",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main-agent",
+  "approvedAt": "2026-11-07T13:00:00+08:00",
+  "title": "vfs_rag_search 的 enableReranking 不生效：还要求一个默认 false、没有任何界面能打开的 search.enable_reranking",
+  "rust": {
+    "file": "src-tauri/crates/dstu-vfs/src/vfs/indexing.rs",
+    "line": 5249,
+    "behavior": "search_cross_dimension_with_resource_info（以及 search_cross_dimension，:5221-5223）在请求的 enable_reranking 为 true 时，还要再读 vfs_indexing_config 的 search.enable_reranking，为 true 才调用 rerank_results。这个键由 VFS 初始迁移写成 'false'（migrations/vfs/V20260130__init.sql:684），前端没有任何地方调用 vfs_set_indexing_config 改它，所以即使用户在模型分配里配了重排模型、请求传 enableReranking: true，结果也永远是 RRF 原序。"
+  },
+  "fix": {
+    "files": ["host/plugins/vfs-index/src/search-service.ts"],
+    "behavior": "searchCrossDimension 只看请求的 enableReranking：为 true 且有结果时调用重排运行时。是否真的重排仍由 rerank_results 的原有判断决定：没有分配 reranker_model_config_id 时原样返回（indexing.rs:4926-4932），重排失败时 warn 并保留 RRF 原序。search.enable_reranking 仍可读写、仍出现在 vfs_get_indexing_config 中，只是不再参与搜索判断。"
+  },
+  "evidence": "与 Rust 自身的接口说明和前端期望矛盾：VfsRagSearchInput.enable_reranking 注释为“是否启用重排序”，serde 默认 true（handlers.rs:4835-4837、4856-4858）；前端 IndexStatusView.tsx:1251 与 api/vfsRagApi.ts:127、157、176、195 总是传 true；能打开的全局开关却只能经无人调用的 vfs_set_indexing_config 设置，且每个库都由初始迁移显式写成 'false'。Rust 自己的聊天检索工具（src-tauri/src/chat_v2/tools/builtin_retrieval_executor.rs:252-257、449）只按请求参数或会话的 rag_enable_reranking 决定是否重排，不读这个键，所以同一套设置下，索引状态页的测试搜索和聊天检索给出不同排序。复现：分配重排模型后调用 vfs_rag_search {enableReranking: true}，Rust 不发重排请求，结果为 RRF 序；修复后调用重排服务并按其返回排序与打分。W12 冒烟 #26（host/e2e/smoke/W12-PROGRESS.md:296）发现，其用例 10-vfs-index-worker.spec.ts:132 目前要先写 search.enable_reranking=true 才能绕过。",
+  "userVisible": "只在用户已在模型分配里配置重排模型时可见：学习中心索引状态页的测试搜索、以及 vfsRagApi 的知识库搜索会按重排模型的结果排序，分数换成重排分数，并多一次重排 API 调用。没有配置重排模型时行为与 Rust 完全相同。",
+  "dataCompat": "不改变落库数据、同步载荷或备份格式；search.enable_reranking 的值不被读写改动，旧 Rust 版与新版可以互相读取同一个库。",
+  "notes": "G3：所有调用 vfs_rag_search 的场景（vfs-repos/equivalence/rag-multimodal.json、vfs-handlers/equivalence/g3w-vfs-handlers-06.json）只分配嵌入模型，没有 reranker_model_config_id，两侧都不重排，输出不变，所以不登记选择器。以后若新增分配了重排模型的场景，差异会落在该场景 vfs_rag_search 的 $.results，届时按场景补窄选择器，不要用 scenario='*' 覆盖整个 results。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "host/plugins/vfs-handlers/tests/search.test.ts",
+      "name": "RF-W04-rag-search-rerank-flag: enableReranking reranks without the stored search.enable_reranking switch"
+    },
+    {
+      "file": "host/plugins/vfs-handlers/tests/search.test.ts",
+      "name": "RF-W04-rag-search-rerank-flag: a failing reranker keeps the RRF order"
+    }
+  ]
+}

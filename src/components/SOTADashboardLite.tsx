@@ -1,117 +1,31 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ArrowLeft,
   TrendUp,
   DownloadSimple,
-  FileText,
-  Tag,
-  Pulse,
   WarningCircle,
-  ArrowUpRight,
-  ArrowDownRight,
   SpinnerGap,
-  Image,
 } from '@phosphor-icons/react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/shad/Card';
 import { Badge } from './ui/shad/Badge';
 import { DsButton } from '@/components/ui/DsButton';
 import { TodayCommandCenter } from './dashboard/TodayCommandCenter';
+import { DESIGN } from './dashboard/design';
+import './dashboard/coreStats';
+import './dashboard/coreCharts';
+import { SlotOutlet } from '@/ui-kernel/outlet';
+import { useOptionalUiKernel } from '@/ui-kernel/react';
+import {
+  useUnattachedDashboardCharts,
+  useUnattachedDashboardStats,
+  type DashboardStatistics,
+} from '@/ui-plugins/official/dashboard/api';
 import { useAllStatistics } from '../hooks/useStatisticsData';
 import { useViewVisibility } from '@/hooks/useViewVisibility';
 import { useMobileHeader, MobileSlidingLayout } from '@/components/layout';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { fileManager } from '../utils/fileManager';
-import { 
-  AreaChart, 
-  Area, 
-  BarChart, 
-  Bar, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  ResponsiveContainer
-} from 'recharts';
-
-// 设计系统常量 - 统一从主题变量取色，兼容亮暗与调色板
-const DESIGN = {
-  colors: {
-    primary: 'hsl(var(--primary))',
-    secondary: 'hsl(var(--accent))',
-    success: 'hsl(var(--success))',
-    warning: 'hsl(var(--warning))',
-    danger: 'hsl(var(--danger))',
-    info: 'hsl(var(--info))',
-    surface: 'var(--surface-elevated)',
-    surfaceMuted: 'var(--surface-muted)',
-    textPrimary: 'var(--text-primary)',
-    textMuted: 'var(--text-muted)',
-    border: 'var(--border-default)',
-    gradients: {
-      primary: 'var(--brand-gradient)',
-      secondary: 'linear-gradient(135deg, hsl(var(--accent)) 0%, hsl(var(--primary)) 100%)',
-      success: 'linear-gradient(135deg, hsl(var(--success)) 0%, hsl(var(--success-muted)) 100%)',
-      warning: 'linear-gradient(135deg, hsl(var(--warning)) 0%, hsl(var(--warning-muted)) 100%)',
-      info: 'linear-gradient(135deg, hsl(var(--info)) 0%, hsl(var(--info-muted)) 100%)',
-      danger: 'linear-gradient(135deg, hsl(var(--danger)) 0%, hsl(var(--danger-muted)) 100%)',
-    },
-    gradientBackgrounds: {
-      primary: 'var(--brand-100)',
-      secondary: 'var(--surface-muted)',
-      success: 'hsl(var(--success-bg))',
-      warning: 'hsl(var(--warning-bg))',
-      danger: 'hsl(var(--danger-bg))',
-      info: 'hsl(var(--info-bg))',
-    },
-    chart: [
-      'hsl(var(--primary))',
-      'hsl(var(--accent))',
-      'hsl(var(--info))',
-      'hsl(var(--success))',
-      'hsl(var(--warning))',
-      'hsl(var(--danger))',
-      'var(--brand-secondary)',
-      'var(--brand-primary-light)',
-    ],
-  },
-} as const;
-
-type StatVariant = 'primary' | 'secondary' | 'info' | 'success' | 'warning' | 'danger';
-
-const STAT_VARIANTS: Record<StatVariant, { gradient: string; iconColor: string; iconBg: string }> = {
-  primary: {
-    gradient: DESIGN.colors.gradients.primary,
-    iconColor: DESIGN.colors.primary,
-    iconBg: DESIGN.colors.gradientBackgrounds.primary,
-  },
-  secondary: {
-    gradient: DESIGN.colors.gradients.secondary,
-    iconColor: DESIGN.colors.secondary,
-    iconBg: DESIGN.colors.gradientBackgrounds.secondary,
-  },
-  info: {
-    gradient: DESIGN.colors.gradients.info,
-    iconColor: DESIGN.colors.info,
-    iconBg: DESIGN.colors.gradientBackgrounds.info,
-  },
-  success: {
-    gradient: DESIGN.colors.gradients.success,
-    iconColor: DESIGN.colors.success,
-    iconBg: DESIGN.colors.gradientBackgrounds.success,
-  },
-  warning: {
-    gradient: DESIGN.colors.gradients.warning,
-    iconColor: DESIGN.colors.warning,
-    iconBg: DESIGN.colors.gradientBackgrounds.warning,
-  },
-  danger: {
-    gradient: DESIGN.colors.gradients.danger,
-    iconColor: DESIGN.colors.danger,
-    iconBg: DESIGN.colors.gradientBackgrounds.danger,
-  },
-};
 
 interface SOTADashboardProps {
   onBack?: () => void;
@@ -131,6 +45,9 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
   const { t } = useTranslation('data');
   const { t: tCommon } = useTranslation('common');
   const { isSmallScreen } = useBreakpoint();
+  const platform = useOptionalUiKernel()?.platform.kind;
+  const unattachedStats = useUnattachedDashboardStats();
+  const unattachedCharts = useUnattachedDashboardCharts();
   // P3-1：总览是抽屉「管理」分组的平级目的地，顶栏应与其它平级页
   // （制卡任务/技能管理/模板管理）一致显示 ☰ 打开抽屉，而不是"返回"箭头
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -199,130 +116,9 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
   }, [data, t]);
   exportDataRef.current = exportData;
 
-  // 格式化数字
-  const formatNumber = useCallback((num: number) => {
-    if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`;
-    if (num >= 1000) return `${(num / 1000).toFixed(1)}K`;
-    return num.toString();
-  }, []);
-
-  const formatStorageFromKB = useCallback((kb?: number | null) => {
-    if (typeof kb !== 'number' || Number.isNaN(kb) || kb <= 0) {
-      return '0 KB';
-    }
-    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-    let bytes = kb * 1024;
-    let idx = 0;
-    while (bytes >= 1024 && idx < units.length - 1) {
-      bytes /= 1024;
-      idx += 1;
-    }
-    const precision = idx === 0 ? 0 : 1;
-    return `${bytes.toFixed(precision)} ${units[idx]}`;
-  }, []);
-
-  // 准备图表数据
-  const chartData = useMemo(() => {
-    if (!data?.enhanced) return null;
-
-    const tagStats = Object.entries(data.enhanced.basic_stats?.tag_stats || {})
-      .map(([name, value]) => ({ name, value: Number(value) || 0 }))
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 8);
-
-    const monthlyTrend = Array.isArray((data.enhanced as any).monthly_trend)
-      ? (data.enhanced as any).monthly_trend.map((item: any) => ({
-          month: typeof item?.month === 'string' ? item.month : '—',
-          count: Number(item?.count ?? 0) || 0,
-        }))
-      : [];
-
-    return {
-      tags: tagStats,
-      monthlyTrend,
-    };
-  }, [data]);
-
-  const enhancedStats = data?.enhanced as any;
-
-  const recentAdditions = Number(enhancedStats?.recent_additions ?? 0);
-  const qualityScore = Number(enhancedStats?.quality_score ?? 0);
-  const totalImages = Number(enhancedStats?.image_stats?.total_files ?? 0);
-
-  const imageStorageDisplay = useMemo(() => {
-    const totalBytes = enhancedStats?.image_stats?.total_size_bytes;
-    if (typeof totalBytes !== 'number' || Number.isNaN(totalBytes) || totalBytes <= 0) {
-      return null;
-    }
-    return formatStorageFromKB(totalBytes / 1024);
-  }, [enhancedStats, formatStorageFromKB]);
-
-  // 统计卡片组件
-  const StatCard = ({
-    title,
-    value,
-    subtitle,
-    icon: Icon,
-    variant,
-    trend,
-    isEstimated = false,
-  }: {
-    title: string;
-    value: string | number;
-    subtitle: string;
-    icon: any;
-    variant: StatVariant;
-    trend?: number;
-    isEstimated?: boolean;
-  }) => {
-    const palette = STAT_VARIANTS[variant] ?? STAT_VARIANTS.primary;
-    const trendColor =
-      trend !== undefined && trend !== 0
-        ? trend > 0
-          ? DESIGN.colors.success
-          : DESIGN.colors.danger
-        : undefined;
-    const displayValue = typeof value === 'number' ? formatNumber(value) : value;
-    return (
-      <Card className="overflow-hidden">
-        <CardHeader className="pb-2">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div
- className="w-8 h-8 rounded-md flex items-center justify-center"
-                style={{ background: palette.iconBg }}
-              >
-                <Icon size={20} color={palette.iconColor} />
-              </div>
-              <CardTitle className="text-base">
-                {title}
-                {isEstimated && (
-                  <span
-                    className="ml-2 text-xs font-normal"
-                    style={{ color: DESIGN.colors.textMuted }}
-                  >
-                    {t('stats_cards.estimated_label')}
-                  </span>
-                )}
-              </CardTitle>
-            </div>
-            {trend !== undefined && trend !== 0 && (
-              <span className="text-xs flex items-center gap-1" style={{ color: trendColor }}>
-                {trend > 0 ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
-                {Math.abs(trend)}%
-              </span>
-            )}
-          </div>
-          <CardDescription>{subtitle}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="text-2xl font-semibold" style={{ color: DESIGN.colors.textPrimary }}>
-            {displayValue}
-          </div>
-        </CardContent>
-      </Card>
-    );
-  };
+  const enhancedStats = data?.enhanced as DashboardStatistics | undefined;
+  const onPlatform = (entry: { value: { platforms?: readonly string[] } }) =>
+    !platform || !entry.value.platforms || entry.value.platforms.includes(platform);
 
   // 渲染统一内容 - 显示所有模块的统计数据
   const renderUnifiedContent = () => {
@@ -386,105 +182,40 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
         {/* ★ 5.1 今日指挥中心：可行动入口置顶，统计下沉 */}
         <TodayCommandCenter onNavigate={onNavigate} />
 
-        {/* 所有统计卡片平铺展示 */}
+        {/* 所有统计卡片平铺展示：`dashboard.stats`（官方卡片见 ./dashboard/coreStats） */}
         <div className="sota-stats-grid">
-          {/* 学习记录统计 */}
-          <StatCard
-            title={t('stats_cards.learning_records')}
-            value={enhancedStats?.basic_stats?.total_mistakes || 0}
-            subtitle={t('stats_cards.learning_records_subtitle')}
-            icon={FileText}
-            variant="primary"
-            trend={enhancedStats?.recent_growth}
-/>
-          {/* ★ 占位卡治理（2026-06）：未上线功能不渲染占位卡（科目统计、统一回顾统计已移除） */}
-          <StatCard
-            title={t('stats_cards.tags_count')}
-            value={Object.keys(enhancedStats?.basic_stats?.tag_stats || {}).length}
-            subtitle={t('stats_cards.tags_count_subtitle')}
-            icon={Tag}
-            variant="info"
-/>
-          <StatCard
-            title={t('stats_cards.recent_additions')}
-            value={recentAdditions}
-            subtitle={t('stats_cards.recent_additions_subtitle')}
-            icon={TrendUp}
-            variant="success"
-/>
-
-          <StatCard
-            title={t('stats_cards.data_quality')}
-            value={qualityScore}
-            subtitle={t('stats_cards.data_quality_subtitle')}
-            icon={Pulse}
-            variant="secondary"
-/>
-
-          <StatCard
-            title={t('stats_cards.resource_files')}
-            value={totalImages}
-            subtitle={imageStorageDisplay ? t('stats_cards.resource_files_subtitle_with_size', { size: imageStorageDisplay }) : t('stats_cards.resource_files_subtitle')}
-            icon={Image}
-            variant="info"
-/>
-
+          <SlotOutlet
+            name="dashboard.stats"
+            entries={unattachedStats}
+            filter={onPlatform}
+            render={(entry) => {
+              const Stat = entry.value.component;
+              return <Stat statistics={enhancedStats} />;
+            }}
+          />
         </div>
 
-        {/* 图表区域 */}
-        {chartData && (
+        {/* 图表区域：`dashboard.charts`（官方图表见 ./dashboard/coreCharts）；没有一张图有数据时显示空卡片 */}
+        {enhancedStats ? (
           <div className="sota-charts">
-            {chartData.monthlyTrend.length > 0 && (
-              <div className="sota-chart-card">
-                <h3>
-                  <TrendUp size={20} />
-                  {t('charts.data_trend')}
-                </h3>
-                <ResponsiveContainer width="100%" height={300}>
-                  <AreaChart data={chartData.monthlyTrend} margin={{ top: 16, right: 24, left: 0, bottom: 8 }}>
-                    <defs>
-                      <linearGradient id="trendGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor={DESIGN.colors.primary} stopOpacity={0.45} />
-                        <stop offset="95%" stopColor={DESIGN.colors.primary} stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke={DESIGN.colors.border} />
-                    <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-                    <YAxis allowDecimals={false} tick={{ fontSize: 12 }} width={40} />
-                    <Tooltip />
-                    <Area type="monotone" dataKey="count" stroke={DESIGN.colors.primary} fill="url(#trendGradient)" strokeWidth={2} />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            )}
-
-            {chartData.tags.length > 0 && (
-              <div className="sota-chart-card">
-                <h3>
-                  <Tag size={20} />
-                  {t('charts.top_tags')}
-                </h3>
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={chartData.tags} margin={{ top: 16, right: 24, left: 0, bottom: 32 }}>
-                    <CartesianGrid vertical={false} stroke={DESIGN.colors.border} />
-                    <XAxis dataKey="name" interval={0} angle={-20} textAnchor="end" height={60} tick={{ fontSize: 12 }} />
-                    <YAxis allowDecimals={false} tick={{ fontSize: 12 }} width={40} />
-                    <Tooltip />
-                    <Bar dataKey="value" fill={DESIGN.colors.secondary} radius={[6, 6, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            )}
-
-            {chartData.monthlyTrend.length === 0 && chartData.tags.length === 0 && (
-              <div className="sota-chart-card sota-chart-empty">
-                <TrendUp size={24} className="sota-chart-empty__icon" />
-                <p className="sota-chart-empty__title">{t('charts.empty')}</p>
-                <p className="sota-chart-empty__hint">{t('charts.empty_hint')}</p>
-              </div>
-            )}
+            <SlotOutlet
+              name="dashboard.charts"
+              entries={unattachedCharts}
+              filter={(entry) => onPlatform(entry) && (entry.value.hasData?.(enhancedStats) ?? true)}
+              render={(entry) => {
+                const Chart = entry.value.component;
+                return <Chart statistics={enhancedStats} />;
+              }}
+              empty={
+                <div className="sota-chart-card sota-chart-empty">
+                  <TrendUp size={24} className="sota-chart-empty__icon" />
+                  <p className="sota-chart-empty__title">{t('charts.empty')}</p>
+                  <p className="sota-chart-empty__hint">{t('charts.empty_hint')}</p>
+                </div>
+              }
+            />
           </div>
-        )}
+        ) : null}
       </div>
     );
   };

@@ -9,16 +9,17 @@
   overflow: hidden;
 }
 
-/* 内联状态条（加载失败分类文案 + 操作，PreviewStatus 风格自实现） */
+/* 内联状态条（加载失败分类文案 + 操作，无框高定单行/自适应提示条） */
 .pdf-reader-status {
   display: flex;
   align-items: flex-start;
   gap: 0.625rem;
-  margin: 0.75rem 1rem 0;
-  padding: 0.625rem 0.75rem;
-  background: hsl(var(--destructive) / 0.08);
-  border: 1px solid hsl(var(--destructive) / 0.25);
-  border-radius: 0.5rem;
+  margin: 0;
+  padding: 0.5rem 0.875rem;
+  background: hsl(var(--destructive) / 0.04);
+  border-bottom: 1px solid hsl(var(--border) / 0.35);
+  border-left: 2px solid hsl(var(--destructive));
+  border-radius: 0;
   color: hsl(var(--foreground));
   font-size: 0.8125rem;
   line-height: 1.5;
@@ -70,11 +71,12 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 4rem;
-  height: 4rem;
-  margin-bottom: 1.25rem;
-  border-radius: 9999px;
-  background: hsl(var(--muted) / 0.6);
+  width: 3.25rem;
+  height: 3.25rem;
+  margin-bottom: 1rem;
+  border-radius: 0.75rem;
+  border: 1px solid hsl(var(--border) / 0.35);
+  background: hsl(var(--foreground) / 0.025);
 }
 
 .pdf-empty-state .empty-icon {
@@ -114,9 +116,9 @@
     flex-wrap: wrap;
   }
 
-  /* 收窄容器留白，把宽度还给正文（页面自身还有内容视口 padding） */
+  /* 去除外层套娃留白，由 EnhancedPdfViewer 内部视口统一管理留白 */
   .pdf-viewer-container {
-    padding: 0.25rem;
+    padding: 0;
   }
 }
 

@@ -1,0 +1,24 @@
+{
+  "id": "RF-W08-sealed-archive-implicit-parent-dirs",
+  "kind": "deliberate",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T09:20+08:00",
+  "title": "加密备份的内层归档里，纯父目录条目被跳过，兼容早期 Electron 版导出",
+  "rust": {
+    "file": "src-tauri/crates/dstu-sync/src/data_governance/backup/zip_export.rs",
+    "line": 1630,
+    "behavior": "validate_secrets_archive 遇到任何目录条目都报 '密封载荷不允许包含目录条目'"
+  },
+  "fix": {
+    "files": ["host/plugins/backup/src/zip-policy.ts"],
+    "behavior": "目录条目本身属于敏感路径（crypto/、.secure/ 等）且确实是后面某个文件的父目录时跳过；其他目录条目仍按 Rust 拒绝。新版导出的内层归档仍不含目录条目"
+  },
+  "evidence": "早期 Electron 版用 JSZip（createFolders）生成内层归档，会隐式写入 crypto/、crypto/.secure/ 目录条目；Rust 规则会让这些用户已有的加密备份永远无法导入。按产品决策登记。",
+  "userVisible": "能：早期 Electron 版导出的加密备份可以导入；Rust 版会拒绝同一个文件。",
+  "dataCompat": "不改变新版写出的格式（内层归档仍无目录条目，旧 Rust 版可读）；只是放宽读取，额外接受早期 Electron 版产物。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    { "file": "host/plugins/backup/tests/rust-fixes.test.ts", "name": "RF-W08-sealed-archive-implicit-parent-dirs: implicit parent directory entries from early Electron sealed archives are skipped" }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "id": "RF-W09-stale-model-cache-context-budget",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main-agent",
+  "approvedAt": "2026-11-07T13:00:00+08:00",
+  "title": "发送时按实际使用的模型和最新模型配置计算输入预算，不再落到 100k 兜底窗口（#25）",
+  "rust": {
+    "file": "src/features/chat/adapters/tauri/modelSelection.ts",
+    "line": 26,
+    "behavior": "Rust 快照 21c9d808 的前端与当前相同：发送前 ensureModelMetadataReady 只按会话自己的选择（model2OverrideId || modelId）非强制加载模型缓存，缓存 TTL 5 分钟（useAvailableModels.ts:95），唯一的失效监听在 useAvailableModels hook 里（只有 AdvancedPanel 挂载时存在）；buildSendOptions（sendOptions.ts:166）随后按同一个选择算 contextLimit，实际模型到 applyRuntimeModelSelection 才解析。跟随全局默认模型的会话 modelId 为空（common.ts:193），预算总按 DEFAULT_FALLBACK_CONTEXT_WINDOW 100k 算（contextLimit 83808）；设置页新增或修改模型后 5 分钟内发送也找不到或读到旧的 contextWindow"
+  },
+  "fix": {
+    "files": [
+      "src/features/chat/hooks/useAvailableModels.ts",
+      "src/features/chat/adapters/tauri/modelSelection.ts"
+    ],
+    "behavior": "useAvailableModels.ts 在模块级监听 api_configurations_changed 清缓存，不依赖 hook 是否挂载；ensureModelMetadataReady 在缓存里找不到该模型时强制刷新一次；normalizeChatModelSelection 解析出实际模型后先确保它的元数据就绪；applyRuntimeModelSelection 在写回实际模型后经 applyRuntimeContextBudget 按该模型重算 options.contextLimit（用户设置的上下文上限仍然优先），截断与 IPC 都用重算后的值；重试与变体重试指定其他模型时（messageOperations.ts executeRetry、variantOperations.ts 的 modelOverride 分支）同样先确保该模型元数据就绪再重算，Rust 版这里只按指定模型重算思维链参数，预算仍是会话模型的"
+  },
+  "evidence": "W12-PROGRESS #25：冒烟 ⑥ 第 7 例 wire 中 10 次 chat_v2_send_message 的 options.contextLimit 都是 83808，同一渲染进程 get_api_configurations 已返回 contextWindow 1048576，Host 以“上下文预算不足（估算 175464，上限 83808）”拒发加载全部技能后的工具轮。单测复现同一数值：跟随全局默认模型的会话、缓存未过期时新增的模型都得到 83808，聊天页未挂载时把窗口从 128k 改成 1M 后仍按 128k 算。",
+  "userVisible": "能：长上下文模型（如 1M 窗口）在跟随全局默认、或刚在设置页新增或修改后，不再被按 100k 窗口截断上下文或被 Host 以上下文预算不足拒发；小窗口模型也不再被 100k 高估。用户自己设置了上下文上限时不变。",
+  "dataCompat": "只改前端发送时计算的 contextLimit 数值；不改 IPC 字段、落库数据、同步载荷与备份格式。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "src/features/chat/adapters/__tests__/TauriAdapter.contextBudget.test.ts",
+      "name": "RF-W09-stale-model-cache-context-budget: a session on the global default model budgets against that model's configured window"
+    }
+  ]
+}

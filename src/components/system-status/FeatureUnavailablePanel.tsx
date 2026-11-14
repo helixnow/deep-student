@@ -6,6 +6,7 @@ import { DsButton } from '@/components/ui/DsButton';
 import { useSystemStatusStore } from '@/stores/systemStatusStore';
 import { setPendingSettingsRoute } from '@/utils/pendingSettingsTab';
 import { APP_EVENTS, dispatchAppEvent } from '@/events';
+import { useComponentReasonText } from './useComponentReasonText';
 
 interface FeatureUnavailablePanelProps {
   component: string;
@@ -17,6 +18,7 @@ export const FeatureUnavailablePanel: React.FC<FeatureUnavailablePanelProps> = (
   title,
 }) => {
   const { t } = useTranslation(['common', 'data']);
+  const reasonText = useComponentReasonText();
   const issue = useSystemStatusStore((state) =>
     state.componentHealth.find((entry) => entry.component === component),
   );
@@ -48,7 +50,7 @@ export const FeatureUnavailablePanel: React.FC<FeatureUnavailablePanelProps> = (
               </span>
             </div>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              {issue.reason || t('common:maintenance.component_unavailable_description')}
+              {reasonText(issue.reason) ?? t('common:maintenance.component_unavailable_description')}
             </p>
             {issue.dependency && (
               <p className="mt-2 text-xs text-muted-foreground">

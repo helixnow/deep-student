@@ -318,7 +318,7 @@ describe('NotesBacklinksPanel', () => {
     expect(localStorage.getItem('notes-backlinks-panel:more-context')).toBe('1');
   });
 
-  it('opens a resolved linked note and refreshes all cached note contents on request', async () => {
+  it('opens a resolved linked note without a manual refresh control', async () => {
     const { onOpenResource } = renderPanel();
     await screen.findByText('出链');
 
@@ -326,9 +326,7 @@ describe('NotesBacklinksPanel', () => {
       .getByRole('button', { name: '打开 Gamma' }));
     await waitFor(() => expect(onOpenResource).toHaveBeenCalledWith(notes[2]));
 
-    fireEvent.click(screen.getByRole('button', { name: '刷新链接' }));
-    await waitFor(() => expect(getContent).toHaveBeenCalledTimes(6));
-    await waitFor(() => expect(search).toHaveBeenCalledTimes(SEARCHES_PER_LOAD * 2));
+    expect(screen.queryByRole('button', { name: '刷新链接' })).toBeNull();
   });
 
   it('limits note-content fetches to the bounded concurrency pool', async () => {

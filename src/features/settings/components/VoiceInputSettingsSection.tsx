@@ -11,6 +11,7 @@
  *   6. 运行时诊断（可折叠，默认收起）
  */
 
+import { useRefreshOnReturn } from '@/hooks/useRefreshOnReturn';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Warning,
@@ -18,7 +19,6 @@ import {
   CaretDown,
   Copy,
   CircleNotch,
-  ArrowCounterClockwise,
   GearSix,
   Trash,
   Wrench,
@@ -348,6 +348,8 @@ export function VoiceInputSettingsSection({ assignedModel, embedded = false }: V
     const nextSupport = await detectVoiceRecordingSupport();
     setSupport(nextSupport);
   }, []);
+
+  useRefreshOnReturn(refreshSupport);
 
   const refreshHistory = useCallback(async () => {
     const entries = await loadVoiceInputHistory();
@@ -803,21 +805,6 @@ export function VoiceInputSettingsSection({ assignedModel, embedded = false }: V
                         : t('settings:voice_input.diagnostics.missing', { defaultValue: 'Missing' })
                   }
                 />
-              </div>
-              <div className="flex items-center gap-2">
-                <DsButton
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    void refreshSupport();
-                  }}
-                  disabled={saving || requestingAccess}
-                  className="[@media(pointer:coarse)]:!min-h-11"
-                >
-                  <ArrowCounterClockwise size={14} />
-                  {t('settings:voice_input.refresh_support', { defaultValue: 'Refresh Support' })}
-                </DsButton>
               </div>
               <p className="text-xs leading-5 text-muted-foreground/70">
                 {t('settings:voice_input.runtime_hint', {

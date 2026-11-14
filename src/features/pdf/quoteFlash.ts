@@ -5,6 +5,8 @@
  * 匹配：去掉全部空白后比较（中文 PDF 文本层常把一句拆成多个 span，且混入空格/换行）；
  * 取引用开头 24 字（模型摘录与原文尾部常有出入），失败再退到 12 字。
  */
+import { waitForPdfTask } from './interop/pdfInteropBridge';
+
 const FLASH_CLASS = 'ds-pdf-quote-flash';
 const FLASH_MS = 2400;
 
@@ -35,9 +37,10 @@ export function findQuoteSpans(spans: readonly HTMLElement[], quote: string): HT
 }
 
 /** 等待该页文本层出现后闪烁命中片段；返回是否命中（超时 / 未命中返回 false） */
-export async function flashQuoteOnPage(root: ParentNode, pageNumber: number, quote: string, timeoutMs = 3000): Promise<boolean> {
+export async function flashQuoteOnPage(root: ParentNode, pageNumber: number, quote: string, timeoutMs = 3000, signal?: AbortSignal): Promise<boolean> {
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
+    if (signal?.aborted) return false;
     const page = root.querySelector(`[data-page-number="${pageNumber}"]`);
     const spans = page ? Array.from(page.querySelectorAll<HTMLElement>('.textLayer span, .react-pdf__Page__textContent span')) : [];
     if (spans.length > 0) {
@@ -45,10 +48,10 @@ export async function flashQuoteOnPage(root: ParentNode, pageNumber: number, quo
       if (hits.length === 0) return false;
       hits[0].scrollIntoView({ block: 'center', behavior: 'smooth' });
       hits.forEach((span) => span.classList.add(FLASH_CLASS));
-      window.setTimeout(() => hits.forEach((span) => span.classList.remove(FLASH_CLASS)), FLASH_MS);
+      void waitForPdfTask(FLASH_MS, signal).then(() => hits.forEach((span) => span.classList.remove(FLASH_CLASS)));
       return true;
     }
-    await new Promise((resolve) => setTimeout(resolve, 120));
+    await waitForPdfTask(120, signal);
   }
   return false;
 }

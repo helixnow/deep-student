@@ -1,0 +1,38 @@
+{
+  "domain": "storage",
+  "commands": [
+    "mark_data_space_pending_switch_to_inactive",
+    "get_data_space_info"
+  ],
+  "scenarios": [
+    {
+      "id": "storage.data_space.seeded.mark_pending_success",
+      "seed": "f3-inactive-slot-data-w0",
+      "steps": [
+        {
+          "cmd": "get_data_space_info",
+          "args": {}
+        },
+        {
+          "cmd": "mark_data_space_pending_switch_to_inactive",
+          "args": {}
+        },
+        {
+          "cmd": "mark_data_space_pending_switch_to_inactive",
+          "args": {}
+        },
+        {
+          "cmd": "get_data_space_info",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

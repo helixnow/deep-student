@@ -12,9 +12,9 @@ afterEach(() => document.querySelectorAll('[data-chrome-test]').forEach((element
 describe('notes preset CSS', () => {
   it.each([
     // [开关, --notes-content-max-w, --notes-block-gap, --notes-body-size]：版心对齐 Notion 默认 708px
-    ['default', 'calc(var(--notes-text-w) + 2 * var(--notes-gutter))', '0.4em', 'calc(16px * var(--font-size-scale, 1))'],
+    ['default', 'calc(var(--notes-text-w) + 2 * var(--notes-gutter))', '0.55em', 'calc(16px * var(--font-size-scale, 1))'],
     ['smallText', 'calc(var(--notes-text-w) + 2 * var(--notes-gutter))', '0.35em', 'calc(14px * var(--font-size-scale, 1))'],
-    ['fullWidth', '100%', '0.4em', 'calc(16px * var(--font-size-scale, 1))'],
+    ['fullWidth', '100%', '0.55em', 'calc(16px * var(--font-size-scale, 1))'],
   ])('applies %s to the actual shell and keeps that column in focus mode', (toggle, maxW, gap, size) => {
     const style = document.createElement('style');
     style.dataset.chromeTest = '';

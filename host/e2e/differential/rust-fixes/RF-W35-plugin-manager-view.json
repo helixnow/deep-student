@@ -1,0 +1,24 @@
+{
+  "id": "RF-W35-plugin-manager-view",
+  "kind": "deliberate",
+  "status": "proposed",
+  "title": "新增独立的插件管理视图：官方/社区分组、版本/平台/真实运行状态、降级与错误预算原因、启停与卸载",
+  "rust": {
+    "file": "src/features/settings/components/plugins/PluginsTab.tsx",
+    "behavior": "Rust 版设置「插件」页只管理内置渠道插件：plugin_list 返回 id/label/state/enabled，页面按固定字段显示启停与绑定，没有官方 UI 插件清单、社区插件、平台信息、降级原因，也没有统一的插件管理入口"
+  },
+  "fix": {
+    "files": ["src/features/plugin-manager/PluginManagerPanel.tsx"],
+    "behavior": "PluginManagerPanel 展示官方/社区、版本/平台、启用意图与实际运行状态、结构化降级与错误预算。真实 HostPluginManagerAdapter 调用 W01 七个 plugin:manager 命令；createPluginManagerSection 已经 dstu.ui.settings 的懒贡献点挂载，生产必传真实 ctx.ui.hostStatus，不做乐观更新。"
+  },
+  "evidence": "host-manifest.md 的 Implemented command handoff；host-adapter.test.ts 和 production.test.tsx；real-host.host-e2e.tsx 通过 createTestHost、真实 profile/账本/ZIP 存储从界面完成示例包完整生命周期。四门原始日志见 W35.md §9：frontend-invoke/ui-boundaries/plugin-manifest 零新增；生产 slot-snapshot 因新增插件管理入口等待 W16 接受预期变化，未改 golden。",
+  "userVisible": "设置现已多出「插件管理」（Package/teal），原微信渠道插件页不改。可以安装、确认精确权限、启用/停用、配置、卸载社区插件；配置仅在 Host 已加载并投影 schema 时可用。",
+  "dataCompat": "不改变落库数据、同步载荷与备份格式；profile 与 plugins.lock.json 的写入仍由 W01/W34 负责，本视图只读快照并发送领域命令",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "src/features/plugin-manager/__tests__/PluginManagerPanel.test.tsx",
+      "name": "RF-W35-plugin-manager-view: lists official and community plugins with id, version, platform and runtime state"
+    }
+  ]
+}

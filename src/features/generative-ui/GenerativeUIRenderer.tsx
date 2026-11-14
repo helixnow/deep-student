@@ -2,6 +2,7 @@ import React, { useEffect, useId, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { generativeUIRegistry } from './registry';
+import { useOptionalSlot } from '@/ui-kernel/react';
 import {
   generativeUIIntentSchema,
   MAX_GENERATIVE_UI_BLOCKS,
@@ -12,8 +13,10 @@ import {
   isBlockPropsValidationFailure,
   resolveGenerativeLayout,
   layoutGridClassName,
+  recoverGenerativeUIIntent,
   type ActionBarProps,
 } from './schema';
+import { normalizeGenerativeBlocks } from './normalizeBlockProps';
 import { assignStableBlockIds } from './utils/assignStableBlockIds';
 import { classifyGenerativeUIParseErrors } from './utils/classifyGenerativeUIParseErrors';
 import { coercePartialIntent } from './utils/coercePartialIntent';
@@ -120,8 +123,37 @@ function resolveDisplayIntent(
       };
     }
 
-    const snapshotEligible =
-      !isStreaming && generativeUIIntentSchema.safeParse(input).success;
+    const parsedObject = generativeUIIntentSchema.safeParse(input);
+    const snapshotEligible = !isStreaming && parsedObject.success;
+
+    // 整份 schema 失败时先尝试块级恢复（LLM 常输出多余版本号 / 个别块缺字段）：
+    // 只要还能恢复出至少一个合法块，就按可渲染处理，避免整块降级成解析错误。
+    if (!parsedObject.success) {
+      const recoveredIntent = recoverGenerativeUIIntent(input);
+      if (recoveredIntent && recoveredIntent.intent.blocks.length > 0) {
+        let recoveredOverflow: number | undefined;
+        if (recoveredIntent.truncated) {
+          const rawBlocks = (input as { blocks?: unknown }).blocks;
+          if (Array.isArray(rawBlocks)) {
+            const overflow = rawBlocks.length - recoveredIntent.intent.blocks.length;
+            recoveredOverflow = overflow > 0 ? overflow : undefined;
+          }
+        }
+        return {
+          intent: recoveredIntent.intent as GenerativeUIIntent,
+          warnings: mergeWarnings(
+            extra,
+            recoveredIntent.warnings,
+            recoveredIntent.truncated ? [BLOCKS_TRUNCATED_WARNING] : undefined,
+          ),
+          parseError: null,
+          truncatedCount: explicitCount ?? recoveredOverflow,
+          streamFallback: false,
+          snapshotEligible: false,
+        };
+      }
+    }
+
     const capped = capIntentBlocks(input);
     const warnings = mergeWarnings(
       extra,
@@ -241,6 +273,7 @@ export function GenerativeUIRenderer({
   className,
 }: GenerativeUIRendererProps) {
   const { t } = useTranslation('generativeUi');
+  const contributedComponents = useOptionalSlot('genui.components');
   const viewportCompact = useGenerativeUICompact();
   const compact = viewportCompact || forceCompact;
   const reducedMotion = usePrefersReducedMotion();
@@ -264,7 +297,13 @@ export function GenerativeUIRenderer({
     [actionHandlers, onAction],
   );
 
-  const displayIntent = resolved.intent;
+  const resolvedIntent = resolved.intent;
+  // 别名归一化 + 多卡闪卡展开：必须在补 id 之前，展开出来的块才会各自拿到稳定 id。
+  const displayIntent = useMemo(() => {
+    if (!resolvedIntent) return null;
+    const blocks = normalizeGenerativeBlocks(resolvedIntent.blocks);
+    return blocks === resolvedIntent.blocks ? resolvedIntent : { ...resolvedIntent, blocks };
+  }, [resolvedIntent]);
   const keyedIntent = useMemo(
     () => (displayIntent ? assignStableBlockIds(displayIntent) : null),
     [displayIntent],
@@ -388,7 +427,9 @@ export function GenerativeUIRenderer({
             </GenerativeBlockSlot>
           );
 
-          const config = generativeUIRegistry.get(block.type);
+          const config = contributedComponents
+            ? contributedComponents.find((entry) => entry.key === block.type)?.value
+            : generativeUIRegistry.get(block.type);
           if (!config) {
             return slot(
               <Alert

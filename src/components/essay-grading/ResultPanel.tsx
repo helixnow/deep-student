@@ -291,7 +291,7 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
   return (
     <div className="flex flex-col h-full min-h-0 flex-1 basis-1/2 min-w-0 overflow-hidden transition-all duration-200">
       {!headerInTabs && (
-        <div className="flex h-[41px] shrink-0 items-center justify-between border-b border-border/30 px-3 [@media(pointer:coarse)]:h-11 sm:px-4">
+        <div className="flex h-[41px] shrink-0 items-center justify-between border-b border-border/35 px-3 [@media(pointer:coarse)]:h-11 sm:px-4">
           <div className="flex items-center gap-3 min-w-0">
             <div className="flex items-center gap-2 text-sm text-foreground/70 shrink-0">
               <Pen size={14} />
@@ -348,10 +348,10 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
         )}
       </div>
 
-      {/* 生成卡片：常显次级动作条（移动端整行，桌面右对齐），不藏进 hover 层 */}
+      {/* 生成卡片与入错题本：收进底部紧凑单行（禁用原因走 title 提示，不额外撑高第二行说明文字） */}
       {(onGenerateCards || onSaveMistakes) && !showEmptyState && (
-        <div className="shrink-0 border-t border-border/30 px-3 py-2 sm:px-4">
-          <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+        <div className="shrink-0 border-t border-border/25 px-3 py-1.5 sm:px-4">
+          <div className="flex flex-wrap items-center justify-end gap-2">
           {onSaveMistakes && (
             <DsButton
               variant="secondary"
@@ -359,7 +359,7 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
               onClick={onSaveMistakes}
               disabled={Boolean(generateCardsDisabledReason) || Boolean(isSavingMistakes)}
               title={generateCardsDisabledReason ?? undefined}
-              className="w-full justify-center sm:w-auto [@media(pointer:coarse)]:!min-h-[44px]"
+              className="[@media(pointer:coarse)]:!min-h-[44px]"
             >
               <Notebook size={14} />
               {isSavingMistakes
@@ -374,7 +374,7 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
             onClick={onGenerateCards}
             disabled={Boolean(generateCardsDisabledReason) || Boolean(isGeneratingCards)}
             title={generateCardsDisabledReason ?? undefined}
-            className="w-full justify-center sm:w-auto [@media(pointer:coarse)]:!min-h-[44px]"
+            className="[@media(pointer:coarse)]:!min-h-[44px]"
           >
             <Cards size={14} />
             {isGeneratingCards
@@ -383,11 +383,6 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
           </DsButton>
           )}
           </div>
-          {generateCardsDisabledReason && (
-            <p className="mt-1.5 text-xs text-muted-foreground sm:text-right">
-              {generateCardsDisabledReason}
-            </p>
-          )}
         </div>
       )}
     </div>

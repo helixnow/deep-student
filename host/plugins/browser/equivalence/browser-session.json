@@ -1,0 +1,296 @@
+{
+  "domain": "browser",
+  "commands": ["browser_open_session","browser_navigate","browser_back","browser_forward","browser_reload","browser_get_state","browser_close","browser_focus","browser_release_surface_focus","browser_set_surface_bounds","browser_set_surface_visibility","browser_get_surface_host_mode","browser_take_over","browser_set_input_files","browser_list_downloads","browser_list_task_downloads","save_setting"],
+  "scenarios": [
+    {
+      "id": "browser.gates.default_closed.all_gated_commands_and_ungated",
+      "seed": "empty",
+      "mcp": {"scripts":[]},
+      "steps": [
+        {"cmd":"browser_get_surface_host_mode","args":{}},
+        {"cmd":"browser_open_session","args":{"url":"${mcp.url}/wave0-browser/a","displayName":null,"chatSessionId":null,"reuseExisting":null,"fromAgent":null},"expect":"error"},
+        {"cmd":"browser_navigate","args":{"sessionId":"bs_wave0_missing","url":"${mcp.url}/wave0-browser/b","replace":null,"fromAgent":null},"expect":"error"},
+        {"cmd":"browser_back","args":{"sessionId":"bs_wave0_missing"},"expect":"error"},
+        {"cmd":"browser_forward","args":{"sessionId":"bs_wave0_missing"},"expect":"error"},
+        {"cmd":"browser_reload","args":{"sessionId":"bs_wave0_missing","hard":null},"expect":"error"},
+        {"cmd":"browser_get_state","args":{"sessionId":null},"expect":"error"},
+        {"cmd":"browser_focus","args":{"sessionId":null},"expect":"error"},
+        {"cmd":"browser_release_surface_focus","args":{"sessionId":"bs_wave0_missing"},"expect":"error"},
+        {"cmd":"browser_set_surface_bounds","args":{"sessionId":"bs_wave0_missing","x":10,"y":20,"width":800,"height":600,"viewportWidth":1280,"viewportHeight":800,"occlusions":null,"inputOcclusions":null,"sequence":1},"expect":"error"},
+        {"cmd":"browser_set_surface_visibility","args":{"sessionId":"bs_wave0_missing","visible":true,"focus":null},"expect":"error"},
+        {"cmd":"browser_take_over","args":{},"expect":"error"},
+        {"cmd":"browser_set_input_files","args":{"sessionId":"bs_wave0_missing","ref":"e1","files":["/tmp/wave0-missing.txt"]},"expect":"error"},
+        {"cmd":"browser_list_downloads","args":{"sessionId":"bs_wave0_missing"},"expect":"error"},
+        {"cmd":"browser_list_task_downloads","args":{"chatSessionId":"chat_wave0"},"expect":"error"},
+        {"cmd":"browser_close","args":{"sessionId":null}},
+        {"cmd":"browser_close","args":{"sessionId":"bs_wave0_missing"},"expect":"error"}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "browser.gates.workbench_mode_false",
+      "seed": "empty",
+      "mcp": {"scripts":[]},
+      "steps": [
+        {"cmd":"save_setting","args":{"key":"desktop.workbenchBrowserEnabled","value":"true"}},
+        {"cmd":"save_setting","args":{"key":"feature_flags.config","value":"{\"ui.workbench_browser\":{\"name\":\"ui.workbench_browser\",\"description\":\"wave0 ui.workbench_browser\",\"state\":\"Enabled\",\"category\":\"ui\",\"dependencies\":[],\"min_version\":null,\"max_version\":null,\"rollout_percentage\":null,\"created_at\":\"2026-01-01T00:00:00Z\",\"updated_at\":\"2026-01-01T00:00:00Z\"}}"}},
+        {"cmd":"save_setting","args":{"key":"desktop.workbenchMode","value":" false "}},
+        {"cmd":"browser_open_session","args":{"url":"${mcp.url}/wave0-browser/a","displayName":null,"chatSessionId":null,"reuseExisting":null,"fromAgent":null},"expect":"error"},
+        {"cmd":"browser_list_task_downloads","args":{"chatSessionId":"chat_wave0"},"expect":"error"}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "browser.gates.browser_enabled_truthy_variants",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"save_setting","args":{"key":"feature_flags.config","value":"{\"ui.workbench_browser\":{\"name\":\"ui.workbench_browser\",\"description\":\"wave0 ui.workbench_browser\",\"state\":\"Enabled\",\"category\":\"ui\",\"dependencies\":[],\"min_version\":null,\"max_version\":null,\"rollout_percentage\":null,\"created_at\":\"2026-01-01T00:00:00Z\",\"updated_at\":\"2026-01-01T00:00:00Z\"}}"}},
+        {"cmd":"save_setting","args":{"key":"desktop.workbenchBrowserEnabled","value":"off"}},
+        {"cmd":"browser_list_task_downloads","args":{"chatSessionId":"chat_wave0"},"expect":"error"},
+        {"cmd":"save_setting","args":{"key":"desktop.workbenchBrowserEnabled","value":" YES "}},
+        {"cmd":"browser_list_task_downloads","args":{"chatSessionId":"chat_wave0"}},
+        {"cmd":"save_setting","args":{"key":"desktop.workbenchBrowserEnabled","value":"1"}},
+        {"cmd":"browser_list_task_downloads","args":{"chatSessionId":"chat_wave0"}},
+        {"cmd":"save_setting","args":{"key":"desktop.workbenchBrowserEnabled","value":""}},
+        {"cmd":"browser_list_task_downloads","args":{"chatSessionId":"chat_wave0"},"expect":"error"}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "browser.gates.feature_flag_disabled",
+      "seed": "empty",
+      "mcp": {"scripts":[]},
+      "steps": [
+        {"cmd":"save_setting","args":{"key":"desktop.workbenchBrowserEnabled","value":"true"}},
+        {"cmd":"save_setting","args":{"key":"feature_flags.config","value":"{\"ui.workbench_browser\":{\"name\":\"ui.workbench_browser\",\"description\":\"wave0 ui.workbench_browser\",\"state\":\"Disabled\",\"category\":\"ui\",\"dependencies\":[],\"min_version\":null,\"max_version\":null,\"rollout_percentage\":null,\"created_at\":\"2026-01-01T00:00:00Z\",\"updated_at\":\"2026-01-01T00:00:00Z\"}}"}},
+        {"cmd":"browser_open_session","args":{"url":"${mcp.url}/wave0-browser/a","displayName":null,"chatSessionId":null,"reuseExisting":null,"fromAgent":null},"expect":"error"},
+        {"cmd":"browser_take_over","args":{},"expect":"error"}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "browser.gates.feature_flags_unparseable",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"save_setting","args":{"key":"desktop.workbenchBrowserEnabled","value":"true"}},
+        {"cmd":"save_setting","args":{"key":"feature_flags.config","value":"{not json"}},
+        {"cmd":"browser_get_state","args":{"sessionId":null},"expect":"error"},
+        {"cmd":"browser_list_task_downloads","args":{"chatSessionId":"chat_wave0"},"expect":"error"}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "browser.gates.open_no_session_reads",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"save_setting","args":{"key":"desktop.workbenchBrowserEnabled","value":"true"}},
+        {"cmd":"save_setting","args":{"key":"feature_flags.config","value":"{\"ui.workbench_browser\":{\"name\":\"ui.workbench_browser\",\"description\":\"wave0 ui.workbench_browser\",\"state\":\"Enabled\",\"category\":\"ui\",\"dependencies\":[],\"min_version\":null,\"max_version\":null,\"rollout_percentage\":null,\"created_at\":\"2026-01-01T00:00:00Z\",\"updated_at\":\"2026-01-01T00:00:00Z\"}}"}},
+        {"cmd":"browser_get_state","args":{"sessionId":null}},
+        {"cmd":"browser_list_task_downloads","args":{"chatSessionId":"chat_wave0"}},
+        {"cmd":"browser_list_task_downloads","args":{"chatSessionId":""}},
+        {"cmd":"browser_close","args":{"sessionId":null}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "browser.session.lifecycle_user_mode",
+      "seed": "empty",
+      "mcp": {"scripts":[]},
+      "steps": [
+        {"cmd":"save_setting","args":{"key":"desktop.workbenchBrowserEnabled","value":"true"}},
+        {"cmd":"save_setting","args":{"key":"feature_flags.config","value":"{\"ui.workbench_browser\":{\"name\":\"ui.workbench_browser\",\"description\":\"wave0 ui.workbench_browser\",\"state\":\"Enabled\",\"category\":\"ui\",\"dependencies\":[],\"min_version\":null,\"max_version\":null,\"rollout_percentage\":null,\"created_at\":\"2026-01-01T00:00:00Z\",\"updated_at\":\"2026-01-01T00:00:00Z\"}}"}},
+        {"cmd":"browser_open_session","args":{"url":"${mcp.url}/wave0-browser/a","displayName":"Wave0 Browser","chatSessionId":"chat_wave0","reuseExisting":null,"fromAgent":null}},
+        {"cmd":"browser_get_state","args":{"sessionId":"${2.id}"}},
+        {"cmd":"browser_get_state","args":{"sessionId":null}},
+        {"cmd":"browser_back","args":{"sessionId":"${2.id}"},"expect":"error"},
+        {"cmd":"browser_forward","args":{"sessionId":"${2.id}"},"expect":"error"},
+        {"cmd":"browser_navigate","args":{"sessionId":"${2.id}","url":"${mcp.url}/wave0-browser/b","replace":null,"fromAgent":null}},
+        {"cmd":"browser_navigate","args":{"sessionId":"${2.id}","url":"${mcp.url}/wave0-browser/c","replace":false,"fromAgent":false}},
+        {"cmd":"browser_navigate","args":{"sessionId":"${2.id}","url":"${mcp.url}/wave0-browser/c-replaced","replace":true,"fromAgent":null}},
+        {"cmd":"browser_back","args":{"sessionId":"${2.id}"}},
+        {"cmd":"browser_forward","args":{"sessionId":"${2.id}"}},
+        {"cmd":"browser_forward","args":{"sessionId":"${2.id}"},"expect":"error"},
+        {"cmd":"browser_reload","args":{"sessionId":"${2.id}","hard":null}},
+        {"cmd":"browser_reload","args":{"sessionId":"${2.id}","hard":true}},
+        {"cmd":"browser_list_downloads","args":{"sessionId":"${2.id}"}},
+        {"cmd":"browser_list_task_downloads","args":{"chatSessionId":"chat_wave0"}},
+        {"cmd":"browser_list_task_downloads","args":{"chatSessionId":"chat_other"}},
+        {"cmd":"browser_close","args":{"sessionId":"${2.id}"}},
+        {"cmd":"browser_get_state","args":{"sessionId":null}},
+        {"cmd":"browser_get_state","args":{"sessionId":"${2.id}"},"expect":"error"},
+        {"cmd":"browser_close","args":{"sessionId":null}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "browser.session.navigation_blocked_and_invalid",
+      "seed": "empty",
+      "mcp": {"scripts":[]},
+      "steps": [
+        {"cmd":"save_setting","args":{"key":"desktop.workbenchBrowserEnabled","value":"true"}},
+        {"cmd":"save_setting","args":{"key":"feature_flags.config","value":"{\"ui.workbench_browser\":{\"name\":\"ui.workbench_browser\",\"description\":\"wave0 ui.workbench_browser\",\"state\":\"Enabled\",\"category\":\"ui\",\"dependencies\":[],\"min_version\":null,\"max_version\":null,\"rollout_percentage\":null,\"created_at\":\"2026-01-01T00:00:00Z\",\"updated_at\":\"2026-01-01T00:00:00Z\"}}"}},
+        {"cmd":"browser_open_session","args":{"url":"file:///etc/hostname","displayName":null,"chatSessionId":null,"reuseExisting":null,"fromAgent":null},"expect":"error"},
+        {"cmd":"browser_open_session","args":{"url":"not a url","displayName":null,"chatSessionId":null,"reuseExisting":null,"fromAgent":null},"expect":"error"},
+        {"cmd":"browser_open_session","args":{"url":"javascript:alert(1)","displayName":null,"chatSessionId":null,"reuseExisting":null,"fromAgent":null},"expect":"error"},
+        {"cmd":"browser_open_session","args":{"url":"${mcp.url}/wave0-browser/a","displayName":null,"chatSessionId":null,"reuseExisting":null,"fromAgent":true},"expect":"error"},
+        {"cmd":"browser_open_session","args":{"url":"${mcp.url}/wave0-browser/a","displayName":null,"chatSessionId":null,"reuseExisting":null,"fromAgent":null}},
+        {"cmd":"browser_navigate","args":{"sessionId":"${6.id}","url":"file:///etc/hostname","replace":null,"fromAgent":null},"expect":"error"},
+        {"cmd":"browser_navigate","args":{"sessionId":"${6.id}","url":"","replace":null,"fromAgent":null},"expect":"error"},
+        {"cmd":"browser_navigate","args":{"sessionId":"${6.id}","url":"${mcp.url}/wave0-browser/b","replace":null,"fromAgent":true},"expect":"error"},
+        {"cmd":"browser_get_state","args":{"sessionId":"${6.id}"}},
+        {"cmd":"browser_close","args":{"sessionId":null}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "browser.session.reuse_existing_and_new",
+      "seed": "empty",
+      "mcp": {"scripts":[]},
+      "steps": [
+        {"cmd":"save_setting","args":{"key":"desktop.workbenchBrowserEnabled","value":"true"}},
+        {"cmd":"save_setting","args":{"key":"feature_flags.config","value":"{\"ui.workbench_browser\":{\"name\":\"ui.workbench_browser\",\"description\":\"wave0 ui.workbench_browser\",\"state\":\"Enabled\",\"category\":\"ui\",\"dependencies\":[],\"min_version\":null,\"max_version\":null,\"rollout_percentage\":null,\"created_at\":\"2026-01-01T00:00:00Z\",\"updated_at\":\"2026-01-01T00:00:00Z\"}}"}},
+        {"cmd":"browser_open_session","args":{"url":"${mcp.url}/wave0-browser/a","displayName":null,"chatSessionId":"chat_wave0","reuseExisting":null,"fromAgent":null}},
+        {"cmd":"browser_open_session","args":{"url":"${mcp.url}/wave0-browser/b","displayName":null,"chatSessionId":"chat_wave0","reuseExisting":true,"fromAgent":null}},
+        {"cmd":"browser_open_session","args":{"url":"${mcp.url}/wave0-browser/c","displayName":"Second","chatSessionId":"chat_wave0_b","reuseExisting":false,"fromAgent":false}},
+        {"cmd":"browser_get_state","args":{"sessionId":"${2.id}"},"expect":"error"},
+        {"cmd":"browser_get_state","args":{"sessionId":"${4.id}"}},
+        {"cmd":"browser_close","args":{"sessionId":"${2.id}"},"expect":"error"},
+        {"cmd":"browser_list_task_downloads","args":{"chatSessionId":"chat_wave0_b"}},
+        {"cmd":"browser_close","args":{"sessionId":"${4.id}"}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "browser.session.missing_session_ids",
+      "seed": "empty",
+      "mcp": {"scripts":[]},
+      "steps": [
+        {"cmd":"save_setting","args":{"key":"desktop.workbenchBrowserEnabled","value":"true"}},
+        {"cmd":"save_setting","args":{"key":"feature_flags.config","value":"{\"ui.workbench_browser\":{\"name\":\"ui.workbench_browser\",\"description\":\"wave0 ui.workbench_browser\",\"state\":\"Enabled\",\"category\":\"ui\",\"dependencies\":[],\"min_version\":null,\"max_version\":null,\"rollout_percentage\":null,\"created_at\":\"2026-01-01T00:00:00Z\",\"updated_at\":\"2026-01-01T00:00:00Z\"}}"}},
+        {"cmd":"browser_navigate","args":{"sessionId":"bs_wave0_missing","url":"${mcp.url}/wave0-browser/a","replace":null,"fromAgent":null},"expect":"error"},
+        {"cmd":"browser_back","args":{"sessionId":"bs_wave0_missing"},"expect":"error"},
+        {"cmd":"browser_forward","args":{"sessionId":"bs_wave0_missing"},"expect":"error"},
+        {"cmd":"browser_reload","args":{"sessionId":"bs_wave0_missing","hard":null},"expect":"error"},
+        {"cmd":"browser_get_state","args":{"sessionId":"bs_wave0_missing"},"expect":"error"},
+        {"cmd":"browser_focus","args":{"sessionId":null},"expect":"error"},
+        {"cmd":"browser_focus","args":{"sessionId":"bs_wave0_missing"},"expect":"error"},
+        {"cmd":"browser_release_surface_focus","args":{"sessionId":"bs_wave0_missing"},"expect":"error"},
+        {"cmd":"browser_set_surface_bounds","args":{"sessionId":"bs_wave0_missing","x":10,"y":20,"width":800,"height":600,"viewportWidth":1280,"viewportHeight":800,"occlusions":null,"inputOcclusions":null,"sequence":1},"expect":"error"},
+        {"cmd":"browser_set_surface_visibility","args":{"sessionId":"bs_wave0_missing","visible":false,"focus":null},"expect":"error"},
+        {"cmd":"browser_take_over","args":{},"expect":"error"},
+        {"cmd":"browser_set_input_files","args":{"sessionId":"bs_wave0_missing","ref":"e1","files":[]},"expect":"error"},
+        {"cmd":"browser_list_downloads","args":{"sessionId":"bs_wave0_missing"},"expect":"error"},
+        {"cmd":"browser_close","args":{"sessionId":"bs_wave0_missing"},"expect":"error"}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "browser.session.mismatched_session_id_with_live_session",
+      "seed": "empty",
+      "mcp": {"scripts":[]},
+      "steps": [
+        {"cmd":"save_setting","args":{"key":"desktop.workbenchBrowserEnabled","value":"true"}},
+        {"cmd":"save_setting","args":{"key":"feature_flags.config","value":"{\"ui.workbench_browser\":{\"name\":\"ui.workbench_browser\",\"description\":\"wave0 ui.workbench_browser\",\"state\":\"Enabled\",\"category\":\"ui\",\"dependencies\":[],\"min_version\":null,\"max_version\":null,\"rollout_percentage\":null,\"created_at\":\"2026-01-01T00:00:00Z\",\"updated_at\":\"2026-01-01T00:00:00Z\"}}"}},
+        {"cmd":"browser_open_session","args":{"url":"${mcp.url}/wave0-browser/a","displayName":null,"chatSessionId":null,"reuseExisting":null,"fromAgent":null}},
+        {"cmd":"browser_navigate","args":{"sessionId":"bs_wave0_missing","url":"${mcp.url}/wave0-browser/b","replace":null,"fromAgent":null},"expect":"error"},
+        {"cmd":"browser_back","args":{"sessionId":"bs_wave0_missing"},"expect":"error"},
+        {"cmd":"browser_reload","args":{"sessionId":"bs_wave0_missing","hard":null},"expect":"error"},
+        {"cmd":"browser_focus","args":{"sessionId":"bs_wave0_missing"},"expect":"error"},
+        {"cmd":"browser_release_surface_focus","args":{"sessionId":"bs_wave0_missing"},"expect":"error"},
+        {"cmd":"browser_set_surface_bounds","args":{"sessionId":"bs_wave0_missing","x":10,"y":20,"width":800,"height":600,"viewportWidth":1280,"viewportHeight":800,"occlusions":null,"inputOcclusions":null,"sequence":1},"expect":"error"},
+        {"cmd":"browser_set_surface_visibility","args":{"sessionId":"bs_wave0_missing","visible":true,"focus":true},"expect":"error"},
+        {"cmd":"browser_list_downloads","args":{"sessionId":"bs_wave0_missing"},"expect":"error"},
+        {"cmd":"browser_close","args":{"sessionId":"bs_wave0_missing"},"expect":"error"},
+        {"cmd":"browser_get_state","args":{"sessionId":"${2.id}"}},
+        {"cmd":"browser_close","args":{"sessionId":"${2.id}"}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "browser.surface.detached_host_calls",
+      "seed": "empty",
+      "mcp": {"scripts":[]},
+      "steps": [
+        {"cmd":"save_setting","args":{"key":"desktop.workbenchBrowserEnabled","value":"true"}},
+        {"cmd":"save_setting","args":{"key":"feature_flags.config","value":"{\"ui.workbench_browser\":{\"name\":\"ui.workbench_browser\",\"description\":\"wave0 ui.workbench_browser\",\"state\":\"Enabled\",\"category\":\"ui\",\"dependencies\":[],\"min_version\":null,\"max_version\":null,\"rollout_percentage\":null,\"created_at\":\"2026-01-01T00:00:00Z\",\"updated_at\":\"2026-01-01T00:00:00Z\"}}"}},
+        {"cmd":"browser_get_surface_host_mode","args":{}},
+        {"cmd":"browser_open_session","args":{"url":"${mcp.url}/wave0-browser/a","displayName":null,"chatSessionId":null,"reuseExisting":null,"fromAgent":null}},
+        {"cmd":"browser_set_surface_visibility","args":{"sessionId":"${3.id}","visible":true,"focus":null}},
+        {"cmd":"browser_set_surface_visibility","args":{"sessionId":"${3.id}","visible":false,"focus":false}},
+        {"cmd":"browser_set_surface_visibility","args":{"sessionId":"${3.id}","visible":true,"focus":true}},
+        {"cmd":"browser_set_surface_bounds","args":{"sessionId":"${3.id}","x":10,"y":20,"width":800,"height":600,"viewportWidth":1280,"viewportHeight":800,"occlusions":null,"inputOcclusions":null,"sequence":1}},
+        {"cmd":"browser_set_surface_bounds","args":{"sessionId":"${3.id}","x":0,"y":0,"width":0,"height":0,"viewportWidth":0,"viewportHeight":0,"occlusions":[{"x":1.5,"y":2.25,"width":100,"height":50}],"inputOcclusions":[],"sequence":0}},
+        {"cmd":"browser_set_surface_bounds","args":{"sessionId":"${3.id}","x":-1,"y":-1,"width":1000000000,"height":0.5,"viewportWidth":1280,"viewportHeight":800,"occlusions":null,"inputOcclusions":[{"x":0,"y":0,"width":1,"height":1}],"sequence":9007199254740991}},
+        {"cmd":"browser_focus","args":{"sessionId":null}},
+        {"cmd":"browser_focus","args":{"sessionId":"${3.id}"}},
+        {"cmd":"browser_release_surface_focus","args":{"sessionId":"${3.id}"}},
+        {"cmd":"browser_take_over","args":{}},
+        {"cmd":"browser_get_state","args":{"sessionId":null}},
+        {"cmd":"browser_close","args":{"sessionId":null}},
+        {"cmd":"browser_take_over","args":{},"expect":"error"}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "browser.automation.bridge_unsupported_on_linux",
+      "seed": "empty",
+      "mcp": {"scripts":[]},
+      "steps": [
+        {"cmd":"save_setting","args":{"key":"desktop.workbenchBrowserEnabled","value":"true"}},
+        {"cmd":"save_setting","args":{"key":"feature_flags.config","value":"{\"ui.workbench_browser\":{\"name\":\"ui.workbench_browser\",\"description\":\"wave0 ui.workbench_browser\",\"state\":\"Enabled\",\"category\":\"ui\",\"dependencies\":[],\"min_version\":null,\"max_version\":null,\"rollout_percentage\":null,\"created_at\":\"2026-01-01T00:00:00Z\",\"updated_at\":\"2026-01-01T00:00:00Z\"}}"}},
+        {"cmd":"browser_open_session","args":{"url":"${mcp.url}/wave0-browser/a","displayName":null,"chatSessionId":null,"reuseExisting":null,"fromAgent":null}},
+        {"cmd":"browser_set_input_files","args":{"sessionId":"${2.id}","ref":"e1","files":["/tmp/wave0-upload.txt"]},"expect":"error"},
+        {"cmd":"browser_set_input_files","args":{"sessionId":"${2.id}","ref":"","files":null},"expect":"error"},
+        {"cmd":"browser_close","args":{"sessionId":"${2.id}"}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "browser.gates.close_live_session_when_gate_turns_off",
+      "seed": "empty",
+      "mcp": {"scripts":[]},
+      "steps": [
+        {"cmd":"save_setting","args":{"key":"desktop.workbenchBrowserEnabled","value":"true"}},
+        {"cmd":"save_setting","args":{"key":"feature_flags.config","value":"{\"ui.workbench_browser\":{\"name\":\"ui.workbench_browser\",\"description\":\"wave0 ui.workbench_browser\",\"state\":\"Enabled\",\"category\":\"ui\",\"dependencies\":[],\"min_version\":null,\"max_version\":null,\"rollout_percentage\":null,\"created_at\":\"2026-01-01T00:00:00Z\",\"updated_at\":\"2026-01-01T00:00:00Z\"}}"}},
+        {"cmd":"browser_open_session","args":{"url":"${mcp.url}/wave0-browser/a","displayName":null,"chatSessionId":"chat_wave0","reuseExisting":null,"fromAgent":null}},
+        {"cmd":"save_setting","args":{"key":"desktop.workbenchBrowserEnabled","value":"false"}},
+        {"cmd":"browser_get_state","args":{"sessionId":"${2.id}"},"expect":"error"},
+        {"cmd":"save_setting","args":{"key":"desktop.workbenchBrowserEnabled","value":"true"}},
+        {"cmd":"browser_get_state","args":{"sessionId":null}},
+        {"cmd":"browser_get_state","args":{"sessionId":"${2.id}"},"expect":"error"},
+        {"cmd":"browser_close","args":{"sessionId":null}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "browser.bad_args",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"save_setting","args":{"key":"desktop.workbenchBrowserEnabled","value":"true"}},
+        {"cmd":"save_setting","args":{"key":"feature_flags.config","value":"{\"ui.workbench_browser\":{\"name\":\"ui.workbench_browser\",\"description\":\"wave0 ui.workbench_browser\",\"state\":\"Enabled\",\"category\":\"ui\",\"dependencies\":[],\"min_version\":null,\"max_version\":null,\"rollout_percentage\":null,\"created_at\":\"2026-01-01T00:00:00Z\",\"updated_at\":\"2026-01-01T00:00:00Z\"}}"}},
+        {"cmd":"browser_open_session","args":{"displayName":null,"chatSessionId":null,"reuseExisting":null,"fromAgent":null},"expect":"error"},
+        {"cmd":"browser_navigate","args":{"sessionId":"bs_wave0_missing","replace":null,"fromAgent":null},"expect":"error"},
+        {"cmd":"browser_list_task_downloads","args":{},"expect":"error"},
+        {"cmd":"browser_set_surface_visibility","args":{"sessionId":"bs_wave0_missing","focus":null},"expect":"error"},
+        {"cmd":"browser_set_surface_bounds","args":{"sessionId":"bs_wave0_missing"},"expect":"error"},
+        {"cmd":"browser_close","args":{"sessionId":1},"expect":"error"}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    }
+  ]
+}

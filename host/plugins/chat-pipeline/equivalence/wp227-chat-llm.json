@@ -1,0 +1,238 @@
+{
+  "domain": "chat-session",
+  "commands": ["chat_v2_retry_message", "chat_v2_retry_variant", "chat_v2_retry_variants", "chat_v2_switch_variant", "chat_v2_undo_compaction", "chat_v2_wake_session", "chat_v2_search_content", "rebuild_chat_fts"],
+  "scenarios": [
+    {
+      "id": "chat-session.wp227.retry_message.success_and_model_switch",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "save_api_configurations", "args": { "configs": [
+          { "id": "wp227-answer", "name": "WP227 answer", "apiKey": "", "authMode": "none", "baseUrl": "http://127.0.0.1:18461/s/success.answer/v1", "model": "wp227-answer", "apiProtocol": "openai_chat_completions", "modelAdapter": "general", "supportsTools": true, "isMultimodal": false, "isReasoning": false, "isEmbedding": false, "isReranker": false, "enabled": true, "contextWindow": 32768, "maxOutputTokens": 256 },
+          { "id": "wp227-thinking", "name": "WP227 thinking", "apiKey": "", "authMode": "none", "baseUrl": "http://127.0.0.1:18461/s/success.thinking/v1", "model": "wp227-thinking", "apiProtocol": "openai_chat_completions", "modelAdapter": "general", "supportsTools": true, "isMultimodal": false, "isReasoning": true, "isEmbedding": false, "isReranker": false, "enabled": true, "contextWindow": 32768, "maxOutputTokens": 256 },
+          { "id": "wp227-http500", "name": "WP227 http500", "apiKey": "", "authMode": "none", "baseUrl": "http://127.0.0.1:18461/s/error.http-500/v1", "model": "wp227-http500", "apiProtocol": "openai_chat_completions", "modelAdapter": "general", "supportsTools": true, "isMultimodal": false, "isReasoning": false, "isEmbedding": false, "isReranker": false, "enabled": true, "contextWindow": 32768, "maxOutputTokens": 256 }
+        ] } },
+        { "cmd": "chat_v2_create_session", "args": { "mode": "chat", "title": "重试消息", "metadata": null, "groupId": null } },
+        { "cmd": "chat_v2_send_message", "args": { "request": { "sessionId": "${1.id}", "content": "解释牛顿第二定律", "userMessageId": "msg_wp227_retry_user", "assistantMessageId": "msg_wp227_retry_answer", "options": { "modelId": "wp227-http500", "enableThinking": false, "memoryEnabled": false, "ragEnabled": false, "webSearchEnabled": false, "autoMemoryExtraction": false } } } },
+        { "cmd": "chat_v2_load_session", "args": { "sessionId": "${1.id}" } },
+        { "cmd": "chat_v2_retry_message", "args": { "sessionId": "${1.id}", "messageId": "msg_wp227_retry_answer", "options": { "modelId": "wp227-answer", "enableThinking": false, "memoryEnabled": false, "ragEnabled": false, "webSearchEnabled": false, "autoMemoryExtraction": false } } },
+        { "cmd": "chat_v2_load_session", "args": { "sessionId": "${1.id}" } },
+        { "cmd": "chat_v2_retry_message", "args": { "sessionId": "${1.id}", "messageId": "msg_wp227_retry_answer", "options": { "modelId": "wp227-thinking", "enableThinking": true } } },
+        { "cmd": "chat_v2_load_session", "args": { "sessionId": "${1.id}" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "chat-session.wp227.retry_message.errors",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "save_api_configurations", "args": { "configs": [
+          { "id": "wp227-answer", "name": "WP227 answer", "apiKey": "", "authMode": "none", "baseUrl": "http://127.0.0.1:18461/s/success.answer/v1", "model": "wp227-answer", "apiProtocol": "openai_chat_completions", "modelAdapter": "general", "supportsTools": true, "isMultimodal": false, "isReasoning": false, "isEmbedding": false, "isReranker": false, "enabled": true, "contextWindow": 32768, "maxOutputTokens": 256 },
+          { "id": "wp227-hold", "name": "WP227 hold", "apiKey": "", "authMode": "none", "baseUrl": "http://127.0.0.1:18461/s/interrupt.hold-after-partial/v1", "model": "wp227-hold", "apiProtocol": "openai_chat_completions", "modelAdapter": "general", "supportsTools": true, "isMultimodal": false, "isReasoning": false, "isEmbedding": false, "isReranker": false, "enabled": true, "contextWindow": 32768, "maxOutputTokens": 256 }
+        ] } },
+        { "cmd": "chat_v2_create_session", "args": { "mode": "chat", "title": "重试错误 A", "metadata": null, "groupId": null } },
+        { "cmd": "chat_v2_create_session", "args": { "mode": "chat", "title": "重试错误 B", "metadata": null, "groupId": null } },
+        { "cmd": "chat_v2_send_message", "args": { "request": { "sessionId": "${1.id}", "content": "第一问", "userMessageId": "msg_wp227_rerr_user", "assistantMessageId": "msg_wp227_rerr_answer", "options": { "modelId": "wp227-answer", "enableThinking": false, "memoryEnabled": false, "ragEnabled": false, "webSearchEnabled": false, "autoMemoryExtraction": false } } } },
+        { "cmd": "chat_v2_retry_message", "args": { "sessionId": "${1.id}", "messageId": "msg_wp227_missing" }, "expect": "error" },
+        { "cmd": "chat_v2_retry_message", "args": { "sessionId": "${1.id}", "messageId": "msg_wp227_rerr_user", "options": null }, "expect": "error" },
+        { "cmd": "chat_v2_retry_message", "args": { "sessionId": "${2.id}", "messageId": "msg_wp227_rerr_answer", "options": { "modelId": "wp227-answer" } }, "expect": "error" },
+        { "cmd": "chat_v2_emergency_stop", "args": { "reason": "wp227_retry_blocked" } },
+        { "cmd": "chat_v2_retry_message", "args": { "sessionId": "${1.id}", "messageId": "msg_wp227_rerr_answer", "options": { "modelId": "wp227-answer" } }, "expect": "error" },
+        { "cmd": "chat_v2_resume_agents", "args": {} },
+        { "cmd": "chat_v2_send_message", "args": { "request": { "sessionId": "${1.id}", "content": "第二问（保持流）", "userMessageId": "msg_wp227_rerr_user2", "assistantMessageId": "msg_wp227_rerr_answer2", "options": { "modelId": "wp227-hold", "enableThinking": false, "memoryEnabled": false, "ragEnabled": false, "webSearchEnabled": false, "autoMemoryExtraction": false } } } },
+        { "cmd": "chat_v2_retry_message", "args": { "sessionId": "${1.id}", "messageId": "msg_wp227_rerr_answer", "options": { "modelId": "wp227-answer" } }, "expect": "error" },
+        { "cmd": "chat_v2_cancel_stream", "args": { "sessionId": "${1.id}", "messageId": "msg_wp227_rerr_answer2" } },
+        { "cmd": "chat_v2_create_session", "args": { "mode": "chat", "title": "子代理只读", "metadata": { "is_subagent": true }, "groupId": null } },
+        { "cmd": "chat_v2_retry_message", "args": { "sessionId": "${13.id}", "messageId": "msg_wp227_rerr_answer" }, "expect": "error" },
+        { "cmd": "chat_v2_retry_message", "args": { "sessionId": "${1.id}" }, "expect": "error" },
+        { "cmd": "chat_v2_load_session", "args": { "sessionId": "${1.id}" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "chat-session.wp227.variants.switch_and_retry",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "save_api_configurations", "args": { "configs": [
+          { "id": "wp227-answer", "name": "WP227 answer", "apiKey": "", "authMode": "none", "baseUrl": "http://127.0.0.1:18461/s/success.answer/v1", "model": "wp227-answer", "apiProtocol": "openai_chat_completions", "modelAdapter": "general", "supportsTools": true, "isMultimodal": false, "isReasoning": false, "isEmbedding": false, "isReranker": false, "enabled": true, "contextWindow": 32768, "maxOutputTokens": 256 },
+          { "id": "wp227-http500", "name": "WP227 http500", "apiKey": "", "authMode": "none", "baseUrl": "http://127.0.0.1:18461/s/error.http-500/v1", "model": "wp227-http500", "apiProtocol": "openai_chat_completions", "modelAdapter": "general", "supportsTools": true, "isMultimodal": false, "isReasoning": false, "isEmbedding": false, "isReranker": false, "enabled": true, "contextWindow": 32768, "maxOutputTokens": 256 }
+        ] } },
+        { "cmd": "chat_v2_create_session", "args": { "mode": "chat", "title": "多变体", "metadata": null, "groupId": null } },
+        { "cmd": "chat_v2_send_message", "args": { "request": { "sessionId": "${1.id}", "content": "比较两个模型的回答", "userMessageId": "msg_wp227_var_user", "assistantMessageId": "msg_wp227_var_answer", "options": { "modelId": "wp227-answer", "parallelModelIds": ["wp227-answer", "wp227-http500"], "enableThinking": false, "memoryEnabled": false, "ragEnabled": false, "webSearchEnabled": false, "autoMemoryExtraction": false } } } },
+        { "cmd": "chat_v2_load_session", "args": { "sessionId": "${1.id}", "tailLimit": 1 } },
+        { "cmd": "chat_v2_switch_variant", "args": { "sessionId": "${1.id}", "messageId": "msg_wp227_var_answer", "variantId": "${3.messages.0.variants.0.id}" } },
+        { "cmd": "chat_v2_switch_variant", "args": { "sessionId": "${1.id}", "messageId": "msg_wp227_var_answer", "variantId": "${3.messages.0.variants.1.id}" }, "expect": "error" },
+        { "cmd": "chat_v2_switch_variant", "args": { "sessionId": "${1.id}", "messageId": "msg_wp227_var_answer", "variantId": "var_wp227_missing" }, "expect": "error" },
+        { "cmd": "chat_v2_switch_variant", "args": { "sessionId": "${1.id}", "messageId": "msg_wp227_missing", "variantId": "${3.messages.0.variants.0.id}" }, "expect": "error" },
+        { "cmd": "chat_v2_retry_variant", "args": { "sessionId": "${1.id}", "messageId": "msg_wp227_var_answer", "variantId": "${3.messages.0.variants.0.id}" }, "expect": "error" },
+        { "cmd": "chat_v2_retry_variant", "args": { "sessionId": "${1.id}", "messageId": "msg_wp227_var_answer", "variantId": "var_wp227_missing", "modelOverride": null, "options": null }, "expect": "error" },
+        { "cmd": "chat_v2_retry_variant", "args": { "sessionId": "${1.id}", "messageId": "msg_wp227_var_answer", "variantId": "${3.messages.0.variants.1.id}", "modelOverride": "wp227-answer", "options": { "enableThinking": false } } },
+        { "cmd": "chat_v2_load_session", "args": { "sessionId": "${1.id}", "tailLimit": 1 } },
+        { "cmd": "chat_v2_switch_variant", "args": { "sessionId": "${1.id}", "messageId": "msg_wp227_var_answer", "variantId": "${3.messages.0.variants.1.id}" } },
+        { "cmd": "chat_v2_retry_variants", "args": { "sessionId": "${1.id}", "messageId": "msg_wp227_var_answer", "variantIds": ["${3.messages.0.variants.0.id}", "${3.messages.0.variants.1.id}", "${3.messages.0.variants.0.id}"], "options": null } },
+        { "cmd": "chat_v2_load_session", "args": { "sessionId": "${1.id}" } },
+        { "cmd": "chat_v2_retry_variants", "args": { "sessionId": "${1.id}", "messageId": "msg_wp227_var_answer", "variantIds": [] }, "expect": "error" },
+        { "cmd": "chat_v2_retry_variants", "args": { "sessionId": "${1.id}", "messageId": "msg_wp227_var_answer", "variantIds": ["var_wp227_missing"] }, "expect": "error" },
+        { "cmd": "chat_v2_retry_variants", "args": { "sessionId": "${1.id}", "messageId": "msg_wp227_missing", "variantIds": ["${3.messages.0.variants.0.id}"] }, "expect": "error" },
+        { "cmd": "chat_v2_retry_variants", "args": { "sessionId": "${1.id}", "messageId": "msg_wp227_var_user", "variantIds": ["${3.messages.0.variants.0.id}"] }, "expect": "error" },
+        { "cmd": "chat_v2_retry_variant", "args": { "sessionId": "${1.id}", "messageId": "msg_wp227_var_user", "variantId": "${3.messages.0.variants.0.id}" }, "expect": "error" },
+        { "cmd": "chat_v2_switch_variant", "args": { "sessionId": "${1.id}", "messageId": "msg_wp227_var_user", "variantId": "${3.messages.0.variants.0.id}" }, "expect": "error" },
+        { "cmd": "chat_v2_create_session", "args": { "mode": "chat", "title": "他人会话", "metadata": null, "groupId": null } },
+        { "cmd": "chat_v2_switch_variant", "args": { "sessionId": "${21.id}", "messageId": "msg_wp227_var_answer", "variantId": "${3.messages.0.variants.0.id}" }, "expect": "error" },
+        { "cmd": "chat_v2_retry_variant", "args": { "sessionId": "${21.id}", "messageId": "msg_wp227_var_answer", "variantId": "${3.messages.0.variants.1.id}" }, "expect": "error" },
+        { "cmd": "chat_v2_retry_variants", "args": { "sessionId": "${21.id}", "messageId": "msg_wp227_var_answer", "variantIds": ["${3.messages.0.variants.0.id}"] }, "expect": "error" },
+        { "cmd": "chat_v2_retry_variants", "args": { "sessionId": "${1.id}", "messageId": "msg_wp227_var_answer" }, "expect": "error" },
+        { "cmd": "chat_v2_switch_variant", "args": { "sessionId": "${1.id}", "messageId": "msg_wp227_var_answer" }, "expect": "error" },
+        { "cmd": "chat_v2_load_session", "args": { "sessionId": "${1.id}" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "chat-session.wp227.variants.streaming_and_readonly_guards",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "save_api_configurations", "args": { "configs": [
+          { "id": "wp227-answer", "name": "WP227 answer", "apiKey": "", "authMode": "none", "baseUrl": "http://127.0.0.1:18461/s/success.answer/v1", "model": "wp227-answer", "apiProtocol": "openai_chat_completions", "modelAdapter": "general", "supportsTools": true, "isMultimodal": false, "isReasoning": false, "isEmbedding": false, "isReranker": false, "enabled": true, "contextWindow": 32768, "maxOutputTokens": 256 },
+          { "id": "wp227-cancel", "name": "WP227 cancel", "apiKey": "", "authMode": "none", "baseUrl": "http://127.0.0.1:18461/s/interrupt.hold-after-partial/v1", "model": "wp227-cancel", "apiProtocol": "openai_chat_completions", "modelAdapter": "general", "supportsTools": true, "isMultimodal": false, "isReasoning": false, "isEmbedding": false, "isReranker": false, "enabled": true, "contextWindow": 32768, "maxOutputTokens": 256 },
+          { "id": "wp227-cancel-b", "name": "WP227 cancel B", "apiKey": "", "authMode": "none", "baseUrl": "http://127.0.0.1:18461/s/interrupt.hold-after-partial/v1", "model": "wp227-cancel-b", "apiProtocol": "openai_chat_completions", "modelAdapter": "general", "supportsTools": true, "isMultimodal": false, "isReasoning": false, "isEmbedding": false, "isReranker": false, "enabled": true, "contextWindow": 32768, "maxOutputTokens": 256 }
+        ] } },
+        { "cmd": "chat_v2_create_session", "args": { "mode": "chat", "title": "流式守卫", "metadata": null, "groupId": null } },
+        { "cmd": "chat_v2_send_message", "args": { "request": { "sessionId": "${1.id}", "content": "第一轮双模型", "userMessageId": "msg_wp227_guard_user", "assistantMessageId": "msg_wp227_guard_answer", "options": { "modelId": "wp227-cancel", "parallelModelIds": ["wp227-cancel", "wp227-cancel-b"], "enableThinking": false, "memoryEnabled": false, "ragEnabled": false, "webSearchEnabled": false, "autoMemoryExtraction": false } } } },
+        { "cmd": "chat_v2_cancel_stream", "args": { "sessionId": "${1.id}", "messageId": "msg_wp227_guard_answer" } },
+        { "cmd": "chat_v2_load_session", "args": { "sessionId": "${1.id}", "tailLimit": 1 } },
+        { "cmd": "chat_v2_send_message", "args": { "request": { "sessionId": "${1.id}", "content": "第二轮保持流", "userMessageId": "msg_wp227_guard_user2", "assistantMessageId": "msg_wp227_guard_answer2", "options": { "modelId": "wp227-cancel", "enableThinking": false, "memoryEnabled": false, "ragEnabled": false, "webSearchEnabled": false, "autoMemoryExtraction": false } } } },
+        { "cmd": "chat_v2_retry_variant", "args": { "sessionId": "${1.id}", "messageId": "msg_wp227_guard_answer", "variantId": "${4.messages.0.variants.1.id}", "modelOverride": "wp227-answer" }, "expect": "error" },
+        { "cmd": "chat_v2_retry_variants", "args": { "sessionId": "${1.id}", "messageId": "msg_wp227_guard_answer", "variantIds": ["${4.messages.0.variants.0.id}"] }, "expect": "error" },
+        { "cmd": "chat_v2_undo_compaction", "args": { "sessionId": "${1.id}", "compactionId": "cmp_wp227_any" }, "expect": "error" },
+        { "cmd": "chat_v2_wake_session", "args": { "sessionId": "${1.id}", "content": "流式中唤醒", "assistantMessageId": "msg_wp227_guard_wake", "options": { "modelId": "wp227-answer" } }, "expect": "error" },
+        { "cmd": "chat_v2_switch_variant", "args": { "sessionId": "${1.id}", "messageId": "msg_wp227_guard_answer", "variantId": "${4.messages.0.variants.0.id}" } },
+        { "cmd": "chat_v2_cancel_stream", "args": { "sessionId": "${1.id}", "messageId": "msg_wp227_guard_answer2" } },
+        { "cmd": "chat_v2_retry_variant", "args": { "sessionId": "${1.id}", "messageId": "msg_wp227_guard_answer", "variantId": "${4.messages.0.variants.1.id}", "modelOverride": "wp227-answer" } },
+        { "cmd": "chat_v2_load_session", "args": { "sessionId": "${1.id}" } },
+        { "cmd": "chat_v2_create_session", "args": { "mode": "chat", "title": "子代理只读", "metadata": { "is_subagent": true }, "groupId": null } },
+        { "cmd": "chat_v2_switch_variant", "args": { "sessionId": "${14.id}", "messageId": "msg_wp227_guard_answer", "variantId": "${4.messages.0.variants.0.id}" }, "expect": "error" },
+        { "cmd": "chat_v2_retry_variant", "args": { "sessionId": "${14.id}", "messageId": "msg_wp227_guard_answer", "variantId": "${4.messages.0.variants.1.id}" }, "expect": "error" },
+        { "cmd": "chat_v2_retry_variants", "args": { "sessionId": "${14.id}", "messageId": "msg_wp227_guard_answer", "variantIds": ["${4.messages.0.variants.1.id}"] }, "expect": "error" },
+        { "cmd": "chat_v2_undo_compaction", "args": { "sessionId": "${14.id}", "compactionId": "cmp_wp227_any" }, "expect": "error" },
+        { "cmd": "chat_v2_wake_session", "args": { "sessionId": "${14.id}", "content": "唤醒子代理", "assistantMessageId": "msg_wp227_sub_wake" }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "chat-session.wp227.wake_session.success_and_errors",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "save_api_configurations", "args": { "configs": [
+          { "id": "wp227-answer", "name": "WP227 answer", "apiKey": "", "authMode": "none", "baseUrl": "http://127.0.0.1:18461/s/success.answer/v1", "model": "wp227-answer", "apiProtocol": "openai_chat_completions", "modelAdapter": "general", "supportsTools": true, "isMultimodal": false, "isReasoning": false, "isEmbedding": false, "isReranker": false, "enabled": true, "contextWindow": 32768, "maxOutputTokens": 256 }
+        ] } },
+        { "cmd": "save_model_assignments", "args": { "assignments": { "model2_config_id": "wp227-answer" } } },
+        { "cmd": "chat_v2_create_session", "args": { "mode": "chat", "title": "唤醒会话", "metadata": null, "groupId": null } },
+        { "cmd": "chat_v2_wake_session", "args": { "sessionId": "${2.id}", "content": "[系统唤醒] 子代理已完成任务\n结果：通过", "assistantMessageId": "msg_wp227_wake_a1", "options": { "modelId": "wp227-answer", "enableThinking": false, "memoryEnabled": false, "ragEnabled": false, "webSearchEnabled": false, "autoMemoryExtraction": false } } },
+        { "cmd": "chat_v2_load_session", "args": { "sessionId": "${2.id}" } },
+        { "cmd": "chat_v2_wake_session", "args": { "sessionId": "${2.id}", "content": "第二次唤醒，使用默认模型", "assistantMessageId": "msg_wp227_wake_a2", "options": null } },
+        { "cmd": "chat_v2_load_session", "args": { "sessionId": "${2.id}" } },
+        { "cmd": "chat_v2_wake_session", "args": { "sessionId": "${2.id}", "content": "   \n\t", "assistantMessageId": "msg_wp227_wake_blank" }, "expect": "error" },
+        { "cmd": "chat_v2_wake_session", "args": { "sessionId": "chat_wp227_bad_prefix", "content": "唤醒" }, "expect": "error" },
+        { "cmd": "chat_v2_wake_session", "args": { "sessionId": "", "content": "唤醒" }, "expect": "error" },
+        { "cmd": "chat_v2_emergency_stop", "args": { "reason": "wp227_wake_blocked" } },
+        { "cmd": "chat_v2_wake_session", "args": { "sessionId": "${2.id}", "content": "急停后唤醒", "assistantMessageId": "msg_wp227_wake_blocked" }, "expect": "error" },
+        { "cmd": "chat_v2_resume_agents", "args": {} },
+        { "cmd": "chat_v2_wake_session", "args": { "sessionId": "${2.id}" }, "expect": "error" },
+        { "cmd": "chat_v2_load_session", "args": { "sessionId": "${2.id}" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "chat-session.wp227.undo_compaction.compact_then_undo",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "save_api_configurations", "args": { "configs": [
+          { "id": "wp227-answer", "name": "WP227 answer", "apiKey": "", "authMode": "none", "baseUrl": "http://127.0.0.1:18461/s/success.answer/v1", "model": "wp227-answer", "apiProtocol": "openai_chat_completions", "modelAdapter": "general", "supportsTools": true, "isMultimodal": false, "isReasoning": false, "isEmbedding": false, "isReranker": false, "enabled": true, "contextWindow": 32768, "maxOutputTokens": 256 }
+        ] } },
+        { "cmd": "save_model_assignments", "args": { "assignments": { "model2_config_id": "wp227-answer" } } },
+        { "cmd": "chat_v2_create_session", "args": { "mode": "chat", "title": "压缩与撤销", "metadata": null, "groupId": null } },
+        { "cmd": "chat_v2_send_message", "args": { "request": { "sessionId": "${2.id}", "content": "第一轮：力学基础", "userMessageId": "msg_wp227_cmp_u1", "assistantMessageId": "msg_wp227_cmp_a1", "options": { "modelId": "wp227-answer", "enableThinking": false, "memoryEnabled": false, "ragEnabled": false, "webSearchEnabled": false, "autoMemoryExtraction": false } } } },
+        { "cmd": "chat_v2_send_message", "args": { "request": { "sessionId": "${2.id}", "content": "第二轮：动量守恒", "userMessageId": "msg_wp227_cmp_u2", "assistantMessageId": "msg_wp227_cmp_a2", "options": { "modelId": "wp227-answer", "enableThinking": false, "memoryEnabled": false, "ragEnabled": false, "webSearchEnabled": false, "autoMemoryExtraction": false } } } },
+        { "cmd": "chat_v2_send_message", "args": { "request": { "sessionId": "${2.id}", "content": "第三轮：能量守恒", "userMessageId": "msg_wp227_cmp_u3", "assistantMessageId": "msg_wp227_cmp_a3", "options": { "modelId": "wp227-answer", "enableThinking": false, "memoryEnabled": false, "ragEnabled": false, "webSearchEnabled": false, "autoMemoryExtraction": false } } } },
+        { "cmd": "chat_v2_undo_compaction", "args": { "sessionId": "${2.id}", "compactionId": "cmp_wp227_none" }, "expect": "error" },
+        { "cmd": "chat_v2_compact_session", "args": { "sessionId": "${2.id}", "modelConfigId": "wp227-answer", "contextLimit": null } },
+        { "cmd": "chat_v2_load_session", "args": { "sessionId": "${2.id}", "tailLimit": 1 } },
+        { "cmd": "chat_v2_undo_compaction", "args": { "sessionId": "${2.id}", "compactionId": "cmp_wp227_not_active" }, "expect": "error" },
+        { "cmd": "chat_v2_undo_compaction", "args": { "sessionId": "${2.id}", "compactionId": "${8.blocks.0.toolOutput.compactionId}" } },
+        { "cmd": "chat_v2_undo_compaction", "args": { "sessionId": "${2.id}", "compactionId": "${8.blocks.0.toolOutput.compactionId}" }, "expect": "error" },
+        { "cmd": "chat_v2_load_session", "args": { "sessionId": "${2.id}" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "chat-session.wp227.undo_compaction.no_compaction",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "chat_v2_create_session", "args": { "mode": "chat", "title": "无压缩", "metadata": null, "groupId": null } },
+        { "cmd": "chat_v2_undo_compaction", "args": { "sessionId": "${0.id}", "compactionId": "cmp_wp227_missing" }, "expect": "error" },
+        { "cmd": "chat_v2_undo_compaction", "args": { "sessionId": "sess_wp227_missing", "compactionId": "cmp_wp227_missing" }, "expect": "error" },
+        { "cmd": "chat_v2_undo_compaction", "args": { "sessionId": "${0.id}", "compactionId": "" }, "expect": "error" },
+        { "cmd": "chat_v2_undo_compaction", "args": { "sessionId": "${0.id}" }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "chat-session.wp227.search_content.filters_and_rebuild",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "save_api_configurations", "args": { "configs": [
+          { "id": "wp227-answer", "name": "WP227 answer", "apiKey": "", "authMode": "none", "baseUrl": "http://127.0.0.1:18461/s/success.answer/v1", "model": "wp227-answer", "apiProtocol": "openai_chat_completions", "modelAdapter": "general", "supportsTools": true, "isMultimodal": false, "isReasoning": false, "isEmbedding": false, "isReranker": false, "enabled": true, "contextWindow": 32768, "maxOutputTokens": 256 }
+        ] } },
+        { "cmd": "chat_v2_create_session", "args": { "mode": "chat", "title": "力学复习", "metadata": null, "groupId": null } },
+        { "cmd": "chat_v2_create_session", "args": { "mode": "chat", "title": "化学复习", "metadata": null, "groupId": null } },
+        { "cmd": "chat_v2_send_message", "args": { "request": { "sessionId": "${1.id}", "content": "牛顿第二定律 F=ma 的推导 \"引号\" AND OR", "userMessageId": "msg_wp227_fts_u1", "assistantMessageId": "msg_wp227_fts_a1", "options": { "modelId": "wp227-answer", "enableThinking": false, "memoryEnabled": false, "ragEnabled": false, "webSearchEnabled": false, "autoMemoryExtraction": false } } } },
+        { "cmd": "chat_v2_send_message", "args": { "request": { "sessionId": "${2.id}", "content": "氧化还原反应与牛顿无关", "userMessageId": "msg_wp227_fts_u2", "assistantMessageId": "msg_wp227_fts_a2", "options": { "modelId": "wp227-answer", "enableThinking": false, "memoryEnabled": false, "ragEnabled": false, "webSearchEnabled": false, "autoMemoryExtraction": false } } } },
+        { "cmd": "chat_v2_search_content", "args": { "query": "牛顿" } },
+        { "cmd": "chat_v2_search_content", "args": { "query": "固定" } },
+        { "cmd": "chat_v2_search_content", "args": { "query": "牛顿", "sessionId": "${1.id}" } },
+        { "cmd": "chat_v2_search_content", "args": { "query": "牛顿", "sessionId": "   ", "limit": null, "dateFrom": null, "dateTo": null, "includeArchived": null } },
+        { "cmd": "chat_v2_search_content", "args": { "query": "牛顿", "limit": 1 } },
+        { "cmd": "chat_v2_search_content", "args": { "query": "牛顿", "limit": 0 } },
+        { "cmd": "chat_v2_search_content", "args": { "query": "牛顿", "limit": 500 } },
+        { "cmd": "chat_v2_search_content", "args": { "query": "牛顿", "dateFrom": "2000-01-01T00:00:00Z", "dateTo": "2100-01-01T00:00:00Z" } },
+        { "cmd": "chat_v2_search_content", "args": { "query": "牛顿", "dateFrom": "2100-01-01T00:00:00Z" } },
+        { "cmd": "chat_v2_search_content", "args": { "query": "牛顿", "dateTo": "2000-01-01T00:00:00Z" } },
+        { "cmd": "chat_v2_search_content", "args": { "query": "F=ma \"引号\" AND OR" } },
+        { "cmd": "chat_v2_search_content", "args": { "query": "*" } },
+        { "cmd": "chat_v2_search_content", "args": { "query": "不存在的词条" } },
+        { "cmd": "chat_v2_archive_session", "args": { "sessionId": "${1.id}" } },
+        { "cmd": "chat_v2_search_content", "args": { "query": "牛顿", "includeArchived": false } },
+        { "cmd": "chat_v2_search_content", "args": { "query": "牛顿", "includeArchived": true } },
+        { "cmd": "rebuild_chat_fts", "args": {} },
+        { "cmd": "chat_v2_search_content", "args": { "query": "牛顿", "includeArchived": true } },
+        { "cmd": "chat_v2_search_content", "args": { "query": "" } },
+        { "cmd": "chat_v2_search_content", "args": { "query": " \t\n", "sessionId": "bad_prefix" } },
+        { "cmd": "chat_v2_search_content", "args": { "query": "牛顿", "sessionId": "bad_prefix" }, "expect": "error" },
+        { "cmd": "chat_v2_search_content", "args": { "query": "牛顿", "sessionId": "chat_wp227" }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "chat-session.wp227.search_content.bad_args_and_empty_rebuild",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "rebuild_chat_fts", "args": {} },
+        { "cmd": "chat_v2_search_content", "args": { "query": "任意" } },
+        { "cmd": "rebuild_chat_fts", "args": {} },
+        { "cmd": "chat_v2_search_content", "args": {}, "expect": "error" },
+        { "cmd": "chat_v2_search_content", "args": { "query": "任意", "limit": -1 }, "expect": "error" },
+        { "cmd": "chat_v2_search_content", "args": { "query": "任意", "includeArchived": "yes" }, "expect": "error" },
+        { "cmd": "chat_v2_search_content", "args": { "query": "任意", "sessionId": 42 }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    }
+  ]
+}

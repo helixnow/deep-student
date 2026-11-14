@@ -124,15 +124,19 @@ export interface AssistantRenderSegment {
 }
 
 /**
- * paper_save 工具使用专用 PaperSaveBlock 渲染进度条，
- * 不进时间线分组，走 BlockRendererWithStore → McpToolBlockComponent → PaperSaveBlock 路径
+ * paper_save 与 dstu_plugin_propose_install 工具使用专用块渲染（进度条 / 插件工坊确认卡片），
+ * 不进时间线分组，走 BlockRendererWithStore → McpToolBlockComponent 路径
  */
 function isPaperSaveToolBlock(block: Block): boolean {
+  if (block.type !== 'mcp_tool') return false;
+  const bareName = block.toolName?.replace(/^builtin[-:]/, '').replace(/^mcp_/, '');
   return (
-    block.type === 'mcp_tool' &&
-    (block.toolName === 'paper_save' ||
-      block.toolName === 'builtin-paper_save' ||
-      block.toolName?.replace(/^builtin[-:]/, '').replace(/^mcp_/, '') === 'paper_save')
+    block.toolName === 'paper_save' ||
+    block.toolName === 'builtin-paper_save' ||
+    bareName === 'paper_save' ||
+    block.toolName === 'dstu_plugin_propose_install' ||
+    block.toolName === 'builtin-dstu_plugin_propose_install' ||
+    bareName === 'dstu_plugin_propose_install'
   );
 }
 

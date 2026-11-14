@@ -1,0 +1,28 @@
+{
+  "id": "RF-W10-legacy-chat-migration-marker-table",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T16:46:00+08:00",
+  "title": "旧聊天迁移的已迁移标记改写进独立表，不再给受管表 chat_messages 加列导致 mistakes 指纹漂移、下次启动被阻断",
+  "rust": {
+    "file": "src-tauri/crates/dstu-agent/src/chat_v2/migration/legacy_migration.rs",
+    "line": 774,
+    "behavior": "mark_message_migrated 在 chat_messages 上执行 ALTER TABLE ADD COLUMN migrated_to_v2 / migrated_session_id（失败 .ok() 吞掉）后 UPDATE 标记；check_migration_status、load_legacy_messages、rollback_migration 都按这两列判断。chat_messages 由 mistakes 迁移 V20260130__init.sql:38 创建，处在 __governance_schema_fingerprints 的指纹范围内，所以命令一旦对有旧消息的库执行，下次启动的指纹校验就报 Schema fingerprint drift，mistakes 被阻断、应用进入核心恢复模式；Rust 协调器此时还会用 migration_core_backups/ 中最新的快照覆盖 mistakes.db（coordinator.rs:965-1009）。"
+  },
+  "fix": {
+    "files": ["host/plugins/chat/repository/legacy-migration.ts"],
+    "behavior": "标记写进首次标记时 CREATE TABLE IF NOT EXISTS 的 legacy_chat_migration_map(legacy_id INTEGER PRIMARY KEY, session_id TEXT NOT NULL)；该表不由迁移创建，不在指纹范围内。状态统计、待迁移查询与回滚同时识别该表和 Rust 旧版已加上的两列（库里已有这两列时继续按列判断，两处取并集）；回滚清空映射表并重置旧列，返回的重置条数是此前处于已迁移状态的行数；两处标记都不存在时仍执行 Rust 的 UPDATE 并按原样报 no such column。"
+  },
+  "evidence": "审计 V07 P2-2 复现：新建库后对 mistakes.db 执行这两条 ALTER，新进程 runAll() 报 Database 'mistakes' migration failed: Verification failed for migration 20261005: Schema fingerprint drift detected at v20261005 (db: mistakes)。本仓 chat/tests/migration.test.ts 修复前同一断言红：调用 chat_v2_migrate_legacy_chat 后用新的 MigrationCoordinator 重跑 mistakes，报 Schema fingerprint drift detected at v20261005 (db: mistakes)。Rust 自身的指纹机制明确禁止运行时改动受管表结构，与该命令的 DDL 相互矛盾。",
+  "userVisible": "目前前端没有调用入口（src/api/dataGovernance.ts 导出了 migrateLegacyChat 但无 UI 调用）。若被调用：迁移完成后下次启动不再进入核心恢复模式；迁移结果、进度事件与回滚报告文本不变。",
+  "dataCompat": "mistakes.db 多一张不受迁移管理的小表 legacy_chat_migration_map，chat_messages 结构保持迁移定义不变。Rust 旧版读取时忽略该表：它只按 migrated_to_v2 列判断，因此会把 Host 已迁移的行视为待迁移，若再执行 Rust 的迁移命令会重复建会话（两端都没有 UI 入口）。Rust 旧版已加列并标记过的库在 Host 上继续被识别为已迁移。同步与备份格式不变，备份按库文件整体包含该表。",
+  "g3": {
+    "affects": false,
+    "selectors": []
+  },
+  "tests": [
+    { "file": "host/plugins/chat/tests/migration.test.ts", "name": "RF-W10-legacy-chat-migration-marker-table: migrating keeps the managed chat_messages schema, so the next mistakes startup verifies" },
+    { "file": "host/plugins/chat/tests/migration.test.ts", "name": "RF-W10-legacy-chat-migration-marker-table: rows marked through the Rust-era columns stay migrated and are not loaded again" }
+  ]
+}

@@ -37,4 +37,9 @@ describe('search input surface contract', () => {
     expect(workbenchStyles).toContain('.finder-search');
     expect(workbenchStyles).toContain('.wb-fc-search');
   });
+
+  it('guards coarse-pointer inputs (including bare inputs and wide iPad viewports) against auto-zoom', () => {
+    expect(sharedStyles).toMatch(/@media \(pointer: coarse\) \{[\s\S]*?input:not\(\[type\]\),[\s\S]*?font-size: 16px !important;/);
+    expect(sharedStyles).not.toMatch(/@media \(pointer: coarse\)[^\{]*max-width:\s*1024px/);
+  });
 });

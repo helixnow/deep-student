@@ -45,13 +45,13 @@ describe('archive manifest marker', () => {
     );
   });
 
-  it('stays aligned with the Rust-side marker and manifest builder', () => {
-    const rust = readFileSync(
-      resolve(process.cwd(), 'src-tauri/crates/dstu-vfs/src/vfs/repos/attachment_repo.rs'),
+  it('stays aligned with the Host-side marker and manifest builder', () => {
+    const host = readFileSync(
+      resolve(process.cwd(), 'host/plugins/vfs-repos/repository/attachment-utils.ts'),
       'utf-8',
     );
-    expect(rust).toContain(`ARCHIVE_MANIFEST_MARKER: &str = "${ARCHIVE_MANIFEST_MARKER}"`);
+    expect(host).toContain(`export const ARCHIVE_MANIFEST_MARKER = '${ARCHIVE_MANIFEST_MARKER}';`);
     // 首行必须写入机器标记（前端识别用）
-    expect(rust).toContain('lines.push(ARCHIVE_MANIFEST_MARKER.to_string())');
+    expect(host).toContain('const lines: string[] = [ARCHIVE_MANIFEST_MARKER];');
   });
 });

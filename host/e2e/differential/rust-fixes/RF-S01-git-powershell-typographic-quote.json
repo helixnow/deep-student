@@ -1,0 +1,28 @@
+{
+  "id": "RF-S01-git-powershell-typographic-quote",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T14:05:00+08:00",
+  "title": "Windows 无 git-bash 时语义 Git 工具的 PowerShell 引号可被弯引号 ‘ ’ ‚ ‛ 闭合，模型参数逃出单个 token",
+  "rust": {
+    "file": "src-tauri/crates/dstu-agent/src/chat_v2/tools/git_executor.rs",
+    "line": 70,
+    "behavior": "quote_arg_powershell 只把 ASCII ' 加倍；PowerShell 分词器把 U+2018/U+2019/U+201A/U+201B 同样视为单引号字符串的开闭符。git_diff 的 paths（medium，craft/relaxed 免审批，且 structured_command_approved 跳过不可变守卫的 ask）传入 \"a’; Remove-Item -Recurse .; ’b\" 时，’ 之后的内容作为 PowerShell 命令执行；正常的提交信息 \"Fix the user’s bug\" 也会被拆成多个参数"
+  },
+  "fix": {
+    "files": ["host/plugins/agent-workspace/src/tools/git.ts"],
+    "behavior": "quoteArgPowershell 把 ' 与 U+2018..U+201B 全部成对加倍，引号后的参数在 PowerShell 中始终是一个字面量 token；POSIX quoting 与 git-bash 路径不变"
+  },
+  "evidence": "PowerShell 语言规范 single-quote-character 包含 U+0027、U+2018、U+2019、U+201A、U+201B，且字符串内连续两个即一个字面引号。复现：quoteArgPowershell('Fix the user’s bug') 修复前为 'Fix the user’s bug'，按 PowerShell 分词得到字符串 'Fix the user' 后跟裸词 s；修复后得到原文。当前 Windows 本地 shell 因 F7 原生运行时缺失 fail-closed，因此今天不可利用，接通后即生效。",
+  "g3": {
+    "affects": false,
+    "selectors": []
+  },
+  "tests": [
+    {
+      "file": "host/plugins/agent-workspace/tests/tools-git.test.ts",
+      "name": "RF-S01-git-powershell-typographic-quote: a quoted argument stays one literal token for the PowerShell tokenizer"
+    }
+  ]
+}

@@ -5,6 +5,7 @@ import type { AIReviewSession } from './aiReviewModel';
 import type { OfficialReviewControls, OfficialReviewDecision } from './officialDiffContract';
 import '@milkdown/crepe/theme/common/diff.css';
 import { noteHostError } from './noteHostErrors';
+import { useOptionalSlot, useOptionalUiKernel } from '@/ui-kernel/react';
 
 export interface OfficialDiffReviewProps {
   review: AIReviewSession;
@@ -16,6 +17,12 @@ export function OfficialDiffReview({ review, ...callbacks }: OfficialDiffReviewP
   const root = useRef<HTMLDivElement>(null);
   const latest = useRef(callbacks); latest.current = callbacks;
   const latestReview = useRef(review); latestReview.current = review;
+  // editor.extensions: snapshot when the review opens; only entries listing 'diff' join the fixed stack.
+  // RUST-FIX(RF-W18-diff-extension-purpose): snapshot contributions when opening review.
+  const extensionEntries = useOptionalSlot('editor.extensions');
+  const kernel = useOptionalUiKernel();
+  const contributions = useRef({ extensionEntries, kernel });
+  contributions.current = { extensionEntries, kernel };
   useEffect(() => {
     if (!root.current || review.collapsed || review.conflict || review.resolution) return;
     let cancelled = false;
@@ -31,6 +38,12 @@ export function OfficialDiffReview({ review, ...callbacks }: OfficialDiffReviewP
         return latest.current.onReviewDecision(decision);
       },
       onError: error => { if (!cancelled) latest.current.onReviewError(error); },
+      extensions: contributions.current.extensionEntries,
+      onContributionError: (entry, error) => {
+        const current = contributions.current.kernel;
+        if (current) current.errors.report({ pluginId: entry.owner, origin: entry.origin, phase: 'render', error, slot: 'editor.extensions', entryId: entry.id });
+        else console.error(`[editor.extensions] "${entry.id}" failed`, error);
+      },
     }).then(async result => {
       adapter = result;
       if (cancelled) { await result.destroy(); container.remove(); }

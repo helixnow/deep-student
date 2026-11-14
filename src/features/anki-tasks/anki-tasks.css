@@ -60,13 +60,12 @@
   flex-shrink: 0;
 }
 
-/* ==== 概览面板 ==== */
+/* ==== 概览面板（无框平铺，减少盒套盒） ==== */
 
 .wb-at-panel {
-  padding: 12px 14px;
-  border: 1px solid var(--wb-glass-border, hsl(var(--border) / 0.5));
-  border-radius: 6px;
-  background: color-mix(in hsl, hsl(var(--card)) 88%, transparent 12%);
+  padding: 6px 0 12px;
+  border-bottom: 1px solid color-mix(in hsl, hsl(var(--border)) 35%, transparent 65%);
+  background: transparent;
 }
 
 .wb-at-panel-title {
@@ -76,26 +75,30 @@
   color: hsl(var(--muted-foreground));
 }
 
-/* ==== 任务列表 ==== */
+/* ==== 任务列表（无框平铺，细分隔线） ==== */
 
 .wb-at-list {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  border: 1px solid var(--wb-glass-border, hsl(var(--border) / 0.5));
-  border-radius: 6px;
-  background: color-mix(in hsl, hsl(var(--card)) 88%, transparent 12%);
+  background: transparent;
   overflow: hidden;
 }
 
 .wb-at-list-toolbar {
   display: flex;
   align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  padding: 8px 12px;
-  border-bottom: 1px solid color-mix(in hsl, hsl(var(--border)) 45%, transparent 55%);
-  background: color-mix(in hsl, var(--wb-window-bg, hsl(var(--card))) 92%, hsl(var(--muted)) 8%);
+  gap: 8px;
+  flex-wrap: nowrap;
+  padding: 6px 0 8px;
+  border-bottom: 1px solid color-mix(in hsl, hsl(var(--border)) 35%, transparent 65%);
+  background: transparent;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.wb-at-list-toolbar::-webkit-scrollbar {
+  display: none;
 }
 
 .wb-at-list-head {

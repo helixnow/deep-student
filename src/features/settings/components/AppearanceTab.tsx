@@ -10,6 +10,7 @@ import { SettingSection } from './SettingsCommon';
 import { AccentPicker } from './AccentPicker';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
+import { saveSetting } from '@/utils/settingsApi';
 import { isMacOS, isMobilePlatform } from '@/utils/platform';
 import { applySidebarTranslucency } from '@/utils/sidebarTranslucency';
 import type { ThemeMode, ThemePalette } from '@/hooks/useTheme';
@@ -393,6 +394,10 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
   const handleCustomColorChange = React.useCallback((color: string) => {
     setCustomColor(color);
     persistThemePalette('custom');
+    // ★ BUG-11: 自选色号同步到 SQLite settings（localStorage 丢失后由 useTheme 回填）
+    void saveSetting('theme_custom_color', color).catch((error: unknown) => {
+      console.warn('Failed to persist theme_custom_color:', getErrorMessage(error));
+    });
   }, [persistThemePalette, setCustomColor]);
 
   const handleThinkingAutoCollapseChange = React.useCallback(async (checked: boolean) => {

@@ -1,0 +1,32 @@
+import { mkdtemp, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { expect, it } from 'vitest';
+import { WorkshopOperations } from '../src/operations.ts';
+import { seedTemplate } from '../src/resources.ts';
+import { HostRuntime } from '../../../kernel/runtime.ts';
+import { ContractSet } from '../../../kernel/contract-set.ts';
+import { PluginAdmin } from '../../../kernel/plugin-admin.ts';
+import { UserProfileStore } from '../../../kernel/profile-store.ts';
+import { injectedInstaller } from './installer-fixture.ts';
+
+it('B3 safe mode rejects validation/export/creation/installation before any candidate import', async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'dstu-safe-mode-'));
+  const ops = new WorkshopOperations({ dataDir, version: '0.20.0', platform: 'darwin', debug: true });
+  const card = await ops.propose({ sessionId: 'test', title: 'Safe', description: 'Safe', template: 'host-tool', changes: [], capabilities: [] });
+  const source = join(ops.store.directory(card.id), 'source'); await seedTemplate(source, card);
+  const marker = join(dataDir, 'candidate-ran');
+  await writeFile(join(source, 'index.ts'), `import {writeFileSync} from 'node:fs'; writeFileSync(${JSON.stringify(marker)}, 'ran'); export default {name:${JSON.stringify(card.pluginId)},meta:{id:${JSON.stringify(card.pluginId)},version:'1.0.0'},apply(){}};`);
+  const runtime = new HostRuntime({ app: ops.app, safeMode: true, contracts: new ContractSet([]) });
+  const official = join(dataDir, 'official.json'); await writeFile(official, '{"plugins":[]}');
+  new PluginAdmin({ runtime, store: new UserProfileStore(join(dataDir, 'user.profile.json'), official), official }).register();
+  ops.bindAdmin(await injectedInstaller(runtime));
+  await expect(ops.validate(card.id)).rejects.toThrow('SAFE_MODE_ACTIVE');
+  await expect(ops.export(card.id)).rejects.toThrow('SAFE_MODE_ACTIVE');
+  await expect(ops.create(card.id, card.revision)).rejects.toThrow('SAFE_MODE_ACTIVE');
+  const pending = await ops.store.update(card.id, card.revision, { state: 'pending-confirmation' });
+  await expect(ops.install(card.id, pending.revision)).rejects.toThrow('SAFE_MODE_ACTIVE');
+  const { access } = await import('node:fs/promises');
+  await expect(access(marker)).rejects.toThrow();
+  ops.dispose(); await runtime.dispose();
+});

@@ -1,0 +1,1487 @@
+{
+  "domain": "chat",
+  "commands": [
+    "chat_v2_load_session",
+    "chat_v2_load_messages_page",
+    "chat_v2_upsert_streaming_block",
+    "chat_v2_update_block_content",
+    "chat_v2_update_block_tool_output",
+    "chat_v2_delete_message",
+    "chat_v2_branch_session",
+    "chat_v2_get_message_summary"
+  ],
+  "scenarios": [
+    {
+      "id": "chat.message.upsert.placeholder_update_and_tool_fields",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "消息"
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_a_1",
+            "messageId": "msg_a_1",
+            "sessionId": "${0.id}",
+            "blockType": "content",
+            "content": "第一块"
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_a_1",
+            "messageId": "msg_a_1",
+            "sessionId": "${0.id}",
+            "blockType": "content",
+            "content": "第一块（续写）",
+            "status": "success"
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_a_2",
+            "messageId": "msg_a_1",
+            "sessionId": "${0.id}",
+            "blockType": "thinking",
+            "content": ""
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_a_3",
+            "messageId": "msg_a_1",
+            "blockType": "mcp_tool",
+            "content": "",
+            "status": "success",
+            "toolName": "search",
+            "toolInputJson": "{\"q\":\"x\",\"n\":null}",
+            "toolOutputJson": "null"
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_a_4",
+            "messageId": "msg_a_1",
+            "sessionId": "",
+            "blockType": "mcp_tool",
+            "content": "",
+            "toolName": null,
+            "toolInputJson": null,
+            "toolOutputJson": "[1,2.5,\"三\"]"
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_a_5",
+            "messageId": "msg_a_2",
+            "sessionId": "${0.id}",
+            "blockType": "content",
+            "content": "第二条消息",
+            "status": null
+          }
+        },
+        {
+          "cmd": "chat_v2_load_session",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_load_messages_page",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_get_message_summary",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "chat.message.upsert.block_moves_between_messages",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat"
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_mv_1",
+            "messageId": "msg_mv_1",
+            "sessionId": "${0.id}",
+            "blockType": "content",
+            "content": "原位置"
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_mv_1",
+            "messageId": "msg_mv_2",
+            "sessionId": "${0.id}",
+            "blockType": "content",
+            "content": "已移动"
+          }
+        },
+        {
+          "cmd": "chat_v2_load_session",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "chat.message.upsert.errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "S1"
+          }
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "S2"
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_e_1",
+            "messageId": "msg_e_1",
+            "sessionId": "${0.id}",
+            "blockType": "content",
+            "content": "属于 S1"
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "bad_blk",
+            "messageId": "msg_e_1",
+            "sessionId": "${0.id}",
+            "blockType": "content",
+            "content": "x"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_e_2",
+            "messageId": "bad_msg",
+            "sessionId": "${0.id}",
+            "blockType": "content",
+            "content": "x"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_e_3",
+            "messageId": "msg_e_1",
+            "sessionId": "${1.id}",
+            "blockType": "content",
+            "content": "越权"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_e_4",
+            "messageId": "msg_e_1",
+            "sessionId": "${0.id}",
+            "blockType": "mcp_tool",
+            "content": "",
+            "toolInputJson": "{bad"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_e_5",
+            "messageId": "msg_e_1",
+            "sessionId": "${0.id}",
+            "blockType": "mcp_tool",
+            "content": "",
+            "toolOutputJson": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_e_6",
+            "messageId": "msg_e_new",
+            "blockType": "content",
+            "content": "无会话"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_e_7",
+            "messageId": "msg_e_new2",
+            "sessionId": "sess_missing_fixture",
+            "blockType": "content",
+            "content": "会话不存在"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_e_8",
+            "messageId": "msg_e_1",
+            "sessionId": "${0.id}",
+            "blockType": "content"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_load_session",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_load_session",
+          "args": {
+            "sessionId": "${1.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "chat.message.update_block_content.success_and_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat"
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_u_1",
+            "messageId": "msg_u_1",
+            "sessionId": "${0.id}",
+            "blockType": "content",
+            "content": "旧内容",
+            "status": "success"
+          }
+        },
+        {
+          "cmd": "chat_v2_update_block_content",
+          "args": {
+            "blockId": "blk_u_1",
+            "content": "新内容\n第二行"
+          }
+        },
+        {
+          "cmd": "chat_v2_load_session",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_update_block_content",
+          "args": {
+            "blockId": "blk_u_1",
+            "content": ""
+          }
+        },
+        {
+          "cmd": "chat_v2_load_session",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "metadata": {
+              "is_subagent": "true"
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_u_2",
+            "messageId": "msg_u_2",
+            "sessionId": "${6.id}",
+            "blockType": "content",
+            "content": "字符串标记不算子代理"
+          }
+        },
+        {
+          "cmd": "chat_v2_update_block_content",
+          "args": {
+            "blockId": "blk_u_2",
+            "content": "可写"
+          }
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "metadata": {
+              "is_subagent": true,
+              "parent_session_id": "sess_parent_fixture"
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_u_3",
+            "messageId": "msg_u_3",
+            "sessionId": "${9.id}",
+            "blockType": "content",
+            "content": "子代理块"
+          }
+        },
+        {
+          "cmd": "chat_v2_update_block_content",
+          "args": {
+            "blockId": "blk_u_3",
+            "content": "应被拒绝"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_update_block_content",
+          "args": {
+            "blockId": "bad_blk",
+            "content": "x"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_update_block_content",
+          "args": {
+            "blockId": "blk_missing_fixture",
+            "content": "x"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_update_block_content",
+          "args": {
+            "blockId": "blk_u_1"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_load_session",
+          "args": {
+            "sessionId": "${9.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "chat.message.update_block_tool_output.success_and_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat"
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_t_1",
+            "messageId": "msg_t_1",
+            "sessionId": "${0.id}",
+            "blockType": "anki_cards",
+            "content": "",
+            "status": "success",
+            "toolName": "chatanki",
+            "toolOutputJson": "{\"cards\":[{\"front\":\"Q\",\"back\":\"A\"}]}"
+          }
+        },
+        {
+          "cmd": "chat_v2_update_block_tool_output",
+          "args": {
+            "blockId": "blk_t_1",
+            "toolOutputJson": "{\"cards\":[{\"front\":\"Q2\",\"back\":\"A2\",\"tags\":[]}],\"edited\":true}"
+          }
+        },
+        {
+          "cmd": "chat_v2_load_session",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_update_block_tool_output",
+          "args": {
+            "blockId": "blk_t_1",
+            "toolOutputJson": "null"
+          }
+        },
+        {
+          "cmd": "chat_v2_load_session",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "metadata": {
+              "is_subagent": true,
+              "parent_session_id": "sess_parent_fixture"
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_t_2",
+            "messageId": "msg_t_2",
+            "sessionId": "${6.id}",
+            "blockType": "anki_cards",
+            "content": "",
+            "status": "success",
+            "toolOutputJson": "{}"
+          }
+        },
+        {
+          "cmd": "chat_v2_update_block_tool_output",
+          "args": {
+            "blockId": "blk_t_2",
+            "toolOutputJson": "{\"cards\":[]}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_update_block_tool_output",
+          "args": {
+            "blockId": "bad_blk",
+            "toolOutputJson": "{}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_update_block_tool_output",
+          "args": {
+            "blockId": "blk_t_1",
+            "toolOutputJson": "{bad"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_update_block_tool_output",
+          "args": {
+            "blockId": "blk_missing_fixture",
+            "toolOutputJson": "{bad"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_update_block_tool_output",
+          "args": {
+            "blockId": "blk_missing_fixture",
+            "toolOutputJson": "{}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_load_session",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "chat.message.delete_message.success_and_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "S1"
+          }
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "S2"
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_d_1",
+            "messageId": "msg_d_1",
+            "sessionId": "${0.id}",
+            "blockType": "content",
+            "content": "一",
+            "status": "success"
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_d_2",
+            "messageId": "msg_d_2",
+            "sessionId": "${0.id}",
+            "blockType": "content",
+            "content": "二",
+            "status": "success"
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_d_3",
+            "messageId": "msg_d_3",
+            "sessionId": "${0.id}",
+            "blockType": "content",
+            "content": "三",
+            "status": "success"
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_d_4",
+            "messageId": "msg_d_4",
+            "sessionId": "${1.id}",
+            "blockType": "content",
+            "content": "他会话",
+            "status": "success"
+          }
+        },
+        {
+          "cmd": "chat_v2_delete_message",
+          "args": {
+            "sessionId": "${0.id}",
+            "messageId": "msg_d_2"
+          }
+        },
+        {
+          "cmd": "chat_v2_load_session",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_get_message_summary",
+          "args": {}
+        },
+        {
+          "cmd": "chat_v2_delete_message",
+          "args": {
+            "sessionId": "${0.id}",
+            "messageId": "msg_d_2"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_delete_message",
+          "args": {
+            "sessionId": "${0.id}",
+            "messageId": "msg_d_4"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_delete_message",
+          "args": {
+            "sessionId": "${0.id}",
+            "messageId": "bad_msg"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_delete_message",
+          "args": {
+            "sessionId": "sess_missing_fixture",
+            "messageId": "msg_d_1"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_delete_message",
+          "args": {
+            "sessionId": "sess_missing_fixture",
+            "messageId": "bad_msg"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "metadata": {
+              "is_subagent": true,
+              "parent_session_id": "sess_parent_fixture"
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_d_5",
+            "messageId": "msg_d_5",
+            "sessionId": "${14.id}",
+            "blockType": "content",
+            "content": "子代理",
+            "status": "success"
+          }
+        },
+        {
+          "cmd": "chat_v2_delete_message",
+          "args": {
+            "sessionId": "${14.id}",
+            "messageId": "msg_d_5"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_delete_message",
+          "args": {
+            "sessionId": "${14.id}",
+            "messageId": "bad_msg"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_delete_message",
+          "args": {
+            "sessionId": "${0.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_load_session",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_load_session",
+          "args": {
+            "sessionId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_load_session",
+          "args": {
+            "sessionId": "${14.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "chat.message.load_session.tail_full_and_authority",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "尾窗"
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_l_1",
+            "messageId": "msg_l_1",
+            "sessionId": "${0.id}",
+            "blockType": "content",
+            "content": "1",
+            "status": "success"
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_l_2",
+            "messageId": "msg_l_2",
+            "sessionId": "${0.id}",
+            "blockType": "content",
+            "content": "2",
+            "status": "success"
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_l_3",
+            "messageId": "msg_l_3",
+            "sessionId": "${0.id}",
+            "blockType": "content",
+            "content": "3",
+            "status": "success"
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_l_4",
+            "messageId": "msg_l_3",
+            "sessionId": "${0.id}",
+            "blockType": "thinking",
+            "content": "3b",
+            "status": "success"
+          }
+        },
+        {
+          "cmd": "chat_v2_load_session",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_load_session",
+          "args": {
+            "sessionId": "${0.id}",
+            "tailLimit": null
+          }
+        },
+        {
+          "cmd": "chat_v2_load_session",
+          "args": {
+            "sessionId": "${0.id}",
+            "tailLimit": 0
+          }
+        },
+        {
+          "cmd": "chat_v2_load_session",
+          "args": {
+            "sessionId": "${0.id}",
+            "tailLimit": 1
+          }
+        },
+        {
+          "cmd": "chat_v2_load_session",
+          "args": {
+            "sessionId": "${0.id}",
+            "tailLimit": 2
+          }
+        },
+        {
+          "cmd": "chat_v2_load_session",
+          "args": {
+            "sessionId": "${0.id}",
+            "tailLimit": 3
+          }
+        },
+        {
+          "cmd": "chat_v2_load_session",
+          "args": {
+            "sessionId": "${0.id}",
+            "tailLimit": 4294967295
+          }
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "空会话"
+          }
+        },
+        {
+          "cmd": "chat_v2_load_session",
+          "args": {
+            "sessionId": "${12.id}",
+            "tailLimit": 5
+          }
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "metadata": {
+              "authorityMode": "plan",
+              "permissionPreset": "full_access",
+              "userNote": "u"
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_load_session",
+          "args": {
+            "sessionId": "${14.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_get_session",
+          "args": {
+            "sessionId": "${14.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "metadata": {
+              "authority_mode": "ask"
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_load_session",
+          "args": {
+            "sessionId": "${17.id}",
+            "tailLimit": 2
+          }
+        },
+        {
+          "cmd": "chat_v2_get_session",
+          "args": {
+            "sessionId": "${17.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "metadata": {
+              "authorityMode": "unknown-mode"
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_load_session",
+          "args": {
+            "sessionId": "${20.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_load_session",
+          "args": {
+            "sessionId": "legacy_prefix_missing"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_load_session",
+          "args": {
+            "sessionId": "sess_missing_fixture"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_load_session",
+          "args": {
+            "sessionId": "sess_missing_fixture",
+            "tailLimit": 2
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_load_session",
+          "args": {
+            "sessionId": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_load_session",
+          "args": {
+            "sessionId": "   "
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_load_session",
+          "args": {
+            "sessionId": "${0.id}",
+            "tailLimit": -1
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "chat.message.load_messages_page.paging_and_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "分页"
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_p_1",
+            "messageId": "msg_p_1",
+            "sessionId": "${0.id}",
+            "blockType": "content",
+            "content": "1",
+            "status": "success"
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_p_2",
+            "messageId": "msg_p_2",
+            "sessionId": "${0.id}",
+            "blockType": "content",
+            "content": "2",
+            "status": "success"
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_p_3",
+            "messageId": "msg_p_3",
+            "sessionId": "${0.id}",
+            "blockType": "content",
+            "content": "3",
+            "status": "success"
+          }
+        },
+        {
+          "cmd": "chat_v2_load_messages_page",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_load_messages_page",
+          "args": {
+            "sessionId": "${0.id}",
+            "offset": null,
+            "limit": null
+          }
+        },
+        {
+          "cmd": "chat_v2_load_messages_page",
+          "args": {
+            "sessionId": "${0.id}",
+            "offset": 0,
+            "limit": 2
+          }
+        },
+        {
+          "cmd": "chat_v2_load_messages_page",
+          "args": {
+            "sessionId": "${0.id}",
+            "offset": 2,
+            "limit": 2
+          }
+        },
+        {
+          "cmd": "chat_v2_load_messages_page",
+          "args": {
+            "sessionId": "${0.id}",
+            "offset": 3,
+            "limit": 2
+          }
+        },
+        {
+          "cmd": "chat_v2_load_messages_page",
+          "args": {
+            "sessionId": "${0.id}",
+            "offset": 99
+          }
+        },
+        {
+          "cmd": "chat_v2_load_messages_page",
+          "args": {
+            "sessionId": "${0.id}",
+            "limit": 0
+          }
+        },
+        {
+          "cmd": "chat_v2_load_messages_page",
+          "args": {
+            "sessionId": "${0.id}",
+            "limit": 501
+          }
+        },
+        {
+          "cmd": "chat_v2_load_messages_page",
+          "args": {
+            "sessionId": "sess_missing_fixture"
+          }
+        },
+        {
+          "cmd": "chat_v2_load_messages_page",
+          "args": {
+            "sessionId": "legacy_prefix_missing",
+            "offset": 0,
+            "limit": 10
+          }
+        },
+        {
+          "cmd": "chat_v2_load_messages_page",
+          "args": {
+            "sessionId": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_load_messages_page",
+          "args": {
+            "sessionId": "\t "
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_load_messages_page",
+          "args": {
+            "sessionId": "${0.id}",
+            "offset": -1
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "chat.message.branch_session.copy_remap_and_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_group",
+          "args": {
+            "request": {
+              "name": "分支课题"
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "analysis",
+            "title": "源会话",
+            "metadata": {
+              "userNote": "n"
+            },
+            "groupId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_b_1",
+            "messageId": "msg_b_1",
+            "sessionId": "${1.id}",
+            "blockType": "content",
+            "content": "一",
+            "status": "success"
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_b_2",
+            "messageId": "msg_b_2",
+            "sessionId": "${1.id}",
+            "blockType": "mcp_tool",
+            "content": "",
+            "status": "success",
+            "toolName": "echo",
+            "toolInputJson": "{\"ref\":\"blk_b_1\",\"msg\":\"msg_b_1\"}",
+            "toolOutputJson": "{\"blockId\":\"blk_b_2\"}"
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_b_3",
+            "messageId": "msg_b_3",
+            "sessionId": "${1.id}",
+            "blockType": "content",
+            "content": "三",
+            "status": "success"
+          }
+        },
+        {
+          "cmd": "chat_v2_save_session",
+          "args": {
+            "sessionId": "${1.id}",
+            "sessionState": {
+              "sessionId": "${1.id}",
+              "updatedAt": "2026-01-01T00:00:00Z",
+              "chatParams": {
+                "modelId": "m"
+              },
+              "features": {
+                "rag": true
+              },
+              "modeState": {
+                "k": 1
+              },
+              "inputValue": "不复制",
+              "activeSkillIdsJson": "[\"s1\"]"
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_branch_session",
+          "args": {
+            "sourceSessionId": "${1.id}",
+            "upToMessageId": "msg_b_2"
+          }
+        },
+        {
+          "cmd": "chat_v2_load_session",
+          "args": {
+            "sessionId": "${6.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_load_session",
+          "args": {
+            "sessionId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_list_sessions",
+          "args": {
+            "groupId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_branch_session",
+          "args": {
+            "sourceSessionId": "${6.id}",
+            "upToMessageId": "${7.messages.0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_load_session",
+          "args": {
+            "sessionId": "${10.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat"
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_b_4",
+            "messageId": "msg_b_4",
+            "sessionId": "${12.id}",
+            "blockType": "content",
+            "content": "无标题",
+            "status": "success"
+          }
+        },
+        {
+          "cmd": "chat_v2_branch_session",
+          "args": {
+            "sourceSessionId": "${12.id}",
+            "upToMessageId": "msg_b_4"
+          }
+        },
+        {
+          "cmd": "chat_v2_get_session",
+          "args": {
+            "sessionId": "${14.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "Super 源",
+            "metadata": {
+              "super_agent": {
+                "active": true,
+                "version": 1,
+                "workspace_id": null,
+                "hidden": false
+              },
+              "pinned": true
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_b_5",
+            "messageId": "msg_b_5",
+            "sessionId": "${16.id}",
+            "blockType": "content",
+            "content": "super",
+            "status": "success"
+          }
+        },
+        {
+          "cmd": "chat_v2_branch_session",
+          "args": {
+            "sourceSessionId": "${16.id}",
+            "upToMessageId": "msg_b_5"
+          }
+        },
+        {
+          "cmd": "chat_v2_get_session",
+          "args": {
+            "sessionId": "${18.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_branch_session",
+          "args": {
+            "sourceSessionId": "bad_prefix",
+            "upToMessageId": "msg_b_1"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_branch_session",
+          "args": {
+            "sourceSessionId": "sess_missing_fixture",
+            "upToMessageId": "msg_b_1"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_branch_session",
+          "args": {
+            "sourceSessionId": "${1.id}",
+            "upToMessageId": "msg_missing_fixture"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_branch_session",
+          "args": {
+            "sourceSessionId": "${1.id}",
+            "upToMessageId": "msg_b_4"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "归档源"
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_b_6",
+            "messageId": "msg_b_6",
+            "sessionId": "${24.id}",
+            "blockType": "content",
+            "content": "x",
+            "status": "success"
+          }
+        },
+        {
+          "cmd": "chat_v2_archive_session",
+          "args": {
+            "sessionId": "${24.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_branch_session",
+          "args": {
+            "sourceSessionId": "${24.id}",
+            "upToMessageId": "msg_b_6"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "metadata": {
+              "is_subagent": true,
+              "parent_session_id": "sess_parent_fixture"
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_b_7",
+            "messageId": "msg_b_7",
+            "sessionId": "${28.id}",
+            "blockType": "content",
+            "content": "sub",
+            "status": "success"
+          }
+        },
+        {
+          "cmd": "chat_v2_branch_session",
+          "args": {
+            "sourceSessionId": "${28.id}",
+            "upToMessageId": "msg_b_7"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_branch_session",
+          "args": {
+            "sourceSessionId": "${1.id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "chat_v2_list_sessions",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "chat.message.get_message_summary.empty_and_counts",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_get_message_summary",
+          "args": {}
+        },
+        {
+          "cmd": "chat_v2_get_message_summary"
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat"
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_s_1",
+            "messageId": "msg_s_1",
+            "sessionId": "${2.id}",
+            "blockType": "content",
+            "content": "a",
+            "status": "success"
+          }
+        },
+        {
+          "cmd": "chat_v2_upsert_streaming_block",
+          "args": {
+            "blockId": "blk_s_2",
+            "messageId": "msg_s_2",
+            "sessionId": "${2.id}",
+            "blockType": "content",
+            "content": "b",
+            "status": "success"
+          }
+        },
+        {
+          "cmd": "chat_v2_get_message_summary",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

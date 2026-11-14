@@ -27,6 +27,7 @@ import {
 } from '@phosphor-icons/react';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { createPanelFeed } from '../panelFeed';
 
 // =============================================================================
 // 类型定义
@@ -46,7 +47,8 @@ interface PdfDebugLog {
 // =============================================================================
 
 const PDF_DEBUG_LOGS: PdfDebugLog[] = [];
-const PDF_DEBUG_EVENT = 'pdf-multimodal-debug-log';
+const logAdded = createPanelFeed<PdfDebugLog>();
+const logsCleared = createPanelFeed();
 let logIdCounter = 0;
 
 function addPdfDebugLog(
@@ -68,12 +70,12 @@ function addPdfDebugLog(
   if (PDF_DEBUG_LOGS.length > 500) {
     PDF_DEBUG_LOGS.shift();
   }
-  window.dispatchEvent(new CustomEvent(PDF_DEBUG_EVENT, { detail: log }));
+  logAdded.publish(log);
 }
 
 function clearPdfDebugLogs() {
   PDF_DEBUG_LOGS.length = 0;
-  window.dispatchEvent(new CustomEvent('pdf-multimodal-debug-cleared'));
+  logsCleared.publish();
 }
 
 function getPdfDebugLogs(): PdfDebugLog[] {
@@ -329,20 +331,20 @@ const PdfMultimodalDebugPlugin: React.FC<DebugPanelPluginProps> = ({
     startInterceptingConsole();
     setIsCapturing(true);
 
-    const handleNewLog = (e: CustomEvent<PdfDebugLog>) => {
-      setLogs((prev) => [...prev, e.detail]);
+    const handleNewLog = (log: PdfDebugLog) => {
+      setLogs((prev) => [...prev, log]);
     };
 
     const handleClear = () => {
       setLogs([]);
     };
 
-    window.addEventListener(PDF_DEBUG_EVENT, handleNewLog as EventListener);
-    window.addEventListener('pdf-multimodal-debug-cleared', handleClear);
+    const unsubscribeAdded = logAdded.subscribe(handleNewLog);
+    const unsubscribeCleared = logsCleared.subscribe(handleClear);
 
     return () => {
-      window.removeEventListener(PDF_DEBUG_EVENT, handleNewLog as EventListener);
-      window.removeEventListener('pdf-multimodal-debug-cleared', handleClear);
+      unsubscribeAdded();
+      unsubscribeCleared();
       stopInterceptingConsole();
       setIsCapturing(false);
     };

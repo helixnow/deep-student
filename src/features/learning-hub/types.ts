@@ -17,6 +17,13 @@ import {
   AUDIO_PREVIEW_EXTENSIONS,
   VIDEO_PREVIEW_EXTENSIONS,
 } from './apps/views/mediaPreviewUtils';
+import {
+  asResourceType,
+  getOfficialResourceTypeDefinition,
+  getOfficialResourceTypeUi,
+  resourceTypeSourceDb,
+} from '@/shared/resource-types/lookup';
+import { OFFICIAL_RESOURCE_TYPE_IDS } from '@/shared/resource-types/official';
 import type React from 'react';
 
 // ============================================================================
@@ -260,49 +267,13 @@ export const RESOURCE_TYPE_CONFIG: Record<
     icon: 'LayoutGrid',
     color: 'text-muted-foreground',
   },
-  note: {
-    labelKey: 'learningHub:resourceType.note',
-    icon: 'FileText',
-    color: 'text-blue-500',
-  },
-  textbook: {
-    labelKey: 'learningHub:resourceType.textbook',
-    icon: 'BookOpen',
-    color: 'text-orange-500',
-  },
-  // 注意：mistake 类型已移除，因为是旧版聊天记录
-  exam: {
-    labelKey: 'learningHub:resourceType.exam',
-    icon: 'ClipboardList',
-    color: 'text-green-500',
-  },
-  // ★ 2025-12-07: 添加 translation 和 essay 以支持内置文件夹
-  translation: {
-    labelKey: 'learningHub:resourceType.translation',
-    icon: 'Languages',
-    color: 'text-purple-500',
-  },
-  essay: {
-    labelKey: 'learningHub:resourceType.essay',
-    icon: 'PenTool',
-    color: 'text-pink-500',
-  },
-  // ★ 2025-12-09: 添加 image 和 file 以支持附件资源
-  image: {
-    labelKey: 'learningHub:resourceType.image',
-    icon: 'Image',
-    color: 'text-cyan-500',
-  },
-  file: {
-    labelKey: 'learningHub:resourceType.file',
-    icon: 'File',
-    color: 'text-gray-500',
-  },
-  mindmap: {
-    labelKey: 'learningHub:resourceType.mindmap',
-    icon: 'Workflow',
-    color: 'text-indigo-500',
-  },
+  ...Object.fromEntries(
+    OFFICIAL_RESOURCE_TYPE_IDS.map((type) => {
+      const ui = getOfficialResourceTypeUi(type)!;
+      const definition = getOfficialResourceTypeDefinition(type)!;
+      return [type, { labelKey: definition.labelKey, icon: ui.iconToken, color: ui.color }];
+    }),
+  ) as Record<Exclude<ResourceType, 'all'>, { labelKey: string; icon: string; color: string }>,
 };
 
 /**
@@ -358,15 +329,8 @@ export const VIEW_MODE_CONFIG: Record<
  */
 export function itemTypeToResourceType(itemType: FolderItemType): ResourceType {
   const mapping: Record<FolderItemType, ResourceType> = {
-    note: 'note',
-    textbook: 'textbook',
-    exam: 'exam',
-    translation: 'translation',
-    essay: 'essay',
-    // ★ 2025-12-09: 添加 image 和 file
-    image: 'image',
-    file: 'file',
-    mindmap: 'mindmap',
+    note: 'note', textbook: 'textbook', exam: 'exam', translation: 'translation',
+    essay: 'essay', image: 'image', file: 'file', mindmap: 'mindmap',
   };
   return mapping[itemType] || 'note';
 }
@@ -374,20 +338,14 @@ export function itemTypeToResourceType(itemType: FolderItemType): ResourceType {
 /**
  * itemType → previewType 映射
  */
+// Preserve the pre-refactor plain-record lookup, including inherited values for
+// out-of-contract keys. Changing that legacy behaviour requires separate approval.
+const legacyPreviewTypes = Object.fromEntries(
+  OFFICIAL_RESOURCE_TYPE_IDS.map((type) => [type, getOfficialResourceTypeUi(type)!.previewType]),
+) as Record<FolderItemType, ResourceListItem['previewType']>;
+
 export function itemTypeToPreviewType(itemType: FolderItemType): ResourceListItem['previewType'] {
-  const mapping: Record<FolderItemType, ResourceListItem['previewType']> = {
-    note: 'markdown',
-    textbook: 'pdf',
-    exam: 'exam',
-    translation: 'markdown',
-    essay: 'markdown',
-    // ★ 2025-12-09: 添加 image 和 file
-    image: 'image',
-    file: 'none',
-    // ★ 2026-01-30: 修复 mindmap 预览类型，与后端对齐
-    mindmap: 'mindmap',
-  };
-  return mapping[itemType] || 'none';
+  return legacyPreviewTypes[itemType] || 'none';
 }
 
 /**
@@ -452,16 +410,9 @@ export function inferFilePreviewTypeFromName(fileName: string): ResourceListItem
  */
 export function nodeTypeToFolderItemType(nodeType: DstuNodeType): FolderItemType | null {
   const mapping: Partial<Record<DstuNodeType, FolderItemType>> = {
-    note: 'note',
-    textbook: 'textbook',
-    exam: 'exam',
-    translation: 'translation',
-    essay: 'essay',
-    image: 'image',
-    file: 'file',
-    mindmap: 'mindmap',
+    note: 'note', textbook: 'textbook', exam: 'exam', translation: 'translation',
+    essay: 'essay', image: 'image', file: 'file', mindmap: 'mindmap',
   };
-
   return mapping[nodeType] ?? null;
 }
 
@@ -508,19 +459,12 @@ export function normalizePreviewType(previewType?: string): ResourceListItem['pr
 /**
  * itemType → sourceDb 映射
  */
+const legacySourceDbs = Object.fromEntries(
+  OFFICIAL_RESOURCE_TYPE_IDS.map((type) => [type, resourceTypeSourceDb(type)]),
+) as Record<FolderItemType, ResourceListItem['sourceDb']>;
+
 export function itemTypeToSourceDb(itemType: FolderItemType): ResourceListItem['sourceDb'] {
-  const mapping: Record<FolderItemType, ResourceListItem['sourceDb']> = {
-    note: 'notes',
-    textbook: 'textbooks',
-    exam: 'exam_sessions',
-    translation: 'translations',
-    essay: 'essays',
-    // ★ 2025-12-09: 添加 image 和 file
-    image: 'attachments',
-    file: 'attachments',
-    mindmap: 'mindmaps',
-  };
-  return mapping[itemType] || 'notes';
+  return legacySourceDbs[itemType] || 'notes';
 }
 
 /**

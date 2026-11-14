@@ -1,0 +1,493 @@
+{
+  "domain": "media-docs",
+  "commands": [
+    "parse_document_from_base64"
+  ],
+  "scenarios": [
+    {
+      "id": "docs.parse_b64.text_formats",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "parse_document_from_base64",
+          "args": {
+            "fileName": "notes.txt",
+            "base64Content": "ICAK56ys5LiA6KGMIGhlbGxvCuesrOS6jOihjCAgCgo="
+          }
+        },
+        {
+          "cmd": "parse_document_from_base64",
+          "args": {
+            "fileName": "README.md",
+            "base64Content": "IyDmoIfpopgKCi0gaXRlbQpgYGBqcwp4CmBgYAo="
+          }
+        },
+        {
+          "cmd": "parse_document_from_base64",
+          "args": {
+            "fileName": "guide.markdown",
+            "base64Content": "IyMgR3VpZGUKdGV4dA=="
+          }
+        },
+        {
+          "cmd": "parse_document_from_base64",
+          "args": {
+            "fileName": "page.html",
+            "base64Content": "PGh0bWw+PGJvZHk+PGgxPlRpdGxlPC9oMT48cD5QYXJhIDxiPmJvbGQ8L2I+ICZhbXA7IG1vcmU8L3A+PHVsPjxsaT5hPC9saT48bGk+YjwvbGk+PC91bD48L2JvZHk+PC9odG1sPg=="
+          }
+        },
+        {
+          "cmd": "parse_document_from_base64",
+          "args": {
+            "fileName": "page.htm",
+            "base64Content": "PHA+d29yZCB3b3JkIHdvcmQgd29yZCB3b3JkIHdvcmQgd29yZCB3b3JkIHdvcmQgd29yZCB3b3JkIHdvcmQgd29yZCB3b3JkIHdvcmQgd29yZCB3b3JkIHdvcmQgd29yZCB3b3JkIHdvcmQgd29yZCB3b3JkIHdvcmQgd29yZCB3b3JkIHdvcmQgd29yZCB3b3JkIHdvcmQgd29yZCB3b3JkIHdvcmQgd29yZCB3b3JkIHdvcmQgd29yZCB3b3JkIHdvcmQgd29yZCA8L3A+"
+          }
+        },
+        {
+          "cmd": "parse_document_from_base64",
+          "args": {
+            "fileName": "table.csv",
+            "base64Content": "5aeT5ZCNLOWIhuaVsApBbm4sOTUKQm9iLCI4LDUiCg=="
+          }
+        },
+        {
+          "cmd": "parse_document_from_base64",
+          "args": {
+            "fileName": "data.json",
+            "base64Content": "eyJiIjoxLCJhIjpbMSwyLHsiYyI6bnVsbH1dLCJ6Ijoi5LitIn0="
+          }
+        },
+        {
+          "cmd": "parse_document_from_base64",
+          "args": {
+            "fileName": "broken.json",
+            "base64Content": "eyJiIjoxLA=="
+          }
+        },
+        {
+          "cmd": "parse_document_from_base64",
+          "args": {
+            "fileName": "doc.xml",
+            "base64Content": "PD94bWwgdmVyc2lvbj0iMS4wIj8+PHJvb3Q+PGE+YWxwaGE8L2E+PGI+PCFbQ0RBVEFbYmV0YSA8eD5dXT48L2I+PGMvPiAgZ2FtbWEgIDwvcm9vdD4="
+          }
+        },
+        {
+          "cmd": "parse_document_from_base64",
+          "args": {
+            "fileName": "bad.xml",
+            "base64Content": "PHJvb3Q+PGE+YWxwaGE8L2I+"
+          }
+        },
+        {
+          "cmd": "parse_document_from_base64",
+          "args": {
+            "fileName": "main.py",
+            "base64Content": "ZGVmIGYoKToKICAgIHJldHVybiAxCg=="
+          }
+        },
+        {
+          "cmd": "parse_document_from_base64",
+          "args": {
+            "fileName": "NOTES.TXT",
+            "base64Content": "VVBQRVIgRVhU"
+          }
+        },
+        {
+          "cmd": "parse_document_from_base64",
+          "args": {
+            "fileName": "Makefile",
+            "base64Content": "YWxsOgoJZWNobyBoaQo="
+          }
+        },
+        {
+          "cmd": "parse_document_from_base64",
+          "args": {
+            "fileName": ".gitignore",
+            "base64Content": "bm9kZV9tb2R1bGVzCg=="
+          }
+        },
+        {
+          "cmd": "parse_document_from_base64",
+          "args": {
+            "fileName": "Dockerfile",
+            "base64Content": "RlJPTSBzY3JhdGNoCg=="
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": []
+      },
+      "normalize": []
+    },
+    {
+      "id": "docs.parse_b64.text_encodings",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "parse_document_from_base64",
+          "args": {
+            "fileName": "gbk.txt",
+            "base64Content": "1tDOxEdCS7Hgwuu1xL2y0uWjurXa0rvVwiC6r8r9"
+          }
+        },
+        {
+          "cmd": "parse_document_from_base64",
+          "args": {
+            "fileName": "utf16.txt",
+            "base64Content": "//5VAFQARgAtADEANgAgAA9cS20="
+          }
+        },
+        {
+          "cmd": "parse_document_from_base64",
+          "args": {
+            "fileName": "bom8.txt",
+            "base64Content": "77u/Qk9NIHV0ZjggdGV4dA=="
+          }
+        },
+        {
+          "cmd": "parse_document_from_base64",
+          "args": {
+            "fileName": "lossy.txt",
+            "base64Content": "b2sg//79IHRhaWw="
+          }
+        },
+        {
+          "cmd": "parse_document_from_base64",
+          "args": {
+            "fileName": "gbk.csv",
+            "base64Content": "wdAxLMHQMgrWtSwyCg=="
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": []
+      },
+      "normalize": []
+    },
+    {
+      "id": "docs.parse_b64.data_url_and_empty",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "parse_document_from_base64",
+          "args": {
+            "fileName": "notes.txt",
+            "base64Content": "data:text/plain;base64,ZnJvbSBkYXRhIHVybA=="
+          }
+        },
+        {
+          "cmd": "parse_document_from_base64",
+          "args": {
+            "fileName": "notes.txt",
+            "base64Content": "data:text/plain;base64"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "parse_document_from_base64",
+          "args": {
+            "fileName": "notes.txt",
+            "base64Content": "data:text/plain;base64,"
+          }
+        },
+        {
+          "cmd": "parse_document_from_base64",
+          "args": {
+            "fileName": "notes.txt",
+            "base64Content": ""
+          }
+        },
+        {
+          "cmd": "parse_document_from_base64",
+          "args": {
+            "fileName": "empty.json",
+            "base64Content": ""
+          }
+        },
+        {
+          "cmd": "parse_document_from_base64",
+          "args": {
+            "fileName": "empty.csv",
+            "base64Content": ""
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": []
+      },
+      "normalize": []
+    },
+    {
+      "id": "docs.parse_b64.invalid_input_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "parse_document_from_base64",
+          "args": {
+            "fileName": "notes.txt",
+            "base64Content": "@@@not-base64@@@"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "parse_document_from_base64",
+          "args": {
+            "fileName": "notes.txt",
+            "base64Content": "aGVsbG8"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "parse_document_from_base64",
+          "args": {
+            "fileName": "notes.txt",
+            "base64Content": "aGVs bG8="
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "parse_document_from_base64",
+          "args": {
+            "fileName": "README",
+            "base64Content": "bm8gZXh0ZW5zaW9uLCBub3QgaW4gcGxhaW4tdGV4dCBsaXN0"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "parse_document_from_base64",
+          "args": {
+            "fileName": "",
+            "base64Content": "eA=="
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "parse_document_from_base64",
+          "args": {
+            "fileName": "tool.exe",
+            "base64Content": "TVo="
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "parse_document_from_base64",
+          "args": {
+            "fileName": "archive.tar.gz",
+            "base64Content": "eA=="
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "parse_document_from_base64",
+          "args": {
+            "fileName": "legacy.doc",
+            "base64Content": "eA=="
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "parse_document_from_base64",
+          "args": {
+            "fileName": "photo.png",
+            "base64Content": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR42mP4z8AAAAMBAQD3A0FDAAAAAElFTkSuQmCC"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": []
+      },
+      "normalize": []
+    },
+    {
+      "id": "docs.parse_b64.pdf",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "parse_document_from_base64",
+          "args": {
+            "fileName": "tiny.pdf",
+            "base64Content": "JVBERi0xLjQKMSAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyAvUGFnZXMgMiAwIFIgPj4KZW5kb2JqCjIgMCBvYmoKPDwgL1R5cGUgL1BhZ2VzIC9LaWRzIFszIDAgUl0gL0NvdW50IDEgPj4KZW5kb2JqCjMgMCBvYmoKPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyIDAgUiAvTWVkaWFCb3ggWzAgMCAyMDAgMTAwXSAvQ29udGVudHMgNCAwIFIgL1Jlc291cmNlcyA8PCAvRm9udCA8PCAvRjEgNSAwIFIgPj4gPj4gPj4KZW5kb2JqCjQgMCBvYmoKPDwgL0xlbmd0aCAzOSA+PgpzdHJlYW0KQlQgL0YxIDE4IFRmIDIwIDUwIFRkIChIZWxsbyBQREYpIFRqIEVUCmVuZHN0cmVhbQplbmRvYmoKNSAwIG9iago8PCAvVHlwZSAvRm9udCAvU3VidHlwZSAvVHlwZTEgL0Jhc2VGb250IC9IZWx2ZXRpY2EgPj4KZW5kb2JqCnhyZWYKMCA2CjAwMDAwMDAwMDAgNjU1MzUgZiAKMDAwMDAwMDAwOSAwMDAwMCBuIAowMDAwMDAwMDU4IDAwMDAwIG4gCjAwMDAwMDAxMTUgMDAwMDAgbiAKMDAwMDAwMDI0MSAwMDAwMCBuIAowMDAwMDAwMzMwIDAwMDAwIG4gCnRyYWlsZXIKPDwgL1NpemUgNiAvUm9vdCAxIDAgUiA+PgpzdGFydHhyZWYKNDAwCiUlRU9GCg=="
+          }
+        },
+        {
+          "cmd": "parse_document_from_base64",
+          "args": {
+            "fileName": "UPPER.PDF",
+            "base64Content": "JVBERi0xLjQKMSAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyAvUGFnZXMgMiAwIFIgPj4KZW5kb2JqCjIgMCBvYmoKPDwgL1R5cGUgL1BhZ2VzIC9LaWRzIFszIDAgUl0gL0NvdW50IDEgPj4KZW5kb2JqCjMgMCBvYmoKPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyIDAgUiAvTWVkaWFCb3ggWzAgMCAyMDAgMTAwXSAvQ29udGVudHMgNCAwIFIgL1Jlc291cmNlcyA8PCAvRm9udCA8PCAvRjEgNSAwIFIgPj4gPj4gPj4KZW5kb2JqCjQgMCBvYmoKPDwgL0xlbmd0aCAzOSA+PgpzdHJlYW0KQlQgL0YxIDE4IFRmIDIwIDUwIFRkIChIZWxsbyBQREYpIFRqIEVUCmVuZHN0cmVhbQplbmRvYmoKNSAwIG9iago8PCAvVHlwZSAvRm9udCAvU3VidHlwZSAvVHlwZTEgL0Jhc2VGb250IC9IZWx2ZXRpY2EgPj4KZW5kb2JqCnhyZWYKMCA2CjAwMDAwMDAwMDAgNjU1MzUgZiAKMDAwMDAwMDAwOSAwMDAwMCBuIAowMDAwMDAwMDU4IDAwMDAwIG4gCjAwMDAwMDAxMTUgMDAwMDAgbiAKMDAwMDAwMDI0MSAwMDAwMCBuIAowMDAwMDAwMzMwIDAwMDAwIG4gCnRyYWlsZXIKPDwgL1NpemUgNiAvUm9vdCAxIDAgUiA+PgpzdGFydHhyZWYKNDAwCiUlRU9GCg=="
+          }
+        },
+        {
+          "cmd": "parse_document_from_base64",
+          "args": {
+            "fileName": "locked.pdf",
+            "base64Content": "JVBERi0xLjQKMSAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyAvUGFnZXMgMiAwIFIgPj4KZW5kb2JqCjIgMCBvYmoKPDwgL1R5cGUgL1BhZ2VzIC9LaWRzIFszIDAgUl0gL0NvdW50IDEgPj4KZW5kb2JqCjMgMCBvYmoKPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyIDAgUiAvTWVkaWFCb3ggWzAgMCAyMDAgMTAwXSAvQ29udGVudHMgNCAwIFIgL1Jlc291cmNlcyA8PCAvRm9udCA8PCAvRjEgNSAwIFIgPj4gPj4gPj4KZW5kb2JqCjQgMCBvYmoKPDwgL0xlbmd0aCAzNiA+PgpzdHJlYW0KQlQgL0YxIDE4IFRmIDIwIDUwIFRkIChMb2NrZWQpIFRqIEVUCmVuZHN0cmVhbQplbmRvYmoKNSAwIG9iago8PCAvVHlwZSAvRm9udCAvU3VidHlwZSAvVHlwZTEgL0Jhc2VGb250IC9IZWx2ZXRpY2EgPj4KZW5kb2JqCnhyZWYKMCA2CjAwMDAwMDAwMDAgNjU1MzUgZiAKMDAwMDAwMDAwOSAwMDAwMCBuIAowMDAwMDAwMDU4IDAwMDAwIG4gCjAwMDAwMDAxMTUgMDAwMDAgbiAKMDAwMDAwMDI0MSAwMDAwMCBuIAowMDAwMDAwMzI3IDAwMDAwIG4gCnRyYWlsZXIKPDwgL1NpemUgNiAvUm9vdCAxIDAgUiAvRW5jcnlwdCA8PCAvRmlsdGVyIC9TdGFuZGFyZCA+PiA+PgpzdGFydHhyZWYKMzk3CiUlRU9GCg=="
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "parse_document_from_base64",
+          "args": {
+            "fileName": "corrupt.pdf",
+            "base64Content": "JVBERi0xLjQKMSAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyBicm9rZW4KJSVFT0YK"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "parse_document_from_base64",
+          "args": {
+            "fileName": "fake.pdf",
+            "base64Content": "cGxhaW4gdGV4dCwgbm90IGEgcGRm"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": []
+      },
+      "normalize": []
+    },
+    {
+      "id": "docs.parse_b64.docx",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "parse_document_from_base64",
+          "args": {
+            "fileName": "tiny.docx",
+            "base64Content": "UEsDBBQAAAAAAAAAIVx5bjPXrQEAAK0BAAATAAAAW0NvbnRlbnRfVHlwZXNdLnhtbDw/eG1sIHZlcnNpb249IjEuMCIgZW5jb2Rpbmc9IlVURi04IiBzdGFuZGFsb25lPSJ5ZXMiPz48VHlwZXMgeG1sbnM9Imh0dHA6Ly9zY2hlbWFzLm9wZW54bWxmb3JtYXRzLm9yZy9wYWNrYWdlLzIwMDYvY29udGVudC10eXBlcyI+PERlZmF1bHQgRXh0ZW5zaW9uPSJyZWxzIiBDb250ZW50VHlwZT0iYXBwbGljYXRpb24vdm5kLm9wZW54bWxmb3JtYXRzLXBhY2thZ2UucmVsYXRpb25zaGlwcyt4bWwiLz48RGVmYXVsdCBFeHRlbnNpb249InhtbCIgQ29udGVudFR5cGU9ImFwcGxpY2F0aW9uL3htbCIvPjxPdmVycmlkZSBQYXJ0TmFtZT0iL3dvcmQvZG9jdW1lbnQueG1sIiBDb250ZW50VHlwZT0iYXBwbGljYXRpb24vdm5kLm9wZW54bWxmb3JtYXRzLW9mZmljZWRvY3VtZW50LndvcmRwcm9jZXNzaW5nbWwuZG9jdW1lbnQubWFpbit4bWwiLz48L1R5cGVzPlBLAwQUAAAAAAAAACFcm/036ikBAAApAQAACwAAAF9yZWxzLy5yZWxzPD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiIHN0YW5kYWxvbmU9InllcyI/PjxSZWxhdGlvbnNoaXBzIHhtbG5zPSJodHRwOi8vc2NoZW1hcy5vcGVueG1sZm9ybWF0cy5vcmcvcGFja2FnZS8yMDA2L3JlbGF0aW9uc2hpcHMiPjxSZWxhdGlvbnNoaXAgSWQ9InJJZDEiIFR5cGU9Imh0dHA6Ly9zY2hlbWFzLm9wZW54bWxmb3JtYXRzLm9yZy9vZmZpY2VEb2N1bWVudC8yMDA2L3JlbGF0aW9uc2hpcHMvb2ZmaWNlRG9jdW1lbnQiIFRhcmdldD0id29yZC9kb2N1bWVudC54bWwiLz48L1JlbGF0aW9uc2hpcHM+UEsDBBQAAAAAAAAAIVzp+cGTmwAAAJsAAAAcAAAAd29yZC9fcmVscy9kb2N1bWVudC54bWwucmVsczw/eG1sIHZlcnNpb249IjEuMCIgZW5jb2Rpbmc9IlVURi04IiBzdGFuZGFsb25lPSJ5ZXMiPz48UmVsYXRpb25zaGlwcyB4bWxucz0iaHR0cDovL3NjaGVtYXMub3BlbnhtbGZvcm1hdHMub3JnL3BhY2thZ2UvMjAwNi9yZWxhdGlvbnNoaXBzIj48L1JlbGF0aW9uc2hpcHM+UEsDBBQAAAAAAAAAIVxohHg+igEAAIoBAAARAAAAd29yZC9kb2N1bWVudC54bWw8P3htbCB2ZXJzaW9uPSIxLjAiIGVuY29kaW5nPSJVVEYtOCIgc3RhbmRhbG9uZT0ieWVzIj8+PHc6ZG9jdW1lbnQgeG1sbnM6dz0iaHR0cDovL3NjaGVtYXMub3BlbnhtbGZvcm1hdHMub3JnL3dvcmRwcm9jZXNzaW5nbWwvMjAwNi9tYWluIj48dzpib2R5Pjx3OnA+PHc6cj48dzp0PuesrOS4gOautSBIZWxsbyBET0NYPC93OnQ+PC93OnI+PC93OnA+PHc6cD48dzpyPjx3OnQ+U2Vjb25kIHBhcmFncmFwaDwvdzp0PjwvdzpyPjwvdzpwPjx3OnRibD48dzp0cj48dzp0Yz48dzpwPjx3OnI+PHc6dD5BMTwvdzp0PjwvdzpyPjwvdzpwPjwvdzp0Yz48dzp0Yz48dzpwPjx3OnI+PHc6dD5CMTwvdzp0PjwvdzpyPjwvdzpwPjwvdzp0Yz48L3c6dHI+PC93OnRibD48L3c6Ym9keT48L3c6ZG9jdW1lbnQ+UEsBAhQDFAAAAAAAAAAhXHluM9etAQAArQEAABMAAAAAAAAAAAAAAKQBAAAAAFtDb250ZW50X1R5cGVzXS54bWxQSwECFAMUAAAAAAAAACFcm/036ikBAAApAQAACwAAAAAAAAAAAAAApAHeAQAAX3JlbHMvLnJlbHNQSwECFAMUAAAAAAAAACFc6fnBk5sAAACbAAAAHAAAAAAAAAAAAAAApAEwAwAAd29yZC9fcmVscy9kb2N1bWVudC54bWwucmVsc1BLAQIUAxQAAAAAAAAAIVxohHg+igEAAIoBAAARAAAAAAAAAAAAAACkAQUEAAB3b3JkL2RvY3VtZW50LnhtbFBLBQYAAAAABAAEAAMBAAC+BQAAAAA="
+          }
+        },
+        {
+          "cmd": "parse_document_from_base64",
+          "args": {
+            "fileName": "bomb.docx",
+            "base64Content": "UEsDBBQAAAAAAAAAIVx5bjPXrQEAAK0BAAATAAAAW0NvbnRlbnRfVHlwZXNdLnhtbDw/eG1sIHZlcnNpb249IjEuMCIgZW5jb2Rpbmc9IlVURi04IiBzdGFuZGFsb25lPSJ5ZXMiPz48VHlwZXMgeG1sbnM9Imh0dHA6Ly9zY2hlbWFzLm9wZW54bWxmb3JtYXRzLm9yZy9wYWNrYWdlLzIwMDYvY29udGVudC10eXBlcyI+PERlZmF1bHQgRXh0ZW5zaW9uPSJyZWxzIiBDb250ZW50VHlwZT0iYXBwbGljYXRpb24vdm5kLm9wZW54bWxmb3JtYXRzLXBhY2thZ2UucmVsYXRpb25zaGlwcyt4bWwiLz48RGVmYXVsdCBFeHRlbnNpb249InhtbCIgQ29udGVudFR5cGU9ImFwcGxpY2F0aW9uL3htbCIvPjxPdmVycmlkZSBQYXJ0TmFtZT0iL3dvcmQvZG9jdW1lbnQueG1sIiBDb250ZW50VHlwZT0iYXBwbGljYXRpb24vdm5kLm9wZW54bWxmb3JtYXRzLW9mZmljZWRvY3VtZW50LndvcmRwcm9jZXNzaW5nbWwuZG9jdW1lbnQubWFpbit4bWwiLz48L1R5cGVzPlBLAwQUAAAAAAAAACFcm/036ikBAAApAQAACwAAAF9yZWxzLy5yZWxzPD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiIHN0YW5kYWxvbmU9InllcyI/PjxSZWxhdGlvbnNoaXBzIHhtbG5zPSJodHRwOi8vc2NoZW1hcy5vcGVueG1sZm9ybWF0cy5vcmcvcGFja2FnZS8yMDA2L3JlbGF0aW9uc2hpcHMiPjxSZWxhdGlvbnNoaXAgSWQ9InJJZDEiIFR5cGU9Imh0dHA6Ly9zY2hlbWFzLm9wZW54bWxmb3JtYXRzLm9yZy9vZmZpY2VEb2N1bWVudC8yMDA2L3JlbGF0aW9uc2hpcHMvb2ZmaWNlRG9jdW1lbnQiIFRhcmdldD0id29yZC9kb2N1bWVudC54bWwiLz48L1JlbGF0aW9uc2hpcHM+UEsDBBQAAAAIAAAAIVysCmZ1DQIAAAAACAARAAAAd29yZC9kb2N1bWVudC54bWztwYEAAAAAw6D5U9/gBFUBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAfANQSwECFAMUAAAAAAAAACFceW4z160BAACtAQAAEwAAAAAAAAAAAAAApAEAAAAAW0NvbnRlbnRfVHlwZXNdLnhtbFBLAQIUAxQAAAAAAAAAIVyb/TfqKQEAACkBAAALAAAAAAAAAAAAAACkAd4BAABfcmVscy8ucmVsc1BLAQIUAxQAAAAIAAAAIVysCmZ1DQIAAAAACAARAAAAAAAAAAAAAACkATADAAB3b3JkL2RvY3VtZW50LnhtbFBLBQYAAAAAAwADALkAAABsBQAAAAA="
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "parse_document_from_base64",
+          "args": {
+            "fileName": "no-ct.docx",
+            "base64Content": "UEsDBBQAAAAAAAAAIVwZEiMFFQAAABUAAAAMAAAAcmFuZG9tL2EudHh0bm90IGFuIG9mZmljZSBwYWNrYWdlUEsBAhQDFAAAAAAAAAAhXBkSIwUVAAAAFQAAAAwAAAAAAAAAAAAAAKQBAAAAAHJhbmRvbS9hLnR4dFBLBQYAAAAAAQABADoAAAA/AAAAAAA="
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "parse_document_from_base64",
+          "args": {
+            "fileName": "protected.docx",
+            "base64Content": "0M8R4KGxGuEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "parse_document_from_base64",
+          "args": {
+            "fileName": "fake.docx",
+            "base64Content": "cGxhaW4gdGV4dCwgbm90IGEgemlw"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": []
+      },
+      "normalize": []
+    },
+    {
+      "id": "docs.parse_b64.xlsx_epub_rtf_pptx",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "parse_document_from_base64",
+          "args": {
+            "fileName": "tiny.xlsx",
+            "base64Content": "UEsDBBQAAAAAAAAAIVxuYbgNLQIAAC0CAAATAAAAW0NvbnRlbnRfVHlwZXNdLnhtbDw/eG1sIHZlcnNpb249IjEuMCIgZW5jb2Rpbmc9IlVURi04IiBzdGFuZGFsb25lPSJ5ZXMiPz48VHlwZXMgeG1sbnM9Imh0dHA6Ly9zY2hlbWFzLm9wZW54bWxmb3JtYXRzLm9yZy9wYWNrYWdlLzIwMDYvY29udGVudC10eXBlcyI+PERlZmF1bHQgRXh0ZW5zaW9uPSJyZWxzIiBDb250ZW50VHlwZT0iYXBwbGljYXRpb24vdm5kLm9wZW54bWxmb3JtYXRzLXBhY2thZ2UucmVsYXRpb25zaGlwcyt4bWwiLz48RGVmYXVsdCBFeHRlbnNpb249InhtbCIgQ29udGVudFR5cGU9ImFwcGxpY2F0aW9uL3htbCIvPjxPdmVycmlkZSBQYXJ0TmFtZT0iL3hsL3dvcmtib29rLnhtbCIgQ29udGVudFR5cGU9ImFwcGxpY2F0aW9uL3ZuZC5vcGVueG1sZm9ybWF0cy1vZmZpY2Vkb2N1bWVudC5zcHJlYWRzaGVldG1sLnNoZWV0Lm1haW4reG1sIi8+PE92ZXJyaWRlIFBhcnROYW1lPSIveGwvd29ya3NoZWV0cy9zaGVldDEueG1sIiBDb250ZW50VHlwZT0iYXBwbGljYXRpb24vdm5kLm9wZW54bWxmb3JtYXRzLW9mZmljZWRvY3VtZW50LnNwcmVhZHNoZWV0bWwud29ya3NoZWV0K3htbCIvPjwvVHlwZXM+UEsDBBQAAAAAAAAAIVyY2uuLJwEAACcBAAALAAAAX3JlbHMvLnJlbHM8P3htbCB2ZXJzaW9uPSIxLjAiIGVuY29kaW5nPSJVVEYtOCIgc3RhbmRhbG9uZT0ieWVzIj8+PFJlbGF0aW9uc2hpcHMgeG1sbnM9Imh0dHA6Ly9zY2hlbWFzLm9wZW54bWxmb3JtYXRzLm9yZy9wYWNrYWdlLzIwMDYvcmVsYXRpb25zaGlwcyI+PFJlbGF0aW9uc2hpcCBJZD0icklkMSIgVHlwZT0iaHR0cDovL3NjaGVtYXMub3BlbnhtbGZvcm1hdHMub3JnL29mZmljZURvY3VtZW50LzIwMDYvcmVsYXRpb25zaGlwcy9vZmZpY2VEb2N1bWVudCIgVGFyZ2V0PSJ4bC93b3JrYm9vay54bWwiLz48L1JlbGF0aW9uc2hpcHM+UEsDBBQAAAAAAAAAIVz24LzXGwEAABsBAAAPAAAAeGwvd29ya2Jvb2sueG1sPD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiIHN0YW5kYWxvbmU9InllcyI/Pjx3b3JrYm9vayB4bWxucz0iaHR0cDovL3NjaGVtYXMub3BlbnhtbGZvcm1hdHMub3JnL3NwcmVhZHNoZWV0bWwvMjAwNi9tYWluIiB4bWxuczpyPSJodHRwOi8vc2NoZW1hcy5vcGVueG1sZm9ybWF0cy5vcmcvb2ZmaWNlRG9jdW1lbnQvMjAwNi9yZWxhdGlvbnNoaXBzIj48c2hlZXRzPjxzaGVldCBuYW1lPSLmiJDnu6kiIHNoZWV0SWQ9IjEiIHI6aWQ9InJJZDEiLz48L3NoZWV0cz48L3dvcmtib29rPlBLAwQUAAAAAAAAACFcWv2CaygBAAAoAQAAGgAAAHhsL19yZWxzL3dvcmtib29rLnhtbC5yZWxzPD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiIHN0YW5kYWxvbmU9InllcyI/PjxSZWxhdGlvbnNoaXBzIHhtbG5zPSJodHRwOi8vc2NoZW1hcy5vcGVueG1sZm9ybWF0cy5vcmcvcGFja2FnZS8yMDA2L3JlbGF0aW9uc2hpcHMiPjxSZWxhdGlvbnNoaXAgSWQ9InJJZDEiIFR5cGU9Imh0dHA6Ly9zY2hlbWFzLm9wZW54bWxmb3JtYXRzLm9yZy9vZmZpY2VEb2N1bWVudC8yMDA2L3JlbGF0aW9uc2hpcHMvd29ya3NoZWV0IiBUYXJnZXQ9IndvcmtzaGVldHMvc2hlZXQxLnhtbCIvPjwvUmVsYXRpb25zaGlwcz5QSwMEFAAAAAAAAAAhXCLeBDLLAQAAywEAABgAAAB4bC93b3Jrc2hlZXRzL3NoZWV0MS54bWw8P3htbCB2ZXJzaW9uPSIxLjAiIGVuY29kaW5nPSJVVEYtOCIgc3RhbmRhbG9uZT0ieWVzIj8+PHdvcmtzaGVldCB4bWxucz0iaHR0cDovL3NjaGVtYXMub3BlbnhtbGZvcm1hdHMub3JnL3NwcmVhZHNoZWV0bWwvMjAwNi9tYWluIj48c2hlZXREYXRhPjxyb3cgcj0iMSI+PGMgcj0iQTEiIHQ9ImlubGluZVN0ciI+PGlzPjx0PuWnk+WQjTwvdD48L2lzPjwvYz48YyByPSJCMSIgdD0iaW5saW5lU3RyIj48aXM+PHQ+5YiG5pWwPC90PjwvaXM+PC9jPjwvcm93Pjxyb3cgcj0iMiI+PGMgcj0iQTIiIHQ9ImlubGluZVN0ciI+PGlzPjx0PkFubjwvdD48L2lzPjwvYz48YyByPSJCMiI+PHY+OTUuNTwvdj48L2M+PC9yb3c+PHJvdyByPSIzIj48YyByPSJBMyIgdD0iaW5saW5lU3RyIj48aXM+PHQ+Qm9iPC90PjwvaXM+PC9jPjxjIHI9IkIzIj48dj4zPC92PjwvYz48L3Jvdz48L3NoZWV0RGF0YT48L3dvcmtzaGVldD5QSwECFAMUAAAAAAAAACFcbmG4DS0CAAAtAgAAEwAAAAAAAAAAAAAApAEAAAAAW0NvbnRlbnRfVHlwZXNdLnhtbFBLAQIUAxQAAAAAAAAAIVyY2uuLJwEAACcBAAALAAAAAAAAAAAAAACkAV4CAABfcmVscy8ucmVsc1BLAQIUAxQAAAAAAAAAIVz24LzXGwEAABsBAAAPAAAAAAAAAAAAAACkAa4DAAB4bC93b3JrYm9vay54bWxQSwECFAMUAAAAAAAAACFcWv2CaygBAAAoAQAAGgAAAAAAAAAAAAAApAH2BAAAeGwvX3JlbHMvd29ya2Jvb2sueG1sLnJlbHNQSwECFAMUAAAAAAAAACFcIt4EMssBAADLAQAAGAAAAAAAAAAAAAAApAFWBgAAeGwvd29ya3NoZWV0cy9zaGVldDEueG1sUEsFBgAAAAAFAAUARQEAAFcIAAAAAA=="
+          }
+        },
+        {
+          "cmd": "parse_document_from_base64",
+          "args": {
+            "fileName": "fake.xlsx",
+            "base64Content": "bm90IGEgd29ya2Jvb2s="
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "parse_document_from_base64",
+          "args": {
+            "fileName": "fake.xls",
+            "base64Content": "bm90IGEgd29ya2Jvb2s="
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "parse_document_from_base64",
+          "args": {
+            "fileName": "fake.ods",
+            "base64Content": "bm90IGEgd29ya2Jvb2s="
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "parse_document_from_base64",
+          "args": {
+            "fileName": "tiny.epub",
+            "base64Content": "UEsDBBQAAAAAAAAAIVxvYassFAAAABQAAAAIAAAAbWltZXR5cGVhcHBsaWNhdGlvbi9lcHViK3ppcFBLAwQUAAAAAAAAACFcHgvXyd0AAADdAAAAFgAAAE1FVEEtSU5GL2NvbnRhaW5lci54bWw8P3htbCB2ZXJzaW9uPSIxLjAiPz48Y29udGFpbmVyIHZlcnNpb249IjEuMCIgeG1sbnM9InVybjpvYXNpczpuYW1lczp0YzpvcGVuZG9jdW1lbnQ6eG1sbnM6Y29udGFpbmVyIj48cm9vdGZpbGVzPjxyb290ZmlsZSBmdWxsLXBhdGg9Ik9FQlBTL2NvbnRlbnQub3BmIiBtZWRpYS10eXBlPSJhcHBsaWNhdGlvbi9vZWJwcy1wYWNrYWdlK3htbCIvPjwvcm9vdGZpbGVzPjwvY29udGFpbmVyPlBLAwQUAAAAAAAAACFc7kvBOykCAAApAgAAEQAAAE9FQlBTL2NvbnRlbnQub3BmPD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz48cGFja2FnZSB4bWxucz0iaHR0cDovL3d3dy5pZHBmLm9yZy8yMDA3L29wZiIgdmVyc2lvbj0iMy4wIiB1bmlxdWUtaWRlbnRpZmllcj0idWlkIj48bWV0YWRhdGEgeG1sbnM6ZGM9Imh0dHA6Ly9wdXJsLm9yZy9kYy9lbGVtZW50cy8xLjEvIj48ZGM6aWRlbnRpZmllciBpZD0idWlkIj53MC1lcHViPC9kYzppZGVudGlmaWVyPjxkYzp0aXRsZT5XMCDmtYvor5XkuaY8L2RjOnRpdGxlPjxkYzpjcmVhdG9yPkRlZXAgU3R1ZGVudDwvZGM6Y3JlYXRvcj48ZGM6bGFuZ3VhZ2U+emg8L2RjOmxhbmd1YWdlPjwvbWV0YWRhdGE+PG1hbmlmZXN0PjxpdGVtIGlkPSJjMSIgaHJlZj0iYzEueGh0bWwiIG1lZGlhLXR5cGU9ImFwcGxpY2F0aW9uL3hodG1sK3htbCIvPjxpdGVtIGlkPSJjMiIgaHJlZj0iYzIueGh0bWwiIG1lZGlhLXR5cGU9ImFwcGxpY2F0aW9uL3hodG1sK3htbCIvPjwvbWFuaWZlc3Q+PHNwaW5lPjxpdGVtcmVmIGlkcmVmPSJjMSIvPjxpdGVtcmVmIGlkcmVmPSJjMiIvPjwvc3BpbmU+PC9wYWNrYWdlPlBLAwQUAAAAAAAAACFcOyy0y7IAAACyAAAADgAAAE9FQlBTL2MxLnhodG1sPD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz48aHRtbCB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMTk5OS94aHRtbCI+PGhlYWQ+PHRpdGxlPuesrOS4gOeroDwvdGl0bGU+PC9oZWFkPjxib2R5PjxoMT7nrKzkuIDnq6A8L2gxPjxwPuaYpeecoOS4jeinieaZkzwvcD48L2JvZHk+PC9odG1sPlBLAwQUAAAAAAAAACFcBA8SC7YAAAC2AAAADgAAAE9FQlBTL2MyLnhodG1sPD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz48aHRtbCB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMTk5OS94aHRtbCI+PGhlYWQ+PHRpdGxlPkNoYXB0ZXIgMjwvdGl0bGU+PC9oZWFkPjxib2R5PjxoMT5DaGFwdGVyIDI8L2gxPjxwPlNlY29uZCBjaGFwdGVyIHRleHQ8L3A+PC9ib2R5PjwvaHRtbD5QSwECFAMUAAAAAAAAACFcb2GrLBQAAAAUAAAACAAAAAAAAAAAAAAApAEAAAAAbWltZXR5cGVQSwECFAMUAAAAAAAAACFcHgvXyd0AAADdAAAAFgAAAAAAAAAAAAAApAE6AAAATUVUQS1JTkYvY29udGFpbmVyLnhtbFBLAQIUAxQAAAAAAAAAIVzuS8E7KQIAACkCAAARAAAAAAAAAAAAAACkAUsBAABPRUJQUy9jb250ZW50Lm9wZlBLAQIUAxQAAAAAAAAAIVw7LLTLsgAAALIAAAAOAAAAAAAAAAAAAACkAaMDAABPRUJQUy9jMS54aHRtbFBLAQIUAxQAAAAAAAAAIVwEDxILtgAAALYAAAAOAAAAAAAAAAAAAACkAYEEAABPRUJQUy9jMi54aHRtbFBLBQYAAAAABQAFADEBAABjBQAAAAA="
+          }
+        },
+        {
+          "cmd": "parse_document_from_base64",
+          "args": {
+            "fileName": "fake.epub",
+            "base64Content": "bm90IGFuIGVwdWI="
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "parse_document_from_base64",
+          "args": {
+            "fileName": "bomb.epub",
+            "base64Content": "UEsDBBQAAAAAAAAAIVx5bjPXrQEAAK0BAAATAAAAW0NvbnRlbnRfVHlwZXNdLnhtbDw/eG1sIHZlcnNpb249IjEuMCIgZW5jb2Rpbmc9IlVURi04IiBzdGFuZGFsb25lPSJ5ZXMiPz48VHlwZXMgeG1sbnM9Imh0dHA6Ly9zY2hlbWFzLm9wZW54bWxmb3JtYXRzLm9yZy9wYWNrYWdlLzIwMDYvY29udGVudC10eXBlcyI+PERlZmF1bHQgRXh0ZW5zaW9uPSJyZWxzIiBDb250ZW50VHlwZT0iYXBwbGljYXRpb24vdm5kLm9wZW54bWxmb3JtYXRzLXBhY2thZ2UucmVsYXRpb25zaGlwcyt4bWwiLz48RGVmYXVsdCBFeHRlbnNpb249InhtbCIgQ29udGVudFR5cGU9ImFwcGxpY2F0aW9uL3htbCIvPjxPdmVycmlkZSBQYXJ0TmFtZT0iL3dvcmQvZG9jdW1lbnQueG1sIiBDb250ZW50VHlwZT0iYXBwbGljYXRpb24vdm5kLm9wZW54bWxmb3JtYXRzLW9mZmljZWRvY3VtZW50LndvcmRwcm9jZXNzaW5nbWwuZG9jdW1lbnQubWFpbit4bWwiLz48L1R5cGVzPlBLAwQUAAAAAAAAACFcm/036ikBAAApAQAACwAAAF9yZWxzLy5yZWxzPD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiIHN0YW5kYWxvbmU9InllcyI/PjxSZWxhdGlvbnNoaXBzIHhtbG5zPSJodHRwOi8vc2NoZW1hcy5vcGVueG1sZm9ybWF0cy5vcmcvcGFja2FnZS8yMDA2L3JlbGF0aW9uc2hpcHMiPjxSZWxhdGlvbnNoaXAgSWQ9InJJZDEiIFR5cGU9Imh0dHA6Ly9zY2hlbWFzLm9wZW54bWxmb3JtYXRzLm9yZy9vZmZpY2VEb2N1bWVudC8yMDA2L3JlbGF0aW9uc2hpcHMvb2ZmaWNlRG9jdW1lbnQiIFRhcmdldD0id29yZC9kb2N1bWVudC54bWwiLz48L1JlbGF0aW9uc2hpcHM+UEsDBBQAAAAIAAAAIVysCmZ1DQIAAAAACAARAAAAd29yZC9kb2N1bWVudC54bWztwYEAAAAAw6D5U9/gBFUBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAfANQSwECFAMUAAAAAAAAACFceW4z160BAACtAQAAEwAAAAAAAAAAAAAApAEAAAAAW0NvbnRlbnRfVHlwZXNdLnhtbFBLAQIUAxQAAAAAAAAAIVyb/TfqKQEAACkBAAALAAAAAAAAAAAAAACkAd4BAABfcmVscy8ucmVsc1BLAQIUAxQAAAAIAAAAIVysCmZ1DQIAAAAACAARAAAAAAAAAAAAAACkATADAAB3b3JkL2RvY3VtZW50LnhtbFBLBQYAAAAAAwADALkAAABsBQAAAAA="
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "parse_document_from_base64",
+          "args": {
+            "fileName": "note.rtf",
+            "base64Content": "e1xydGYxXGFuc2l7XGZvbnR0YmxcZjBcZnN3aXNzIEhlbHZldGljYTt9XGYwXHBhcmQgSGVsbG8ge1xiIFJURn0gd29ybGQuXHBhcn0="
+          }
+        },
+        {
+          "cmd": "parse_document_from_base64",
+          "args": {
+            "fileName": "broken.rtf",
+            "base64Content": "e1xydGYxXGFuc2kgSGVsbG8ge1xiIHVuY2xvc2Vk"
+          }
+        },
+        {
+          "cmd": "parse_document_from_base64",
+          "args": {
+            "fileName": "fake.pptx",
+            "base64Content": "bm90IGEgcHJlc2VudGF0aW9u"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": []
+      },
+      "normalize": []
+    }
+  ]
+}

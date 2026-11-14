@@ -1,0 +1,30 @@
+{
+  "id": "RF-W09-workbench-cards-host-degraded",
+  "kind": "deliberate",
+  "status": "approved",
+  "approvedBy": "main-agent",
+  "approvedAt": "2026-11-07T10:12:00+08:00",
+  "title": "工作台卡片中心（模板、制卡任务、闪卡）在 Host 卡片插件降级时显示降级说明，而不是空卡片库",
+  "rust": {
+    "file": "src/features/workbench/apps/system/register.tsx",
+    "line": 236,
+    "behavior": "Rust 快照 21c9d808 中三个窗口直接渲染页面；Rust 版没有 Host 插件，卡片数据总是在。迁移后卡片数据由 Host 插件 dstu.anki 提供，它降级时窗口照常渲染、拿到空列表，闪卡窗口显示“卡片库还是空的”，看起来像数据丢了"
+  },
+  "fix": {
+    "files": [
+      "src/features/workbench/apps/system/register.tsx",
+      "src/features/workbench/apps/system/hostGatedApp.tsx"
+    ],
+    "behavior": "三个窗口的 render 包一层：读应用内核的 hostStatus，dstu.anki 降级时渲染 HostUnavailablePanel（标题取应用名，显示降级原因，并把 host:dstu.anki 并入 componentHealth，带“去数据治理”入口），恢复后自动换回页面；窗口打开期间降级也会切换。没有应用内核或 Host 清单未到时按在线处理，与内核乐观安装一致。经典壳的同一组视图已由 ui-plugins/official/shell 的配对插件这样处理，工作台此前没有"
+  },
+  "evidence": "W12 冒烟 #22（register.tsx:236-272）：Host 卡片插件降级时工作台闪卡窗口显示“卡片库还是空的”。经典壳 src/ui-plugins/official/shell/index.ts 的 ankiHalf 在降级时把 task-dashboard / template-management / flashcards 三个视图换成 HostUnavailablePanel，工作台三个应用缺同样处理。",
+  "userVisible": "能：仅在 Host 卡片插件降级时可见——工作台三个卡片窗口显示“功能暂不可用”说明与原因，不再显示空卡片库；正常时无变化。",
+  "dataCompat": "不改变落库数据、同步载荷与备份格式；只读 Host 状态，不发起任何 Host 调用。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "src/features/workbench/apps/system/__tests__/hostGatedApp.test.tsx",
+      "name": "RF-W09-workbench-cards-host-degraded: card center windows follow the dstu.anki Host plugin"
+    }
+  ]
+}

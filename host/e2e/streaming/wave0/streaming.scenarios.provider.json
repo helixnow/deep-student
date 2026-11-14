@@ -1,0 +1,64 @@
+{
+  "note": "WAVE0 streaming suite scripts that depend on request order within one take (wave0/README \"provider sidecar\"). Frames use the built-in renderer (replay/wire.ts) with the suite model x5-wave0-model.",
+  "chat.stream.retry.http-500-then-answer": [
+    {
+      "status": 500,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "chunks": [
+        "{\"error\":{\"message\":\"x5 deterministic upstream failure\",\"type\":\"server_error\"}}"
+      ]
+    },
+    {
+      "status": 200,
+      "headers": {
+        "content-type": "text/event-stream",
+        "cache-control": "no-cache"
+      },
+      "chunks": [
+        "data: {\"id\":\"chatcmpl-x5-fixed\",\"object\":\"chat.completion.chunk\",\"created\":1700000000,\"model\":\"x5-wave0-model\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"重试后\"},\"finish_reason\":null}]}\n\n",
+        "data: {\"id\":\"chatcmpl-x5-fixed\",\"object\":\"chat.completion.chunk\",\"created\":1700000000,\"model\":\"x5-wave0-model\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"回答\"},\"finish_reason\":null}]}\n\n",
+        "data: {\"id\":\"chatcmpl-x5-fixed\",\"object\":\"chat.completion.chunk\",\"created\":1700000000,\"model\":\"x5-wave0-model\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n",
+        "data: {\"id\":\"chatcmpl-x5-fixed\",\"object\":\"chat.completion.chunk\",\"created\":1700000000,\"model\":\"x5-wave0-model\",\"choices\":[],\"usage\":{\"prompt_tokens\":7,\"completion_tokens\":3,\"total_tokens\":10}}\n\n",
+        "data: [DONE]\n\n"
+      ]
+    }
+  ],
+  "chat.stream.error.http-400-no-retry": [
+    {
+      "status": 400,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "chunks": [
+        "{\"error\":{\"message\":\"x5 deterministic bad request\",\"type\":\"invalid_request_error\"}}"
+      ]
+    }
+  ],
+  "chat.stream.tool.second-round-error": [
+    {
+      "status": 200,
+      "headers": {
+        "content-type": "text/event-stream",
+        "cache-control": "no-cache"
+      },
+      "chunks": [
+        "data: {\"id\":\"chatcmpl-x5-fixed\",\"object\":\"chat.completion.chunk\",\"created\":1700000000,\"model\":\"x5-wave0-model\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_x5_list\",\"type\":\"function\",\"function\":{\"name\":\"builtin-template_list\",\"arguments\":\"{\\\"activeOnly\\\":true}\"}}]},\"finish_reason\":null}]}\n\n",
+        "data: {\"id\":\"chatcmpl-x5-fixed\",\"object\":\"chat.completion.chunk\",\"created\":1700000000,\"model\":\"x5-wave0-model\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\n",
+        "data: {\"id\":\"chatcmpl-x5-fixed\",\"object\":\"chat.completion.chunk\",\"created\":1700000000,\"model\":\"x5-wave0-model\",\"choices\":[],\"usage\":{\"prompt_tokens\":9,\"completion_tokens\":3,\"total_tokens\":12}}\n\n",
+        "data: [DONE]\n\n"
+      ]
+    },
+    {
+      "status": 200,
+      "headers": {
+        "content-type": "text/event-stream",
+        "cache-control": "no-cache"
+      },
+      "chunks": [
+        "data: {\"id\":\"chatcmpl-x5-fixed\",\"object\":\"chat.completion.chunk\",\"created\":1700000000,\"model\":\"x5-wave0-model\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"第二轮部分\"},\"finish_reason\":null}]}\n\n"
+      ]
+    }
+  ]
+}

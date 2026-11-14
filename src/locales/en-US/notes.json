@@ -839,7 +839,8 @@
     "focus_mode": "Focus mode",
     "exit_focus_mode": "Exit focus mode",
     "label": "Formatting",
-    "ask_agent_failed": "Could not open the assistant window: {{error}}"
+    "ask_agent_failed": "Could not open the assistant window: {{error}}",
+    "syncHandoutToMindmap": "Sync back to mind map"
   },
   "templates": {
     "lecture": "Lecture notes",
@@ -1931,10 +1932,17 @@
   },
   "generateMindmap": {
     "untitled": "Note mind map",
-    "noOutline": "This note has no headings or lists. Organize it with headings or lists first, then generate a mind map.",
+    "noOutline": "A mind map needs structure: at least two headings or list items; this note has too little outline",
     "created": "Created mind map “{{title}}” ({{count}} nodes)",
     "failed": "Failed to generate mind map",
-    "failedWithError": "Couldn't generate the mind map: {{error}}"
+    "failedWithError": "Couldn't generate the mind map: {{error}}",
+    "syncEmpty": "This note is empty, nothing to sync back",
+    "syncNoSource": "This note has no mind map provenance. Export a handout from the mind map first",
+    "syncMultipleSources": "This note references {{count}} different mind maps; split the handout and sync each separately",
+    "syncNotOpen": "Open the source mind map before syncing",
+    "syncSuccess": "Synced back to the mind map: {{updated}} node(s) updated, {{added}} node(s) added",
+    "syncNoChanges": "The handout and the mind map are already in sync",
+    "syncFailed": "Failed to sync back to the mind map: {{error}}"
   },
   "menu": {
     "page_actions": "Page Actions",
@@ -2244,6 +2252,16 @@
     "open": "Go to source"
   },
   "selection": {
-    "group": "More"
+    "group": "More",
+    "excerptToMindmap": "Excerpt to mind map",
+    "excerptToMindmapSent": "Excerpt sent; if the mind map does not change, open it and enable \"Excerpt on selection\", then retry",
+    "excerptToMindmapFailed": "Excerpt failed: the note editor is not ready"
+  },
+  "inlineCards": {
+    "badge_qa": "QA Card",
+    "badge_cloze": "Cloze Card",
+    "synced_tooltip": "Synced to current Study Space deck",
+    "excerpt_source_prefix": "Excerpt from",
+    "default_deck": "Inline Note Cards"
   }
 }

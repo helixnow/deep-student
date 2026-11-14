@@ -14,123 +14,37 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
 import { 
-  Copy, Trash, ArrowClockwise, Eye, Image, Upload, 
-  Cursor, FileImage, CheckCircle, XCircle, 
-  Warning, Folder, Code, Lightning, Camera
+  Copy, Trash, Eye, Image, Upload, 
+  Cursor, FileImage, XCircle, 
+  Lightning, Camera
 } from '@phosphor-icons/react';
 import { showGlobalNotification } from '../../components/UnifiedNotification';
 import { debugMasterSwitch } from '../debugMasterSwitch';
+import { serveDebugChannel } from '@/shared/debug/bus';
+import { createPanelFeed } from '../panelFeed';
+import { CREPE_IMAGE_UPLOAD_DEBUG_CHANNEL } from '@/shared/debug/channels/crepeImageUpload';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import {
+  LEVEL_BG,
+  LEVEL_COLORS,
+  STAGE_LABELS,
+  type CrepeImageUploadDebugEventDetail,
+  type DOMInfo,
+  type DebugLog,
+  type EventStage,
+  type ImageBlockDOMSnapshot,
+  type LogLevel,
+  type SelectorMatchResult,
+} from './crepeImageUpload/model';
 
-// ============ 类型定义 ============
+import { captureDOMInfo, captureImageBlockSnapshot, checkSelectorMatches } from './crepeImageUpload/capture';
+import { buildDiagnosticReport, formatLogsForCopy } from './crepeImageUpload/copy';
 
-type LogLevel = 'debug' | 'info' | 'warning' | 'error' | 'success';
-
-type EventStage = 
-  | 'click_detected'      // 检测到点击
-  | 'selector_check'      // 选择器检查
-  | 'tauri_check'         // Tauri 环境检查
-  | 'dialog_open'         // 打开文件对话框
-  | 'dialog_result'       // 对话框结果
-  | 'file_read'           // 文件读取
-  | 'file_convert'        // 文件转换
-  | 'upload_start'        // 开始上传
-  | 'upload_complete'     // 上传完成
-  | 'node_find'           // 查找节点
-  | 'node_update'         // 更新节点
-  | 'node_insert'         // 插入节点
-  | 'dom_snapshot'        // DOM 快照
-  | 'image_render'        // 图片渲染状态
-  | 'error';              // 错误
-
-interface DOMInfo {
-  tagName: string;
-  className: string;
-  id: string;
-  innerText?: string;
-  attributes: Record<string, string>;
-}
-
-interface SelectorMatchResult {
-  selector: string;
-  matched: boolean;
-  matchedElement?: DOMInfo;
-}
-
-interface ImageBlockDOMSnapshot {
-  hasImageBlock: boolean;
-  hasImageInline: boolean;
-  hasImageEdit: boolean;
-  hasPlaceholder: boolean;
-  hasUploader: boolean;
-  hasHiddenInput: boolean;
-  hiddenInputId?: string;
-  uploaderForAttr?: string;
-  imageBlockClasses: string[];
-  fullDOMPath: string[];
-}
-
-interface DebugLog {
-  id: string;
-  ts: number;
-  stage: EventStage;
-  level: LogLevel;
-  message: string;
-  details?: Record<string, any>;
-  domInfo?: DOMInfo;
-  selectorMatches?: SelectorMatchResult[];
-  imageBlockSnapshot?: ImageBlockDOMSnapshot;
-}
-
-// ============ 常量 ============
-
-const LEVEL_COLORS: Record<LogLevel, string> = {
-  debug: '#6b7280',
-  info: '#3b82f6',
-  warning: '#f59e0b',
-  error: '#ef4444',
-  success: '#22c55e',
-};
-
-const LEVEL_BG: Record<LogLevel, string> = {
-  debug: '#f3f4f6',
-  info: '#eff6ff',
-  warning: '#fffbeb',
-  error: '#fef2f2',
-  success: '#f0fdf4',
-};
-
-const STAGE_LABELS: Record<EventStage, { label: string; icon: React.FC<any>; color: string }> = {
-  click_detected: { label: '点击检测', icon: Cursor, color: '#8b5cf6' },
-  selector_check: { label: '选择器检查', icon: Code, color: '#6366f1' },
-  tauri_check: { label: 'Tauri检测', icon: Lightning, color: '#10b981' },
-  dialog_open: { label: '打开对话框', icon: Folder, color: '#f97316' },
-  dialog_result: { label: '对话框结果', icon: FileImage, color: '#3b82f6' },
-  file_read: { label: '文件读取', icon: Eye, color: '#06b6d4' },
-  file_convert: { label: '文件转换', icon: ArrowClockwise, color: '#8b5cf6' },
-  upload_start: { label: '开始上传', icon: Upload, color: '#f59e0b' },
-  upload_complete: { label: '上传完成', icon: CheckCircle, color: '#22c55e' },
-  node_find: { label: '查找节点', icon: Code, color: '#6366f1' },
-  node_update: { label: '更新节点', icon: Image, color: '#22c55e' },
-  node_insert: { label: '插入节点', icon: Image, color: '#14b8a6' },
-  image_render: { label: '图片渲染', icon: Image, color: '#0ea5e9' },
-  dom_snapshot: { label: 'DOM快照', icon: Camera, color: '#06b6d4' },
-  error: { label: '错误', icon: XCircle, color: '#ef4444' },
-};
+export type { CrepeImageUploadDebugEventDetail } from './crepeImageUpload/model';
 
 // ============ 事件通道 ============
 
-export const CREPE_IMAGE_UPLOAD_DEBUG_EVENT = 'crepe-image-upload-debug';
-
-export interface CrepeImageUploadDebugEventDetail {
-  stage: EventStage;
-  level: LogLevel;
-  message: string;
-  details?: Record<string, any>;
-  domInfo?: DOMInfo;
-  selectorMatches?: SelectorMatchResult[];
-  imageBlockSnapshot?: ImageBlockDOMSnapshot;
-}
+const imageUploadDebugFeed = createPanelFeed<CrepeImageUploadDebugEventDetail>();
 
 /**
  * 发射图片上传调试事件
@@ -147,10 +61,7 @@ export const emitImageUploadDebug = (
   try {
     // 默认关闭（由调试面板总开关控制），避免在编辑器输入期间产生日志/事件风暴
     if (!debugMasterSwitch.isEnabled()) return;
-    const event = new CustomEvent<CrepeImageUploadDebugEventDetail>(CREPE_IMAGE_UPLOAD_DEBUG_EVENT, {
-      detail: { stage, level, message, details, domInfo, selectorMatches, imageBlockSnapshot },
-    });
-    window.dispatchEvent(event);
+    imageUploadDebugFeed.publish({ stage, level, message, details, domInfo, selectorMatches, imageBlockSnapshot });
     // 同时输出到控制台
     const prefix = `[CrepeImageUpload:${stage}]`;
     if (level === 'error') {
@@ -165,114 +76,7 @@ export const emitImageUploadDebug = (
   }
 };
 
-/**
- * 捕获 DOM 元素信息
- */
-export const captureDOMInfo = (element: HTMLElement | null): DOMInfo | undefined => {
-  if (!element) return undefined;
-  
-  const attrs: Record<string, string> = {};
-  for (let i = 0; i < element.attributes.length; i++) {
-    const attr = element.attributes[i];
-    attrs[attr.name] = attr.value;
-  }
-  
-  return {
-    tagName: element.tagName.toLowerCase(),
-    className: element.className,
-    id: element.id,
-    innerText: element.innerText?.slice(0, 100),
-    attributes: attrs,
-  };
-};
-
-/**
- * 捕获 ImageBlock DOM 快照
- */
-export const captureImageBlockSnapshot = (container: HTMLElement | null): ImageBlockDOMSnapshot => {
-  if (!container) {
-    container = document.querySelector('.crepe-editor-wrapper') as HTMLElement | null;
-  }
-  
-  const snapshot: ImageBlockDOMSnapshot = {
-    hasImageBlock: false,
-    hasImageInline: false,
-    hasImageEdit: false,
-    hasPlaceholder: false,
-    hasUploader: false,
-    hasHiddenInput: false,
-    imageBlockClasses: [],
-    fullDOMPath: [],
-  };
-  
-  if (!container) return snapshot;
-  
-  const imageBlock = container.querySelector('.milkdown-image-block');
-  const imageInline = container.querySelector('.milkdown-image-inline');
-  const imageEdit = container.querySelector('.image-edit');
-  const placeholder = container.querySelector('.placeholder');
-  const uploader = container.querySelector('.uploader');
-  const hiddenInput = container.querySelector('input[type="file"].hidden, input[type="file"][style*="display: none"]');
-  
-  snapshot.hasImageBlock = !!imageBlock;
-  snapshot.hasImageInline = !!imageInline;
-  snapshot.hasImageEdit = !!imageEdit;
-  snapshot.hasPlaceholder = !!placeholder;
-  snapshot.hasUploader = !!uploader;
-  snapshot.hasHiddenInput = !!hiddenInput;
-  
-  if (imageBlock) {
-    snapshot.imageBlockClasses = Array.from(imageBlock.classList);
-  }
-  
-  if (hiddenInput) {
-    snapshot.hiddenInputId = (hiddenInput as HTMLInputElement).id;
-  }
-  
-  if (uploader && uploader.tagName === 'LABEL') {
-    snapshot.uploaderForAttr = (uploader as HTMLLabelElement).htmlFor;
-  }
-  
-  // 构建 DOM 路径
-  if (uploader) {
-    let current: HTMLElement | null = uploader as HTMLElement;
-    const path: string[] = [];
-    while (current && current !== container) {
-      const tag = current.tagName.toLowerCase();
-      const cls = current.className ? `.${current.className.split(' ').join('.')}` : '';
-      path.unshift(`${tag}${cls}`);
-      current = current.parentElement;
-    }
-    snapshot.fullDOMPath = path;
-  }
-  
-  return snapshot;
-};
-
-/**
- * 检查选择器匹配
- */
-export const checkSelectorMatches = (target: HTMLElement): SelectorMatchResult[] => {
-  const selectors = [
-    'label.uploader',
-    '.uploader',
-    '.placeholder',
-    '.image-edit',
-    '.link-importer',
-    '.milkdown-image-block',
-    '.milkdown-image-inline',
-    'input[type="file"]',
-  ];
-  
-  return selectors.map(selector => {
-    const matched = target.closest(selector);
-    return {
-      selector,
-      matched: !!matched,
-      matchedElement: matched ? captureDOMInfo(matched as HTMLElement) : undefined,
-    };
-  });
-};
+export { captureDOMInfo, captureImageBlockSnapshot, checkSelectorMatches } from './crepeImageUpload/capture';
 
 // ============ 插件组件 ============
 
@@ -308,16 +112,7 @@ export const CrepeImageUploadDebugPlugin: React.FC<DebugPanelPluginProps> = ({ v
   }, [isMonitoring]);
   
   // 监听调试事件
-  useEffect(() => {
-    const handler = (e: CustomEvent<CrepeImageUploadDebugEventDetail>) => {
-      addLog(e.detail);
-    };
-    
-    window.addEventListener(CREPE_IMAGE_UPLOAD_DEBUG_EVENT, handler as EventListener);
-    return () => {
-      window.removeEventListener(CREPE_IMAGE_UPLOAD_DEBUG_EVENT, handler as EventListener);
-    };
-  }, [addLog]);
+  useEffect(() => imageUploadDebugFeed.subscribe(addLog), [addLog]);
   
   // 自动滚动
   useEffect(() => {
@@ -358,23 +153,7 @@ export const CrepeImageUploadDebugPlugin: React.FC<DebugPanelPluginProps> = ({ v
       ? logs 
       : logs.filter(l => l.level === filterLevel);
     
-    const text = filteredLogs.map(log => {
-      const time = new Date(log.ts).toISOString();
-      let content = `[${time}] [${log.stage}] [${log.level.toUpperCase()}] ${log.message}`;
-      if (log.details) {
-        content += `\n  Details: ${JSON.stringify(log.details, null, 2)}`;
-      }
-      if (log.domInfo) {
-        content += `\n  DOM: ${JSON.stringify(log.domInfo, null, 2)}`;
-      }
-      if (log.selectorMatches) {
-        content += `\n  Selectors: ${JSON.stringify(log.selectorMatches, null, 2)}`;
-      }
-      if (log.imageBlockSnapshot) {
-        content += `\n  Snapshot: ${JSON.stringify(log.imageBlockSnapshot, null, 2)}`;
-      }
-      return content;
-    }).join('\n\n');
+    const text = formatLogsForCopy(filteredLogs);
     
     copyTextToClipboard(text).then(() => {
       showGlobalNotification('success', `已复制 ${filteredLogs.length} 条日志`);
@@ -383,28 +162,7 @@ export const CrepeImageUploadDebugPlugin: React.FC<DebugPanelPluginProps> = ({ v
   
   // 复制完整诊断报告
   const copyDiagnosticReport = useCallback(() => {
-    const report = {
-      timestamp: new Date().toISOString(),
-      environment: {
-        isTauri: typeof window !== 'undefined' && Boolean((window as any).__TAURI_INTERNALS__),
-        userAgent: navigator.userAgent,
-        platform: navigator.platform,
-      },
-      lastSnapshot,
-      logsCount: logs.length,
-      errorCount: logs.filter(l => l.level === 'error').length,
-      warningCount: logs.filter(l => l.level === 'warning').length,
-      logs: logs.map(log => ({
-        time: new Date(log.ts).toISOString(),
-        stage: log.stage,
-        level: log.level,
-        message: log.message,
-        details: log.details,
-        domInfo: log.domInfo,
-        selectorMatches: log.selectorMatches,
-        imageBlockSnapshot: log.imageBlockSnapshot,
-      })),
-    };
+    const report = buildDiagnosticReport(logs, lastSnapshot);
     
     copyTextToClipboard(JSON.stringify(report, null, 2)).then(() => {
       showGlobalNotification('success', '已复制完整诊断报告');
@@ -788,5 +546,7 @@ export const CrepeImageUploadDebugPlugin: React.FC<DebugPanelPluginProps> = ({ v
     </div>
   );
 };
+
+serveDebugChannel(CREPE_IMAGE_UPLOAD_DEBUG_CHANNEL, { emitImageUploadDebug, captureDOMInfo, captureImageBlockSnapshot });
 
 export default CrepeImageUploadDebugPlugin;

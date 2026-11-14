@@ -1,0 +1,21 @@
+{
+  "scene": "flashcards",
+  "steps": [
+    {
+      "name": "boot",
+      "order": "sequence",
+      "calls": [
+        "import_builtin_templates()",
+        "get_all_custom_templates()",
+        "get_default_template_id()",
+        "fsrs_get_review_statistics(days)",
+        "fsrs_get_due(limit)",
+        "fsrs_get_stats()",
+        "fsrs_get_scheduler_config()",
+        "list_anki_library_cards(request{includeDecks,page,pageSize})",
+        "get_setting(key)",
+        "save_setting(key,value)"
+      ]
+    }
+  ]
+}

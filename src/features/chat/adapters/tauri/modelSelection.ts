@@ -30,25 +30,35 @@ export async function ensureModelMetadataReady(host: TauriAdapterHost, modelId: 
 
   try {
     await ensureModelsCacheLoaded();
+    if (!getModelInfoByConfigId(modelId)) {
+      await ensureModelsCacheLoaded(true);
+    }
   } catch (error) {
     console.warn(LOG_PREFIX, 'Failed to load model metadata cache:', getErrorMessage(error));
   }
 }
 
 export async function hydrateDefaultChatModelIfMissing(host: TauriAdapterHost): Promise<void> {
+  const generation = host.setupGeneration;
   const currentParams = host.getCurrentState().chatParams;
   if (currentParams.modelId?.trim()) {
     return;
   }
 
   try {
-    await ensureModelsCacheLoaded();
-    const normalizedSelection = await host.normalizeChatModelSelection(
-      currentParams.modelId || undefined,
-      currentParams.model2OverrideId || undefined
-    );
+    // 元数据与默认分配/有效 id 读取互不依赖，冷缓存也不必多等一个 RPC 往返。
+    const [, normalizedSelection] = await Promise.all([
+      ensureModelsCacheLoaded(),
+      host.normalizeChatModelSelection(
+        currentParams.modelId || undefined,
+        currentParams.model2OverrideId || undefined
+      ),
+    ]);
+    if (generation !== host.setupGeneration || !host.isSessionRuntimeOwner()) return;
     const latestParams = host.getCurrentState().chatParams;
-    if (latestParams.modelId?.trim()) {
+    // UI 已在 onDataRestored 后放行：用户可能在 WAN 回填期间选了另一个模型。
+    if (latestParams.modelId?.trim()
+      || latestParams.model2OverrideId !== currentParams.model2OverrideId) {
       return;
     }
 
@@ -112,6 +122,16 @@ export function applyRuntimeThinkingCapability(host: TauriAdapterHost, options: 
   options.thinkingBudget = undefined;
 }
 
+// RUST-FIX(RF-W09-stale-model-cache-context-budget): Rust 版的预算在解析出实际模型之前就算好，跟随全局默认模型的会话总按 100k 兜底窗口发送
+export function applyRuntimeContextBudget(host: TauriAdapterHost, options: SendOptions): void {
+  options.contextLimit = host.resolveInputContextLimit(
+    options.modelId,
+    options.model2OverrideId,
+    options.maxTokens ?? 0,
+    host.getCurrentState().chatParams.contextLimit,
+  );
+}
+
 export async function shouldResolveContextAsMultimodal(host: TauriAdapterHost, options: {
   modelId?: string;
   model2OverrideId?: string;
@@ -146,7 +166,14 @@ export async function getValidChatModelIdSet(host: TauriAdapterHost): Promise<Se
   }
 }
 
-export async function resolveEffectiveChatModelId(host: TauriAdapterHost, modelId: string | undefined, validIds?: Set<string>): Promise<string> {
+export class MissingChatModelError extends Error {}
+
+export async function resolveEffectiveChatModelId(
+  host: TauriAdapterHost,
+  modelId: string | undefined,
+  validIds?: Set<string>,
+  prefetchedAssignments?: Promise<ModelAssignments | undefined>,
+): Promise<string> {
   if (modelId && modelId.trim().length > 0) {
     const trimmed = modelId.trim();
     if (!validIds || validIds.size === 0 || validIds.has(trimmed)) {
@@ -155,7 +182,11 @@ export async function resolveEffectiveChatModelId(host: TauriAdapterHost, modelI
   }
 
   try {
-    const assignments = await invoke<ModelAssignments>('get_model_assignments');
+    // 调用方可以先把分配读取和有效 id 读取并行发出去（省一个 RTT）；
+    // 没预取时这里自己发。
+    const assignments = prefetchedAssignments
+      ? await prefetchedAssignments
+      : await invoke<ModelAssignments>('get_model_assignments');
     const defaultModelId = assignments?.model2_config_id ?? undefined;
     if (defaultModelId && defaultModelId.trim().length > 0) {
       const trimmed = defaultModelId.trim();
@@ -182,7 +213,7 @@ export async function resolveEffectiveChatModelId(host: TauriAdapterHost, modelI
     // fall through to throw
   }
 
-  throw new Error('No chat model configured: missing chatParams.modelId and model_assignments.model2_config_id');
+  throw new MissingChatModelError('No chat model configured: missing chatParams.modelId and model_assignments.model2_config_id');
 }
 
 export async function normalizeChatModelSelection(
@@ -191,6 +222,13 @@ export async function normalizeChatModelSelection(
   model2OverrideId: string | undefined,
   pinnedByUser?: boolean
 ): Promise<NormalizedChatModelSelection> {
+  // 有效 id 列表与全局分配互不依赖：一起发出，省掉一次串行往返
+  // （公网 RTT 150–250ms）。用户显式固定的模型本来就有效时不会用到分配，
+  // 那种情况不发这次请求。
+  const needsAssignments = !(pinnedByUser && modelId?.trim());
+  const assignmentsPromise = needsAssignments
+    ? invoke<ModelAssignments>('get_model_assignments').catch(() => undefined)
+    : undefined;
   const validIds = await host.getValidChatModelIdSet();
   let normalizedOverrideId = model2OverrideId?.trim() || undefined;
   if (normalizedOverrideId && validIds.size > 0 && !validIds.has(normalizedOverrideId)) {
@@ -201,8 +239,14 @@ export async function normalizeChatModelSelection(
   // （可能是旧版本烘焙的 fallback 残留），直接取当前全局默认，保证
   // "模型分配"切换后会话跟随新默认。
   const candidateModelId = pinnedByUser ? modelId : undefined;
-  const normalizedModelId = await host.resolveEffectiveChatModelId(candidateModelId, validIds);
+  const normalizedModelId = await resolveEffectiveChatModelId(
+    host,
+    candidateModelId,
+    validIds,
+    assignmentsPromise,
+  );
   const effectiveModelId = normalizedOverrideId || normalizedModelId;
+  await host.ensureModelMetadataReady(effectiveModelId);
   const modelInfo = getModelInfoByConfigId(effectiveModelId);
   const modelDisplayName = modelInfo?.model || modelInfo?.name || effectiveModelId;
   // 用户固定的模型已被删除 / 停用（不在当前可用列表）而被回退替换
@@ -249,6 +293,7 @@ export async function applyRuntimeModelSelection(host: TauriAdapterHost, options
   options.modelId = normalizedSelection.effectiveModelId;
   options.model2OverrideId = normalizedSelection.model2OverrideId;
   host.applyRuntimeThinkingCapability(options);
+  host.applyRuntimeContextBudget(options);
 
   // 已固定与未固定都不再回写 modelId（未固定避免烘焙全局默认；已固定的
   // modelId 由用户选择路径负责写入）。这里只刷新实际生效模型的显示名。

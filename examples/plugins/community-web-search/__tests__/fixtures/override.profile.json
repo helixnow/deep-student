@@ -1,0 +1,5 @@
+{
+  "$comment": "旧示例的做法：用官方插件的 id 指向社区模块来替换它。v1 起以 ID_MISMATCH 降级，而且这个条目已替掉了继承来的官方条目。",
+  "extends": "./official.profile.json",
+  "plugins": [{ "id": "dstu.browser", "module": "../../index.ts" }]
+}

@@ -1,0 +1,22 @@
+#!/bin/bash
+# 以 dsdev 运行（守护进程已停）：启动两位协调者并在 sessions.json 标记身份与负责范围。
+set -e
+cd ~/dev/deep-student
+node scripts/electron-migration/oc-dispatch.mjs launch --lanes C1-app,C2-platform
+node --input-type=module -e '
+import fs from "node:fs";
+const f = ".oc-runs/sessions.json";
+const s = JSON.parse(fs.readFileSync(f, "utf8"));
+const lanesOf = (lane) => {
+  const md = fs.readFileSync(`docs/dev/electron-migration/dispatch/${lane}.md`, "utf8");
+  const sec = md.split("## 你负责的 lane")[1].split("\n## ")[0];
+  return [...sec.matchAll(/`([A-Z]\d+[a-z]?-[\w-]+)`/g)].map((m) => m[1]);
+};
+for (const c of ["C1-app", "C2-platform"]) {
+  s[c].coordinator = true;
+  s[c].lanes = lanesOf(c);
+  s[c].lastWakeAt = new Date().toISOString();
+  console.log(c, s[c].lanes.length, "lanes");
+}
+fs.writeFileSync(f, JSON.stringify(s, null, 2));
+'

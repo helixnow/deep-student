@@ -1,0 +1,27 @@
+[Unit]
+Description=Deep Student 迁移调度守护进程（oc-dispatch watch）
+After=network-online.target ds-opencode.service
+Wants=network-online.target ds-opencode.service
+
+[Service]
+User=dsdev
+Group=dsdev
+Slice=dsdev.slice
+WorkingDirectory=/home/dsdev/dev/deep-student
+Environment=PATH=/opt/node26/bin:/home/dsdev/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=HOME=/home/dsdev
+Environment=TMPDIR=/tmp
+Environment=NODE_OPTIONS=--max-old-space-size=4096
+Environment=VITEST_MAX_FORKS=6
+Environment=VITEST_MIN_FORKS=1
+Environment=VITEST_MAX_THREADS=6
+Environment=VITEST_MIN_THREADS=1
+ExecStart=/opt/node26/bin/node scripts/electron-migration/oc-dispatch.mjs watch --interval 300 --max-retries 3 --stagger 3 --integrate-every 3 --max-running 50
+StandardOutput=append:/home/dsdev/dev/deep-student/.oc-runs/watch.log
+StandardError=append:/home/dsdev/dev/deep-student/.oc-runs/watch.log
+Restart=on-failure
+RestartSec=30
+KillMode=process
+
+[Install]
+WantedBy=multi-user.target

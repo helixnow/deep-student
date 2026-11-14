@@ -1,0 +1,10 @@
+[Unit]
+Description=每 30 分钟备份迁移工作区
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=30min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

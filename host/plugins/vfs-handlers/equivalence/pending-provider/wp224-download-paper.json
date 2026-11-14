@@ -1,0 +1,85 @@
+{
+  "domain": "vfs",
+  "commands": [
+    "vfs_download_paper"
+  ],
+  "scenarios": [
+    {
+      "id": "vfs.vfs_download_paper.pending_ok_downloaded_pdf",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_download_paper",
+          "args": {
+            "params": {
+              "url": "https://127.0.0.1:18443/wp224/paper.pdf",
+              "title": "WP224 论文"
+            }
+          }
+        },
+        {
+          "cmd": "vfs_download_paper",
+          "args": {
+            "params": {
+              "url": "https://127.0.0.1:18443/wp224/paper.pdf",
+              "title": "WP224 论文 重复"
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_download_paper.pending_err_http_404",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_download_paper",
+          "args": {
+            "params": {
+              "url": "https://127.0.0.1:18443/wp224/missing.pdf",
+              "title": "WP224 404"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.vfs_download_paper.pending_err_not_pdf",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_download_paper",
+          "args": {
+            "params": {
+              "url": "https://127.0.0.1:18443/wp224/not-pdf.bin",
+              "title": "WP224 非PDF"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

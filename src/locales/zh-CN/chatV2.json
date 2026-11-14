@@ -100,7 +100,9 @@
     "expandPreview": "展开预览",
     "collapsePreview": "收起预览",
     "scriptsDisabled": "脚本未运行",
-    "scriptsDisabledHint": "聊天内预览运行在安全沙箱中：不执行脚本、不联网，外部链接会在系统浏览器中打开。需要交互效果请下载 HTML 后用浏览器打开。"
+    "scriptsDisabledHint": "聊天内预览运行在安全沙箱中：不执行脚本、不联网，外部链接会在系统浏览器中打开。需要交互效果请下载 HTML 后用浏览器打开。",
+    "runInlineInteractive": "内联运行交互",
+    "exitInlineInteractive": "退出交互"
   },
   "common": {
     "close": "关闭",
@@ -210,6 +212,7 @@
   "messageItem": {
     "actions": {
       "notePageRef": "第 {{page}} 页",
+      "noteSourceBacklink": "原文溯源：{{link}}",
       "copy": "复制",
       "copySuccess": "已复制到剪贴板",
       "copyFailed": "复制失败",
@@ -239,6 +242,8 @@
       "saveAsNoteSuccessAtRoot": "已保存为笔记：{{title}}（位于资源库根目录）",
       "saveAsNoteFailed": "保存笔记失败",
       "exportMarkdown": "导出为 Markdown",
+      "readAloud": "朗读",
+      "stopReading": "停止朗读",
       "exportMarkdownSuccess": "已导出 Markdown 文件",
       "exportMarkdownFailed": "导出失败",
       "noContentToExport": "无可导出的内容",
@@ -435,8 +440,12 @@
       "connectorsHint": "选择 MCP / 外部工具连接",
       "modeDefaultDescription": "按当前执行档位使用工具。",
       "knowledgeBase": "知识库",
+      "rag": "知识库检索",
+      "ragHint": "允许模型检索本地知识库与课程资料",
       "kbProactive": "主动检索",
       "kbProactiveHint": "开启后要求模型回答前优先检索你的笔记、教材等本地资料",
+      "webSearch": "联网搜索",
+      "webSearchHint": "允许模型通过网络搜索获取最新信息",
       "kbScopePick": "选择检索范围（课程 / 文件夹）",
       "kbScopeSet": "知识库只检索所选文件夹",
       "kbScopeCleared": "知识库检索全部资料",
@@ -447,7 +456,11 @@
       "compactionComplete": "上下文压缩完成",
       "compactionNotNeeded": "暂无可压缩内容",
       "compactionSkipped": "本次未压缩",
-      "compactionFailed": "压缩失败，请重试"
+      "compactionFailed": "压缩失败，请重试",
+      "pluginWorkshop": "插件工坊",
+      "pluginWorkshopHint": "开启插件工坊模式，在当前对话中用 AI 创建或修改插件",
+      "pluginWorkshopActive": "插件工坊",
+      "pluginWorkshopExitHint": "正在使用插件工坊模式（点击退出）"
     },
     "retryStarted": "已重新启动处理",
     "retryFailed": "重试失败: {{error}}",
@@ -702,6 +715,7 @@
       "executing": "执行中...",
       "streamingOutput": "实时输出",
       "executionFailed": "执行失败",
+      "shellEnvironmentFailure": "本地命令执行环境故障，命令没有运行，也没有改动任何文件。原样重试通常会同样失败。",
       "unknownError": "未知错误",
       "retry": "重试",
       "retryDisabled": "无法重试：{{reason}}",
@@ -1355,6 +1369,9 @@
     "groupSaveFailed": "保存分组失败",
     "openNoteFailed": "打开笔记失败",
     "openInLearningHub": "在学习中心打开",
+    "readAlong": "边读边问",
+    "backToChatLayout": "恢复对话布局",
+    "resizeReadingLayout": "调整文件与对话的宽度",
     "collapseSandboxWorkbench": "收起沙箱工作台",
     "expandSandboxWorkbench": "展开沙箱工作台",
     "emptyPage": {
@@ -1650,6 +1667,9 @@
       "progress": "{{done}} / {{total}} 个任务完成",
       "allDone": "所有任务已完成",
       "inProgress": "执行中"
+    },
+    "blockLine": {
+      "collapse": "收起块内容"
     }
   },
   "contextRefs": {
@@ -1801,7 +1821,23 @@
   },
   "explainPopover": {
     "thinking": "思考中...",
-    "prompt": "请用简洁清晰的语言解释以下内容。如果是专业术语，给出定义和通俗解释；如果是一段话，概括其核心含义。用中文回答。\n\n\"{{text}}\""
+    "prompt": "请用简洁清晰的语言解释以下内容。如果是专业术语，给出定义和通俗解释；如果是一段话，概括其核心含义。用中文回答。\n\n\"{{text}}\"",
+    "saveToAnnotation": "存入批注",
+    "savedToAnnotation": "已存批注",
+    "lensAriaLabel": "学术精读视角",
+    "lenses": {
+      "intuition": "通俗直觉",
+      "formula": "公式拆解",
+      "critique": "方法审视",
+      "prereq": "先修背景"
+    },
+    "academicPrompts": {
+      "contextBlock": "【前后文参考（仅供消歧）】\n{{before}} … {{after}}\n\n",
+      "intuition": "你正在辅助阅读学术论文。请用清晰直觉的语言解释以下论文片段的核心含义，说明它在上下文中的作用，避免空洞复述。用中文回答。\n\n{{context}}【选中片段】\n\"{{text}}\"",
+      "formula": "你正在辅助阅读学术论文。请逐一拆解以下片段或公式中的数学符号、变量含义、张量/量纲关系与整体物理或统计直觉。若不含显式公式，请拆解其中的形式化定义与定量指标。用中文回答。\n\n{{context}}【选中片段】\n\"{{text}}\"",
+      "critique": "你正在辅助阅读学术论文。请深入分析以下方法或论断背后的设计动机、隐含假设、优缺点及潜在局限，并给出 1-2 个审稿人视角的思考问题。用中文回答。\n\n{{context}}【选中片段】\n\"{{text}}\"",
+      "prereq": "你正在辅助阅读学术论文。请列出理解以下论文片段所需的先修概念与背景知识，并用简明准确的语言逐个串讲清楚。用中文回答。\n\n{{context}}【选中片段】\n\"{{text}}\""
+    }
   },
   "browser": {
     "title": "会话浏览",
@@ -1960,7 +1996,8 @@
     "scopeCollapse": "收起详情",
     "scope": {
       "sandboxOn": "沙箱内执行",
-      "sandboxOff": "无沙箱·宿主机直执"
+      "sandboxOff": "无沙箱·宿主机直执",
+      "externalMcpUnenforced": "外部 MCP·本地沙箱不生效"
     },
     "countdownPaused": "已暂停",
     "aria": {
@@ -2394,6 +2431,7 @@
   "readiness": {
     "not_ready": "当前会话尚未就绪",
     "model2_missing": "请先在「设置 → 模型分配」配置对话模型后再发送消息。",
+    "retry_after_setup": "尚未配置对话模型。可在设置中配置模型，再重试这条消息。",
     "model2_auto_assigned": "已自动分配 {{count}} 个模型：{{models}}。可前往「设置 → 模型分配」查看或更改。",
     "model2_auto_assigned_single": "已自动将「{{model}}」设为默认对话模型。可前往「设置 → 模型分配」查看或更改。",
     "noModelAssigned": "(无)"
@@ -2438,6 +2476,8 @@
     "mindmapTitle": "思维导图: {{title}}"
   },
   "documentViewer": {
+    "expand": "放大查看",
+    "collapse": "退出放大",
     "defaultTitle": "文档预览",
     "search": "搜索",
     "previewHint": "提示：按 ESC 关闭，+/- 调整字号",
@@ -2508,7 +2548,10 @@
     "submit": "提交",
     "send": "发送回答",
     "submitFailed": "提交回答失败",
-    "submitRetryHint": "请重新选择或再次提交。"
+    "submitRetryHint": "请重新选择或再次提交。",
+    "sandboxCandidateHint": "画板已填入候选回答，请核对后确认提交",
+    "sandboxContinueEditing": "继续修改",
+    "sandboxConfirmAnswer": "确认回答"
   },
   "pageRef": {
     "clearAll": "清空页码引用",
@@ -2621,6 +2664,111 @@
       "viewWorkerAria": "查看 Worker「{{title}}」的完整会话",
       "showRaw": "查看原文",
       "hideRaw": "收起原文"
+    }
+  },
+  "contextUsage": {
+    "tooltip": "上下文用量 {{summary}}",
+    "dangerHint": "上下文用量 {{summary}} · 建议开启新话题",
+    "title": "上下文用量详情",
+    "usedLabel": "已用估算",
+    "tokenCount": "≈{{count}} tokens",
+    "windowLabel": "上下文窗口",
+    "windowCount": "{{count}} tokens",
+    "remainingLabel": "剩余可用",
+    "dangerSuggestion": "当前会话接近上下文上限，建议开启新话题或压缩历史。",
+    "compressing": "正在压缩上下文...",
+    "compressAction": "压缩上下文"
+  },
+  "reasoningEffort": {
+    "title": "思考深度",
+    "levels": {
+      "none": "关闭",
+      "minimal": "极低",
+      "low": "低",
+      "medium": "中",
+      "high": "高",
+      "xhigh": "超高"
+    }
+  },
+  "replyCommand": {
+    "stopTitle": "停止运行",
+    "runTitle": "运行命令"
+  },
+  "secretRequest": {
+    "collapsedDeclined": "已拒绝提供密钥：{{label}}",
+    "collapsedEnvSubmitted": "已注入受控环境变量：{{label}}",
+    "collapsedFileSaved": "已存入临时隔离文件：{{label}}",
+    "hideSecret": "隐藏密钥",
+    "showSecret": "显示密钥",
+    "placeholder": "输入临时密钥",
+    "inputLabel": "临时密钥输入框",
+    "save": "保存",
+    "remember10m": "在当前会话内存中记住 10 分钟",
+    "privacy": "密钥不会进入消息历史或模型上下文",
+    "decline": "拒绝"
+  },
+  "openuiLang": {
+    "lineChartAria": "折线图",
+    "generating": "正在生成界面…",
+    "empty": "空白 OpenUI 组件块",
+    "notePlaceholder": "补充说明（可选）",
+    "confirm": "确认"
+  },
+  "studySpace": {
+    "title": "学习空间",
+    "createSpace": "新建学习空间",
+    "editSpace": "编辑学习空间",
+    "inbox": "收件箱",
+    "inboxHint": "未归入学习空间的临时对话与速记",
+    "tabs": {
+      "general": "基础与提示词",
+      "goals": "目标与记忆调度",
+      "workspace": "挂载与工作台"
+    },
+    "fields": {
+      "rootFolder": "空间根文件夹",
+      "openInHub": "在资料库中打开",
+      "examDate": "目标考试日期",
+      "examDateClear": "清除日期",
+      "dailyBudget": "每日学习预算（分钟）",
+      "targetRetention": "目标记忆留存率",
+      "defaultDeck": "默认闪卡牌组",
+      "defaultDeckGlobal": "全局到期队列（不限定牌组）",
+      "memoryScope": "长期记忆范围",
+      "workbenchPreset": "学习桌面布局预设",
+      "nameRequired": "请填写空间名称"
+    },
+    "memoryScopes": {
+      "space_and_global": "本空间优先 + 全局画像",
+      "space_isolated": "仅限本空间隔离",
+      "global_only": "仅使用全局记忆"
+    },
+    "presets": {
+      "chat_focus": "专注对话",
+      "split_reader_chat": "双栏阅读与对话",
+      "split_notes_chat": "双栏笔记与对话",
+      "practice_review": "刷题与闪卡复习",
+      "freeform_desktop": "保持当前自由布局"
+    },
+    "mounts": {
+      "title": "跨空间零拷贝挂载",
+      "empty": "暂无跨空间挂载资料，可在资料库右键任意文件挂载至本空间",
+      "add": "添加挂载资料",
+      "remove": "解除挂载",
+      "zeroCopyBadge": "零拷贝引用",
+      "missingSource": "源文件已删除或不可访问",
+      "missingHint": "可解除"
+    },
+    "badges": {
+      "kbAutoScoped": "已限定本空间知识库",
+      "countdownDays": "D-{{days}}",
+      "countdownToday": "D-Day",
+      "countdownPassed": "D+{{days}}",
+      "budgetMinutes": "{{minutes}}m/日"
+    },
+    "actions": {
+      "reviewDeck": "复习本空间闪卡",
+      "enterSpace": "进入空间"
     }
   }
 }

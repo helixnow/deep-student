@@ -3,11 +3,11 @@
 // 数据库迁移 L1 静态门禁（CI Gate）
 //
 // 职责：
-//   1. 校验 src-tauri/migrations/migration-lock.json（lock manifest）：
+//   1. 校验 resources/app/migrations/migration-lock.json（lock manifest）：
 //      - 每个 migration SQL 文件都有 manifest 条目，无多余条目
 //      - 路径全局唯一；版本号纯数字（i32 范围）且目录内唯一
 //      - 实际文件 SHA-256 与 manifest 一致
-//   2. 校验 SQL 文件与 Rust MigrationDef（include_str! 路径 + 版本号）一一对应
+//   2. 校验 SQL 文件与 Host MigrationDefSpec（file + refineryVersion）一一对应
 //   3. 危险 SQL 静态识别（无 WHERE 的 DELETE、DROP TABLE/COLUMN、UNIQUE、
 //      ADD COLUMN NOT NULL、表重建、ADD COLUMN + 回填等），
 //      通过机器可读注解 `-- @danger-ack: <rule>` 声明已知风险
@@ -35,6 +35,7 @@
 
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -43,17 +44,18 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 // 常量
 // ----------------------------------------------------------------------------
 
-export const MIGRATIONS_REL = path.join('src-tauri', 'migrations');
+export const MIGRATIONS_REL = path.join('resources/app', 'migrations');
 export const LOCK_REL = path.join(MIGRATIONS_REL, 'migration-lock.json');
-export const RUST_DEF_REL = path.join('src-tauri', 'crates', 'dstu-storage', 'src', 'migration');
+export const NODE_DEF_REL = path.join('host', 'platform', 'storage', 'migration', 'definitions');
+const require = createRequire(import.meta.url);
 
-/** 各数据库目录 -> Rust MigrationDef 定义文件（null 表示豁免对应检查） */
+/** 各数据库目录 -> Host MigrationDefSpec 定义文件（browser 独立迁移）。 */
 export const DATABASES = {
-  vfs: 'vfs.rs',
-  chat_v2: 'chat_v2.rs',
-  mistakes: 'mistakes.rs',
-  llm_usage: 'llm_usage.rs',
-  browser: null, // 模块内 refinery embed_migrations!，无 MigrationDef
+  vfs: 'vfs.ts',
+  chat_v2: 'chat_v2.ts',
+  mistakes: 'mistakes.ts',
+  llm_usage: 'llm_usage.ts',
+  browser: null,
 };
 
 /**
@@ -392,75 +394,54 @@ export function buildManifest(files, oldLock) {
 }
 
 // ----------------------------------------------------------------------------
-// Rust MigrationDef 对应检查
+// Host MigrationDefSpec 对应检查
 // ----------------------------------------------------------------------------
 
 /**
- * 解析 Rust 定义文件中的 MigrationDef::new(version, "name", include_str!("path"))。
- * 返回 [{ version, name, includeRelPath(相对 migrations 目录, POSIX) }]
+ * 直接读取 Host 的纯数据导出，不重复解析实现源码，也不需要 Rust 定义。
  */
-export function parseRustDefs(root, rustFile) {
-  const full = path.join(root, RUST_DEF_REL, rustFile);
-  if (!fs.existsSync(full)) return { defs: null, error: `Rust 定义文件缺失: ${path.join(RUST_DEF_REL, rustFile)}` };
-  const src = fs.readFileSync(full, 'utf8');
-  const defs = [];
-  const re = /MigrationDef::new\s*\(\s*(\d+)\s*,\s*"([^"]*)"\s*,\s*include_str!\s*\(\s*"([^"]*)"\s*\)/g;
-  for (const m of src.matchAll(re)) {
-    const includePath = m[3];
-    // include_str! 相对 crates/dstu-storage/src/migration/，形如 ../../../../migrations/vfs/Vxxx.sql
-    const resolved = path.posix.normalize(
-      path.posix.join('crates/dstu-storage/src/migration', includePath)
-    );
-    const prefix = 'migrations/';
-    // normalize 后形如 migrations/vfs/Vxxx.sql（相对 src-tauri）
-    const inMigrations = resolved.startsWith(prefix) ? resolved.slice(prefix.length) : null;
-    defs.push({
-      version: Number(m[1]),
-      name: m[2],
-      includeRelPath: inMigrations,
-      rawInclude: includePath,
-    });
-  }
-  return { defs, error: null };
+export function loadNodeDefs(root, database, nodeFile) {
+  const full = path.resolve(root, NODE_DEF_REL, nodeFile);
+  if (!fs.existsSync(full)) return { defs: null, error: `Host 定义文件缺失: ${path.join(NODE_DEF_REL, nodeFile)}` };
+  const exportName = database === 'mistakes' ? 'MISTAKES_MIGRATIONS_LIST' : `${database.toUpperCase()}_MIGRATIONS`;
+  const specs = require(full)[exportName];
+  if (!Array.isArray(specs)) return { defs: null, error: `${nodeFile}: 缺少 ${exportName} 数组` };
+  return { defs: specs.map(spec => ({ version: spec.refineryVersion, name: spec.name, includeRelPath: spec.file })), error: null };
 }
 
-export function checkRustCorrespondence(root, files) {
+export function checkNodeCorrespondence(root, files) {
   const errors = [];
-  for (const [database, rustFile] of Object.entries(DATABASES)) {
-    if (rustFile == null) continue; // browser 豁免
+  for (const [database, nodeFile] of Object.entries(DATABASES)) {
+    if (nodeFile == null) continue;
     const dbFiles = files.filter((f) => f.database === database);
-    const { defs, error } = parseRustDefs(root, rustFile);
+    const { defs, error } = loadNodeDefs(root, database, nodeFile);
     if (error) {
       errors.push(error);
       continue;
     }
     const defByPath = new Map();
     for (const d of defs) {
-      if (d.includeRelPath == null) {
-        errors.push(`${rustFile}: include_str! 路径无法归一化到 migrations 目录: ${d.rawInclude}`);
-        continue;
-      }
       if (defByPath.has(d.includeRelPath)) {
-        errors.push(`${rustFile}: 同一 SQL 被多个 MigrationDef 引用: ${d.includeRelPath}`);
+        errors.push(`${nodeFile}: 同一 SQL 被多个 MigrationDefSpec 引用: ${d.includeRelPath}`);
       }
       defByPath.set(d.includeRelPath, d);
     }
     for (const f of dbFiles) {
       const def = defByPath.get(f.relPath);
       if (!def) {
-        errors.push(`${f.relPath}: 缺少对应的 Rust MigrationDef（${rustFile} 中未发现 include_str! 引用）`);
+        errors.push(`${f.relPath}: 缺少对应的 Host MigrationDefSpec（${nodeFile} 中未发现 file 引用）`);
         continue;
       }
       if (def.version !== f.version) {
         errors.push(
-          `${f.relPath}: Rust MigrationDef 版本号 ${def.version} 与文件名版本 ${f.version} 不一致（${rustFile}）`
+          `${f.relPath}: Host MigrationDefSpec 版本号 ${def.version} 与文件名版本 ${f.version} 不一致（${nodeFile}）`
         );
       }
       defByPath.delete(f.relPath);
     }
     for (const leftover of defByPath.keys()) {
       if (leftover.startsWith(`${database}/`)) {
-        errors.push(`${rustFile}: MigrationDef 引用了不存在的 SQL 文件 ${leftover}`);
+        errors.push(`${nodeFile}: MigrationDefSpec 引用了不存在的 SQL 文件 ${leftover}`);
       }
     }
   }
@@ -587,8 +568,12 @@ export function checkAgainstBaseRef(root, files, baseRef, { gitShow } = {}) {
   try {
     baseLockRaw = show(baseRef, lockGitPath);
   } catch {
-    // base 上还没有 manifest（首次引入 bootstrap），跳过不可变性校验
-    return { errors, skipped: true, baseLock: null };
+    // 此次仅迁移存放位置；旧基线仍在旧路径，不能因此跳过已发布 SQL 的不可变性检查。
+    try {
+      baseLockRaw = show(baseRef, 'src-tauri/migrations/migration-lock.json');
+    } catch {
+      return { errors, skipped: true, baseLock: null };
+    }
   }
 
   let baseLock;
@@ -652,7 +637,7 @@ export function runCheck({ root, baseRef = null, gitShow } = {}) {
 
   const lock = readLock(root);
   errors.push(...checkManifest(files, lock));
-  errors.push(...checkRustCorrespondence(root, files));
+  errors.push(...checkNodeCorrespondence(root, files));
 
   // 危险扫描的存量豁免来源：本地为当前 manifest；
   // CI 传 --base-ref 且 base 上已有 manifest 时，只信 base manifest——

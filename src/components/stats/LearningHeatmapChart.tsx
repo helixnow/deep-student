@@ -11,10 +11,11 @@
  * - 简洁风格 UI
  */
 
+import { useRefreshOnReturn } from '@/hooks/useRefreshOnReturn';
 import React, { useEffect, useMemo, useState } from 'react';
 import HeatMap from '@uiw/react-heat-map';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
-import { Fire, CalendarBlank, CaretLeft, CaretRight, ArrowsClockwise, Info } from '@phosphor-icons/react';
+import { Fire, CalendarBlank, CaretLeft, CaretRight, Info } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
 import { DsButton } from '@/components/ui/DsButton';
@@ -242,6 +243,8 @@ export const LearningHeatmapChart: React.FC<LearningHeatmapChartProps> = ({
   }, []);
 
   // 加载数据
+  useRefreshOnReturn(() => { void loadActivityHeatmap(examId, selectedYear).catch(console.error); });
+
   useEffect(() => {
     loadActivityHeatmap(examId, selectedYear).catch(console.error);
   }, [examId, selectedYear, loadActivityHeatmap]);
@@ -300,9 +303,6 @@ export const LearningHeatmapChart: React.FC<LearningHeatmapChartProps> = ({
   const handleNextYear = () => setSelectedYear(y => Math.min(y + 1, new Date().getFullYear()));
 
   // 刷新数据
-  const handleRefresh = () => {
-    loadActivityHeatmap(examId, selectedYear).catch(console.error);
-  };
 
   if (isLoading) {
     return (
@@ -347,17 +347,6 @@ export const LearningHeatmapChart: React.FC<LearningHeatmapChartProps> = ({
               <CaretRight size={16} />
             </DsButton>
           </div>
-
-          {/* 刷新按钮 */}
-          <DsButton
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 text-muted-foreground hover:text-foreground"
-            onClick={handleRefresh}
-            aria-label={t('heatmapChart.title')}
-          >
-            <ArrowsClockwise size={14} />
-          </DsButton>
         </div>
       </div>
 

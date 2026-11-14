@@ -156,6 +156,9 @@
     "errorRenderingCard": "渲染卡片出错",
     "noCardsToPreview": "暂无可预览的卡片",
     "flipCard": "翻转卡片",
+    "pause": "暂停",
+    "play": "播放",
+    "goToCard": "跳转到第 {{index}} 张卡片",
     "instructions": "← → 或 A/D：切换 • F：翻面 • 空格或 P：播放/暂停 • 1-9：跳转 • Home/End：首/末张"
   },
   "copy": "复制",
@@ -2895,6 +2898,15 @@
     "tools": "工具"
   },
   "debug_panel": {
+    "title": "Analysis Panel",
+    "llm_playground": "LLM Playground",
+    "llm_playground_hint": "LLM 输出模拟游乐场",
+    "devtools_hint": "打开/关闭 WebView DevTools (F12)",
+    "ui_lab_on": "UI Lab 开",
+    "ui_lab_off": "UI Lab 关",
+    "ui_lab_on_hint": "样式调试已开启，点击关闭",
+    "ui_lab_off_hint": "样式调试已关闭，点击开启",
+    "resize_hint": "拖动以调整大小",
     "open": "打开调试面板",
     "open_unified": "打开统一调试面板",
     "close": "关闭调试面板",
@@ -3973,6 +3985,7 @@
   },
   "question_bank": {
     "source_images": "原始导入图片",
+    "source_image_page_alt": "第 {{page}} 页",
     "crop_hint": "在图片上拖拽选取区域，点击「裁剪并添加」将选区添加为题目配图",
     "no_source_images": "该题目集没有原始导入图片",
     "crop_selected": "已选择裁剪区域",
@@ -4009,6 +4022,11 @@
     }
   },
   "update": {
+    "pluginImpactTitle": "更新前检查插件",
+    "pluginImpactIncompatible": "这些插件的清单不兼容 v{{version}}，升级后可能会停用：{{plugins}}。",
+    "pluginImpactUnchecked": "无法确认这些插件与新版本兼容：{{plugins}}。",
+    "pluginImpactUnavailable": "无法读取插件配置以检查兼容性。",
+    "pluginImpactContinue": "继续更新？应用会保留插件源码、配置和数据。",
     "notifyMessage": "发现新版本 v{{version}}",
     "notifyAction": "立即更新",
     "readyMessage": "更新已下载完成，重启应用后生效",

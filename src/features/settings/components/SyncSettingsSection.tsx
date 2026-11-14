@@ -8,20 +8,17 @@
  * - 同步历史记录
  */
 
+import { useRefreshOnReturn } from '@/hooks/useRefreshOnReturn';
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  Cloud,
-  CloudSlash,
   ArrowClockwise,
   Warning,
   CheckCircle,
   Database,
   CircleNotch,
   ArrowCircleUp,
-  ArrowCircleDown,
   ClockCounterClockwise,
-  GearSix,
   Lightning,
   Upload,
   Download,
@@ -30,11 +27,12 @@ import {
 import { DsButton } from '@/components/ui/DsButton';
 import { AppSelect } from '@/components/ui/app-menu';
 import { Badge } from '@/components/ui/shad/Badge';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/shad/Card';
+import { Card, CardContent } from '@/components/ui/shad/Card';
 import { Alert, AlertDescription } from '@/components/ui/shad/Alert';
-import { Separator } from '@/components/ui/shad/Separator';
 import { Progress } from '@/components/ui/shad/Progress';
 import { SettingSection } from './SettingsCommon';
+import { GroupTitle } from './settingsTabPrimitives';
+import { DevicePairingSection } from './DevicePairingSection';
 import { ConflictResolutionDialog, MergeStrategy } from '@/components/ConflictResolutionDialog';
 import { useConflictResolution } from '@/hooks/useConflictResolution';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -100,7 +98,6 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
 
   // UI 状态
   const [showConflictDialog, setShowConflictDialog] = useState(false);
-  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // 同步进度 / 取消 / 正在同步：全部来自全局 store（#447）。进度由应用级
   // 事件监听写入，本组件被设置页切栏目卸载后重挂载仍能立即显示；与数据
@@ -143,6 +140,8 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
   // 是否使用 Mock 模式（开发测试用）
   const useMock = import.meta.env.DEV && import.meta.env.VITE_USE_MOCK_SYNC === 'true';
 
+  useRefreshOnReturn(() => { void getSyncStatus().catch(console.error); }, !useMock);
+
   // 初始化加载同步状态
   useEffect(() => {
     if (!useMock) {
@@ -150,28 +149,6 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
     }
   }, [getSyncStatus, useMock]);
 
-  // 刷新同步状态
-  const handleRefresh = useCallback(async () => {
-    setIsRefreshing(true);
-    try {
-      if (useMock) {
-        await new Promise((r) => setTimeout(r, 500));
-      } else {
-        await getSyncStatus();
-      }
-      showGlobalNotification(
-        'success',
-        t('data:sync_settings.refresh_success')
-      );
-    } catch (err: unknown) {
-      showGlobalNotification(
-        'error',
-        `${t('data:sync_settings.refresh_failed')}: ${getErrorMessage(err)}`
-      );
-    } finally {
-      setIsRefreshing(false);
-    }
-  }, [getSyncStatus, t, useMock]);
 
   // 检测冲突
   const handleDetectConflicts = useCallback(async () => {
@@ -334,22 +311,13 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
   }, [syncStatus]);
 
   const content = (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* 同步状态概览 */}
-      <Card className="!rounded-2xl !border-transparent !bg-muted">
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              {syncSummary.status === 'synced' ? (
-                <Cloud className="h-5 w-5 text-success" />
-              ) : syncSummary.status === 'pending' ? (
-                <CloudSlash className="h-5 w-5 text-warning" />
-              ) : (
-                <Cloud className="h-5 w-5 text-muted-foreground" />
-              )}
-              <CardTitle className="text-base">
-                {t('data:sync_settings.sync_status')}
-              </CardTitle>
+      <section className="min-w-0">
+        <GroupTitle
+          title={
+            <span className="inline-flex flex-wrap items-center gap-2">
+              <span>{t('data:sync_settings.sync_status')}</span>
               {/* 与数据治理面板 SyncTab 的同款入口保持一致：实验版徽章 + 备份提示 */}
               <span
                 className="inline-flex items-center rounded-full bg-amber-500/10 px-2 py-0.5 text-2xs font-medium text-amber-600 dark:text-amber-400 ring-1 ring-inset ring-amber-500/20"
@@ -357,23 +325,10 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
               >
                 {t('data:governance.experimental_badge')}
               </span>
-            </div>
-            <DsButton
-              variant="outline"
-              size="sm"
-              onClick={handleRefresh}
-              disabled={isRefreshing}
-              className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
-            >
-              {isRefreshing ? (
-                <CircleNotch className="h-4 w-4 animate-spin" />
-              ) : (
-                <ArrowClockwise className="h-4 w-4" />
-              )}
-            </DsButton>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
+            </span>
+          }
+        />
+        <div className="rounded-2xl bg-muted p-4 space-y-4">
           {/* 状态指示 */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -411,7 +366,7 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
             <div className="space-y-2">
               <div className="flex items-center justify-between text-xs text-muted-foreground">
                 <span>{t('data:sync_settings.databases')}</span>
-                <span>
+                <span className="tabular-nums">
                   {syncSummary.syncedDatabases}/{syncSummary.totalDatabases}
                 </span>
               </div>
@@ -457,23 +412,16 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
               </span>
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </section>
 
       {/* 同步操作 */}
-      <Card className="!rounded-2xl !border-transparent !bg-muted">
-        <CardHeader className="pb-3">
-          <div className="flex items-center gap-2">
-            <ArrowClockwise className="h-5 w-5 text-muted-foreground" />
-            <CardTitle className="text-base">
-              {t('data:sync_settings.sync_actions')}
-            </CardTitle>
-          </div>
-          <CardDescription>
-            {t('data:sync_settings.sync_actions_description')}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
+      <section className="min-w-0">
+        <GroupTitle
+          title={t('data:sync_settings.sync_actions')}
+          description={t('data:sync_settings.sync_actions_description')}
+        />
+        <div className="rounded-2xl bg-muted p-4 space-y-4">
           {/* 自动同步（默认关闭；未配置/缺凭据/租约被占时调度器静默跳过，不弹错） */}
           <div className="space-y-3 rounded-lg border border-border/40 bg-muted/20 p-3">
             <div className="flex items-center justify-between gap-4">
@@ -670,23 +618,16 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
               </CardContent>
             </Card>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </section>
 
       {/* 冲突检测和解决 */}
-      <Card className="!rounded-2xl !border-transparent !bg-muted">
-        <CardHeader className="pb-3">
-          <div className="flex items-center gap-2">
-            <GearSix className="h-5 w-5 text-muted-foreground" />
-            <CardTitle className="text-base">
-              {t('data:sync_settings.conflict_management')}
-            </CardTitle>
-          </div>
-          <CardDescription>
-            {t('data:sync_settings.conflict_description')}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
+      <section className="min-w-0">
+        <GroupTitle
+          title={t('data:sync_settings.conflict_management')}
+          description={t('data:sync_settings.conflict_description')}
+        />
+        <div className="rounded-2xl bg-muted p-4 space-y-4">
           {/* 冲突状态 */}
           {conflicts?.has_conflicts ? (
             <Alert variant="warning">
@@ -796,8 +737,19 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
               </div>
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </section>
+
+      {/* 扫码同步与跨设备快传中心 */}
+      <DevicePairingSection
+        cloudConfigured
+        onApplied={() => {
+          void getSyncStatus().catch(console.error);
+        }}
+        onRunSync={(direction) => {
+          void handleSync(direction);
+        }}
+      />
 
       {/* 冲突解决对话框 */}
       {conflicts && (

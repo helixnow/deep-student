@@ -30,14 +30,18 @@ function getMindMapPath({
   const dx = Math.abs(targetX - sourceX);
   const dy = Math.abs(targetY - sourceY);
 
-  // 该端出线方向上的张力：主轴距离决定曲率（近直远曲）；
+  // 该端出线方向上的张力：平滑连续的非对称 S 型张力公式（消除 main < 100 的阶跃折角突变）；
+  // 出线端（isSource=true）张力略饱满、入线端（isSource=false）张力轻盈顺滑，
   // 主轴距离趋近 0 时用副轴补一点最小张力，避免 S 形塌成硬折线
-  const tensionFor = (pos: Position): number => {
+  const tensionFor = (pos: Position, isSource: boolean): number => {
     const isHorizontal = pos === Position.Left || pos === Position.Right;
     const main = isHorizontal ? dx : dy;
     const cross = isHorizontal ? dy : dx;
-    const curvature = main < 100 ? 0.3 : 0.4;
-    return Math.max(main * curvature, Math.min(cross * 0.25, 32));
+    const smoothRatio = Math.min(1, main / 160);
+    const baseCurvature = 0.32 + smoothRatio * 0.08;
+    const roleFactor = isSource ? 1.06 : 0.92;
+    const crossSupport = Math.min(cross * 0.22, 28);
+    return Math.max(main * baseCurvature * roleFactor, crossSupport, 12);
   };
 
   let controlX1 = sourceX;
@@ -47,31 +51,31 @@ function getMindMapPath({
 
   switch (sourcePosition) {
     case Position.Left:
-      controlX1 = sourceX - tensionFor(sourcePosition);
+      controlX1 = sourceX - tensionFor(sourcePosition, true);
       break;
     case Position.Right:
-      controlX1 = sourceX + tensionFor(sourcePosition);
+      controlX1 = sourceX + tensionFor(sourcePosition, true);
       break;
     case Position.Top:
-      controlY1 = sourceY - tensionFor(sourcePosition);
+      controlY1 = sourceY - tensionFor(sourcePosition, true);
       break;
     case Position.Bottom:
-      controlY1 = sourceY + tensionFor(sourcePosition);
+      controlY1 = sourceY + tensionFor(sourcePosition, true);
       break;
   }
 
   switch (targetPosition) {
     case Position.Left:
-      controlX2 = targetX - tensionFor(targetPosition);
+      controlX2 = targetX - tensionFor(targetPosition, false);
       break;
     case Position.Right:
-      controlX2 = targetX + tensionFor(targetPosition);
+      controlX2 = targetX + tensionFor(targetPosition, false);
       break;
     case Position.Top:
-      controlY2 = targetY - tensionFor(targetPosition);
+      controlY2 = targetY - tensionFor(targetPosition, false);
       break;
     case Position.Bottom:
-      controlY2 = targetY + tensionFor(targetPosition);
+      controlY2 = targetY + tensionFor(targetPosition, false);
       break;
   }
 
@@ -102,6 +106,11 @@ export const CurvedEdge: React.FC<EdgeProps> = ({
   });
 
   const emphasized = getEdgeEmphasis(data);
+  const sourceLevel = (data as { sourceLevel?: number } | undefined)?.sourceLevel;
+  const taperedStrokeWidth =
+    sourceLevel === 0 ? 1.8 : sourceLevel === 1 ? 1.35 : sourceLevel != null ? 1.05 : 1.5;
+  const taperedOpacity =
+    sourceLevel === 0 ? 0.92 : sourceLevel === 1 ? 0.78 : sourceLevel != null ? 0.65 : 1;
 
   return (
     <BaseEdge
@@ -112,7 +121,8 @@ export const CurvedEdge: React.FC<EdgeProps> = ({
       interactionWidth={interactionWidth}
       className={withEmphasisClass('tree-edge mm-tree-edge', emphasized)}
       style={{ 
-        strokeWidth: 1.5,
+        strokeWidth: taperedStrokeWidth,
+        opacity: taperedOpacity,
         stroke: 'var(--mm-edge)',
         strokeLinecap: 'round',
         strokeLinejoin: 'round',

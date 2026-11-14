@@ -1,0 +1,28 @@
+{
+  "id": "RF-S01-arxiv-unrecognized-entity-drops-text",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T14:05:00+08:00",
+  "title": "arXiv Atom 文本里一个未识别的命名实体或裸 & 会清空整段文本（<id> 中则整篇论文被丢弃）",
+  "rust": {
+    "file": "src-tauri/src/chat_v2/tools/academic_search_executor.rs",
+    "line": 439,
+    "behavior": "e.unescape().unwrap_or_default()：quick-xml 0.37 unescape 遇到 lt/gt/amp/apos/quot 以外的命名实体返回 UnrecognizedEntity，遇到其后没有 ';'（或下一个 '&' 先出现）的 '&' 返回 UnterminatedEntity；整个文本事件变成空串，title/summary/作者名被静默清空，<id> 为空时该条目被丢弃"
+  },
+  "fix": {
+    "files": ["host/plugins/memory/src/academic-search.ts"],
+    "behavior": "decodeXmlText 把未识别实体与未结束的 '&' 原样保留，其余引用照常单趟解码；与已批准的 RF-S01-arxiv-invalid-char-ref-drops-text 同一处 unwrap_or_default，处理方式一致（只影响出错的那个引用）"
+  },
+  "evidence": "与 RF-S01-arxiv-invalid-char-ref-drops-text 同类的用户可见数据丢失：一个 &nbsp; 或 AT&T 让论文标题/摘要变空或整篇消失且无提示。复现：parseArxivAtom 输入 <title>Tom &amp; Jerry &nbsp; x</title>，Rust 得到空标题，修复后得到 'Tom & Jerry &nbsp; x'。TS 移植此前用链式 replace 保留原文，但属未登记偏离且会二次解码（&#38;lt; → <），本轮已先按 quick-xml 单趟语义对齐再单独提出此修复。",
+  "g3": {
+    "affects": false,
+    "selectors": []
+  },
+  "tests": [
+    {
+      "file": "host/plugins/memory/tests/academic-search-entities.test.ts",
+      "name": "RF-S01-arxiv-unrecognized-entity-drops-text: an unrecognized entity or a bare & stays literal and the rest of the field still decodes"
+    }
+  ]
+}

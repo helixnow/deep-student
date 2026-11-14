@@ -1,0 +1,26 @@
+{
+  "id": "RF-W09-quick-assistant-build-import",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main-agent",
+  "approvedAt": "2026-11-07T10:12:00+08:00",
+  "title": "生产构建中快捷助手全局快捷键初始化失败（Vite 改写解构动态 import，丢掉 getQuickAssistantConfig）",
+  "rust": {
+    "file": "src/quick-assistant/window.ts",
+    "line": 90,
+    "behavior": "Rust 快照 21c9d808 写作 `const { enabled } = await import('./config').then((module) => module.getQuickAssistantConfig())`。Vite 6 生产构建把“解构 await import()”改写为只取被解构的导出 `enabled`，链式 .then 拿到的模块对象里没有 getQuickAssistantConfig，抛出 `module.getQuickAssistantConfig is not a function`；main.tsx 启动时调用这个初始化，快捷助手快捷键不会注册。开发模式（不经构建）正常，所以只在打包后出现"
+  },
+  "fix": {
+    "files": ["src/quick-assistant/window.ts"],
+    "behavior": "把动态 import 与调用拆成两句（先拿模块，再调用 getQuickAssistantConfig），构建改写不再生效；生产包能读到配置并注册快捷键"
+  },
+  "evidence": "W12 在 Electron 生产包 dist 产物中看到该改写与报错。Tauri 版用同一份前端代码、同一个 Vite（package.json 在 21c9d808 与当前均为 vite ^6.0.3、`vite build`），main.tsx:744-748 同样在启动时调用 initializeQuickAssistantGlobalShortcut，因此 Tauri 生产包有同样的问题。测试以生产模式 vite build 构建 window.ts，在独立 node 进程执行产物：修复前报 `module.getQuickAssistantConfig is not a function`，修复后 get_setting、register、quick_assistant_apply_enabled 均被调用。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "src/quick-assistant/__tests__/window.build.test.ts",
+      "name": "RF-W09-quick-assistant-build-import: quick assistant shortcut init survives the production build"
+    }
+  ],
+  "commits": ["3592a356"]
+}

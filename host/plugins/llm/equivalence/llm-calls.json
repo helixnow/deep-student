@@ -1,0 +1,1318 @@
+{
+  "domain": "llm-manager",
+  "commands": [
+    "call_llm_for_boundary",
+    "cancel_stream",
+    "test_api_connection",
+    "ocr_extract_text"
+  ],
+  "scenarios": [
+    {
+      "id": "llm.boundary.success",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "wp239-answer",
+                "name": "WP239 wp239-answer",
+                "apiKey": "",
+                "authMode": "none",
+                "baseUrl": "http://127.0.0.1:18461/s/success.answer/v1",
+                "model": "wp239-answer",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "supportsTools": true,
+                "isMultimodal": false,
+                "isReasoning": false,
+                "isEmbedding": false,
+                "isReranker": false,
+                "enabled": true,
+                "contextWindow": 32768,
+                "maxOutputTokens": 256
+              },
+              {
+                "id": "wp239-thinking",
+                "name": "WP239 wp239-thinking",
+                "apiKey": "",
+                "authMode": "none",
+                "baseUrl": "http://127.0.0.1:18461/s/success.thinking/v1",
+                "model": "wp239-thinking",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "supportsTools": true,
+                "isMultimodal": false,
+                "isReasoning": true,
+                "isEmbedding": false,
+                "isReranker": false,
+                "enabled": true,
+                "contextWindow": 32768,
+                "maxOutputTokens": 256
+              },
+              {
+                "id": "wp239-http500",
+                "name": "WP239 wp239-http500",
+                "apiKey": "",
+                "authMode": "none",
+                "baseUrl": "http://127.0.0.1:18461/s/error.http-500/v1",
+                "model": "wp239-http500",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "supportsTools": true,
+                "isMultimodal": false,
+                "isReasoning": false,
+                "isEmbedding": false,
+                "isReranker": false,
+                "enabled": true,
+                "contextWindow": 32768,
+                "maxOutputTokens": 256
+              },
+              {
+                "id": "wp239-eof",
+                "name": "WP239 wp239-eof",
+                "apiKey": "",
+                "authMode": "none",
+                "baseUrl": "http://127.0.0.1:18461/s/error.eof-after-partial/v1",
+                "model": "wp239-eof",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "supportsTools": true,
+                "isMultimodal": false,
+                "isReasoning": false,
+                "isEmbedding": false,
+                "isReranker": false,
+                "enabled": true,
+                "contextWindow": 32768,
+                "maxOutputTokens": 256
+              },
+              {
+                "id": "wp239-embedding",
+                "name": "WP239 wp239-embedding",
+                "apiKey": "",
+                "authMode": "none",
+                "baseUrl": "http://127.0.0.1:18461/s/success.answer/v1",
+                "model": "wp239-embedding",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "supportsTools": true,
+                "isMultimodal": false,
+                "isReasoning": false,
+                "isEmbedding": true,
+                "isReranker": false,
+                "enabled": true,
+                "contextWindow": 32768,
+                "maxOutputTokens": 256
+              },
+              {
+                "id": "wp239-disabled",
+                "name": "WP239 wp239-disabled",
+                "apiKey": "",
+                "authMode": "none",
+                "baseUrl": "http://127.0.0.1:18461/s/success.answer/v1",
+                "model": "wp239-disabled",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "supportsTools": true,
+                "isMultimodal": false,
+                "isReasoning": false,
+                "isEmbedding": false,
+                "isReranker": false,
+                "enabled": false,
+                "contextWindow": 32768,
+                "maxOutputTokens": 256
+              },
+              {
+                "id": "wp239-vision",
+                "name": "WP239 wp239-vision",
+                "apiKey": "",
+                "authMode": "none",
+                "baseUrl": "http://127.0.0.1:18461/s/success.answer/v1",
+                "model": "qwen2.5-vl-7b-instruct",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "supportsTools": true,
+                "isMultimodal": true,
+                "isReasoning": false,
+                "isEmbedding": false,
+                "isReranker": false,
+                "enabled": true,
+                "contextWindow": 32768,
+                "maxOutputTokens": 256
+              },
+              {
+                "id": "wp239-vision-500",
+                "name": "WP239 wp239-vision-500",
+                "apiKey": "",
+                "authMode": "none",
+                "baseUrl": "http://127.0.0.1:18461/s/error.http-500/v1",
+                "model": "qwen2.5-vl-7b-instruct",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "supportsTools": true,
+                "isMultimodal": true,
+                "isReasoning": false,
+                "isEmbedding": false,
+                "isReranker": false,
+                "enabled": true,
+                "contextWindow": 32768,
+                "maxOutputTokens": 256
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "save_model_assignments",
+          "args": {
+            "assignments": {
+              "model2_config_id": "wp239-answer"
+            }
+          }
+        },
+        {
+          "cmd": "call_llm_for_boundary",
+          "args": {
+            "prompt": "请在下面文本中找到最佳语义分割点，只返回位置编号。\n第一段……\n第二段……"
+          }
+        },
+        {
+          "cmd": "call_llm_for_boundary",
+          "args": {
+            "prompt": ""
+          }
+        },
+        {
+          "cmd": "save_model_assignments",
+          "args": {
+            "assignments": {
+              "model2_config_id": "wp239-thinking"
+            }
+          }
+        },
+        {
+          "cmd": "call_llm_for_boundary",
+          "args": {
+            "prompt": "边界定界（思考模型）"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "llm.boundary.errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "call_llm_for_boundary",
+          "args": {
+            "prompt": "未配置任何模型"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "wp239-answer",
+                "name": "WP239 wp239-answer",
+                "apiKey": "",
+                "authMode": "none",
+                "baseUrl": "http://127.0.0.1:18461/s/success.answer/v1",
+                "model": "wp239-answer",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "supportsTools": true,
+                "isMultimodal": false,
+                "isReasoning": false,
+                "isEmbedding": false,
+                "isReranker": false,
+                "enabled": true,
+                "contextWindow": 32768,
+                "maxOutputTokens": 256
+              },
+              {
+                "id": "wp239-thinking",
+                "name": "WP239 wp239-thinking",
+                "apiKey": "",
+                "authMode": "none",
+                "baseUrl": "http://127.0.0.1:18461/s/success.thinking/v1",
+                "model": "wp239-thinking",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "supportsTools": true,
+                "isMultimodal": false,
+                "isReasoning": true,
+                "isEmbedding": false,
+                "isReranker": false,
+                "enabled": true,
+                "contextWindow": 32768,
+                "maxOutputTokens": 256
+              },
+              {
+                "id": "wp239-http500",
+                "name": "WP239 wp239-http500",
+                "apiKey": "",
+                "authMode": "none",
+                "baseUrl": "http://127.0.0.1:18461/s/error.http-500/v1",
+                "model": "wp239-http500",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "supportsTools": true,
+                "isMultimodal": false,
+                "isReasoning": false,
+                "isEmbedding": false,
+                "isReranker": false,
+                "enabled": true,
+                "contextWindow": 32768,
+                "maxOutputTokens": 256
+              },
+              {
+                "id": "wp239-eof",
+                "name": "WP239 wp239-eof",
+                "apiKey": "",
+                "authMode": "none",
+                "baseUrl": "http://127.0.0.1:18461/s/error.eof-after-partial/v1",
+                "model": "wp239-eof",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "supportsTools": true,
+                "isMultimodal": false,
+                "isReasoning": false,
+                "isEmbedding": false,
+                "isReranker": false,
+                "enabled": true,
+                "contextWindow": 32768,
+                "maxOutputTokens": 256
+              },
+              {
+                "id": "wp239-embedding",
+                "name": "WP239 wp239-embedding",
+                "apiKey": "",
+                "authMode": "none",
+                "baseUrl": "http://127.0.0.1:18461/s/success.answer/v1",
+                "model": "wp239-embedding",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "supportsTools": true,
+                "isMultimodal": false,
+                "isReasoning": false,
+                "isEmbedding": true,
+                "isReranker": false,
+                "enabled": true,
+                "contextWindow": 32768,
+                "maxOutputTokens": 256
+              },
+              {
+                "id": "wp239-disabled",
+                "name": "WP239 wp239-disabled",
+                "apiKey": "",
+                "authMode": "none",
+                "baseUrl": "http://127.0.0.1:18461/s/success.answer/v1",
+                "model": "wp239-disabled",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "supportsTools": true,
+                "isMultimodal": false,
+                "isReasoning": false,
+                "isEmbedding": false,
+                "isReranker": false,
+                "enabled": false,
+                "contextWindow": 32768,
+                "maxOutputTokens": 256
+              },
+              {
+                "id": "wp239-vision",
+                "name": "WP239 wp239-vision",
+                "apiKey": "",
+                "authMode": "none",
+                "baseUrl": "http://127.0.0.1:18461/s/success.answer/v1",
+                "model": "qwen2.5-vl-7b-instruct",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "supportsTools": true,
+                "isMultimodal": true,
+                "isReasoning": false,
+                "isEmbedding": false,
+                "isReranker": false,
+                "enabled": true,
+                "contextWindow": 32768,
+                "maxOutputTokens": 256
+              },
+              {
+                "id": "wp239-vision-500",
+                "name": "WP239 wp239-vision-500",
+                "apiKey": "",
+                "authMode": "none",
+                "baseUrl": "http://127.0.0.1:18461/s/error.http-500/v1",
+                "model": "qwen2.5-vl-7b-instruct",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "supportsTools": true,
+                "isMultimodal": true,
+                "isReasoning": false,
+                "isEmbedding": false,
+                "isReranker": false,
+                "enabled": true,
+                "contextWindow": 32768,
+                "maxOutputTokens": 256
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "call_llm_for_boundary",
+          "args": {
+            "prompt": "已有配置但未分配对话模型"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "save_model_assignments",
+          "args": {
+            "assignments": {
+              "model2_config_id": "wp239-missing"
+            }
+          }
+        },
+        {
+          "cmd": "call_llm_for_boundary",
+          "args": {
+            "prompt": "分配了不存在的配置"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "save_model_assignments",
+          "args": {
+            "assignments": {
+              "model2_config_id": "wp239-embedding"
+            }
+          }
+        },
+        {
+          "cmd": "call_llm_for_boundary",
+          "args": {
+            "prompt": "分配了嵌入模型"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "save_model_assignments",
+          "args": {
+            "assignments": {
+              "model2_config_id": "wp239-disabled"
+            }
+          }
+        },
+        {
+          "cmd": "call_llm_for_boundary",
+          "args": {
+            "prompt": "分配了已禁用模型"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "save_model_assignments",
+          "args": {
+            "assignments": {
+              "model2_config_id": "wp239-http500"
+            }
+          }
+        },
+        {
+          "cmd": "call_llm_for_boundary",
+          "args": {
+            "prompt": "供应商返回 HTTP 500"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "save_model_assignments",
+          "args": {
+            "assignments": {
+              "model2_config_id": "wp239-eof"
+            }
+          }
+        },
+        {
+          "cmd": "call_llm_for_boundary",
+          "args": {
+            "prompt": "非流式请求下 eof 脚本折叠为单个响应"
+          }
+        },
+        {
+          "cmd": "call_llm_for_boundary",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "llm.cancel_stream.registry_without_active_stream",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "cancel_stream",
+          "args": {
+            "streamEventName": "essay_grading_stream_wp239"
+          }
+        },
+        {
+          "cmd": "cancel_stream",
+          "args": {
+            "streamEventName": "essay_grading_stream_wp239"
+          }
+        },
+        {
+          "cmd": "cancel_stream",
+          "args": {
+            "streamEventName": ""
+          }
+        },
+        {
+          "cmd": "cancel_stream",
+          "args": {
+            "streamEventName": "  translation_stream_ wp239 带空格 "
+          }
+        },
+        {
+          "cmd": "cancel_stream",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "llm.test_api_connection.chat_probe_success",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "test_api_connection",
+          "args": {
+            "apiKey": "",
+            "apiBase": "http://127.0.0.1:18461/s/success.answer/v1",
+            "apiProtocol": "openai_chat_completions",
+            "authMode": "none",
+            "modelAdapter": "general",
+            "model": "wp239-probe"
+          }
+        },
+        {
+          "cmd": "test_api_connection",
+          "args": {
+            "apiKey": "sk-wp239-plain",
+            "apiBase": "http://127.0.0.1:18461/s/success.answer/v1",
+            "apiProtocol": "openai_chat_completions",
+            "authMode": null,
+            "modelAdapter": "general",
+            "model": null
+          }
+        },
+        {
+          "cmd": "test_api_connection",
+          "args": {
+            "apiKey": "",
+            "apiBase": "http://127.0.0.1:18461/s/success.thinking/v1",
+            "apiProtocol": "openai_chat_completions",
+            "authMode": "none",
+            "modelAdapter": "general",
+            "model": "wp239-probe",
+            "isReasoning": true,
+            "supportsReasoning": true,
+            "enableThinking": true,
+            "thinkingBudget": 512,
+            "includeThoughts": true,
+            "reasoningEffort": "low",
+            "maxOutputTokens": 64,
+            "maxTokensLimit": 128,
+            "headers": {
+              "X-Trace": "wp239"
+            }
+          }
+        },
+        {
+          "cmd": "test_api_connection",
+          "args": {
+            "apiKey": "",
+            "apiBase": "http://127.0.0.1:18461/s/success.answer/v1/",
+            "apiProtocol": "openai_chat_completions",
+            "authMode": "none",
+            "modelAdapter": "general",
+            "model": "wp239-probe"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "llm.test_api_connection.probe_failures_ok_false",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "test_api_connection",
+          "args": {
+            "apiKey": "",
+            "apiBase": "http://127.0.0.1:18461/s/error.http-500/v1",
+            "apiProtocol": "openai_chat_completions",
+            "authMode": "none",
+            "modelAdapter": "general",
+            "model": "wp239-probe"
+          }
+        },
+        {
+          "cmd": "test_api_connection",
+          "args": {
+            "apiKey": "",
+            "apiBase": "http://127.0.0.1:18461/s/error.eof-after-partial/v1",
+            "apiProtocol": "openai_chat_completions",
+            "authMode": "none",
+            "modelAdapter": "general",
+            "model": "wp239-probe"
+          }
+        },
+        {
+          "cmd": "test_api_connection",
+          "args": {
+            "apiKey": "",
+            "apiBase": "http://127.0.0.1:18461/s/success.answer/v1",
+            "apiProtocol": "openai_chat_completions",
+            "authMode": "none",
+            "modelAdapter": "general",
+            "model": "wp239-probe",
+            "isEmbedding": true
+          }
+        },
+        {
+          "cmd": "test_api_connection",
+          "args": {
+            "apiKey": "",
+            "apiBase": "http://127.0.0.1:18461/s/success.answer/v1",
+            "apiProtocol": "openai_chat_completions",
+            "authMode": "none",
+            "modelAdapter": "general",
+            "model": "wp239-probe",
+            "isReranker": true
+          }
+        },
+        {
+          "cmd": "test_api_connection",
+          "args": {
+            "apiKey": "",
+            "apiBase": "http://127.0.0.1:18461/s/success.answer/v1",
+            "apiProtocol": "openai_chat_completions",
+            "authMode": "none",
+            "modelAdapter": "general",
+            "model": "wp239-probe",
+            "isImageGeneration": true
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "llm.test_api_connection.saved_vendor_and_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "test_api_connection",
+          "args": {
+            "apiKey": "",
+            "apiBase": "http://127.0.0.1:18461/s/success.answer/v1",
+            "apiProtocol": "openai_chat_completions",
+            "authMode": null,
+            "modelAdapter": "general",
+            "model": "wp239-probe"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "test_api_connection",
+          "args": {
+            "apiKey": "***",
+            "apiBase": "http://127.0.0.1:18461/s/success.answer/v1",
+            "apiProtocol": "openai_chat_completions",
+            "authMode": null,
+            "modelAdapter": "general",
+            "model": "wp239-probe"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "test_api_connection",
+          "args": {
+            "apiKey": "",
+            "apiBase": "http://127.0.0.1:18461/s/success.answer/v1",
+            "apiProtocol": "openai_chat_completions",
+            "authMode": "none",
+            "modelAdapter": "general",
+            "model": "wp239-probe",
+            "vendorId": "wp239-vendor-missing"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "save_vendor_configs",
+          "args": {
+            "configs": [
+              {
+                "id": "wp239-vendor",
+                "name": "WP239 wp239-vendor",
+                "providerType": "openai",
+                "authMode": null,
+                "apiProtocol": "openai_chat_completions",
+                "supportsOpenaiResponses": false,
+                "baseUrl": "http://127.0.0.1:18461/s/success.answer/v1",
+                "apiKey": "sk-wp239-primary",
+                "apiKeys": [],
+                "headers": {},
+                "rateLimitPerMinute": null,
+                "defaultTimeoutMs": null,
+                "notes": null,
+                "isBuiltin": false,
+                "isReadOnly": false,
+                "sortOrder": null,
+                "maxTokensLimit": null,
+                "websiteUrl": null
+              },
+              {
+                "id": "wp239-vendor-empty",
+                "name": "WP239 wp239-vendor-empty",
+                "providerType": "openai",
+                "authMode": null,
+                "apiProtocol": "openai_chat_completions",
+                "supportsOpenaiResponses": false,
+                "baseUrl": "http://127.0.0.1:18461/s/success.answer/v1",
+                "apiKey": "",
+                "apiKeys": [],
+                "headers": {},
+                "rateLimitPerMinute": null,
+                "defaultTimeoutMs": null,
+                "notes": null,
+                "isBuiltin": false,
+                "isReadOnly": false,
+                "sortOrder": null,
+                "maxTokensLimit": null,
+                "websiteUrl": null
+              },
+              {
+                "id": "wp239-vendor-siliconflow",
+                "name": "WP239 wp239-vendor-siliconflow",
+                "providerType": "openai",
+                "authMode": null,
+                "apiProtocol": "openai_chat_completions",
+                "supportsOpenaiResponses": false,
+                "baseUrl": "http://127.0.0.1:18461/s/success.answer/v1",
+                "apiKey": "",
+                "apiKeys": [],
+                "headers": {},
+                "rateLimitPerMinute": null,
+                "defaultTimeoutMs": null,
+                "notes": null,
+                "isBuiltin": false,
+                "isReadOnly": false,
+                "sortOrder": null,
+                "maxTokensLimit": null,
+                "websiteUrl": null
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "save_model_profiles",
+          "args": {
+            "profiles": [
+              {
+                "id": "wp239-profile-probe",
+                "vendorId": "wp239-vendor",
+                "label": "WP239 wp239-profile-probe",
+                "model": "wp239-probe",
+                "maxOutputTokens": 32
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "test_api_connection",
+          "args": {
+            "apiKey": "***",
+            "apiBase": "http://127.0.0.1:18461/s/success.answer/v1",
+            "apiProtocol": "openai_chat_completions",
+            "authMode": null,
+            "modelAdapter": "general",
+            "model": "wp239-probe",
+            "vendorId": "wp239-vendor"
+          }
+        },
+        {
+          "cmd": "test_api_connection",
+          "args": {
+            "apiKey": "***",
+            "apiBase": "http://127.0.0.1:18462/s/success.answer/v1",
+            "apiProtocol": "openai_chat_completions",
+            "authMode": null,
+            "modelAdapter": "general",
+            "model": "wp239-probe",
+            "vendorId": "wp239-vendor"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "test_api_connection",
+          "args": {
+            "apiKey": "",
+            "apiBase": "http://127.0.0.1:18461/s/success.answer/v1",
+            "apiProtocol": "openai_chat_completions",
+            "authMode": null,
+            "modelAdapter": "general",
+            "model": "wp239-probe",
+            "vendorId": "wp239-vendor-empty"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "test_api_connection",
+          "args": {
+            "apiKey": "***",
+            "apiBase": "http://127.0.0.1:18461/s/success.answer/v1",
+            "apiProtocol": "openai_chat_completions",
+            "authMode": null,
+            "modelAdapter": "general",
+            "model": "wp239-probe",
+            "vendorId": "wp239-vendor-siliconflow"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "test_api_connection",
+          "args": {
+            "apiKey": "***",
+            "apiBase": "https://api.deepseek.com/v1",
+            "apiProtocol": "openai_chat_completions",
+            "authMode": null,
+            "modelAdapter": "general",
+            "model": "wp239-probe",
+            "vendorId": "builtin-deepseek"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "test_api_connection",
+          "args": {
+            "apiKey": "***",
+            "apiBase": "https://api.siliconflow.cn/v1",
+            "apiProtocol": "openai_chat_completions",
+            "authMode": null,
+            "modelAdapter": "general",
+            "model": "wp239-probe",
+            "vendorId": "builtin-siliconflow"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "test_api_connection",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "llm.ocr_extract_text.vlm_success",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "wp239-answer",
+                "name": "WP239 wp239-answer",
+                "apiKey": "",
+                "authMode": "none",
+                "baseUrl": "http://127.0.0.1:18461/s/success.answer/v1",
+                "model": "wp239-answer",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "supportsTools": true,
+                "isMultimodal": false,
+                "isReasoning": false,
+                "isEmbedding": false,
+                "isReranker": false,
+                "enabled": true,
+                "contextWindow": 32768,
+                "maxOutputTokens": 256
+              },
+              {
+                "id": "wp239-thinking",
+                "name": "WP239 wp239-thinking",
+                "apiKey": "",
+                "authMode": "none",
+                "baseUrl": "http://127.0.0.1:18461/s/success.thinking/v1",
+                "model": "wp239-thinking",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "supportsTools": true,
+                "isMultimodal": false,
+                "isReasoning": true,
+                "isEmbedding": false,
+                "isReranker": false,
+                "enabled": true,
+                "contextWindow": 32768,
+                "maxOutputTokens": 256
+              },
+              {
+                "id": "wp239-http500",
+                "name": "WP239 wp239-http500",
+                "apiKey": "",
+                "authMode": "none",
+                "baseUrl": "http://127.0.0.1:18461/s/error.http-500/v1",
+                "model": "wp239-http500",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "supportsTools": true,
+                "isMultimodal": false,
+                "isReasoning": false,
+                "isEmbedding": false,
+                "isReranker": false,
+                "enabled": true,
+                "contextWindow": 32768,
+                "maxOutputTokens": 256
+              },
+              {
+                "id": "wp239-eof",
+                "name": "WP239 wp239-eof",
+                "apiKey": "",
+                "authMode": "none",
+                "baseUrl": "http://127.0.0.1:18461/s/error.eof-after-partial/v1",
+                "model": "wp239-eof",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "supportsTools": true,
+                "isMultimodal": false,
+                "isReasoning": false,
+                "isEmbedding": false,
+                "isReranker": false,
+                "enabled": true,
+                "contextWindow": 32768,
+                "maxOutputTokens": 256
+              },
+              {
+                "id": "wp239-embedding",
+                "name": "WP239 wp239-embedding",
+                "apiKey": "",
+                "authMode": "none",
+                "baseUrl": "http://127.0.0.1:18461/s/success.answer/v1",
+                "model": "wp239-embedding",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "supportsTools": true,
+                "isMultimodal": false,
+                "isReasoning": false,
+                "isEmbedding": true,
+                "isReranker": false,
+                "enabled": true,
+                "contextWindow": 32768,
+                "maxOutputTokens": 256
+              },
+              {
+                "id": "wp239-disabled",
+                "name": "WP239 wp239-disabled",
+                "apiKey": "",
+                "authMode": "none",
+                "baseUrl": "http://127.0.0.1:18461/s/success.answer/v1",
+                "model": "wp239-disabled",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "supportsTools": true,
+                "isMultimodal": false,
+                "isReasoning": false,
+                "isEmbedding": false,
+                "isReranker": false,
+                "enabled": false,
+                "contextWindow": 32768,
+                "maxOutputTokens": 256
+              },
+              {
+                "id": "wp239-vision",
+                "name": "WP239 wp239-vision",
+                "apiKey": "",
+                "authMode": "none",
+                "baseUrl": "http://127.0.0.1:18461/s/success.answer/v1",
+                "model": "qwen2.5-vl-7b-instruct",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "supportsTools": true,
+                "isMultimodal": true,
+                "isReasoning": false,
+                "isEmbedding": false,
+                "isReranker": false,
+                "enabled": true,
+                "contextWindow": 32768,
+                "maxOutputTokens": 256
+              },
+              {
+                "id": "wp239-vision-500",
+                "name": "WP239 wp239-vision-500",
+                "apiKey": "",
+                "authMode": "none",
+                "baseUrl": "http://127.0.0.1:18461/s/error.http-500/v1",
+                "model": "qwen2.5-vl-7b-instruct",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "supportsTools": true,
+                "isMultimodal": true,
+                "isReasoning": false,
+                "isEmbedding": false,
+                "isReranker": false,
+                "enabled": true,
+                "contextWindow": 32768,
+                "maxOutputTokens": 256
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "save_available_ocr_models",
+          "args": {
+            "models": [
+              {
+                "configId": "wp239-vision",
+                "model": "qwen2.5-vl-7b-instruct",
+                "engineType": "generic_vlm",
+                "name": "WP239 VLM",
+                "isFree": false,
+                "enabled": true,
+                "priority": 0
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "ocr_extract_text",
+          "args": {
+            "imagePath": null,
+            "imageBase64": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR42mP4z8AAAAMBAQD3A0FDAAAAAElFTkSuQmCC"
+          }
+        },
+        {
+          "cmd": "ocr_extract_text",
+          "args": {
+            "imageBase64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR42mP4z8AAAAMBAQD3A0FDAAAAAElFTkSuQmCC"
+          }
+        },
+        {
+          "cmd": "ocr_extract_text",
+          "args": {
+            "imageBase64": "data:image/webp;base64,AAECAwQF"
+          }
+        },
+        {
+          "cmd": "ocr_extract_text",
+          "args": {
+            "imagePath": "ignored-when-base64.png",
+            "imageBase64": "  iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR42mP4z8AAAAMBAQD3A0FDAAAAAElFTkSuQmCC  "
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "llm.ocr_extract_text.errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "ocr_extract_text",
+          "args": {
+            "imagePath": null,
+            "imageBase64": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "ocr_extract_text",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "ocr_extract_text",
+          "args": {
+            "imageBase64": "data:image/png;base64"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "ocr_extract_text",
+          "args": {
+            "imageBase64": "data:image/png;base64,@@@not-base64@@@"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "ocr_extract_text",
+          "args": {
+            "imageBase64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR42mP4z8AAAAMBAQD3A0FDAAAAAElFTkSuQmCC"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "wp239-answer",
+                "name": "WP239 wp239-answer",
+                "apiKey": "",
+                "authMode": "none",
+                "baseUrl": "http://127.0.0.1:18461/s/success.answer/v1",
+                "model": "wp239-answer",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "supportsTools": true,
+                "isMultimodal": false,
+                "isReasoning": false,
+                "isEmbedding": false,
+                "isReranker": false,
+                "enabled": true,
+                "contextWindow": 32768,
+                "maxOutputTokens": 256
+              },
+              {
+                "id": "wp239-thinking",
+                "name": "WP239 wp239-thinking",
+                "apiKey": "",
+                "authMode": "none",
+                "baseUrl": "http://127.0.0.1:18461/s/success.thinking/v1",
+                "model": "wp239-thinking",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "supportsTools": true,
+                "isMultimodal": false,
+                "isReasoning": true,
+                "isEmbedding": false,
+                "isReranker": false,
+                "enabled": true,
+                "contextWindow": 32768,
+                "maxOutputTokens": 256
+              },
+              {
+                "id": "wp239-http500",
+                "name": "WP239 wp239-http500",
+                "apiKey": "",
+                "authMode": "none",
+                "baseUrl": "http://127.0.0.1:18461/s/error.http-500/v1",
+                "model": "wp239-http500",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "supportsTools": true,
+                "isMultimodal": false,
+                "isReasoning": false,
+                "isEmbedding": false,
+                "isReranker": false,
+                "enabled": true,
+                "contextWindow": 32768,
+                "maxOutputTokens": 256
+              },
+              {
+                "id": "wp239-eof",
+                "name": "WP239 wp239-eof",
+                "apiKey": "",
+                "authMode": "none",
+                "baseUrl": "http://127.0.0.1:18461/s/error.eof-after-partial/v1",
+                "model": "wp239-eof",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "supportsTools": true,
+                "isMultimodal": false,
+                "isReasoning": false,
+                "isEmbedding": false,
+                "isReranker": false,
+                "enabled": true,
+                "contextWindow": 32768,
+                "maxOutputTokens": 256
+              },
+              {
+                "id": "wp239-embedding",
+                "name": "WP239 wp239-embedding",
+                "apiKey": "",
+                "authMode": "none",
+                "baseUrl": "http://127.0.0.1:18461/s/success.answer/v1",
+                "model": "wp239-embedding",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "supportsTools": true,
+                "isMultimodal": false,
+                "isReasoning": false,
+                "isEmbedding": true,
+                "isReranker": false,
+                "enabled": true,
+                "contextWindow": 32768,
+                "maxOutputTokens": 256
+              },
+              {
+                "id": "wp239-disabled",
+                "name": "WP239 wp239-disabled",
+                "apiKey": "",
+                "authMode": "none",
+                "baseUrl": "http://127.0.0.1:18461/s/success.answer/v1",
+                "model": "wp239-disabled",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "supportsTools": true,
+                "isMultimodal": false,
+                "isReasoning": false,
+                "isEmbedding": false,
+                "isReranker": false,
+                "enabled": false,
+                "contextWindow": 32768,
+                "maxOutputTokens": 256
+              },
+              {
+                "id": "wp239-vision",
+                "name": "WP239 wp239-vision",
+                "apiKey": "",
+                "authMode": "none",
+                "baseUrl": "http://127.0.0.1:18461/s/success.answer/v1",
+                "model": "qwen2.5-vl-7b-instruct",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "supportsTools": true,
+                "isMultimodal": true,
+                "isReasoning": false,
+                "isEmbedding": false,
+                "isReranker": false,
+                "enabled": true,
+                "contextWindow": 32768,
+                "maxOutputTokens": 256
+              },
+              {
+                "id": "wp239-vision-500",
+                "name": "WP239 wp239-vision-500",
+                "apiKey": "",
+                "authMode": "none",
+                "baseUrl": "http://127.0.0.1:18461/s/error.http-500/v1",
+                "model": "qwen2.5-vl-7b-instruct",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "supportsTools": true,
+                "isMultimodal": true,
+                "isReasoning": false,
+                "isEmbedding": false,
+                "isReranker": false,
+                "enabled": true,
+                "contextWindow": 32768,
+                "maxOutputTokens": 256
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "save_available_ocr_models",
+          "args": {
+            "models": [
+              {
+                "configId": "wp239-vision",
+                "model": "qwen2.5-vl-7b-instruct",
+                "engineType": "generic_vlm",
+                "name": "WP239 VLM disabled",
+                "enabled": false
+              },
+              {
+                "configId": "wp239-answer",
+                "model": "wp239-answer",
+                "engineType": "generic_vlm",
+                "name": "WP239 not multimodal"
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "ocr_extract_text",
+          "args": {
+            "imageBase64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR42mP4z8AAAAMBAQD3A0FDAAAAAElFTkSuQmCC"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "save_available_ocr_models",
+          "args": {
+            "models": [
+              {
+                "configId": "wp239-vision-500",
+                "model": "qwen2.5-vl-7b-instruct",
+                "engineType": "generic_vlm",
+                "name": "WP239 VLM 500"
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "ocr_extract_text",
+          "args": {
+            "imagePath": "/nonexistent/wp239/missing.png"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "ocr_extract_text",
+          "args": {
+            "imageBase64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR42mP4z8AAAAMBAQD3A0FDAAAAAElFTkSuQmCC"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

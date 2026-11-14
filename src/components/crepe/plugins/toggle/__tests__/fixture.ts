@@ -4,6 +4,8 @@ import { automd } from '@milkdown/plugin-automd'
 import { TextSelection } from '@milkdown/prose/state'
 import type { EditorView } from '@milkdown/prose/view'
 import { beforeAll, afterAll } from 'vitest'
+import { setupMilkdownTimers } from '../../../__tests__/milkdownTimers'
+setupMilkdownTimers()
 import { calloutPlugin } from '../../callout'
 import { togglePlugin } from '../index'
 

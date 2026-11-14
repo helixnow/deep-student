@@ -1,0 +1,311 @@
+{
+  "shown": {
+    "counter": "日志 14/14",
+    "rows": [
+      {
+        "parts": [
+          "",
+          "10:00:00.000",
+          "[info]",
+          "[system]",
+          "模板设计师监听插件已激活"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.037",
+          "[info]",
+          "[block:state]",
+          "tool=template_get status=running",
+          "block=blk-td-get-0"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.074",
+          "[info]",
+          "[system]",
+          "template designer event"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.185",
+          "[info]",
+          "[tool:get]",
+          "→ template_get [call] | templateId=tpl-1",
+          "template=tpl-1",
+          "block=blk-td-get-0"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.222",
+          "[info]",
+          "[tool:get]",
+          "← template_get | status=ok | templateId=tpl-1",
+          "template=tpl-1",
+          "block=blk-td-get-0"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.259",
+          "[info]",
+          "[tool:update]",
+          "→ template_update [call] | templateId=tpl-2 | expectedVersion=v3",
+          "template=tpl-2",
+          "block=blk-td-upd-0"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.296",
+          "[error]",
+          "[tool:update]",
+          "✗ template_update FAILED: version conflict",
+          "block=blk-td-upd-0"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.333",
+          "[info]",
+          "[tool:delete]",
+          "→ template_delete [call] | templateId=tpl-3",
+          "template=tpl-3",
+          "block=approval_cal"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.333",
+          "[warn]",
+          "[tool:delete]",
+          "⚠️ builtin.template_delete 进入审批，等待用户确认",
+          "template=tpl-3",
+          "block=approval_cal"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.370",
+          "[info]",
+          "[tool:create]",
+          "→ template_create [preparing]",
+          "block=blk-td-new-0"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.407",
+          "[info]",
+          "[tool:fork]",
+          "← template_fork | status=created | templateId=tpl-4",
+          "template=tpl-4",
+          "block=blk-td-fork-"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.444",
+          "[info]",
+          "[tool:preview]",
+          "← template_preview | status=ok | templateId=tpl-5",
+          "template=tpl-5",
+          "block=blk-td-prev-"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.481",
+          "[info]",
+          "[render:template]",
+          "render template output | templateId=tpl-6",
+          "template=tpl-6"
+        ]
+      },
+      {
+        "parts": [
+          "",
+          "10:00:00.518",
+          "[warn]",
+          "[render:template]",
+          "render template output",
+          "template=tpl-7"
+        ]
+      }
+    ]
+  },
+  "expanded": {
+    "counter": "日志 14/14",
+    "rows": [
+      {
+        "parts": [
+          "",
+          "10:00:00.000",
+          "[info]",
+          "[system]",
+          "模板设计师监听插件已激活"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.037",
+          "[info]",
+          "[block:state]",
+          "tool=template_get status=running",
+          "block=blk-td-get-0"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.074",
+          "[info]",
+          "[system]",
+          "template designer event"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.185",
+          "[info]",
+          "[tool:get]",
+          "→ template_get [call] | templateId=tpl-1",
+          "template=tpl-1",
+          "block=blk-td-get-0"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.222",
+          "[info]",
+          "[tool:get]",
+          "← template_get | status=ok | templateId=tpl-1",
+          "template=tpl-1",
+          "block=blk-td-get-0"
+        ],
+        "expanded": "{\n  \"type\": \"mcp_tool\",\n  \"phase\": \"end\",\n  \"toolName\": \"builtin-template_get\",\n  \"blockId\": \"blk-td-get-0001\",\n  \"toolOutput\": {\n    \"status\": \"ok\",\n    \"templateId\": \"tpl-1\"\n  },\n  \"payload\": {\n    \"toolCallId\": \"call-get\"\n  }\n}"
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.259",
+          "[info]",
+          "[tool:update]",
+          "→ template_update [call] | templateId=tpl-2 | expectedVersion=v3",
+          "template=tpl-2",
+          "block=blk-td-upd-0"
+        ],
+        "expanded": "{\n  \"type\": \"mcp_tool\",\n  \"phase\": \"start\",\n  \"toolName\": \"mcp_template_update\",\n  \"blockId\": \"blk-td-upd-0002\",\n  \"toolInput\": {\n    \"template_id\": \"tpl-2\",\n    \"patch\": {\n      \"expectedVersion\": \"v3\"\n    }\n  }\n}"
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.296",
+          "[error]",
+          "[tool:update]",
+          "✗ template_update FAILED: version conflict",
+          "block=blk-td-upd-0"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.333",
+          "[info]",
+          "[tool:delete]",
+          "→ template_delete [call] | templateId=tpl-3",
+          "template=tpl-3",
+          "block=approval_cal"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.333",
+          "[warn]",
+          "[tool:delete]",
+          "⚠️ builtin.template_delete 进入审批，等待用户确认",
+          "template=tpl-3",
+          "block=approval_cal"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.370",
+          "[info]",
+          "[tool:create]",
+          "→ template_create [preparing]",
+          "block=blk-td-new-0"
+        ],
+        "expanded": "{\n  \"type\": \"tool_call_preparing\",\n  \"toolName\": \"tools.template_create\",\n  \"blockId\": \"blk-td-new-0003\",\n  \"payload\": {\n    \"toolCallId\": \"call-new\"\n  }\n}"
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.407",
+          "[info]",
+          "[tool:fork]",
+          "← template_fork | status=created | templateId=tpl-4",
+          "template=tpl-4",
+          "block=blk-td-fork-"
+        ],
+        "expanded": "{\n  \"type\": \"mcp_tool\",\n  \"phase\": \"end\",\n  \"toolName\": \"mcp.tools.template_fork\",\n  \"blockId\": \"blk-td-fork-0004\",\n  \"toolOutput\": {\n    \"status\": \"created\",\n    \"sourceTemplateId\": \"tpl-4\"\n  },\n  \"result\": {\n    \"status\": \"created\",\n    \"sourceTemplateId\": \"tpl-4\",\n    \"extra\": 1\n  }\n}"
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.444",
+          "[info]",
+          "[tool:preview]",
+          "← template_preview | status=ok | templateId=tpl-5",
+          "template=tpl-5",
+          "block=blk-td-prev-"
+        ]
+      },
+      {
+        "parts": [
+          ">",
+          "10:00:00.481",
+          "[info]",
+          "[render:template]",
+          "render template output | templateId=tpl-6",
+          "template=tpl-6"
+        ]
+      },
+      {
+        "parts": [
+          "",
+          "10:00:00.518",
+          "[warn]",
+          "[render:template]",
+          "render template output",
+          "template=tpl-7"
+        ]
+      }
+    ]
+  },
+  "copied": [
+    "[10:00:00.000] [INFO] [system] 模板设计师监听插件已激活\n[10:00:00.037] [INFO] [block:state] tool=template_get status=running blockId=blk-td-get-0001\n  {\n    \"toolName\": \"builtin-template_get\",\n    \"status\": \"running\",\n    \"hasInput\": true,\n    \"hasOutput\": false\n  }\n[10:00:00.074] [INFO] [system] template designer event\n  {\n    \"partial\": true\n  }\n[10:00:00.185] [INFO] [tool:get] → template_get [call] | templateId=tpl-1 blockId=blk-td-get-0001\n  {\n    \"type\": \"mcp_tool\",\n    \"phase\": \"start\",\n    \"toolName\": \"builtin-template_get\",\n    \"blockId\": \"blk-td-get-0001\",\n    \"toolInput\": {\n      \"templateId\": \"tpl-1\"\n    },\n    \"payload\": {\n      \"toolCallId\": \"call-get\",\n      \"toolInput\": {\n        \"templateId\": \"tpl-1\"\n      }\n    }\n  }\n[10:00:00.222] [INFO] [tool:get] ← template_get | status=ok | templateId=tpl-1 blockId=blk-td-get-0001\n  {\n    \"type\": \"mcp_tool\",\n    \"phase\": \"end\",\n    \"toolName\": \"builtin-template_get\",\n    \"blockId\": \"blk-td-get-0001\",\n    \"toolOutput\": {\n      \"status\": \"ok\",\n      \"templateId\": \"tpl-1\"\n    },\n    \"payload\": {\n      \"toolCallId\": \"call-get\"\n    }\n  }\n[10:00:00.259] [INFO] [tool:update] → template_update [call] | templateId=tpl-2 | expectedVersion=v3 blockId=blk-td-upd-0002\n  {\n    \"type\": \"mcp_tool\",\n    \"phase\": \"start\",\n    \"toolName\": \"mcp_template_update\",\n    \"blockId\": \"blk-td-upd-0002\",\n    \"toolInput\": {\n      \"template_id\": \"tpl-2\",\n      \"patch\": {\n        \"expectedVersion\": \"v3\"\n      }\n    }\n  }\n[10:00:00.296] [ERROR] [tool:update] ✗ template_update FAILED: version conflict blockId=blk-td-upd-0002\n  {\n    \"type\": \"mcp_tool\",\n    \"phase\": \"error\",\n    \"toolName\": \"mcp_template_update\",\n    \"blockId\": \"blk-td-upd-0002\",\n    \"error\": \"version conflict\"\n  }\n[10:00:00.333] [INFO] [tool:delete] → template_delete [call] | templateId=tpl-3 blockId=approval_call-del\n  {\n    \"type\": \"tool_approval_request\",\n    \"phase\": \"start\",\n    \"toolName\": \"builtin.template_delete\",\n    \"blockId\": \"approval_call-del\",\n    \"toolInput\": {\n      \"templateId\": \"tpl-3\"\n    },\n    \"payload\": {\n      \"timeoutSeconds\": 30\n    }\n  }\n[10:00:00.333] [WARN] [tool:delete] ⚠️ builtin.template_delete 进入审批，等待用户确认 templateId=tpl-3 blockId=approval_call-del\n  {\n    \"toolCallId\": \"call-del\",\n    \"timeoutMs\": 30000\n  }\n[10:00:00.370] [INFO] [tool:create] → template_create [preparing] blockId=blk-td-new-0003\n  {\n    \"type\": \"tool_call_preparing\",\n    \"toolName\": \"tools.template_create\",\n    \"blockId\": \"blk-td-new-0003\",\n    \"payload\": {\n      \"toolCallId\": \"call-new\"\n    }\n  }\n[10:00:00.407] [INFO] [tool:fork] ← template_fork | status=created | templateId=tpl-4 blockId=blk-td-fork-0004\n  {\n    \"type\": \"mcp_tool\",\n    \"phase\": \"end\",\n    \"toolName\": \"mcp.tools.template_fork\",\n    \"blockId\": \"blk-td-fork-0004\",\n    \"toolOutput\": {\n      \"status\": \"created\",\n      \"sourceTemplateId\": \"tpl-4\"\n    },\n    \"result\": {\n      \"status\": \"created\",\n      \"sourceTemplateId\": \"tpl-4\",\n      \"extra\": 1\n    }\n  }\n[10:00:00.444] [INFO] [tool:preview] ← template_preview | status=ok | templateId=tpl-5 blockId=blk-td-prev-0005\n  {\n    \"type\": \"mcp_tool\",\n    \"phase\": \"end\",\n    \"toolName\": \"template_preview\",\n    \"blockId\": \"blk-td-prev-0005\",\n    \"payload\": {\n      \"usedTemplateId\": \"tpl-5\"\n    }\n  }\n[10:00:00.481] [INFO] [render:template] render template output | templateId=tpl-6\n  {\n    \"templateId\": \"tpl-6\",\n    \"hasDiff\": false,\n    \"hasWarnings\": true,\n    \"warningCount\": 2\n  }\n[10:00:00.518] [WARN] [render:template] render template output templateId=tpl-7"
+  ],
+  "afterCopy": "日志 14/14 · 已复制 14 条日志",
+  "afterCopyCleared": "日志 14/14"
+}

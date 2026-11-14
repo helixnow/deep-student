@@ -1,0 +1,44 @@
+{
+  "schema": "wp043-tauri-build",
+  "job": "20261105173612-f65814",
+  "code": 101,
+  "classification": "rust",
+  "submittedRevision": "0b96afc25e47d0cedd45e9064cf0cacd68b59a2d",
+  "receiptRevision": "720635d8276c5d8aee47dd33ec83545be8dc2a39",
+  "rustSourceTree": "cff4c0cc6eddd710a71e87cb814bf20bc0384516",
+  "startedAt": "2026-11-05T17:36:12.990Z",
+  "endedAt": "2026-11-05T17:46:23.494Z",
+  "durationMs": 610504,
+  "command": [
+    "env",
+    "CARGO_BUILD_JOBS=12",
+    "CARGO_TARGET_DIR=/home/dsdev/dev/ds-mig/X7-differential/src-tauri/crates/dstu-differential/target",
+    "RUSTFLAGS=-Cinstrument-coverage",
+    "nice",
+    "-n",
+    "10",
+    "cargo",
+    "build",
+    "--locked",
+    "--manifest-path",
+    "src-tauri/Cargo.toml",
+    "--bin",
+    "deep-student"
+  ],
+  "profile": "dev",
+  "features": "production defaults (not reduced)",
+  "inputs": {
+    "Cargo.toml": "7ef8160f85ea8ac367d7d283d21c336ab1ffc4461921a191e692778924943f68",
+    "Cargo.lock": "c256ad1324973b8c28c0dec8ab61069f3c4e2e474f994cd82a0ec0e7c5397b5d",
+    "tauri.conf.json": "4dc5678ed438f5a4d6759a8fcae465fc6df678b00279247ebe7ab2d0d96cfad2"
+  },
+  "target": "/home/dsdev/dev/ds-mig/X7-differential/src-tauri/crates/dstu-differential/target",
+  "binary": null,
+  "binarySha256": null,
+  "firstError": "error: failed to run custom build command for `lance-encoding v0.37.0`",
+  "coverage": {
+    "instrumented": true,
+    "applicationRun": false,
+    "report": null
+  }
+}

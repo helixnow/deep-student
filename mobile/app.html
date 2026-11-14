@@ -1,0 +1,29 @@
+<!doctype html>
+<!--
+  完整前端页面（`vite build --mode app`）：构建时由 `mobile/vite.config.ts` 的 `appHtml()` 替换 index.html 的内容，
+  产物仍叫 index.html（Capacitor webDir 的入口）。结构与仓库根 index.html 相同；`/boot.css` 等来自根 `public/`。
+  入口仍是外壳 `src/main.ts`：先启动 Worker Host、装好 Tauri 兼容桥，再加载 `src/main.tsx` 挂到 #root。
+-->
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/app-icon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover" />
+    <title>Deep Student</title>
+    <link rel="stylesheet" href="/boot.css" />
+    <script src="/boot-theme.js"></script>
+    <script src="/error-filter.js"></script>
+  </head>
+  <body>
+    <div id="root">
+      <div class="boot-loading" role="status" aria-label="Deep Student loading" data-dstu-react-placeholder="true">
+        <div class="boot-loading__logo-wrap">
+          <img class="boot-loading__logo" src="/logo-black.svg" alt="Deep Student" width="60" height="60" />
+          <img class="boot-loading__logo boot-loading__logo--shine" src="/logo-black.svg" alt="" aria-hidden="true" width="60" height="60" />
+        </div>
+      </div>
+    </div>
+    <div id="unified-modal-root"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

@@ -90,7 +90,7 @@ const TranslationSkeleton: React.FC<{ label: string }> = ({ label }) => (
       {[0, 1].map(panel => (
         <div
           key={panel}
-          className="flex-1 min-h-[8rem] rounded-lg border border-border/50 bg-muted/10 p-4 space-y-3 overflow-hidden"
+          className="flex-1 min-h-[8rem] rounded-xl border border-border/35 bg-foreground/[0.02] p-4 space-y-3 overflow-hidden"
         >
           <div className="h-4 w-16 rounded-sm bg-muted animate-pulse" />
           <div className="h-3 w-full rounded-sm bg-muted animate-pulse" />
@@ -182,12 +182,12 @@ const BilingualPreview: React.FC<{ session: TranslationSession }> = ({ session }
       {sections.map(section => (
         <section
           key={section.key}
-          className="flex flex-col min-w-0 rounded-lg border border-border/50 bg-muted/10 overflow-hidden"
+          className="flex flex-col min-w-0 rounded-xl border border-border/35 bg-foreground/[0.015] overflow-hidden"
         >
-          {/* 📱 标题可截断、字数不换行：窄屏下防止头部被复制按钮挤压产生横向溢出 */}
-          <header className="flex items-center gap-2 px-3 py-2 border-b border-border/50">
+          {/* 标题可截断、字数不换行：窄屏下防止头部被复制按钮挤压产生横向溢出 */}
+          <header className="flex items-center gap-2 px-3.5 py-2 border-b border-border/35">
             <h3 className="min-w-0 truncate text-sm font-medium text-foreground">{section.title}</h3>
-            <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">
+            <span className="shrink-0 whitespace-nowrap font-mono tabular-nums text-xs text-muted-foreground">
               {t('translation:contentView.char_count', { n: section.text.length })}
             </span>
             <div className="ml-auto shrink-0">
@@ -554,8 +554,8 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
   // 工作台不可用（chunk 加载失败 / 渲染崩溃）时的内联降级
   const workbenchFallback = (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background ui-fade-in" role="alert">
-      {/* 📱 400px：操作按钮换行到文案下方（sm 以上保持右侧同排），避免标题被挤压截断 */}
-      <div className="flex flex-wrap items-start gap-3 px-4 py-3 border-b border-destructive/20 bg-destructive/10">
+      {/* 400px：操作按钮换行到文案下方（sm 以上保持右侧同排），避免标题被挤压截断 */}
+      <div className="flex flex-wrap items-start gap-3 px-4 py-3 border-b border-destructive/20 bg-destructive/[0.06]">
         <Warning size={18} className="text-destructive shrink-0 mt-0.5" aria-hidden="true" />
         <div className="min-w-0 flex-1 basis-48">
           <p className="text-sm font-medium text-destructive">
@@ -591,14 +591,14 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
 
   return (
     <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-background">
-      {/* 保存失败内联错误条：保留 dirty 的同时提供就地重试 */}
+      {/* 保存失败内联错误条：保留 dirty 的同时提供就地重试（常规 saved/empty 状态零横幅打扰） */}
       {!externalSettingsOpen && saveState.status === 'error' && (
         <div
-          className="flex items-center gap-2 px-3 py-2 border-b border-destructive/20 bg-destructive/10 ui-slide-in-top"
+          className="flex items-center gap-2 px-3.5 py-2 border-b border-destructive/20 bg-destructive/[0.06] ui-slide-in-top"
           role="alert"
         >
           <Warning size={16} className="text-destructive shrink-0" aria-hidden="true" />
-          {/* 📱 窄屏放宽为两行折行：title 悬停提示在触屏不可达，单行截断会丢失错误详情 */}
+          {/* 窄屏放宽为两行折行：title 悬停提示在触屏不可达，单行截断会丢失错误详情 */}
           <span
             className="min-w-0 flex-1 truncate text-sm text-destructive max-sm:whitespace-normal max-sm:line-clamp-2"
             title={saveState.message}
@@ -629,25 +629,6 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
         </div>
       )}
 
-      {/* 新建空翻译引导条 */}
-      {!externalSettingsOpen && showEmptyHint && (
-        <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border/50 bg-muted/20 ui-slide-in-top">
-          <Info size={14} className="text-info shrink-0" aria-hidden="true" />
-          <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-            {t('translation:contentView.empty_hint')}
-          </span>
-          <DsButton
-            variant="ghost"
-            size="icon"
-            className="shrink-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
-            aria-label={t('translation:contentView.empty_hint_dismiss')}
-            onClick={() => setEmptyHintDismissed(true)}
-          >
-            <X size={12} aria-hidden="true" />
-          </DsButton>
-        </div>
-      )}
-
       <div ref={workbenchAreaRef} className="relative flex-1 min-h-0">
         <WorkbenchErrorBoundary key={`${node.id}:${workbenchEpoch}`} fallback={workbenchFallback}>
           <Suspense
@@ -665,8 +646,8 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
           </Suspense>
         </WorkbenchErrorBoundary>
 
-        {/* 保存状态内联徽标（保存中 / 已保存），纯状态展示不拦截交互 */}
-        {!externalSettingsOpen && (saveState.status === 'saving' || saveState.status === 'saved') && (
+        {/* 保存状态仅在 saving 进行中显示轻量浮标，常规 saved 保持安静 */}
+        {!externalSettingsOpen && saveState.status === 'saving' && (
           <div
             className="pointer-events-none absolute bottom-4 right-4 z-10"
             role="status"
@@ -675,23 +656,12 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
             <span
               key={saveState.status}
               data-wb-blur-surface
-              className="ui-rise-in inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background/90 px-2.5 py-1 text-xs shadow-soft backdrop-blur-sm"
+              className="ui-rise-in inline-flex items-center gap-1.5 rounded-full border border-border/35 bg-background/85 px-3 py-1 text-xs shadow-sm backdrop-blur-md"
             >
-              {saveState.status === 'saving' ? (
-                <>
-                  <CircleNotch size={12} className="animate-spin text-muted-foreground" aria-hidden="true" />
-                  <span className="text-muted-foreground">
-                    {t('translation:contentView.save_saving')}
-                  </span>
-                </>
-              ) : (
-                <>
-                  <Check size={12} className="text-success" aria-hidden="true" />
-                  <span className="text-success">
-                    {t('translation:contentView.save_saved')}
-                  </span>
-                </>
-              )}
+              <CircleNotch size={12} className="animate-spin text-muted-foreground" aria-hidden="true" />
+              <span className="text-muted-foreground">
+                {t('translation:contentView.save_saving')}
+              </span>
             </span>
           </div>
         )}

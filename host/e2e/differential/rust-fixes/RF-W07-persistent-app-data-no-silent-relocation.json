@@ -1,0 +1,37 @@
+{
+  "id": "RF-W07-persistent-app-data-no-silent-relocation",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main-agent",
+  "approvedAt": "2026-11-07T02:38:24Z",
+  "title": "持久数据的应用数据目录不可写时报错，不再静默改写到 data_dir()/DeepStudent 或 temp/deep_student_data",
+  "rust": {
+    "file": "src-tauri/crates/dstu-storage/src/file_manager.rs",
+    "line": 169,
+    "behavior": "get_writable_app_data_dir 在活动槽目录 create_dir_all 或 .write_test 探针失败时只记 error 日志，依次回退到 dirs::data_dir()/DeepStudent、std::env::temp_dir()/deep_student_data，最后一项也不可写仍返回它；调用方不区分持久与临时数据：get_database_path（file_manager.rs:224，mistakes.db）、笔记资源 notes_assets（file_manager.rs:905/986/1042/1083/1121、cmd/notes.rs）、备份根 backup_config.rs:185/409、data_governance/commands.rs:96、apkg_import.rs:90/310 与 anki_connect.rs:1165 的媒体目录等"
+  },
+  "fix": {
+    "files": ["host/platform/storage/file-manager.ts", "host/platform/storage/index.ts"],
+    "behavior": "新增 getPersistentAppDataDir(activeDir)：只用活动槽目录，探针失败记同样的 error 日志并抛 AppError.file_system（`持久数据目录不可用（创建目录失败|目录不可写）: <dir> (<io 错误>)`），不创建任何回退目录；新增 getTempAppDataDir 保留 Rust 回退链，只供 OCR 暂存、翻译 temp、导出 staging 等可再生数据。旧 getWritableAppDataDir 标 @deprecated、行为不变（委托 getTempAppDataDir），fileManagerPaths 服务同时提供三者；持久数据调用方迁到 getPersistentAppDataDir 后生效"
+  },
+  "evidence": "静默改位置导致数据丢失或分叉：活动槽暂时不可写（外置盘/网络盘未挂载、权限被改、磁盘只读重挂载、杀毒锁目录）时，笔记资源、备份、Anki 媒体乃至 mistakes.db 的路径被改到 temp/deep_student_data 或 data_dir()/DeepStudent，命令照常返回成功；下次启动活动槽恢复可写后这些文件不再被读取，temp 下的还会被系统清理，用户看到的是“保存成功但数据不见了”。Rust 自己的日志文案“无法获取稳定的持久目录，临时使用 …”承认这是非持久位置，却没有让持久写入失败。复现：活动槽目录替换为同名文件（或 chmod 0555），调用 get_writable_app_data_dir 得到 data_dir()/DeepStudent，随后写入的 notes_assets 落在活动槽之外；修复后 getPersistentAppDataDir 抛 FileSystem 错误且不创建回退目录。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "host/platform/storage/tests/persistent-app-data-dir.test.ts",
+      "name": "RF-W07-persistent-app-data-no-silent-relocation: an unusable active slot is an error for persistent data, never a relocation"
+    },
+    {
+      "file": "host/platform/storage/tests/persistent-app-data-dir.test.ts",
+      "name": "RF-W07-persistent-app-data-no-silent-relocation: a writable slot is returned unchanged and the probe is removed"
+    },
+    {
+      "file": "host/platform/storage/tests/persistent-app-data-dir.test.ts",
+      "name": "RF-W07-persistent-app-data-no-silent-relocation: temp callers and the deprecated getWritableAppDataDir keep the Rust fallback chain"
+    },
+    {
+      "file": "host/platform/storage/tests/startup.test.ts",
+      "name": "RF-W07-persistent-app-data-no-silent-relocation: test database commands fail on an unwritable active slot instead of relocating the file"
+    }
+  ]
+}

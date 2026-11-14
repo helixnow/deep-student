@@ -110,51 +110,36 @@ const ReviewStatsCard: React.FC<{
     : 100;
 
   return (
-    <div className="flex items-center justify-between gap-6 px-1">
-      <div className="flex items-center gap-6">
-        {/* 待复习数 */}
-        <div className="flex items-center gap-2">
-          <div className="w-10 h-10 relative">
-            <svg className="w-full h-full transform -rotate-90" viewBox="0 0 40 40">
-              <circle cx="20" cy="20" r="16" fill="none" stroke="currentColor" strokeWidth="3" className="text-muted/20" />
-              <circle
-                cx="20" cy="20" r="16"
-                fill="none" stroke="currentColor" strokeWidth="3"
-                strokeDasharray={`${(1 - progressPercent / 100) * 100.5} 100.5`}
-                className="text-warning"
-                strokeLinecap="round"
-/>
-            </svg>
-            <div className="absolute inset-0 flex items-center justify-center">
-              <span className="text-xs font-semibold text-warning">{reviewCount}</span>
-            </div>
-          </div>
-          <div className="text-sm">
-            <span className="text-muted-foreground">{t('review:questions.toReview')}</span>
-          </div>
+    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+        {/* 待复习数：6px 语义圆点 + font-mono tabular-nums */}
+        <div className="inline-flex items-center gap-1.5">
+          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-warning" aria-hidden="true" />
+          <span className="font-mono font-semibold tabular-nums text-warning">{reviewCount}</span>
+          <span className="text-muted-foreground">{t('review:questions.toReview')}</span>
         </div>
-        
+
         {/* 已掌握 */}
-        <div className="text-sm">
-          <span className="font-medium text-success">{masteredCount}</span>
-          <span className="text-muted-foreground ml-1">{t('review:questions.mastered')}</span>
+        <div className="inline-flex items-center gap-1">
+          <span className="font-mono font-medium tabular-nums text-success">{masteredCount}</span>
+          <span className="text-muted-foreground">{t('review:questions.mastered')}</span>
         </div>
-        
+
         {/* 平均尝试 */}
-        <div className="text-sm text-muted-foreground hidden sm:block">
-          <Trans i18nKey="review:questions.avgAttempts" values={{ count: avgAttempts }} components={{ bold: <span className="font-medium text-foreground" /> }} />
+        <div className="hidden text-muted-foreground sm:inline-flex sm:items-center">
+          <Trans i18nKey="review:questions.avgAttempts" values={{ count: avgAttempts }} components={{ bold: <span className="font-mono font-medium tabular-nums text-foreground" /> }} />
         </div>
-        
+
         {/* 掌握率 */}
-        <div className="text-sm">
-          <span className="font-medium">{Math.round(progressPercent)}%</span>
-          <span className="text-muted-foreground ml-1">{t('review:questions.masteryRate')}</span>
+        <div className="inline-flex items-center gap-1">
+          <span className="font-mono font-medium tabular-nums">{Math.round(progressPercent)}%</span>
+          <span className="text-muted-foreground">{t('review:questions.masteryRate')}</span>
         </div>
       </div>
-      
+
       {/* 难度分布 - 简化 */}
       {reviewCount > 0 && (
-        <div className="hidden md:flex items-center gap-2 text-xs">
+        <div className="hidden md:flex items-center gap-2 font-mono text-xs tabular-nums">
           {byDifficulty.easy > 0 && (
             <span className="flex items-center gap-1 text-success">
               <span className="h-1.5 w-1.5 rounded-full bg-success" />
@@ -222,8 +207,11 @@ const ReviewQuestionCard: React.FC<{
     return t('review:questions.monthsAgo', { count: Math.floor(diffDays / 30) });
   }, [question.lastAttemptAt, t]);
 
+  const [explanationExpanded, setExplanationExpanded] = useState(false);
   const hasUserAnswer = Boolean(question.userAnswer?.trim());
   const stemText = question.content || question.ocrText || '';
+  const explanationText = question.explanation?.trim() || '';
+  const isLongExplanation = explanationText.length > 220 || explanationText.split('\n').length > 4;
 
   return (
     <div
@@ -269,7 +257,7 @@ const ReviewQuestionCard: React.FC<{
           className="flex min-w-0 flex-1 items-center gap-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-md"
         >
           {/* 题号 */}
-          <span className="w-10 shrink-0 text-sm font-medium text-muted-foreground">
+          <span className="w-10 shrink-0 font-mono text-sm font-medium tabular-nums text-muted-foreground">
             {question.questionLabel || `Q${originalIndex + 1}`}
           </span>
           {/* 题型（穷举映射，含新题型；窄屏仅图标） */}
@@ -305,10 +293,10 @@ const ReviewQuestionCard: React.FC<{
           )}
 
           {/* 统计信息 */}
-          <div className="flex shrink-0 items-center gap-3 text-xs text-muted-foreground">
+          <div className="flex shrink-0 items-center gap-3 font-mono text-xs tabular-nums text-muted-foreground">
             <span>{t('review:questions.attemptCount', { count: attemptCount })}</span>
             <span className="font-medium text-destructive">{errorRate}%</span>
-            <span className="hidden sm:inline">{lastAttemptText}</span>
+            <span className="hidden font-sans sm:inline">{lastAttemptText}</span>
           </div>
 
           <CaretRight
@@ -349,31 +337,31 @@ const ReviewQuestionCard: React.FC<{
                   ))}
                 </div>
               )}
-              <div className="grid gap-2 sm:grid-cols-2">
-                {/* 我的答案 */}
-                <div className="rounded-md border border-destructive/25 bg-destructive/5 p-2.5">
-                  <p className="mb-1 flex items-center gap-1.5 text-xs font-medium text-destructive">
-                    <X size={12} weight="bold" />
+              <div className="grid gap-4 border-t border-border/35 pt-2.5 sm:grid-cols-2">
+                {/* 我的答案：仅对判定符号与标签着色，不铺满红底告警框 */}
+                <div className="min-w-0 pl-0.5">
+                  <p className="mb-1 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                    <X size={12} weight="bold" className="text-destructive" />
                     {t('review:questions.myAnswer')}
                   </p>
                   <p className={cn(
-                    'text-sm break-words whitespace-pre-wrap',
-                    hasUserAnswer ? 'text-foreground/90' : 'italic text-muted-foreground'
+                    'text-sm leading-relaxed break-words whitespace-pre-wrap',
+                    hasUserAnswer ? 'text-foreground/90 underline decoration-destructive/45 decoration-wavy underline-offset-4' : 'italic text-muted-foreground'
                   )}>
                     {hasUserAnswer
                       ? <CardMathText text={question.userAnswer ?? ''} />
                       : t('review:questions.noAnswerRecorded')}
                   </p>
                 </div>
-                {/* 正确答案 */}
-                <div className="rounded-md border border-success/25 bg-success/5 p-2.5">
-                  <p className="mb-1 flex items-center gap-1.5 text-xs font-medium text-success">
-                    <Check size={12} weight="bold" />
+                {/* 正确答案：仅对判定符号与标签着色，不铺满绿底告警框 */}
+                <div className="min-w-0 sm:border-l sm:border-border/35 sm:pl-4">
+                  <p className="mb-1 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                    <Check size={12} weight="bold" className="text-success" />
                     {t('review:questions.correctAnswer')}
                   </p>
                   <p className={cn(
-                    'text-sm break-words whitespace-pre-wrap',
-                    question.answer?.trim() ? 'text-foreground/90' : 'italic text-muted-foreground'
+                    'text-sm leading-relaxed break-words whitespace-pre-wrap',
+                    question.answer?.trim() ? 'font-medium text-foreground' : 'italic text-muted-foreground'
                   )}>
                     {question.answer?.trim()
                       ? <CardMathText text={question.answer.trim()} />
@@ -382,15 +370,34 @@ const ReviewQuestionCard: React.FC<{
                 </div>
               </div>
 
-              {/* 解析（有则展示） */}
-              {question.explanation?.trim() && (
-                <div className="mt-2 rounded-md border border-info/25 bg-info/5 p-2.5">
-                  <p className="mb-1 text-xs font-medium text-info">
+              {/* 解析（书页式 2px 左侧竖线引导 + 超长展开全文，替代蓝底告警框与静默截断） */}
+              {explanationText && (
+                <div className="mt-3 border-l-2 border-border/70 pl-3">
+                  <p className="mb-1 text-xs font-medium text-muted-foreground">
                     {t('review:questions.explanation')}
                   </p>
-                  <p className="text-sm text-foreground/80 break-words whitespace-pre-wrap line-clamp-6">
-                    <CardMathText text={question.explanation} />
+                  <p
+                    className={cn(
+                      'text-sm leading-relaxed text-foreground/85 break-words whitespace-pre-wrap',
+                      isLongExplanation && !explanationExpanded && 'line-clamp-4',
+                    )}
+                  >
+                    <CardMathText text={explanationText} />
                   </p>
+                  {isLongExplanation && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setExplanationExpanded((prev) => !prev);
+                      }}
+                      className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+                    >
+                      {explanationExpanded
+                        ? t('review:questions.collapseExplanation', { defaultValue: '收起解析' })
+                        : t('review:questions.expandExplanation', { defaultValue: '展开全文' })}
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -620,19 +627,16 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
 
   return (
     <div className={cn('flex flex-col h-full', className)}>
-      {/* 统计摘要 */}
-      <div className="flex-shrink-0 px-4 py-3 border-b border-border/40">
-        <ReviewStatsCard 
+      {/* 顶栏减层：微指标条 + 主操作/排序/批量动作合并为紧凑顶区 */}
+      <div className="flex-shrink-0 space-y-2 border-b border-border/35 px-4 py-2.5">
+        <ReviewStatsCard
           reviewQuestions={reviewQuestions}
           totalQuestions={questions.length}
           stats={stats}
-/>
-      </div>
+        />
 
-      {/* 操作栏 - 更紧凑 */}
-      <div className="flex-shrink-0 px-4 py-2">
-        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-          {/* 左侧：开始复习 + 生成卡片（触屏下各自占满一行，命中区 ≥44px） */}
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
+          {/* 左侧：开始复习 + 生成卡片 + 全部错题入口 */}
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
             {onStartReview && (
               <DsButton
@@ -668,14 +672,37 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
                 {generateCardsDisabledReason}
               </span>
             )}
+            <DsButton
+              variant="ghost"
+              size="sm"
+              className="!h-auto shrink-0 !px-1.5 !py-0.5 text-xs text-muted-foreground hover:text-foreground"
+              onClick={() => {
+                void import('@/features/learning-hub/mistakeBook/mistakeBookNavigation')
+                  .then(({ openMistakeBook }) => openMistakeBook());
+              }}
+            >
+              {t('review:questions.allMistakes')}
+            </DsButton>
           </div>
 
-          {/* 右侧：批量操作 */}
-          <div className="flex items-center gap-1.5">
+          {/* 右侧：排序 + 批量操作 */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <SegmentedControl<ReviewSortBy>
+              ariaLabel={t('review:questions.sortLabel')}
+              size="compact"
+              itemClassName="[@media(pointer:coarse)]:!min-h-11"
+              value={sortBy}
+              onValueChange={setSortBy}
+              options={[
+                { value: 'default', label: t('review:questions.sortDefault') },
+                { value: 'errors', label: t('review:questions.sortByErrors') },
+                { value: 'recent', label: t('review:questions.sortByRecent') },
+              ]}
+            />
             <DsButton variant="ghost" size="sm" onClick={toggleSelectAll} className="!px-2 !py-1 !h-auto [@media(pointer:coarse)]:!min-h-[44px] text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]">
               {selectedIds.size === reviewQuestions.length ? t('review:questions.cancel') : t('review:questions.selectAll')}
             </DsButton>
-            
+
             {selectedIds.size > 0 && (
               <>
                 {/* 行内二次确认：首次点击进入待确认态（warning/danger 高亮），再次点击执行 */}
@@ -721,46 +748,6 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
             )}
           </div>
         </div>
-      </div>
-
-      {/* 再掌握流程提示 - 更紧凑 */}
-      <div className="flex-shrink-0 px-4 py-1.5">
-        <div className="flex items-center gap-2 rounded-md bg-info/10 px-3 py-2 text-xs text-muted-foreground">
-          <Warning size={14} className="shrink-0 text-info" />
-          <span className="min-w-0 flex-1">
-            <Trans i18nKey="review:questions.masteryTip" components={{ highlight: <span className="font-medium text-info" /> }} />
-          </span>
-          <DsButton
-            variant="ghost"
-            size="sm"
-            className="!h-auto shrink-0 !px-1.5 !py-0.5 text-xs"
-            onClick={() => {
-              void import('@/features/learning-hub/mistakeBook/mistakeBookNavigation')
-                .then(({ openMistakeBook }) => openMistakeBook());
-            }}
-          >
-            {t('review:questions.allMistakes')}
-          </DsButton>
-        </div>
-      </div>
-
-      {/* 排序控件（默认题目顺序 / 错误次数 / 最近错误） */}
-      <div className="flex-shrink-0 flex items-center justify-between gap-2 px-4 py-1.5">
-        <span className="text-xs text-muted-foreground">
-          {t('review:questions.sortLabel')}
-        </span>
-        <SegmentedControl<ReviewSortBy>
-          ariaLabel={t('review:questions.sortLabel')}
-          size="compact"
-          itemClassName="[@media(pointer:coarse)]:!min-h-11"
-          value={sortBy}
-          onValueChange={setSortBy}
-          options={[
-            { value: 'default', label: t('review:questions.sortDefault') },
-            { value: 'errors', label: t('review:questions.sortByErrors') },
-            { value: 'recent', label: t('review:questions.sortByRecent') },
-          ]}
-        />
       </div>
 
       {/* 错题列表 - 紧凑布局 */}

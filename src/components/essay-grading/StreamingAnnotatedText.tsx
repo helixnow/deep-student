@@ -374,9 +374,17 @@ const MarkerSpan = React.memo(MarkerSpanImpl);
 // 内联批注详情卡（文档流内，展开在批注所在段落下方）
 // ---------------------------------------------------------------------------
 
-const BADGE_ERROR_CLASS = 'bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 border-red-200 dark:border-red-800';
-const BADGE_SUGGESTION_CLASS = 'bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800';
-const BADGE_HIGHLIGHT_CLASS = 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800';
+const BADGE_ERROR_CLASS = 'bg-destructive/10 text-destructive border-destructive/20';
+const BADGE_SUGGESTION_CLASS = 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20';
+const BADGE_HIGHLIGHT_CLASS = 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20';
+
+const getCardLeftBorderClass = (marker: StreamingMarker): string => {
+  if (marker.type === 'good') return 'border-l-emerald-500/75';
+  if (marker.type === 'del' || (marker.type === 'err' && !isSuggestionErr(marker))) {
+    return 'border-l-destructive/75';
+  }
+  return 'border-l-amber-500/75';
+};
 
 const CARD_BADGES: Partial<Record<StreamingMarker['type'], { icon: Icon; i18nKey: string; className: string }>> = {
   del: { icon: Trash, i18nKey: 'essay_grading:markers.delete', className: BADGE_ERROR_CLASS },
@@ -434,7 +442,12 @@ const MarkerDetailCard: React.FC<{
   const BadgeIcon = badge?.icon;
 
   return (
-    <div className="mt-2 rounded-md border border-border/40 bg-card/60 px-3.5 py-3 text-sm">
+    <div
+      className={cn(
+        'mt-2 rounded-r-lg rounded-l-sm border-y border-r border-border/35 border-l-2 bg-foreground/[0.02] px-3.5 py-3 text-sm',
+        getCardLeftBorderClass(marker)
+      )}
+    >
       {/* 类型徽章 + 批注导航 */}
       {(badge && BadgeIcon) || nav ? (
         <div className="flex items-center gap-2 mb-2">
@@ -525,7 +538,7 @@ const MarkerDetailCard: React.FC<{
 
       {/* 原因 / 解释 */}
       {explanation && (
-        <div className="mt-2 rounded bg-muted/20 px-2.5 py-1.5 text-xs text-muted-foreground/80 leading-relaxed">
+        <div className="mt-2 border-t border-border/25 pt-2 text-xs text-muted-foreground/80 leading-relaxed">
           {explanation}
         </div>
       )}

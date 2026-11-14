@@ -1,0 +1,74 @@
+{
+  "domain": "chat-pipeline",
+  "commands": ["save_api_configurations", "workspace_create", "workspace_create_agent", "chat_v2_send_message", "chat_v2_cancel_stream"],
+  "scenarios": [
+    {
+      "id": "chat-pipeline.workspace.idle",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "save_api_configurations", "args": { "configs": [{ "id": "wp061-model", "name": "WP061 offline", "apiKey": "", "authMode": "none", "baseUrl": "http://127.0.0.1:18461/v1", "model": "wp061-idle", "apiProtocol": "openai_chat_completions", "modelAdapter": "general", "supportsTools": true, "isMultimodal": false, "isReasoning": false, "isEmbedding": false, "isReranker": false, "enabled": true }] } },
+        { "cmd": "workspace_create", "args": { "sessionId": "sess_wp061_creator", "request": { "name": "工作区注入" } } },
+        { "cmd": "workspace_create_agent", "args": { "request": { "workspace_id": "${1.workspace_id}", "requester_session_id": "sess_wp061_creator", "role": "coordinator", "initial_task": "来自其他Agent的工作区消息：请保留中文与换行\n第二行" } } },
+        { "cmd": "chat_v2_send_message", "args": { "request": { "sessionId": "${2.agent_session_id}", "workspaceId": "${1.workspace_id}", "content": "请处理工作区消息", "userMessageId": "msg_wp061_idle_user", "assistantMessageId": "msg_wp061_idle_answer", "options": { "modelId": "wp061-model", "enableThinking": false, "memoryEnabled": false, "ragEnabled": false, "webSearchEnabled": false, "autoMemoryExtraction": false } } } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "chat-pipeline.workspace.empty",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "save_api_configurations", "args": { "configs": [{ "id": "wp061-model", "name": "WP061 offline", "apiKey": "", "authMode": "none", "baseUrl": "http://127.0.0.1:18461/v1", "model": "wp061-empty", "apiProtocol": "openai_chat_completions", "modelAdapter": "general", "supportsTools": true, "isMultimodal": false, "isReasoning": false, "isEmbedding": false, "isReranker": false, "enabled": true }] } },
+        { "cmd": "workspace_create", "args": { "sessionId": "sess_wp061_creator", "request": { "name": null } } },
+        { "cmd": "workspace_create_agent", "args": { "request": { "workspace_id": "${1.workspace_id}", "requester_session_id": "sess_wp061_creator", "role": "coordinator", "initial_task": null, "skill_id": null, "system_prompt": null } } },
+        { "cmd": "chat_v2_send_message", "args": { "request": { "sessionId": "${2.agent_session_id}", "workspaceId": "${1.workspace_id}", "content": "空队列普通回答", "userMessageId": "msg_wp061_empty_user", "assistantMessageId": "msg_wp061_empty_answer", "userContextRefs": [], "pathMap": {}, "options": { "modelId": "wp061-model", "enableThinking": false, "memoryEnabled": false, "ragEnabled": false, "webSearchEnabled": false, "autoMemoryExtraction": false } } } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "chat-pipeline.workspace.cancel",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "save_api_configurations", "args": { "configs": [{ "id": "wp061-model", "name": "WP061 offline", "apiKey": "", "authMode": "none", "baseUrl": "http://127.0.0.1:18461/v1", "model": "wp061-cancel", "apiProtocol": "openai_chat_completions", "modelAdapter": "general", "supportsTools": true, "isMultimodal": false, "isReasoning": false, "isEmbedding": false, "isReranker": false, "enabled": true }] } },
+        { "cmd": "workspace_create", "args": { "sessionId": "sess_wp061_creator", "request": {} } },
+        { "cmd": "workspace_create_agent", "args": { "request": { "workspace_id": "${1.workspace_id}", "requester_session_id": "sess_wp061_creator", "role": "coordinator", "initial_task": "取消前的待处理消息" } } },
+        { "cmd": "chat_v2_send_message", "args": { "request": { "sessionId": "${2.agent_session_id}", "workspaceId": "${1.workspace_id}", "content": "等待用户取消", "userMessageId": "msg_wp061_cancel_user", "assistantMessageId": "msg_wp061_cancel_answer", "options": { "modelId": "wp061-model", "enableThinking": false, "memoryEnabled": false, "ragEnabled": false, "webSearchEnabled": false, "autoMemoryExtraction": false } } } },
+        { "cmd": "chat_v2_cancel_stream", "args": { "sessionId": "${2.agent_session_id}", "messageId": "msg_wp061_cancel_answer" } },
+        { "cmd": "chat_v2_cancel_stream", "args": { "sessionId": "sess_wp061_no_stream", "messageId": "msg_missing" }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "chat-pipeline.workspace.send-errors",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "save_api_configurations", "args": { "configs": [{ "id": "wp061-model", "name": "WP061 offline", "apiKey": "", "authMode": "none", "baseUrl": "http://127.0.0.1:18461/v1", "model": "wp061-cancel", "apiProtocol": "openai_chat_completions", "modelAdapter": "general", "supportsTools": true, "isMultimodal": false, "isReasoning": false, "isEmbedding": false, "isReranker": false, "enabled": true }] } },
+        { "cmd": "workspace_create", "args": { "sessionId": "sess_wp061_creator", "request": {} } },
+        { "cmd": "workspace_create_agent", "args": { "request": { "workspace_id": "${1.workspace_id}", "requester_session_id": "sess_wp061_creator", "role": "coordinator" } } },
+        { "cmd": "chat_v2_send_message", "args": { "request": { "sessionId": "invalid", "content": "x" } }, "expect": "error" },
+        { "cmd": "chat_v2_send_message", "args": { "request": { "sessionId": "${2.agent_session_id}", "content": " \n\t", "userContextRefs": [] } }, "expect": "error" },
+        { "cmd": "chat_v2_send_message", "args": { "request": { "sessionId": "${2.agent_session_id}", "workspaceId": "${1.workspace_id}", "content": "hold stream", "userMessageId": "msg_wp061_busy_user", "assistantMessageId": "msg_wp061_busy_answer", "options": { "modelId": "wp061-model", "enableThinking": false, "memoryEnabled": false, "ragEnabled": false, "webSearchEnabled": false, "autoMemoryExtraction": false } } } },
+        { "cmd": "chat_v2_send_message", "args": { "request": { "sessionId": "${2.agent_session_id}", "content": "second concurrent send", "options": { "modelId": "wp061-model" } } }, "expect": "error" },
+        { "cmd": "chat_v2_cancel_stream", "args": { "sessionId": "${2.agent_session_id}", "messageId": "msg_wp061_busy_answer" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "chat-pipeline.workspace.owner-errors",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "workspace_create", "args": { "sessionId": "sess_wp061_creator", "request": { "name": "成员校验" } } },
+        { "cmd": "workspace_create_agent", "args": { "request": { "workspace_id": "${0.workspace_id}", "requester_session_id": "sess_wp061_outsider", "role": "coordinator" } }, "expect": "error" },
+        { "cmd": "workspace_create_agent", "args": { "request": { "workspace_id": "ws_missing", "requester_session_id": "sess_wp061_creator" } }, "expect": "error" },
+        { "cmd": "workspace_create_agent", "args": { "request": { "workspace_id": "${0.workspace_id}", "requester_session_id": "sess_wp061_creator", "role": "coordinator", "initial_task": "valid initial task" } } },
+        { "cmd": "save_api_configurations", "args": { "configs": [{ "id": "missing-required-fields" }] }, "expect": "error" },
+        { "cmd": "chat_v2_cancel_stream", "args": { "sessionId": "${3.agent_session_id}", "messageId": "msg_missing" }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    }
+  ]
+}

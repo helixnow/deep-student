@@ -11,6 +11,7 @@
  * 原因与可执行建议（重试 / 改名 / 迁移），技术细节折叠保留供排查。
  */
 
+import { useRefreshOnReturn } from '@/hooks/useRefreshOnReturn';
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
@@ -18,18 +19,11 @@ import {
   ArrowClockwise,
   CheckCircle,
   CircleNotch,
-  CloudSlash,
   Warning,
 } from "@phosphor-icons/react";
 
 import { DsButton } from "@/components/ui/DsButton";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/shad/Card";
+import { GroupTitle } from "../settingsTabPrimitives";
 import {
   resolveCloudStorageConfig,
   toRuntimeCloudStorageConfig,
@@ -139,6 +133,8 @@ export const UnsyncedItemsPanel: React.FC<{
     }
   }, []);
 
+  useRefreshOnReturn(refresh);
+
   useEffect(() => {
     void refresh();
   }, [refresh, refreshSignal]);
@@ -151,35 +147,18 @@ export const UnsyncedItemsPanel: React.FC<{
   const isEmpty = !configMissing && !error && items.length === 0;
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-start justify-between gap-2">
-        <div>
-          <CardTitle className="flex items-center gap-2">
-            <CloudSlash size={16} className="text-warning" />
+    <section className="min-w-0">
+      <GroupTitle
+        title={
+          <span className="tabular-nums">
             {t("sync:unsynced.title", {
               count: report?.totalUnsynced ?? 0,
             })}
-          </CardTitle>
-          <CardDescription>{t("sync:unsynced.description")}</CardDescription>
-        </div>
-        <div className="flex gap-2">
-          <DsButton
-            variant="ghost"
-            size="sm"
-            onClick={() => void refresh()}
-            disabled={loading}
-            className="h-8"
-          >
-            {loading ? (
-              <CircleNotch size={14} className="mr-1.5 animate-spin" />
-            ) : (
-              <ArrowClockwise size={14} className="mr-1.5" />
-            )}
-            {t("sync:unsynced.checkNow")}
-          </DsButton>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
+          </span>
+        }
+        description={t("sync:unsynced.description")}
+      />
+      <div className="rounded-2xl bg-muted p-4 space-y-4">
         {configMissing && (
           <div className="text-sm text-muted-foreground py-2">
             {t("sync:unsynced.notConfigured")}
@@ -284,7 +263,7 @@ export const UnsyncedItemsPanel: React.FC<{
             </div>
           </div>
         ))}
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
 };

@@ -102,10 +102,10 @@ export const MediaCheckpointCard: React.FC<MediaCheckpointCardProps> = ({
       role="region"
       aria-label={t('learningHub:mediaCheckpoint.title', { time })}
       data-media-checkpoint={checkpoint.questionId}
-      className="shrink-0 border-b border-border bg-[color:var(--surface-muted)] px-3 py-2.5"
+      className="shrink-0 border-b border-border/35 bg-foreground/[0.025] backdrop-blur-sm px-3.5 py-3"
     >
       <div className="flex items-center gap-2">
-        <span className="text-xs font-medium tabular-nums text-primary">{t('learningHub:mediaCheckpoint.title', { time })}</span>
+        <span className="font-mono text-xs font-medium tabular-nums text-primary">{t('learningHub:mediaCheckpoint.title', { time })}</span>
         <label className="ml-auto flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground">
           <input
             type="checkbox"

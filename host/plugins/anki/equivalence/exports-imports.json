@@ -1,0 +1,1450 @@
+{
+  "domain": "anki",
+  "commands": [
+    "save_anki_cards",
+    "get_document_cards",
+    "get_anki_stats",
+    "create_custom_template",
+    "get_all_custom_templates",
+    "list_anki_library_cards",
+    "list_document_sessions",
+    "export_anki_cards",
+    "export_cards_as_apkg_with_template",
+    "export_multi_template_apkg",
+    "batch_export_cards",
+    "import_apkg_to_library"
+  ],
+  "scenarios": [
+    {
+      "id": "anki.export.library-json-and-apkg-defaults",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_anki_cards",
+          "args": {
+            "request": {
+              "document_id": "w233-lib-a",
+              "business_session_id": null,
+              "message_stable_id": null,
+              "block_id": null,
+              "template_id": null,
+              "cards": [
+                {
+                  "id": "w233-la-1",
+                  "front": "什么是 ACID？",
+                  "back": "原子性、一致性、隔离性、持久性",
+                  "text": null,
+                  "tags": [
+                    "db"
+                  ],
+                  "images": [],
+                  "fields": {
+                    "Front": "什么是 ACID？",
+                    "Back": "原子性、一致性、隔离性、持久性"
+                  },
+                  "template_id": null
+                },
+                {
+                  "id": "w233-la-2",
+                  "front": "什么是 MVCC？",
+                  "back": "多版本并发控制",
+                  "text": null,
+                  "tags": [],
+                  "images": [],
+                  "fields": {
+                    "Front": "什么是 MVCC？",
+                    "Back": "多版本并发控制"
+                  },
+                  "template_id": null
+                }
+              ],
+              "options": {
+                "deck_name": "W233::导出",
+                "note_type": "Basic",
+                "enable_images": false,
+                "max_cards_per_mistake": 5
+              }
+            }
+          }
+        },
+        {
+          "cmd": "get_document_cards",
+          "args": {
+            "documentId": "w233-lib-a"
+          }
+        },
+        {
+          "cmd": "export_anki_cards",
+          "args": {
+            "request": {
+              "ids": [
+                "w233-la-1",
+                "w233-la-2"
+              ],
+              "format": "apkg",
+              "deck_name": "W233::库导出",
+              "note_type": "Basic"
+            }
+          }
+        },
+        {
+          "cmd": "export_anki_cards",
+          "args": {
+            "request": {
+              "ids": [
+                "w233-la-1",
+                "w233-la-2"
+              ],
+              "format": "json"
+            }
+          }
+        },
+        {
+          "cmd": "export_anki_cards",
+          "args": {
+            "request": {
+              "ids": [
+                "w233-la-2",
+                "w233-missing"
+              ],
+              "format": "  JSON "
+            }
+          }
+        },
+        {
+          "cmd": "export_anki_cards",
+          "args": {
+            "request": {
+              "ids": [
+                "w233-la-1"
+              ],
+              "format": "apkg",
+              "deckName": "W233::契约键",
+              "noteType": "Basic",
+              "templateId": null
+            }
+          }
+        },
+        {
+          "cmd": "export_anki_cards",
+          "args": {
+            "request": {
+              "ids": [
+                "w233-la-1"
+              ],
+              "format": "APKG",
+              "deckName": "   ",
+              "noteType": ""
+            }
+          }
+        },
+        {
+          "cmd": "export_anki_cards",
+          "args": {
+            "request": {
+              "ids": [
+                "w233-la-1",
+                "w233-la-2"
+              ],
+              "format": "apkg"
+            }
+          }
+        },
+        {
+          "cmd": "get_anki_stats",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.export.library-template-and-cloze",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "create_custom_template",
+          "args": {
+            "request": {
+              "name": "W233 导出问答",
+              "description": "WP-233 导出问答模板",
+              "author": "wp233",
+              "version": null,
+              "preview_front": "什么是 TCP 三次握手？",
+              "preview_back": "SYN → SYN-ACK → ACK",
+              "note_type": "Basic",
+              "fields": [
+                "Front",
+                "Back"
+              ],
+              "generation_prompt": "根据材料生成问答卡，正面提问，背面作答。",
+              "front_template": "<div class=\"q\">{{Front}}</div>",
+              "back_template": "{{FrontSide}}<hr id=\"answer\">{{Back}}",
+              "css_style": ".card { font-size: 18px; }",
+              "field_extraction_rules": {
+                "Front": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "问题"
+                },
+                "Back": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "答案"
+                }
+              },
+              "preview_data_json": null,
+              "is_active": null,
+              "is_built_in": null
+            }
+          }
+        },
+        {
+          "cmd": "create_custom_template",
+          "args": {
+            "request": {
+              "name": "W233 导出填空",
+              "description": "WP-233 导出填空模板",
+              "author": "wp233",
+              "version": null,
+              "preview_front": "{{c1::TCP}} 是面向连接的协议",
+              "preview_back": "传输层",
+              "note_type": "Cloze",
+              "fields": [
+                "Text",
+                "Extra"
+              ],
+              "generation_prompt": "根据材料生成填空卡，正文含 {{c1::...}}。",
+              "front_template": "{{cloze:Text}}",
+              "back_template": "{{cloze:Text}}<br>{{Extra}}",
+              "css_style": ".card { font-size: 18px; }",
+              "field_extraction_rules": {
+                "Text": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "含 {{c1::...}} 的正文"
+                },
+                "Extra": {
+                  "field_type": "Text",
+                  "is_required": false,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "补充"
+                }
+              },
+              "preview_data_json": null,
+              "is_active": null,
+              "is_built_in": null
+            }
+          }
+        },
+        {
+          "cmd": "save_anki_cards",
+          "args": {
+            "request": {
+              "document_id": "w233-lib-b",
+              "business_session_id": null,
+              "message_stable_id": null,
+              "block_id": null,
+              "template_id": "${0}",
+              "cards": [
+                {
+                  "id": "w233-lb-1",
+                  "front": "TCP 与 UDP 的区别？",
+                  "back": "TCP 面向连接，UDP 无连接",
+                  "text": null,
+                  "tags": [],
+                  "images": [],
+                  "fields": {
+                    "Front": "TCP 与 UDP 的区别？",
+                    "Back": "TCP 面向连接，UDP 无连接"
+                  },
+                  "template_id": null
+                }
+              ],
+              "options": {
+                "deck_name": "W233::导出",
+                "note_type": "Basic",
+                "enable_images": false,
+                "max_cards_per_mistake": 5
+              }
+            }
+          }
+        },
+        {
+          "cmd": "save_anki_cards",
+          "args": {
+            "request": {
+              "document_id": "w233-lib-c",
+              "business_session_id": null,
+              "message_stable_id": null,
+              "block_id": null,
+              "template_id": "${1}",
+              "cards": [
+                {
+                  "id": "w233-lc-1",
+                  "front": "",
+                  "back": "",
+                  "text": "{{c1::TCP}} 位于传输层",
+                  "tags": [],
+                  "images": [],
+                  "fields": {
+                    "Text": "{{c1::TCP}} 位于传输层",
+                    "Extra": "OSI 第 4 层"
+                  },
+                  "template_id": null
+                },
+                {
+                  "id": "w233-lc-2",
+                  "front": "",
+                  "back": "",
+                  "text": "HTTP 默认端口是 {{c1::80}}",
+                  "tags": [],
+                  "images": [],
+                  "fields": {
+                    "Text": "HTTP 默认端口是 {{c1::80}}",
+                    "Extra": ""
+                  },
+                  "template_id": null
+                }
+              ],
+              "options": {
+                "deck_name": "W233::导出",
+                "note_type": "Basic",
+                "enable_images": false,
+                "max_cards_per_mistake": 5
+              }
+            }
+          }
+        },
+        {
+          "cmd": "export_anki_cards",
+          "args": {
+            "request": {
+              "ids": [
+                "w233-lb-1"
+              ],
+              "format": "apkg",
+              "deckName": "W233::模板",
+              "noteType": "Basic",
+              "templateId": "${0}"
+            }
+          }
+        },
+        {
+          "cmd": "export_anki_cards",
+          "args": {
+            "request": {
+              "ids": [
+                "w233-lc-1",
+                "w233-lc-2"
+              ],
+              "format": "apkg",
+              "deckName": "W233::填空",
+              "noteType": "Basic",
+              "templateId": "${1}"
+            }
+          }
+        },
+        {
+          "cmd": "export_anki_cards",
+          "args": {
+            "request": {
+              "ids": [
+                "w233-lc-1",
+                "w233-lb-1"
+              ],
+              "format": "apkg"
+            }
+          }
+        },
+        {
+          "cmd": "get_all_custom_templates",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.export.with-template-variants",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "create_custom_template",
+          "args": {
+            "request": {
+              "name": "W233 单模板问答",
+              "description": "WP-233 导出问答模板",
+              "author": "wp233",
+              "version": null,
+              "preview_front": "什么是 TCP 三次握手？",
+              "preview_back": "SYN → SYN-ACK → ACK",
+              "note_type": "Basic",
+              "fields": [
+                "Front",
+                "Back"
+              ],
+              "generation_prompt": "根据材料生成问答卡，正面提问，背面作答。",
+              "front_template": "<div class=\"q\">{{Front}}</div>",
+              "back_template": "{{FrontSide}}<hr id=\"answer\">{{Back}}",
+              "css_style": ".card { font-size: 18px; }",
+              "field_extraction_rules": {
+                "Front": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "问题"
+                },
+                "Back": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "答案"
+                }
+              },
+              "preview_data_json": null,
+              "is_active": null,
+              "is_built_in": null
+            }
+          }
+        },
+        {
+          "cmd": "create_custom_template",
+          "args": {
+            "request": {
+              "name": "W233 单模板填空",
+              "description": "WP-233 导出填空模板",
+              "author": "wp233",
+              "version": null,
+              "preview_front": "{{c1::TCP}} 是面向连接的协议",
+              "preview_back": "传输层",
+              "note_type": "Cloze",
+              "fields": [
+                "Text",
+                "Extra"
+              ],
+              "generation_prompt": "根据材料生成填空卡，正文含 {{c1::...}}。",
+              "front_template": "{{cloze:Text}}",
+              "back_template": "{{cloze:Text}}<br>{{Extra}}",
+              "css_style": ".card { font-size: 18px; }",
+              "field_extraction_rules": {
+                "Text": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "含 {{c1::...}} 的正文"
+                },
+                "Extra": {
+                  "field_type": "Text",
+                  "is_required": false,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "补充"
+                }
+              },
+              "preview_data_json": null,
+              "is_active": null,
+              "is_built_in": null
+            }
+          }
+        },
+        {
+          "cmd": "save_anki_cards",
+          "args": {
+            "request": {
+              "document_id": "w233-wt-a",
+              "business_session_id": null,
+              "message_stable_id": null,
+              "block_id": null,
+              "template_id": "${0}",
+              "cards": [
+                {
+                  "id": "w233-wa-1",
+                  "front": "什么是死锁？",
+                  "back": "两个以上事务互相等待对方持有的锁",
+                  "text": null,
+                  "tags": [
+                    "os"
+                  ],
+                  "images": [],
+                  "fields": {
+                    "Front": "什么是死锁？",
+                    "Back": "两个以上事务互相等待对方持有的锁"
+                  },
+                  "template_id": null
+                },
+                {
+                  "id": "w233-wa-2",
+                  "front": "死锁的四个必要条件？",
+                  "back": "互斥、占有并等待、不可抢占、循环等待",
+                  "text": null,
+                  "tags": [],
+                  "images": [],
+                  "fields": {
+                    "Front": "死锁的四个必要条件？",
+                    "Back": "互斥、占有并等待、不可抢占、循环等待"
+                  },
+                  "template_id": null
+                }
+              ],
+              "options": {
+                "deck_name": "W233::导出",
+                "note_type": "Basic",
+                "enable_images": false,
+                "max_cards_per_mistake": 5
+              }
+            }
+          }
+        },
+        {
+          "cmd": "save_anki_cards",
+          "args": {
+            "request": {
+              "document_id": "w233-wt-c",
+              "business_session_id": null,
+              "message_stable_id": null,
+              "block_id": null,
+              "template_id": "${1}",
+              "cards": [
+                {
+                  "id": "w233-wc-1",
+                  "front": "",
+                  "back": "",
+                  "text": "页面置换算法 {{c1::LRU}} 淘汰最久未使用的页",
+                  "tags": [],
+                  "images": [],
+                  "fields": {
+                    "Text": "页面置换算法 {{c1::LRU}} 淘汰最久未使用的页",
+                    "Extra": ""
+                  },
+                  "template_id": null
+                }
+              ],
+              "options": {
+                "deck_name": "W233::导出",
+                "note_type": "Basic",
+                "enable_images": false,
+                "max_cards_per_mistake": 5
+              }
+            }
+          }
+        },
+        {
+          "cmd": "get_document_cards",
+          "args": {
+            "documentId": "w233-wt-a"
+          }
+        },
+        {
+          "cmd": "get_document_cards",
+          "args": {
+            "documentId": "w233-wt-c"
+          }
+        },
+        {
+          "cmd": "export_cards_as_apkg_with_template",
+          "args": {
+            "selected_cards": "${4}",
+            "selectedCards": "${4}",
+            "deck_name": "W233::操作系统",
+            "deckName": "W233::操作系统",
+            "note_type": "Basic",
+            "noteType": "Basic",
+            "template_id": "${0}",
+            "templateId": "${0}"
+          }
+        },
+        {
+          "cmd": "export_cards_as_apkg_with_template",
+          "args": {
+            "selected_cards": "${5}",
+            "selectedCards": "${5}",
+            "deck_name": "W233::填空",
+            "deckName": "W233::填空",
+            "note_type": "Basic",
+            "noteType": "Basic",
+            "template_id": "${1}",
+            "templateId": "${1}"
+          }
+        },
+        {
+          "cmd": "export_cards_as_apkg_with_template",
+          "args": {
+            "selected_cards": "${4}",
+            "selectedCards": "${4}",
+            "deck_name": "Default",
+            "deckName": "Default",
+            "note_type": "Basic",
+            "noteType": "Basic",
+            "template_id": null,
+            "templateId": null
+          }
+        },
+        {
+          "cmd": "export_cards_as_apkg_with_template",
+          "args": {
+            "selected_cards": [
+              {
+                "front": "字面卡片正面",
+                "back": "字面卡片背面",
+                "text": null,
+                "tags": [
+                  "literal"
+                ],
+                "images": [],
+                "id": "w233-wt-lit-1",
+                "task_id": "",
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-11-06T02:00:00.000Z",
+                "updated_at": "2026-11-06T02:00:00.000Z",
+                "extra_fields": {
+                  "Front": "字面卡片正面",
+                  "Back": "字面卡片背面"
+                },
+                "template_id": null
+              }
+            ],
+            "selectedCards": [
+              {
+                "front": "字面卡片正面",
+                "back": "字面卡片背面",
+                "text": null,
+                "tags": [
+                  "literal"
+                ],
+                "images": [],
+                "id": "w233-wt-lit-1",
+                "task_id": "",
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-11-06T02:00:00.000Z",
+                "updated_at": "2026-11-06T02:00:00.000Z",
+                "extra_fields": {
+                  "Front": "字面卡片正面",
+                  "Back": "字面卡片背面"
+                },
+                "template_id": null
+              }
+            ],
+            "deck_name": "W233/导出:非法*字符?",
+            "deckName": "W233/导出:非法*字符?",
+            "note_type": "Basic",
+            "noteType": "Basic",
+            "template_id": "w233-no-such-template",
+            "templateId": "w233-no-such-template"
+          }
+        },
+        {
+          "cmd": "export_cards_as_apkg_with_template",
+          "args": {
+            "selected_cards": [
+              {
+                "front": "无模板正面",
+                "back": "无模板背面",
+                "text": null,
+                "tags": [],
+                "images": [],
+                "id": "w233-wt-lit-2",
+                "task_id": "",
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-11-06T02:00:00.000Z",
+                "updated_at": "2026-11-06T02:00:00.000Z",
+                "extra_fields": {
+                  "Front": "无模板正面",
+                  "Back": "无模板背面"
+                },
+                "template_id": null
+              }
+            ],
+            "selectedCards": [
+              {
+                "front": "无模板正面",
+                "back": "无模板背面",
+                "text": null,
+                "tags": [],
+                "images": [],
+                "id": "w233-wt-lit-2",
+                "task_id": "",
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-11-06T02:00:00.000Z",
+                "updated_at": "2026-11-06T02:00:00.000Z",
+                "extra_fields": {
+                  "Front": "无模板正面",
+                  "Back": "无模板背面"
+                },
+                "template_id": null
+              }
+            ],
+            "deck_name": "W233 无模板",
+            "deckName": "W233 无模板",
+            "note_type": "Basic",
+            "noteType": "Basic",
+            "template_id": null,
+            "templateId": null
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.export.multi-template-output-paths",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "create_custom_template",
+          "args": {
+            "request": {
+              "name": "W233 多模板问答",
+              "description": "WP-233 导出问答模板",
+              "author": "wp233",
+              "version": null,
+              "preview_front": "什么是 TCP 三次握手？",
+              "preview_back": "SYN → SYN-ACK → ACK",
+              "note_type": "Basic",
+              "fields": [
+                "Front",
+                "Back"
+              ],
+              "generation_prompt": "根据材料生成问答卡，正面提问，背面作答。",
+              "front_template": "<div class=\"q\">{{Front}}</div>",
+              "back_template": "{{FrontSide}}<hr id=\"answer\">{{Back}}",
+              "css_style": ".card { font-size: 18px; }",
+              "field_extraction_rules": {
+                "Front": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "问题"
+                },
+                "Back": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "答案"
+                }
+              },
+              "preview_data_json": null,
+              "is_active": null,
+              "is_built_in": null
+            }
+          }
+        },
+        {
+          "cmd": "create_custom_template",
+          "args": {
+            "request": {
+              "name": "W233 多模板填空",
+              "description": "WP-233 导出填空模板",
+              "author": "wp233",
+              "version": null,
+              "preview_front": "{{c1::TCP}} 是面向连接的协议",
+              "preview_back": "传输层",
+              "note_type": "Cloze",
+              "fields": [
+                "Text",
+                "Extra"
+              ],
+              "generation_prompt": "根据材料生成填空卡，正文含 {{c1::...}}。",
+              "front_template": "{{cloze:Text}}",
+              "back_template": "{{cloze:Text}}<br>{{Extra}}",
+              "css_style": ".card { font-size: 18px; }",
+              "field_extraction_rules": {
+                "Text": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "含 {{c1::...}} 的正文"
+                },
+                "Extra": {
+                  "field_type": "Text",
+                  "is_required": false,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "补充"
+                }
+              },
+              "preview_data_json": null,
+              "is_active": null,
+              "is_built_in": null
+            }
+          }
+        },
+        {
+          "cmd": "export_cards_as_apkg_with_template",
+          "args": {
+            "selected_cards": [
+              {
+                "front": "路径种子正面",
+                "back": "路径种子背面",
+                "text": null,
+                "tags": [],
+                "images": [],
+                "id": "w233-mt-seed",
+                "task_id": "",
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-11-06T02:00:00.000Z",
+                "updated_at": "2026-11-06T02:00:00.000Z",
+                "extra_fields": {
+                  "Front": "路径种子正面",
+                  "Back": "路径种子背面"
+                },
+                "template_id": null
+              }
+            ],
+            "selectedCards": [
+              {
+                "front": "路径种子正面",
+                "back": "路径种子背面",
+                "text": null,
+                "tags": [],
+                "images": [],
+                "id": "w233-mt-seed",
+                "task_id": "",
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-11-06T02:00:00.000Z",
+                "updated_at": "2026-11-06T02:00:00.000Z",
+                "extra_fields": {
+                  "Front": "路径种子正面",
+                  "Back": "路径种子背面"
+                },
+                "template_id": null
+              }
+            ],
+            "deck_name": "W233 多模板",
+            "deckName": "W233 多模板",
+            "note_type": "Basic",
+            "noteType": "Basic",
+            "template_id": null,
+            "templateId": null
+          }
+        },
+        {
+          "cmd": "export_multi_template_apkg",
+          "args": {
+            "cards": [
+              {
+                "front": "什么是哈希表？",
+                "back": "按键散列定位的表",
+                "text": null,
+                "tags": [
+                  "ds"
+                ],
+                "images": [],
+                "id": "w233-mt-1",
+                "task_id": "",
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-11-06T02:00:00.000Z",
+                "updated_at": "2026-11-06T02:00:00.000Z",
+                "extra_fields": {
+                  "Front": "什么是哈希表？",
+                  "Back": "按键散列定位的表"
+                },
+                "template_id": "${0}"
+              },
+              {
+                "front": "",
+                "back": "",
+                "text": "二分查找的时间复杂度是 {{c1::O(log n)}}",
+                "tags": [],
+                "images": [],
+                "id": "w233-mt-2",
+                "task_id": "",
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-11-06T02:00:00.000Z",
+                "updated_at": "2026-11-06T02:00:00.000Z",
+                "extra_fields": {
+                  "Text": "二分查找的时间复杂度是 {{c1::O(log n)}}",
+                  "Extra": ""
+                },
+                "template_id": "${1}"
+              },
+              {
+                "front": "栈的特点？",
+                "back": "后进先出",
+                "text": null,
+                "tags": [],
+                "images": [],
+                "id": "w233-mt-3",
+                "task_id": "",
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-11-06T02:00:00.000Z",
+                "updated_at": "2026-11-06T02:00:00.000Z",
+                "extra_fields": {
+                  "Front": "栈的特点？",
+                  "Back": "后进先出"
+                },
+                "template_id": null
+              }
+            ],
+            "deckName": "W233::多模板",
+            "outputPath": "${2}"
+          }
+        },
+        {
+          "cmd": "export_multi_template_apkg",
+          "args": {
+            "cards": [
+              {
+                "front": "队列的特点？",
+                "back": "先进先出",
+                "text": null,
+                "tags": [],
+                "images": [],
+                "id": "w233-mt-4",
+                "task_id": "",
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-11-06T02:00:00.000Z",
+                "updated_at": "2026-11-06T02:00:00.000Z",
+                "extra_fields": {
+                  "Front": "队列的特点？",
+                  "Back": "先进先出"
+                },
+                "template_id": "${0}"
+              }
+            ],
+            "deckName": "W233::多模板",
+            "outputPath": "${3.path}"
+          }
+        },
+        {
+          "cmd": "export_multi_template_apkg",
+          "args": {
+            "cards": [
+              {
+                "front": "图示卡片",
+                "back": "见图",
+                "text": null,
+                "tags": [],
+                "images": [
+                  "/w233-nonexistent/diagram.png"
+                ],
+                "id": "w233-mt-5",
+                "task_id": "",
+                "is_error_card": false,
+                "error_content": null,
+                "created_at": "2026-11-06T02:00:00.000Z",
+                "updated_at": "2026-11-06T02:00:00.000Z",
+                "extra_fields": {
+                  "Front": "图示卡片",
+                  "Back": "见图"
+                },
+                "template_id": null
+              }
+            ],
+            "deckName": "W233::缺失媒体",
+            "outputPath": "${3.path}"
+          }
+        },
+        {
+          "cmd": "import_apkg_to_library",
+          "args": {
+            "path": "${5.path}"
+          }
+        },
+        {
+          "cmd": "get_document_cards",
+          "args": {
+            "documentId": "${6.documentId}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.import.apkg-library-roundtrip",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "create_custom_template",
+          "args": {
+            "request": {
+              "name": "W233 回环问答",
+              "description": "WP-233 导出问答模板",
+              "author": "wp233",
+              "version": null,
+              "preview_front": "什么是 TCP 三次握手？",
+              "preview_back": "SYN → SYN-ACK → ACK",
+              "note_type": "Basic",
+              "fields": [
+                "Front",
+                "Back"
+              ],
+              "generation_prompt": "根据材料生成问答卡，正面提问，背面作答。",
+              "front_template": "<div class=\"q\">{{Front}}</div>",
+              "back_template": "{{FrontSide}}<hr id=\"answer\">{{Back}}",
+              "css_style": ".card { font-size: 18px; }",
+              "field_extraction_rules": {
+                "Front": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "问题"
+                },
+                "Back": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "答案"
+                }
+              },
+              "preview_data_json": null,
+              "is_active": null,
+              "is_built_in": null
+            }
+          }
+        },
+        {
+          "cmd": "save_anki_cards",
+          "args": {
+            "request": {
+              "document_id": "w233-rt-a",
+              "business_session_id": null,
+              "message_stable_id": null,
+              "block_id": null,
+              "template_id": "${0}",
+              "cards": [
+                {
+                  "id": "w233-rt-1",
+                  "front": "什么是三次握手？",
+                  "back": "SYN、SYN-ACK、ACK",
+                  "text": null,
+                  "tags": [
+                    "网络",
+                    "W233"
+                  ],
+                  "images": [],
+                  "fields": {
+                    "Front": "什么是三次握手？",
+                    "Back": "SYN、SYN-ACK、ACK"
+                  },
+                  "template_id": null
+                },
+                {
+                  "id": "w233-rt-2",
+                  "front": "四次挥手第二步？",
+                  "back": "被动方回复 ACK",
+                  "text": null,
+                  "tags": [
+                    "网络"
+                  ],
+                  "images": [],
+                  "fields": {
+                    "Front": "四次挥手第二步？",
+                    "Back": "被动方回复 ACK"
+                  },
+                  "template_id": null
+                }
+              ],
+              "options": {
+                "deck_name": "W233::回环",
+                "note_type": "Basic",
+                "enable_images": false,
+                "max_cards_per_mistake": 5
+              }
+            }
+          }
+        },
+        {
+          "cmd": "get_document_cards",
+          "args": {
+            "documentId": "w233-rt-a"
+          }
+        },
+        {
+          "cmd": "export_cards_as_apkg_with_template",
+          "args": {
+            "selected_cards": "${2}",
+            "selectedCards": "${2}",
+            "deck_name": "W233::回环",
+            "deckName": "W233::回环",
+            "note_type": "Basic",
+            "noteType": "Basic",
+            "template_id": "${0}",
+            "templateId": "${0}"
+          }
+        },
+        {
+          "cmd": "import_apkg_to_library",
+          "args": {
+            "path": "${3}"
+          }
+        },
+        {
+          "cmd": "get_document_cards",
+          "args": {
+            "documentId": "${4.documentId}"
+          }
+        },
+        {
+          "cmd": "list_anki_library_cards",
+          "args": {
+            "request": {
+              "page": 1,
+              "pageSize": 50,
+              "includeDecks": true
+            }
+          }
+        },
+        {
+          "cmd": "get_all_custom_templates",
+          "args": {}
+        },
+        {
+          "cmd": "import_apkg_to_library",
+          "args": {
+            "path": "${3}"
+          }
+        },
+        {
+          "cmd": "list_document_sessions",
+          "args": {}
+        },
+        {
+          "cmd": "get_anki_stats",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.import.apkg-cloze-template-roundtrip",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "create_custom_template",
+          "args": {
+            "request": {
+              "name": "W233 回环填空",
+              "description": "WP-233 导出填空模板",
+              "author": "wp233",
+              "version": null,
+              "preview_front": "{{c1::TCP}} 是面向连接的协议",
+              "preview_back": "传输层",
+              "note_type": "Cloze",
+              "fields": [
+                "Text",
+                "Extra"
+              ],
+              "generation_prompt": "根据材料生成填空卡，正文含 {{c1::...}}。",
+              "front_template": "{{cloze:Text}}",
+              "back_template": "{{cloze:Text}}<br>{{Extra}}",
+              "css_style": ".card { font-size: 18px; }",
+              "field_extraction_rules": {
+                "Text": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "含 {{c1::...}} 的正文"
+                },
+                "Extra": {
+                  "field_type": "Text",
+                  "is_required": false,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "补充"
+                }
+              },
+              "preview_data_json": null,
+              "is_active": null,
+              "is_built_in": null
+            }
+          }
+        },
+        {
+          "cmd": "save_anki_cards",
+          "args": {
+            "request": {
+              "document_id": "w233-rt-c",
+              "business_session_id": null,
+              "message_stable_id": null,
+              "block_id": null,
+              "template_id": "${0}",
+              "cards": [
+                {
+                  "id": "w233-rc-1",
+                  "front": "",
+                  "back": "",
+                  "text": "{{c1::光合作用}}在叶绿体中进行",
+                  "tags": [],
+                  "images": [],
+                  "fields": {
+                    "Text": "{{c1::光合作用}}在叶绿体中进行",
+                    "Extra": "生物"
+                  },
+                  "template_id": null
+                },
+                {
+                  "id": "w233-rc-2",
+                  "front": "",
+                  "back": "",
+                  "text": "水的化学式是 {{c1::H2O}}",
+                  "tags": [],
+                  "images": [],
+                  "fields": {
+                    "Text": "水的化学式是 {{c1::H2O}}",
+                    "Extra": ""
+                  },
+                  "template_id": null
+                }
+              ],
+              "options": {
+                "deck_name": "W233::填空回环",
+                "note_type": "Basic",
+                "enable_images": false,
+                "max_cards_per_mistake": 5
+              }
+            }
+          }
+        },
+        {
+          "cmd": "get_document_cards",
+          "args": {
+            "documentId": "w233-rt-c"
+          }
+        },
+        {
+          "cmd": "export_multi_template_apkg",
+          "args": {
+            "cards": "${2}",
+            "deckName": "W233::填空回环"
+          }
+        },
+        {
+          "cmd": "import_apkg_to_library",
+          "args": {
+            "path": "${3.path}"
+          }
+        },
+        {
+          "cmd": "get_document_cards",
+          "args": {
+            "documentId": "${4.documentId}"
+          }
+        },
+        {
+          "cmd": "get_all_custom_templates",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "anki.export.batch-apkg-and-json",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "batch_export_cards",
+          "args": {
+            "notes": [
+              {
+                "fields": {
+                  "Front": "什么是进程？",
+                  "Back": "资源分配的基本单位"
+                },
+                "tags": [
+                  "os"
+                ],
+                "images": []
+              },
+              {
+                "fields": {
+                  "Front": "什么是线程？",
+                  "Back": "CPU 调度的基本单位"
+                },
+                "tags": [],
+                "images": []
+              }
+            ],
+            "format": "apkg",
+            "options": {
+              "deckName": "批量导出",
+              "includeTags": true,
+              "includeMedia": true
+            }
+          }
+        },
+        {
+          "cmd": "import_apkg_to_library",
+          "args": {
+            "path": "${0}"
+          }
+        },
+        {
+          "cmd": "get_document_cards",
+          "args": {
+            "documentId": "${1.documentId}"
+          }
+        },
+        {
+          "cmd": "create_custom_template",
+          "args": {
+            "request": {
+              "name": "W233 批量填空",
+              "description": "WP-233 导出填空模板",
+              "author": "wp233",
+              "version": null,
+              "preview_front": "{{c1::TCP}} 是面向连接的协议",
+              "preview_back": "传输层",
+              "note_type": "Cloze",
+              "fields": [
+                "Text",
+                "Extra"
+              ],
+              "generation_prompt": "根据材料生成填空卡，正文含 {{c1::...}}。",
+              "front_template": "{{cloze:Text}}",
+              "back_template": "{{cloze:Text}}<br>{{Extra}}",
+              "css_style": ".card { font-size: 18px; }",
+              "field_extraction_rules": {
+                "Text": {
+                  "field_type": "Text",
+                  "is_required": true,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "含 {{c1::...}} 的正文"
+                },
+                "Extra": {
+                  "field_type": "Text",
+                  "is_required": false,
+                  "default_value": null,
+                  "validation_pattern": null,
+                  "description": "补充"
+                }
+              },
+              "preview_data_json": null,
+              "is_active": null,
+              "is_built_in": null
+            }
+          }
+        },
+        {
+          "cmd": "batch_export_cards",
+          "args": {
+            "notes": [
+              {
+                "fields": {
+                  "Text": "{{c1::虚拟内存}}让进程拥有独立地址空间",
+                  "Extra": ""
+                },
+                "tags": [
+                  "os"
+                ],
+                "images": []
+              }
+            ],
+            "format": "apkg",
+            "options": {
+              "deckName": "W233::批量填空",
+              "noteType": "Cloze",
+              "templateId": "${3}"
+            }
+          }
+        },
+        {
+          "cmd": "import_apkg_to_library",
+          "args": {
+            "path": "${4}"
+          }
+        },
+        {
+          "cmd": "batch_export_cards",
+          "args": {
+            "notes": [
+              {
+                "fields": {
+                  "Front": "JSON 导出正面",
+                  "Back": "JSON 导出背面"
+                },
+                "tags": [
+                  "json"
+                ],
+                "images": []
+              }
+            ],
+            "format": "json",
+            "options": {
+              "deckName": "批量导出",
+              "includeTags": true,
+              "includeMedia": true
+            }
+          }
+        },
+        {
+          "cmd": "list_anki_library_cards",
+          "args": {
+            "request": {
+              "page": 1,
+              "pageSize": 50,
+              "includeDecks": true
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

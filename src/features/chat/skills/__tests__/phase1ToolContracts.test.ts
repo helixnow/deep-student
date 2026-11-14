@@ -46,6 +46,23 @@ describe('phase 1 declared tool contracts', () => {
     });
   });
 
+  it('instructs the agent not to repeat the note title as a top-level heading in note bodies', () => {
+    const create = getTool(canvasNoteSkill, 'builtin-note_create');
+    const set = getTool(canvasNoteSkill, 'builtin-note_set');
+
+    expect(canvasNoteSkill.content).toContain('不得在开头重复笔记标题');
+    expect(canvasNoteSkill.content).toContain('二级标题（`##`）');
+
+    for (const tool of [create, set]) {
+      expect(tool.description).toContain('title');
+      expect(tool.description).toContain('二级标题（##）');
+      expect(tool.description).toContain('一级标题（# 标题）');
+      const contentSchema = tool.inputSchema.properties.content as { description?: string };
+      expect(contentSchema.description).toContain('二级标题（##）');
+      expect(contentSchema.description).toContain('# 一级标题');
+    }
+  });
+
   it('exposes reminder, repeat, and parent fields for user todo creation and update', () => {
     const create = getTool(userTodoToolsSkill, 'builtin-user_todo_create_item');
     const update = getTool(userTodoToolsSkill, 'builtin-user_todo_update_item');

@@ -1,0 +1,34 @@
+{
+  "id": "RF-S01-git-powershell-native-quote",
+  "kind": "deliberate",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T14:25:00+08:00",
+  "title": "Windows 无 git-bash 时，git_* 参数中的 ASCII 双引号或“含空白且以 \\ 结尾”会被 PowerShell 5.1 重新拆分成 git 选项；改为拒绝这类参数",
+  "rust": {
+    "file": "src-tauri/crates/dstu-agent/src/chat_v2/tools/git_executor.rs",
+    "line": 70,
+    "behavior": "quote_arg_powershell 只处理 PowerShell 自身的单引号语义。找不到 pwsh 7 时回落的 powershell.exe 5.1 以旧式规则给 git.exe 拼命令行：参数含引号外空白就包一层裸双引号，内部不转义。git_commit 的 message 在 `--` 之前：message `a b\" --amend --no-verify \"c` 让 git 收到 --amend/--no-verify（改写上一个提交、跳过钩子；同理可注入 -F <文件> 把任意可读文件写进提交信息、--author 等）；message 含空白且以 \\ 结尾时，包裹的右引号被转义，`--` 被吞进 message，随后带空白的路径（校验只拦前导 -）被拆成选项"
+  },
+  "fix": {
+    "files": ["host/plugins/agent-workspace/src/tools/git.ts"],
+    "behavior": "quoteArgPowershell 拒绝含 ASCII \" 的值，以及含空白且以 \\ 结尾的值，报 'Windows PowerShell cannot pass this value to git intact: remove ASCII double quotes, and any trailing backslash from a value with whitespace'；git_commit 在 git add 之前构造两条命令，被拒绝时不会留下已暂存的路径。POSIX 与 git-bash 路径不变；弯双引号“”、不含空白的 src\\ 等仍原样传递"
+  },
+  "evidence": "在 S01 安全复审第 2 轮中，把 git.ts:213-216 的遗留问题按 PowerShell 5.1 的旧式传参规则（NativeCommandParameterBinder：引号外有空白才包裹，不转义）加上 git.exe 的 MSVCRT 命令行拆分规则做了推演，见测试中的模拟器：`commit -m 'tidy up\" --amend --no-verify \"x' -- a.txt` 到达 git 时 argv 为 [commit, -m, tidy up, --amend, --no-verify, x, --, a.txt]。pwsh 7.3+ 对 git.exe 用 Standard 传参，不受影响，但 git.ts 不知道运行时选中了哪个 shell，而 Windows 自带的是 5.1。没有采用“自己按 MSVCRT 规则转义并强制 $PSNativeCommandArgumentPassing='Legacy'”这一透明方案，因为本机无法在真实 PowerShell 上验证；拒绝规则与 PowerShell 版本无关。NTFS 文件名本身不允许 \"，所以路径不受影响；git_branch 的名称不允许空白，因此只会被引号规则影响。当前 Windows 本地 shell 因 F7 原生运行时缺失而 fail-closed，今天不可利用，接通后立即生效。",
+  "userVisible": "能感知：仅 Windows 且没有 git-bash 时，git_commit 的提交信息含 ASCII 双引号 \"，或含空白且以 \\ 结尾，会被拒绝，并提示去掉这些字符（模型可改用 “ ” 或单引号）；其它平台、有 git-bash 的 Windows 不变",
+  "dataCompat": "不改变落库数据、同步载荷或备份格式；已有提交不受影响",
+  "g3": {
+    "affects": false,
+    "selectors": []
+  },
+  "tests": [
+    {
+      "file": "host/plugins/agent-workspace/tests/git-powershell-native-args.test.ts",
+      "name": "RF-S01-git-powershell-native-quote: values that PowerShell 5.1 would re-split into git options are refused"
+    },
+    {
+      "file": "host/plugins/agent-workspace/tests/git-powershell-native-args.test.ts",
+      "name": "RF-S01-git-powershell-native-quote: accepted values reach git as one unchanged argument"
+    }
+  ]
+}

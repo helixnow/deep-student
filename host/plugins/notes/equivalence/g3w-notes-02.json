@@ -1,0 +1,2490 @@
+{
+  "domain": "notes",
+  "commands": [
+    "notes_enable_columns",
+    "notes_get_format",
+    "notes_migrate_blocks",
+    "notes_relation_delete",
+    "notes_relation_put",
+    "notes_review_save_as",
+    "notes_state_delete",
+    "notes_state_get",
+    "notes_state_list",
+    "notes_state_put",
+    "notes_transfer_blocks",
+    "notes_undo_transfer"
+  ],
+  "scenarios": [
+    {
+      "id": "g3w.notes.notes_get_format.note_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_get_format",
+          "args": {
+            "noteId": "note_missing"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_enable_columns.note_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_enable_columns",
+          "args": {
+            "noteId": "note_missing",
+            "expectedUpdatedAt": "stale"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_enable_columns.stale_token",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "分栏冲突",
+              "content": "# 标题\n\n正文\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "notes_update",
+          "args": {
+            "note": {
+              "id": "${0.id}",
+              "content_md": "# 标题\n\n改写\n",
+              "expected_updated_at": "${1.updated_at}",
+              "capabilities": [
+                "ds-columns-v1"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "notes_enable_columns",
+          "args": {
+            "noteId": "${0.id}",
+            "expectedUpdatedAt": "${1.updated_at}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_enable_columns.lease_participant_expired",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "分栏租约",
+              "content": "# 标题\n\n正文\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "notes_enable_columns",
+          "args": {
+            "noteId": "${0.id}",
+            "expectedUpdatedAt": "${1.updated_at}",
+            "lease": {
+              "participant_id": "nep_missing",
+              "token": "nel_missing"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_enable_columns.unleased_write_lease_conflict",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "分栏写栅栏",
+              "content": "# 标题\n\n正文\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_editor_register",
+          "args": {
+            "noteId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "notes_editor_begin",
+          "args": {
+            "participantId": "${1.participant_id}",
+            "operationId": "g3w-columns",
+            "noteIds": [
+              "${0.id}"
+            ]
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "notes_enable_columns",
+          "args": {
+            "noteId": "${0.id}",
+            "expectedUpdatedAt": "${3.updated_at}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_migrate_blocks.note_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_migrate_blocks",
+          "args": {
+            "noteId": "note_missing",
+            "expectedUpdatedAt": "stale",
+            "content": "<!-- ds:block-id=a -->\n# Heading\n\n<!-- ds:block-id=b -->\nBody\n"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_migrate_blocks.stale_token",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "迁移冲突",
+              "content": "# Heading\n\nBody\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "notes_update",
+          "args": {
+            "note": {
+              "id": "${0.id}",
+              "content_md": "# Heading\n\nBody 2\n",
+              "expected_updated_at": "${1.updated_at}",
+              "capabilities": [
+                "ds-columns-v1"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "notes_migrate_blocks",
+          "args": {
+            "noteId": "${0.id}",
+            "expectedUpdatedAt": "${1.updated_at}",
+            "content": "<!-- ds:block-id=a -->\n# Heading\n\n<!-- ds:block-id=b -->\nBody\n"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_migrate_blocks.already_stable",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "迁移已稳定",
+              "content": "<!-- ds:block-id=a -->\n\n正文\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "notes_migrate_blocks",
+          "args": {
+            "noteId": "${0.id}",
+            "expectedUpdatedAt": "${1.updated_at}",
+            "content": "<!-- ds:block-id=a -->\n\n正文\n"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_migrate_blocks.unmarked_root_block",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "迁移缺标记",
+              "content": "# Heading\n\nBody\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "notes_migrate_blocks",
+          "args": {
+            "noteId": "${0.id}",
+            "expectedUpdatedAt": "${1.updated_at}",
+            "content": "<!-- ds:block-id=a -->\n# Heading\n\nBody\n"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_migrate_blocks.content_changed",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "迁移改内容",
+              "content": "# Heading\n\nBody\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "notes_migrate_blocks",
+          "args": {
+            "noteId": "${0.id}",
+            "expectedUpdatedAt": "${1.updated_at}",
+            "content": "<!-- ds:block-id=a -->\n# Heading\n\n<!-- ds:block-id=b -->\nChanged\n"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_migrate_blocks.lease_participant_expired",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "迁移租约",
+              "content": "# Heading\n\nBody\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "notes_migrate_blocks",
+          "args": {
+            "noteId": "${0.id}",
+            "expectedUpdatedAt": "${1.updated_at}",
+            "content": "<!-- ds:block-id=a -->\n# Heading\n\n<!-- ds:block-id=b -->\nBody\n",
+            "lease": {
+              "participant_id": "nep_missing",
+              "token": "nel_missing"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_migrate_blocks.unleased_write_lease_conflict",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "迁移写栅栏",
+              "content": "# Heading\n\nBody\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_editor_register",
+          "args": {
+            "noteId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "notes_editor_begin",
+          "args": {
+            "participantId": "${1.participant_id}",
+            "operationId": "g3w-migrate",
+            "noteIds": [
+              "${0.id}"
+            ]
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "notes_migrate_blocks",
+          "args": {
+            "noteId": "${0.id}",
+            "expectedUpdatedAt": "${3.updated_at}",
+            "content": "<!-- ds:block-id=a -->\n# Heading\n\n<!-- ds:block-id=b -->\nBody\n"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_transfer_blocks.same_page",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "转移源",
+              "content": "<!-- ds:block-id=a -->\n\nOriginal\n\n<!-- ds:block-id=b -->\n\nRetained\n"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "转移目标",
+              "content": "<!-- ds:block-id=c -->\n\nTarget\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_transfer_blocks",
+          "args": {
+            "request": {
+              "operation_id": "g3w-move-1",
+              "source_note_id": "${0.id}",
+              "target_note_id": "${0.id}",
+              "expected_source_updated_at": "${2.updated_at}",
+              "expected_target_updated_at": "${2.updated_at}",
+              "source_content": "<!-- ds:block-id=b -->\n\nRetained\n",
+              "target_content": "<!-- ds:block-id=c -->\n\nTarget\n\n<!-- ds:block-id=a -->\n\nOriginal\n",
+              "block_ids": [
+                "a"
+              ]
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_transfer_blocks.page_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "转移源",
+              "content": "<!-- ds:block-id=a -->\n\nOriginal\n\n<!-- ds:block-id=b -->\n\nRetained\n"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "转移目标",
+              "content": "<!-- ds:block-id=c -->\n\nTarget\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_transfer_blocks",
+          "args": {
+            "request": {
+              "operation_id": "g3w-move-1",
+              "source_note_id": "${0.id}",
+              "target_note_id": "note_missing",
+              "expected_source_updated_at": "${2.updated_at}",
+              "expected_target_updated_at": "${3.updated_at}",
+              "source_content": "<!-- ds:block-id=b -->\n\nRetained\n",
+              "target_content": "<!-- ds:block-id=c -->\n\nTarget\n\n<!-- ds:block-id=a -->\n\nOriginal\n",
+              "block_ids": [
+                "a"
+              ]
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_transfer_blocks.stale_target_token",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "转移源",
+              "content": "<!-- ds:block-id=a -->\n\nOriginal\n\n<!-- ds:block-id=b -->\n\nRetained\n"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "转移目标",
+              "content": "<!-- ds:block-id=c -->\n\nTarget\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_transfer_blocks",
+          "args": {
+            "request": {
+              "operation_id": "g3w-move-1",
+              "source_note_id": "${0.id}",
+              "target_note_id": "${1.id}",
+              "expected_source_updated_at": "${2.updated_at}",
+              "expected_target_updated_at": "stale",
+              "source_content": "<!-- ds:block-id=b -->\n\nRetained\n",
+              "target_content": "<!-- ds:block-id=c -->\n\nTarget\n\n<!-- ds:block-id=a -->\n\nOriginal\n",
+              "block_ids": [
+                "a"
+              ]
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_transfer_blocks.legacy_page",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "转移源",
+              "content": "正文\n"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "转移目标",
+              "content": "<!-- ds:block-id=c -->\n\nTarget\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_transfer_blocks",
+          "args": {
+            "request": {
+              "operation_id": "g3w-move-1",
+              "source_note_id": "${0.id}",
+              "target_note_id": "${1.id}",
+              "expected_source_updated_at": "${2.updated_at}",
+              "expected_target_updated_at": "${3.updated_at}",
+              "source_content": "<!-- ds:block-id=b -->\n\nRetained\n",
+              "target_content": "<!-- ds:block-id=c -->\n\nTarget\n\n<!-- ds:block-id=a -->\n\nOriginal\n",
+              "block_ids": [
+                "a"
+              ]
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_transfer_blocks.operation_id_reused",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "转移源",
+              "content": "<!-- ds:block-id=a -->\n\nOriginal\n\n<!-- ds:block-id=b -->\n\nRetained\n"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "转移目标",
+              "content": "<!-- ds:block-id=c -->\n\nTarget\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_transfer_blocks",
+          "args": {
+            "request": {
+              "operation_id": "g3w-move-1",
+              "source_note_id": "${0.id}",
+              "target_note_id": "${1.id}",
+              "expected_source_updated_at": "${2.updated_at}",
+              "expected_target_updated_at": "${3.updated_at}",
+              "source_content": "<!-- ds:block-id=b -->\n\nRetained\n",
+              "target_content": "<!-- ds:block-id=c -->\n\nTarget\n\n<!-- ds:block-id=a -->\n\nOriginal\n",
+              "block_ids": [
+                "a"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "notes_transfer_blocks",
+          "args": {
+            "request": {
+              "operation_id": "g3w-move-1",
+              "source_note_id": "${0.id}",
+              "target_note_id": "${1.id}",
+              "expected_source_updated_at": "${2.updated_at}",
+              "expected_target_updated_at": "${3.updated_at}",
+              "source_content": "<!-- ds:block-id=b -->\n\nRetained\n",
+              "target_content": "<!-- ds:block-id=c -->\n\nTarget\n\n<!-- ds:block-id=a -->\n\nOriginal\n",
+              "block_ids": [
+                "b"
+              ]
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_transfer_blocks.empty_block_ids",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "转移源",
+              "content": "<!-- ds:block-id=a -->\n\nOriginal\n\n<!-- ds:block-id=b -->\n\nRetained\n"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "转移目标",
+              "content": "<!-- ds:block-id=c -->\n\nTarget\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_transfer_blocks",
+          "args": {
+            "request": {
+              "operation_id": "g3w-move-1",
+              "source_note_id": "${0.id}",
+              "target_note_id": "${1.id}",
+              "expected_source_updated_at": "${2.updated_at}",
+              "expected_target_updated_at": "${3.updated_at}",
+              "source_content": "<!-- ds:block-id=b -->\n\nRetained\n",
+              "target_content": "<!-- ds:block-id=c -->\n\nTarget\n\n<!-- ds:block-id=a -->\n\nOriginal\n",
+              "block_ids": []
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_transfer_blocks.selected_block_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "转移源",
+              "content": "<!-- ds:block-id=a -->\n\nOriginal\n\n<!-- ds:block-id=b -->\n\nRetained\n"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "转移目标",
+              "content": "<!-- ds:block-id=c -->\n\nTarget\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_transfer_blocks",
+          "args": {
+            "request": {
+              "operation_id": "g3w-move-1",
+              "source_note_id": "${0.id}",
+              "target_note_id": "${1.id}",
+              "expected_source_updated_at": "${2.updated_at}",
+              "expected_target_updated_at": "${3.updated_at}",
+              "source_content": "<!-- ds:block-id=b -->\n\nRetained\n",
+              "target_content": "<!-- ds:block-id=c -->\n\nTarget\n\n<!-- ds:block-id=a -->\n\nOriginal\n",
+              "block_ids": [
+                "z"
+              ]
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_transfer_blocks.block_id_collision",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "转移源",
+              "content": "<!-- ds:block-id=a -->\n\nOriginal\n\n<!-- ds:block-id=b -->\n\nRetained\n"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "转移目标",
+              "content": "<!-- ds:block-id=b -->\n\nOther\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_transfer_blocks",
+          "args": {
+            "request": {
+              "operation_id": "g3w-move-1",
+              "source_note_id": "${0.id}",
+              "target_note_id": "${1.id}",
+              "expected_source_updated_at": "${2.updated_at}",
+              "expected_target_updated_at": "${3.updated_at}",
+              "source_content": "<!-- ds:block-id=b -->\n\nRetained\n",
+              "target_content": "<!-- ds:block-id=b -->\n\nOther\n\n<!-- ds:block-id=a -->\n\nOriginal\n",
+              "block_ids": [
+                "a"
+              ]
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_transfer_blocks.body_tampered",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "转移源",
+              "content": "<!-- ds:block-id=a -->\n\nOriginal\n\n<!-- ds:block-id=b -->\n\nRetained\n"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "转移目标",
+              "content": "<!-- ds:block-id=c -->\n\nTarget\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_transfer_blocks",
+          "args": {
+            "request": {
+              "operation_id": "g3w-move-1",
+              "source_note_id": "${0.id}",
+              "target_note_id": "${1.id}",
+              "expected_source_updated_at": "${2.updated_at}",
+              "expected_target_updated_at": "${3.updated_at}",
+              "source_content": "<!-- ds:block-id=b -->\n\nRetained\n",
+              "target_content": "<!-- ds:block-id=c -->\n\nTarget\n\n<!-- ds:block-id=a -->\n\nTampered\n",
+              "block_ids": [
+                "a"
+              ]
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_transfer_blocks.lease_participant_expired",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "转移源",
+              "content": "<!-- ds:block-id=a -->\n\nOriginal\n\n<!-- ds:block-id=b -->\n\nRetained\n"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "转移目标",
+              "content": "<!-- ds:block-id=c -->\n\nTarget\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_transfer_blocks",
+          "args": {
+            "request": {
+              "operation_id": "g3w-move-1",
+              "source_note_id": "${0.id}",
+              "target_note_id": "${1.id}",
+              "expected_source_updated_at": "${2.updated_at}",
+              "expected_target_updated_at": "${3.updated_at}",
+              "source_content": "<!-- ds:block-id=b -->\n\nRetained\n",
+              "target_content": "<!-- ds:block-id=c -->\n\nTarget\n\n<!-- ds:block-id=a -->\n\nOriginal\n",
+              "block_ids": [
+                "a"
+              ]
+            },
+            "lease": {
+              "participant_id": "nep_missing",
+              "token": "nel_missing"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_transfer_blocks.unleased_write_lease_conflict",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "转移源",
+              "content": "<!-- ds:block-id=a -->\n\nOriginal\n\n<!-- ds:block-id=b -->\n\nRetained\n"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "转移目标",
+              "content": "<!-- ds:block-id=c -->\n\nTarget\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_editor_register",
+          "args": {
+            "noteId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "notes_editor_begin",
+          "args": {
+            "participantId": "${4.participant_id}",
+            "operationId": "g3w-transfer",
+            "noteIds": [
+              "${0.id}"
+            ]
+          }
+        },
+        {
+          "cmd": "notes_transfer_blocks",
+          "args": {
+            "request": {
+              "operation_id": "g3w-move-1",
+              "source_note_id": "${0.id}",
+              "target_note_id": "${1.id}",
+              "expected_source_updated_at": "${2.updated_at}",
+              "expected_target_updated_at": "${3.updated_at}",
+              "source_content": "<!-- ds:block-id=b -->\n\nRetained\n",
+              "target_content": "<!-- ds:block-id=c -->\n\nTarget\n\n<!-- ds:block-id=a -->\n\nOriginal\n",
+              "block_ids": [
+                "a"
+              ]
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_undo_transfer.operation_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_undo_transfer",
+          "args": {
+            "operationId": "g3w-move-missing",
+            "expectedSourceUpdatedAt": "stale",
+            "expectedTargetUpdatedAt": "stale"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_undo_transfer.pre_transfer_tokens",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "转移源",
+              "content": "<!-- ds:block-id=a -->\n\nOriginal\n\n<!-- ds:block-id=b -->\n\nRetained\n"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "转移目标",
+              "content": "<!-- ds:block-id=c -->\n\nTarget\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_transfer_blocks",
+          "args": {
+            "request": {
+              "operation_id": "g3w-move-1",
+              "source_note_id": "${0.id}",
+              "target_note_id": "${1.id}",
+              "expected_source_updated_at": "${2.updated_at}",
+              "expected_target_updated_at": "${3.updated_at}",
+              "source_content": "<!-- ds:block-id=b -->\n\nRetained\n",
+              "target_content": "<!-- ds:block-id=c -->\n\nTarget\n\n<!-- ds:block-id=a -->\n\nOriginal\n",
+              "block_ids": [
+                "a"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "notes_undo_transfer",
+          "args": {
+            "operationId": "g3w-move-1",
+            "expectedSourceUpdatedAt": "${2.updated_at}",
+            "expectedTargetUpdatedAt": "${3.updated_at}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_undo_transfer.later_edit_conflict",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "转移源",
+              "content": "<!-- ds:block-id=a -->\n\nOriginal\n\n<!-- ds:block-id=b -->\n\nRetained\n"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "转移目标",
+              "content": "<!-- ds:block-id=c -->\n\nTarget\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_transfer_blocks",
+          "args": {
+            "request": {
+              "operation_id": "g3w-move-1",
+              "source_note_id": "${0.id}",
+              "target_note_id": "${1.id}",
+              "expected_source_updated_at": "${2.updated_at}",
+              "expected_target_updated_at": "${3.updated_at}",
+              "source_content": "<!-- ds:block-id=b -->\n\nRetained\n",
+              "target_content": "<!-- ds:block-id=c -->\n\nTarget\n\n<!-- ds:block-id=a -->\n\nOriginal\n",
+              "block_ids": [
+                "a"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "notes_update",
+          "args": {
+            "note": {
+              "id": "${1.id}",
+              "content_md": "<!-- ds:block-id=c -->\n\nLater edit\n",
+              "expected_updated_at": "${4.target_updated_at}",
+              "capabilities": [
+                "ds-columns-v1"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "notes_undo_transfer",
+          "args": {
+            "operationId": "g3w-move-1",
+            "expectedSourceUpdatedAt": "${4.source_updated_at}",
+            "expectedTargetUpdatedAt": "${4.target_updated_at}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_undo_transfer.lease_participant_expired",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "转移源",
+              "content": "<!-- ds:block-id=a -->\n\nOriginal\n\n<!-- ds:block-id=b -->\n\nRetained\n"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "转移目标",
+              "content": "<!-- ds:block-id=c -->\n\nTarget\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_transfer_blocks",
+          "args": {
+            "request": {
+              "operation_id": "g3w-move-1",
+              "source_note_id": "${0.id}",
+              "target_note_id": "${1.id}",
+              "expected_source_updated_at": "${2.updated_at}",
+              "expected_target_updated_at": "${3.updated_at}",
+              "source_content": "<!-- ds:block-id=b -->\n\nRetained\n",
+              "target_content": "<!-- ds:block-id=c -->\n\nTarget\n\n<!-- ds:block-id=a -->\n\nOriginal\n",
+              "block_ids": [
+                "a"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "notes_undo_transfer",
+          "args": {
+            "operationId": "g3w-move-1",
+            "expectedSourceUpdatedAt": "${4.source_updated_at}",
+            "expectedTargetUpdatedAt": "${4.target_updated_at}",
+            "lease": {
+              "participant_id": "nep_missing",
+              "token": "nel_missing"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_review_save_as.blank_operation_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "审阅源",
+              "content": "original"
+            }
+          }
+        },
+        {
+          "cmd": "notes_review_save_as",
+          "args": {
+            "operationId": "   ",
+            "sourceNoteId": "${0.id}",
+            "markdown": "first result",
+            "expectedUpdatedAt": null,
+            "capabilities": [
+              "ds-columns-v1"
+            ]
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_review_save_as.new_operation_with_token",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "审阅源",
+              "content": "original"
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "notes_review_save_as",
+          "args": {
+            "operationId": "g3w-review-op",
+            "sourceNoteId": "${0.id}",
+            "markdown": "first result",
+            "expectedUpdatedAt": "${1.updated_at}",
+            "capabilities": [
+              "ds-columns-v1"
+            ]
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_review_save_as.source_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_review_save_as",
+          "args": {
+            "operationId": "g3w-review-op",
+            "sourceNoteId": "note_missing",
+            "markdown": "first result",
+            "expectedUpdatedAt": null,
+            "capabilities": [
+              "ds-columns-v1"
+            ]
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_review_save_as.unsupported_schema_marker",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "审阅源",
+              "content": "original"
+            }
+          }
+        },
+        {
+          "cmd": "notes_review_save_as",
+          "args": {
+            "operationId": "g3w-review-op",
+            "sourceNoteId": "${0.id}",
+            "markdown": "<!-- ds:note-schema=99 -->\nfuture document",
+            "expectedUpdatedAt": null,
+            "capabilities": [
+              "ds-columns-v1"
+            ]
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_review_save_as.request_reused",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "审阅源",
+              "content": "original"
+            }
+          }
+        },
+        {
+          "cmd": "notes_review_save_as",
+          "args": {
+            "operationId": "g3w-review-op",
+            "sourceNoteId": "${0.id}",
+            "markdown": "first result",
+            "expectedUpdatedAt": null,
+            "capabilities": [
+              "ds-columns-v1"
+            ]
+          }
+        },
+        {
+          "cmd": "notes_review_save_as",
+          "args": {
+            "operationId": "g3w-review-op",
+            "sourceNoteId": "${0.id}",
+            "markdown": "second result",
+            "expectedUpdatedAt": null,
+            "capabilities": [
+              "ds-columns-v1"
+            ]
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_review_save_as.operation_id_reused_other_source",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "审阅源",
+              "content": "original"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "另一源",
+              "content": "other"
+            }
+          }
+        },
+        {
+          "cmd": "notes_review_save_as",
+          "args": {
+            "operationId": "g3w-review-op",
+            "sourceNoteId": "${0.id}",
+            "markdown": "first result",
+            "expectedUpdatedAt": null,
+            "capabilities": [
+              "ds-columns-v1"
+            ]
+          }
+        },
+        {
+          "cmd": "notes_review_save_as",
+          "args": {
+            "operationId": "g3w-review-op",
+            "sourceNoteId": "${1.id}",
+            "markdown": "second result",
+            "expectedUpdatedAt": "${2.updatedAt}",
+            "capabilities": [
+              "ds-columns-v1"
+            ]
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_review_save_as.copy_edited_elsewhere",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "审阅源",
+              "content": "original"
+            }
+          }
+        },
+        {
+          "cmd": "notes_review_save_as",
+          "args": {
+            "operationId": "g3w-review-op",
+            "sourceNoteId": "${0.id}",
+            "markdown": "first result",
+            "expectedUpdatedAt": null,
+            "capabilities": [
+              "ds-columns-v1"
+            ]
+          }
+        },
+        {
+          "cmd": "notes_update",
+          "args": {
+            "note": {
+              "id": "${1.noteId}",
+              "content_md": "other WebView edit",
+              "expected_updated_at": "${1.updatedAt}",
+              "capabilities": [
+                "ds-columns-v1"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "notes_review_save_as",
+          "args": {
+            "operationId": "g3w-review-op",
+            "sourceNoteId": "${0.id}",
+            "markdown": "stale candidate",
+            "expectedUpdatedAt": "${1.updatedAt}",
+            "capabilities": [
+              "ds-columns-v1"
+            ]
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_review_save_as.lease_participant_expired",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "审阅源",
+              "content": "original"
+            }
+          }
+        },
+        {
+          "cmd": "notes_review_save_as",
+          "args": {
+            "operationId": "g3w-review-op",
+            "sourceNoteId": "${0.id}",
+            "markdown": "first result",
+            "expectedUpdatedAt": null,
+            "capabilities": [
+              "ds-columns-v1"
+            ],
+            "lease": {
+              "participant_id": "nep_missing",
+              "token": "nel_missing"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_state_get.empty_key",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "状态笔记",
+              "content": ""
+            }
+          }
+        },
+        {
+          "cmd": "notes_state_get",
+          "args": {
+            "request": {
+              "note_id": "${0.id}",
+              "type": "review",
+              "key": ""
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_state_get.note_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_state_get",
+          "args": {
+            "request": {
+              "note_id": "note_missing",
+              "type": "review",
+              "key": "review-a"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_state_list.note_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_state_list",
+          "args": {
+            "request": {
+              "note_id": "note_missing",
+              "type": "draft",
+              "include_deleted": false
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_state_put.empty_key",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "状态笔记",
+              "content": ""
+            }
+          }
+        },
+        {
+          "cmd": "notes_state_put",
+          "args": {
+            "request": {
+              "note_id": "${0.id}",
+              "type": "draft",
+              "key": "",
+              "expected_revision": null,
+              "value": {
+                "markdown": "草稿",
+                "error": "保存失败",
+                "previous_markdown": null,
+                "window_id": "main"
+              }
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_state_put.note_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_state_put",
+          "args": {
+            "request": {
+              "note_id": "note_missing",
+              "type": "draft",
+              "key": "draft_a",
+              "expected_revision": null,
+              "value": {
+                "markdown": "草稿",
+                "error": "保存失败",
+                "previous_markdown": null,
+                "window_id": "main"
+              }
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_state_put.create_only_conflict",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "状态笔记",
+              "content": ""
+            }
+          }
+        },
+        {
+          "cmd": "notes_state_put",
+          "args": {
+            "request": {
+              "note_id": "${0.id}",
+              "type": "review",
+              "key": "review-a",
+              "expected_revision": null,
+              "value": {
+                "candidate": "hello"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "notes_state_put",
+          "args": {
+            "request": {
+              "note_id": "${0.id}",
+              "type": "review",
+              "key": "review-a",
+              "expected_revision": null,
+              "value": {
+                "candidate": "hello"
+              }
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_state_delete.empty_key",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "状态笔记",
+              "content": ""
+            }
+          }
+        },
+        {
+          "cmd": "notes_state_delete",
+          "args": {
+            "request": {
+              "note_id": "${0.id}",
+              "type": "draft",
+              "key": "",
+              "expected_revision": 1
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_state_delete.note_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_state_delete",
+          "args": {
+            "request": {
+              "note_id": "note_missing",
+              "type": "draft",
+              "key": "draft_a",
+              "expected_revision": 1
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_state_delete.stale_revision",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "状态笔记",
+              "content": ""
+            }
+          }
+        },
+        {
+          "cmd": "notes_state_put",
+          "args": {
+            "request": {
+              "note_id": "${0.id}",
+              "type": "draft",
+              "key": "draft_a",
+              "expected_revision": null,
+              "value": {
+                "markdown": "草稿",
+                "error": "保存失败",
+                "previous_markdown": null,
+                "window_id": "main"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "notes_state_delete",
+          "args": {
+            "request": {
+              "note_id": "${0.id}",
+              "type": "draft",
+              "key": "draft_a",
+              "expected_revision": 2
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_relation_put.blank_id",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "关系笔记",
+              "content": ""
+            }
+          }
+        },
+        {
+          "cmd": "notes_relation_put",
+          "args": {
+            "request": {
+              "id": "   ",
+              "note_id": "${0.id}",
+              "block_id": null,
+              "type": "source",
+              "resource_id": "${0.resourceId}",
+              "locator": {
+                "type": "whole"
+              },
+              "expected_revision": null
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_relation_put.card_type_without_card_locator",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "关系笔记",
+              "content": ""
+            }
+          }
+        },
+        {
+          "cmd": "notes_relation_put",
+          "args": {
+            "request": {
+              "id": "relation-a",
+              "note_id": "${0.id}",
+              "block_id": null,
+              "type": "card",
+              "resource_id": "${0.resourceId}",
+              "locator": {
+                "type": "whole"
+              },
+              "expected_revision": null
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_relation_put.owner_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "关系笔记",
+              "content": ""
+            }
+          }
+        },
+        {
+          "cmd": "notes_relation_put",
+          "args": {
+            "request": {
+              "id": "relation-a",
+              "note_id": "note_missing",
+              "block_id": null,
+              "type": "source",
+              "resource_id": "${0.resourceId}",
+              "locator": {
+                "type": "whole"
+              },
+              "expected_revision": null
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_relation_put.owner_block_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "关系笔记",
+              "content": "<!-- ds:block-id=a -->\n\nOwner\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_relation_put",
+          "args": {
+            "request": {
+              "id": "relation-a",
+              "note_id": "${0.id}",
+              "block_id": "z",
+              "type": "source",
+              "resource_id": "${0.resourceId}",
+              "locator": {
+                "type": "whole"
+              },
+              "expected_revision": null
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_relation_put.owner_not_stable_blocks",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "关系笔记",
+              "content": "正文\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_relation_put",
+          "args": {
+            "request": {
+              "id": "relation-a",
+              "note_id": "${0.id}",
+              "block_id": "a",
+              "type": "source",
+              "resource_id": "${0.resourceId}",
+              "locator": {
+                "type": "whole"
+              },
+              "expected_revision": null
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_relation_put.reference_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "关系笔记",
+              "content": ""
+            }
+          }
+        },
+        {
+          "cmd": "notes_relation_put",
+          "args": {
+            "request": {
+              "id": "relation-a",
+              "note_id": "${0.id}",
+              "block_id": null,
+              "type": "source",
+              "resource_id": "res_missing",
+              "locator": {
+                "type": "whole"
+              },
+              "expected_revision": null
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_relation_put.revision_conflict",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "关系笔记",
+              "content": ""
+            }
+          }
+        },
+        {
+          "cmd": "notes_relation_put",
+          "args": {
+            "request": {
+              "id": "relation-a",
+              "note_id": "${0.id}",
+              "block_id": null,
+              "type": "source",
+              "resource_id": "${0.resourceId}",
+              "locator": {
+                "type": "whole"
+              },
+              "expected_revision": 3
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.notes.notes_relation_delete.revision_conflict",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_relation_delete",
+          "args": {
+            "id": "relation-missing",
+            "expectedRevision": 1
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

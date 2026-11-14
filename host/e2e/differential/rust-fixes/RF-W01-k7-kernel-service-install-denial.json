@@ -1,0 +1,27 @@
+{
+  "id": "RF-W01-k7-kernel-service-install-denial",
+  "kind": "deliberate",
+  "status": "proposed",
+  "title": "安装期拒绝声明内核专有服务（service:commands/protocols/backendEvents/shell）的社区插件包，不等导入后的 inject 检查",
+  "rust": {
+    "file": "src-tauri/src/plugins/manager.rs",
+    "line": 269,
+    "behavior": "Rust 版没有社区插件安装流程：plugins/manager.rs 只管理随应用发布的内置通道插件的启停，没有 manifest、权限清单或安装期检查。Cordis Host 的启动期检查（checkPluginModule）只在模块导入后看 inject；安装期若只校验 manifest 结构，一个声明 service:commands 的包会被写盘并在下次启动时导入后才被拒"
+  },
+  "fix": {
+    "files": [
+      "host/kernel/manifest.ts"
+    ],
+    "behavior": "assertInstallable（安装期、写盘前调用）在 checkManifest 之后、checkRequires 之前，用与启动期同一个 KERNEL_ONLY_SERVICES 列表精确拒绝 `service:<name>` 指向 commands/protocols/backendEvents/shell 的包，抛 PluginLoadError KERNEL_API_FORBIDDEN，消息列出全部命中的权限。service:commands2 这类只是前缀相同的普通服务不受影响；uiEvents 是社区可用的受限入口，不在拒绝列表。W34 的安装模块直接调用该函数并保留其抛错"
+  },
+  "evidence": "K7（PLUGIN-CLOSEOUT-BRIEF 第 2 条）：“安装期拒绝 service:commands 等内核专有服务”。KERNEL_ONLY_SERVICES 来自 host/kernel/kernel.ts（API.md §16.7 第 2 项），启动期 checkPluginModule 已用它拒绝 inject，但安装期此前没有对应检查，检查位置在模块导入之后。测试 host/kernel/tests/plugin-manifest-load.test.ts 的 RF-W01-k7-kernel-service-install-denial：四个内核服务逐一被拒且错误码/文本固定，service:commands2 与 service:review 仍可通过",
+  "userVisible": "用户安装声明内核专有服务的插件包时会立即看到 KERNEL_API_FORBIDDEN（插件 API v1 不开放这些服务），不会出现“装上但在下次启动才降级”的状态；正常服务声明不受影响",
+  "dataCompat": "不改变落库数据、profile 格式与包格式；只改变安装期是否允许写盘",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "host/kernel/tests/plugin-manifest-load.test.ts",
+      "name": "RF-W01-k7-kernel-service-install-denial: rejects service permissions that name kernel-only services before anything is written"
+    }
+  ]
+}

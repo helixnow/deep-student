@@ -1,0 +1,451 @@
+{
+  "domain": "mcp",
+  "commands": [
+    "mcp_stdio_start",
+    "save_setting",
+    "set_mcp_stdio_allow_unapproved",
+    "test_mcp_connection",
+    "mcp_stdio_send",
+    "start_mcp_oauth"
+  ],
+  "scenarios": [
+    {
+      "id": "g3w.mcp.stdio_start.not_approved",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "mcp_stdio_start",
+          "args": {
+            "command": "/bin/sh",
+            "args": [],
+            "env": {},
+            "framing": "jsonl",
+            "cwd": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.mcp.stdio_start.empty_command",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "mcp_stdio_start",
+          "args": {
+            "command": "",
+            "args": [],
+            "env": {},
+            "framing": "jsonl",
+            "cwd": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.mcp.stdio_start.executable_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "mcp_stdio_start",
+          "args": {
+            "command": "/nonexistent/w0-mcp-server",
+            "args": [],
+            "env": {},
+            "framing": "jsonl",
+            "cwd": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.mcp.stdio_start.not_on_path",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "mcp_stdio_start",
+          "args": {
+            "command": "w0-mcp-not-on-path",
+            "args": [],
+            "env": {},
+            "framing": "jsonl",
+            "cwd": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.mcp.stdio_start.cwd_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "mcp_stdio_start",
+          "args": {
+            "command": "/bin/sh",
+            "args": [],
+            "env": {},
+            "framing": "jsonl",
+            "cwd": "/nonexistent/w0-cwd"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.mcp.stdio_start.cwd_not_directory",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "mcp_stdio_start",
+          "args": {
+            "command": "/bin/sh",
+            "args": [],
+            "env": {},
+            "framing": "jsonl",
+            "cwd": "/etc/passwd"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.mcp.stdio_start.tools_list_invalid_json",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "mcp.tools.list",
+            "value": "not-json"
+          }
+        },
+        {
+          "cmd": "mcp_stdio_start",
+          "args": {
+            "command": "/bin/sh",
+            "args": [],
+            "env": {},
+            "framing": "jsonl",
+            "cwd": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.mcp.stdio_start.tools_list_not_array",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "mcp.tools.list",
+            "value": "{}"
+          }
+        },
+        {
+          "cmd": "mcp_stdio_start",
+          "args": {
+            "command": "/bin/sh",
+            "args": [],
+            "env": {},
+            "framing": "jsonl",
+            "cwd": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.mcp.stdio_start.unapproved_blank_command",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "set_mcp_stdio_allow_unapproved",
+          "args": {
+            "enabled": true
+          }
+        },
+        {
+          "cmd": "mcp_stdio_start",
+          "args": {
+            "command": " ",
+            "args": [],
+            "env": {},
+            "framing": "jsonl",
+            "cwd": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.mcp.stdio_start.unapproved_spawn_failed",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "set_mcp_stdio_allow_unapproved",
+          "args": {
+            "enabled": true
+          }
+        },
+        {
+          "cmd": "mcp_stdio_start",
+          "args": {
+            "command": "/nonexistent/w0-mcp-server",
+            "args": [],
+            "env": {},
+            "framing": "jsonl",
+            "cwd": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.mcp.test_connection.not_approved",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "test_mcp_connection",
+          "args": {
+            "command": "/bin/sh",
+            "args": [],
+            "env": null,
+            "cwd": null,
+            "framing": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.mcp.test_connection.tools_list_invalid_json",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "mcp.tools.list",
+            "value": "not-json"
+          }
+        },
+        {
+          "cmd": "test_mcp_connection",
+          "args": {
+            "command": "/bin/sh",
+            "args": [],
+            "env": null,
+            "cwd": null,
+            "framing": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.mcp.test_connection.cwd_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "test_mcp_connection",
+          "args": {
+            "command": "/bin/sh",
+            "args": [],
+            "env": null,
+            "cwd": "/nonexistent/w0-cwd",
+            "framing": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.mcp.stdio_send.unknown_session",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "mcp_stdio_send",
+          "args": {
+            "sessionId": "w0-missing-session",
+            "payload": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\"}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.mcp.start_oauth.insecure_http",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "start_mcp_oauth",
+          "args": {
+            "serverId": "w0-oauth",
+            "resourceUrl": "http://example.com/mcp",
+            "clientId": null,
+            "clientSecret": null,
+            "scopes": []
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.mcp.start_oauth.invalid_url",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "start_mcp_oauth",
+          "args": {
+            "serverId": "w0-oauth",
+            "resourceUrl": "https://",
+            "clientId": null,
+            "clientSecret": null,
+            "scopes": []
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.mcp.start_oauth.userinfo",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "start_mcp_oauth",
+          "args": {
+            "serverId": "w0-oauth",
+            "resourceUrl": "https://user:pw@example.com/mcp",
+            "clientId": null,
+            "clientSecret": null,
+            "scopes": []
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

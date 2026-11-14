@@ -164,7 +164,7 @@ export interface DstuDebugPluginLike {
  *
  * @example
  * ```typescript
- * import { dstuDebugLog } from '@/debug-panel/plugins/DstuDebugPlugin';
+ * import { dstuDebugLog } from '@/shared/debug/channels/dstu';
  * import { setDstuLogger, createLoggerFromDebugPlugin } from '@/dstu/logger';
  *
  * setDstuLogger(createLoggerFromDebugPlugin(dstuDebugLog));

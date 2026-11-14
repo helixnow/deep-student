@@ -1,0 +1,1 @@
+{"id":"20261105175359-13b0f7","cwd":"/home/dsdev/dev/ds-mig/X7-differential","cmd":["node","--check","scripts/electron-migration/record/tauri-harness.mjs"],"from":"X7-differential","submittedAt":"2026-11-05T17:53:59.089Z","cls":"other","startedAt":"2026-11-05T17:55:35.686Z","endedAt":"2026-11-05T17:55:35.814Z","code":0}

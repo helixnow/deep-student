@@ -1,0 +1,25 @@
+[Unit]
+Description=opencode 后台服务（dsdev，lane 的工具执行都在这里）
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=dsdev
+Group=dsdev
+Slice=dsdev.slice
+WorkingDirectory=/home/dsdev
+Environment=PATH=/opt/node26/bin:/home/dsdev/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=HOME=/home/dsdev
+Environment=TMPDIR=/tmp
+Environment=VITEST_MAX_FORKS=3
+Environment=VITEST_MIN_FORKS=1
+Environment=VITEST_MAX_THREADS=3
+Environment=VITEST_MIN_THREADS=1
+ExecStartPre=+/usr/local/sbin/ds-opencode-prestart
+ExecStart=/home/dsdev/.local/bin/opencode serve --service
+Restart=always
+RestartSec=5
+KillMode=mixed
+
+[Install]
+WantedBy=multi-user.target

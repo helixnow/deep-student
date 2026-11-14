@@ -1,0 +1,8 @@
+{
+  "code": 0,
+  "signal": null,
+  "ok": true,
+  "requests": 3,
+  "faults": [],
+  "evidence": "transport only; not A/B parity or login golden"
+}

@@ -1,0 +1,7420 @@
+{
+  "lane": "L15-review-analytics",
+  "generator": "deep-student/contracts-extract@1.6.0",
+  "commands": [
+    {
+      "name": "essay_grading_create_custom_mode",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "src/essay_grading/mod.rs",
+        "line": 157,
+        "fn": "essay_grading_create_custom_mode"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "input",
+          "rustName": "input",
+          "schema": {
+            "$ref": "#/$defs/CreateModeInput"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/GradingMode"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "essay_grading_create_session",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "src/essay_grading/mod.rs",
+        "line": 37,
+        "fn": "essay_grading_create_session"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "title",
+          "rustName": "title",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "essayType",
+          "rustName": "essay_type",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "gradeLevel",
+          "rustName": "grade_level",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "customPrompt",
+          "rustName": "custom_prompt",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/VfsEssaySession"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "essay_grading_delete_custom_mode",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "src/essay_grading/mod.rs",
+        "line": 175,
+        "fn": "essay_grading_delete_custom_mode"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "modeId",
+          "rustName": "mode_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "essay_grading_delete_session",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "src/essay_grading/mod.rs",
+        "line": 79,
+        "fn": "essay_grading_delete_session"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "sessionId",
+          "rustName": "session_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "integer",
+        "x-int": "usize",
+        "minimum": 0
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "essay_grading_get_latest_round_number",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "src/essay_grading/mod.rs",
+        "line": 127,
+        "fn": "essay_grading_get_latest_round_number"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "sessionId",
+          "rustName": "session_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "integer",
+        "x-int": "i32",
+        "minimum": -2147483648,
+        "maximum": 2147483647
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "essay_grading_get_mode",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "src/essay_grading/mod.rs",
+        "line": 144,
+        "fn": "essay_grading_get_mode"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "modeId",
+          "rustName": "mode_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/GradingMode"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "x-option": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "essay_grading_get_models",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "src/essay_grading/mod.rs",
+        "line": 219,
+        "fn": "essay_grading_get_models"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/ModelInfo"
+        }
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "essay_grading_get_modes",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "src/essay_grading/mod.rs",
+        "line": 136,
+        "fn": "essay_grading_get_modes"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/GradingMode"
+        }
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "essay_grading_get_round",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "src/essay_grading/mod.rs",
+        "line": 117,
+        "fn": "essay_grading_get_round"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "sessionId",
+          "rustName": "session_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "roundNumber",
+          "rustName": "round_number",
+          "schema": {
+            "type": "integer",
+            "x-int": "i32",
+            "minimum": -2147483648,
+            "maximum": 2147483647
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/GradingRoundResponse"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "x-option": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "essay_grading_get_rounds",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "src/essay_grading/mod.rs",
+        "line": 108,
+        "fn": "essay_grading_get_rounds"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "sessionId",
+          "rustName": "session_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/GradingRoundResponse"
+        }
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "essay_grading_get_session",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "src/essay_grading/mod.rs",
+        "line": 56,
+        "fn": "essay_grading_get_session"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "sessionId",
+          "rustName": "session_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/VfsEssaySession"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "x-option": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "essay_grading_has_builtin_override",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "src/essay_grading/mod.rs",
+        "line": 210,
+        "fn": "essay_grading_has_builtin_override"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "builtinId",
+          "rustName": "builtin_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "boolean"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "essay_grading_list_custom_modes",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "src/essay_grading/mod.rs",
+        "line": 184,
+        "fn": "essay_grading_list_custom_modes"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/GradingMode"
+        }
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "essay_grading_list_sessions",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "src/essay_grading/mod.rs",
+        "line": 88,
+        "fn": "essay_grading_list_sessions"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "offset",
+          "rustName": "offset",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "limit",
+          "rustName": "limit",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "query",
+          "rustName": "query",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/VfsEssaySession"
+        }
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "essay_grading_reset_builtin_mode",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "src/essay_grading/mod.rs",
+        "line": 201,
+        "fn": "essay_grading_reset_builtin_mode"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "builtinId",
+          "rustName": "builtin_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/GradingMode"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "essay_grading_save_builtin_override",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "src/essay_grading/mod.rs",
+        "line": 192,
+        "fn": "essay_grading_save_builtin_override"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "input",
+          "rustName": "input",
+          "schema": {
+            "$ref": "#/$defs/SaveBuiltinOverrideInput"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/GradingMode"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "essay_grading_stream",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "src/essay_grading/mod.rs",
+        "line": 27,
+        "fn": "essay_grading_stream"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "request",
+          "rustName": "request",
+          "schema": {
+            "$ref": "#/$defs/GradingRequest"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "window"
+        },
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/GradingResponse"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "x-option": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "essay_grading_toggle_favorite",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "src/essay_grading/mod.rs",
+        "line": 99,
+        "fn": "essay_grading_toggle_favorite"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "sessionId",
+          "rustName": "session_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "boolean"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "essay_grading_update_custom_mode",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "src/essay_grading/mod.rs",
+        "line": 166,
+        "fn": "essay_grading_update_custom_mode"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "input",
+          "rustName": "input",
+          "schema": {
+            "$ref": "#/$defs/UpdateModeInput"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/GradingMode"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "essay_grading_update_session",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "src/essay_grading/mod.rs",
+        "line": 68,
+        "fn": "essay_grading_update_session"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "session",
+          "rustName": "session",
+          "schema": {
+            "$ref": "#/$defs/VfsUpdateEssaySessionParams"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "fsrs_bury_card",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "src/cmd/fsrs_review.rs",
+        "line": 470,
+        "fn": "fsrs_bury_card"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "cardStateId",
+          "rustName": "cardStateId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        },
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/FsrsBuryResult"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "fsrs_enqueue_cards",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "src/cmd/fsrs_review.rs",
+        "line": 107,
+        "fn": "fsrs_enqueue_cards"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "ankiCardIds",
+          "rustName": "ankiCardIds",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        },
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/FsrsEnqueueResult"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "fsrs_get_card_memory_history",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "src/cmd/fsrs_review.rs",
+        "line": 544,
+        "fn": "fsrs_get_card_memory_history"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "cardStateId",
+          "rustName": "cardStateId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/FsrsCardMemoryHistory"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "fsrs_get_due",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "src/cmd/fsrs_review.rs",
+        "line": 129,
+        "fn": "fsrs_get_due"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "limit",
+          "rustName": "limit",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "readOnly",
+          "rustName": "read_only",
+          "schema": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/FsrsDueCard"
+        }
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "fsrs_get_memory_overview",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "src/cmd/fsrs_review.rs",
+        "line": 533,
+        "fn": "fsrs_get_memory_overview"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "recentLimit",
+          "rustName": "recentLimit",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/FsrsMemoryOverview"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "fsrs_get_review_statistics",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "src/cmd/fsrs_review.rs",
+        "line": 523,
+        "fn": "fsrs_get_review_statistics"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "days",
+          "rustName": "days",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/FsrsReviewStatistics"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "fsrs_get_scheduler_config",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "src/cmd/fsrs_review.rs",
+        "line": 555,
+        "fn": "fsrs_get_scheduler_config"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/FsrsSchedulerConfig"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "fsrs_get_stats",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "src/cmd/fsrs_review.rs",
+        "line": 515,
+        "fn": "fsrs_get_stats"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/FsrsStats"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "fsrs_optimize_parameters",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "src/cmd/fsrs_review.rs",
+        "line": 572,
+        "fn": "fsrs_optimize_parameters"
+      },
+      "async": true,
+      "args": [],
+      "injected": [
+        {
+          "kind": "app-handle"
+        },
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/FsrsOptimizeResult"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "fsrs_preview_intervals",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "src/cmd/fsrs_review.rs",
+        "line": 237,
+        "fn": "fsrs_preview_intervals"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "cardStateId",
+          "rustName": "cardStateId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/FsrsPreviewResult"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "fsrs_rate",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "src/cmd/fsrs_review.rs",
+        "line": 250,
+        "fn": "fsrs_rate"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "cardStateId",
+          "rustName": "cardStateId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "rating",
+          "rustName": "rating",
+          "schema": {
+            "type": "integer",
+            "x-int": "u8",
+            "minimum": 0,
+            "maximum": 255
+          },
+          "optional": false
+        },
+        {
+          "key": "durationMs",
+          "rustName": "durationMs",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "i64"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "clientOpId",
+          "rustName": "clientOpId",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "enforceExpectedLastReview",
+          "rustName": "enforceExpectedLastReview",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "expectedLastReviewMs",
+          "rustName": "expectedLastReviewMs",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "i64"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        },
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/FsrsRateResult"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "fsrs_reset_card_progress",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "src/cmd/fsrs_review.rs",
+        "line": 595,
+        "fn": "fsrs_reset_card_progress"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "cardStateId",
+          "rustName": "cardStateId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        },
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/FsrsResetResult"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "fsrs_suspend_card",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "src/cmd/fsrs_review.rs",
+        "line": 455,
+        "fn": "fsrs_suspend_card"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "cardStateId",
+          "rustName": "cardStateId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        },
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/FsrsSuspendResult"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "fsrs_unbury_card",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "src/cmd/fsrs_review.rs",
+        "line": 485,
+        "fn": "fsrs_unbury_card"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "cardStateId",
+          "rustName": "cardStateId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        },
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/FsrsBuryResult"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "fsrs_undo_last_review",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "src/cmd/fsrs_review.rs",
+        "line": 415,
+        "fn": "fsrs_undo_last_review"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "expectedLogId",
+          "rustName": "expectedLogId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "cardStateId",
+          "rustName": "cardStateId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        },
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/FsrsUndoResult"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "fsrs_unsuspend_card",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "src/cmd/fsrs_review.rs",
+        "line": 500,
+        "fn": "fsrs_unsuspend_card"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "cardStateId",
+          "rustName": "cardStateId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        },
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/FsrsSuspendResult"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "fsrs_update_scheduler_config",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "src/cmd/fsrs_review.rs",
+        "line": 562,
+        "fn": "fsrs_update_scheduler_config"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "update",
+          "rustName": "update",
+          "schema": {
+            "$ref": "#/$defs/FsrsSchedulerConfigUpdate"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/FsrsSchedulerConfig"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "insight_add_relation",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "src/insight/handlers.rs",
+        "line": 125,
+        "fn": "insight_add_relation"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "fromId",
+          "rustName": "from_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "toId",
+          "rustName": "to_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "relationType",
+          "rustName": "relation_type",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "scope",
+          "rustName": "scope",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "evidence",
+          "rustName": "evidence",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "string"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "insight_confirm",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "src/insight/handlers.rs",
+        "line": 31,
+        "fn": "insight_confirm"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "insightId",
+          "rustName": "insight_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "edits",
+          "rustName": "edits",
+          "schema": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/InsightCorrectInput"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/InsightCard"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "insight_correct",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "src/insight/handlers.rs",
+        "line": 41,
+        "fn": "insight_correct"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "insightId",
+          "rustName": "insight_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "input",
+          "rustName": "input",
+          "schema": {
+            "$ref": "#/$defs/InsightCorrectInput"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/InsightCard"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "insight_create_draft",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "src/insight/handlers.rs",
+        "line": 22,
+        "fn": "insight_create_draft"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "input",
+          "rustName": "input",
+          "schema": {
+            "$ref": "#/$defs/InsightDraftInput"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/InsightCard"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "insight_delete",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "src/insight/handlers.rs",
+        "line": 51,
+        "fn": "insight_delete"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "insightId",
+          "rustName": "insight_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "insight_get",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "src/insight/handlers.rs",
+        "line": 57,
+        "fn": "insight_get"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "insightId",
+          "rustName": "insight_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/InsightCard"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "x-option": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "insight_list",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "src/insight/handlers.rs",
+        "line": 66,
+        "fn": "insight_list"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "status",
+          "rustName": "status",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "limit",
+          "rustName": "limit",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "i64"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "offset",
+          "rustName": "offset",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "i64"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/InsightCard"
+        }
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "insight_list_events",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "src/insight/handlers.rs",
+        "line": 104,
+        "fn": "insight_list_events"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "insightId",
+          "rustName": "insight_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "limit",
+          "rustName": "limit",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "i64"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/InsightEvent"
+        }
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "insight_list_evidence",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "src/insight/handlers.rs",
+        "line": 88,
+        "fn": "insight_list_evidence"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "insightId",
+          "rustName": "insight_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/InsightEvidence"
+        }
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "insight_list_relations",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "src/insight/handlers.rs",
+        "line": 96,
+        "fn": "insight_list_relations"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "insightId",
+          "rustName": "insight_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/InsightRelation"
+        }
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "insight_list_revisions",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "src/insight/handlers.rs",
+        "line": 80,
+        "fn": "insight_list_revisions"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "insightId",
+          "rustName": "insight_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/InsightRevision"
+        }
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "insight_record_feedback",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "src/insight/handlers.rs",
+        "line": 114,
+        "fn": "insight_record_feedback"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "insightId",
+          "rustName": "insight_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "feedback",
+          "rustName": "feedback",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "sessionId",
+          "rustName": "session_id",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "insight_run_jobs",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "src/insight/handlers.rs",
+        "line": 144,
+        "fn": "insight_run_jobs"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "batchSize",
+          "rustName": "batch_size",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "deep_student_lib::commands::AppState"
+        }
+      ],
+      "result": {
+        "type": "integer",
+        "x-int": "u32",
+        "minimum": 0,
+        "maximum": 4294967295
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "mastery_get_overview",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "crates/dstu-learning/src/mastery/mod.rs",
+        "line": 23,
+        "fn": "mastery_get_overview"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "limit",
+          "rustName": "limit",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/MasteryOverviewSummary"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "review_plan_batch_create",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "crates/dstu-qbank/src/review_plan_service.rs",
+        "line": 908,
+        "fn": "review_plan_batch_create"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "questionIds",
+          "rustName": "question_ids",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "optional": false
+        },
+        {
+          "key": "examId",
+          "rustName": "exam_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/BatchCreateResult"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "review_plan_create",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "crates/dstu-qbank/src/review_plan_service.rs",
+        "line": 762,
+        "fn": "review_plan_create"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "questionId",
+          "rustName": "question_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "examId",
+          "rustName": "exam_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/ReviewPlan"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "review_plan_create_for_exam",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "crates/dstu-qbank/src/review_plan_service.rs",
+        "line": 921,
+        "fn": "review_plan_create_for_exam"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "examId",
+          "rustName": "exam_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/BatchCreateResult"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "review_plan_delete",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "crates/dstu-qbank/src/review_plan_service.rs",
+        "line": 885,
+        "fn": "review_plan_delete"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "planId",
+          "rustName": "plan_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        }
+      ],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "review_plan_get",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "crates/dstu-qbank/src/review_plan_service.rs",
+        "line": 855,
+        "fn": "review_plan_get"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "planId",
+          "rustName": "plan_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        }
+      ],
+      "result": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/ReviewPlan"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "x-option": "null"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "review_plan_get_by_question",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "crates/dstu-qbank/src/review_plan_service.rs",
+        "line": 843,
+        "fn": "review_plan_get_by_question"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "questionId",
+          "rustName": "question_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        }
+      ],
+      "result": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/ReviewPlan"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "x-option": "null"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "review_plan_get_calendar_data",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "crates/dstu-qbank/src/review_plan_service.rs",
+        "line": 960,
+        "fn": "review_plan_get_calendar_data"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "startDate",
+          "rustName": "start_date",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "endDate",
+          "rustName": "end_date",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "examId",
+          "rustName": "exam_id",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/CalendarHeatmapData"
+        }
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "review_plan_get_due",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "crates/dstu-qbank/src/review_plan_service.rs",
+        "line": 794,
+        "fn": "review_plan_get_due"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "examId",
+          "rustName": "exam_id",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "untilDate",
+          "rustName": "until_date",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/DueReviewsResult"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "review_plan_get_due_with_filter",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "crates/dstu-qbank/src/review_plan_service.rs",
+        "line": 807,
+        "fn": "review_plan_get_due_with_filter"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "filter",
+          "rustName": "filter",
+          "schema": {
+            "$ref": "#/$defs/DueReviewsFilter"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/DueReviewsResult"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "review_plan_get_history",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "crates/dstu-qbank/src/review_plan_service.rs",
+        "line": 895,
+        "fn": "review_plan_get_history"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "planId",
+          "rustName": "plan_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "limit",
+          "rustName": "limit",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/ReviewHistory"
+        }
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "review_plan_get_or_create",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "crates/dstu-qbank/src/review_plan_service.rs",
+        "line": 947,
+        "fn": "review_plan_get_or_create"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "questionId",
+          "rustName": "question_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "examId",
+          "rustName": "exam_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/ReviewPlan"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "review_plan_get_stats",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "crates/dstu-qbank/src/review_plan_service.rs",
+        "line": 819,
+        "fn": "review_plan_get_stats"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "examId",
+          "rustName": "exam_id",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/ReviewStats"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "review_plan_list_by_exam",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "crates/dstu-qbank/src/review_plan_service.rs",
+        "line": 933,
+        "fn": "review_plan_list_by_exam"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "examId",
+          "rustName": "exam_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "limit",
+          "rustName": "limit",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "offset",
+          "rustName": "offset",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/DueReviewsResult"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "review_plan_process",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "crates/dstu-qbank/src/review_plan_service.rs",
+        "line": 775,
+        "fn": "review_plan_process"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "planId",
+          "rustName": "plan_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "quality",
+          "rustName": "quality",
+          "schema": {
+            "type": "integer",
+            "x-int": "u8",
+            "minimum": 0,
+            "maximum": 255
+          },
+          "optional": false
+        },
+        {
+          "key": "userAnswer",
+          "rustName": "user_answer",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "timeSpentSeconds",
+          "rustName": "time_spent_seconds",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/ProcessReviewResult"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "review_plan_refresh_stats",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "crates/dstu-qbank/src/review_plan_service.rs",
+        "line": 831,
+        "fn": "review_plan_refresh_stats"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "examId",
+          "rustName": "exam_id",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/ReviewStats"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "review_plan_resume",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "crates/dstu-qbank/src/review_plan_service.rs",
+        "line": 875,
+        "fn": "review_plan_resume"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "planId",
+          "rustName": "plan_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/ReviewPlan"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "review_plan_suspend",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "crates/dstu-qbank/src/review_plan_service.rs",
+        "line": 865,
+        "fn": "review_plan_suspend"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "planId",
+          "rustName": "plan_id",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "state",
+          "rustType": "std::sync::Arc<dstu_vfs::vfs::database::VfsDatabase>"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/ReviewPlan"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "study_time_add",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "crates/dstu-learning/src/study_loop/study_time.rs",
+        "line": 116,
+        "fn": "study_time_add"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "seconds",
+          "rustName": "seconds",
+          "schema": {
+            "type": "integer",
+            "x-int": "i64"
+          },
+          "optional": false
+        },
+        {
+          "key": "date",
+          "rustName": "date",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "$ref": "#/$defs/StudyTimeDay"
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "study_time_range",
+      "lane": "L15-review-analytics",
+      "rust": {
+        "file": "crates/dstu-learning/src/study_loop/study_time.rs",
+        "line": 147,
+        "fn": "study_time_range"
+      },
+      "async": true,
+      "args": [
+        {
+          "key": "from",
+          "rustName": "from",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "to",
+          "rustName": "to",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/StudyTimeDay"
+        }
+      },
+      "error": {
+        "$ref": "_shared.json#/$defs/AppError"
+      },
+      "frontend": "none"
+    }
+  ],
+  "events": [
+    {
+      "name": "fsrs://changed",
+      "dynamic": false,
+      "payload": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "source": {
+                "type": "string"
+              },
+              "action": {
+                "type": "string"
+              },
+              "entityIds": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "runId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "source",
+              "action",
+              "entityIds",
+              "runId"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "x-rust": "serde_json::Value"
+          }
+        ],
+        "x-note": "emitters send different payload shapes"
+      },
+      "emitters": [
+        {
+          "file": "crates/dstu-anki/src/fsrs_review_service.rs",
+          "line": 5496,
+          "fn": "emit_fsrs_enqueue_changed",
+          "lane": "L15-review-analytics",
+          "method": "emit"
+        },
+        {
+          "file": "src/chat_v2/tools/chatanki_executor.rs",
+          "line": 8757,
+          "fn": "run_chatanki_pipeline_background",
+          "lane": "L24-chatanki",
+          "method": "emit"
+        },
+        {
+          "file": "src/chat_v2/tools/chatanki_executor.rs",
+          "line": 12230,
+          "fn": "emit_enqueue_review_changed",
+          "lane": "L24-chatanki",
+          "method": "emit"
+        },
+        {
+          "file": "src/chat_v2/tools/chatanki_executor.rs",
+          "line": 12467,
+          "fn": "emit_agent_review_changed",
+          "lane": "L24-chatanki",
+          "method": "emit"
+        },
+        {
+          "file": "src/chat_v2/tools/chatanki_executor.rs",
+          "line": 13719,
+          "fn": "emit_fsrs_cards_changed_with_cards",
+          "lane": "L24-chatanki",
+          "method": "emit"
+        },
+        {
+          "file": "src/chat_v2/tools/chatanki_executor.rs",
+          "line": 13730,
+          "fn": "emit_fsrs_import_changed",
+          "lane": "L24-chatanki",
+          "method": "emit"
+        },
+        {
+          "file": "src/cmd/anki_connect.rs",
+          "line": 938,
+          "fn": "save_anki_cards",
+          "lane": "L16-anki",
+          "method": "emit"
+        },
+        {
+          "file": "src/cmd/apkg_import.rs",
+          "line": 71,
+          "fn": "emit_import_changed",
+          "lane": "L16-anki",
+          "method": "emit"
+        },
+        {
+          "file": "src/cmd/fsrs_review.rs",
+          "line": 101,
+          "fn": "emit_fsrs_changed",
+          "lane": "L15-review-analytics",
+          "method": "emit"
+        },
+        {
+          "file": "src/cmd/fsrs_review.rs",
+          "line": 291,
+          "fn": "fsrs_rate",
+          "lane": "L15-review-analytics",
+          "method": "emit"
+        }
+      ]
+    }
+  ],
+  "$defs": {
+    "BatchCreateResult": {
+      "type": "object",
+      "properties": {
+        "created": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "skipped": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "failed": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "plans": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ReviewPlan"
+          }
+        }
+      },
+      "required": [
+        "created",
+        "skipped",
+        "failed",
+        "plans"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_qbank::review_plan_service::BatchCreateResult"
+    },
+    "CalendarHeatmapData": {
+      "type": "object",
+      "properties": {
+        "date": {
+          "type": "string"
+        },
+        "count": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "passed": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "failed": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        }
+      },
+      "required": [
+        "date",
+        "count",
+        "passed",
+        "failed"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_vfs::vfs::repos::review_plan_repo::CalendarHeatmapData"
+    },
+    "CreateModeInput": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "system_prompt": {
+          "type": "string"
+        },
+        "score_dimensions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ScoreDimension__De"
+          }
+        },
+        "total_max_score": {
+          "type": "number",
+          "x-float": "f32"
+        }
+      },
+      "required": [
+        "name",
+        "description",
+        "system_prompt",
+        "score_dimensions",
+        "total_max_score"
+      ],
+      "x-rust": "dstu_tutor::essay_grading::custom_modes::CreateModeInput"
+    },
+    "DueReviewsFilter": {
+      "type": "object",
+      "properties": {
+        "exam_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "until_date": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/ReviewPlanStatus__De"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "difficult_only": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "limit": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "offset": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "x-rust": "dstu_vfs::vfs::repos::review_plan_repo::DueReviewsFilter"
+    },
+    "DueReviewsResult": {
+      "type": "object",
+      "properties": {
+        "plans": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ReviewPlan"
+          }
+        },
+        "total": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "has_more": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "plans",
+        "total",
+        "has_more"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_vfs::vfs::repos::review_plan_repo::DueReviewsResult"
+    },
+    "EvidenceKind": {
+      "type": "string",
+      "enum": [
+        "chat_message",
+        "resource",
+        "note",
+        "manual"
+      ],
+      "x-rust": "dstu_research::insight::types::EvidenceKind"
+    },
+    "EvidenceKind__De": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "chat_message",
+            "resource",
+            "note",
+            "manual"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "chat_message": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "chat_message"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "resource": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "resource"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "note": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "note"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "manual": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "manual"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "x-also-accepts": "externally tagged map form {\"<Variant>\": null}",
+      "x-rust": "dstu_research::insight::types::EvidenceKind"
+    },
+    "FsrsBuryResult": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "$ref": "#/$defs/FsrsCardState"
+        },
+        "changed": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "state",
+        "changed"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_anki::fsrs_review_service::FsrsBuryResult"
+    },
+    "FsrsCardMemoryHistory": {
+      "type": "object",
+      "properties": {
+        "generatedAtMs": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "desiredRetention": {
+          "type": "number",
+          "x-float": "f64"
+        },
+        "curve": {
+          "$ref": "#/$defs/FsrsForgettingCurve"
+        },
+        "card": {
+          "$ref": "#/$defs/FsrsMemoryCard"
+        },
+        "reviews": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/FsrsMemoryReview"
+          }
+        }
+      },
+      "required": [
+        "generatedAtMs",
+        "desiredRetention",
+        "curve",
+        "card",
+        "reviews"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_anki::fsrs_review_service::FsrsCardMemoryHistory"
+    },
+    "FsrsCardState": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "ankiCardId": {
+          "type": "string"
+        },
+        "deckId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "state": {
+          "type": "integer",
+          "x-int": "i32",
+          "minimum": -2147483648,
+          "maximum": 2147483647
+        },
+        "stability": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "difficulty": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "elapsedDays": {
+          "type": "number",
+          "x-float": "f64"
+        },
+        "scheduledDays": {
+          "type": "number",
+          "x-float": "f64"
+        },
+        "reps": {
+          "type": "integer",
+          "x-int": "i32",
+          "minimum": -2147483648,
+          "maximum": 2147483647
+        },
+        "lapses": {
+          "type": "integer",
+          "x-int": "i32",
+          "minimum": -2147483648,
+          "maximum": 2147483647
+        },
+        "dueMs": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "lastReviewMs": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "i64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "suspended": {
+          "type": "boolean"
+        },
+        "fsrsParamsVersion": {
+          "type": "string"
+        },
+        "desiredRetention": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "type": "string"
+        },
+        "leech": {
+          "type": "boolean"
+        },
+        "buriedUntilMs": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "i64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "learningStep": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        }
+      },
+      "required": [
+        "id",
+        "ankiCardId",
+        "deckId",
+        "state",
+        "stability",
+        "difficulty",
+        "elapsedDays",
+        "scheduledDays",
+        "reps",
+        "lapses",
+        "dueMs",
+        "lastReviewMs",
+        "suspended",
+        "fsrsParamsVersion",
+        "desiredRetention",
+        "createdAt",
+        "updatedAt",
+        "leech",
+        "buriedUntilMs",
+        "learningStep"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_anki::fsrs_review_service::FsrsCardState"
+    },
+    "FsrsDailyLimitsStatus": {
+      "type": "object",
+      "properties": {
+        "newPerDay": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "reviewsPerDay": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "newIntroducedToday": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "reviewsDoneToday": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "newRemainingToday": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "reviewsRemainingToday": {
+          "type": "integer",
+          "x-int": "i64"
+        }
+      },
+      "required": [
+        "newPerDay",
+        "reviewsPerDay",
+        "newIntroducedToday",
+        "reviewsDoneToday",
+        "newRemainingToday",
+        "reviewsRemainingToday"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_anki::fsrs_review_service::FsrsDailyLimitsStatus"
+    },
+    "FsrsDailyReviewStat": {
+      "type": "object",
+      "properties": {
+        "date": {
+          "type": "string"
+        },
+        "total": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "again": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "hard": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "good": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "easy": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "newIntroduced": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "studyMs": {
+          "type": "integer",
+          "x-int": "i64"
+        }
+      },
+      "required": [
+        "date",
+        "total",
+        "again",
+        "hard",
+        "good",
+        "easy",
+        "newIntroduced",
+        "studyMs"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_anki::fsrs_review_service::FsrsDailyReviewStat"
+    },
+    "FsrsDueCard": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "ankiCardId": {
+          "type": "string"
+        },
+        "deckId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "state": {
+          "type": "integer",
+          "x-int": "i32",
+          "minimum": -2147483648,
+          "maximum": 2147483647
+        },
+        "stability": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "difficulty": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "elapsedDays": {
+          "type": "number",
+          "x-float": "f64"
+        },
+        "scheduledDays": {
+          "type": "number",
+          "x-float": "f64"
+        },
+        "reps": {
+          "type": "integer",
+          "x-int": "i32",
+          "minimum": -2147483648,
+          "maximum": 2147483647
+        },
+        "lapses": {
+          "type": "integer",
+          "x-int": "i32",
+          "minimum": -2147483648,
+          "maximum": 2147483647
+        },
+        "dueMs": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "lastReviewMs": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "i64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "suspended": {
+          "type": "boolean"
+        },
+        "fsrsParamsVersion": {
+          "type": "string"
+        },
+        "desiredRetention": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "type": "string"
+        },
+        "leech": {
+          "type": "boolean"
+        },
+        "buriedUntilMs": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "i64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "learningStep": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "front": {
+          "type": "string"
+        },
+        "back": {
+          "type": "string"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "templateId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "extraFields": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "x-key-order": "unspecified"
+        },
+        "images": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "isErrorCard": {
+          "type": "boolean"
+        },
+        "errorContent": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        }
+      },
+      "required": [
+        "id",
+        "ankiCardId",
+        "deckId",
+        "state",
+        "stability",
+        "difficulty",
+        "elapsedDays",
+        "scheduledDays",
+        "reps",
+        "lapses",
+        "dueMs",
+        "lastReviewMs",
+        "suspended",
+        "fsrsParamsVersion",
+        "desiredRetention",
+        "createdAt",
+        "updatedAt",
+        "leech",
+        "buriedUntilMs",
+        "learningStep",
+        "front",
+        "back",
+        "tags",
+        "extraFields",
+        "images",
+        "isErrorCard"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_anki::fsrs_review_service::FsrsDueCard"
+    },
+    "FsrsDueForecastDay": {
+      "type": "object",
+      "properties": {
+        "date": {
+          "type": "string"
+        },
+        "count": {
+          "type": "integer",
+          "x-int": "i64"
+        }
+      },
+      "required": [
+        "date",
+        "count"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_anki::fsrs_review_service::FsrsDueForecastDay"
+    },
+    "FsrsEnqueueResult": {
+      "type": "object",
+      "properties": {
+        "enqueued": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "skipped": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "enqueuedStateIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "states": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/FsrsCardState"
+          }
+        },
+        "reviewCards": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/FsrsEnqueuedCard"
+          }
+        }
+      },
+      "required": [
+        "enqueued",
+        "skipped",
+        "enqueuedStateIds",
+        "states",
+        "reviewCards"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_anki::fsrs_review_service::FsrsEnqueueResult"
+    },
+    "FsrsEnqueuedCard": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "ankiCardId": {
+          "type": "string"
+        },
+        "front": {
+          "type": "string"
+        },
+        "back": {
+          "type": "string"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "templateId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "extraFields": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "x-key-order": "unspecified"
+        },
+        "images": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "isErrorCard": {
+          "type": "boolean"
+        },
+        "errorContent": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        }
+      },
+      "required": [
+        "id",
+        "ankiCardId",
+        "front",
+        "back",
+        "tags",
+        "extraFields",
+        "images",
+        "isErrorCard"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_anki::fsrs_review_service::FsrsEnqueuedCard"
+    },
+    "FsrsForgettingCurve": {
+      "anyOf": [
+        { "$ref": "#/$defs/FsrsLegacyForgettingCurve" },
+        {
+          "type": "object",
+          "properties": {
+            "model": { "const": "fsrs-7" },
+            "stabilityFast": { "type": "number" },
+            "difficulty": { "type": "number" }
+          },
+          "required": ["model"],
+          "dependentRequired": { "stabilityFast": ["difficulty"], "difficulty": ["stabilityFast"] },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "FsrsLegacyForgettingCurve": {
+      "type": "object",
+      "properties": {
+        "decay": {
+          "type": "number",
+          "x-float": "f64"
+        },
+        "factor": {
+          "type": "number",
+          "x-float": "f64"
+        }
+      },
+      "required": [
+        "decay",
+        "factor"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_anki::fsrs_review_service::FsrsForgettingCurve"
+    },
+    "FsrsMemoryCard": {
+      "type": "object",
+      "properties": {
+        "curve": { "$ref": "#/$defs/FsrsForgettingCurve" },
+        "desiredRetention": { "type": "number" },
+        "cardStateId": {
+          "type": "string"
+        },
+        "ankiCardId": {
+          "type": "string"
+        },
+        "deckId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "front": {
+          "type": "string"
+        },
+        "text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "extraFields": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "x-key-order": "unspecified"
+        },
+        "state": {
+          "type": "integer",
+          "x-int": "i32",
+          "minimum": -2147483648,
+          "maximum": 2147483647
+        },
+        "stability": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "difficulty": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "lastReviewMs": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "i64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "dueMs": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "reps": {
+          "type": "integer",
+          "x-int": "i32",
+          "minimum": -2147483648,
+          "maximum": 2147483647
+        },
+        "lapses": {
+          "type": "integer",
+          "x-int": "i32",
+          "minimum": -2147483648,
+          "maximum": 2147483647
+        },
+        "lastRating": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u8",
+              "minimum": 0,
+              "maximum": 255
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "cardStateId",
+        "ankiCardId",
+        "deckId",
+        "front",
+        "extraFields",
+        "state",
+        "stability",
+        "difficulty",
+        "lastReviewMs",
+        "dueMs",
+        "reps",
+        "lapses",
+        "lastRating"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_anki::fsrs_review_service::FsrsMemoryCard"
+    },
+    "FsrsMemoryDistributions": {
+      "type": "object",
+      "properties": {
+        "cards": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "difficulty": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "x-int": "i64"
+          }
+        },
+        "stability": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "x-int": "i64"
+          }
+        },
+        "retrievability": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "x-int": "i64"
+          }
+        }
+      },
+      "required": [
+        "cards",
+        "difficulty",
+        "stability",
+        "retrievability"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_anki::fsrs_review_service::FsrsMemoryDistributions"
+    },
+    "FsrsMemoryOverview": {
+      "type": "object",
+      "properties": {
+        "generatedAtMs": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "desiredRetention": {
+          "type": "number",
+          "x-float": "f64"
+        },
+        "curve": {
+          "$ref": "#/$defs/FsrsForgettingCurve"
+        },
+        "recent": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/FsrsMemoryCard"
+          }
+        },
+        "memorizedCount": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "averageRetrievability": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "trueRetention": {
+          "$ref": "#/$defs/FsrsTrueRetention"
+        }
+      },
+      "required": [
+        "generatedAtMs",
+        "desiredRetention",
+        "curve",
+        "recent",
+        "memorizedCount",
+        "averageRetrievability",
+        "trueRetention"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_anki::fsrs_review_service::FsrsMemoryOverview"
+    },
+    "FsrsMemoryReview": {
+      "type": "object",
+      "properties": {
+        "curve": { "$ref": "#/$defs/FsrsForgettingCurve" },
+        "logId": {
+          "type": "string"
+        },
+        "reviewMs": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "rating": {
+          "type": "integer",
+          "x-int": "u8",
+          "minimum": 0,
+          "maximum": 255
+        },
+        "stateBefore": {
+          "type": "integer",
+          "x-int": "i32",
+          "minimum": -2147483648,
+          "maximum": 2147483647
+        },
+        "stateAfter": {
+          "type": "integer",
+          "x-int": "i32",
+          "minimum": -2147483648,
+          "maximum": 2147483647
+        },
+        "stabilityAfter": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "difficultyAfter": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "dueAfterMs": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "i64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "logId",
+        "reviewMs",
+        "rating",
+        "stateBefore",
+        "stateAfter",
+        "stabilityAfter",
+        "difficultyAfter",
+        "dueAfterMs"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_anki::fsrs_review_service::FsrsMemoryReview"
+    },
+    "FsrsModelEvaluation": {
+      "type": "object",
+      "properties": {
+        "logLoss": {
+          "type": "number",
+          "x-float": "f32"
+        },
+        "rmseBins": {
+          "type": "number",
+          "x-float": "f32"
+        }
+      },
+      "required": [
+        "logLoss",
+        "rmseBins"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_anki::fsrs_review_service::FsrsModelEvaluation"
+    },
+    "FsrsOptimizeResult": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string"
+        },
+        "cardCount": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "itemCount": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "reviewCount": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "current": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FsrsModelEvaluation"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "optimized": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FsrsModelEvaluation"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "params": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "x-float": "f32"
+          }
+        },
+        "recomputedCards": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        }
+      },
+      "required": [
+        "status",
+        "cardCount",
+        "itemCount",
+        "reviewCount",
+        "current",
+        "optimized",
+        "params",
+        "recomputedCards"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_anki::fsrs_review_service::FsrsOptimizeResult"
+    },
+    "FsrsPreviewInterval": {
+      "type": "object",
+      "properties": {
+        "rating": {
+          "type": "integer",
+          "x-int": "u8",
+          "minimum": 0,
+          "maximum": 255
+        },
+        "scheduledDays": {
+          "type": "number",
+          "x-float": "f64"
+        },
+        "dueMs": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "intervalMs": {
+          "type": "integer",
+          "x-int": "i64"
+        }
+      },
+      "required": [
+        "rating",
+        "scheduledDays",
+        "dueMs",
+        "intervalMs"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_anki::fsrs_review_service::FsrsPreviewInterval"
+    },
+    "FsrsPreviewResult": {
+      "type": "object",
+      "properties": {
+        "intervals": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/FsrsPreviewInterval"
+          }
+        }
+      },
+      "required": [
+        "intervals"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_anki::fsrs_review_service::FsrsPreviewResult"
+    },
+    "FsrsRateResult": {
+      "type": "object",
+      "properties": {
+        "cardState": {
+          "$ref": "#/$defs/FsrsCardState"
+        },
+        "logId": {
+          "type": "string"
+        },
+        "scheduledDays": {
+          "type": "number",
+          "x-float": "f64"
+        },
+        "dueMs": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "buriedSiblings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "cardState",
+        "logId",
+        "scheduledDays",
+        "dueMs",
+        "buriedSiblings"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_anki::fsrs_review_service::FsrsRateResult"
+    },
+    "FsrsRatingDistribution": {
+      "type": "object",
+      "properties": {
+        "again": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "hard": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "good": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "easy": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "total": {
+          "type": "integer",
+          "x-int": "i64"
+        }
+      },
+      "required": [
+        "again",
+        "hard",
+        "good",
+        "easy",
+        "total"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_anki::fsrs_review_service::FsrsRatingDistribution"
+    },
+    "FsrsResetResult": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "$ref": "#/$defs/FsrsCardState"
+        },
+        "clearedLogs": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        }
+      },
+      "required": [
+        "state",
+        "clearedLogs"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_anki::fsrs_review_service::FsrsResetResult"
+    },
+    "FsrsRetentionStats": {
+      "type": "object",
+      "properties": {
+        "youngReviews": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "youngPassed": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "matureReviews": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "maturePassed": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "overallPassRate": {
+          "type": "number",
+          "x-float": "f64"
+        },
+        "youngPassRate": {
+          "type": "number",
+          "x-float": "f64"
+        },
+        "maturePassRate": {
+          "type": "number",
+          "x-float": "f64"
+        }
+      },
+      "required": [
+        "youngReviews",
+        "youngPassed",
+        "matureReviews",
+        "maturePassed",
+        "overallPassRate",
+        "youngPassRate",
+        "maturePassRate"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_anki::fsrs_review_service::FsrsRetentionStats"
+    },
+    "FsrsReviewStatistics": {
+      "type": "object",
+      "properties": {
+        "model": { "const": "fsrs-7" },
+        "scheduledForecast": { "type": "array", "items": { "$ref": "#/$defs/FsrsDueForecastDay" } },
+        "generatedAtMs": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "dayStartMs": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "days": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "dailyReviews": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/FsrsDailyReviewStat"
+          }
+        },
+        "ratingDistribution": {
+          "$ref": "#/$defs/FsrsRatingDistribution"
+        },
+        "stateBreakdown": {
+          "$ref": "#/$defs/FsrsStateBreakdown"
+        },
+        "retention": {
+          "$ref": "#/$defs/FsrsRetentionStats"
+        },
+        "dailyLimits": {
+          "$ref": "#/$defs/FsrsDailyLimitsStatus"
+        },
+        "dueForecast": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/FsrsDueForecastDay"
+          }
+        },
+        "trueRetention": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/FsrsTrueRetentionRow"
+          }
+        },
+        "memoryDistributions": {
+          "$ref": "#/$defs/FsrsMemoryDistributions"
+        }
+      },
+      "required": [
+        "generatedAtMs",
+        "dayStartMs",
+        "days",
+        "dailyReviews",
+        "ratingDistribution",
+        "stateBreakdown",
+        "retention",
+        "dailyLimits",
+        "dueForecast",
+        "trueRetention",
+        "memoryDistributions"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_anki::fsrs_review_service::FsrsReviewStatistics"
+    },
+    "FsrsSchedulerConfig": {
+      "type": "object",
+      "properties": {
+        "model": { "const": "fsrs-7" },
+        "newPerDay": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "reviewsPerDay": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "learnAheadMinutes": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "desiredRetention": {
+          "type": "number",
+          "x-float": "f64"
+        },
+        "leechThreshold": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "leechAction": {
+          "type": "string"
+        },
+        "enableFuzz": {
+          "type": "boolean"
+        },
+        "learningSteps": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "x-float": "f64"
+          }
+        },
+        "relearningSteps": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "x-float": "f64"
+          }
+        },
+        "maximumInterval": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "dayRolloverHour": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "fsrsParams": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "x-float": "f32"
+          }
+        },
+        "fsrsOptimizedAtMs": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "i64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "fsrsOptimizedReviewCount": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "buryNewSiblings": {
+          "type": "boolean"
+        },
+        "buryReviewSiblings": {
+          "type": "boolean"
+        },
+        "reviewOrder": {
+          "type": "string"
+        },
+        "newReviewOrder": {
+          "type": "string"
+        },
+        "maxAnswerSeconds": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        }
+      },
+      "required": [
+        "newPerDay",
+        "reviewsPerDay",
+        "learnAheadMinutes",
+        "desiredRetention",
+        "leechThreshold",
+        "leechAction",
+        "enableFuzz",
+        "learningSteps",
+        "relearningSteps",
+        "maximumInterval",
+        "dayRolloverHour",
+        "fsrsParams",
+        "fsrsOptimizedAtMs",
+        "fsrsOptimizedReviewCount",
+        "buryNewSiblings",
+        "buryReviewSiblings",
+        "reviewOrder",
+        "newReviewOrder",
+        "maxAnswerSeconds"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_anki::fsrs_review_service::FsrsSchedulerConfig"
+    },
+    "FsrsSchedulerConfigUpdate": {
+      "type": "object",
+      "properties": {
+        "learnAheadMinutes": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "newPerDay": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "reviewsPerDay": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "desiredRetention": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "leechThreshold": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "leechAction": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "enableFuzz": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "learningSteps": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "number",
+                "x-float": "f64"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "relearningSteps": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "number",
+                "x-float": "f64"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "maximumInterval": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "dayRolloverHour": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "fsrsParams": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "number",
+                "x-float": "f32"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "buryNewSiblings": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "buryReviewSiblings": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "reviewOrder": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "newReviewOrder": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "maxAnswerSeconds": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "x-rust": "dstu_anki::fsrs_review_service::FsrsSchedulerConfigUpdate"
+    },
+    "FsrsStateBreakdown": {
+      "type": "object",
+      "properties": {
+        "newCount": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "learning": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "review": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "relearning": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "suspended": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "buried": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "leech": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "total": {
+          "type": "integer",
+          "x-int": "i64"
+        }
+      },
+      "required": [
+        "newCount",
+        "learning",
+        "review",
+        "relearning",
+        "suspended",
+        "buried",
+        "leech",
+        "total"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_anki::fsrs_review_service::FsrsStateBreakdown"
+    },
+    "FsrsStats": {
+      "type": "object",
+      "properties": {
+        "dueReview": { "type": "integer", "x-int": "i64" },
+        "dueLearning": { "type": "integer", "x-int": "i64" },
+        "dueNew": { "type": "integer", "x-int": "i64" },
+        "total": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "due": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "newCount": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "learning": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "review": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "relearning": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "suspended": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "reviewsToday": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "buried": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "leech": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "newRemainingToday": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "reviewsRemainingToday": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "backlog": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "backlogReview": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "backlogNew": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "learningWaiting": {
+          "type": "integer",
+          "x-int": "i64"
+        }
+      },
+      "required": [
+        "total",
+        "due",
+        "newCount",
+        "learning",
+        "review",
+        "relearning",
+        "suspended",
+        "reviewsToday",
+        "buried",
+        "leech",
+        "newRemainingToday",
+        "reviewsRemainingToday",
+        "backlog",
+        "backlogReview",
+        "backlogNew",
+        "learningWaiting"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_anki::fsrs_review_service::FsrsStats"
+    },
+    "FsrsSuspendResult": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "$ref": "#/$defs/FsrsCardState"
+        },
+        "changed": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "state",
+        "changed"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_anki::fsrs_review_service::FsrsSuspendResult"
+    },
+    "FsrsTrueRetention": {
+      "type": "object",
+      "properties": {
+        "windowDays": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "reviews": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "passed": {
+          "type": "integer",
+          "x-int": "i64"
+        }
+      },
+      "required": [
+        "windowDays",
+        "reviews",
+        "passed"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_anki::fsrs_review_service::FsrsTrueRetention"
+    },
+    "FsrsTrueRetentionRow": {
+      "type": "object",
+      "properties": {
+        "period": {
+          "type": "string"
+        },
+        "youngReviews": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "youngPassed": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "matureReviews": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "maturePassed": {
+          "type": "integer",
+          "x-int": "i64"
+        }
+      },
+      "required": [
+        "period",
+        "youngReviews",
+        "youngPassed",
+        "matureReviews",
+        "maturePassed"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_anki::fsrs_review_service::FsrsTrueRetentionRow"
+    },
+    "FsrsUndoResult": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "$ref": "#/$defs/FsrsCardState"
+        },
+        "changed": {
+          "type": "boolean"
+        },
+        "undoneLogId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "state",
+        "changed",
+        "undoneLogId"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_anki::fsrs_review_service::FsrsUndoResult"
+    },
+    "GradingMode": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "system_prompt": {
+          "type": "string"
+        },
+        "score_dimensions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ScoreDimension"
+          }
+        },
+        "total_max_score": {
+          "type": "number",
+          "x-float": "f32"
+        },
+        "is_builtin": {
+          "type": "boolean"
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "updated_at": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "description",
+        "system_prompt",
+        "score_dimensions",
+        "total_max_score",
+        "is_builtin",
+        "created_at",
+        "updated_at"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_tutor::essay_grading::types::GradingMode"
+    },
+    "GradingRequest": {
+      "type": "object",
+      "properties": {
+        "session_id": {
+          "type": "string"
+        },
+        "stream_session_id": {
+          "type": "string"
+        },
+        "round_number": {
+          "type": "integer",
+          "x-int": "i32",
+          "minimum": -2147483648,
+          "maximum": 2147483647
+        },
+        "input_text": {
+          "type": "string"
+        },
+        "topic": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "mode_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "model_config_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "essay_type": {
+          "type": "string"
+        },
+        "grade_level": {
+          "type": "string"
+        },
+        "custom_prompt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "previous_result": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "previous_input": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "image_base64_list": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "topic_image_base64_list": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "response_language": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "session_id",
+        "stream_session_id",
+        "round_number",
+        "input_text",
+        "essay_type",
+        "grade_level"
+      ],
+      "x-rust": "dstu_tutor::essay_grading::types::GradingRequest"
+    },
+    "GradingResponse": {
+      "type": "object",
+      "properties": {
+        "round_id": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "round_number": {
+          "type": "integer",
+          "x-int": "i32",
+          "minimum": -2147483648,
+          "maximum": 2147483647
+        },
+        "grading_result": {
+          "type": "string"
+        },
+        "overall_score": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f32"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "dimension_scores_json": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "created_at": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "round_id",
+        "session_id",
+        "round_number",
+        "grading_result",
+        "overall_score",
+        "dimension_scores_json",
+        "created_at"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_tutor::essay_grading::types::GradingResponse"
+    },
+    "GradingRoundResponse": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "round_number": {
+          "type": "integer",
+          "x-int": "i32",
+          "minimum": -2147483648,
+          "maximum": 2147483647
+        },
+        "input_text": {
+          "type": "string"
+        },
+        "grading_result": {
+          "type": "string"
+        },
+        "overall_score": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f32"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "dimension_scores_json": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "created_at": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "session_id",
+        "round_number",
+        "input_text",
+        "grading_result",
+        "overall_score",
+        "dimension_scores_json",
+        "created_at"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_tutor::essay_grading::types::GradingRoundResponse"
+    },
+    "InsightCard": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "ownership": {
+          "$ref": "#/$defs/InsightOwnership"
+        },
+        "verification_state": {
+          "$ref": "#/$defs/VerificationState"
+        },
+        "status": {
+          "$ref": "#/$defs/InsightStatus"
+        },
+        "recall_count": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "shown_count": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "useful_count": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "last_recalled_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "updated_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "current_revision": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/InsightRevision"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "ownership",
+        "verification_state",
+        "status",
+        "recall_count",
+        "shown_count",
+        "useful_count",
+        "last_recalled_at",
+        "created_at",
+        "updated_at",
+        "current_revision"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_research::insight::types::InsightCard"
+    },
+    "InsightCorrectInput": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "situation": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "stuck_point": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "turning_point": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "rule": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "validity_conditions": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "edit_note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "x-rust": "dstu_research::insight::types::InsightCorrectInput"
+    },
+    "InsightDraftInput": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "situation": {
+          "type": "string"
+        },
+        "stuck_point": {
+          "type": "string"
+        },
+        "turning_point": {
+          "type": "string"
+        },
+        "rule": {
+          "type": "string"
+        },
+        "validity_conditions": {
+          "type": "string"
+        },
+        "ownership": {
+          "$ref": "#/$defs/InsightOwnership__De"
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/InsightEvidenceInput"
+          }
+        }
+      },
+      "required": [
+        "title",
+        "situation",
+        "stuck_point",
+        "turning_point",
+        "rule",
+        "validity_conditions",
+        "ownership",
+        "evidence"
+      ],
+      "x-rust": "dstu_research::insight::types::InsightDraftInput"
+    },
+    "InsightEvent": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "insight_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "message_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "event_type": {
+          "$ref": "#/$defs/InsightEventType"
+        },
+        "help_level": {
+          "type": "string"
+        },
+        "quality_signal": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "need_signal": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "benefit_signal": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "payload_json": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "created_at": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "insight_id",
+        "session_id",
+        "message_id",
+        "event_type",
+        "help_level",
+        "quality_signal",
+        "need_signal",
+        "benefit_signal",
+        "payload_json",
+        "created_at"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_research::insight::types::InsightEvent"
+    },
+    "InsightEventType": {
+      "type": "string",
+      "enum": [
+        "recall_candidate",
+        "shown_existence",
+        "recall_attempt",
+        "shown_hint",
+        "shown_full",
+        "skipped",
+        "direct_answer",
+        "silence_no_match",
+        "silence_low_confidence",
+        "silence_budget",
+        "silence_user_disabled",
+        "feedback_useful",
+        "feedback_not_useful",
+        "feedback_not_applicable",
+        "confirmed",
+        "corrected"
+      ],
+      "x-rust": "dstu_research::insight::types::InsightEventType"
+    },
+    "InsightEvidence": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "insight_id": {
+          "type": "string"
+        },
+        "revision_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "kind": {
+          "$ref": "#/$defs/EvidenceKind"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "message_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "variant_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "block_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "text_start": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "i64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "text_end": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "i64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "speaker": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "resource_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "quote_snapshot": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "insight_id",
+        "revision_id",
+        "kind",
+        "session_id",
+        "message_id",
+        "variant_id",
+        "block_id",
+        "text_start",
+        "text_end",
+        "speaker",
+        "resource_id",
+        "quote_snapshot",
+        "created_at"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_research::insight::types::InsightEvidence"
+    },
+    "InsightEvidenceInput": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/EvidenceKind__De"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "message_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "variant_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "block_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "text_start": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "i64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "text_end": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "i64"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "speaker": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "resource_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "quote_snapshot": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "quote_snapshot"
+      ],
+      "x-rust": "dstu_research::insight::types::InsightEvidenceInput"
+    },
+    "InsightOwnership": {
+      "type": "string",
+      "enum": [
+        "self_reported",
+        "guided",
+        "ai_draft"
+      ],
+      "x-rust": "dstu_research::insight::types::InsightOwnership"
+    },
+    "InsightOwnership__De": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "self_reported",
+            "guided",
+            "ai_draft"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "self_reported": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "self_reported"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "guided": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "guided"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "ai_draft": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "ai_draft"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "x-also-accepts": "externally tagged map form {\"<Variant>\": null}",
+      "x-rust": "dstu_research::insight::types::InsightOwnership"
+    },
+    "InsightRelation": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "from_id": {
+          "type": "string"
+        },
+        "to_id": {
+          "type": "string"
+        },
+        "relation_type": {
+          "$ref": "#/$defs/RelationType"
+        },
+        "scope": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "evidence": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "status": {
+          "type": "string"
+        },
+        "created_by": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "from_id",
+        "to_id",
+        "relation_type",
+        "scope",
+        "evidence",
+        "status",
+        "created_by",
+        "created_at"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_research::insight::types::InsightRelation"
+    },
+    "InsightRevision": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "insight_id": {
+          "type": "string"
+        },
+        "resource_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "situation": {
+          "type": "string"
+        },
+        "stuck_point": {
+          "type": "string"
+        },
+        "turning_point": {
+          "type": "string"
+        },
+        "rule": {
+          "type": "string"
+        },
+        "validity_conditions": {
+          "type": "string"
+        },
+        "hypothetical_queries": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "edit_note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "created_at": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "insight_id",
+        "resource_id",
+        "situation",
+        "stuck_point",
+        "turning_point",
+        "rule",
+        "validity_conditions",
+        "hypothetical_queries",
+        "edit_note",
+        "created_at"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_research::insight::types::InsightRevision"
+    },
+    "InsightStatus": {
+      "type": "string",
+      "enum": [
+        "active",
+        "cold",
+        "archived"
+      ],
+      "x-rust": "dstu_research::insight::types::InsightStatus"
+    },
+    "MasteryOverviewSummary": {
+      "type": "object",
+      "properties": {
+        "conceptCount": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "weakCount": {
+          "type": "integer",
+          "x-int": "i64"
+        },
+        "avgScore": {
+          "type": "number",
+          "x-float": "f64"
+        },
+        "weakest": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/MasteryState"
+          }
+        },
+        "todayPriorityReview": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/MasteryPriorityReviewItem"
+          }
+        }
+      },
+      "required": [
+        "conceptCount",
+        "weakCount",
+        "avgScore",
+        "weakest",
+        "todayPriorityReview"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_learning::mastery::types::MasteryOverviewSummary"
+    },
+    "MasteryPriorityReviewItem": {
+      "type": "object",
+      "properties": {
+        "conceptKey": {
+          "type": "string"
+        },
+        "score": {
+          "type": "number",
+          "x-float": "f64"
+        },
+        "total": {
+          "type": "integer",
+          "x-int": "i32",
+          "minimum": -2147483648,
+          "maximum": 2147483647
+        },
+        "wrongCount": {
+          "type": "integer",
+          "x-int": "i32",
+          "minimum": -2147483648,
+          "maximum": 2147483647
+        },
+        "priority": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "reason": {
+          "type": "string"
+        },
+        "dueCardCount": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        }
+      },
+      "required": [
+        "conceptKey",
+        "score",
+        "total",
+        "wrongCount",
+        "priority",
+        "reason"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_learning::mastery::types::MasteryPriorityReviewItem"
+    },
+    "MasteryState": {
+      "type": "object",
+      "properties": {
+        "conceptKey": {
+          "type": "string"
+        },
+        "score": {
+          "type": "number",
+          "x-float": "f64"
+        },
+        "streak": {
+          "type": "integer",
+          "x-int": "i32",
+          "minimum": -2147483648,
+          "maximum": 2147483647
+        },
+        "total": {
+          "type": "integer",
+          "x-int": "i32",
+          "minimum": -2147483648,
+          "maximum": 2147483647
+        },
+        "wrongCount": {
+          "type": "integer",
+          "x-int": "i32",
+          "minimum": -2147483648,
+          "maximum": 2147483647
+        },
+        "lastSignalAt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "conceptKey",
+        "score",
+        "streak",
+        "total",
+        "wrongCount",
+        "lastSignalAt"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_learning::mastery::types::MasteryState"
+    },
+    "ModelInfo": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "is_default": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "model",
+        "is_default"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_tutor::essay_grading::ModelInfo"
+    },
+    "ProcessReviewResult": {
+      "type": "object",
+      "properties": {
+        "plan": {
+          "$ref": "#/$defs/ReviewPlan"
+        },
+        "passed": {
+          "type": "boolean"
+        },
+        "new_interval": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "next_review_date": {
+          "type": "string"
+        },
+        "history": {
+          "$ref": "#/$defs/ReviewHistory"
+        }
+      },
+      "required": [
+        "plan",
+        "passed",
+        "new_interval",
+        "next_review_date",
+        "history"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_qbank::review_plan_service::ProcessReviewResult"
+    },
+    "RelationType": {
+      "type": "string",
+      "enum": [
+        "same_method",
+        "same_trap",
+        "counterexample",
+        "abstract_of",
+        "supersede",
+        "contradict",
+        "example_of"
+      ],
+      "x-rust": "dstu_research::insight::types::RelationType"
+    },
+    "ReviewHistory": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "plan_id": {
+          "type": "string"
+        },
+        "question_id": {
+          "type": "string"
+        },
+        "quality": {
+          "type": "integer",
+          "x-int": "u8",
+          "minimum": 0,
+          "maximum": 255
+        },
+        "passed": {
+          "type": "boolean"
+        },
+        "ease_factor_before": {
+          "type": "number",
+          "x-float": "f64"
+        },
+        "ease_factor_after": {
+          "type": "number",
+          "x-float": "f64"
+        },
+        "interval_before": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "interval_after": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "repetitions_before": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "repetitions_after": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "reviewed_at": {
+          "type": "string"
+        },
+        "user_answer": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "time_spent_seconds": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "u32",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "id",
+        "plan_id",
+        "question_id",
+        "quality",
+        "passed",
+        "ease_factor_before",
+        "ease_factor_after",
+        "interval_before",
+        "interval_after",
+        "repetitions_before",
+        "repetitions_after",
+        "reviewed_at",
+        "user_answer",
+        "time_spent_seconds"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_vfs::vfs::repos::review_plan_repo::ReviewHistory"
+    },
+    "ReviewPlan": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "question_id": {
+          "type": "string"
+        },
+        "exam_id": {
+          "type": "string"
+        },
+        "ease_factor": {
+          "type": "number",
+          "x-float": "f64"
+        },
+        "interval_days": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "repetitions": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "next_review_date": {
+          "type": "string"
+        },
+        "last_review_date": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "status": {
+          "$ref": "#/$defs/ReviewPlanStatus"
+        },
+        "total_reviews": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "total_correct": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "consecutive_failures": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "is_difficult": {
+          "type": "boolean"
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "updated_at": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "question_id",
+        "exam_id",
+        "ease_factor",
+        "interval_days",
+        "repetitions",
+        "next_review_date",
+        "last_review_date",
+        "status",
+        "total_reviews",
+        "total_correct",
+        "consecutive_failures",
+        "is_difficult",
+        "created_at",
+        "updated_at"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_vfs::vfs::repos::review_plan_repo::ReviewPlan"
+    },
+    "ReviewPlanStatus": {
+      "type": "string",
+      "enum": [
+        "new",
+        "learning",
+        "reviewing",
+        "graduated",
+        "suspended"
+      ],
+      "x-rust": "dstu_vfs::vfs::repos::review_plan_repo::ReviewPlanStatus"
+    },
+    "ReviewPlanStatus__De": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "new",
+            "learning",
+            "reviewing",
+            "graduated",
+            "suspended"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "new": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "new"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "learning": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "learning"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "reviewing": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "reviewing"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "graduated": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "graduated"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "suspended": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "suspended"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "x-also-accepts": "externally tagged map form {\"<Variant>\": null}",
+      "x-rust": "dstu_vfs::vfs::repos::review_plan_repo::ReviewPlanStatus"
+    },
+    "ReviewStats": {
+      "type": "object",
+      "properties": {
+        "exam_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "total_plans": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "new_count": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "learning_count": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "reviewing_count": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "graduated_count": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "suspended_count": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "due_today": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "overdue_count": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "difficult_count": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "total_reviews": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "total_correct": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "avg_correct_rate": {
+          "type": "number",
+          "x-float": "f64"
+        },
+        "avg_ease_factor": {
+          "type": "number",
+          "x-float": "f64"
+        },
+        "updated_at": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "exam_id",
+        "total_plans",
+        "new_count",
+        "learning_count",
+        "reviewing_count",
+        "graduated_count",
+        "suspended_count",
+        "due_today",
+        "overdue_count",
+        "difficult_count",
+        "total_reviews",
+        "total_correct",
+        "avg_correct_rate",
+        "avg_ease_factor",
+        "updated_at"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_vfs::vfs::repos::review_plan_repo::ReviewStats"
+    },
+    "SaveBuiltinOverrideInput": {
+      "type": "object",
+      "properties": {
+        "builtin_id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "system_prompt": {
+          "type": "string"
+        },
+        "score_dimensions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ScoreDimension__De"
+          }
+        },
+        "total_max_score": {
+          "type": "number",
+          "x-float": "f32"
+        }
+      },
+      "required": [
+        "builtin_id",
+        "name",
+        "description",
+        "system_prompt",
+        "score_dimensions",
+        "total_max_score"
+      ],
+      "x-rust": "dstu_tutor::essay_grading::custom_modes::SaveBuiltinOverrideInput"
+    },
+    "ScoreDimension": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "max_score": {
+          "type": "number",
+          "x-float": "f32"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "name",
+        "max_score",
+        "description"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_tutor::essay_grading::types::ScoreDimension"
+    },
+    "ScoreDimension__De": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "max_score": {
+          "type": "number",
+          "x-float": "f32"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "name",
+        "max_score"
+      ],
+      "x-rust": "dstu_tutor::essay_grading::types::ScoreDimension"
+    },
+    "StudyTimeDay": {
+      "type": "object",
+      "properties": {
+        "date": {
+          "type": "string"
+        },
+        "seconds": {
+          "type": "integer",
+          "x-int": "i64"
+        }
+      },
+      "required": [
+        "date",
+        "seconds"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_learning::study_loop::study_time::StudyTimeDay"
+    },
+    "UpdateModeInput": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "system_prompt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "score_dimensions": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/ScoreDimension__De"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "total_max_score": {
+          "anyOf": [
+            {
+              "type": "number",
+              "x-float": "f32"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "x-rust": "dstu_tutor::essay_grading::custom_modes::UpdateModeInput"
+    },
+    "VerificationState": {
+      "type": "string",
+      "enum": [
+        "unverified",
+        "verified",
+        "contradicted"
+      ],
+      "x-rust": "dstu_research::insight::types::VerificationState"
+    },
+    "VfsEssaySession": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "essay_type": {
+          "type": "string",
+          "x-serde-with": "serialize_option_string_as_string: Option<String> serialized as string (None → \"\")"
+        },
+        "grade_level": {
+          "type": "string",
+          "x-serde-with": "serialize_option_string_as_string: Option<String> serialized as string (None → \"\")"
+        },
+        "custom_prompt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "total_rounds": {
+          "type": "integer",
+          "x-int": "i32",
+          "minimum": -2147483648,
+          "maximum": 2147483647
+        },
+        "latest_score": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "x-int": "i32",
+              "minimum": -2147483648,
+              "maximum": 2147483647
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "is_favorite": {
+          "type": "boolean"
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "updated_at": {
+          "type": "string"
+        },
+        "deleted_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "essay_type",
+        "grade_level",
+        "custom_prompt",
+        "total_rounds",
+        "is_favorite",
+        "created_at",
+        "updated_at"
+      ],
+      "additionalProperties": false,
+      "x-rust": "dstu_vfs::vfs::types::VfsEssaySession"
+    },
+    "VfsUpdateEssaySessionParams": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "is_favorite": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "essay_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "grade_level": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        },
+        "custom_prompt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "null"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "x-rust": "dstu_vfs::vfs::types::VfsUpdateEssaySessionParams"
+    }
+  }
+}

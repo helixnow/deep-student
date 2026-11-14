@@ -271,8 +271,8 @@ export const PdfReader: React.FC = () => {
       />
 
       {error && (
-        <div className="pdf-reader-status ui-drop-in" role="alert">
-          <WarningCircle size={20} className="pdf-reader-status__icon" aria-hidden />
+        <div className="pdf-reader-status ui-drop-in border-b border-border/35 bg-destructive/[0.04] border-l-2 border-l-destructive" role="alert">
+          <WarningCircle size={18} className="pdf-reader-status__icon" aria-hidden />
           <div className="pdf-reader-status__body">
             <p className="pdf-reader-status__title">{error}</p>
             {errorHint && <p className="pdf-reader-status__hint">{errorHint}</p>}

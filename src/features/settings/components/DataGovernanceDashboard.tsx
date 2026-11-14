@@ -10,6 +10,7 @@
  * - AuditTab: 审计日志标签页
  */
 
+import { useRefreshOnReturn } from '@/hooks/useRefreshOnReturn';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -50,6 +51,7 @@ import {
 import { listen } from '@tauri-apps/api/event';
 import { MediaCacheSection } from './MediaCacheSection';
 import { LanceOptimizationPanel } from './IndexMaintenanceSection';
+import { GroupTitle } from './settingsTabPrimitives';
 import { useShallow } from 'zustand/react/shallow';
 import { useSystemStatusStore } from '@/stores/systemStatusStore';
 import { createFailedSyncProgress, useGlobalSyncStore } from '@/stores/syncStatusStore';
@@ -313,17 +315,14 @@ export const DebugTab: React.FC = () => {
   }, [slotDTestRunning, t]);
 
   return (
-    <div className="space-y-6">
-      <div className="space-y-1">
-        <h3 className="text-base font-medium text-foreground">
-          {t('data:governance.debug_panel_title')}
-        </h3>
-        <p className="text-sm text-muted-foreground">
-          {t('data:governance.debug_panel_desc')}
-        </p>
-      </div>
-
-      <div className="rounded-[var(--radius-shell-panel)] border border-warning/25 bg-warning/5 p-4">
+    <div className="space-y-8">
+      <section className="min-w-0">
+        <GroupTitle
+          title={t('data:governance.debug_panel_title')}
+          description={t('data:governance.debug_panel_desc')}
+        />
+        <div className="rounded-2xl bg-muted p-4 space-y-4">
+          <div className="rounded-[var(--radius-shell-panel)] border border-warning/25 bg-warning/5 p-4">
         <div className="flex items-start gap-3">
           <ShieldCheck className="mt-0.5 shrink-0 text-warning" size={20} />
           <div className="min-w-0 flex-1">
@@ -523,17 +522,16 @@ export const DebugTab: React.FC = () => {
           <li>{t('data:governance.debug_toast_behavior_flow')}</li>
         </ul>
       </div>
+        </div>
+      </section>
 
       {/* 清空所有应用数据（危险操作） */}
-      <div className="border-t border-border/40 pt-6">
-        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 space-y-3">
-          <div className="flex items-center gap-2 text-destructive font-medium">
-            <Trash size={16} />
-            {t('data:governance.danger_zone')}
-          </div>
-          <p className="text-sm text-muted-foreground">
-            {t('data:governance.purge_all_data_desc')}
-          </p>
+      <section className="min-w-0">
+        <GroupTitle
+          title={t('data:governance.danger_zone')}
+          description={t('data:governance.purge_all_data_desc')}
+        />
+        <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-4 space-y-3">
           <DsButton
             variant="danger"
             size="sm"
@@ -561,7 +559,7 @@ export const DebugTab: React.FC = () => {
           loading={isPurgeRunning}
           disabled={isPurgeRunning}
         />
-      </div>
+      </section>
     </div>
   );
 };
@@ -1064,13 +1062,14 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
   // 加载审计日志
   const loadAuditLogs = useCallback(async (
     operationType?: AuditOperationType,
-    status?: AuditStatus
+    status?: AuditStatus,
+    limit = AUDIT_PAGE_SIZE,
   ) => {
     const generation = ++auditRequestGeneration.current;
     auditFilterRef.current = { operationType, status };
     startTabLoading('audit');
     try {
-      const result = await DataGovernanceApi.getAuditLogs(operationType, status, AUDIT_PAGE_SIZE, 0);
+      const result = await DataGovernanceApi.getAuditLogs(operationType, status, limit, 0);
       const logs = Array.isArray(result) ? result : Array.isArray(result?.logs) ? result.logs : [];
       if (auditRequestGeneration.current === generation) {
         setAuditLogs(logs);
@@ -1078,13 +1077,20 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
         setAuditLoadError(null);
       }
     } catch (error: unknown) {
-      console.error('加载审计日志失败:', error);
-      setAuditLoadError(getErrorMessage(error));
-      showGlobalNotification('error', getErrorMessage(error));
+      if (auditRequestGeneration.current === generation) {
+        console.error('加载审计日志失败:', error);
+        setAuditLoadError(getErrorMessage(error));
+        showGlobalNotification('error', getErrorMessage(error));
+      }
     } finally {
       stopTabLoading('audit');
     }
   }, [startTabLoading, stopTabLoading]);
+
+  const reloadAuditLogs = useCallback(() => {
+    const { operationType, status } = auditFilterRef.current;
+    return loadAuditLogs(operationType, status, Math.max(AUDIT_PAGE_SIZE, auditLogs.length));
+  }, [auditLogs.length, loadAuditLogs]);
 
   // 加载更多审计日志（追加）
   const loadMoreAuditLogs = useCallback(async () => {
@@ -1677,8 +1683,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
     };
   }, []);
 
-  // 根据 Tab 加载数据
-  useEffect(() => {
+  const loadActiveTab = useCallback(() => {
     switch (activeTab) {
       case 'overview':
         void loadOverviewData();
@@ -1702,6 +1707,10 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
     loadSyncStatus,
     loadAuditLogs,
   ]);
+
+  useRefreshOnReturn(() => activeTab === 'audit' ? reloadAuditLogs() : loadActiveTab());
+
+  useEffect(loadActiveTab, [loadActiveTab]);
 
   // 监听可恢复任务事件（应用启动时发送）
   useEffect(() => {
@@ -1882,12 +1891,12 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
           migrationStatus={migrationStatus}
           healthCheck={healthCheck}
           loading={overviewLoading}
-          onRefresh={loadOverviewData}
           onRunHealthCheck={runHealthCheck}
           lastAutoVerifyResult={lastAutoVerifyResult}
           isVerifying={isAutoVerifying}
           onVerifyLatestBackup={verifyLatestBackup}
           onOpenArchive={() => setActiveTab('archive')}
+          onOpenSync={() => setActiveTab('sync')}
         />
       </TabsContent>
 
@@ -1903,7 +1912,6 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
         <BackupTab
           backups={backups}
           loading={backupLoading}
-          onRefresh={loadBackups}
           onBackupAndExportZip={backupAndExportZip}
           onDeleteBackup={deleteBackup}
           onVerifyBackup={verifyBackup}
@@ -1987,7 +1995,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
           logs={auditLogs}
           loading={auditLoading}
           loadError={auditLoadError}
-          onRefresh={() => loadAuditLogs()}
+          onRefresh={reloadAuditLogs}
           onFilterChange={loadAuditLogs}
           total={auditTotal}
           onLoadMore={loadMoreAuditLogs}
@@ -1998,7 +2006,6 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       <TabsContent value="cache">
         <div className="space-y-8">
           <MediaCacheSection />
-          <div className="border-t border-border/40" />
           <LanceOptimizationPanel />
         </div>
       </TabsContent>

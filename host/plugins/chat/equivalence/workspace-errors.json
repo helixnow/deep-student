@@ -1,0 +1,342 @@
+{
+  "domain": "chat",
+  "commands": [
+    "workspace_create",
+    "workspace_list_agents",
+    "workspace_list_messages",
+    "workspace_send_message"
+  ],
+  "scenarios": [
+    {
+      "id": "chat.workspace.member_routing_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "workspace_create",
+          "args": {
+            "sessionId": "sess_wp226_ws_creator",
+            "request": {
+              "name": "错误分支"
+            }
+          }
+        },
+        {
+          "cmd": "workspace_create_agent",
+          "args": {
+            "request": {
+              "workspace_id": "${0.workspace_id}",
+              "requester_session_id": "sess_wp226_ws_creator",
+              "role": "coordinator",
+              "initial_task": null
+            }
+          }
+        },
+        {
+          "cmd": "workspace_list_agents",
+          "args": {
+            "sessionId": "sess_wp226_ws_creator",
+            "workspaceId": "${0.workspace_id}"
+          }
+        },
+        {
+          "cmd": "workspace_list_agents",
+          "args": {
+            "sessionId": "${1.agent_session_id}",
+            "workspaceId": "${0.workspace_id}"
+          }
+        },
+        {
+          "cmd": "workspace_list_agents",
+          "args": {
+            "sessionId": "sess_wp226_outsider",
+            "workspaceId": "${0.workspace_id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "workspace_list_agents",
+          "args": {
+            "sessionId": "sess_wp226_ws_creator",
+            "workspaceId": "ws_wp226_missing"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "workspace_list_agents",
+          "args": {
+            "sessionId": "sess_wp226_ws_creator",
+            "workspaceId": "../evil"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "workspace_list_agents",
+          "args": {
+            "sessionId": "sess_wp226_ws_creator",
+            "workspaceId": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "workspace_list_agents",
+          "args": {
+            "sessionId": "sess_wp226_ws_creator"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "workspace_list_messages",
+          "args": {
+            "sessionId": "sess_wp226_ws_creator",
+            "workspaceId": "${0.workspace_id}",
+            "limit": 0
+          }
+        },
+        {
+          "cmd": "workspace_send_message",
+          "args": {
+            "sessionId": "sess_wp226_ws_creator",
+            "request": {
+              "workspace_id": "${0.workspace_id}",
+              "content": "定向任务",
+              "target_session_id": "${1.agent_session_id}",
+              "message_type": "task"
+            }
+          }
+        },
+        {
+          "cmd": "workspace_send_message",
+          "args": {
+            "sessionId": "sess_wp226_ws_creator",
+            "request": {
+              "workspace_id": "${0.workspace_id}",
+              "content": "广播",
+              "message_type": "broadcast"
+            }
+          }
+        },
+        {
+          "cmd": "workspace_send_message",
+          "args": {
+            "sessionId": "sess_wp226_ws_creator",
+            "request": {
+              "workspace_id": "${0.workspace_id}",
+              "content": "未知类型且无目标",
+              "message_type": "bogus"
+            }
+          }
+        },
+        {
+          "cmd": "workspace_send_message",
+          "args": {
+            "sessionId": "${1.agent_session_id}",
+            "request": {
+              "workspace_id": "${0.workspace_id}",
+              "content": "进度",
+              "target_session_id": null,
+              "message_type": null
+            }
+          }
+        },
+        {
+          "cmd": "workspace_list_messages",
+          "args": {
+            "sessionId": "sess_wp226_ws_creator",
+            "workspaceId": "${0.workspace_id}"
+          }
+        },
+        {
+          "cmd": "workspace_list_messages",
+          "args": {
+            "sessionId": "${1.agent_session_id}",
+            "workspaceId": "${0.workspace_id}",
+            "limit": 1
+          }
+        },
+        {
+          "cmd": "workspace_list_messages",
+          "args": {
+            "sessionId": "sess_wp226_ws_creator",
+            "workspaceId": "${0.workspace_id}",
+            "limit": null
+          }
+        },
+        {
+          "cmd": "workspace_send_message",
+          "args": {
+            "sessionId": "sess_wp226_ws_creator",
+            "request": {
+              "workspace_id": "${0.workspace_id}",
+              "content": "带目标广播",
+              "target_session_id": "${1.agent_session_id}",
+              "message_type": "broadcast"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "workspace_send_message",
+          "args": {
+            "sessionId": "sess_wp226_outsider",
+            "request": {
+              "workspace_id": "${0.workspace_id}",
+              "content": "外人"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "workspace_send_message",
+          "args": {
+            "sessionId": "sess_wp226_ws_creator",
+            "request": {
+              "workspace_id": "${0.workspace_id}",
+              "content": "无此目标",
+              "target_session_id": "sess_wp226_no_agent",
+              "message_type": "query"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "workspace_send_message",
+          "args": {
+            "sessionId": "sess_wp226_ws_creator",
+            "request": {
+              "workspace_id": "ws_wp226_missing",
+              "content": "无工作区"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "workspace_send_message",
+          "args": {
+            "sessionId": "sess_wp226_ws_creator",
+            "request": {
+              "workspace_id": "bad/id",
+              "content": "非法ID"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "workspace_send_message",
+          "args": {
+            "sessionId": "sess_wp226_outsider",
+            "request": {
+              "workspace_id": "${0.workspace_id}",
+              "content": "x",
+              "target_session_id": "${1.agent_session_id}",
+              "message_type": "broadcast"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "workspace_send_message",
+          "args": {
+            "sessionId": "sess_wp226_ws_creator",
+            "request": {
+              "content": "缺 workspace_id"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "workspace_send_message",
+          "args": {
+            "sessionId": "sess_wp226_ws_creator",
+            "request": {
+              "workspaceId": "${0.workspace_id}",
+              "content": "camelCase 键"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "workspace_list_messages",
+          "args": {
+            "sessionId": "sess_wp226_outsider",
+            "workspaceId": "${0.workspace_id}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "workspace_list_messages",
+          "args": {
+            "sessionId": "sess_wp226_ws_creator",
+            "workspaceId": "ws_wp226_missing"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "workspace_list_messages",
+          "args": {
+            "sessionId": "sess_wp226_ws_creator",
+            "workspaceId": "a b"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "workspace_list_messages",
+          "args": {
+            "sessionId": "sess_wp226_ws_creator",
+            "workspaceId": "${0.workspace_id}",
+            "limit": -1
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "workspace_create",
+          "args": {
+            "sessionId": "",
+            "request": {}
+          }
+        },
+        {
+          "cmd": "workspace_create",
+          "args": {
+            "sessionId": "not_a_session_prefix",
+            "request": {
+              "name": null
+            }
+          }
+        },
+        {
+          "cmd": "workspace_create",
+          "args": {
+            "sessionId": "sess_wp226_ws_creator"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "workspace_create",
+          "args": {
+            "sessionId": "sess_wp226_ws_creator",
+            "request": {
+              "name": 5
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "workspace_create",
+          "args": {
+            "request": {
+              "name": "x"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

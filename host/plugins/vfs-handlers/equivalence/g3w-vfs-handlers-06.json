@@ -1,0 +1,512 @@
+{
+  "domain": "vfs-handlers",
+  "commands": [
+    "vfs_reindex_unit",
+    "vfs_sync_resource_units",
+    "vfs_unified_batch_index",
+    "vfs_reindex_resource",
+    "vfs_assign_dimension_model",
+    "vfs_create_dimension",
+    "vfs_set_default_embedding_dimension",
+    "vfs_get_default_embedding_dimension",
+    "vfs_clear_default_embedding_dimension",
+    "vfs_rag_search",
+    "vfs_create_mindmap",
+    "vfs_get_mindmap",
+    "vfs_get_mindmap_content",
+    "vfs_get_mindmap_versions",
+    "vfs_restore_mindmap_version",
+    "vfs_get_mindmap_version_content"
+  ],
+  "scenarios": [
+    {
+      "id": "g3w.vfs-handlers.vfs_reindex_unit.unit_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_reindex_unit",
+          "args": {
+            "unitId": "unit_missing_g3w",
+            "mode": "text"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.vfs_reindex_unit.invalid_mode",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_sync_resource_units",
+          "args": {
+            "resourceId": "res_g3w_unit",
+            "resourceType": "note",
+            "data": "Hello world"
+          }
+        },
+        {
+          "cmd": "vfs_reindex_unit",
+          "args": {
+            "unitId": "${0.0.unitId}",
+            "mode": "bogus"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.vfs_unified_batch_index.invalid_mode",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_unified_batch_index",
+          "args": {
+            "mode": "bogus",
+            "batchSize": 10
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.vfs_sync_resource_units.unsupported_type",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_sync_resource_units",
+          "args": {
+            "resourceId": "res_g3w_unit",
+            "resourceType": "bogus",
+            "data": "Hello world"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.vfs_reindex_resource.invalid_prefix",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_reindex_resource",
+          "args": {
+            "resourceId": "note_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.vfs_assign_dimension_model.model_config_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_assign_dimension_model",
+          "args": {
+            "dimension": 768,
+            "modality": "text",
+            "modelConfigId": "cfg_missing_g3w",
+            "modelName": "g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.vfs_create_dimension.model_name_without_config",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 768,
+            "modality": "text",
+            "modelConfigId": null,
+            "modelName": "g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.vfs_create_dimension.model_config_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 768,
+            "modality": "text",
+            "modelConfigId": "cfg_missing_g3w",
+            "modelName": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.vfs_create_dimension.dimension_out_of_range",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 32,
+            "modality": "text",
+            "modelConfigId": null,
+            "modelName": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.vfs_create_dimension.invalid_modality",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_dimension",
+          "args": {
+            "dimension": 768,
+            "modality": "audio",
+            "modelConfigId": null,
+            "modelName": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.vfs_set_default_embedding_dimension.dimension_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_set_default_embedding_dimension",
+          "args": {
+            "dimension": 768,
+            "modality": "text"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.vfs_get_default_embedding_dimension.invalid_modality",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_get_default_embedding_dimension",
+          "args": {
+            "modality": "audio"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.vfs_clear_default_embedding_dimension.invalid_modality",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_clear_default_embedding_dimension",
+          "args": {
+            "modality": "audio"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.vfs_rag_search.empty_query",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_rag_search",
+          "args": {
+            "input": {
+              "query": "   ",
+              "folderIds": null,
+              "resourceTypes": null,
+              "topK": 10,
+              "enableReranking": true,
+              "modality": "text",
+              "enableCrossDimension": true
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.vfs_rag_search.invalid_modality",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_rag_search",
+          "args": {
+            "input": {
+              "query": "如何求导",
+              "folderIds": null,
+              "resourceTypes": null,
+              "topK": 10,
+              "enableReranking": true,
+              "modality": "audio",
+              "enableCrossDimension": true
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.vfs_create_mindmap.folder_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_create_mindmap",
+          "args": {
+            "params": {
+              "title": "g3w",
+              "defaultView": "mindmap",
+              "folderId": "fld_missing_g3w"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.vfs_get_mindmap.invalid_prefix",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_get_mindmap",
+          "args": {
+            "mindmapId": "note_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.vfs_get_mindmap_content.invalid_prefix",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_get_mindmap_content",
+          "args": {
+            "mindmapId": "note_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.vfs_get_mindmap_versions.invalid_prefix",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_get_mindmap_versions",
+          "args": {
+            "mindmapId": "note_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.vfs_restore_mindmap_version.invalid_prefix",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_restore_mindmap_version",
+          "args": {
+            "versionId": "mm_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.vfs_restore_mindmap_version.not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_restore_mindmap_version",
+          "args": {
+            "versionId": "mv_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.vfs_get_mindmap_version_content.invalid_prefix",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "vfs_get_mindmap_version_content",
+          "args": {
+            "versionId": "mm_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

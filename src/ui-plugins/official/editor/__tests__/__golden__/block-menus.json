@@ -1,0 +1,1552 @@
+{
+  "document": "doc(callout(bullet_list(list_item(paragraph(\"first\")),list_item(paragraph(\"target\")),list_item(paragraph(\"last\")))),paragraph(\"outside\"))",
+  "desktop.nestedListItem": {
+    "dom": {
+      "ariaLabel": "块操作",
+      "style": "left: 336px; top: 60px;",
+      "children": [
+        {
+          "label": "转换为"
+        },
+        {
+          "command": "paragraph",
+          "text": "正文",
+          "disabled": false,
+          "title": null,
+          "destructive": false,
+          "tabIndex": -1,
+          "icon": true
+        },
+        {
+          "command": "heading-1",
+          "text": "一级标题",
+          "disabled": false,
+          "title": null,
+          "destructive": false,
+          "tabIndex": -1,
+          "icon": true
+        },
+        {
+          "command": "heading-2",
+          "text": "二级标题",
+          "disabled": false,
+          "title": null,
+          "destructive": false,
+          "tabIndex": -1,
+          "icon": true
+        },
+        {
+          "command": "heading-3",
+          "text": "三级标题",
+          "disabled": false,
+          "title": null,
+          "destructive": false,
+          "tabIndex": -1,
+          "icon": true
+        },
+        {
+          "command": "bullet-list",
+          "text": "无序列表",
+          "disabled": true,
+          "title": null,
+          "destructive": false,
+          "tabIndex": -1,
+          "icon": true
+        },
+        {
+          "command": "ordered-list",
+          "text": "有序列表",
+          "disabled": false,
+          "title": null,
+          "destructive": false,
+          "tabIndex": -1,
+          "icon": true
+        },
+        {
+          "command": "task-list",
+          "text": "任务列表",
+          "disabled": false,
+          "title": null,
+          "destructive": false,
+          "tabIndex": -1,
+          "icon": true
+        },
+        {
+          "command": "quote",
+          "text": "引用",
+          "disabled": false,
+          "title": null,
+          "destructive": false,
+          "tabIndex": -1,
+          "icon": true
+        },
+        {
+          "command": "code-block",
+          "text": "代码块",
+          "disabled": false,
+          "title": null,
+          "destructive": false,
+          "tabIndex": -1,
+          "icon": true
+        },
+        {
+          "command": "callout",
+          "text": "高亮块",
+          "disabled": false,
+          "title": null,
+          "destructive": false,
+          "tabIndex": -1,
+          "icon": true
+        },
+        {
+          "command": "toggle",
+          "text": "折叠块",
+          "disabled": false,
+          "title": null,
+          "destructive": false,
+          "tabIndex": -1,
+          "icon": true
+        },
+        {
+          "separator": true
+        },
+        {
+          "command": "duplicate",
+          "text": "复制块",
+          "disabled": false,
+          "title": null,
+          "destructive": false,
+          "tabIndex": -1,
+          "icon": true
+        },
+        {
+          "command": "delete",
+          "text": "删除块",
+          "disabled": false,
+          "title": null,
+          "destructive": true,
+          "tabIndex": -1,
+          "icon": true
+        },
+        {
+          "command": "copy-block-link",
+          "text": "复制块链接",
+          "disabled": true,
+          "title": "持久身份仅支持顶层块；嵌套块暂不支持。",
+          "destructive": false,
+          "tabIndex": -1,
+          "icon": true
+        },
+        {
+          "command": "move-to-note",
+          "text": "移动到其他笔记…",
+          "disabled": true,
+          "title": "持久身份仅支持顶层块；嵌套块暂不支持。",
+          "destructive": false,
+          "tabIndex": -1,
+          "icon": true
+        },
+        {
+          "separator": true
+        },
+        {
+          "label": "页面布局"
+        },
+        {
+          "command": "insert-columns",
+          "text": "插入双列",
+          "disabled": true,
+          "title": null,
+          "destructive": false,
+          "tabIndex": -1,
+          "icon": true
+        },
+        {
+          "command": "insert-cornell",
+          "text": "插入康奈尔布局",
+          "disabled": true,
+          "title": null,
+          "destructive": false,
+          "tabIndex": -1,
+          "icon": true
+        },
+        {
+          "command": "convert-columns",
+          "text": "转为双列",
+          "disabled": true,
+          "title": null,
+          "destructive": false,
+          "tabIndex": -1,
+          "icon": true
+        },
+        {
+          "command": "convert-cornell",
+          "text": "转为康奈尔布局",
+          "disabled": true,
+          "title": null,
+          "destructive": false,
+          "tabIndex": -1,
+          "icon": true
+        },
+        {
+          "command": "convert-cornell-template",
+          "text": "转换康奈尔模板",
+          "disabled": true,
+          "title": null,
+          "destructive": false,
+          "tabIndex": -1,
+          "icon": true
+        },
+        {
+          "command": "unwrap-columns",
+          "text": "展开为普通块",
+          "disabled": true,
+          "title": null,
+          "destructive": false,
+          "tabIndex": -1,
+          "icon": true
+        }
+      ]
+    },
+    "keyboard": [
+      {
+        "key": "open with Enter on the handle",
+        "active": null,
+        "open": true
+      },
+      {
+        "key": "ArrowDown",
+        "active": "paragraph",
+        "open": true
+      },
+      {
+        "key": "ArrowDown",
+        "active": "heading-1",
+        "open": true
+      },
+      {
+        "key": "ArrowUp",
+        "active": "paragraph",
+        "open": true
+      },
+      {
+        "key": "End",
+        "active": "unwrap-columns",
+        "open": true
+      },
+      {
+        "key": "Home",
+        "active": "paragraph",
+        "open": true
+      },
+      {
+        "key": "ArrowUp",
+        "active": "unwrap-columns",
+        "open": true
+      },
+      {
+        "key": "d",
+        "active": "unwrap-columns",
+        "open": true
+      },
+      {
+        "key": "x",
+        "active": "unwrap-columns",
+        "open": true
+      }
+    ],
+    "rows": {
+      "paragraph": {
+        "closedAtOnce": true,
+        "highlights": 0,
+        "doc": "doc(callout(bullet_list(list_item(paragraph(\"first\"))),paragraph(\"target\"),bullet_list(list_item(paragraph(\"last\")))),paragraph(\"outside\"))",
+        "notifications": []
+      },
+      "heading-1": {
+        "closedAtOnce": true,
+        "highlights": 0,
+        "doc": "doc(callout(bullet_list(list_item(paragraph(\"first\"))),heading(\"target\"),bullet_list(list_item(paragraph(\"last\")))),paragraph(\"outside\"))",
+        "notifications": []
+      },
+      "heading-2": {
+        "closedAtOnce": true,
+        "highlights": 0,
+        "doc": "doc(callout(bullet_list(list_item(paragraph(\"first\"))),heading[level=2](\"target\"),bullet_list(list_item(paragraph(\"last\")))),paragraph(\"outside\"))",
+        "notifications": []
+      },
+      "heading-3": {
+        "closedAtOnce": true,
+        "highlights": 0,
+        "doc": "doc(callout(bullet_list(list_item(paragraph(\"first\"))),heading[level=3](\"target\"),bullet_list(list_item(paragraph(\"last\")))),paragraph(\"outside\"))",
+        "notifications": []
+      },
+      "ordered-list": {
+        "closedAtOnce": true,
+        "highlights": 0,
+        "doc": "doc(callout(bullet_list(list_item(paragraph(\"first\"))),ordered_list(list_item(paragraph(\"target\"))),bullet_list(list_item(paragraph(\"last\")))),paragraph(\"outside\"))",
+        "notifications": []
+      },
+      "task-list": {
+        "closedAtOnce": true,
+        "highlights": 0,
+        "doc": "doc(callout(bullet_list(list_item(paragraph(\"first\"))),bullet_list(list_item[checked=false](paragraph(\"target\"))),bullet_list(list_item(paragraph(\"last\")))),paragraph(\"outside\"))",
+        "notifications": []
+      },
+      "quote": {
+        "closedAtOnce": true,
+        "highlights": 0,
+        "doc": "doc(callout(bullet_list(list_item(paragraph(\"first\"))),blockquote(paragraph(\"target\")),bullet_list(list_item(paragraph(\"last\")))),paragraph(\"outside\"))",
+        "notifications": []
+      },
+      "code-block": {
+        "closedAtOnce": true,
+        "highlights": 0,
+        "doc": "doc(callout(bullet_list(list_item(paragraph(\"first\"))),code_block(\"target\"),bullet_list(list_item(paragraph(\"last\")))),paragraph(\"outside\"))",
+        "notifications": []
+      },
+      "callout": {
+        "closedAtOnce": true,
+        "highlights": 0,
+        "doc": "doc(callout(bullet_list(list_item(paragraph(\"first\"))),callout(paragraph(\"target\")),bullet_list(list_item(paragraph(\"last\")))),paragraph(\"outside\"))",
+        "notifications": []
+      },
+      "toggle": {
+        "closedAtOnce": true,
+        "highlights": 0,
+        "doc": "doc(callout(bullet_list(list_item(paragraph(\"first\"))),toggle(paragraph(\"target\")),bullet_list(list_item(paragraph(\"last\")))),paragraph(\"outside\"))",
+        "notifications": []
+      },
+      "duplicate": {
+        "closedAtOnce": true,
+        "highlights": 0,
+        "doc": "doc(callout(bullet_list(list_item(paragraph(\"first\")),list_item(paragraph(\"target\")),list_item(paragraph(\"target\")),list_item(paragraph(\"last\")))),paragraph(\"outside\"))",
+        "notifications": []
+      },
+      "delete": {
+        "closedAtOnce": true,
+        "highlights": 0,
+        "doc": "doc(callout(bullet_list(list_item(paragraph(\"first\")),list_item(paragraph(\"last\")))),paragraph(\"outside\"))",
+        "notifications": []
+      }
+    },
+    "enter": {
+      "open": false,
+      "doc": "doc(callout(bullet_list(list_item(paragraph(\"first\"))),paragraph(\"target\"),bullet_list(list_item(paragraph(\"last\")))),paragraph(\"outside\"))"
+    }
+  },
+  "desktop.topLevelParagraph": {
+    "dom": {
+      "ariaLabel": "块操作",
+      "style": "left: 336px; top: 160px;",
+      "children": [
+        {
+          "label": "转换为"
+        },
+        {
+          "command": "paragraph",
+          "text": "正文",
+          "disabled": true,
+          "title": null,
+          "destructive": false,
+          "tabIndex": -1,
+          "icon": true
+        },
+        {
+          "command": "heading-1",
+          "text": "一级标题",
+          "disabled": false,
+          "title": null,
+          "destructive": false,
+          "tabIndex": -1,
+          "icon": true
+        },
+        {
+          "command": "heading-2",
+          "text": "二级标题",
+          "disabled": false,
+          "title": null,
+          "destructive": false,
+          "tabIndex": -1,
+          "icon": true
+        },
+        {
+          "command": "heading-3",
+          "text": "三级标题",
+          "disabled": false,
+          "title": null,
+          "destructive": false,
+          "tabIndex": -1,
+          "icon": true
+        },
+        {
+          "command": "bullet-list",
+          "text": "无序列表",
+          "disabled": false,
+          "title": null,
+          "destructive": false,
+          "tabIndex": -1,
+          "icon": true
+        },
+        {
+          "command": "ordered-list",
+          "text": "有序列表",
+          "disabled": false,
+          "title": null,
+          "destructive": false,
+          "tabIndex": -1,
+          "icon": true
+        },
+        {
+          "command": "task-list",
+          "text": "任务列表",
+          "disabled": false,
+          "title": null,
+          "destructive": false,
+          "tabIndex": -1,
+          "icon": true
+        },
+        {
+          "command": "quote",
+          "text": "引用",
+          "disabled": false,
+          "title": null,
+          "destructive": false,
+          "tabIndex": -1,
+          "icon": true
+        },
+        {
+          "command": "code-block",
+          "text": "代码块",
+          "disabled": false,
+          "title": null,
+          "destructive": false,
+          "tabIndex": -1,
+          "icon": true
+        },
+        {
+          "command": "callout",
+          "text": "高亮块",
+          "disabled": false,
+          "title": null,
+          "destructive": false,
+          "tabIndex": -1,
+          "icon": true
+        },
+        {
+          "command": "toggle",
+          "text": "折叠块",
+          "disabled": false,
+          "title": null,
+          "destructive": false,
+          "tabIndex": -1,
+          "icon": true
+        },
+        {
+          "separator": true
+        },
+        {
+          "command": "duplicate",
+          "text": "复制块",
+          "disabled": false,
+          "title": null,
+          "destructive": false,
+          "tabIndex": -1,
+          "icon": true
+        },
+        {
+          "command": "delete",
+          "text": "删除块",
+          "disabled": false,
+          "title": null,
+          "destructive": true,
+          "tabIndex": -1,
+          "icon": true
+        },
+        {
+          "command": "copy-block-link",
+          "text": "复制块链接",
+          "disabled": true,
+          "title": "当前笔记尚未接入完整文档块操作。",
+          "destructive": false,
+          "tabIndex": -1,
+          "icon": true
+        },
+        {
+          "command": "move-to-note",
+          "text": "移动到其他笔记…",
+          "disabled": true,
+          "title": "当前笔记尚未接入完整文档块操作。",
+          "destructive": false,
+          "tabIndex": -1,
+          "icon": true
+        },
+        {
+          "separator": true
+        },
+        {
+          "label": "页面布局"
+        },
+        {
+          "command": "insert-columns",
+          "text": "插入双列",
+          "disabled": true,
+          "title": null,
+          "destructive": false,
+          "tabIndex": -1,
+          "icon": true
+        },
+        {
+          "command": "insert-cornell",
+          "text": "插入康奈尔布局",
+          "disabled": true,
+          "title": null,
+          "destructive": false,
+          "tabIndex": -1,
+          "icon": true
+        },
+        {
+          "command": "convert-columns",
+          "text": "转为双列",
+          "disabled": true,
+          "title": null,
+          "destructive": false,
+          "tabIndex": -1,
+          "icon": true
+        },
+        {
+          "command": "convert-cornell",
+          "text": "转为康奈尔布局",
+          "disabled": true,
+          "title": null,
+          "destructive": false,
+          "tabIndex": -1,
+          "icon": true
+        },
+        {
+          "command": "convert-cornell-template",
+          "text": "转换康奈尔模板",
+          "disabled": true,
+          "title": null,
+          "destructive": false,
+          "tabIndex": -1,
+          "icon": true
+        },
+        {
+          "command": "unwrap-columns",
+          "text": "展开为普通块",
+          "disabled": true,
+          "title": null,
+          "destructive": false,
+          "tabIndex": -1,
+          "icon": true
+        }
+      ]
+    },
+    "keyboard": [
+      {
+        "key": "open with Enter on the handle",
+        "active": null,
+        "open": true
+      },
+      {
+        "key": "ArrowDown",
+        "active": "paragraph",
+        "open": true
+      },
+      {
+        "key": "ArrowDown",
+        "active": "heading-1",
+        "open": true
+      },
+      {
+        "key": "ArrowUp",
+        "active": "paragraph",
+        "open": true
+      },
+      {
+        "key": "End",
+        "active": "unwrap-columns",
+        "open": true
+      },
+      {
+        "key": "Home",
+        "active": "paragraph",
+        "open": true
+      },
+      {
+        "key": "ArrowUp",
+        "active": "unwrap-columns",
+        "open": true
+      },
+      {
+        "key": "d",
+        "active": "unwrap-columns",
+        "open": true
+      },
+      {
+        "key": "x",
+        "active": "unwrap-columns",
+        "open": true
+      }
+    ],
+    "rows": {
+      "heading-1": {
+        "closedAtOnce": true,
+        "highlights": 0,
+        "doc": "doc(callout(bullet_list(list_item(paragraph(\"first\")),list_item(paragraph(\"target\")),list_item(paragraph(\"last\")))),heading(\"outside\"))",
+        "notifications": []
+      },
+      "heading-2": {
+        "closedAtOnce": true,
+        "highlights": 0,
+        "doc": "doc(callout(bullet_list(list_item(paragraph(\"first\")),list_item(paragraph(\"target\")),list_item(paragraph(\"last\")))),heading[level=2](\"outside\"))",
+        "notifications": []
+      },
+      "heading-3": {
+        "closedAtOnce": true,
+        "highlights": 0,
+        "doc": "doc(callout(bullet_list(list_item(paragraph(\"first\")),list_item(paragraph(\"target\")),list_item(paragraph(\"last\")))),heading[level=3](\"outside\"))",
+        "notifications": []
+      },
+      "bullet-list": {
+        "closedAtOnce": true,
+        "highlights": 0,
+        "doc": "doc(callout(bullet_list(list_item(paragraph(\"first\")),list_item(paragraph(\"target\")),list_item(paragraph(\"last\")))),bullet_list(list_item(paragraph(\"outside\"))))",
+        "notifications": []
+      },
+      "ordered-list": {
+        "closedAtOnce": true,
+        "highlights": 0,
+        "doc": "doc(callout(bullet_list(list_item(paragraph(\"first\")),list_item(paragraph(\"target\")),list_item(paragraph(\"last\")))),ordered_list(list_item(paragraph(\"outside\"))))",
+        "notifications": []
+      },
+      "task-list": {
+        "closedAtOnce": true,
+        "highlights": 0,
+        "doc": "doc(callout(bullet_list(list_item(paragraph(\"first\")),list_item(paragraph(\"target\")),list_item(paragraph(\"last\")))),bullet_list(list_item[checked=false](paragraph(\"outside\"))))",
+        "notifications": []
+      },
+      "quote": {
+        "closedAtOnce": true,
+        "highlights": 0,
+        "doc": "doc(callout(bullet_list(list_item(paragraph(\"first\")),list_item(paragraph(\"target\")),list_item(paragraph(\"last\")))),blockquote(paragraph(\"outside\")))",
+        "notifications": []
+      },
+      "code-block": {
+        "closedAtOnce": true,
+        "highlights": 0,
+        "doc": "doc(callout(bullet_list(list_item(paragraph(\"first\")),list_item(paragraph(\"target\")),list_item(paragraph(\"last\")))),code_block(\"outside\"))",
+        "notifications": []
+      },
+      "callout": {
+        "closedAtOnce": true,
+        "highlights": 0,
+        "doc": "doc(callout(bullet_list(list_item(paragraph(\"first\")),list_item(paragraph(\"target\")),list_item(paragraph(\"last\")))),callout(paragraph(\"outside\")))",
+        "notifications": []
+      },
+      "toggle": {
+        "closedAtOnce": true,
+        "highlights": 0,
+        "doc": "doc(callout(bullet_list(list_item(paragraph(\"first\")),list_item(paragraph(\"target\")),list_item(paragraph(\"last\")))),toggle(paragraph(\"outside\")))",
+        "notifications": []
+      },
+      "duplicate": {
+        "closedAtOnce": true,
+        "highlights": 0,
+        "doc": "doc(callout(bullet_list(list_item(paragraph(\"first\")),list_item(paragraph(\"target\")),list_item(paragraph(\"last\")))),paragraph(\"outside\"),paragraph(\"outside\"))",
+        "notifications": []
+      },
+      "delete": {
+        "closedAtOnce": true,
+        "highlights": 0,
+        "doc": "doc(callout(bullet_list(list_item(paragraph(\"first\")),list_item(paragraph(\"target\")),list_item(paragraph(\"last\")))))",
+        "notifications": []
+      }
+    },
+    "enter": {
+      "open": false,
+      "doc": "doc(callout(bullet_list(list_item(paragraph(\"first\")),list_item(paragraph(\"target\")),list_item(paragraph(\"last\")))),paragraph(\"outside\"))"
+    }
+  },
+  "desktop.dismissal": {
+    "Escape": {
+      "open": false,
+      "highlights": 0,
+      "focus": "editor",
+      "doc": "unchanged"
+    },
+    "Tab": {
+      "open": false,
+      "highlights": 0,
+      "focus": "editor",
+      "doc": "unchanged"
+    },
+    "pointerdown outside": {
+      "open": false,
+      "highlights": 0,
+      "focus": "body",
+      "doc": "unchanged"
+    },
+    "pointerdown inside the menu": {
+      "open": true,
+      "highlights": 1,
+      "focus": "DIV",
+      "doc": "unchanged"
+    },
+    "window resize": {
+      "open": false,
+      "highlights": 0,
+      "focus": "body",
+      "doc": "unchanged"
+    },
+    "beforeinput in the editor": {
+      "open": false,
+      "highlights": 0,
+      "focus": "body",
+      "doc": "unchanged"
+    },
+    "Android back consumed": true,
+    "Android back": {
+      "open": false,
+      "highlights": 0,
+      "focus": "body",
+      "doc": "unchanged"
+    },
+    "printable key without a label match (z)": {
+      "open": true,
+      "highlights": 1,
+      "focus": "DIV",
+      "doc": "unchanged"
+    },
+    "editor turns readonly": {
+      "open": false,
+      "highlights": 0
+    },
+    "handle in a readonly editor": {
+      "open": false
+    }
+  },
+  "mobile.slashStandIn": {
+    "dom": {
+      "opened": true,
+      "role": "menu",
+      "ariaLabel": "块操作",
+      "hidden": false,
+      "focus": "body",
+      "buttons": [
+        {
+          "command": "hr",
+          "text": "分隔线",
+          "disabled": true,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "math",
+          "text": "数学公式",
+          "disabled": false,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "table",
+          "text": "表格",
+          "disabled": true,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "insert-callout",
+          "text": "高亮块",
+          "disabled": false,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "insert-toggle",
+          "text": "折叠块",
+          "disabled": true,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "paragraph",
+          "text": "正文",
+          "disabled": false,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "heading-1",
+          "text": "一级标题",
+          "disabled": false,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "heading-2",
+          "text": "二级标题",
+          "disabled": false,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "heading-3",
+          "text": "三级标题",
+          "disabled": false,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "heading-4",
+          "text": "四级标题",
+          "disabled": false,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "heading-5",
+          "text": "五级标题",
+          "disabled": false,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "heading-6",
+          "text": "六级标题",
+          "disabled": false,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "bullet-list",
+          "text": "无序列表",
+          "disabled": true,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "ordered-list",
+          "text": "有序列表",
+          "disabled": false,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "task-list",
+          "text": "任务列表",
+          "disabled": false,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "quote",
+          "text": "引用",
+          "disabled": false,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "code-block",
+          "text": "代码块",
+          "disabled": false,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "callout",
+          "text": "提示块",
+          "disabled": false,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "toggle",
+          "text": "折叠块",
+          "disabled": false,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "insert-columns",
+          "text": "插入双列",
+          "disabled": true,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "insert-cornell",
+          "text": "插入康奈尔布局",
+          "disabled": true,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "convert-columns",
+          "text": "转为双列",
+          "disabled": true,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "convert-cornell",
+          "text": "转为康奈尔布局",
+          "disabled": true,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "convert-cornell-template",
+          "text": "转换康奈尔模板",
+          "disabled": true,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "unwrap-columns",
+          "text": "展开为普通块",
+          "disabled": true,
+          "destructive": false,
+          "role": "menuitem"
+        }
+      ]
+    },
+    "keyboard": [
+      {
+        "key": "ArrowDown",
+        "focus": "body"
+      },
+      {
+        "key": "ArrowDown",
+        "focus": "body"
+      },
+      {
+        "key": "ArrowUp",
+        "focus": "body"
+      },
+      {
+        "key": "End",
+        "focus": "body"
+      },
+      {
+        "key": "Home",
+        "focus": "body"
+      },
+      {
+        "key": "ArrowUp",
+        "focus": "body"
+      }
+    ],
+    "rows": {
+      "math": {
+        "closedAtOnce": true,
+        "doc": "doc(callout(bullet_list(list_item(paragraph(\"first\")),list_item(paragraph(\"ta\"),code_block,paragraph(\"rget\")),list_item(paragraph(\"last\")))),paragraph(\"outside\"))",
+        "focus": "editor",
+        "notifications": []
+      },
+      "insert-callout": {
+        "closedAtOnce": true,
+        "doc": "doc(callout(bullet_list(list_item(paragraph(\"first\")),list_item(paragraph(\"ta\"),callout(paragraph),paragraph(\"rget\")),list_item(paragraph(\"last\")))),paragraph(\"outside\"))",
+        "focus": "editor",
+        "notifications": []
+      },
+      "paragraph": {
+        "closedAtOnce": true,
+        "doc": "doc(callout(bullet_list(list_item(paragraph(\"first\"))),paragraph(\"target\"),bullet_list(list_item(paragraph(\"last\")))),paragraph(\"outside\"))",
+        "focus": "editor",
+        "notifications": []
+      },
+      "heading-1": {
+        "closedAtOnce": true,
+        "doc": "doc(callout(bullet_list(list_item(paragraph(\"first\"))),heading(\"target\"),bullet_list(list_item(paragraph(\"last\")))),paragraph(\"outside\"))",
+        "focus": "editor",
+        "notifications": []
+      },
+      "heading-2": {
+        "closedAtOnce": true,
+        "doc": "doc(callout(bullet_list(list_item(paragraph(\"first\"))),heading[level=2](\"target\"),bullet_list(list_item(paragraph(\"last\")))),paragraph(\"outside\"))",
+        "focus": "editor",
+        "notifications": []
+      },
+      "heading-3": {
+        "closedAtOnce": true,
+        "doc": "doc(callout(bullet_list(list_item(paragraph(\"first\"))),heading[level=3](\"target\"),bullet_list(list_item(paragraph(\"last\")))),paragraph(\"outside\"))",
+        "focus": "editor",
+        "notifications": []
+      },
+      "heading-4": {
+        "closedAtOnce": true,
+        "doc": "doc(callout(bullet_list(list_item(paragraph(\"first\"))),heading[level=4](\"target\"),bullet_list(list_item(paragraph(\"last\")))),paragraph(\"outside\"))",
+        "focus": "editor",
+        "notifications": []
+      },
+      "heading-5": {
+        "closedAtOnce": true,
+        "doc": "doc(callout(bullet_list(list_item(paragraph(\"first\"))),heading[level=5](\"target\"),bullet_list(list_item(paragraph(\"last\")))),paragraph(\"outside\"))",
+        "focus": "editor",
+        "notifications": []
+      },
+      "heading-6": {
+        "closedAtOnce": true,
+        "doc": "doc(callout(bullet_list(list_item(paragraph(\"first\"))),heading[level=6](\"target\"),bullet_list(list_item(paragraph(\"last\")))),paragraph(\"outside\"))",
+        "focus": "editor",
+        "notifications": []
+      },
+      "ordered-list": {
+        "closedAtOnce": true,
+        "doc": "doc(callout(bullet_list(list_item(paragraph(\"first\"))),ordered_list(list_item(paragraph(\"target\"))),bullet_list(list_item(paragraph(\"last\")))),paragraph(\"outside\"))",
+        "focus": "editor",
+        "notifications": []
+      },
+      "task-list": {
+        "closedAtOnce": true,
+        "doc": "doc(callout(bullet_list(list_item(paragraph(\"first\"))),bullet_list(list_item[checked=false](paragraph(\"target\"))),bullet_list(list_item(paragraph(\"last\")))),paragraph(\"outside\"))",
+        "focus": "editor",
+        "notifications": []
+      },
+      "quote": {
+        "closedAtOnce": true,
+        "doc": "doc(callout(bullet_list(list_item(paragraph(\"first\"))),blockquote(paragraph(\"target\")),bullet_list(list_item(paragraph(\"last\")))),paragraph(\"outside\"))",
+        "focus": "editor",
+        "notifications": []
+      },
+      "code-block": {
+        "closedAtOnce": true,
+        "doc": "doc(callout(bullet_list(list_item(paragraph(\"first\"))),code_block(\"target\"),bullet_list(list_item(paragraph(\"last\")))),paragraph(\"outside\"))",
+        "focus": "editor",
+        "notifications": []
+      },
+      "callout": {
+        "closedAtOnce": true,
+        "doc": "doc(callout(bullet_list(list_item(paragraph(\"first\"))),callout(paragraph(\"target\")),bullet_list(list_item(paragraph(\"last\")))),paragraph(\"outside\"))",
+        "focus": "editor",
+        "notifications": []
+      },
+      "toggle": {
+        "closedAtOnce": true,
+        "doc": "doc(callout(bullet_list(list_item(paragraph(\"first\"))),toggle(paragraph(\"target\")),bullet_list(list_item(paragraph(\"last\")))),paragraph(\"outside\"))",
+        "focus": "editor",
+        "notifications": []
+      }
+    }
+  },
+  "mobile.blockMenu": {
+    "dom": {
+      "opened": true,
+      "role": "menu",
+      "ariaLabel": "块操作",
+      "hidden": false,
+      "focus": "paragraph",
+      "buttons": [
+        {
+          "command": "paragraph",
+          "text": "正文",
+          "disabled": false,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "heading-1",
+          "text": "一级标题",
+          "disabled": false,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "heading-2",
+          "text": "二级标题",
+          "disabled": false,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "heading-3",
+          "text": "三级标题",
+          "disabled": false,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "heading-4",
+          "text": "四级标题",
+          "disabled": false,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "heading-5",
+          "text": "五级标题",
+          "disabled": false,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "heading-6",
+          "text": "六级标题",
+          "disabled": false,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "bullet-list",
+          "text": "无序列表",
+          "disabled": true,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "ordered-list",
+          "text": "有序列表",
+          "disabled": false,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "task-list",
+          "text": "任务列表",
+          "disabled": false,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "quote",
+          "text": "引用",
+          "disabled": false,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "code-block",
+          "text": "代码块",
+          "disabled": false,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "callout",
+          "text": "提示块",
+          "disabled": false,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "toggle",
+          "text": "折叠块",
+          "disabled": false,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "duplicate",
+          "text": "复制块",
+          "disabled": false,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "delete",
+          "text": "删除块",
+          "disabled": false,
+          "destructive": true,
+          "role": "menuitem"
+        },
+        {
+          "command": "insert-columns",
+          "text": "插入双列",
+          "disabled": true,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "insert-cornell",
+          "text": "插入康奈尔布局",
+          "disabled": true,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "convert-columns",
+          "text": "转为双列",
+          "disabled": true,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "convert-cornell",
+          "text": "转为康奈尔布局",
+          "disabled": true,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "convert-cornell-template",
+          "text": "转换康奈尔模板",
+          "disabled": true,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "unwrap-columns",
+          "text": "展开为普通块",
+          "disabled": true,
+          "destructive": false,
+          "role": "menuitem"
+        }
+      ]
+    },
+    "keyboard": [
+      {
+        "key": "ArrowDown",
+        "focus": "heading-1"
+      },
+      {
+        "key": "ArrowDown",
+        "focus": "heading-2"
+      },
+      {
+        "key": "ArrowUp",
+        "focus": "heading-1"
+      },
+      {
+        "key": "End",
+        "focus": "heading-1"
+      },
+      {
+        "key": "Home",
+        "focus": "paragraph"
+      },
+      {
+        "key": "ArrowUp",
+        "focus": "paragraph"
+      }
+    ],
+    "rows": {
+      "paragraph": {
+        "closedAtOnce": true,
+        "doc": "doc(callout(bullet_list(list_item(paragraph(\"first\"))),paragraph(\"target\"),bullet_list(list_item(paragraph(\"last\")))),paragraph(\"outside\"))",
+        "focus": "editor",
+        "notifications": []
+      },
+      "heading-1": {
+        "closedAtOnce": true,
+        "doc": "doc(callout(bullet_list(list_item(paragraph(\"first\"))),heading(\"target\"),bullet_list(list_item(paragraph(\"last\")))),paragraph(\"outside\"))",
+        "focus": "editor",
+        "notifications": []
+      },
+      "heading-2": {
+        "closedAtOnce": true,
+        "doc": "doc(callout(bullet_list(list_item(paragraph(\"first\"))),heading[level=2](\"target\"),bullet_list(list_item(paragraph(\"last\")))),paragraph(\"outside\"))",
+        "focus": "editor",
+        "notifications": []
+      },
+      "heading-3": {
+        "closedAtOnce": true,
+        "doc": "doc(callout(bullet_list(list_item(paragraph(\"first\"))),heading[level=3](\"target\"),bullet_list(list_item(paragraph(\"last\")))),paragraph(\"outside\"))",
+        "focus": "editor",
+        "notifications": []
+      },
+      "heading-4": {
+        "closedAtOnce": true,
+        "doc": "doc(callout(bullet_list(list_item(paragraph(\"first\"))),heading[level=4](\"target\"),bullet_list(list_item(paragraph(\"last\")))),paragraph(\"outside\"))",
+        "focus": "editor",
+        "notifications": []
+      },
+      "heading-5": {
+        "closedAtOnce": true,
+        "doc": "doc(callout(bullet_list(list_item(paragraph(\"first\"))),heading[level=5](\"target\"),bullet_list(list_item(paragraph(\"last\")))),paragraph(\"outside\"))",
+        "focus": "editor",
+        "notifications": []
+      },
+      "heading-6": {
+        "closedAtOnce": true,
+        "doc": "doc(callout(bullet_list(list_item(paragraph(\"first\"))),heading[level=6](\"target\"),bullet_list(list_item(paragraph(\"last\")))),paragraph(\"outside\"))",
+        "focus": "editor",
+        "notifications": []
+      },
+      "ordered-list": {
+        "closedAtOnce": true,
+        "doc": "doc(callout(bullet_list(list_item(paragraph(\"first\"))),ordered_list(list_item(paragraph(\"target\"))),bullet_list(list_item(paragraph(\"last\")))),paragraph(\"outside\"))",
+        "focus": "editor",
+        "notifications": []
+      },
+      "task-list": {
+        "closedAtOnce": true,
+        "doc": "doc(callout(bullet_list(list_item(paragraph(\"first\"))),bullet_list(list_item[checked=false](paragraph(\"target\"))),bullet_list(list_item(paragraph(\"last\")))),paragraph(\"outside\"))",
+        "focus": "editor",
+        "notifications": []
+      },
+      "quote": {
+        "closedAtOnce": true,
+        "doc": "doc(callout(bullet_list(list_item(paragraph(\"first\"))),blockquote(paragraph(\"target\")),bullet_list(list_item(paragraph(\"last\")))),paragraph(\"outside\"))",
+        "focus": "editor",
+        "notifications": []
+      },
+      "code-block": {
+        "closedAtOnce": true,
+        "doc": "doc(callout(bullet_list(list_item(paragraph(\"first\"))),code_block(\"target\"),bullet_list(list_item(paragraph(\"last\")))),paragraph(\"outside\"))",
+        "focus": "editor",
+        "notifications": []
+      },
+      "callout": {
+        "closedAtOnce": true,
+        "doc": "doc(callout(bullet_list(list_item(paragraph(\"first\"))),callout(paragraph(\"target\")),bullet_list(list_item(paragraph(\"last\")))),paragraph(\"outside\"))",
+        "focus": "editor",
+        "notifications": []
+      },
+      "toggle": {
+        "closedAtOnce": true,
+        "doc": "doc(callout(bullet_list(list_item(paragraph(\"first\"))),toggle(paragraph(\"target\")),bullet_list(list_item(paragraph(\"last\")))),paragraph(\"outside\"))",
+        "focus": "editor",
+        "notifications": []
+      },
+      "duplicate": {
+        "closedAtOnce": true,
+        "doc": "doc(callout(bullet_list(list_item(paragraph(\"first\")),list_item(paragraph(\"target\")),list_item(paragraph(\"target\")),list_item(paragraph(\"last\")))),paragraph(\"outside\"))",
+        "focus": "editor",
+        "notifications": []
+      },
+      "delete": {
+        "closedAtOnce": true,
+        "doc": "doc(callout(bullet_list(list_item(paragraph(\"first\")),list_item(paragraph(\"last\")))),paragraph(\"outside\"))",
+        "focus": "editor",
+        "notifications": []
+      }
+    }
+  },
+  "mobile.blockMenuOnParagraph": {
+    "dom": {
+      "opened": true,
+      "role": "menu",
+      "ariaLabel": "块操作",
+      "hidden": false,
+      "focus": "body",
+      "buttons": [
+        {
+          "command": "paragraph",
+          "text": "正文",
+          "disabled": true,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "heading-1",
+          "text": "一级标题",
+          "disabled": false,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "heading-2",
+          "text": "二级标题",
+          "disabled": false,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "heading-3",
+          "text": "三级标题",
+          "disabled": false,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "heading-4",
+          "text": "四级标题",
+          "disabled": false,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "heading-5",
+          "text": "五级标题",
+          "disabled": false,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "heading-6",
+          "text": "六级标题",
+          "disabled": false,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "bullet-list",
+          "text": "无序列表",
+          "disabled": false,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "ordered-list",
+          "text": "有序列表",
+          "disabled": false,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "task-list",
+          "text": "任务列表",
+          "disabled": false,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "quote",
+          "text": "引用",
+          "disabled": false,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "code-block",
+          "text": "代码块",
+          "disabled": false,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "callout",
+          "text": "提示块",
+          "disabled": false,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "toggle",
+          "text": "折叠块",
+          "disabled": false,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "duplicate",
+          "text": "复制块",
+          "disabled": false,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "delete",
+          "text": "删除块",
+          "disabled": false,
+          "destructive": true,
+          "role": "menuitem"
+        },
+        {
+          "command": "insert-columns",
+          "text": "插入双列",
+          "disabled": true,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "insert-cornell",
+          "text": "插入康奈尔布局",
+          "disabled": true,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "convert-columns",
+          "text": "转为双列",
+          "disabled": true,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "convert-cornell",
+          "text": "转为康奈尔布局",
+          "disabled": true,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "convert-cornell-template",
+          "text": "转换康奈尔模板",
+          "disabled": true,
+          "destructive": false,
+          "role": "menuitem"
+        },
+        {
+          "command": "unwrap-columns",
+          "text": "展开为普通块",
+          "disabled": true,
+          "destructive": false,
+          "role": "menuitem"
+        }
+      ]
+    },
+    "keyboard": [
+      {
+        "key": "ArrowDown",
+        "focus": "body"
+      },
+      {
+        "key": "ArrowDown",
+        "focus": "body"
+      },
+      {
+        "key": "ArrowUp",
+        "focus": "body"
+      },
+      {
+        "key": "End",
+        "focus": "body"
+      },
+      {
+        "key": "Home",
+        "focus": "body"
+      },
+      {
+        "key": "ArrowUp",
+        "focus": "body"
+      }
+    ]
+  },
+  "mobile.dismissal": {
+    "Escape": {
+      "open": false,
+      "focus": "editor",
+      "doc": "unchanged"
+    },
+    "Tab": {
+      "open": false,
+      "focus": "body",
+      "doc": "unchanged"
+    },
+    "pointerdown outside": {
+      "open": false,
+      "focus": "body",
+      "doc": "unchanged"
+    },
+    "pointerdown inside the menu": {
+      "open": true,
+      "focus": "paragraph",
+      "doc": "unchanged"
+    },
+    "window blur": {
+      "open": false,
+      "focus": "body",
+      "doc": "unchanged"
+    },
+    "composition starts in the editor": {
+      "open": false,
+      "focus": "body",
+      "doc": "unchanged"
+    },
+    "document edit moves the target": {
+      "open": false,
+      "focus": "body",
+      "doc": "doc(callout(paragraph(\"x\"),bullet_list(list_item(paragraph(\"first\")),list_item(paragraph(\"target\")),list_item(paragraph(\"last\")))),paragraph(\"outside\"))"
+    },
+    "reopening replaces the open menu": {
+      "menus": 1,
+      "firstStillConnected": false
+    },
+    "readonly editor": {
+      "opened": false,
+      "menu": false
+    }
+  }
+}

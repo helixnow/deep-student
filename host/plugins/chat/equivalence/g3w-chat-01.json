@@ -1,0 +1,796 @@
+{
+  "domain": "chat",
+  "commands": [
+    "chat_v2_archive_session",
+    "chat_v2_create_session",
+    "chat_v2_branch_session",
+    "chat_v2_create_group",
+    "chat_v2_update_group",
+    "chat_v2_delete_session",
+    "chat_v2_freeze_available_skills_snapshot",
+    "chat_v2_get_session",
+    "chat_v2_plan_gate_respond",
+    "chat_v2_restore_session",
+    "chat_v2_save_session",
+    "chat_v2_set_authority_mode",
+    "chat_v2_set_permission_preset",
+    "chat_v2_set_rag_scope",
+    "chat_v2_update_session_settings"
+  ],
+  "scenarios": [
+    {
+      "id": "g3w.chat.chat_v2_archive_session.invalid_session_id_prefix",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_archive_session",
+          "args": {
+            "sessionId": "bad_id"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_archive_session.session_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_archive_session",
+          "args": {
+            "sessionId": "sess_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_archive_session.active_super_session_rejected",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "g3w",
+            "metadata": {
+              "super_agent": {
+                "active": true,
+                "version": 1,
+                "workspace_id": "ws_g3w",
+                "hidden": false
+              },
+              "pinned": true
+            },
+            "groupId": null
+          }
+        },
+        {
+          "cmd": "chat_v2_archive_session",
+          "args": {
+            "sessionId": "${0.id}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_branch_session.invalid_source_session_id_prefix",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_branch_session",
+          "args": {
+            "sourceSessionId": "bad_id",
+            "upToMessageId": "msg_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_branch_session.subagent_session_read_only",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "g3w",
+            "metadata": {
+              "is_subagent": true
+            },
+            "groupId": null
+          }
+        },
+        {
+          "cmd": "chat_v2_branch_session",
+          "args": {
+            "sourceSessionId": "${0.id}",
+            "upToMessageId": "msg_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_branch_session.source_session_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_branch_session",
+          "args": {
+            "sourceSessionId": "sess_missing_g3w",
+            "upToMessageId": "msg_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_branch_session.source_session_not_active",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "g3w",
+            "metadata": null,
+            "groupId": null
+          }
+        },
+        {
+          "cmd": "chat_v2_archive_session",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_branch_session",
+          "args": {
+            "sourceSessionId": "${0.id}",
+            "upToMessageId": "msg_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_branch_session.up_to_message_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "g3w",
+            "metadata": null,
+            "groupId": null
+          }
+        },
+        {
+          "cmd": "chat_v2_branch_session",
+          "args": {
+            "sourceSessionId": "${0.id}",
+            "upToMessageId": "msg_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_create_session.invalid_mode",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "bogus_mode",
+            "title": null,
+            "metadata": null,
+            "groupId": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_create_session.group_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "g3w",
+            "metadata": null,
+            "groupId": "group_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_create_session.group_inactive",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_group",
+          "args": {
+            "request": {
+              "name": "g3w group"
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_update_group",
+          "args": {
+            "groupId": "${0.id}",
+            "request": {
+              "persistStatus": "archived",
+              "workspaceId": null
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "g3w",
+            "metadata": null,
+            "groupId": "${0.id}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_delete_session.invalid_session_id_prefix",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_delete_session",
+          "args": {
+            "sessionId": "bad_id"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_delete_session.session_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_delete_session",
+          "args": {
+            "sessionId": "sess_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_freeze_available_skills_snapshot.invalid_session_id_prefix",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_freeze_available_skills_snapshot",
+          "args": {
+            "sessionId": "bad_id",
+            "snapshot": "<available_skills></available_skills>"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_freeze_available_skills_snapshot.session_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_freeze_available_skills_snapshot",
+          "args": {
+            "sessionId": "sess_missing_g3w",
+            "snapshot": "<available_skills></available_skills>"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_get_session.invalid_session_id_prefix",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_get_session",
+          "args": {
+            "sessionId": "bad_id"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_plan_gate_respond.no_waiting_plan_gate",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_plan_gate_respond",
+          "args": {
+            "sessionId": "sess_missing_g3w",
+            "planId": "plan_missing_g3w",
+            "toolCallId": "tc_missing_g3w",
+            "approved": true,
+            "reason": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_restore_session.invalid_session_id_prefix",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_restore_session",
+          "args": {
+            "sessionId": "bad_id"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_restore_session.session_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_restore_session",
+          "args": {
+            "sessionId": "sess_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_restore_session.group_archived",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_group",
+          "args": {
+            "request": {
+              "name": "g3w group"
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "g3w",
+            "metadata": null,
+            "groupId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_update_group",
+          "args": {
+            "groupId": "${0.id}",
+            "request": {
+              "persistStatus": "archived",
+              "workspaceId": null
+            }
+          }
+        },
+        {
+          "cmd": "chat_v2_restore_session",
+          "args": {
+            "sessionId": "${1.id}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_save_session.session_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_save_session",
+          "args": {
+            "sessionId": "sess_missing_g3w",
+            "sessionState": {
+              "sessionId": "sess_missing_g3w",
+              "chatParams": null,
+              "features": {},
+              "modeState": null,
+              "inputValue": null,
+              "panelStates": null,
+              "pendingContextRefsJson": null,
+              "loadedSkillIdsJson": null,
+              "activeSkillIdsJson": null,
+              "skillStateJson": null,
+              "updatedAt": "2026-11-06T00:00:00.000Z"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_set_authority_mode.invalid_mode",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_set_authority_mode",
+          "args": {
+            "sessionId": "sess_missing_g3w",
+            "mode": "bogus_mode"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_set_authority_mode.session_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_set_authority_mode",
+          "args": {
+            "sessionId": "sess_missing_g3w",
+            "mode": "plan"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_set_permission_preset.invalid_preset",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_set_permission_preset",
+          "args": {
+            "sessionId": "sess_missing_g3w",
+            "preset": "bogus_preset",
+            "confirm": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_set_permission_preset.danger_without_confirm",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "g3w",
+            "metadata": null,
+            "groupId": null
+          }
+        },
+        {
+          "cmd": "chat_v2_set_permission_preset",
+          "args": {
+            "sessionId": "${0.id}",
+            "preset": "danger_full_access",
+            "confirm": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_set_permission_preset.session_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_set_permission_preset",
+          "args": {
+            "sessionId": "sess_missing_g3w",
+            "preset": "cautious",
+            "confirm": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_set_rag_scope.session_missing_foreign_key",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_set_rag_scope",
+          "args": {
+            "sessionId": "sess_missing_g3w",
+            "folderIds": [
+              "fld_missing_g3w"
+            ]
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_update_session_settings.invalid_session_id_prefix",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_update_session_settings",
+          "args": {
+            "sessionId": "bad_id",
+            "settings": {
+              "title": "g3w renamed"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_update_session_settings.session_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_update_session_settings",
+          "args": {
+            "sessionId": "sess_missing_g3w",
+            "settings": {
+              "title": "g3w renamed"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.chat.chat_v2_update_session_settings.session_not_active",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "chat_v2_create_session",
+          "args": {
+            "mode": "chat",
+            "title": "g3w",
+            "metadata": null,
+            "groupId": null
+          }
+        },
+        {
+          "cmd": "chat_v2_archive_session",
+          "args": {
+            "sessionId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "chat_v2_update_session_settings",
+          "args": {
+            "sessionId": "${0.id}",
+            "settings": {
+              "title": "g3w renamed"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

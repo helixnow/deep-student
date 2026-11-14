@@ -12,7 +12,7 @@ import {
   useSandboxWorkbenchStore,
 } from '@/features/sandbox/store/useSandboxWorkbenchStore';
 import type { SandboxViewportPreset } from '@/features/sandbox/types';
-import { appRegistry } from '../../core/appRegistry';
+import { contributeWorkbenchApp } from '../../core/appContributions';
 import type { ActivationContext, ActivationResult } from '../../core/types';
 import { createSandboxAgentManifest } from './agentManifest';
 
@@ -81,7 +81,7 @@ export function registerSandboxApp(): void {
   if (registered) return;
   registered = true;
 
-  appRegistry.register({
+  contributeWorkbenchApp({
     typeId: 'sandbox',
     nameKey: 'workbench:apps.sandbox',
     icon: <AppIconImage typeId="sandbox" className="h-8 w-8" />,

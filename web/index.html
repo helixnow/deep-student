@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/app-icon.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#fdfcfb" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#121212" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Deep Student" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover" />
+    <title>Deep Student</title>
+    <style>
+      :root {
+        --font-size-scale: 1;
+        --ds-boot-bg: hsl(40 20% 99%);
+        --ds-boot-fg: hsl(220 9% 18%);
+        color-scheme: light;
+      }
+      :root.dark,
+      html[data-boot-theme='dark'] {
+        --ds-boot-bg: hsl(0 0% 7%);
+        --ds-boot-fg: hsl(0 0% 96%);
+        color-scheme: dark;
+      }
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        background-color: var(--ds-boot-bg);
+        color: var(--ds-boot-fg);
+        overscroll-behavior: none;
+        -webkit-text-size-adjust: 100%;
+      }
+    </style>
+    <link rel="stylesheet" href="/boot.css" />
+    <script src="/boot-theme.js"></script>
+    <script src="/error-filter.js"></script>
+  </head>
+  <body>
+    <div id="root">
+      <div
+        class="boot-loading"
+        role="status"
+        aria-label="Deep Student loading"
+        data-dstu-react-placeholder="true"
+      >
+        <div class="boot-loading__logo-wrap">
+          <img
+            class="boot-loading__logo"
+            src="/logo-black.svg"
+            alt="Deep Student"
+            width="60"
+            height="60"
+          />
+          <img
+            class="boot-loading__logo boot-loading__logo--shine"
+            src="/logo-black.svg"
+            alt=""
+            aria-hidden="true"
+            width="60"
+            height="60"
+          />
+        </div>
+      </div>
+    </div>
+    <div id="unified-modal-root"></div>
+    <script type="module" src="/web/client/entry.ts"></script>
+  </body>
+</html>

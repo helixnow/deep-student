@@ -1,0 +1,9 @@
+[Unit]
+Description=每 10 分钟流水线体检
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=10min
+
+[Install]
+WantedBy=timers.target

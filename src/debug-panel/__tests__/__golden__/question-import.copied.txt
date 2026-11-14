@@ -1,0 +1,122 @@
+10:00:00.000 [INFO] [system] Tauri question_import_progress 监听器已注册
+10:00:00.005 [INFO] [frontend:invoke-start] 调用 importQuestionBankStream: 期中试卷.pdf 
+  detail: {
+  "fileName": "期中试卷.pdf",
+  "model": "vlm-x"
+}
+10:00:00.045 [INFO] [backend:preprocessing] sid=? 5% [decoding] 解码文档 (5%) 
+  detail: {
+  "stage": "decoding",
+  "message": "解码文档"
+}
+10:00:00.345 [INFO] [backend:preprocessing] sid=? 30% [creating_session] 创建会话 (30%) 
+  detail: {
+  "stage": "creating_session",
+  "message": "创建会话"
+}
+10:00:00.545 [INFO] [backend:rendering-pages] sid=? 渲染页面 1/2 
+  detail: {
+  "current": 1,
+  "total": 2
+}
+10:00:00.695 [INFO] [backend:rendering-pages] sid=? 渲染页面 2/2 
+  detail: {
+  "current": 2,
+  "total": 2
+}
+10:00:01.895 [INFO] [backend:ocr-image] sid=? VLM/OCR 图片 1/2 完成 
+  detail: {
+  "image_index": 0,
+  "total_images": 2
+}
+10:00:03.695 [INFO] [backend:ocr-image] sid=? VLM/OCR 图片 2/2 完成 
+  detail: {
+  "image_index": 1,
+  "total_images": 2
+}
+10:00:03.795 [SUCCESS] [backend:ocr-phase-done] sid=? 1900ms VLM/OCR 阶段完成: 2 张图片, 5321 字符 | 耗时 1900ms 
+  detail: {
+  "total_images": 2,
+  "total_chars": 5321
+}
+10:00:04.045 [INFO] [backend:extracting-figs] sid=? 配图提取 1/1 
+  detail: {
+  "current": 1,
+  "total": 1
+}
+10:00:04.445 [INFO] [backend:structuring] sid=? LLM 结构化 1/3 
+  detail: {
+  "current": 1,
+  "total": 3
+}
+10:00:04.525 [INFO] [backend:session-created] sid=qimp_0123456789a 会话创建: qimp_0123456789a | 期中试卷 | 2 块 
+  detail: {
+  "name": "期中试卷",
+  "total_chunks": 2
+}
+10:00:04.585 [INFO] [backend:chunk-start] sid=qimp_0123456789a 块 1/2 开始解析 
+  detail: {
+  "chunk_index": 0,
+  "total_chunks": 2
+}
+10:00:07.085 [DEBUG] [backend:question-parsed] sid=qimp_0123456789a 题目 #1: 已知函数 f(x) = x² - 2x + 3，求 f(x) 在区间 [0, 3] 上的最大值与最小值，并说明取得最值时... 
+  detail: {
+  "question_index": 0,
+  "total_parsed": 1,
+  "question_type": "calculation"
+}
+10:00:07.785 [DEBUG] [backend:question-parsed] sid=qimp_0123456789a 题目 #2: 填空：1 + 1 = ____ 
+  detail: {
+  "question_index": 1,
+  "total_parsed": 2,
+  "question_type": "fill_blank"
+}
+10:00:07.875 [INFO] [backend:chunk-completed] sid=qimp_0123456789a 块 1/2 完成 | 本块 2 题, 累计 2 题 
+  detail: {
+  "chunk_index": 0,
+  "total_chunks": 2,
+  "questions_in_chunk": 2,
+  "total_parsed": 2
+}
+10:00:07.905 [INFO] [backend:chunk-start] sid=qimp_0123456789a 块 2/2 开始解析 
+  detail: {
+  "chunk_index": 1,
+  "total_chunks": 2
+}
+10:00:28.905 [DEBUG] [backend:question-parsed] sid=qimp_0123456789a 题目 #3:  
+  detail: {
+  "question_index": 2,
+  "total_parsed": 3,
+  "question_type": "single_choice"
+}
+10:01:13.905 [INFO] [backend:chunk-completed] sid=qimp_0123456789a 块 2/2 完成 | 本块 1 题, 累计 3 题 
+  detail: {
+  "chunk_index": 1,
+  "total_chunks": 2,
+  "questions_in_chunk": 1,
+  "total_parsed": 3
+}
+10:01:13.945 [SUCCESS] [backend:completed] sid=qimp_0123456789a 69420ms ★ 导入完成: 期中试卷 | 3 道题目 | 总耗时 69420ms 
+  detail: {
+  "name": "期中试卷",
+  "total_questions": 3
+}
+10:01:13.945 [INFO] [system] sid=qimp_0123456789a 69420ms === 导入汇总: qimp_0123456789a | 图片=0/0 块=2/2 题目=3 | 预处理=?ms OCR=?ms 结构化=69360ms 总耗时=69420ms === 
+  detail: {
+  "structMs": 69360,
+  "totalMs": 69420,
+  "images": "0/0",
+  "chunks": "2/2",
+  "totalParsed": 3,
+  "timestamps": {
+    "start": START+4525ms,
+    "structuringStart": START+4585ms,
+    "completed": START+73945ms
+  }
+}
+10:01:13.960 [SUCCESS] [frontend:invoke-end] sid=qimp_0123456789a 73955ms invoke 返回: 3 道题目
+10:01:13.965 [DEBUG] [system] sid=qimp_0123456789a 未知事件类型: Mystery 
+  detail: {
+  "type": "Mystery",
+  "progress": 0.5
+}

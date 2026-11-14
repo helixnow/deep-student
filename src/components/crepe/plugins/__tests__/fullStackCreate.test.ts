@@ -1,5 +1,7 @@
 import { Crepe } from '@milkdown/crepe';
 import { afterEach, describe, expect, it } from 'vitest';
+import { setupMilkdownTimers } from '../../__tests__/milkdownTimers';
+setupMilkdownTimers();
 
 import { applyCrepePlugins } from '../index';
 

@@ -60,6 +60,7 @@ export interface UnifiedAppPanelProps {
   focusOnActive?: boolean;
   /** Limits explicitly scoped navigation requests to this reader instance. */
   focusScopeId?: string;
+  pdfToolbarVariant?: 'reader' | 'preview';
   /** Editor save state for a parent tab strip; optional outside the workbench. */
   onSaveStateChange?: (state: ContentSaveState) => void;
   /** Owning Workbench window, used to bind ACR to the exact editor instance. */
@@ -96,6 +97,7 @@ export interface ContentViewProps {
   /** Request focus when this note view becomes the active workbench tab. */
   focusOnActive?: boolean;
   focusScopeId?: string;
+  pdfToolbarVariant?: 'reader' | 'preview';
   /** Report the current editor save state to an owning tab strip. */
   onSaveStateChange?: (state: ContentSaveState) => void;
   /** Owning Workbench window, absent in standalone Learning Hub views. */
@@ -116,6 +118,17 @@ export interface ContentViewProps {
 const SUPPORTED_TYPES: readonly ResourceType[] = [
   'note', 'textbook', 'exam', 'translation', 'essay', 'image', 'file', 'mindmap',
 ];
+
+/** 资源类型 → 内容视图；mindmap 需要额外 props，单独渲染。 */
+const CONTENT_VIEWS: Partial<Record<ResourceType, React.ComponentType<ContentViewProps>>> = {
+  note: NoteContentView,
+  textbook: TextbookContentView,
+  exam: ExamContentView,
+  translation: TranslationContentView,
+  essay: EssayContentView,
+  image: ImageContentView,
+  file: FileContentView,
+};
 
 /**
  * 加载指示延迟：快速加载（< 该阈值）不闪现 spinner，切换资源时视觉更平滑。
@@ -162,6 +175,7 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
   isActive,
   focusOnActive = false,
   focusScopeId,
+  pdfToolbarVariant,
   onSaveStateChange,
   hostWindowId,
   reloadNonce = 0,
@@ -297,55 +311,44 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
       isActive,
       focusOnActive,
       focusScopeId,
+      pdfToolbarVariant,
       onSaveStateChange: handleSaveStateChange,
       hostWindowId,
       propertiesPanelDisabled,
       externalSettingsNavigation,
       externalSettingsOpen,
     };
-  }, [node, hasOnClose, handleClose, handleTitleChange, readOnly, isActive, focusOnActive, focusScopeId, handleSaveStateChange, hostWindowId, propertiesPanelDisabled, externalSettingsNavigation, externalSettingsOpen]);
+  }, [node, hasOnClose, handleClose, handleTitleChange, readOnly, isActive, focusOnActive, focusScopeId, pdfToolbarVariant, handleSaveStateChange, hostWindowId, propertiesPanelDisabled, externalSettingsNavigation, externalSettingsOpen]);
 
   // ★ 性能：memo 化视图元素。元素引用不变时 React 会直接跳过该子树的重渲染
   //（即使子组件未包 React.memo），使父级因 className/闭包变化引起的重渲染不再波及内容视图
   const contentView = useMemo(() => {
     if (!node || !commonProps) return null;
-    switch (resolvedType) {
-      case 'note':
-        return <NoteContentView {...commonProps} />;
-      case 'textbook':
-        return <TextbookContentView {...commonProps} />;
-      case 'exam':
-        return <ExamContentView {...commonProps} />;
-      case 'translation':
-        return <TranslationContentView {...commonProps} />;
-      case 'essay':
-        return <EssayContentView {...commonProps} />;
-      case 'image':
-        return <ImageContentView {...commonProps} />;
-      case 'file':
-        return <FileContentView {...commonProps} />;
-      case 'mindmap':
-        // 与 Workbench Notes 路径（NotesWorkspaceApp）对齐：
-        // storeInstanceId 隔离多标签 store 路由；focusOnActive 使激活标签自动获得键盘焦点；
-        // onSaveStateChange 让标签页能显示 dirty/saving 状态。
-        return (
-          <MindMapContentView
-            resourceId={node.id}
-            storeInstanceId={hostWindowId ? `${hostWindowId}:${node.id}` : `learning-hub:${node.id}`}
-            onTitleChange={handleTitleChange}
-            isActive={isActive}
-            focusOnActive={focusOnActive}
-            onSaveStateChange={handleSaveStateChange}
-            className="h-full"
-          />
-        );
-      default:
-        return (
-          <div className="flex items-center justify-center h-full text-muted-foreground" role="alert">
-            {t('error.unsupportedType', { type: resolvedType })}
-          </div>
-        );
+    if (resolvedType === 'mindmap') {
+      // 与 Workbench Notes 路径（NotesWorkspaceApp）对齐：
+      // storeInstanceId 隔离多标签 store 路由；focusOnActive 使激活标签自动获得键盘焦点；
+      // onSaveStateChange 让标签页能显示 dirty/saving 状态。
+      return (
+        <MindMapContentView
+          resourceId={node.id}
+          storeInstanceId={hostWindowId ? `${hostWindowId}:${node.id}` : `learning-hub:${node.id}`}
+          onTitleChange={handleTitleChange}
+          isActive={isActive}
+          focusOnActive={focusOnActive}
+          onSaveStateChange={handleSaveStateChange}
+          className="h-full"
+        />
+      );
     }
+    const ContentView = Object.hasOwn(CONTENT_VIEWS, resolvedType) ? CONTENT_VIEWS[resolvedType] : undefined;
+    if (!ContentView) {
+      return (
+        <div className="flex items-center justify-center h-full text-muted-foreground" role="alert">
+          {t('error.unsupportedType', { type: resolvedType })}
+        </div>
+      );
+    }
+    return <ContentView {...commonProps} />;
   }, [node, commonProps, resolvedType, isActive, focusOnActive, hostWindowId, handleTitleChange, handleSaveStateChange, t]);
 
   // 加载状态（spinner 延迟显示，快速加载不闪烁）

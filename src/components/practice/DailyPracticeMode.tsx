@@ -257,22 +257,24 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
         <CardContent className="space-y-6 px-0 sm:px-6">
           {/* 连续打卡 */}
           {activeCheckInCalendar && activeCheckInCalendar.streak_days > 0 && (
-            <div className="flex items-center justify-center gap-3 rounded-md border border-warning/20 bg-gradient-to-r from-warning/15 via-warning/5 to-transparent p-3">
-              <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-warning/15">
-                <Flame size={24} weight="fill" className="text-warning" />
-              </div>
-              <div>
-                <div className="text-xl font-semibold leading-tight text-warning tabular-nums">
-                  {activeCheckInCalendar.streak_days}
+            <div className="flex items-center justify-between gap-3 border-b border-border/40 pb-4">
+              <div className="flex items-center gap-3">
+                <Flame size={20} weight="fill" className="shrink-0 text-warning" />
+                <div>
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="text-xl font-semibold leading-tight text-foreground tabular-nums">
+                      {activeCheckInCalendar.streak_days}
+                    </span>
+                    <span className="text-xs text-muted-foreground">{t('daily.streakDays')}</span>
+                  </div>
+                  {/* streak 后端只看「当天有无做题」，与目标是否达成无关，文案如实说明 */}
+                  <div className="text-xs leading-snug text-muted-foreground/80">
+                    {t('daily.streakHint')}
+                  </div>
                 </div>
-                <div className="text-sm text-muted-foreground">{t('daily.streakDays')}</div>
-                {/* streak 后端只看「当天有无做题」，与目标是否达成无关，文案如实说明 */}
-                <div className="text-[11px] leading-snug text-muted-foreground/80">
-                  {t('daily.streakHint')}
-                </div>
               </div>
-              {/* 近 7 天连续火苗点缀：点亮天数 = min(streak, 7) */}
-              <div className="ml-2 hidden items-end gap-1 sm:flex" aria-hidden="true">
+              {/* 近 7 天连续点缀：点亮天数 = min(streak, 7) */}
+              <div className="hidden items-end gap-1 sm:flex" aria-hidden="true">
                 {Array.from({ length: 7 }, (_, i) => {
                   const lit = i < Math.min(activeCheckInCalendar.streak_days, 7);
                   return (
@@ -283,33 +285,31 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
                         lit ? 'bg-warning' : 'bg-muted',
                       )}
                       style={{ height: `${8 + i * 2}px` }}
-/>
+                    />
                   );
                 })}
               </div>
             </div>
           )}
           
-          {/* 智能推荐说明 */}
-          <div className="rounded-md border border-primary/20 bg-primary/5 p-3">
-            <div className="flex items-start gap-3">
-              <div className="space-y-2">
-                <div className="font-medium text-primary">
-                  {t('daily.smartRecommend')}
+          {/* 智能推荐说明：左侧 2px 细线引导，替代整块主色底框 */}
+          <div className="border-l-2 border-border/70 pl-3.5">
+            <div className="space-y-1.5">
+              <div className="text-xs font-medium text-foreground">
+                {t('daily.smartRecommend')}
+              </div>
+              <div className="space-y-1 text-xs text-muted-foreground">
+                <div className="flex items-center gap-2">
+                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-warning" aria-hidden="true" />
+                  <span>{t('daily.recommendMistakes')}</span>
                 </div>
-                <div className="text-sm text-muted-foreground space-y-1">
-                  <div className="flex items-center gap-2">
-                    <ArrowCounterClockwise size={16} className="text-warning" />
-                    <span>{t('daily.recommendMistakes')}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <BookOpen size={16} className="text-success" />
-                    <span>{t('daily.recommendNew')}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <CheckCircle size={16} className="text-primary" />
-                    <span>{t('daily.recommendReview')}</span>
-                  </div>
+                <div className="flex items-center gap-2">
+                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-success" aria-hidden="true" />
+                  <span>{t('daily.recommendNew')}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" aria-hidden="true" />
+                  <span>{t('daily.recommendReview')}</span>
                 </div>
               </div>
             </div>
@@ -417,26 +417,35 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
             </div>
           )}
           
-          {/* 来源分布 */}
+          {/* 来源分布：单线分隔 + 6px 语义圆点 + tabular-nums，无三色底块 */}
           {activeDailyPractice && (
-            <div className="grid grid-cols-3 gap-3">
-              <div className="rounded-md bg-warning/10 p-2 text-center">
-                <div className="text-base font-semibold text-warning">
+            <div className="grid grid-cols-3 divide-x divide-border/45 border-y border-border/40 py-2.5">
+              <div className="px-2 text-center">
+                <div className="text-base font-semibold text-foreground tabular-nums">
                   {activeDailyPractice.source_distribution.mistake_count}
                 </div>
-                <div className="text-xs text-warning">{t('daily.mistakes')}</div>
+                <div className="mt-0.5 inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <span className="h-1.5 w-1.5 rounded-full bg-warning" aria-hidden="true" />
+                  {t('daily.mistakes')}
+                </div>
               </div>
-              <div className="rounded-md bg-success/10 p-2 text-center">
-                <div className="text-base font-semibold text-success">
+              <div className="px-2 text-center">
+                <div className="text-base font-semibold text-foreground tabular-nums">
                   {activeDailyPractice.source_distribution.new_count}
                 </div>
-                <div className="text-xs text-success">{t('daily.new')}</div>
+                <div className="mt-0.5 inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <span className="h-1.5 w-1.5 rounded-full bg-success" aria-hidden="true" />
+                  {t('daily.new')}
+                </div>
               </div>
-              <div className="rounded-md bg-primary/10 p-2 text-center">
-                <div className="text-base font-semibold text-primary">
+              <div className="px-2 text-center">
+                <div className="text-base font-semibold text-foreground tabular-nums">
                   {activeDailyPractice.source_distribution.review_count}
                 </div>
-                <div className="text-xs text-primary">{t('daily.review')}</div>
+                <div className="mt-0.5 inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-hidden="true" />
+                  {t('daily.review')}
+                </div>
               </div>
             </div>
           )}

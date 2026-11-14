@@ -15,9 +15,10 @@ import {
 import { usePdfProcessingProgress } from '@/hooks/usePdfProcessingProgress';
 import { usePdfProcessingStore } from '@/features/pdf/stores/pdfProcessingStore';
 import { isCurrentChatModelMultimodal } from '@/features/chat/hooks/useAvailableModels';
-import { cn } from '@/lib/utils';
+import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
-import { useTauriDragAndDrop } from '@/hooks/useTauriDragAndDrop';
+import { convertFileSrc } from '@tauri-apps/api/core';
+import { useTauriDragAndDrop, type DroppedPathFile } from '@/hooks/useTauriDragAndDrop';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { useSystemStatusStore } from '@/stores/systemStatusStore';
 import { getErrorMessage } from '@/utils/errorUtils';
@@ -26,7 +27,8 @@ import { getBatchPdfProcessingStatus, retryPdfProcessing } from '@/api/vfsPdfPro
 import { needsProcessingStatusHydration } from './libraryAttachmentProcessing';
 import type { InputBarUIProps } from './types';
 import { vfsRefApi, type UploadAttachmentResult } from '../../context/vfsRefApi';
-import { shouldUseStagedUpload, stageBlobUpload } from '@/utils/stagedUpload';
+import { abortStagedUpload, shouldUseStagedUpload, stageBlobUpload, stagePathUpload } from '@/utils/stagedUpload';
+import { isWebUiShell } from '@/utils/platform';
 import { buildFileAccept } from '@/utils/fileAccept';
 import { resourceStoreApi, type ContextRef } from '../../resources';
 import { IMAGE_TYPE_ID } from '../../context/definitions/image';
@@ -60,6 +62,7 @@ import { COMMAND_EVENTS } from '@/command-palette/hooks/useCommandEvents';
 import { useVoiceInputIntegration } from '@/voice-input';
 import { registerBackHandler, BACK_PRIORITY, hasOpenRadixOverlayBesides } from '@/app/navigation/androidBackCoordinator';
 import { useKeyboardInset, isEditableElement } from '@/hooks/useKeyboardHeight';
+import { setComposerDockHeight } from '@/hooks/useComposerDockHeight';
 // ★ 拆分后的子模块：textarea+IME / 底部工具栏 / 附件面板体 / 模式辅助 / 发送可用性
 import { ComposerTextarea } from './ComposerTextarea';
 import { ComposerToolbar } from './ComposerToolbar';
@@ -76,6 +79,13 @@ import {
   resolveSendBlockedReason,
   resolveInlineSendHint,
 } from './sendAvailability';
+import {
+  SessionDraftLruStore as BaseSessionDraftLruStore,
+  type SaveSessionDraftInput,
+  type SessionDraftLruStoreOptions,
+  type SessionDraftRecord,
+  type SessionDraftTripletKeyInput,
+} from './composerOpenChamberEnhancements';
 
 // ============================================================================
 // 常量
@@ -138,6 +148,193 @@ function scheduleIdle(callback: () => void, timeout = IDLE_DELAY_MS): () => void
 // getFileExtension 已拆至 inputBarConfig.ts；
 // clampPercent / 附件模式辅助已拆至 attachmentModeHelpers.ts；
 // getCompactThinkingLabel / ResizingThinkingLabel / ContextWindowUsageRing 已拆至 ComposerToolbar.tsx
+
+// ============================================================================
+// 大段粘贴折叠胶囊 / 16 会话 LRU 草稿箱 / 流式 Queue·Steer 抢占控制
+// ============================================================================
+
+export const LARGE_PASTE_PILL_CHAR_THRESHOLD = 1000;
+export const LARGE_PASTE_PILL_LINE_THRESHOLD = 20;
+export const MAX_PASTED_PILLS = 10;
+
+export interface PastedTextPill {
+  id: string;
+  content: string;
+  charCount: number;
+  lineCount: number;
+  summaryLabel: string;
+  createdAtMs: number;
+}
+
+export function shouldCollapsePasteAsPill(text: string): boolean {
+  if (!text || text.trim().length === 0) return false;
+  if (text.length > LARGE_PASTE_PILL_CHAR_THRESHOLD) return true;
+  return text.split(/\r\n|\r|\n/).length > LARGE_PASTE_PILL_LINE_THRESHOLD;
+}
+
+let pastedTextPillSeq = 0;
+
+export function createPastedTextPill(content: string): PastedTextPill {
+  pastedTextPillSeq += 1;
+  const charCount = content.length;
+  const lineCount = content.split(/\r\n|\r|\n/).length;
+  return {
+    id: `paste-pill-${Date.now()}-${pastedTextPillSeq}`,
+    content,
+    charCount,
+    lineCount,
+    summaryLabel: `已粘贴 ${charCount} 字符 · ${lineCount} 行`,
+    createdAtMs: Date.now(),
+  };
+}
+
+export function expandInputWithPills(
+  inputValue: string,
+  pills: readonly PastedTextPill[],
+): string {
+  if (pills.length === 0) return inputValue;
+  const pillsBlock = pills.map((pill) => pill.content).join('\n\n');
+  if (!inputValue || inputValue.trim().length === 0) {
+    return inputValue ? `${pillsBlock}\n\n${inputValue}` : pillsBlock;
+  }
+  return `${pillsBlock}\n\n${inputValue}`;
+}
+
+export interface FloatingPreemptControlState {
+  isStreaming: boolean;
+  hasDraftText: boolean;
+  isExecutingCommand?: boolean;
+}
+
+export function shouldShowFloatingPreemptControl({
+  isStreaming,
+  hasDraftText,
+  isExecutingCommand = false,
+}: FloatingPreemptControlState): boolean {
+  return Boolean(isStreaming && hasDraftText && !isExecutingCommand);
+}
+
+export interface ComposerDraftInput extends SaveSessionDraftInput {
+  attachments?: AttachmentMeta[];
+  pastedPills?: readonly PastedTextPill[];
+}
+
+export interface ComposerDraftRecord extends SessionDraftRecord {
+  attachments: AttachmentMeta[];
+  pastedPills: PastedTextPill[];
+}
+
+const INTERNAL_DRAFT_PILL_SENTINEL = '__composer_pill__:';
+const INTERNAL_DRAFT_ATTACHMENT_SENTINEL = '__composer_att__:';
+
+export class SessionDraftLruStore extends BaseSessionDraftLruStore {
+  private readonly extraByCompositeKey = new Map<
+    string,
+    { attachments: AttachmentMeta[]; pastedPills: PastedTextPill[] }
+  >();
+
+  constructor(optionsOrMaxEntries: number | SessionDraftLruStoreOptions = 16) {
+    super(
+      typeof optionsOrMaxEntries === 'number'
+        ? { maxEntries: optionsOrMaxEntries }
+        : optionsOrMaxEntries,
+    );
+  }
+
+  private pruneEvictedExtras(): void {
+    const activeKeys = new Set(super.listDrafts().map((item) => item.compositeKey));
+    for (const key of this.extraByCompositeKey.keys()) {
+      if (!activeKeys.has(key)) {
+        this.extraByCompositeKey.delete(key);
+      }
+    }
+  }
+
+  override setDraft(
+    identityOrCompositeKey: string | SessionDraftTripletKeyInput,
+    input: ComposerDraftInput,
+  ): ComposerDraftRecord | null {
+    const attachments = input.attachments ? [...input.attachments] : [];
+    const pastedPills = input.pastedPills
+      ? input.pastedPills.map((pill) => ({ ...pill }))
+      : [];
+    const userPastedSessionIds = (input.pastedSessionIds ?? []).filter(
+      (id) =>
+        !id.startsWith(INTERNAL_DRAFT_PILL_SENTINEL) &&
+        !id.startsWith(INTERNAL_DRAFT_ATTACHMENT_SENTINEL),
+    );
+    const sentinelIds = [
+      ...userPastedSessionIds,
+      ...pastedPills.map((pill) => `${INTERNAL_DRAFT_PILL_SENTINEL}${pill.id}`),
+      ...(attachments.length > 0
+        ? [`${INTERNAL_DRAFT_ATTACHMENT_SENTINEL}${attachments.length}`]
+        : []),
+    ];
+
+    const base = super.setDraft(identityOrCompositeKey, {
+      ...input,
+      pastedSessionIds: sentinelIds,
+    });
+
+    if (!base) {
+      this.pruneEvictedExtras();
+      return null;
+    }
+
+    this.extraByCompositeKey.set(base.compositeKey, {
+      attachments,
+      pastedPills,
+    });
+    this.pruneEvictedExtras();
+    return this.getDraft(base.compositeKey);
+  }
+
+  override saveDraft(
+    identityOrCompositeKey: string | SessionDraftTripletKeyInput,
+    input: ComposerDraftInput,
+  ): ComposerDraftRecord | null {
+    return this.setDraft(identityOrCompositeKey, input);
+  }
+
+  override getDraft(
+    identityOrCompositeKey: string | SessionDraftTripletKeyInput,
+  ): ComposerDraftRecord | null {
+    const base = super.getDraft(identityOrCompositeKey);
+    if (!base) {
+      return null;
+    }
+    const extra = this.extraByCompositeKey.get(base.compositeKey);
+    return {
+      ...base,
+      pastedSessionIds: base.pastedSessionIds.filter(
+        (id) =>
+          !id.startsWith(INTERNAL_DRAFT_PILL_SENTINEL) &&
+          !id.startsWith(INTERNAL_DRAFT_ATTACHMENT_SENTINEL),
+      ),
+      attachments: extra?.attachments ? [...extra.attachments] : [],
+      pastedPills: extra?.pastedPills
+        ? extra.pastedPills.map((pill) => ({ ...pill }))
+        : [],
+    };
+  }
+
+  override deleteDraft(
+    identityOrCompositeKey: string | SessionDraftTripletKeyInput,
+  ): boolean {
+    const existing = super.getDraft(identityOrCompositeKey);
+    if (existing) {
+      this.extraByCompositeKey.delete(existing.compositeKey);
+    }
+    return super.deleteDraft(identityOrCompositeKey);
+  }
+
+  override clear(): void {
+    this.extraByCompositeKey.clear();
+    super.clear();
+  }
+}
+
+export const globalSessionDraftLru = new SessionDraftLruStore(16);
 
 // ============================================================================
 // 辅助 Hooks
@@ -203,12 +400,20 @@ const useDeferredOpen = (open: boolean, delay = 220): DeferredPanelState => {
  * 打字路径（inputValue prop 变化）仍会渲染本组件，但内部重型子树
  * （ComposerPlusMenu / 各 chips）已独立 memo。
  */
-const InputBarUIInner: React.FC<InputBarUIProps> = ({
+export interface InputBarUIExtendedProps extends InputBarUIProps {
+  /** 是否允许在流式期间抢占打断（默认 true） */
+  allowSteer?: boolean;
+  /** 专用抢占发送回调（入队置顶并中断，或先中断再直发） */
+  onSteerSend?: () => void | Promise<void>;
+}
+
+const InputBarUIInner: React.FC<InputBarUIExtendedProps> = ({
   // 状态
   inputValue,
   canSend,
   queueEnabled = false,
   queueFull = false,
+  allowSteer = true,
   canSubmit,
   canAbort,
   isStreaming,
@@ -221,6 +426,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
   // 回调
   onInputChange,
   onSend,
+  onSteerSend,
   onAbort,
   onAddAttachment,
   onUpdateAttachment,
@@ -292,6 +498,10 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
   onPermissionPresetChange,
   knowledgeBaseProactive = false,
   onKnowledgeBaseProactiveChange,
+  ragEnabled = true,
+  onRagEnabledChange,
+  webSearchEnabled = true,
+  onWebSearchEnabledChange,
   // ★ PDF 页码引用
   pdfPageRefs,
   onRemovePdfPageRef,
@@ -358,6 +568,108 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
   const dropZoneRef = useRef<HTMLDivElement>(null);
   // ★ B9 修复：长文本默认进输入框；这里记录粘贴片段，提供「转为附件」内联建议
   const [longPasteCandidate, setLongPasteCandidate] = useState<{ text: string } | null>(null);
+  // ★ 大段粘贴折叠胶囊（Large Paste Pill）与 16 会话 LRU 草稿同步
+  const [pastedPills, setPastedPills] = useState<PastedTextPill[]>([]);
+  const pastedPillsRef = useRef<PastedTextPill[]>(pastedPills);
+  pastedPillsRef.current = pastedPills;
+  const inputValueRef = useRef(inputValue);
+  inputValueRef.current = inputValue;
+  const prevDraftSessionIdRef = useRef<string | undefined>(undefined);
+  const pendingRestoredTextRef = useRef<{ sessionId: string; text: string } | null>(null);
+  const suppressSentSnapshotRef = useRef<{
+    sessionId: string;
+    raw: string;
+    expanded: string;
+  } | null>(null);
+
+  useEffect(() => {
+    if (prevDraftSessionIdRef.current !== sessionId) {
+      prevDraftSessionIdRef.current = sessionId;
+      pendingRestoredTextRef.current = null;
+      suppressSentSnapshotRef.current = null;
+
+      if (!sessionId) {
+        if (pastedPillsRef.current.length > 0) {
+          pastedPillsRef.current = [];
+          setPastedPills([]);
+        }
+        return;
+      }
+
+      const draft = globalSessionDraftLru.getDraft(sessionId);
+      const isCurrentInputEmpty = inputValue.trim().length === 0;
+      if (draft) {
+        const restoredPills = draft.pastedPills ?? [];
+        pastedPillsRef.current = restoredPills;
+        setPastedPills(restoredPills);
+        if (draft.text && isCurrentInputEmpty && inputValue === '') {
+          pendingRestoredTextRef.current = { sessionId, text: draft.text };
+          onInputChange(draft.text);
+        } else if (!isCurrentInputEmpty && inputValue !== draft.text) {
+          globalSessionDraftLru.saveDraft(sessionId, {
+            text: inputValue,
+            attachments: [],
+            pastedPills: restoredPills,
+          });
+        }
+      } else {
+        if (pastedPillsRef.current.length > 0) {
+          pastedPillsRef.current = [];
+          setPastedPills([]);
+        }
+        if (!isCurrentInputEmpty) {
+          globalSessionDraftLru.saveDraft(sessionId, {
+            text: inputValue,
+            attachments: [],
+            pastedPills: [],
+          });
+        }
+      }
+      return;
+    }
+
+    if (!sessionId) return;
+
+    if (
+      suppressSentSnapshotRef.current &&
+      suppressSentSnapshotRef.current.sessionId === sessionId
+    ) {
+      const { raw, expanded } = suppressSentSnapshotRef.current;
+      if (
+        (inputValue === raw || inputValue === expanded || inputValue === '') &&
+        pastedPills.length === 0
+      ) {
+        if (inputValue === '') {
+          suppressSentSnapshotRef.current = null;
+          globalSessionDraftLru.deleteDraft(sessionId);
+        }
+        return;
+      }
+      suppressSentSnapshotRef.current = null;
+    }
+
+    if (
+      pendingRestoredTextRef.current &&
+      pendingRestoredTextRef.current.sessionId === sessionId
+    ) {
+      if (inputValue !== '') {
+        pendingRestoredTextRef.current = null;
+      } else {
+        globalSessionDraftLru.saveDraft(sessionId, {
+          text: pendingRestoredTextRef.current.text,
+          attachments: [],
+          pastedPills,
+        });
+        return;
+      }
+    }
+
+    globalSessionDraftLru.saveDraft(sessionId, {
+      text: inputValue,
+      attachments: [],
+      pastedPills,
+    });
+  }, [sessionId, inputValue, pastedPills, onInputChange]);
   // ★ 制卡可发现性：附加 pdf/docx/apkg 时展示一条可关闭的制卡/导入提示
   const [flashcardHintDismissed, setFlashcardHintDismissed] = useState(false);
   const flashcardHintKind = useMemo<'apkg' | 'document' | null>(() => {
@@ -450,19 +762,17 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
     return () => { cancelled = true; };
   }, [effectiveChatModelId]);
 
-  // 处理文件转换为附件元数据并上传（入参已完成 HEIC→JPEG 预处理）
-  const processPreparedFilesToAttachments = useCallback((files: File[]) => {
-    if (!files.length || !isUploadScopeCurrent()) return;
+  type AttachmentUploadSource =
+    | { kind: 'file'; file: File; name: string; mimeType: string; size: number }
+    | { kind: 'path'; path: string; name: string; mimeType: string; size: number };
+
+  // 处理文件/已暂存路径转换为附件元数据并上传（入参已完成 HEIC→JPEG 预处理）
+  const processPreparedSourcesToAttachments = useCallback((sources: AttachmentUploadSource[]) => {
+    if (!sources.length || !isUploadScopeCurrent()) return;
 
     // 🆕 维护模式检查：阻止文件上传
     if (useSystemStatusStore.getState().maintenanceMode) {
       showGlobalNotification('warning', t('common:maintenance.blocked_file_upload'));
-      return;
-    }
-
-    // 如果有外部 onFilesUpload 回调，优先使用
-    if (onFilesUpload) {
-      onFilesUpload(files);
       return;
     }
 
@@ -476,23 +786,26 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
       return;
     }
     // 只处理可用槽位数量的文件
-    const filesToProcess = files.slice(0, availableSlots);
-    if (filesToProcess.length < files.length) {
-      console.warn(`[InputBarUI] Truncated ${files.length - filesToProcess.length} files due to limit`);
+    const sourcesToProcess = sources.slice(0, availableSlots);
+    if (sourcesToProcess.length < sources.length) {
+      console.warn(`[InputBarUI] Truncated ${sources.length - sourcesToProcess.length} files due to limit`);
     }
 
     // 否则使用内部逻辑创建附件元数据
     // 🔧 P0修复：使用 FileReader 读取文件内容，设置 previewUrl
     // 🔧 P2优化：使用 updateAttachment 原地更新，避免闪烁
-    filesToProcess.forEach((file) => {
-      const fileExt = getFileExtension(file.name);
+    sourcesToProcess.forEach((source) => {
+      const fileName = source.name;
+      const fileMime = source.mimeType;
+      const fileSize = source.size;
+      const fileExt = getFileExtension(fileName);
       // ★ P1 SSOT：媒体类型统一走 getAttachmentMediaType（MIME OR 扩展名），
       // 修复空 mime 的 .png 等文件在部分链路中不进图片流水线的分裂
-      const mediaType = getAttachmentMediaType(file.type, file.name);
+      const mediaType = getAttachmentMediaType(fileMime, fileName);
       const isImage = mediaType === 'image';
-      const isAudio = file.type.startsWith('audio/') || ATTACHMENT_AUDIO_TYPES.includes(file.type) || ATTACHMENT_AUDIO_EXTENSIONS.includes(fileExt);
-      const isVideo = file.type.startsWith('video/') || ATTACHMENT_VIDEO_TYPES.includes(file.type) || ATTACHMENT_VIDEO_EXTENSIONS.includes(fileExt);
-      const isArchive = ATTACHMENT_ARCHIVE_TYPES.includes(file.type) || ATTACHMENT_ARCHIVE_EXTENSIONS.includes(fileExt);
+      const isAudio = fileMime.startsWith('audio/') || ATTACHMENT_AUDIO_TYPES.includes(fileMime) || ATTACHMENT_AUDIO_EXTENSIONS.includes(fileExt);
+      const isVideo = fileMime.startsWith('video/') || ATTACHMENT_VIDEO_TYPES.includes(fileMime) || ATTACHMENT_VIDEO_EXTENSIONS.includes(fileExt);
+      const isArchive = ATTACHMENT_ARCHIVE_TYPES.includes(fileMime) || ATTACHMENT_ARCHIVE_EXTENSIONS.includes(fileExt);
       // ★ 思维导图：xmind/mmap 为二进制容器（不注入文本，归 other）；
       // opml/mm 为 XML 纯文本（按文档/文本注入）
       const isBinaryMindmap = ATTACHMENT_MINDMAP_EXTENSIONS.includes(fileExt)
@@ -502,15 +815,15 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
 
       // 图片走 50MB（VFS Image / 后端 MAX_IMAGE_BYTES）；其他附件走 200MB。
       const maxSize = getAttachmentSizeLimit(isImage);
-      if (file.size > maxSize) {
-        console.warn(`[InputBarUI] File too large: ${file.name} (${formatFileSize(file.size)})`);
+      if (fileSize > maxSize) {
+        console.warn(`[InputBarUI] File too large: ${fileName} (${formatFileSize(fileSize)})`);
         const errorAttachment: AttachmentMeta = {
           id: attachmentId,
-          name: file.name,
+          name: fileName,
           type: attachmentType,
           resourceType: isImage ? 'image' : 'file',
-          mimeType: file.type,
-          size: file.size,
+          mimeType: fileMime,
+          size: fileSize,
           status: 'error',
           error: t('analysis:input_bar.attachments.file_too_large', { size: formatFileSize(maxSize) }),
         };
@@ -520,21 +833,21 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
       }
 
       // 🔧 P2优化：文件类型验证 (P1-08: 使用统一常量)
-      const isAllowedType = ATTACHMENT_ALLOWED_TYPES.includes(file.type)
+      const isAllowedType = ATTACHMENT_ALLOWED_TYPES.includes(fileMime)
         || ATTACHMENT_ALLOWED_EXTENSIONS.includes(fileExt);
       if (!isAllowedType) {
-        console.warn(`[InputBarUI] Unsupported file type: ${file.name} (${file.type || fileExt})`);
+        console.warn(`[InputBarUI] Unsupported file type: ${fileName} (${fileMime || fileExt})`);
         const errorAttachment: AttachmentMeta = {
           id: attachmentId,
-          name: file.name,
+          name: fileName,
           type: attachmentType,
           resourceType: isImage ? 'image' : 'file',
-          mimeType: file.type || 'application/octet-stream',
-          size: file.size,
+          mimeType: fileMime || 'application/octet-stream',
+          size: fileSize,
           status: 'error',
           error: t('analysis:input_bar.attachments.errors.unsupported_type', {
-            name: file.name,
-            ext: fileExt || file.type || 'unknown',
+            name: fileName,
+            ext: fileExt || fileMime || 'unknown',
           }),
         };
         onAddAttachment(errorAttachment);
@@ -549,22 +862,24 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
       //（多模态 → 图片直注；非多模态 → 文本+OCR）
       const pendingAttachment: AttachmentMeta = {
         id: attachmentId,
-        name: file.name,
+        name: fileName,
         type: attachmentType,
         resourceType: isImage ? 'image' : 'file',
-        mimeType: file.type || 'application/octet-stream',
-        size: file.size,
+        mimeType: fileMime || 'application/octet-stream',
+        size: fileSize,
         status: 'uploading', // 标记为上传中
         uploadProgress: 0,
-        uploadStage: 'reading',
+        uploadStage: source.kind === 'path' ? 'uploading' : 'reading',
         injectModes: buildDefaultInjectModes(mediaType, { multimodal: multimodalRef.current }),
       };
       onAddAttachment(pendingAttachment);
       liveAttachmentCountRef.current += 1;
 
       // 🔧 P1-25: 移动端内存优化 - 使用 Blob URL 预览，避免 DataURL 常驻内存
-      // 创建 Blob URL 用于预览（内存友好，浏览器自动管理）
-      const upload = beginUpload(attachmentId, file);
+      // WebUI 已暂存路径图片直接走 asset 协议预览，避免整包拉回前端内存。
+      const upload = source.kind === 'path'
+        ? beginUpload(attachmentId, null, isImage ? convertFileSrc(source.path) : undefined)
+        : beginUpload(attachmentId, source.file);
       const blobPreviewUrl = upload.previewUrl;
 
       // 异步读取文件内容并上传到 VFS
@@ -592,7 +907,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
           const typeId = isImage ? IMAGE_TYPE_ID : FILE_TYPE_ID;
 
           logAttachment('ui', 'vfs_upload_start', {
-            fileName: file.name,
+            fileName,
             typeId,
           });
 
@@ -624,7 +939,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
               sourceId: uploadResult.sourceId,
               resourceHash: uploadResult.resourceHash,
               type: isImage ? 'image' : 'file',
-              name: file.name,
+              name: fileName,
             }],
             totalCount: 1,
             truncated: false,
@@ -640,9 +955,9 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
             data: refData,
             sourceId: uploadResult.sourceId,
             metadata: {
-              name: file.name,
-              mimeType: file.type || 'application/octet-stream',
-              size: file.size,
+              name: fileName,
+              mimeType: fileMime || 'application/octet-stream',
+              size: fileSize,
             },
           });
 
@@ -674,7 +989,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
             resourceId: result.resourceId,
             hash: result.hash,
             typeId,
-            displayName: file.name,
+            displayName: fileName,
             ...(explicitInjectModes ? { injectModes: explicitInjectModes } : {}),
           };
 
@@ -743,7 +1058,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
               stage,
               percent,
               readyModes,
-              fileName: file.name,
+              fileName,
             });
           } else if (isImageFile) {
             // 图片上传完成后设为 processing 状态，等待预处理流水线
@@ -791,7 +1106,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
               stage,
               percent,
               readyModes,
-              fileName: file.name,
+              fileName,
             });
           } else {
             // 其他文件类型直接 ready
@@ -814,7 +1129,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
           if (!upload.isActive()) return;
           const errorDetail = getErrorMessage(error);
           logAttachment('ui', 'vfs_upload_error', {
-            fileName: file.name,
+            fileName,
             error: errorDetail,
           }, 'error');
 
@@ -835,6 +1150,26 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
           upload.finish();
         }
       };
+
+      if (source.kind === 'path') {
+        void runVfsUpload(async () => {
+          const staged = await stagePathUpload(source.path);
+          if (!upload.isActive()) {
+            void abortStagedUpload(staged.uploadId);
+            throw new Error('Upload aborted');
+          }
+          onUpdateAttachment(attachmentId, { uploadProgress: 40, uploadStage: 'uploading' });
+          return vfsRefApi.uploadAttachment({
+            name: fileName,
+            mimeType: fileMime || 'application/octet-stream',
+            stagedUploadId: staged.uploadId,
+            type: isImage ? 'image' : 'file',
+          });
+        });
+        return;
+      }
+
+      const file = source.file;
 
       // ★ 大文件（> STAGED_UPLOAD_THRESHOLD）：File.slice 分块暂存到 Rust 临时文件，
       // WebView 内不生成整份 base64/JSON（手机上 200MB 附件曾导致渲染进程 OOM）。
@@ -900,7 +1235,28 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
       reader.readAsDataURL(file);
     });
 
-  }, [onFilesUpload, onAddAttachment, onUpdateAttachment, onContextRefCreated, t, beginUpload, isUploadScopeCurrent]);
+  }, [onAddAttachment, onUpdateAttachment, onContextRefCreated, t, beginUpload, isUploadScopeCurrent]);
+
+  const processPreparedFilesToAttachments = useCallback((files: File[]) => {
+    if (!files.length || !isUploadScopeCurrent()) return;
+    if (useSystemStatusStore.getState().maintenanceMode) {
+      showGlobalNotification('warning', t('common:maintenance.blocked_file_upload'));
+      return;
+    }
+    if (onFilesUpload) {
+      onFilesUpload(files);
+      return;
+    }
+    processPreparedSourcesToAttachments(
+      files.map((file) => ({
+        kind: 'file',
+        file,
+        name: file.name,
+        mimeType: file.type,
+        size: file.size,
+      })),
+    );
+  }, [onFilesUpload, processPreparedSourcesToAttachments, isUploadScopeCurrent, t]);
 
   // HEIC/HEIF 先经平台原生解码转为 JPEG（WebView / Android ImageDecoder）；
   // 无法转换时明确提示并拒收，不再把供应商不认的 HEIC 原样上传。
@@ -952,11 +1308,37 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
     processFilesToAttachments([file]);
   }, [processFilesToAttachments]);
 
+  const canReuseDroppedPath = useCallback(
+    (dropped: DroppedPathFile) =>
+      isWebUiShell()
+      && !onFilesUpload
+      && !isHeicFile({ name: dropped.name, type: dropped.mimeType }),
+    [onFilesUpload],
+  );
+
+  const handleDropPaths = useCallback(
+    (dropped: DroppedPathFile[]) => {
+      if (!dropped.length || !isUploadScopeCurrent()) return;
+      processPreparedSourcesToAttachments(
+        dropped.map((item) => ({
+          kind: 'path',
+          path: item.path,
+          name: item.name,
+          mimeType: item.mimeType,
+          size: item.size,
+        })),
+      );
+    },
+    [processPreparedSourcesToAttachments, isUploadScopeCurrent],
+  );
+
   // ========== 拖拽上传（延迟初始化） ==========
   // 🔧 辅助链路：idle 后再启用拖拽功能
   const { isDragging, dropZoneProps } = useTauriDragAndDrop({
     dropZoneRef,
     onDropFiles: processFilesToAttachments,
+    canReuseDroppedPath,
+    onDropPaths: handleDropPaths,
     isEnabled: isReady, // 首帧禁用，idle 后启用
     debugZoneId: 'input-bar-v2',
     maxFiles: ATTACHMENT_MAX_COUNT,
@@ -1030,8 +1412,28 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
   }, [processFilesToAttachments, t]);
 
   // textarea 粘贴入口（渲染已拆至 ComposerTextarea，这里保留完整策略）：
-  // isReady 后走附件转换；未就绪时缓存剪贴板文件，isReady 后自动补投
+  // 大段纯文本（>1000 字符或 >20 行）优先折叠为胶囊；其余附件走附件转换或未就绪缓存
   const handleTextareaPaste = useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const cd = e.clipboardData;
+    const clipboardFiles = cd?.files
+      ? Array.from(cd.files).filter((file) => file && file.size > 0)
+      : [];
+    const pastedText = cd?.getData('text/plain') ?? '';
+
+    if (
+      clipboardFiles.length === 0 &&
+      shouldCollapsePasteAsPill(pastedText) &&
+      pastedPillsRef.current.length < MAX_PASTED_PILLS
+    ) {
+      e.preventDefault();
+      e.stopPropagation();
+      const pill = createPastedTextPill(pastedText);
+      const nextPills = [...pastedPillsRef.current, pill];
+      pastedPillsRef.current = nextPills;
+      setPastedPills(nextPills);
+      return;
+    }
+
     // 🔧 辅助链路：粘贴附件处理延迟到 isReady 后
     if (isReady) {
       handlePasteAsAttachment(e);
@@ -1040,15 +1442,11 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
     // ★ L2 修复：未就绪时不再直接拒绝——同步读出剪贴板文件缓存起来，
     // isReady 后自动补投（File 对象在事件结束后仍然有效）；
     // 普通短文本直接走浏览器默认粘贴
-    const cd = e.clipboardData;
     if (!cd) return;
-    const earlyFiles = cd.files
-      ? Array.from(cd.files).filter((file) => file && file.size > 0)
-      : [];
-    const text = cd.getData('text/plain') ?? '';
-    if (text.length > INPUT_BAR_CONFIG.paste.longTextAutoAttachChars) {
+    const earlyFiles = [...clipboardFiles];
+    if (pastedText.length > INPUT_BAR_CONFIG.paste.longTextAutoAttachChars) {
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      earlyFiles.push(new File([text], `pasted_${timestamp}.txt`, { type: 'text/plain' }));
+      earlyFiles.push(new File([pastedText], `pasted_${timestamp}.txt`, { type: 'text/plain' }));
     }
     if (earlyFiles.length > 0) {
       e.preventDefault();
@@ -1056,6 +1454,24 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
       pendingEarlyPasteRef.current.push(...earlyFiles);
     }
   }, [isReady, handlePasteAsAttachment]);
+
+  const handleExpandPastedPill = useCallback((pillId: string) => {
+    const target = pastedPillsRef.current.find((pill) => pill.id === pillId);
+    if (!target) return;
+    const nextPills = pastedPillsRef.current.filter((pill) => pill.id !== pillId);
+    pastedPillsRef.current = nextPills;
+    setPastedPills(nextPills);
+    const mergedText = inputValue
+      ? `${inputValue}${inputValue.endsWith('\n') ? '' : '\n'}${target.content}`
+      : target.content;
+    onInputChange(mergedText);
+  }, [inputValue, onInputChange]);
+
+  const handleRemovePastedPill = useCallback((pillId: string) => {
+    const nextPills = pastedPillsRef.current.filter((pill) => pill.id !== pillId);
+    pastedPillsRef.current = nextPills;
+    setPastedPills(nextPills);
+  }, []);
 
   // ★ 长文本粘贴建议条：转为附件（从输入框原位剥离该片段）
   const convertLongPasteToAttachment = useCallback(() => {
@@ -1141,9 +1557,18 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
   // 移动端内联模型面板的 aria-label 仍需要该标题
   const runtimeModelTitle = t('chatV2:inputBar.runtimeModelTitle');
   const hasText = inputValue.trim().length > 0;
+  const hasPastedPills = pastedPills.length > 0;
   const hasAttachments = attachmentCount > 0;
-  const hasContent = hasText || hasAttachments;
+  const hasContent = hasText || hasPastedPills || hasAttachments;
   const isComposerEmpty = !hasContent;
+  const canShowQueueButton = Boolean(queueEnabled);
+  const canShowSteerButton = Boolean(canAbort && allowSteer !== false);
+  const showFloatingPreemptBar =
+    shouldShowFloatingPreemptControl({
+      isStreaming,
+      hasDraftText: hasText || hasPastedPills,
+      isExecutingCommand: false,
+    }) && (canShowQueueButton || canShowSteerButton);
 
   // 🔧 检查是否有任何面板打开
   const hasAnyPanelOpen = COMPOSER_PANEL_KEYS.some((panel) => panelStates[panel]);
@@ -1253,7 +1678,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
       return hasAnyReadyMode(selectedModes, readyModes);
     });
   }, [attachments, pdfStatusMap]);
-  const canSendWithAttachments = hasText || hasSendableAttachments;
+  const canSendWithAttachments = hasText || hasPastedPills || hasSendableAttachments;
 
   // 🆕 检查 PDF/图片 附件的选中模式是否就绪
   // ★ P0 修复：传入 mediaType 参数，正确判断图片模式的默认就绪状态
@@ -1324,8 +1749,8 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
   // ========== 发送/停止按钮状态 ==========
   // 流式输出时始终优先展示 Stop，避免队列模式隐藏中断入口。
   const showStop = isStreaming;
-  // 🆕 canSubmit 允许在 idle 或 队列模式下放行，未提供时退化到 canSend
-  const effectiveCanSubmit = canSubmit ?? canSend;
+  // 🆕 canSubmit 允许在 idle 或 队列模式下放行，未提供时退化到 canSend；存在折叠粘贴胶囊且非流式时允许直接发送
+  const effectiveCanSubmit = canSubmit ?? (canSend || (hasPastedPills && !isStreaming));
   // ★ 6 个禁用条件收敛到 sendAvailability selector（含原因码），
   // 原因文案与旧 sendBlockedReason 逐字一致，另补 empty / busy 两档
   const blockingAttachmentInfo = useMemo(() => (
@@ -1475,6 +1900,34 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
 
   // IME 合成态检测与 Enter 发送判定已随 textarea 渲染拆至 ComposerTextarea.tsx
 
+  const flushPillsAndDraftForSend = useCallback(() => {
+    const currentInput = inputValueRef.current;
+    const currentPills = pastedPillsRef.current;
+    const expanded =
+      currentPills.length > 0
+        ? expandInputWithPills(currentInput, currentPills)
+        : currentInput;
+    if (sessionId) {
+      suppressSentSnapshotRef.current = {
+        sessionId,
+        raw: currentInput,
+        expanded,
+      };
+      globalSessionDraftLru.deleteDraft(sessionId);
+    }
+    if (currentPills.length > 0) {
+      pastedPillsRef.current = [];
+      setPastedPills([]);
+      onInputChange(expanded);
+    }
+    // 发送即收起长文本粘贴建议条
+    setLongPasteCandidate(null);
+    // 附件随消息发出、待发送区清空：收起附件面板，否则空的「附件 (0)」浮层一直压在对话上
+    if (panelStatesRef.current.attachment) {
+      onSetPanelState('attachment', false);
+    }
+  }, [onInputChange, onSetPanelState, sessionId]);
+
   // 处理发送
   const handleSend = useCallback(() => {
     if (!canSendWithAttachments) {
@@ -1488,12 +1941,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
       }
       return;
     }
-    // 发送即收起长文本粘贴建议条
-    setLongPasteCandidate(null);
-    // 附件随消息发出、待发送区清空：收起附件面板，否则空的「附件 (0)」浮层一直压在对话上
-    if (panelStatesRef.current.attachment) {
-      onSetPanelState('attachment', false);
-    }
+    flushPillsAndDraftForSend();
     // 🔧 P3修复：正确处理异步 onSend 的返回值，避免未捕获的 Promise rejection
     // 错误已在 TauriAdapter 中通过 showGlobalNotification 显示，这里只需要静默处理
     const result = onSend();
@@ -1502,7 +1950,40 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
         // 错误已在上层处理，这里只是避免未捕获的 rejection 警告
       });
     }
-  }, [canSendWithAttachments, disabledSend, sendBlockedReason, onSend, onSetPanelState, t]);
+  }, [canSendWithAttachments, disabledSend, sendBlockedReason, flushPillsAndDraftForSend, onSend, t]);
+
+  const handleFloatingQueueSend = useCallback(() => {
+    if (!queueEnabled || queueFull) return;
+    flushPillsAndDraftForSend();
+    const result = onSend();
+    if (result && typeof result.catch === 'function') {
+      result.catch(() => {});
+    }
+  }, [flushPillsAndDraftForSend, onSend, queueEnabled, queueFull]);
+
+  const handleFloatingSteerSend = useCallback(async () => {
+    if (!canAbort || allowSteer === false) return;
+    if (onSteerSend) {
+      flushPillsAndDraftForSend();
+      try {
+        await Promise.resolve(onSteerSend());
+      } catch {
+        // 错误已在上层处理
+      }
+      return;
+    }
+    try {
+      await Promise.resolve(onAbort());
+    } catch {
+      return;
+    }
+    flushPillsAndDraftForSend();
+    try {
+      await Promise.resolve(onSend());
+    } catch {
+      // 错误已在上层处理
+    }
+  }, [allowSteer, canAbort, flushPillsAndDraftForSend, onAbort, onSend, onSteerSend]);
 
   // 处理停止
   const handleStop = useCallback(() => {
@@ -1669,6 +2150,11 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
     if (!renderSkillPanel) return undefined;
     return () => renderSkillPanel({ variant: 'menu' });
   }, [renderSkillPanel]);
+  const pluginWorkshopActive = Boolean(activeSkillIds?.includes('dstu-plugin-development'));
+  const handleTogglePluginWorkshop = useCallback(() => {
+    if (!onToggleSkill) return;
+    return onToggleSkill('dstu-plugin-development');
+  }, [onToggleSkill]);
 
   // ========== Effects ==========
 
@@ -2211,26 +2697,16 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
     };
   }, [syncGhostStyles]);
 
-  // ⌨️ P0-2 键盘统一契约：把输入栏整体停靠高度与键盘 inset 写到 document root，
-  // 供消息列表（输入栏的兄弟节点，读不到 inline style 变量）计算底部避让：
-  //   --unified-input-docked-height: 输入栏总高（含底部安全区 gap 与键盘 inset）
-  //   --unified-input-keyboard-inset: 仅键盘 inset 部分
-  //（inline style 上的同名变量仍保留，供输入栏子树内的既有 CSS 消费；
-  //  root 变量只影响 var() 消费方的样式重算，不触发全局重排）
+  // ⌨️ P0-2 键盘统一契约：输入栏整体停靠高度与键盘 inset 只写在输入栏根节点的
+  // inline style 上（--unified-input-docked-height / --unified-input-keyboard-inset），
+  // 消息列表经 getComputedStyle(.unified-input-docked) 读取；
+  // 聊天模块之外的悬浮组件（如全局番茄钟药丸）经 useComposerDockHeight 订阅同一高度。
+  // 不写 document root：root 自定义属性被全文档继承，每次高度变化都会整页重算样式。
+  // 高度来源是 inputContainer 的 ResizeObserver 测量（见 inputContainerHeight）
   useEffect(() => {
-    const root = document.documentElement;
-    root.style.setProperty('--unified-input-docked-height', dockedHeightVarValue);
-    root.style.setProperty('--unified-input-keyboard-inset', `${keyboardInsetPx}px`);
-    // ★ 全局契约：输入栏实际停靠高度（含底部 gap 与键盘 inset），
-    // 供聊天模块之外的悬浮组件（如全局番茄钟药丸）做底部避让；
-    // 高度来源是 inputContainer 的 ResizeObserver 测量（见 inputContainerHeight）
-    root.style.setProperty('--composer-dock-height', dockedHeightVarValue);
-    return () => {
-      root.style.removeProperty('--unified-input-docked-height');
-      root.style.removeProperty('--unified-input-keyboard-inset');
-      root.style.removeProperty('--composer-dock-height');
-    };
-  }, [dockedHeightVarValue, keyboardInsetPx]);
+    setComposerDockHeight(dockedHeightVarValue);
+    return () => setComposerDockHeight(null);
+  }, [dockedHeightVarValue]);
 
   // ========== 附件面板内容（桌面 overlay 与移动端内联共用） ==========
 
@@ -2671,6 +3147,86 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
             disabled={isStreaming}
           />
 
+          {/* ★ 流式 Queue（排队）/ Steer（抢占打断）浮动操作条 */}
+          {showFloatingPreemptBar && (
+            <div
+              data-testid="floating-preempt-bar"
+              className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/35 bg-background/95 px-2.5 py-1.5 text-xs shadow-sm backdrop-blur-sm"
+            >
+              <div className="flex min-w-0 items-center gap-2 text-muted-foreground">
+                <span
+                  className="h-[6px] w-[6px] shrink-0 rounded-full bg-primary"
+                  aria-hidden="true"
+                />
+                <span className="truncate">正在生成回复，可选择排队或抢占打断</span>
+              </div>
+              <div className="flex shrink-0 items-center gap-1.5">
+                {canShowQueueButton && (
+                  <DsButton
+                    variant="ghost"
+                    size="sm"
+                    data-testid="floating-queue-btn"
+                    disabled={queueFull}
+                    onClick={handleFloatingQueueSend}
+                    className="!h-6 border border-border/35 bg-muted/60 !px-2.5 !text-xs font-medium text-foreground hover:bg-muted [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
+                  >
+                    加入队列 Queue
+                  </DsButton>
+                )}
+                {canShowSteerButton && (
+                  <DsButton
+                    variant="primary"
+                    size="sm"
+                    data-testid="floating-steer-btn"
+                    onClick={() => void handleFloatingSteerSend()}
+                    className="!h-6 !px-2.5 !text-xs font-medium [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
+                  >
+                    抢占打断 Steer
+                  </DsButton>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ★ 大段粘贴折叠胶囊栏（Large Paste Pills） */}
+          {pastedPills.length > 0 && (
+            <div
+              data-testid="large-paste-pills-bar"
+              className="mb-1.5 flex flex-wrap items-center gap-1.5"
+            >
+              {pastedPills.map((pill) => (
+                <div
+                  key={pill.id}
+                  data-testid={`large-paste-pill-${pill.id}`}
+                  className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-border/35 bg-muted/60 px-2 py-1 text-xs text-foreground"
+                >
+                  <span className="truncate font-mono tabular-nums">
+                    {pill.summaryLabel}
+                  </span>
+                  <DsButton
+                    variant="ghost"
+                    size="sm"
+                    data-testid={`large-paste-pill-expand-${pill.id}`}
+                    onClick={() => handleExpandPastedPill(pill.id)}
+                    className="!h-5 shrink-0 !px-1.5 !text-xs font-medium text-primary [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
+                  >
+                    展开
+                  </DsButton>
+                  <DsButton
+                    variant="ghost"
+                    size="sm"
+                    data-testid={`large-paste-pill-remove-${pill.id}`}
+                    aria-label={`移除 ${pill.summaryLabel}`}
+                    onClick={() => handleRemovePastedPill(pill.id)}
+                    className="!h-5 !w-5 shrink-0 !px-0 !text-xs text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:min-w-[var(--touch-target-size)]"
+                  >
+                    ×
+                  </DsButton>
+                </div>
+              ))}
+            </div>
+          )}
+
           {/* ★ 拆分：textarea + ghost + IME 合成态/keydown 路由整体在 ComposerTextarea.tsx */}
           <ComposerTextarea
             textareaRef={textareaRef}
@@ -2733,6 +3289,10 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
           onPermissionPresetChange={onPermissionPresetChange}
           knowledgeBaseProactive={knowledgeBaseProactive}
           onKnowledgeBaseProactiveChange={onKnowledgeBaseProactiveChange}
+          ragEnabled={ragEnabled}
+          onRagEnabledChange={onRagEnabledChange}
+          webSearchEnabled={webSearchEnabled}
+          onWebSearchEnabledChange={onWebSearchEnabledChange}
           renderSkillPanelMenuVariant={renderSkillPanelMenuVariant}
           activeSkillCount={activeSkillIds?.length ?? 0}
           hasLoadedSkills={!!hasLoadedSkills}
@@ -2741,6 +3301,8 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
           mcpEnabled={mcpEnabled}
           selectedMcpServerCount={selectedMcpServerCount}
           onOpenAdvancedPanel={renderAdvancedPanel ? handleToggleAdvancedPanel : undefined}
+          pluginWorkshopActive={pluginWorkshopActive}
+          onTogglePluginWorkshop={onToggleSkill ? handleTogglePluginWorkshop : undefined}
           leftAccessory={leftAccessory}
           extraButtonsRight={extraButtonsRight}
           inputToolSlot={resolvedInputToolSlot}

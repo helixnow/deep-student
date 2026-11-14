@@ -1,0 +1,2840 @@
+{
+  "domain": "vfs",
+  "commands": [
+    "dstu_set_metadata"
+  ],
+  "scenarios": [
+    {
+      "id": "vfs.dstu.set_metadata.note.success_fields",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "原标题",
+              "content": "正文",
+              "metadata": {
+                "tags": []
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "title": "新标题"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "tags": [
+                "数学",
+                "exam-2026",
+                ""
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "isFavorite": true
+            }
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "props": {
+                "status": "draft",
+                "优先级": 2,
+                "done": false
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "title": "合并写",
+              "tags": [
+                "t"
+              ],
+              "isFavorite": false,
+              "props": {
+                "status": "review"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "title": "tab\t允许"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_get",
+          "args": {
+            "path": "${0.path}"
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "props": null
+            }
+          }
+        },
+        {
+          "cmd": "dstu_get",
+          "args": {
+            "path": "${0.path}"
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "props": {
+                "a": "x"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "props": {}
+            }
+          }
+        },
+        {
+          "cmd": "dstu_get",
+          "args": {
+            "path": "${0.path}"
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {}
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.id}",
+            "metadata": {
+              "title": "无前导斜杠"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "title": "空白版本号视为未提供"
+            },
+            "expectedUpdatedAt": "   "
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "title": "显式 null 版本"
+            },
+            "expectedUpdatedAt": null
+          }
+        },
+        {
+          "cmd": "dstu_get",
+          "args": {
+            "path": "${0.path}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.set_metadata.note.invalid_shape",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "形状",
+              "content": "正文",
+              "metadata": {
+                "tags": []
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": "not-object"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": [
+              "title"
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "color": "red"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "title": "ok",
+              "name": "x",
+              "bookmarks": []
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "title": 123
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "title": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "tags": "a,b"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "tags": [
+                "a",
+                1
+              ]
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "tags": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "isFavorite": "true"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "isFavorite": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "props": []
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "props": "x"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_get",
+          "args": {
+            "path": "${0.path}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.set_metadata.note.invalid_values",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "取值",
+              "content": "正文",
+              "metadata": {
+                "tags": []
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "title": "   "
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "title": "换\n行"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "tags": [
+                "t0",
+                "t1",
+                "t2",
+                "t3",
+                "t4",
+                "t5",
+                "t6",
+                "t7",
+                "t8",
+                "t9",
+                "t10",
+                "t11",
+                "t12",
+                "t13",
+                "t14",
+                "t15",
+                "t16",
+                "t17",
+                "t18",
+                "t19",
+                "t20",
+                "t21",
+                "t22",
+                "t23",
+                "t24",
+                "t25",
+                "t26",
+                "t27",
+                "t28",
+                "t29",
+                "t30",
+                "t31",
+                "t32",
+                "t33",
+                "t34",
+                "t35",
+                "t36",
+                "t37",
+                "t38",
+                "t39",
+                "t40",
+                "t41",
+                "t42",
+                "t43",
+                "t44",
+                "t45",
+                "t46",
+                "t47",
+                "t48",
+                "t49",
+                "t50",
+                "t51",
+                "t52",
+                "t53",
+                "t54",
+                "t55",
+                "t56",
+                "t57",
+                "t58",
+                "t59",
+                "t60",
+                "t61",
+                "t62",
+                "t63",
+                "t64",
+                "t65",
+                "t66",
+                "t67",
+                "t68",
+                "t69",
+                "t70",
+                "t71",
+                "t72",
+                "t73",
+                "t74",
+                "t75",
+                "t76",
+                "t77",
+                "t78",
+                "t79",
+                "t80",
+                "t81",
+                "t82",
+                "t83",
+                "t84",
+                "t85",
+                "t86",
+                "t87",
+                "t88",
+                "t89",
+                "t90",
+                "t91",
+                "t92",
+                "t93",
+                "t94",
+                "t95",
+                "t96",
+                "t97",
+                "t98",
+                "t99",
+                "t100"
+              ]
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "tags": [
+                "t0",
+                "t1",
+                "t2",
+                "t3",
+                "t4",
+                "t5",
+                "t6",
+                "t7",
+                "t8",
+                "t9",
+                "t10",
+                "t11",
+                "t12",
+                "t13",
+                "t14",
+                "t15",
+                "t16",
+                "t17",
+                "t18",
+                "t19",
+                "t20",
+                "t21",
+                "t22",
+                "t23",
+                "t24",
+                "t25",
+                "t26",
+                "t27",
+                "t28",
+                "t29",
+                "t30",
+                "t31",
+                "t32",
+                "t33",
+                "t34",
+                "t35",
+                "t36",
+                "t37",
+                "t38",
+                "t39",
+                "t40",
+                "t41",
+                "t42",
+                "t43",
+                "t44",
+                "t45",
+                "t46",
+                "t47",
+                "t48",
+                "t49",
+                "t50",
+                "t51",
+                "t52",
+                "t53",
+                "t54",
+                "t55",
+                "t56",
+                "t57",
+                "t58",
+                "t59",
+                "t60",
+                "t61",
+                "t62",
+                "t63",
+                "t64",
+                "t65",
+                "t66",
+                "t67",
+                "t68",
+                "t69",
+                "t70",
+                "t71",
+                "t72",
+                "t73",
+                "t74",
+                "t75",
+                "t76",
+                "t77",
+                "t78",
+                "t79",
+                "t80",
+                "t81",
+                "t82",
+                "t83",
+                "t84",
+                "t85",
+                "t86",
+                "t87",
+                "t88",
+                "t89",
+                "t90",
+                "t91",
+                "t92",
+                "t93",
+                "t94",
+                "t95",
+                "t96",
+                "t97",
+                "t98",
+                "t99"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "tags": [
+                "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
+              ]
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "tags": [
+                "控\u0007制"
+              ]
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "props": {
+                "k0": 0,
+                "k1": 1,
+                "k2": 2,
+                "k3": 3,
+                "k4": 4,
+                "k5": 5,
+                "k6": 6,
+                "k7": 7,
+                "k8": 8,
+                "k9": 9,
+                "k10": 10,
+                "k11": 11,
+                "k12": 12,
+                "k13": 13,
+                "k14": 14,
+                "k15": 15,
+                "k16": 16,
+                "k17": 17,
+                "k18": 18,
+                "k19": 19,
+                "k20": 20,
+                "k21": 21,
+                "k22": 22,
+                "k23": 23,
+                "k24": 24,
+                "k25": 25,
+                "k26": 26,
+                "k27": 27,
+                "k28": 28,
+                "k29": 29,
+                "k30": 30,
+                "k31": 31,
+                "k32": 32
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "props": {
+                "  ": 1
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "props": {
+                "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk": 1
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "props": {
+                "Tags": "x"
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "props": {
+                "a\u0001b": 1
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "props": {
+                "Key": 1,
+                "key ": 2
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "props": {
+                "v": "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "props": {
+                "v": "值\n换行"
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "props": {
+                "v": {
+                  "nested": 1
+                }
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "props": {
+                "v": [
+                  1
+                ]
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "props": {
+                "v": null
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "title": "",
+              "tags": [
+                "a",
+                1
+              ]
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_get",
+          "args": {
+            "path": "${0.path}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.set_metadata.note.occ_conflict",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "乐观锁",
+              "content": "正文",
+              "metadata": {
+                "tags": []
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "title": "过期版本"
+            },
+            "expectedUpdatedAt": "2000-01-01T00:00:00.000Z"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {},
+            "expectedUpdatedAt": "2000-01-01T00:00:00.000Z"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "isFavorite": true
+            },
+            "expectedUpdatedAt": "1730851200000"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "title": "x"
+            },
+            "expectedUpdatedAt": 1730851200000
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_get",
+          "args": {
+            "path": "${0.path}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.set_metadata.note.missing_and_deleted",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/note_missing0000",
+            "metadata": {
+              "title": "x"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/note_missing0000",
+            "metadata": {
+              "isFavorite": true
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/note_missing0000",
+            "metadata": {}
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/note_missing0000",
+            "metadata": {
+              "title": "   "
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "将删除",
+              "content": "正文",
+              "metadata": {
+                "tags": []
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_delete",
+          "args": {
+            "path": "${4.path}"
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${4.path}",
+            "metadata": {
+              "title": "删后改名"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_get",
+          "args": {
+            "path": "${4.path}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.set_metadata.translation.success",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "translation",
+              "name": "翻译",
+              "metadata": {
+                "sourceText": "hello",
+                "translatedText": "你好",
+                "srcLang": "en",
+                "tgtLang": "zh"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "sourceText": "hello world",
+              "translatedText": "你好世界",
+              "srcLang": "en",
+              "tgtLang": "zh",
+              "formality": "auto",
+              "customPrompt": "",
+              "domain": "general",
+              "glossary": [],
+              "qualityRating": 4,
+              "isFavorite": true
+            }
+          }
+        },
+        {
+          "cmd": "dstu_get",
+          "args": {
+            "path": "${0.path}"
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "sourceText": "只改原文"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_get",
+          "args": {
+            "path": "${0.path}"
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "translatedText": "只改译文"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "qualityRating": 1
+            }
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "qualityRating": 5,
+              "isFavorite": false
+            }
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "qualityRating": null,
+              "isFavorite": "yes",
+              "sourceText": 42
+            }
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "qualityRating": 3.5
+            }
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {}
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": "not-object"
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "title": "翻译不处理 title"
+            },
+            "expectedUpdatedAt": "2000-01-01T00:00:00.000Z"
+          }
+        },
+        {
+          "cmd": "dstu_get",
+          "args": {
+            "path": "${0.path}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.set_metadata.translation.invalid_rating_partial",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "translation",
+              "name": "评分",
+              "metadata": {
+                "sourceText": "a",
+                "translatedText": "b"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "qualityRating": 0
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "qualityRating": 6
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "isFavorite": true,
+              "qualityRating": -1,
+              "sourceText": "不会写入"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_get",
+          "args": {
+            "path": "${0.path}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.set_metadata.translation.missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/tr_missing0000",
+            "metadata": {
+              "isFavorite": true
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/tr_missing0000",
+            "metadata": {
+              "qualityRating": 3
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/tr_missing0000",
+            "metadata": {
+              "qualityRating": 9
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/tr_missing0000",
+            "metadata": {
+              "sourceText": "x"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/tr_missing0000",
+            "metadata": {}
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.set_metadata.essay_session.success",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "essay",
+              "name": "新作文",
+              "metadata": {
+                "essayType": "",
+                "gradeLevel": "",
+                "inputText": "",
+                "totalRounds": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "essayType": "argumentative",
+              "gradeLevel": "high_school",
+              "customPrompt": "注意结构",
+              "isFavorite": true
+            }
+          }
+        },
+        {
+          "cmd": "dstu_get",
+          "args": {
+            "path": "${0.path}"
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "title": "改名作文"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "isFavorite": false
+            },
+            "expectedUpdatedAt": "2000-01-01T00:00:00.000Z"
+          }
+        },
+        {
+          "cmd": "dstu_get",
+          "args": {
+            "path": "${0.path}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.set_metadata.essay_session.errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "essay",
+              "name": "作文",
+              "metadata": {
+                "essayType": "narrative"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {}
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "modeId": "x",
+              "inputText": "不支持"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "title": 1,
+              "isFavorite": "true",
+              "essayType": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": "not-object"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/essay_session_missing0000",
+            "metadata": {
+              "title": "x"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/essay_session_missing0000",
+            "metadata": {}
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_get",
+          "args": {
+            "path": "${0.path}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.set_metadata.essay.missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/essay_missing0000",
+            "metadata": {
+              "isFavorite": true
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/essay_missing0000",
+            "metadata": {
+              "title": "x"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/essay_missing0000",
+            "metadata": {
+              "gradeLevel": "g",
+              "essayType": "t"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/essay_missing0000",
+            "metadata": {}
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.set_metadata.exam.success",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "新题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "isFavorite": true,
+              "name": "期中复习"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_get",
+          "args": {
+            "path": "${0.path}"
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "title": "exam 用 name 不用 title",
+              "isFavorite": "yes"
+            },
+            "expectedUpdatedAt": "2000-01-01T00:00:00.000Z"
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {}
+          }
+        },
+        {
+          "cmd": "dstu_get",
+          "args": {
+            "path": "${0.path}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.set_metadata.exam.missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/exam_missing0000",
+            "metadata": {
+              "isFavorite": true
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/exam_missing0000",
+            "metadata": {
+              "name": "x"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/exam_missing0000",
+            "metadata": {}
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.set_metadata.file.pdf_success",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "file",
+              "name": "讲义.pdf",
+              "fileBase64": "JVBERi0xLjQKJSBzZXRfbWV0YWRhdGEgc3VjY2VzcwolJUVPRgo=",
+              "metadata": {
+                "mimeType": "application/pdf"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "readingProgress": {
+                "page": 3
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "bookmarks": [
+                {
+                  "id": "bm1",
+                  "page": 2,
+                  "title": "第二页",
+                  "createdAt": 1730851200000
+                }
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_file",
+          "args": {
+            "fileId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "readingProgress": {
+                "page": 5
+              },
+              "bookmarks": []
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_file",
+          "args": {
+            "fileId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "isFavorite": true,
+              "fileName": "讲义-改名.pdf"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "title": "file 不读 title",
+              "highlights": [
+                {
+                  "id": "h1",
+                  "page": 1
+                }
+              ],
+              "name": "x"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "readingProgress": {
+                "page": "7"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "readingProgress": {
+                "page": 9
+              }
+            },
+            "expectedUpdatedAt": "2000-01-01T00:00:00.000Z"
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {}
+          }
+        },
+        {
+          "cmd": "dstu_get",
+          "args": {
+            "path": "${0.path}"
+          }
+        },
+        {
+          "cmd": "vfs_get_file",
+          "args": {
+            "fileId": "${0.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.set_metadata.file.invalid_bookmarks",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "file",
+              "name": "坏书签.pdf",
+              "fileBase64": "JVBERi0xLjQKJSBzZXRfbWV0YWRhdGEgaW52YWxpZAolJUVPRgo=",
+              "metadata": {
+                "mimeType": "application/pdf"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "bookmarks": {
+                "id": "bm1"
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "readingProgress": {
+                "page": 4
+              },
+              "bookmarks": "none"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "bookmarks": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_get_file",
+          "args": {
+            "fileId": "${0.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.set_metadata.file.occ_bookmarks",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "file",
+              "name": "版本.pdf",
+              "fileBase64": "JVBERi0xLjQKJSBzZXRfbWV0YWRhdGEgb2NjCiUlRU9GCg==",
+              "metadata": {
+                "mimeType": "application/pdf"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "vfs_get_file",
+          "args": {
+            "fileId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "bookmarks": [
+                {
+                  "id": "bm1",
+                  "page": 1,
+                  "title": "p1",
+                  "createdAt": 1730851200000
+                }
+              ]
+            },
+            "expectedUpdatedAt": "${1.updatedAt}"
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "bookmarks": []
+            },
+            "expectedUpdatedAt": "${1.updatedAt}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "bookmarks": []
+            },
+            "expectedUpdatedAt": "2000-01-01T00:00:00.000Z"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_get_file",
+          "args": {
+            "fileId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "readingProgress": {
+                "page": 4
+              },
+              "bookmarks": []
+            },
+            "expectedUpdatedAt": "${5.updatedAt}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "vfs_get_file",
+          "args": {
+            "fileId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/file_missing0000",
+            "metadata": {
+              "bookmarks": []
+            },
+            "expectedUpdatedAt": "2000-01-01T00:00:00.000Z"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.set_metadata.file.missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/file_missing0000",
+            "metadata": {
+              "fileName": "x.pdf"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/file_missing0000",
+            "metadata": {
+              "isFavorite": true
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/file_missing0000",
+            "metadata": {
+              "readingProgress": {
+                "page": 1
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/file_missing0000",
+            "metadata": {
+              "bookmarks": []
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/file_missing0000",
+            "metadata": {}
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/tb_missing0000",
+            "metadata": {
+              "highlights": []
+            },
+            "expectedUpdatedAt": "2000-01-01T00:00:00.000Z"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/att_missing0000",
+            "metadata": {
+              "isFavorite": true
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/img_missing0000",
+            "metadata": {
+              "fileName": "x.png"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.set_metadata.image.success",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "image",
+              "name": "pixel.png",
+              "fileBase64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+              "metadata": {
+                "mimeType": "image/png"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "isFavorite": true,
+              "fileName": "pixel-renamed.png"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "name": "附件 adapter 传 name",
+              "isFavorite": false,
+              "tags": [
+                "x"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "dstu_get",
+          "args": {
+            "path": "${0.path}"
+          }
+        },
+        {
+          "cmd": "vfs_get_file",
+          "args": {
+            "fileId": "${0.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.set_metadata.mindmap.success",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "mindmap",
+              "name": "新思维导图",
+              "content": "{\"version\":\"1.0\",\"root\":{\"id\":\"root\",\"text\":\"中心主题\",\"children\":[]},\"meta\":{\"createdAt\":\"2026-01-01T00:00:00.000Z\"}}",
+              "metadata": {
+                "theme": "default",
+                "defaultView": "mindmap"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "isFavorite": true
+            }
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "title": "导图改名",
+              "description": "描述"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "description": "只改描述"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {}
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "name": "不支持",
+              "isFavorite": "yes"
+            },
+            "expectedUpdatedAt": "2000-01-01T00:00:00.000Z"
+          }
+        },
+        {
+          "cmd": "dstu_get",
+          "args": {
+            "path": "${0.path}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.set_metadata.mindmap.missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/mm_missing0000",
+            "metadata": {
+              "isFavorite": true
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/mm_missing0000",
+            "metadata": {
+              "title": "x"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/mm_missing0000",
+            "metadata": {}
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.set_metadata.mindmap.cached_root_unsupported",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "mindmap",
+              "name": "缓存导图",
+              "content": "{\"version\":\"1.0\",\"root\":{\"id\":\"root\",\"text\":\"中心主题\",\"children\":[]},\"meta\":{\"createdAt\":\"2026-01-01T00:00:00.000Z\"}}"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "title": "缓存前可改"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_refresh_path_cache",
+          "args": {
+            "resourceId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "title": "缓存后被拒"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}",
+            "metadata": {
+              "isFavorite": true
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_get",
+          "args": {
+            "path": "${0.path}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.set_metadata.folder.success",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "文件夹"
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.id}",
+            "metadata": {
+              "isFavorite": true,
+              "title": "文件夹改名",
+              "icon": "book",
+              "color": "#ff0000"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_folder_get",
+          "args": {
+            "folderId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.id}",
+            "metadata": {
+              "favorite": false
+            }
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.id}",
+            "metadata": {
+              "isFavorite": "yes",
+              "favorite": true
+            }
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.id}",
+            "metadata": {}
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.id}",
+            "metadata": {
+              "title": ""
+            },
+            "expectedUpdatedAt": "2000-01-01T00:00:00.000Z"
+          }
+        },
+        {
+          "cmd": "dstu_folder_get",
+          "args": {
+            "folderId": "${0.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.set_metadata.folder.missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/fld_missing0000",
+            "metadata": {
+              "title": "x"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/fld_missing0000",
+            "metadata": {}
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/00000000-0000-4000-8000-000000000000",
+            "metadata": {
+              "isFavorite": true
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.set_metadata.path.cached_root_each_type",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "缓存笔记",
+              "content": "正文",
+              "metadata": {
+                "tags": []
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_move_to_folder",
+          "args": {
+            "resourceId": "${0.id}",
+            "targetFolderId": null
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${1.fullPath}",
+            "metadata": {
+              "title": "缓存命中改名"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${1.fullPath}",
+            "metadata": {
+              "isFavorite": true
+            }
+          }
+        },
+        {
+          "cmd": "dstu_get",
+          "args": {
+            "path": "${0.path}"
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "缓存题集"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_move_to_folder",
+          "args": {
+            "resourceId": "${5.id}",
+            "targetFolderId": null
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${6.fullPath}",
+            "metadata": {
+              "name": "缓存题集改名"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "translation",
+              "name": "缓存翻译",
+              "metadata": {
+                "sourceText": "a",
+                "translatedText": "b"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_move_to_folder",
+          "args": {
+            "resourceId": "${8.id}",
+            "targetFolderId": null
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${9.fullPath}",
+            "metadata": {
+              "qualityRating": 2
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "essay",
+              "name": "缓存作文"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_move_to_folder",
+          "args": {
+            "resourceId": "${11.id}",
+            "targetFolderId": null
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${12.fullPath}",
+            "metadata": {
+              "gradeLevel": "g9"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "file",
+              "name": "缓存.pdf",
+              "fileBase64": "JVBERi0xLjQKJSBzZXRfbWV0YWRhdGEgY2FjaGVkCiUlRU9GCg==",
+              "metadata": {
+                "mimeType": "application/pdf"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_move_to_folder",
+          "args": {
+            "resourceId": "${14.id}",
+            "targetFolderId": null
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${15.fullPath}",
+            "metadata": {
+              "readingProgress": {
+                "page": 2
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "缓存文件夹"
+          }
+        },
+        {
+          "cmd": "dstu_move_to_folder",
+          "args": {
+            "resourceId": "${17.id}",
+            "targetFolderId": null
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${18.fullPath}",
+            "metadata": {
+              "color": "#00ff00"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_get",
+          "args": {
+            "path": "${8.path}"
+          }
+        },
+        {
+          "cmd": "vfs_get_file",
+          "args": {
+            "fileId": "${14.id}"
+          }
+        },
+        {
+          "cmd": "dstu_folder_get",
+          "args": {
+            "folderId": "${17.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.set_metadata.path.nested_real_path",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_folder_create",
+          "args": {
+            "title": "F1"
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "嵌套笔记",
+              "content": "正文",
+              "metadata": {
+                "tags": [],
+                "folderId": "${0.id}"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_move_to_folder",
+          "args": {
+            "resourceId": "${1.id}",
+            "targetFolderId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${2.fullPath}",
+            "metadata": {
+              "title": "真实路径"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${1.path}",
+            "metadata": {
+              "title": "简单路径"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_get",
+          "args": {
+            "path": "${1.path}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.set_metadata.path.invalid",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/unknown_missing0000",
+            "metadata": {
+              "title": "x"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "unknown_missing0000",
+            "metadata": {}
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "",
+            "metadata": {
+              "title": "x"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/",
+            "metadata": {
+              "title": "x"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/a/b/note_missing0000",
+            "metadata": {
+              "title": "x"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/res_missing0000",
+            "metadata": {
+              "title": "x"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/@trash",
+            "metadata": {}
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "vfs.dstu.set_metadata.args.invalid",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "参数",
+              "content": "正文",
+              "metadata": {
+                "tags": []
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "${0.path}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "metadata": {
+              "title": "x"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": 1,
+            "metadata": {}
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": "/note_missing0000",
+            "metadata": {},
+            "expectedUpdatedAt": 1
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_set_metadata",
+          "args": {
+            "path": null,
+            "metadata": {}
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_get",
+          "args": {
+            "path": "${0.path}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

@@ -72,12 +72,12 @@ describe('sanitizeGenerativeMarkdown contract', () => {
     expect(GENERATIVE_MARKDOWN_SANITIZE_SCHEMA.tagNames).not.toContain('script');
     expect(GENERATIVE_MARKDOWN_SANITIZE_SCHEMA.tagNames).not.toContain('iframe');
 
-    const rendererSrc = fs.readFileSync(
-      path.join(process.cwd(), 'src/features/chat/components/renderers/MarkdownRenderer.tsx'),
-      'utf8',
-    );
-    expect(rendererSrc).toContain('rehypeSanitize');
-    expect(rendererSrc).toContain('defaultSchema');
+    const renderersDir = path.join(process.cwd(), 'src/features/chat/components/renderers');
+    const rendererSrc = fs.readFileSync(path.join(renderersDir, 'MarkdownRenderer.tsx'), 'utf8');
+    expect(rendererSrc).toContain("from './markdownPipeline'");
+    const pipelineSrc = fs.readFileSync(path.join(renderersDir, 'markdownPipeline.ts'), 'utf8');
+    expect(pipelineSrc).toContain('rehypeSanitize');
+    expect(pipelineSrc).toContain('defaultSchema');
   });
 
   it('strips <script> and onerror so they cannot execute', () => {

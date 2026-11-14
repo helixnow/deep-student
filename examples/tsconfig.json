@@ -1,0 +1,12 @@
+{
+  "$comment": "UI 半按前端设置检查（同根 tsconfig.json，另把 @deepstudent/ui 指到 src/ui-sdk）。Host 半与测试同时引用 host/（要 strict）和 src/（不能 strict），没有一份设置能让整个程序通过，所以不在这里。",
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@/*": ["../src/*"],
+      "@deepstudent/ui": ["../src/ui-sdk/index.ts"]
+    }
+  },
+  "include": ["plugins/*/ui.tsx"],
+  "exclude": []
+}

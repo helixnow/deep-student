@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { expectInvokeCallsMatchContract } from '@/__tests__/helpers/ipcContract';
 
 const { invokeMock, notificationMock } = vi.hoisted(() => ({
   invokeMock: vi.fn(),
@@ -74,9 +75,10 @@ describe('createImageUploader', () => {
 
     expect(result).toBe('');
     expect(invokeMock).toHaveBeenCalledWith('notes_save_asset', expect.objectContaining({
-      note_id: 'note-1',
-      default_ext: 'png',
+      noteId: 'note-1',
+      defaultExt: 'png',
     }));
+    expectInvokeCallsMatchContract(invokeMock.mock.calls, 'notes_save_asset');
     expect(createObjectUrl).not.toHaveBeenCalled();
     expect(notificationMock).toHaveBeenCalledWith('error', expect.any(String));
   });
@@ -135,7 +137,7 @@ describe('createImageUploader size limit (50MB, aligned with backend notes_save_
 
     expect(result).toBe('notes_assets/_global/note-1/photo.jpg');
     expect(invokeMock).toHaveBeenCalledWith('notes_save_asset', expect.objectContaining({
-      note_id: 'note-1',
+      noteId: 'note-1',
     }));
     expect(notificationMock).not.toHaveBeenCalled();
   });

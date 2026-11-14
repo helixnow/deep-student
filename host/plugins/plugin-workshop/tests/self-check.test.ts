@@ -1,0 +1,32 @@
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { expect, it } from 'vitest';
+import type { AppInfo } from '../../../kernel/api.ts';
+import { WorkshopStore } from '../src/store.ts';
+import { seedTemplate } from '../src/resources.ts';
+import { compileWorkshop, checkWorkshopLifecycle } from '../src/compiler.ts';
+
+it('returns actual manifest/SDK, compile and lifecycle failures without a visual success claim', async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'dstu-selfcheck-'));
+  const app = { version: '0.20.0', dataDir, debug: true } as AppInfo;
+  const store = new WorkshopStore(dataDir);
+  const card = await store.propose({ sessionId: 'test', title: 'Test', description: 'Test', template: 'host-tool', changes: [], capabilities: [] });
+  const source = join(store.directory(card.id), 'source'), builds = join(store.directory(card.id), 'build');
+  await seedTemplate(source, card);
+  const original = await readFile(join(source, 'package.json'), 'utf8');
+  const pkg = JSON.parse(original); pkg.engines.deepStudent = '^99.0';
+  await writeFile(join(source, 'package.json'), JSON.stringify(pkg));
+  const incompatible = await compileWorkshop(source, builds, card.pluginId, app);
+  expect(incompatible.check.manifest).toBe('failed');
+  expect(incompatible.check.errors[0]).toContain('ENGINE_INCOMPATIBLE');
+  await writeFile(join(source, 'package.json'), original);
+  const host = await readFile(join(source, 'index.ts'), 'utf8');
+  await writeFile(join(source, 'index.ts'), host.replace('ctx.provide(', "throw new Error('self-check-apply-failed'); ctx.provide("));
+  const failed = await compileWorkshop(source, builds, card.pluginId, app);
+  const check = await checkWorkshopLifecycle(failed, app);
+  expect(check.ok).toBe(false);
+  expect(check.lifecycle).toBe('failed');
+  expect(check.errors.join('\n')).toContain('self-check-apply-failed');
+  expect(check.visual).toBe('not-verified');
+});

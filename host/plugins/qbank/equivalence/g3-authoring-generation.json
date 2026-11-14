@@ -1,0 +1,624 @@
+{
+  "domain": "qbank",
+  "commands": [
+    "qbank_list_authoring_drafts",
+    "qbank_commit_authoring_draft",
+    "qbank_resolve_authoring_route",
+    "qbank_get_source_images",
+    "qbank_ai_generate_questions",
+    "qbank_get_generation_task",
+    "qbank_list_generation_tasks",
+    "qbank_cancel_generation_task",
+    "qbank_get_authoring_draft",
+    "qbank_get_source_page"
+  ],
+  "scenarios": [
+    {
+      "id": "qbank.g3.authgen.list_get_commit_imported_json",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "import_question_bank",
+          "args": {
+            "request": {
+              "content": "{\"schema_version\": 2, \"mode\": \"extract\", \"materials\": [], \"groups\": [], \"questions\": [{\"local_id\": \"q1\", \"content\": \"下列哪个是质数？\", \"question_type\": \"single_choice\", \"options\": [{\"key\": \"A\", \"content\": \"4\"}, {\"key\": \"B\", \"content\": \"7\"}], \"answer\": \"B\", \"explanation\": \"7 只能被 1 和自身整除。\", \"difficulty\": \"easy\", \"tags\": [\"质数\"]}, {\"local_id\": \"q2\", \"content\": \"1+1=2 是否正确？\", \"question_type\": \"true_false\", \"answer\": \"true\", \"explanation\": \"自然数加法基本事实。\", \"difficulty\": \"easy\", \"tags\": [\"算术\"]}], \"coverage\": [], \"issues\": [], \"unmatched_answers\": []}",
+              "format": "json",
+              "name": "WP228 G3 出题草稿集",
+              "folder_id": null,
+              "session_id": null,
+              "model_config_id": null,
+              "pdf_prefer_ocr": null,
+              "import_id": null,
+              "source_ranges": []
+            }
+          }
+        },
+        {
+          "cmd": "qbank_list_authoring_drafts",
+          "args": {
+            "examId": "${0.summary.id}"
+          }
+        },
+        {
+          "cmd": "qbank_get_authoring_draft",
+          "args": {
+            "jobId": "${1.0.job_id}"
+          }
+        },
+        {
+          "cmd": "qbank_commit_authoring_draft",
+          "args": {
+            "jobId": "${2.job_id}",
+            "expectedVersion": "${2.version}",
+            "selectedLocalIds": [
+              "q1",
+              "q2"
+            ]
+          }
+        },
+        {
+          "cmd": "qbank_list_authoring_drafts",
+          "args": {
+            "examId": "${0.summary.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.g3.authgen.commit_subset_only",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "import_question_bank",
+          "args": {
+            "request": {
+              "content": "{\"schema_version\": 2, \"mode\": \"extract\", \"materials\": [], \"groups\": [], \"questions\": [{\"local_id\": \"q1\", \"content\": \"下列哪个是质数？\", \"question_type\": \"single_choice\", \"options\": [{\"key\": \"A\", \"content\": \"4\"}, {\"key\": \"B\", \"content\": \"7\"}], \"answer\": \"B\", \"explanation\": \"7 只能被 1 和自身整除。\", \"difficulty\": \"easy\", \"tags\": [\"质数\"]}, {\"local_id\": \"q2\", \"content\": \"1+1=2 是否正确？\", \"question_type\": \"true_false\", \"answer\": \"true\", \"explanation\": \"自然数加法基本事实。\", \"difficulty\": \"easy\", \"tags\": [\"算术\"]}], \"coverage\": [], \"issues\": [], \"unmatched_answers\": []}",
+              "format": "json",
+              "name": "WP228 G3 子集提交题目集",
+              "folder_id": null,
+              "session_id": null,
+              "model_config_id": null,
+              "pdf_prefer_ocr": null,
+              "import_id": null,
+              "source_ranges": []
+            }
+          }
+        },
+        {
+          "cmd": "qbank_commit_authoring_draft",
+          "args": {
+            "jobId": "${0.draft_job_id}",
+            "expectedVersion": "${0.draft_version}",
+            "selectedLocalIds": [
+              "q1"
+            ]
+          }
+        },
+        {
+          "cmd": "qbank_get_authoring_draft",
+          "args": {
+            "jobId": "${0.draft_job_id}"
+          }
+        },
+        {
+          "cmd": "qbank_list_authoring_drafts",
+          "args": {
+            "examId": "${0.summary.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.g3.authgen.two_drafts_then_commit_newest",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "import_question_bank",
+          "args": {
+            "request": {
+              "content": "{\"schema_version\": 2, \"mode\": \"extract\", \"materials\": [], \"groups\": [], \"questions\": [{\"local_id\": \"q1\", \"content\": \"下列哪个是质数？\", \"question_type\": \"single_choice\", \"options\": [{\"key\": \"A\", \"content\": \"4\"}, {\"key\": \"B\", \"content\": \"7\"}], \"answer\": \"B\", \"explanation\": \"7 只能被 1 和自身整除。\", \"difficulty\": \"easy\", \"tags\": [\"质数\"]}, {\"local_id\": \"q2\", \"content\": \"1+1=2 是否正确？\", \"question_type\": \"true_false\", \"answer\": \"true\", \"explanation\": \"自然数加法基本事实。\", \"difficulty\": \"easy\", \"tags\": [\"算术\"]}], \"coverage\": [], \"issues\": [], \"unmatched_answers\": []}",
+              "format": "json",
+              "name": "WP228 G3 合并导入题目集",
+              "folder_id": null,
+              "session_id": null,
+              "model_config_id": null,
+              "pdf_prefer_ocr": null,
+              "import_id": null,
+              "source_ranges": []
+            }
+          }
+        },
+        {
+          "cmd": "import_question_bank",
+          "args": {
+            "request": {
+              "content": "{\"schema_version\": 2, \"mode\": \"extract\", \"materials\": [], \"groups\": [], \"questions\": [{\"local_id\": \"q2\", \"content\": \"请写出一个大于 5 的质数。\", \"question_type\": \"short_answer\", \"answer\": \"7（11、13 等亦可）\", \"explanation\": \"大于 5 的最小质数是 7。\", \"difficulty\": \"medium\", \"tags\": [\"质数\"]}], \"coverage\": [], \"issues\": [], \"unmatched_answers\": []}",
+              "format": "json",
+              "name": "WP228 G3 合并导入题目集",
+              "folder_id": null,
+              "session_id": "${0.summary.id}",
+              "model_config_id": null,
+              "pdf_prefer_ocr": null,
+              "import_id": null,
+              "source_ranges": []
+            }
+          }
+        },
+        {
+          "cmd": "qbank_list_authoring_drafts",
+          "args": {
+            "examId": "${0.summary.id}"
+          }
+        },
+        {
+          "cmd": "qbank_get_authoring_draft",
+          "args": {
+            "jobId": "${2.0.job_id}"
+          }
+        },
+        {
+          "cmd": "qbank_commit_authoring_draft",
+          "args": {
+            "jobId": "${2.0.job_id}",
+            "expectedVersion": "${2.0.version}",
+            "selectedLocalIds": [
+              "q2"
+            ]
+          }
+        },
+        {
+          "cmd": "qbank_list_authoring_drafts",
+          "args": {
+            "examId": "${0.summary.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.g3.authgen.source_images_empty_exam",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "WP228 G3 出题题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_source_images",
+          "args": {
+            "examId": "${0.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.g3.authgen.source_images_empty_imported_exam",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "import_question_bank",
+          "args": {
+            "request": {
+              "content": "{\"schema_version\": 2, \"mode\": \"extract\", \"materials\": [], \"groups\": [], \"questions\": [{\"local_id\": \"q1\", \"content\": \"下列哪个是质数？\", \"question_type\": \"single_choice\", \"options\": [{\"key\": \"A\", \"content\": \"4\"}, {\"key\": \"B\", \"content\": \"7\"}], \"answer\": \"B\", \"explanation\": \"7 只能被 1 和自身整除。\", \"difficulty\": \"easy\", \"tags\": [\"质数\"]}, {\"local_id\": \"q2\", \"content\": \"1+1=2 是否正确？\", \"question_type\": \"true_false\", \"answer\": \"true\", \"explanation\": \"自然数加法基本事实。\", \"difficulty\": \"easy\", \"tags\": [\"算术\"]}], \"coverage\": [], \"issues\": [], \"unmatched_answers\": []}",
+              "format": "json",
+              "name": "WP228 G3 无图片题目集",
+              "folder_id": null,
+              "session_id": null,
+              "model_config_id": null,
+              "pdf_prefer_ocr": null,
+              "import_id": null,
+              "source_ranges": []
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_source_images",
+          "args": {
+            "examId": "${0.summary.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.g3.authgen.route_text_model_no_vision",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "wp228-g3-chat",
+                "name": "WP228 G3 对话模型",
+                "apiKey": "sk-wp228-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "model": "wp228-model",
+                "isMultimodal": false,
+                "isReasoning": false,
+                "isEmbedding": false,
+                "isReranker": false,
+                "enabled": true,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "qbank_resolve_authoring_route",
+          "args": {
+            "modelConfigId": "wp228-g3-chat",
+            "requiresVision": false
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.g3.authgen.route_multimodal_vision",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "wp228-g3-vlm",
+                "name": "WP228 G3 视觉模型",
+                "apiKey": "sk-wp228-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "model": "wp228-model",
+                "isMultimodal": true,
+                "isReasoning": false,
+                "isEmbedding": false,
+                "isReranker": false,
+                "enabled": true,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "qbank_resolve_authoring_route",
+          "args": {
+            "modelConfigId": "wp228-g3-vlm",
+            "requiresVision": true
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.g3.authgen.generate_submit_get_list_cancel",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "WP228 G3 出题题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "wp228-g3-chat",
+                "name": "WP228 G3 对话模型",
+                "apiKey": "sk-wp228-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "model": "wp228-model",
+                "isMultimodal": false,
+                "isReasoning": false,
+                "isEmbedding": false,
+                "isReranker": false,
+                "enabled": true,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "qbank_ai_generate_questions",
+          "args": {
+            "request": {
+              "exam_id": "${0.id}",
+              "stream_session_id": "wp228g3gen1",
+              "model_config_id": "wp228-g3-chat",
+              "max_questions": 2,
+              "specs": [
+                {
+                  "question_type": "single_choice",
+                  "count": 1,
+                  "difficulty": "easy"
+                }
+              ],
+              "difficulty": "easy",
+              "topic_hint": "质数与合数",
+              "based_on_existing": false,
+              "language": "zh-CN",
+              "reference_file_ids": [],
+              "reference_files_base64": [],
+              "knowledge_points": [
+                "质数"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_generation_task",
+          "args": {
+            "taskId": "${2.id}"
+          }
+        },
+        {
+          "cmd": "qbank_list_generation_tasks",
+          "args": {
+            "examId": "${0.id}",
+            "limit": 10
+          }
+        },
+        {
+          "cmd": "qbank_cancel_generation_task",
+          "args": {
+            "taskId": "${2.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.g3.authgen.generation_unknown_ids",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "WP228 G3 出题题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_generation_task",
+          "args": {
+            "taskId": "task_wp228g3missing"
+          }
+        },
+        {
+          "cmd": "qbank_cancel_generation_task",
+          "args": {
+            "taskId": "task_wp228g3missing"
+          }
+        },
+        {
+          "cmd": "qbank_list_generation_tasks",
+          "args": {
+            "examId": "${0.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.g3.authgen.generate_minimal_request_defaults",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "WP228 G3 出题题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "wp228-g3-chat",
+                "name": "WP228 G3 对话模型",
+                "apiKey": "sk-wp228-local",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "model": "wp228-model",
+                "isMultimodal": false,
+                "isReasoning": false,
+                "isEmbedding": false,
+                "isReranker": false,
+                "enabled": true,
+                "modelAdapter": "general",
+                "maxOutputTokens": 1024,
+                "temperature": 0
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "qbank_ai_generate_questions",
+          "args": {
+            "request": {
+              "exam_id": "${0.id}",
+              "stream_session_id": "wp228g3gen2",
+              "model_config_id": "wp228-g3-chat"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_list_generation_tasks",
+          "args": {
+            "examId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "qbank_cancel_generation_task",
+          "args": {
+            "taskId": "${2.id}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.g3.authgen.source_page_vfs_text_file",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "WP228 G3 出题题目集",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "file",
+              "name": "wp228-source.txt",
+              "fileBase64": "V1AyMjgg5p2l5rqQ6aG15paH5pysCuesrOS4gOihjO+8mui0qOaVsOWumuS5iQrnrKzkuozooYzvvJo3IOaYr+i0qOaVsA==",
+              "metadata": {
+                "mimeType": "text/plain"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_get_source_page",
+          "args": {
+            "examId": "${0.id}",
+            "sourceId": "${1.id}",
+            "page": null
+          }
+        },
+        {
+          "cmd": "qbank_get_source_page",
+          "args": {
+            "examId": "${0.id}",
+            "sourceId": "${1.id}",
+            "page": 1
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

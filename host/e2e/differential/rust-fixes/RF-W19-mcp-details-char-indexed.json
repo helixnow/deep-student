@@ -1,0 +1,33 @@
+{
+  "id": "RF-W19-mcp-details-char-indexed",
+  "kind": "rust-bug",
+  "status": "proposed",
+  "title": "MCP 调试面板把字符串或数组详情原样显示和复制，不再展开成按下标的对象（超长配置变更显示成一条截断提示）",
+  "rust": {
+    "file": "src/debug-panel/plugins/McpDebugPlugin.tsx",
+    "line": 191,
+    "behavior": "Tauri 快照 21c9d808 的 McpDebugPlugin.tsx：配置变更事件存的是 truncateData(event.detail)（306），对象序列化超过 500 字符时得到字符串“[对象过大: N 字符, 已截断]”（173）。显示、复制单条、复制全部、导出时都经 sanitizeDetails（184-195），它对任何详情都做 Object.entries（191），字符串于是被展开成 {\"0\":\"[\",\"1\":\"对\",\"2\":\"象\",…}，一个字符一个键；数组详情同样变成 {\"0\":…,\"1\":…}"
+  },
+  "fix": {
+    "files": ["src/debug-panel/plugins/mcp/sanitize.ts"],
+    "behavior": "sanitizeDetails 只对普通对象逐键截断；字符串等非对象整体脱敏后截断，数组保持数组、逐项截断。对象详情的脱敏与截断不变"
+  },
+  "evidence": "与函数自身意图矛盾：truncateData 把超大对象换成一条可读提示，sanitizeDetails 再把这条提示拆成逐字符的键值对，详情区和复制出的 JSON 都无法阅读。拆分前的证据 golden（mcpPanel.evidence 的 mcp.copied.json，第 5 轮录制）里 copiedAll 与导出文件的配置变更详情正是 19 个单字符键。复现：src/debug-panel/__tests__/mcpDetails.test.tsx 修复前 3 条 RF 测试失败、对照测试通过。",
+  "userVisible": "只在开发构建可见：调试面板只在 import.meta.env.DEV 下装配。MCP 调试面板里超长的配置变更，详情区和复制/导出的 JSON 显示为一条“[对象过大: N 字符, 已截断]”，不再是逐字符的对象；对象详情显示不变。",
+  "dataCompat": "只改开发构建里调试面板的显示和复制文本；不改 IPC 载荷、落库数据、同步载荷与备份格式。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "src/debug-panel/__tests__/mcpDetails.test.tsx",
+      "name": "RF-W19-mcp-details-char-indexed: shows an over-long config change as one truncated message, not a map of its characters"
+    },
+    {
+      "file": "src/debug-panel/__tests__/mcpDetails.test.tsx",
+      "name": "RF-W19-mcp-details-char-indexed: keeps array details an array, each item sanitized and truncated"
+    },
+    {
+      "file": "src/debug-panel/__tests__/mcpDetails.test.tsx",
+      "name": "RF-W19-mcp-details-char-indexed: truncates and masks a string detail as a whole"
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "id": "RF-W08-diagnostic-slots-concurrent",
+  "kind": "deliberate",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T15:02:00+08:00",
+  "title": "迁移诊断报告同时运行 Slot C 与 Slot D 两个沙箱，报告文本和段落顺序不变",
+  "rust": {
+    "file": "src-tauri/src/data_governance/commands.rs",
+    "line": 1199,
+    "behavior": "data_governance_get_migration_diagnostic_report 在命令线程上先跑完 run_slot_c_empty_db_test（空库完整 run_all），再开始 run_slot_d_clone_db_test（在线备份克隆当前库后再次 run_all）；命令耗时是两者之和"
+  },
+  "fix": {
+    "files": ["host/plugins/backup/src/governance.ts"],
+    "behavior": "Slot D 使用自己的迁移 worker（首次使用才起线程，插件卸载时关闭），每个槽各有一条 reset/copy/migrate/cleanup 生命周期队列。诊断报告同时启动两槽，等两者都结束后仍按 C、D 顺序写入；C 失败时抛 C 的错误，C 成功而 D 失败时抛 D 的错误，抛出前另一槽已跑完并清空目录。单独的 run_slot_c/run_slot_d 命令行为不变"
+  },
+  "evidence": "两槽各自操作 slots/slotC 与 slots/slotD，互不读写对方目录；Slot D 只读当前活跃库（SQLite 在线备份），Slot C 不碰活跃库；进程级迁移前快照 guard 按数据目录区分，两槽键不同。服务器 Linux 全量中该命令 9015ms 超出 X1 5000ms 预算，其中 Slot D 串在 Slot C 之后约 2.2s。本机交替基准（每次新宿主、冷 worker）改前中位数约 2570ms，改后约 1380ms。",
+  "userVisible": "诊断报告返回更快；报告文本、段落顺序与 Rust 相同。两个沙箱同时运行时争用 CPU 和磁盘，报告里 Slot C/D 各库的耗时数字可能比串行时略大",
+  "dataCompat": "不改落库数据、同步载荷或备份格式；两个沙箱目录结束后仍清空，与原行为相同",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    { "file": "host/plugins/backup/tests/migration-diagnostic.test.ts", "name": "RF-W08-diagnostic-slots-concurrent: Slot D starts and settles while Slot C still migrates, report keeps C before D" },
+    { "file": "host/plugins/backup/tests/migration-diagnostic.test.ts", "name": "RF-W08-diagnostic-slots-concurrent: a rejected $failing fails the report only after the other slot settled and cleaned up" }
+  ]
+}

@@ -61,6 +61,7 @@ export const qbankToolsSkill: SkillDefinition = {
 5. **分析**：search_questions/get_stats/\`builtin-qbank_get_learning_trend\`/get_activity_heatmap/get_knowledge_stats；单页最多 20 条，读到has_more=false才完整。
 6. **整理**：batch_update_questions改难度/状态/完整标签，最多20题，逐题OCC非原子；按results重读冲突。内容修改逐题update_question。
 7. **组卷**：\`builtin-qbank_generate_paper\`保存到「试卷」页，返回paper_id/persisted=true。preview：export_path=null/file_created=false；markdown/pdf/word写exports/qbank，仅file_created=true且export_path非空才可称导出成功。答案解析开关只控导出，附卷末。qbank_list_papers查列表、qbank_get_paper读题量/ID、qbank_list_practices读成绩摘要。草稿本机保存，试卷与已交卷结果云同步。
+8. **错题本与维护**：\`builtin-qbank_list_mistakes\` 只读读取错题本（含 mistake_count 与题库统计）；\`builtin-qbank_update_paper\` 重命名试卷；\`builtin-qbank_delete_practice\` 删除草稿/已交卷记录，属 High 不可恢复操作，调用前必须用 ask_user 获得明确确认。
 
 ## 材料、草稿和提交
 
@@ -166,6 +167,9 @@ user_answer统一字符串：判断题"true"/"false"；数值"3.14"；多空填�
     'builtin-qbank_list_papers',
     'builtin-qbank_get_paper',
     'builtin-qbank_list_practices',
+    'builtin-qbank_list_mistakes',
+    'builtin-qbank_update_paper',
+    'builtin-qbank_delete_practice',
     'builtin-qbank_search_questions',
     'builtin-qbank_get_learning_trend',
     'builtin-qbank_get_activity_heatmap',
@@ -915,6 +919,50 @@ user_answer统一字符串：判断题"true"/"false"；数值"3.14"；多空填�
       name: 'builtin-qbank_list_practices',
       description: '分页读已交卷成绩摘要：正确、错误、未答、待批改。无草稿、作答或逐题判定。',
       inputSchema: { type: 'object', additionalProperties: false, properties: { session_id: { type: 'string', minLength: 1 }, page: { type: 'integer', minimum: 1, default: 1 }, page_size: { type: 'integer', minimum: 1, maximum: 20, default: 20 } }, required: ['session_id'] },
+    },
+    {
+      name: 'builtin-qbank_list_mistakes',
+      description:
+        '只读分页读取错题本（status=review）：每题含 mistake_count（答错次数）与所属题库统计。可按 group_id 过滤、keyword 检索；limit 最多 100，按 has_more 翻页。',
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          group_id: { type: 'string', minLength: 1, description: '题库/分组 ID；省略为全部题库' },
+          keyword: { type: 'string', minLength: 1, maxLength: 200, description: '题干/答案/解析/标签关键词' },
+          limit: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+          offset: { type: 'integer', minimum: 0, default: 0 },
+        },
+      },
+    },
+    {
+      name: 'builtin-qbank_update_paper',
+      description:
+        '重命名已保存试卷（Medium）。试卷文档只持久化标题，description/time_limit 不在试卷模型中；deleted=true 会将试卷标记为删除。',
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          paper_id: { type: 'string', minLength: 1, description: 'qbank_list_papers 返回的试卷 ID' },
+          title: { type: 'string', minLength: 1, maxLength: 200, description: '新试卷标题' },
+          deleted: { type: 'boolean', default: false, description: '是否同时将试卷标记为删除' },
+        },
+        required: ['paper_id', 'title'],
+      },
+    },
+    {
+      name: 'builtin-qbank_delete_practice',
+      description:
+        '删除练习草稿或已交卷练习记录（High，不可撤销）。删除前必须获得用户明确确认；省略 submitted 时自动识别记录类型。',
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          practice_id: { type: 'string', minLength: 1, description: '练习记录/草稿 ID' },
+          submitted: { type: 'boolean', description: 'true=已交卷记录，false=草稿；省略自动识别' },
+        },
+        required: ['practice_id'],
+      },
     },
     {
       name: 'builtin-qbank_search_questions',

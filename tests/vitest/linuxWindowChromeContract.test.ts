@@ -24,8 +24,8 @@ import { resolve } from 'node:path';
 const readText = (relativePath: string): string =>
   readFileSync(resolve(process.cwd(), relativePath), 'utf-8');
 
-const baseConf = JSON.parse(readText('src-tauri/tauri.conf.json'));
-const linuxConf = JSON.parse(readText('src-tauri/tauri.linux.conf.json'));
+const baseConf = JSON.parse(readText('resources/app/tauri.conf.json'));
+const linuxConf = JSON.parse(readText('resources/app/tauri.linux.conf.json'));
 const appSource = readAppShellSource();
 const statusBarSource = readText('src/features/workbench/components/StatusBar.tsx');
 

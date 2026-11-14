@@ -1221,7 +1221,16 @@
     "mobileHint": "移动端以预览为主，完整工作台建议在桌面端使用。",
     "closed": "已收起",
     "open": "打开沙箱工作台",
-    "clearSession": "清空会话"
+    "clearSession": "清空会话",
+    "stateSynced": "状态已同步",
+    "versionHistory": "版本历史",
+    "saveToSpace": "存入空间",
+    "savingToSpace": "正在存入…",
+    "savedToSpace": "已存入当前学习空间",
+    "savedAsNote": "已保存为学习笔记",
+    "saveFailed": "存入空间失败：{{message}}",
+    "pinnedCanvas": "固定学习画布",
+    "rendererUnavailable": "当前交互渲染器尚未就绪"
   },
   "tagTreeMarkdownPlaceholder": "# 根标签一\n### 子主题A\n#### 概念1\n##### 方法a\n###### 题型i",
   "filePreview": {
@@ -1293,5 +1302,19 @@
   "desktopWidgets": {
     "collapse": "折叠",
     "expand": "展开"
+  },
+  "stagePresets": {
+    "groupLabel": "学习流阶段预设",
+    "deepReadingMap": "精读导图",
+    "deepReadingMapHint": "左栏阅读讲义或音视频，右栏同步构建思维导图",
+    "noteCocreation": "笔记共创",
+    "noteCocreationHint": "左栏沉浸写作笔记与导图，右栏 AI 助教实时共创",
+    "practiceCorrection": "刷题订正",
+    "practiceCorrectionHint": "左栏闪卡复习或试卷作答，右栏错题诊断与费曼笔记",
+    "freeformDesktop": "自由桌面",
+    "freeformDesktopHint": "恢复浮动窗口自由排布",
+    "toggleSidecar": "切换 AI 伴读侧栏",
+    "toggleDualReader": "切换双读对照（双源阅读 + 导图汇聚）",
+    "spaceRestored": "已恢复空间桌面布局"
   }
 }

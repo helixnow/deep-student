@@ -1,0 +1,355 @@
+{
+  "at": "2026-11-06T15:47:19.276119+00:00",
+  "uid": 1000,
+  "userNamespaces": {
+    "user:[4026531837]": {
+      "processes": 349,
+      "threads": 1001
+    },
+    "user:[4026534273]": {
+      "processes": 8,
+      "threads": 21
+    },
+    "user:[4026534332]": {
+      "processes": 8,
+      "threads": 21
+    },
+    "user:[4026534391]": {
+      "processes": 8,
+      "threads": 21
+    },
+    "user:[4026534450]": {
+      "processes": 8,
+      "threads": 21
+    },
+    "user:[4026534568]": {
+      "processes": 8,
+      "threads": 23
+    },
+    "user:[4026534627]": {
+      "processes": 8,
+      "threads": 23
+    },
+    "user:[4026534804]": {
+      "processes": 8,
+      "threads": 23
+    },
+    "user:[4026534686]": {
+      "processes": 2,
+      "threads": 2
+    },
+    "user:[4026534863]": {
+      "processes": 2,
+      "threads": 2
+    },
+    "user:[4026534922]": {
+      "processes": 2,
+      "threads": 2
+    },
+    "user:[4026535040]": {
+      "processes": 2,
+      "threads": 2
+    },
+    "user:[4026535099]": {
+      "processes": 2,
+      "threads": 2
+    },
+    "user:[4026535158]": {
+      "processes": 2,
+      "threads": 2
+    },
+    "user:[4026535217]": {
+      "processes": 2,
+      "threads": 2
+    },
+    "user:[4026534981]": {
+      "processes": 2,
+      "threads": 2
+    },
+    "user:[4026534156]": {
+      "processes": 2,
+      "threads": 2
+    },
+    "user:[4026534216]": {
+      "processes": 2,
+      "threads": 2
+    },
+    "user:[4026535278]": {
+      "processes": 2,
+      "threads": 2
+    },
+    "user:[4026535337]": {
+      "processes": 2,
+      "threads": 2
+    },
+    "user:[4026535396]": {
+      "processes": 2,
+      "threads": 2
+    },
+    "user:[4026534036]": {
+      "processes": 14,
+      "threads": 252
+    },
+    "user:[4026534566]": {
+      "processes": 14,
+      "threads": 254
+    },
+    "user:[4026533447]": {
+      "processes": 8,
+      "threads": 21
+    },
+    "user:[4026533683]": {
+      "processes": 8,
+      "threads": 21
+    },
+    "user:[4026533801]": {
+      "processes": 8,
+      "threads": 21
+    },
+    "user:[4026533282]": {
+      "processes": 8,
+      "threads": 21
+    },
+    "user:[4026533860]": {
+      "processes": 8,
+      "threads": 21
+    },
+    "user:[4026532856]": {
+      "processes": 8,
+      "threads": 21
+    },
+    "user:[4026532796]": {
+      "processes": 8,
+      "threads": 21
+    },
+    "user:[4026534745]": {
+      "processes": 8,
+      "threads": 21
+    },
+    "user:[4026532858]": {
+      "processes": 8,
+      "threads": 21
+    },
+    "user:[4026533034]": {
+      "processes": 8,
+      "threads": 21
+    },
+    "user:[4026533506]": {
+      "processes": 2,
+      "threads": 2
+    },
+    "user:[4026533388]": {
+      "processes": 2,
+      "threads": 2
+    },
+    "user:[4026536102]": {
+      "processes": 14,
+      "threads": 156
+    },
+    "user:[4026536339]": {
+      "processes": 14,
+      "threads": 269
+    },
+    "user:[4026537555]": {
+      "processes": 14,
+      "threads": 154
+    },
+    "user:[4026535512]": {
+      "processes": 14,
+      "threads": 154
+    },
+    "user:[4026537083]": {
+      "processes": 2,
+      "threads": 54
+    },
+    "user:[4026536865]": {
+      "processes": 14,
+      "threads": 260
+    },
+    "user:[4026536279]": {
+      "processes": 2,
+      "threads": 54
+    },
+    "user:[4026536574]": {
+      "processes": 14,
+      "threads": 163
+    },
+    "user:[4026537227]": {
+      "processes": 14,
+      "threads": 154
+    },
+    "user:[4026535925]": {
+      "processes": 2,
+      "threads": 54
+    },
+    "user:[4026537400]": {
+      "processes": 14,
+      "threads": 156
+    },
+    "user:[4026537106]": {
+      "processes": 14,
+      "threads": 154
+    },
+    "user:[4026535984]": {
+      "processes": 14,
+      "threads": 154
+    },
+    "user:[4026535629]": {
+      "processes": 2,
+      "threads": 54
+    },
+    "user:[4026535572]": {
+      "processes": 14,
+      "threads": 267
+    },
+    "user:[4026536103]": {
+      "processes": 14,
+      "threads": 252
+    },
+    "user:[4026537843]": {
+      "processes": 14,
+      "threads": 154
+    },
+    "user:[4026535571]": {
+      "processes": 14,
+      "threads": 256
+    },
+    "user:[4026535630]": {
+      "processes": 14,
+      "threads": 268
+    },
+    "user:[4026535691]": {
+      "processes": 14,
+      "threads": 154
+    },
+    "user:[4026536516]": {
+      "processes": 14,
+      "threads": 266
+    },
+    "user:[4026536161]": {
+      "processes": 14,
+      "threads": 158
+    },
+    "user:[4026536456]": {
+      "processes": 14,
+      "threads": 268
+    },
+    "user:[4026536278]": {
+      "processes": 14,
+      "threads": 256
+    },
+    "user:[4026536692]": {
+      "processes": 14,
+      "threads": 156
+    },
+    "user:[4026535688]": {
+      "processes": 2,
+      "threads": 22
+    },
+    "user:[4026536633]": {
+      "processes": 14,
+      "threads": 154
+    },
+    "user:[4026535867]": {
+      "processes": 14,
+      "threads": 154
+    },
+    "user:[4026535866]": {
+      "processes": 14,
+      "threads": 154
+    },
+    "user:[4026536399]": {
+      "processes": 14,
+      "threads": 165
+    },
+    "user:[4026536928]": {
+      "processes": 2,
+      "threads": 54
+    },
+    "user:[4026535807]": {
+      "processes": 14,
+      "threads": 155
+    },
+    "user:[4026536905]": {
+      "processes": 2,
+      "threads": 54
+    },
+    "user:[4026536184]": {
+      "processes": 14,
+      "threads": 167
+    },
+    "user:[4026536220]": {
+      "processes": 2,
+      "threads": 54
+    },
+    "user:[4026536634]": {
+      "processes": 14,
+      "threads": 256
+    },
+    "user:[4026536338]": {
+      "processes": 2,
+      "threads": 54
+    },
+    "user:[4026537725]": {
+      "processes": 14,
+      "threads": 154
+    },
+    "user:[4026536043]": {
+      "processes": 14,
+      "threads": 160
+    },
+    "user:[4026535748]": {
+      "processes": 2,
+      "threads": 54
+    },
+    "user:[4026532917]": {
+      "processes": 8,
+      "threads": 21
+    },
+    "user:[4026532976]": {
+      "processes": 8,
+      "threads": 21
+    },
+    "user:[4026534096]": {
+      "processes": 8,
+      "threads": 21
+    },
+    "user:[4026534037]": {
+      "processes": 8,
+      "threads": 21
+    },
+    "user:[4026533153]": {
+      "processes": 8,
+      "threads": 21
+    },
+    "user:[4026533567]": {
+      "processes": 8,
+      "threads": 21
+    },
+    "user:[4026533271]": {
+      "processes": 8,
+      "threads": 21
+    },
+    "user:[4026533566]": {
+      "processes": 8,
+      "threads": 21
+    },
+    "user:[4026533742]": {
+      "processes": 8,
+      "threads": 21
+    },
+    "user:[4026533212]": {
+      "processes": 8,
+      "threads": 21
+    },
+    "user:[4026533094]": {
+      "processes": 2,
+      "threads": 2
+    },
+    "user:[4026533977]": {
+      "processes": 8,
+      "threads": 21
+    }
+  },
+  "errors": []
+}

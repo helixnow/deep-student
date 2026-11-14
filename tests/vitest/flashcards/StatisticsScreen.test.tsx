@@ -1,6 +1,6 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 
 const mocks = vi.hoisted(() => ({
   getStats: vi.fn(),
@@ -9,7 +9,9 @@ const mocks = vi.hoisted(() => ({
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string) => ({
-      'statistics.due': '当前到期',
+      'statistics.dueReview': '到期复习（额度内）',
+      'statistics.dueLearning': '到点的学习步',
+      'statistics.dueNew': '今日可学新卡',
       'statistics.learning': '学习中',
       'statistics.loadFailed': '统计加载失败',
       'statistics.loading': '正在加载统计',
@@ -34,11 +36,15 @@ vi.mock('@/utils/chatApi', () => ({
   getFsrsStats: mocks.getStats,
 }));
 
+import { FSRS_STATS_REFRESH_EVENT } from '@/features/flashcards/events';
 import { StatisticsScreen } from '@/features/flashcards/screens/StatisticsScreen';
 
 const firstStats = {
   total: 30,
   due: 5,
+  dueReview: 2,
+  dueLearning: 1,
+  dueNew: 2,
   newCount: 7,
   learning: 3,
   review: 15,
@@ -49,22 +55,22 @@ const firstStats = {
 
 describe('StatisticsScreen', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    mocks.getStats.mockReset();
   });
 
   afterEach(() => {
     cleanup();
   });
 
-  it('renders every FSRS metric and refreshes it', async () => {
-    mocks.getStats
-      .mockResolvedValueOnce(firstStats)
-      .mockResolvedValueOnce({ ...firstStats, reviewsToday: 12 });
+  it('renders the three queue categories separately from the new card inventory', async () => {
+    mocks.getStats.mockResolvedValueOnce(firstStats);
 
     render(<StatisticsScreen />);
     expect(await screen.findByTestId('fsrs-statistics')).toBeInTheDocument();
     expect(screen.getByText('今日已复习')).toBeInTheDocument();
-    expect(screen.getByText('当前到期')).toBeInTheDocument();
+    expect(screen.getByText('到期复习（额度内）')).toBeInTheDocument();
+    expect(screen.getByText('到点的学习步')).toBeInTheDocument();
+    expect(screen.getByText('今日可学新卡')).toBeInTheDocument();
     expect(screen.getByText('新卡')).toBeInTheDocument();
     expect(screen.getByText('学习中')).toBeInTheDocument();
     expect(screen.getByText('复习中')).toBeInTheDocument();
@@ -73,9 +79,6 @@ describe('StatisticsScreen', () => {
     expect(screen.getByText('已入队总数')).toBeInTheDocument();
     expect(screen.getByText('11')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: '刷新' }));
-    await waitFor(() => expect(screen.getByText('12')).toBeInTheDocument());
-    expect(mocks.getStats).toHaveBeenCalledTimes(2);
   });
 
   it('places scheduler settings after the statistics panels', async () => {
@@ -123,7 +126,7 @@ describe('StatisticsScreen', () => {
     render(<StatisticsScreen />);
     expect(await screen.findByText('11')).toBeInTheDocument();
 
-    window.dispatchEvent(new CustomEvent('fsrs:stats-refresh'));
+    fireEvent(window, new Event(FSRS_STATS_REFRESH_EVENT));
 
     expect(await screen.findByText('13')).toBeInTheDocument();
     expect(mocks.getStats).toHaveBeenCalledTimes(2);

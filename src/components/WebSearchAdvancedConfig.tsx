@@ -5,62 +5,10 @@ import { ArrowClockwise } from '@phosphor-icons/react';
 import { cn } from '../lib/utils';
 import { showGlobalNotification } from './UnifiedNotification';
 import { getErrorMessage } from '../utils/errorUtils';
-import { Switch } from './ui/shad/Switch';
 import { Input } from './ui/shad/Input';
 import { AppSelect } from './ui/app-menu';
 import { Textarea } from './ui/shad/Textarea';
-
-// 内部组件：带开关的设置行 - 简洁风格
-const SwitchRow = ({
-  title,
-  description,
-  checked,
-  onCheckedChange,
-}: {
-  title: string;
-  description?: string;
-  checked: boolean;
-  onCheckedChange: (checked: boolean) => void;
-}) => (
-  <div className="group flex items-center justify-between gap-4 py-2.5 px-1 hover:bg-[var(--interactive-hover)] rounded transition-colors">
-    <div className="flex-1 min-w-0">
-      <h3 className="text-sm text-foreground/90 leading-tight">{title}</h3>
-      {description && (
-        <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
-          {description}
-        </p>
-      )}
-    </div>
-    <Switch checked={checked} onCheckedChange={onCheckedChange} />
-  </div>
-);
-
-// 内部组件：设置行 - 简洁风格
-const SettingRow = ({
-  title,
-  description,
-  children,
-  className,
-}: {
-  title: string;
-  description?: string;
-  children: React.ReactNode;
-  className?: string;
-}) => (
-  <div className={cn("group flex flex-col sm:flex-row sm:items-start gap-2 py-2.5 px-1 hover:bg-[var(--interactive-hover)] rounded transition-colors", className)}>
-    <div className="flex-1 min-w-0 pt-1.5">
-      <h3 className="text-sm text-foreground/90 leading-tight">{title}</h3>
-      {description && (
-        <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
-          {description}
-        </p>
-      )}
-    </div>
-    <div className="flex-shrink-0">
-      {children}
-    </div>
-  </div>
-);
+import { SettingRow, SwitchRow } from '@/components/settings/settingsTabPrimitives';
 
 interface RerankerConfig {
   enabled: boolean;

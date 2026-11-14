@@ -1,0 +1,108 @@
+[阶段] 选候选
+作用域拒绝规则 2 条：src-tauri/**, docs/dev/electron-migration/dispatch/**
+S0: 已停放，跳过
+X4: 无新提交
+候选 43 条，其中自检通过 38 条
+[阶段] 门禁
+    原件：C1 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T234511789Z/01-C1
+    原件：C2 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T234511789Z/02-C2
+    原件：F1 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T234511789Z/03-F1
+    原件：F2 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T234511789Z/04-F2
+F2: 未合入（门禁未过：
+    tsc: host/platform/storage/service.ts(41,7): error TS2322: Type 'string | undefined' is not assignable to type 'string'.）
+    原件：F3 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T234511789Z/05-F3
+    原件：F4 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T234511789Z/06-F4
+    原件：F5 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T234511789Z/07-F5
+    原件：F7 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T234511789Z/08-F7
+    原件：L01 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T234511789Z/09-L01
+    原件：L02 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T234511789Z/10-L02
+    原件：L03 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T234511789Z/11-L03
+    原件：L04 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T234511789Z/12-L04
+L04: 未合入（门禁未过：
+    tests: × chat worker resumes after crash (4021ms)
+    host-tests: FAIL host/plugins/chat/tests/worker.test.ts > resumes after crash）
+    原件：L05 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T234511789Z/13-L05
+    原件：L06 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T234511789Z/14-L06
+L06: 未合入（门禁未过：
+    tests: × subagent cancels child session expected "cancelled" received "running"）
+    原件：L07 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T234511789Z/15-L07
+    原件：L10 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T234511789Z/16-L10
+    原件：L11 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T234511789Z/17-L11
+L11: 未合入（门禁未过：
+    eslint: src/features/review/ReviewPanel.tsx 14:3 error 'useMemo' is defined but never used no-unused-vars）
+    原件：L12 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T234511789Z/18-L12
+    原件：L13 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T234511789Z/19-L13
+    原件：L13b 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T234511789Z/20-L13b
+    原件：L14 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T234511789Z/21-L14
+L14: 未合入（门禁未过：
+    tsc: host/plugins/memory/src/recall.ts(112,19): error TS2339: Property 'score' does not exist on type 'Hit'.）
+    原件：L15 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T234511789Z/22-L15
+    原件：L16 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T234511789Z/23-L16
+    原件：L17 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T234511789Z/24-L17
+L17: 未合入（门禁未过：
+    tests: × research report keeps citations order (233ms)）
+    原件：L18 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T234511789Z/25-L18
+    原件：L19 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T234511789Z/26-L19
+    原件：L20 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T234511789Z/27-L20
+L20: 未合入（门禁未过：
+    tests: × sync merges default learner profile expected 2 received 1）
+    原件：L20b 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T234511789Z/28-L20b
+    原件：L21 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T234511789Z/29-L21
+L21: 未合入（门禁未过：
+    wiring: backup.export emitted but no subscriber in host/plugins/backup）
+    原件：L22 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T234511789Z/30-L22
+    原件：L23 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T234511789Z/31-L23
+L23: 未合入（门禁未过：
+    tests: Error: ENOSPC no space left on device, write 512ms）
+    原件：L24 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T234511789Z/32-L24
+    原件：R3 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T234511789Z/33-R3
+R3: 未合入（门禁未过：
+    ledger: B-test 74 < baseline 75 (host/plugins/review)）
+    原件：R6 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T234511789Z/34-R6
+    原件：U1 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T234511789Z/35-U1
+    原件：U2 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T234511789Z/36-U2
+U2: 未合入（门禁未过：
+    vitest: × SettingsPage renders storage section (88ms)）
+    原件：U3 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T234511789Z/37-U3
+    原件：U4 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T234511789Z/38-U4
+    原件：X1 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T234511789Z/39-X1
+X1: 未合入（门禁未过：
+    e2e: × golden path: create note → ask → anki export timed out after 120000ms）
+    原件：X2 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T234511789Z/40-X2
+    原件：X3 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T234511789Z/41-X3
+    原件：X5 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T234511789Z/42-X5
+    原件：X7 门禁 → /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T234511789Z/43-X7
+X7: 未合入（门禁未过：
+    gate-runner: Error: spawn /opt/node26/bin/node EAGAIN | at ChildProcess._handle.onexit（原件 /home/dsdev/deep-student/.oc-runs/gate-raw/2026-11-04T234511789Z/41-X7））
+[阶段] 快进 main
+C1: 已合入 1 个提交
+C2: 已合入 2 个提交
+F1: 已合入 3 个提交
+F3: 已合入 4 个提交
+F4: 已合入 1 个提交
+F5: 已合入 2 个提交
+F7: 已合入 3 个提交
+L01: 已合入 4 个提交
+L02: 已合入 1 个提交
+L03: 已合入 2 个提交
+L05: 已合入 3 个提交
+L07: 已合入 4 个提交
+L10: 已合入 1 个提交
+L12: 已合入 2 个提交
+L13: 已合入 3 个提交
+L13b: 已合入 4 个提交
+L15: 已合入 1 个提交
+L16: 已合入 2 个提交
+L18: 已合入 3 个提交
+L19: 已合入 4 个提交
+L20b: 已合入 1 个提交
+L22: 已合入 2 个提交
+L24: 已合入 3 个提交
+R6: 已合入 4 个提交
+U1: 已合入 1 个提交
+U3: 已合入 2 个提交
+U4: 已合入 3 个提交
+X2: 已合入 4 个提交
+X3: 已合入 1 个提交
+X5: 已合入 2 个提交
+并行集成完成：候选 43，门禁通过 30，并行度 4

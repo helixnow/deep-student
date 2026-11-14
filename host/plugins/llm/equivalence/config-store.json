@@ -1,0 +1,1042 @@
+{
+  "domain": "llm-manager",
+  "commands": [
+    "get_api_configurations",
+    "get_model_assignments",
+    "get_model_profiles",
+    "get_vendor_configs",
+    "save_model_profiles",
+    "save_vendor_configs",
+    "save_model_assignments"
+  ],
+  "scenarios": [
+    {
+      "id": "llm.config.empty_reads_bootstrap",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_vendor_configs",
+          "args": {}
+        },
+        {
+          "cmd": "get_model_profiles",
+          "args": {}
+        },
+        {
+          "cmd": "get_api_configurations",
+          "args": {}
+        },
+        {
+          "cmd": "get_model_assignments",
+          "args": {}
+        },
+        {
+          "cmd": "get_vendor_configs",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "llm.config.vendor_profile_roundtrip_masking",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_vendor_configs",
+          "args": {
+            "configs": [
+              {
+                "id": "wp239-vendor",
+                "name": "WP239 wp239-vendor",
+                "providerType": "openai",
+                "authMode": null,
+                "apiProtocol": "openai_chat_completions",
+                "supportsOpenaiResponses": false,
+                "baseUrl": "http://127.0.0.1:18461/s/success.answer/v1",
+                "apiKey": "sk-wp239-primary",
+                "apiKeys": [
+                  "sk-wp239-backup-1",
+                  "  ",
+                  "sk-wp239-backup-2"
+                ],
+                "headers": {
+                  "X-Tenant": "tenant-a",
+                  "X-Trace": "on"
+                },
+                "rateLimitPerMinute": 60,
+                "defaultTimeoutMs": 20000,
+                "notes": "自定义供应商",
+                "isBuiltin": false,
+                "isReadOnly": false,
+                "sortOrder": 3,
+                "maxTokensLimit": 65536,
+                "websiteUrl": "https://example.invalid"
+              },
+              {
+                "id": "wp239-vendor-noauth",
+                "name": "WP239 wp239-vendor-noauth",
+                "providerType": "openai",
+                "authMode": "none",
+                "apiProtocol": "openai_chat_completions",
+                "supportsOpenaiResponses": false,
+                "baseUrl": "http://127.0.0.1:18461/s/success.answer/v1",
+                "apiKey": "ignored-by-none",
+                "apiKeys": [
+                  "ignored-backup"
+                ],
+                "headers": {},
+                "rateLimitPerMinute": null,
+                "defaultTimeoutMs": null,
+                "notes": null,
+                "isBuiltin": false,
+                "isReadOnly": false,
+                "sortOrder": null,
+                "maxTokensLimit": null,
+                "websiteUrl": null
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "get_vendor_configs",
+          "args": {}
+        },
+        {
+          "cmd": "save_model_profiles",
+          "args": {
+            "profiles": [
+              {
+                "id": "wp239-profile-full",
+                "vendorId": "wp239-vendor",
+                "label": "WP239 wp239-profile-full",
+                "model": "wp239-model-full",
+                "providerScope": null,
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "isMultimodal": true,
+                "isReasoning": true,
+                "isEmbedding": false,
+                "isReranker": false,
+                "isImageGeneration": false,
+                "supportsTools": true,
+                "supportsReasoning": true,
+                "status": "enabled",
+                "enabled": true,
+                "maxOutputTokens": 4096,
+                "temperature": 0.2,
+                "reasoningEffort": "medium",
+                "reasoningMode": null,
+                "thinkingEnabled": true,
+                "thinkingBudget": 1024,
+                "includeThoughts": false,
+                "enableThinking": true,
+                "minP": 0.05,
+                "topK": 40,
+                "geminiApiVersion": null,
+                "isBuiltin": false,
+                "repetitionPenalty": 1.1,
+                "reasoningSplit": null,
+                "effort": null,
+                "verbosity": "low",
+                "isFavorite": true,
+                "maxTokensLimit": 8192,
+                "contextWindow": 131072,
+                "extraBody": {
+                  "seed": 7,
+                  "nested": {
+                    "flag": true
+                  }
+                }
+              },
+              {
+                "id": "wp239-profile-min",
+                "vendorId": "wp239-vendor",
+                "label": "WP239 wp239-profile-min",
+                "model": "wp239-model-min"
+              },
+              {
+                "id": "wp239-profile-snake",
+                "vendorId": "wp239-vendor-noauth",
+                "label": "WP239 wp239-profile-snake",
+                "model": "wp239-model-snake",
+                "context_window": 4096
+              },
+              {
+                "id": "wp239-profile-orphan",
+                "vendorId": "wp239-vendor-missing",
+                "label": "WP239 wp239-profile-orphan",
+                "model": "wp239-model-orphan",
+                "enabled": false,
+                "status": "disabled"
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "get_model_profiles",
+          "args": {}
+        },
+        {
+          "cmd": "get_api_configurations",
+          "args": {}
+        },
+        {
+          "cmd": "save_vendor_configs",
+          "args": {
+            "configs": [
+              {
+                "id": "wp239-vendor",
+                "name": "WP239 wp239-vendor",
+                "providerType": "openai",
+                "authMode": null,
+                "apiProtocol": "openai_chat_completions",
+                "supportsOpenaiResponses": false,
+                "baseUrl": "http://127.0.0.1:18461/s/success.answer/v1",
+                "apiKey": "***",
+                "apiKeys": [
+                  "***",
+                  "",
+                  "sk-wp239-backup-3"
+                ],
+                "headers": {
+                  "X-Tenant": "***",
+                  "X-Trace": ""
+                },
+                "rateLimitPerMinute": null,
+                "defaultTimeoutMs": null,
+                "notes": null,
+                "isBuiltin": false,
+                "isReadOnly": false,
+                "sortOrder": null,
+                "maxTokensLimit": null,
+                "websiteUrl": null
+              },
+              {
+                "id": "wp239-vendor-noauth",
+                "name": "WP239 wp239-vendor-noauth",
+                "providerType": "openai",
+                "authMode": "NONE",
+                "apiProtocol": "openai_chat_completions",
+                "supportsOpenaiResponses": false,
+                "baseUrl": "http://localhost:18462/v1",
+                "apiKey": "***",
+                "apiKeys": [
+                  "***"
+                ],
+                "headers": {},
+                "rateLimitPerMinute": null,
+                "defaultTimeoutMs": null,
+                "notes": null,
+                "isBuiltin": false,
+                "isReadOnly": false,
+                "sortOrder": null,
+                "maxTokensLimit": null,
+                "websiteUrl": null
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "get_vendor_configs",
+          "args": {}
+        },
+        {
+          "cmd": "get_api_configurations",
+          "args": {}
+        },
+        {
+          "cmd": "save_vendor_configs",
+          "args": {
+            "configs": [
+              {
+                "id": "wp239-vendor",
+                "name": "WP239 wp239-vendor",
+                "providerType": "openai",
+                "authMode": null,
+                "apiProtocol": "openai_chat_completions",
+                "supportsOpenaiResponses": false,
+                "baseUrl": "http://127.0.0.1:18461/s/success.answer/v1",
+                "apiKey": "",
+                "apiKeys": [],
+                "headers": {},
+                "rateLimitPerMinute": null,
+                "defaultTimeoutMs": null,
+                "notes": null,
+                "isBuiltin": false,
+                "isReadOnly": false,
+                "sortOrder": null,
+                "maxTokensLimit": null,
+                "websiteUrl": null
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "get_vendor_configs",
+          "args": {}
+        },
+        {
+          "cmd": "get_api_configurations",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "llm.config.builtin_vendor_secret_lifecycle",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_vendor_configs",
+          "args": {}
+        },
+        {
+          "cmd": "save_vendor_configs",
+          "args": {
+            "configs": [
+              {
+                "id": "builtin-deepseek",
+                "name": "DeepSeek",
+                "providerType": "deepseek",
+                "authMode": null,
+                "apiProtocol": "openai_chat_completions",
+                "supportsOpenaiResponses": false,
+                "baseUrl": "https://api.deepseek.com/v1",
+                "apiKey": "sk-wp239-deepseek",
+                "apiKeys": [],
+                "headers": {},
+                "rateLimitPerMinute": null,
+                "defaultTimeoutMs": null,
+                "notes": null,
+                "isBuiltin": true,
+                "isReadOnly": false,
+                "sortOrder": null,
+                "maxTokensLimit": null,
+                "websiteUrl": null
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "get_vendor_configs",
+          "args": {}
+        },
+        {
+          "cmd": "save_vendor_configs",
+          "args": {
+            "configs": [
+              {
+                "id": "builtin-deepseek",
+                "name": "DeepSeek",
+                "providerType": "deepseek",
+                "authMode": null,
+                "apiProtocol": "openai_chat_completions",
+                "supportsOpenaiResponses": false,
+                "baseUrl": "https://api.deepseek.com/v1/",
+                "apiKey": "***",
+                "apiKeys": [],
+                "headers": {},
+                "rateLimitPerMinute": null,
+                "defaultTimeoutMs": null,
+                "notes": null,
+                "isBuiltin": true,
+                "isReadOnly": false,
+                "sortOrder": null,
+                "maxTokensLimit": null,
+                "websiteUrl": null
+              },
+              {
+                "id": "builtin-siliconflow",
+                "name": "SiliconFlow",
+                "providerType": "siliconflow",
+                "authMode": null,
+                "apiProtocol": "openai_chat_completions",
+                "supportsOpenaiResponses": false,
+                "baseUrl": "https://api.siliconflow.cn/v1",
+                "apiKey": "sk-wp239-sf",
+                "apiKeys": [],
+                "headers": {},
+                "rateLimitPerMinute": null,
+                "defaultTimeoutMs": null,
+                "notes": null,
+                "isBuiltin": false,
+                "isReadOnly": false,
+                "sortOrder": null,
+                "maxTokensLimit": null,
+                "websiteUrl": null
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "get_vendor_configs",
+          "args": {}
+        },
+        {
+          "cmd": "save_vendor_configs",
+          "args": {
+            "configs": [
+              {
+                "id": "builtin-deepseek",
+                "name": "DeepSeek",
+                "providerType": "deepseek",
+                "authMode": null,
+                "apiProtocol": "openai_chat_completions",
+                "supportsOpenaiResponses": false,
+                "baseUrl": "https://api.deepseek.com/v1",
+                "apiKey": "",
+                "apiKeys": [],
+                "headers": {},
+                "rateLimitPerMinute": null,
+                "defaultTimeoutMs": null,
+                "notes": null,
+                "isBuiltin": true,
+                "isReadOnly": false,
+                "sortOrder": null,
+                "maxTokensLimit": null,
+                "websiteUrl": null
+              },
+              {
+                "id": "builtin-siliconflow",
+                "name": "SiliconFlow",
+                "providerType": "siliconflow",
+                "authMode": null,
+                "apiProtocol": "openai_chat_completions",
+                "supportsOpenaiResponses": false,
+                "baseUrl": "https://api.siliconflow.cn/v1",
+                "apiKey": "",
+                "apiKeys": [],
+                "headers": {},
+                "rateLimitPerMinute": null,
+                "defaultTimeoutMs": null,
+                "notes": null,
+                "isBuiltin": true,
+                "isReadOnly": false,
+                "sortOrder": null,
+                "maxTokensLimit": null,
+                "websiteUrl": null
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "get_vendor_configs",
+          "args": {}
+        },
+        {
+          "cmd": "get_api_configurations",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "llm.config.save_vendor_configs.validation_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_vendor_configs",
+          "args": {
+            "configs": [
+              {
+                "id": "wp239-vendor",
+                "name": "WP239 wp239-vendor",
+                "providerType": "openai",
+                "authMode": null,
+                "apiProtocol": "openai_chat_completions",
+                "supportsOpenaiResponses": false,
+                "baseUrl": "http://127.0.0.1:18461/s/success.answer/v1",
+                "apiKey": "sk-wp239-primary",
+                "apiKeys": [
+                  "sk-wp239-backup-1"
+                ],
+                "headers": {
+                  "X-Tenant": "tenant-a"
+                },
+                "rateLimitPerMinute": null,
+                "defaultTimeoutMs": null,
+                "notes": null,
+                "isBuiltin": false,
+                "isReadOnly": false,
+                "sortOrder": null,
+                "maxTokensLimit": null,
+                "websiteUrl": null
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "save_vendor_configs",
+          "args": {
+            "configs": [
+              {
+                "id": "wp239-bad-header-name",
+                "name": "WP239 wp239-bad-header-name",
+                "providerType": "openai",
+                "authMode": null,
+                "apiProtocol": "openai_chat_completions",
+                "supportsOpenaiResponses": false,
+                "baseUrl": "http://127.0.0.1:18461/s/success.answer/v1",
+                "apiKey": "sk-wp239-primary",
+                "apiKeys": [],
+                "headers": {
+                  "Bad Header": "v"
+                },
+                "rateLimitPerMinute": null,
+                "defaultTimeoutMs": null,
+                "notes": null,
+                "isBuiltin": false,
+                "isReadOnly": false,
+                "sortOrder": null,
+                "maxTokensLimit": null,
+                "websiteUrl": null
+              }
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "save_vendor_configs",
+          "args": {
+            "configs": [
+              {
+                "id": "wp239-bad-header-value",
+                "name": "WP239 wp239-bad-header-value",
+                "providerType": "openai",
+                "authMode": null,
+                "apiProtocol": "openai_chat_completions",
+                "supportsOpenaiResponses": false,
+                "baseUrl": "http://127.0.0.1:18461/s/success.answer/v1",
+                "apiKey": "sk-wp239-primary",
+                "apiKeys": [],
+                "headers": {
+                  "X-Ok": "line1\nline2"
+                },
+                "rateLimitPerMinute": null,
+                "defaultTimeoutMs": null,
+                "notes": null,
+                "isBuiltin": false,
+                "isReadOnly": false,
+                "sortOrder": null,
+                "maxTokensLimit": null,
+                "websiteUrl": null
+              }
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "save_vendor_configs",
+          "args": {
+            "configs": [
+              {
+                "id": "wp239-vendor-ok-first",
+                "name": "WP239 wp239-vendor-ok-first",
+                "providerType": "openai",
+                "authMode": null,
+                "apiProtocol": "openai_chat_completions",
+                "supportsOpenaiResponses": false,
+                "baseUrl": "http://127.0.0.1:18461/s/success.answer/v1",
+                "apiKey": "sk-wp239-primary",
+                "apiKeys": [],
+                "headers": {},
+                "rateLimitPerMinute": null,
+                "defaultTimeoutMs": null,
+                "notes": null,
+                "isBuiltin": false,
+                "isReadOnly": false,
+                "sortOrder": null,
+                "maxTokensLimit": null,
+                "websiteUrl": null
+              },
+              {
+                "id": "wp239-vendor",
+                "name": "WP239 wp239-vendor",
+                "providerType": "openai",
+                "authMode": null,
+                "apiProtocol": "openai_chat_completions",
+                "supportsOpenaiResponses": false,
+                "baseUrl": "http://127.0.0.1:18462/v1",
+                "apiKey": "***",
+                "apiKeys": [],
+                "headers": {},
+                "rateLimitPerMinute": null,
+                "defaultTimeoutMs": null,
+                "notes": null,
+                "isBuiltin": false,
+                "isReadOnly": false,
+                "sortOrder": null,
+                "maxTokensLimit": null,
+                "websiteUrl": null
+              }
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "save_vendor_configs",
+          "args": {
+            "configs": [
+              {
+                "id": "wp239-vendor",
+                "name": "WP239 wp239-vendor",
+                "providerType": "openai",
+                "authMode": null,
+                "apiProtocol": "openai_chat_completions",
+                "supportsOpenaiResponses": false,
+                "baseUrl": "https://127.0.0.1:18461/v1",
+                "apiKey": "sk-new",
+                "apiKeys": [
+                  "*****"
+                ],
+                "headers": {},
+                "rateLimitPerMinute": null,
+                "defaultTimeoutMs": null,
+                "notes": null,
+                "isBuiltin": false,
+                "isReadOnly": false,
+                "sortOrder": null,
+                "maxTokensLimit": null,
+                "websiteUrl": null
+              }
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "save_vendor_configs",
+          "args": {
+            "configs": [
+              {
+                "id": "wp239-vendor",
+                "name": "WP239 wp239-vendor",
+                "providerType": "openai",
+                "authMode": null,
+                "apiProtocol": "openai_chat_completions",
+                "supportsOpenaiResponses": false,
+                "baseUrl": "http://localhost:18461/v1",
+                "apiKey": "sk-new",
+                "apiKeys": [
+                  "sk-new-b"
+                ],
+                "headers": {
+                  "X-Tenant": "***"
+                },
+                "rateLimitPerMinute": null,
+                "defaultTimeoutMs": null,
+                "notes": null,
+                "isBuiltin": false,
+                "isReadOnly": false,
+                "sortOrder": null,
+                "maxTokensLimit": null,
+                "websiteUrl": null
+              }
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "save_vendor_configs",
+          "args": {
+            "configs": [
+              {
+                "id": "wp239-vendor",
+                "name": "WP239 wp239-vendor",
+                "providerType": "openai",
+                "authMode": "none",
+                "apiProtocol": "openai_chat_completions",
+                "supportsOpenaiResponses": false,
+                "baseUrl": "http://127.0.0.1:18462/v1",
+                "apiKey": "",
+                "apiKeys": [],
+                "headers": {
+                  "X-Tenant": "**"
+                },
+                "rateLimitPerMinute": null,
+                "defaultTimeoutMs": null,
+                "notes": null,
+                "isBuiltin": false,
+                "isReadOnly": false,
+                "sortOrder": null,
+                "maxTokensLimit": null,
+                "websiteUrl": null
+              }
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "save_vendor_configs",
+          "args": {
+            "configs": [
+              {
+                "id": "builtin-deepseek",
+                "name": "WP239 builtin-deepseek",
+                "providerType": "deepseek",
+                "authMode": null,
+                "apiProtocol": "openai_chat_completions",
+                "supportsOpenaiResponses": false,
+                "baseUrl": "https://api.deepseek.com:8443/v1",
+                "apiKey": "***",
+                "apiKeys": [],
+                "headers": {},
+                "rateLimitPerMinute": null,
+                "defaultTimeoutMs": null,
+                "notes": null,
+                "isBuiltin": true,
+                "isReadOnly": false,
+                "sortOrder": null,
+                "maxTokensLimit": null,
+                "websiteUrl": null
+              }
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "get_vendor_configs",
+          "args": {}
+        },
+        {
+          "cmd": "save_vendor_configs",
+          "args": {
+            "configs": [
+              {
+                "id": "wp239-vendor",
+                "name": "WP239 wp239-vendor",
+                "providerType": "openai",
+                "authMode": null,
+                "apiProtocol": "openai_chat_completions",
+                "supportsOpenaiResponses": false,
+                "baseUrl": "http://127.0.0.1:18462/v1",
+                "apiKey": "sk-wp239-rotated",
+                "apiKeys": [
+                  "sk-wp239-backup-rotated"
+                ],
+                "headers": {
+                  "X-Tenant": "tenant-b"
+                },
+                "rateLimitPerMinute": null,
+                "defaultTimeoutMs": null,
+                "notes": null,
+                "isBuiltin": false,
+                "isReadOnly": false,
+                "sortOrder": null,
+                "maxTokensLimit": null,
+                "websiteUrl": null
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "get_vendor_configs",
+          "args": {}
+        },
+        {
+          "cmd": "save_vendor_configs",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "llm.config.model_profiles_builtin_hiding",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_model_profiles",
+          "args": {}
+        },
+        {
+          "cmd": "save_model_profiles",
+          "args": {
+            "profiles": [
+              {
+                "id": "builtin-deepseek-v4-flash",
+                "vendorId": "builtin-deepseek",
+                "label": "WP239 builtin-deepseek-v4-flash",
+                "model": "deepseek-v4-flash",
+                "isBuiltin": true,
+                "isFavorite": true
+              },
+              {
+                "id": "wp239-profile-min",
+                "vendorId": "builtin-deepseek",
+                "label": "WP239 wp239-profile-min",
+                "model": "wp239-on-builtin-vendor"
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "get_model_profiles",
+          "args": {}
+        },
+        {
+          "cmd": "get_api_configurations",
+          "args": {}
+        },
+        {
+          "cmd": "save_model_profiles",
+          "args": {
+            "profiles": []
+          }
+        },
+        {
+          "cmd": "get_model_profiles",
+          "args": {}
+        },
+        {
+          "cmd": "get_api_configurations",
+          "args": {}
+        },
+        {
+          "cmd": "save_model_profiles",
+          "args": {
+            "profiles": [
+              {
+                "id": "wp239-missing-vendor-id",
+                "label": "x",
+                "model": "m"
+              }
+            ]
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "save_model_profiles",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "llm.config.model_assignments_roundtrip",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_model_assignments",
+          "args": {}
+        },
+        {
+          "cmd": "save_model_assignments",
+          "args": {
+            "assignments": {
+              "model2_config_id": "wp239-model2",
+              "review_analysis_model_config_id": "wp239-review_analysis",
+              "anki_card_model_config_id": "wp239-anki_card",
+              "qbank_ai_grading_model_config_id": "wp239-qbank_ai_grading",
+              "qbank_ai_generation_model_config_id": "wp239-qbank_ai_generation",
+              "embedding_model_config_id": "wp239-embedding",
+              "reranker_model_config_id": "wp239-reranker",
+              "chat_title_model_config_id": "wp239-chat_title",
+              "exam_sheet_ocr_model_config_id": "wp239-exam_sheet_ocr",
+              "translation_model_config_id": "wp239-translation",
+              "vl_embedding_model_config_id": "wp239-vl_embedding",
+              "vl_reranker_model_config_id": "wp239-vl_reranker",
+              "memory_decision_model_config_id": "wp239-memory_decision",
+              "voice_input_asr_model_config_id": "wp239-voice_input_asr",
+              "image_generation_model_config_id": "wp239-image_generation",
+              "compaction_model_config_id": "wp239-compaction",
+              "translation_display_mode": "bilingual"
+            }
+          }
+        },
+        {
+          "cmd": "get_model_assignments",
+          "args": {}
+        },
+        {
+          "cmd": "save_model_assignments",
+          "args": {
+            "assignments": {
+              "model2_config_id": "wp239-only-model2"
+            }
+          }
+        },
+        {
+          "cmd": "get_model_assignments",
+          "args": {}
+        },
+        {
+          "cmd": "save_model_assignments",
+          "args": {
+            "assignments": {}
+          }
+        },
+        {
+          "cmd": "get_model_assignments",
+          "args": {}
+        },
+        {
+          "cmd": "save_model_assignments",
+          "args": {
+            "assignments": {
+              "model2_config_id": 42
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "save_model_assignments",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "get_model_assignments",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "llm.config.corrupted_settings_read_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_vendor_configs",
+          "args": {}
+        },
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "model_assignments",
+            "value": "{not json"
+          }
+        },
+        {
+          "cmd": "get_model_assignments",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "model_assignments",
+            "value": "{\"model2_config_id\": 42}"
+          }
+        },
+        {
+          "cmd": "get_model_assignments",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "save_model_assignments",
+          "args": {
+            "assignments": {
+              "model2_config_id": "wp239-recovered"
+            }
+          }
+        },
+        {
+          "cmd": "get_model_assignments",
+          "args": {}
+        },
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "model_profiles",
+            "value": "[{\"id\":\"p\"}]"
+          }
+        },
+        {
+          "cmd": "get_model_profiles",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "get_api_configurations",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "save_model_profiles",
+          "args": {
+            "profiles": []
+          }
+        },
+        {
+          "cmd": "get_model_profiles",
+          "args": {}
+        },
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "vendor_configs",
+            "value": "{\"not\":\"an array\"}"
+          }
+        },
+        {
+          "cmd": "get_vendor_configs",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "get_api_configurations",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "save_vendor_configs",
+          "args": {
+            "configs": []
+          }
+        },
+        {
+          "cmd": "get_vendor_configs",
+          "args": {}
+        },
+        {
+          "cmd": "get_api_configurations",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

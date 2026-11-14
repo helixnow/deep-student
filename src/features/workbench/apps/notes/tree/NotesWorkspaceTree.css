@@ -46,7 +46,7 @@
   outline-offset: -2px;
 }
 
-/* 树行对齐对话标准 nav-row；树形内容保留 13px/30px 密度档（最小妥协） */
+/* 树行收紧圆角至 8px（Bear 2 / Craft 笔记树标准）；树形内容保留 13px/30px 密度档 */
 .nwt-row {
   width: 100%;
   height: 30px;
@@ -55,7 +55,7 @@
   align-items: center;
   gap: 5px;
   border: 0;
-  border-radius: var(--notes-radius-row, 6px);
+  border-radius: 8px;
   color: hsl(var(--foreground));
   background: transparent;
   font: inherit;
@@ -66,6 +66,24 @@
   user-select: none;
   box-sizing: border-box;
   transition: background-color var(--notes-hover-transition);
+}
+
+/* 缩进引导线：平时静默，仅在鼠标悬停树区域时浮现 1px 极细墨水线 */
+.nwt-row:not([data-depth='1'])::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 14px;
+  width: 1px;
+  background: var(--notes-hairline, hsl(var(--border) / 50%));
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--notes-hover-transition, 120ms ease);
+}
+
+.nwt-tree:hover .nwt-row:not([data-depth='1'])::before {
+  opacity: 1;
 }
 
 .nwt-link-drag {
@@ -93,12 +111,12 @@
 }
 
 .nwt-row:hover {
-  background: var(--interactive-hover, hsl(var(--accent)));
+  background: var(--notes-surface-hover, var(--interactive-hover, hsl(var(--accent))));
 }
 
 .nwt-row[data-active='true'],
 .nwt-row[data-selected='true'] {
-  background: var(--interactive-selected, hsl(var(--accent)));
+  background: var(--notes-surface-selected, var(--interactive-selected, hsl(var(--accent))));
   font-weight: 500;
 }
 

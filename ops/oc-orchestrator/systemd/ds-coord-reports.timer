@@ -1,0 +1,9 @@
+[Unit]
+Description=每 5 分钟预生成协调者摘要报告
+
+[Timer]
+OnBootSec=3min
+OnUnitInactiveSec=5min
+
+[Install]
+WantedBy=timers.target

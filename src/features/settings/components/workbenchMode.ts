@@ -25,6 +25,7 @@ import { handoffWorkbenchToLegacyShell } from '@/features/workbench/core/legacyN
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { APP_EVENTS, dispatchAppEvent } from '@/events';
+import { provideWorkbenchModeService } from '@/ui-plugins/official/settings/api';
 
 export const WORKBENCH_MODE_SETTING_KEY = 'desktop.workbenchMode';
 /** 一次性默认值迁移哨兵：避免对缺失键重复写入 / 重复提示 */
@@ -179,6 +180,9 @@ export async function persistWorkbenchModeEnabled(enabled: boolean): Promise<boo
   }
   return true;
 }
+
+// UI 插件（如菜单栏「退出学习桌面」）经 ui-plugins/official/settings/api.ts 的 workbenchMode 走同一写通道
+provideWorkbenchModeService({ setEnabled: persistWorkbenchModeEnabled });
 
 /** 测试辅助：清空进程内缓存 */
 export function __resetWorkbenchModeCacheForTest(): void {

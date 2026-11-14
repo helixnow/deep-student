@@ -1,0 +1,153 @@
+{
+  "buttons": [
+    "0:返回",
+    "1:导出统计",
+    "2:本周周报",
+    "3:与 AI 复盘",
+    "4:到期卡片5前往",
+    "5:错题复习3前往",
+    "6:待复习笔记0前往",
+    "7:今日待办2前往",
+    "8:运行中任务1前往",
+    "9:函数单调性31%",
+    "10:等比数列55%",
+    "11:导出统计"
+  ],
+  "actions": {
+    "0:返回": {
+      "navigations": [
+        [
+          "back"
+        ]
+      ],
+      "events": [],
+      "ipc": []
+    },
+    "1:导出统计": {
+      "navigations": [],
+      "events": [],
+      "ipc": [],
+      "downloads": [
+        "statistics-2026-11-07.json application/json 1205B"
+      ]
+    },
+    "2:本周周报": {
+      "navigations": [],
+      "events": [],
+      "ipc": [
+        "dstu_list(options,path)",
+        "fsrs_get_review_statistics(days)",
+        "fsrs_get_stats()",
+        "mastery_get_overview(limit)",
+        "pomodoro_stats_overview(days)",
+        "qbank_get_activity_heatmap(request)",
+        "review_plan_get_stats(examId)",
+        "study_time_range(from,to)"
+      ],
+      "dialog": "<div .bg-background.border.border-border/40.flex.flex-col.max-h-[min(80vh,760px)].max-w-lg.max-w-none.p-0.p-5.pointer-events-auto.rounded-xl.shadow-none.text-foreground.w-[min(720px,calc(100vw-32px))].w-full aria-labelledby=\"@1\" aria-modal=\"true\" role=\"dialog\">\n  <div .border-b.border-border/40.px-5.py-4.space-y-1.5>\n    <h3 .font-semibold.leading-none.text-lg.tracking-tight id=\"@1\">\n      \"学习周报 11.01–11.07\"\n  <div .chat-v2.flex-1.min-h-0.overflow-y-auto.px-5.py-3>\n    <pre .text-muted-foreground.text-sm.whitespace-pre-wrap>\n      \"## 概览 - 学习天数：3 / 7 - 做题：6 道，正确率 67%（上周无记录） - 卡片复习：9 次，其中忘记 2 次（上周无记录） - 学习时长：1 小时（应用在前台且在操作的时间）（上周无记录） - 番茄专注：25 分钟（完成 1…\"\n  <div .border-border/40.border-t.flex.gap-2.justify-end.mt-0.mt-4.px-5.py-3>\n    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap type=\"button\">\n      <svg aria-hidden=\"true\" viewBox=\"0 0 256 256\" />\n      \"与 AI 复盘\"\n    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.text-base.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap type=\"button\">\n      <svg aria-hidden=\"true\" viewBox=\"0 0 256 256\" />\n      \"存为笔记…\"\n",
+      "dialogActions": {
+        "0:与 AI 复盘": {
+          "navigations": [],
+          "events": [
+            "PREFILL_CHAT_INPUT{autoSend,content,newSession}={\"content\":\"这是我的学习周报 11.01–11.07（来自本地学习记录）：\\n\\n## 概览\\n\\n- 学习天数：3 / 7\\n- 做题：6 道，正确率 67%（上周无记录）\\n- 卡片复习：9 次，其中忘记 2 次（上周无记录）\\n- 学习时长：1 小时（应用在前台且在操作的时间）（上周无记录）\\n- 番茄专注：25 分钟（完成 1 个番茄）（上周无记录）\\n\\n## 薄弱知识点\\n\\n- 函数单调性：掌握度 31%\\n- 等比数列：掌握度 55%\\n\\n## 接下来\\n\\n- 当前待复习：卡片 5 张、错题 3 道、笔记 0 篇\\n- 本周学习天数偏少，试着每天固定一小段时间，哪怕只复习到期卡片。\\n\\n请帮我复盘：指出最值得关注的 2–3 个问题，并给出下周可执行的学习安排。\",\"autoSend\":false,\"newSession\":true}"
+          ],
+          "ipc": []
+        },
+        "1:存为笔记…": {
+          "navigations": [],
+          "events": [],
+          "ipc": [
+            "dstu_folder_get_tree()"
+          ],
+          "dialog": "<div .bg-background.border.flex.flex-col.max-w-md.overflow-hidden.relative.rounded-[var(--radius-shell-dialog)].text-foreground.w-[92vw] aria-modal=\"true\" role=\"dialog\" tabindex=\"-1\">\n  <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!h-11.[@media(pointer:coarse)]:!right-0.[@media(pointer:coarse)]:!top-0.[@media(pointer:coarse)]:!w-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].absolute.active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-6.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:w-[var(--button-height-sm)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.right-2.5.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-muted-foreground/50.text-ui.top-2.5.transition-[background-color,border-color,color].ui-press-coarse.w-6.w-[var(--touch-target-size)].whitespace-nowrap.z-10 aria-label=\"关闭\" type=\"button\">\n    <svg viewBox=\"0 0 256 256\" />\n  <div .border-b.border-transparent.flex-shrink-0.pb-3.pt-5.px-5.space-y-1>\n    <h3 .flex.font-semibold.gap-2.items-center.leading-tight.text-base.text-foreground>\n      <svg .text-muted-foreground viewBox=\"0 0 256 256\" />\n      \"选择保存目录\"\n  <div .h-[320px].mb-3.overflow-hidden>\n    <div .h-full.min-h-0.min-w-0.relative data-native-scrollbars=\"false\" data-orientation=\"vertical\" data-overlayscrollbars=\"host\" data-overlayscrollbars-initialize data-scroll-axes=\"vertical\" data-slot=\"scroll-area\">\n      <div .os-size-observer>\n        <div .os-size-observer-listener />\n      <div .h-full.max-h-[inherit].min-h-0.min-w-0.w-full data-overlayscrollbars-viewport=\"scrollbarHidden overflowXHidden overflowYHidden\" tabindex=\"-1\">\n        <div .px-5.py-1 aria-label=\"选择保存目录\" role=\"tree\">\n          <div .[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:scale-[0.99].bg-primary/10.cursor-pointer.duration-150.ease-out.flex.focus-visible:outline-none.focus-visible:shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.35)].gap-2.inline-flex.items-center.justify-center.justify-start.px-3.py-2.rounded-md.shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.2)].shrink-0.text-primary.transition-all aria-selected=\"true\" role=\"treeitem\" tabindex=\"0\">\n            <svg .duration-150.text-primary.transition-colors viewBox=\"0 0 256 256\" />\n            <span .font-medium.text-sm>\n              \"根目录\"\n          <div role=\"none\">\n            <div .[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:scale-[0.99].cursor-pointer.duration-150.ease-out.flex.focus-visible:outline-none.focus-visible:shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.35)].gap-1.5.hover:bg-[var(--interactive-hover)].inline-flex.items-center.justify-center.justify-start.px-2.py-2.rounded-md.shrink-0.transition-all aria-selected=\"false\" role=\"treeitem\" tabindex=\"0\">\n              <span .w-4 />\n              <svg .duration-150.shrink-0.text-amber-500.transition-colors viewBox=\"0 0 256 256\" />\n              <span .flex-1.text-sm.truncate>\n                \"周报\"\n      <div .os-scrollbar.os-scrollbar-auto-hide-hidden.os-scrollbar-cornerless.os-scrollbar-handle-interactive.os-scrollbar-horizontal.os-scrollbar-track-interactive.os-scrollbar-unusable.os-theme-deep-student>\n        <div .os-scrollbar-track>\n          <div .os-scrollbar-handle />\n      <div .os-scrollbar.os-scrollbar-auto-hide-hidden.os-scrollbar-cornerless.os-scrollbar-handle-interactive.os-scrollbar-track-interactive.os-scrollbar-unusable.os-scrollbar-vertical.os-theme-deep-student>\n        <div .os-scrollbar-track>\n          <div .os-scrollbar-handle />\n  <div .border-t.border-transparent.flex.flex-shrink-0.gap-2.items-center.justify-end.px-5.py-4>\n    <div .min-w-0.mr-auto>\n      <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-1.5.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].max-w-full.motion-reduce:transition-none.outline-none.px-2.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap type=\"button\">\n        <svg .shrink-0 aria-hidden=\"true\" viewBox=\"0 0 256 256\" />\n        <span .truncate>\n          \"追加到已有笔记\"\n    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap type=\"button\">\n      \"取消\"\n    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap type=\"button\">\n      \"保存到此处\"\n"
+        }
+      },
+      "dialogClosesOnEscape": true
+    },
+    "3:与 AI 复盘": {
+      "navigations": [],
+      "events": [
+        "PREFILL_CHAT_INPUT{autoSend,content,newSession}={\"content\":\"这是我的学习周报 11.01–11.07（来自本地学习记录）：\\n\\n## 概览\\n\\n- 学习天数：3 / 7\\n- 做题：6 道，正确率 67%（上周无记录）\\n- 卡片复习：9 次，其中忘记 2 次（上周无记录）\\n- 学习时长：1 小时（应用在前台且在操作的时间）（上周无记录）\\n- 番茄专注：25 分钟（完成 1 个番茄）（上周无记录）\\n\\n## 薄弱知识点\\n\\n- 函数单调性：掌握度 31%\\n- 等比数列：掌握度 55%\\n\\n## 接下来\\n\\n- 当前待复习：卡片 5 张、错题 3 道、笔记 0 篇\\n- 本周学习天数偏少，试着每天固定一小段时间，哪怕只复习到期卡片。\\n\\n请帮我复盘：指出最值得关注的 2–3 个问题，并给出下周可执行的学习安排。\",\"autoSend\":false,\"newSession\":true}"
+      ],
+      "ipc": [
+        "dstu_list(options,path)",
+        "fsrs_get_review_statistics(days)",
+        "fsrs_get_stats()",
+        "mastery_get_overview(limit)",
+        "pomodoro_stats_overview(days)",
+        "qbank_get_activity_heatmap(request)",
+        "review_plan_get_stats(examId)",
+        "study_time_range(from,to)"
+      ]
+    },
+    "4:到期卡片5前往": {
+      "navigations": [],
+      "events": [
+        "NAVIGATE_TO_VIEW{view}={\"view\":\"flashcards\"}"
+      ],
+      "ipc": []
+    },
+    "5:错题复习3前往": {
+      "navigations": [],
+      "events": [],
+      "ipc": [],
+      "state": {
+        "dueMistakesReviewOpen": [
+          false,
+          true
+        ]
+      }
+    },
+    "6:待复习笔记0前往": {
+      "navigations": [],
+      "events": [
+        "learningHub:notes-learning-view{view}={\"view\":\"review\"}",
+        "learningHub:open-quick-access{type}={\"type\":\"notes\"}",
+        "NAVIGATE_TO_VIEW{view}={\"view\":\"learning-hub\"}"
+      ],
+      "ipc": []
+    },
+    "7:今日待办2前往": {
+      "navigations": [
+        [
+          "navigate",
+          "todo"
+        ]
+      ],
+      "events": [],
+      "ipc": []
+    },
+    "8:运行中任务1前往": {
+      "navigations": [
+        [
+          "navigate",
+          "task-dashboard"
+        ]
+      ],
+      "events": [],
+      "ipc": []
+    },
+    "9:函数单调性31%": {
+      "navigations": [],
+      "events": [
+        "PREFILL_CHAT_INPUT{autoSend,content,newSession}={\"content\":\"帮我针对薄弱知识点「函数单调性」复习：先用三句话讲清核心概念；再出 3 道由浅入深的练习题，用题库工具写进题目集「薄弱点练习」，每道题的第一个知识点标签写「函数单调性」，我会在题目集里作答，这样掌握度才会更新；最后告诉我最容易错在哪里。\",\"autoSend\":false,\"newSession\":true}"
+      ],
+      "ipc": []
+    },
+    "10:等比数列55%": {
+      "navigations": [],
+      "events": [
+        "PREFILL_CHAT_INPUT{autoSend,content,newSession}={\"content\":\"帮我针对薄弱知识点「等比数列」复习：先用三句话讲清核心概念；再出 3 道由浅入深的练习题，用题库工具写进题目集「薄弱点练习」，每道题的第一个知识点标签写「等比数列」，我会在题目集里作答，这样掌握度才会更新；最后告诉我最容易错在哪里。\",\"autoSend\":false,\"newSession\":true}"
+      ],
+      "ipc": []
+    },
+    "11:导出统计": {
+      "navigations": [],
+      "events": [],
+      "ipc": [],
+      "downloads": [
+        "statistics-2026-11-07.json application/json 1205B"
+      ]
+    }
+  }
+}

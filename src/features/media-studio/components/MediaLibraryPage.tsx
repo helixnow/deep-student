@@ -795,34 +795,45 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
   ) : null;
 
   const emptyState = (
-    <div className="study-shell-empty-state" data-media-library-empty="">
-      <div className="study-shell-empty-state__icon">
-        <FilmStrip size={32} weight="duotone" className="text-muted-foreground/50" />
+    <section
+      className="mx-auto my-auto flex w-full max-w-2xl flex-col items-center px-1 py-8 text-center sm:px-6"
+      data-media-library-empty=""
+      aria-labelledby="media-library-empty-title"
+    >
+      <div className="study-shell-empty-state__icon mb-4">
+        <FilmStrip size={25} weight="duotone" aria-hidden="true" />
       </div>
-      <p className="study-shell-empty-state__title">{t('mediaStudio:empty.title')}</p>
-      <ul className="mt-3 flex max-w-md flex-col gap-2 text-left text-xs leading-relaxed text-muted-foreground">
+      <h2 id="media-library-empty-title" className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
+        {t('mediaStudio:empty.title')}
+      </h2>
+      <p className="mt-2 max-w-md text-sm leading-relaxed text-muted-foreground">{t('mediaStudio:tagline')}</p>
+      {!isSmallScreen ? (
+        <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+          {importButton(false)}
+          {bilibiliButton(false)}
+        </div>
+      ) : null}
+      <ul className="mt-7 grid w-full max-w-xl gap-3 border-t border-border/25 pt-4 text-left sm:grid-cols-3 sm:gap-5">
         {([
           ['transcribe', Subtitles],
           ['ask', ChatCircleText],
           ['review', Notebook],
         ] as const).map(([key, Icon]) => (
-          <li key={key} className="flex items-start gap-2">
-            <Icon size={16} className="mt-px shrink-0 text-muted-foreground" aria-hidden="true" />
-            <span>{t(`mediaStudio:empty.${key}`)}</span>
+          <li key={key} className="flex min-w-0 items-start gap-2">
+            <Icon size={16} className="mt-0.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+            <div className="min-w-0">
+              <p className="text-xs font-medium text-foreground">{t(`mediaStudio:empty.${key}Title`)}</p>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{t(`mediaStudio:empty.${key}`)}</p>
+            </div>
           </li>
         ))}
       </ul>
-      {!isSmallScreen ? (
-        <div className="mt-4 flex items-center justify-center gap-2">
-          {importButton(false)}
-          {bilibiliButton(false)}
-        </div>
-      ) : null}
-      <p className="study-shell-empty-state__description mt-3">{t('mediaStudio:empty.subtitleNote')}</p>
-    </div>
+      <p className="mt-5 max-w-lg text-xs leading-relaxed text-muted-foreground">{t('mediaStudio:empty.subtitleNote')}</p>
+    </section>
   );
 
   const hasItems = items.length > 0;
+  const showEmpty = loaded && !error && !hasItems;
 
   return (
     <div className="study-shell-page flex h-full min-h-0 min-w-0 flex-col" data-media-library="">
@@ -856,7 +867,7 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
       >
         <div className={cn('study-shell-toolbar study-shell-toolbar--seamless shrink-0 space-y-3 px-5 pt-4 sm:px-8 lg:px-10', isSmallScreen && 'px-3 pt-3')}>
           {!titlebarTarget && !isSmallScreen ? headerRow(false) : null}
-          <p className="text-xs leading-relaxed text-muted-foreground">{t('mediaStudio:tagline')}</p>
+          {!showEmpty && <p className="text-xs leading-relaxed text-muted-foreground">{t('mediaStudio:tagline')}</p>}
           {hasItems ? (
             <div className={cn('flex items-center gap-3', isSmallScreen && 'flex-col items-stretch gap-2')}>
               <div className={cn('flex min-w-0 flex-1 items-center gap-2', !isSmallScreen && 'max-w-xs')}>
@@ -917,7 +928,11 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
           className="min-h-0 flex-1"
           viewportClassName="pb-[calc(1rem+var(--mobile-safe-area-bottom,0px))] sm:pb-6"
         >
-          <div className={cn('px-5 pt-4 sm:px-8 lg:px-10', isSmallScreen && 'px-3 pt-3')}>
+          <div className={cn(
+            'px-5 pt-4 sm:px-8 lg:px-10',
+            isSmallScreen && 'px-3 pt-3',
+            showEmpty && 'flex min-h-full flex-col',
+          )}>
             {importRow}
             {error && !hasItems ? (
               <div className="study-shell-empty-state" role="alert">

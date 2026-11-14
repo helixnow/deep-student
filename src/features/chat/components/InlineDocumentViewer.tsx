@@ -9,9 +9,12 @@
  * - 无换行模式下显示行号列（CSS content 生成，复制不带行号）
  * - 搜索为真实匹配高亮 + 上一处/下一处跳转（替代原「字符比例滚动」）
  * - 键盘快捷键作用域限定在面板内（不再挂 document 级监听/Android 返回键拦截）
+ * - 「放大查看」在应用内展开为全视口浮层（Electron 窗口策略禁止新窗口，移动端只有一个 WebView，
+ *   都不能用 window.open(blob:)）；导出走下载按钮
  */
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
@@ -24,7 +27,8 @@ import {
   Copy,
   MagnifyingGlass,
   TextIndent,
-  ArrowSquareOut,
+  ArrowsOut,
+  ArrowsIn,
   Download,
   Check,
   CaretUp,
@@ -34,7 +38,6 @@ import { fileManager } from '@/utils/fileManager';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import { Input } from '@/components/ui/shad/Input';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
-import { isMobilePlatform } from '@/utils/platform';
 import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 
 // ============================================================================
@@ -407,17 +410,22 @@ export const InlineDocumentViewer: React.FC<InlineDocumentViewerProps> = ({
   const [copied, setCopied] = useState(false);
   const [query, setQuery] = useState('');
   const [activeMatch, setActiveMatch] = useState(0);
+  const [expanded, setExpanded] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const expandToggledRef = useRef(false);
   const contentRef = useRef<HTMLDivElement>(null);
   const activeMarkRef = useRef<HTMLElement | null>(null);
-  const previewUrlsRef = useRef<Set<string>>(new Set());
 
   const text = textContent ?? '';
 
-  // 卸载时兜底释放所有 blob URL（每次打开新窗口时也会先释放旧的，见 handleOpenExternal）
-  useEffect(() => () => {
-    previewUrlsRef.current.forEach((u) => URL.revokeObjectURL(u));
-    previewUrlsRef.current.clear();
-  }, []);
+  // 内联 ↔ portal 切换会重挂 DOM，焦点需回到面板上，面板内快捷键才继续生效（首次挂载不抢焦点）
+  useEffect(() => {
+    if (!expandToggledRef.current) {
+      expandToggledRef.current = true;
+      return;
+    }
+    rootRef.current?.focus({ preventScroll: !expanded });
+  }, [expanded]);
 
   // 文档切换时重置搜索与视图状态
   useEffect(() => {
@@ -475,7 +483,8 @@ export const InlineDocumentViewer: React.FC<InlineDocumentViewerProps> = ({
     );
     if (e.key === 'Escape') {
       e.stopPropagation();
-      onClose();
+      if (expanded) setExpanded(false);
+      else onClose();
       return;
     }
     // 输入框内打字时不响应字号快捷键（+/-/0 会同时改变字号）
@@ -492,7 +501,7 @@ export const InlineDocumentViewer: React.FC<InlineDocumentViewerProps> = ({
         setFontScale(1);
         break;
     }
-  }, [onClose]);
+  }, [onClose, expanded]);
 
   // 搜索框：Enter 下一处 / Shift+Enter 上一处
   const handleSearchKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -531,41 +540,31 @@ export const InlineDocumentViewer: React.FC<InlineDocumentViewerProps> = ({
     }
   }, [text, fileName, title]);
 
-  // 新窗口打开
-  const handleOpenExternal = useCallback(() => {
-    if (!text) return;
-    try {
-      // noopener 下 window.open 恒返回 null，无法监听新窗口关闭。
-      // 旧 URL 在新窗口加载后即无用：每次打开前先释放上一批，避免累计泄漏；
-      // 卸载时的清理 effect 兜底释放最后一个。
-      previewUrlsRef.current.forEach((u) => URL.revokeObjectURL(u));
-      previewUrlsRef.current.clear();
-      const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-      const previewUrl = URL.createObjectURL(blob);
-      previewUrlsRef.current.add(previewUrl);
-      window.open(previewUrl, '_blank', 'noopener,noreferrer');
-    } catch (e: unknown) {
-      console.error('Preview failed:', e);
-    }
-  }, [text]);
-
   if (!isOpen || !textContent) {
     return null;
   }
 
   const fontSize = Math.round(fontScale * 13);
+  const expandLabel = expanded ? t('chatV2:documentViewer.collapse') : t('chatV2:documentViewer.expand');
+  const scrollHeightClass = expanded ? 'min-h-0 flex-1' : 'min-h-[120px] max-h-[min(60vh,480px)]';
 
-  return (
+  const panel = (
     <div
+      ref={rootRef}
       data-testid="inline-document-viewer"
-      role="region"
+      data-expanded={expanded ? 'true' : undefined}
+      role={expanded ? 'dialog' : 'region'}
+      aria-modal={expanded ? true : undefined}
       aria-label={title}
       tabIndex={-1}
       onKeyDown={handlePanelKeyDown}
       className={cn(
-        'chat-msg-enter w-full overflow-hidden rounded-xl border border-border/60 bg-background shadow-sm',
+        'overflow-hidden border border-border/60 bg-background',
         'flex flex-col',
-        className
+        expanded
+          ? 'fixed inset-0 z-[var(--z-modal)] shadow-2xl sm:inset-6 sm:rounded-xl'
+          : 'chat-msg-enter w-full rounded-xl shadow-sm',
+        !expanded && className
       )}
     >
       {/* 工具栏（小屏空间不足时允许换行，避免横向溢出） */}
@@ -645,13 +644,10 @@ export const InlineDocumentViewer: React.FC<InlineDocumentViewerProps> = ({
           <DsButton variant="ghost" size="icon" iconOnly onClick={handleCopy} className="bg-muted hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" aria-label={t('common:actions.copy')} title={t('common:actions.copy')}>
             {copied ? <Check size={15} className="text-success" /> : <Copy size={15} />}
           </DsButton>
-          {/* 移动端只有一个 WebView：window.open(blob:) 会把整个应用替换成纯文本页且无法返回，
-              下载按钮（fileManager.saveTextFile）已覆盖导出需求 */}
-          {!isMobilePlatform() && (
-            <DsButton variant="ghost" size="icon" iconOnly onClick={handleOpenExternal} className="bg-muted hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" aria-label={t('common:actions.open')} title={t('common:actions.open')}>
-              <ArrowSquareOut size={15} />
-            </DsButton>
-          )}
+          {/* RUST-FIX(RF-W09-inline-viewer-in-app-expand): Rust 版用 window.open(blob:) 开新窗口，Electron 窗口策略禁止，移动端会把整个应用替换掉 */}
+          <DsButton data-testid="inline-document-viewer-expand" variant="ghost" size="icon" iconOnly onClick={() => setExpanded((v) => !v)} className={cn(expanded ? 'bg-primary/20 text-primary' : 'bg-muted hover:bg-[var(--interactive-hover)]', '[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11')} aria-pressed={expanded} aria-label={expandLabel} title={expandLabel}>
+            {expanded ? <ArrowsIn size={15} /> : <ArrowsOut size={15} />}
+          </DsButton>
           <DsButton variant="ghost" size="icon" iconOnly onClick={handleDownload} className="bg-muted hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" aria-label={t('common:actions.download')} title={t('common:actions.download')}>
             <Download size={15} />
           </DsButton>
@@ -666,8 +662,8 @@ export const InlineDocumentViewer: React.FC<InlineDocumentViewerProps> = ({
         viewportRef={contentRef}
         orientation="both"
         fullHeight={false}
-        className="min-h-[120px] max-h-[min(60vh,480px)]"
-        viewportClassName="min-h-[120px] max-h-[min(60vh,480px)]"
+        className={scrollHeightClass}
+        viewportClassName={scrollHeightClass}
       >
         <div className={cn('flex items-stretch', wrap ? 'w-full' : 'w-max min-w-full')}>
           {showGutter && (
@@ -714,6 +710,8 @@ export const InlineDocumentViewer: React.FC<InlineDocumentViewerProps> = ({
       </div>
     </div>
   );
+
+  return expanded ? createPortal(panel, document.body) : panel;
 };
 
 export default InlineDocumentViewer;

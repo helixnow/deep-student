@@ -41,7 +41,7 @@ import {
 } from './utils/importers';
 import { fileManager } from '@/utils/fileManager';
 import { TauriAPI } from '@/utils/tauriApi';
-import { cn } from '@/lib/utils';
+import { cn } from '@/utils/cn';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { DsButton } from '@/components/ui/DsButton';
@@ -80,6 +80,8 @@ import {
   FileTxt,
   FilePdf,
   TreeStructure,
+  SelectionPlus,
+  Tray,
 } from '@phosphor-icons/react';
 import { AnimatePresence } from 'framer-motion';
 import { Input } from '@/components/ui/shad/Input';
@@ -98,6 +100,7 @@ import {
 } from '@/components/ui/app-menu/AppMenu';
 import { OutlineView, type OutlineViewHandle } from './views/OutlineView';
 import { MindMapView, type MindMapViewHandle } from './views/MindMapView';
+import { MindMapStagingTray } from './components/mindmap/MindMapStagingTray';
 import { StructureSelector } from './components/mindmap/StructureSelector';
 import { StyleSettings } from './components/toolbar/StylePanel';
 // W09 契约：选中节点时的内联格式条（无必需 props，内部消费当前 store）
@@ -110,6 +113,10 @@ import { InlineCollapse } from './components/toolbar/InlineCollapse';
 import { ReciteStatusBar } from './components/shared/ReciteStatusBar';
 import { Progress } from '@/components/ui/shad/Progress';
 import { useMindMapClipboard } from './hooks/useMindMapClipboard';
+import { useMindMapTheme } from './hooks/useMindMapTheme';
+import { useMindMapExcerptBridge } from './hooks/useMindMapExcerptBridge';
+import { useMindMapHandoutSync } from './hooks/useMindMapHandoutSync';
+import { useOptionalUiKernel } from '@/ui-kernel/react';
 import {
   captureOutlineResumePoint,
   prepareOutlineResume,
@@ -176,6 +183,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
 }) => {
   const { t } = useTranslation(['mindmap', 'common']);
   const storeApi = useMindMapStoreApi();
+  const kernel = useOptionalUiKernel();
   const mindMapPreferences = useMindMapPreferences();
   
   // 从新 store 获取状态
@@ -183,6 +191,12 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
   const setCurrentView = useMindMapStore(state => state.setCurrentView);
   const reciteMode = useMindMapStore(state => state.reciteMode);
   const setReciteMode = useMindMapStore(state => state.setReciteMode);
+  const autoExcerptEnabled = useMindMapStore(state => state.autoExcerptEnabled);
+  const setAutoExcerptEnabled = useMindMapStore(state => state.setAutoExcerptEnabled);
+  const stagingTrayOpen = useMindMapStore(state => state.stagingTrayOpen);
+  const setStagingTrayOpen = useMindMapStore(state => state.setStagingTrayOpen);
+  const excerptIntakeMode = useMindMapStore(state => state.excerptIntakeMode);
+  const stagingCount = useMindMapStore(state => state.document.stagingExcerpts?.length ?? 0);
   const viewRootId = useMindMapStore(state => state.viewRootId);
   const setViewRootId = useMindMapStore(state => state.setViewRootId);
   const hideCompleted = useMindMapStore(state => state.hideCompleted);
@@ -222,9 +236,17 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
   const restoreConflictSnapshot = useMindMapStore(state => state.restoreConflictSnapshot);
   const dismissConflictSnapshot = useMindMapStore(state => state.dismissConflictSnapshot);
   
-  // 获取当前主题（用于导出时设置背景色）
+  // 获取当前主题（订阅暗色模式切换，用于画布背景/边色变量与导出背景色）
   const styleId = useMindMapStore(state => state.styleId);
-  const currentTheme = useMemo(() => StyleRegistry.get(styleId) || StyleRegistry.getDefault(), [styleId]);
+  const currentTheme = useMindMapTheme(styleId);
+  const mindmapThemeVars = useMemo<React.CSSProperties | undefined>(() => {
+    if (currentView !== 'mindmap' || !currentTheme) return undefined;
+    const vars: Record<string, string> = {};
+    if (currentTheme.canvas?.background) vars['--mm-bg'] = currentTheme.canvas.background;
+    if (currentTheme.edge?.stroke) vars['--mm-edge'] = currentTheme.edge.stroke;
+    if (currentTheme.edge?.strokeActive) vars['--mm-edge-active'] = currentTheme.edge.strokeActive;
+    return vars as React.CSSProperties;
+  }, [currentView, currentTheme]);
   
   const [showSearch, setShowSearch] = useState(false);
   const [searchInput, setSearchInput] = useState('');
@@ -1088,6 +1110,19 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
     [isActive, resourceId]
   );
 
+  useMindMapExcerptBridge({
+    storeApi,
+    kernel,
+    resourceId,
+    isActive: isActive !== false,
+    autoExcerptEnabled,
+    reciteMode,
+    isLoading: isLoadingDoc,
+  });
+
+  // 笔记讲义 -> 导图反向结构化同步（C7 §2.3）：按出处胶囊的稳定节点 ID 原地回写
+  useMindMapHandoutSync({ mindmapId: resourceId, isLoading: isLoadingDoc });
+
   // 移动全屏子屏打开时给容器打标，CSS 据此在移动断点内隐藏 mm-toolbar
   // （对照演示模式 is-presentation）：避免宿主顶栏+工具栏+子屏顶栏三层
   // chrome 叠加，且被子屏覆盖不到的工具条不再可点。
@@ -1100,11 +1135,23 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
     {/* isActive 下发到画布内的全局键盘/剪贴板监听器，非活跃保活实例忽略按键 */}
     <MindMapActiveContext.Provider value={activeContextValue}>
     <MindMapClipboardEffects />
-    <div ref={containerRef} tabIndex={-1} className={cn("flex flex-col h-full w-full bg-[var(--mm-bg)] mindmap-container", presentationMode && "is-presentation", hasMobileSubview && "has-mobile-subview", className)}>
+    <div
+      ref={containerRef}
+      tabIndex={-1}
+      data-view={currentView}
+      style={mindmapThemeVars}
+      className={cn(
+        "flex h-full w-full mindmap-container",
+        presentationMode && "is-presentation",
+        hasMobileSubview && "has-mobile-subview",
+        className
+      )}
+    >
+      <div className="mm-document-column relative flex min-w-0 flex-1 flex-col">
       {/* Compact workbench toolbar: primary commands stay visible, secondary commands live in More. */}
       <div className="mm-toolbar">
         {/* Left: View Switcher & Undo/Redo */}
-        <div className="flex items-center gap-3">
+        <div className="mm-toolbar-history flex items-center gap-3">
           {/* 视图切换：统一到项目级 SegmentedControl（键盘左右键漫游 + thumb 动效） */}
           <SegmentedControl<'outline' | 'mindmap'>
             ariaLabel={t('mindmap:toolbar.view')}
@@ -1230,7 +1277,8 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
             disabled={!isDirty || isSaving}
           >
             <DsButton variant="ghost"
-              className="ds-btn hidden md:flex"
+              className="mm-toolbar-save ds-btn hidden md:flex"
+              aria-label={t('mindmap:toolbar.save')}
               onClick={handleSave}
               disabled={!isDirty || isSaving}
             >
@@ -1262,7 +1310,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
         </div>
 
         {/* Right: Actions */}
-        <div className="flex items-center gap-1">
+        <div className="mm-toolbar-actions flex items-center gap-1">
           {/* Structure and style are compact icon commands; their panels remain directly accessible. */}
           <StructureSelector 
             className="hidden md:flex"
@@ -1294,6 +1342,60 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
           {/* Learning controls stay visible: they are a first-class mind-map workflow. */}
           <div className="mm-learning-group hidden md:flex" role="group" aria-label={t('mindmap:toolbar.learning')}>
             <span className="mm-learning-label">{t('mindmap:toolbar.learning')}</span>
+            <DsButton variant="ghost"
+              className={cn(
+                "mm-learning-button",
+                autoExcerptEnabled && "bg-[var(--mm-primary-soft)] text-[var(--mm-primary)]"
+              )}
+              onClick={() => setAutoExcerptEnabled(!autoExcerptEnabled)}
+              disabled={reciteMode}
+              title={
+                autoExcerptEnabled
+                  ? t('mindmap:mn5.autoExcerptActiveHint')
+                  : t('mindmap:mn5.autoExcerptInactiveHint')
+              }
+              aria-label={t('mindmap:mn5.autoExcerptToggle')}
+              aria-pressed={autoExcerptEnabled}
+              data-testid="mm-auto-excerpt-toggle"
+            >
+              {autoExcerptEnabled && (
+                <span
+                  className="h-1.5 w-1.5 rounded-full bg-[var(--mm-primary)] shrink-0"
+                  aria-hidden="true"
+                />
+              )}
+              <SelectionPlus size={15} />
+              <span className="mm-learning-text">{t('mindmap:mn5.autoExcerptToggle')}</span>
+            </DsButton>
+            <DsButton
+              variant="ghost"
+              className={cn(
+                "mm-learning-button",
+                (stagingTrayOpen || excerptIntakeMode === 'staging') &&
+                  "bg-[var(--mm-primary-soft)] text-[var(--mm-primary)]"
+              )}
+              onClick={() => setStagingTrayOpen(!stagingTrayOpen)}
+              disabled={reciteMode}
+              title={t('mindmap:mn5.stagingTrayToggleHint')}
+              aria-label={t('mindmap:mn5.stagingTrayTitle')}
+              aria-pressed={stagingTrayOpen}
+              data-testid="mm-staging-tray-toggle"
+            >
+              {(excerptIntakeMode === 'staging' || stagingCount > 0) && (
+                <span
+                  className="h-1.5 w-1.5 rounded-full bg-[var(--mm-primary)] shrink-0"
+                  aria-hidden="true"
+                />
+              )}
+              <Tray size={15} />
+              <span className="mm-learning-text">{t('mindmap:mn5.stagingTrayTitle')}</span>
+              <span
+                className="ml-0.5 font-mono tabular-nums text-[11px] opacity-80"
+                data-testid="mm-staging-toolbar-count"
+              >
+                {stagingCount}
+              </span>
+            </DsButton>
             <DsButton variant="ghost"
               className={cn("mm-learning-button", reciteMode && "is-active")}
               onClick={() => setReciteMode(!reciteMode)}
@@ -1413,9 +1515,9 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
         </div>
       </div>
 
-      {/* W09 格式条：选中节点时在工具栏下方内联展开（背诵/演示模式下隐藏，避免误编辑） */}
+      {/* W09 格式条：选中节点时以单层无感悬浮毛玻璃胶囊（Floating Glass Dock）呈现，绝不推挤画布高度 */}
       {!isCoarsePointer && !reciteMode && !presentationMode && (focusedNodeId || hasSelection) && (
-        <div className="border-b border-[var(--mm-border)] bg-[var(--mm-bg)] ui-drop-in">
+        <div className="mm-format-dock ui-drop-in" data-wb-blur-surface>
           <MindMapFormatBar />
         </div>
       )}
@@ -1732,7 +1834,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
       <div className="flex-1 overflow-hidden relative flex flex-col bg-[var(--mm-bg)]">
         {/* 背诵模式状态条：顶部内联占位条（两个视图共享，不再悬浮遮挡画布） */}
         <ReciteStatusBar />
-        <div className="flex-1 min-h-0 relative">
+        <div className="flex-1 min-w-0 min-h-0 relative">
         {isLoadingDoc ? (
           <div className="h-full w-full flex items-center justify-center text-sm text-[var(--mm-text-muted)]">
             {t('mindmap:loading')}
@@ -1906,6 +2008,13 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
                 </MenuGroup>
                 <MenuGroup title={t('mindmap:toolbar.learning')}>
                   <MenuRow
+                    icon={<SelectionPlus size={18} />}
+                    label={t('mindmap:mn5.autoExcerptToggle')}
+                    checked={autoExcerptEnabled}
+                    disabled={reciteMode}
+                    onClick={() => setAutoExcerptEnabled(!autoExcerptEnabled)}
+                  />
+                  <MenuRow
                     icon={<BookOpen size={18} />}
                     label={reciteMode ? t('mindmap:recite.exit') : t('mindmap:recite.title')}
                     checked={reciteMode}
@@ -1948,6 +2057,8 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
         })()}
 
       </div>
+      </div>
+      {!presentationMode && stagingTrayOpen && !reciteMode && <MindMapStagingTray />}
     </div>
     </MindMapActiveContext.Provider>
     </>

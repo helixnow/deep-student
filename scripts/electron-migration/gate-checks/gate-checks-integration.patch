@@ -1,0 +1,29 @@
+Proposed change for scripts/electron-migration/lib/gate-checks.mjs (shared by integrate and lane-gate).
+X6 is not authorized to write that file; apply by infra/architect after X6 is merged to main.
+
+Scope: only changed (A/M) production files under host/plugins/. Blocking tiers per C1 12:14Z / C2 12:32Z:
+  single-writer      blocks only foreign-table-write with ruled owner (D1/C1/C2 decision or exact namespace)
+                     AND context=executed; derived owner / sql-text / unknown / duplicate-repository are info.
+  unchecked-decode   blocks only json-parse-assertion and raw-ipc-destructure; double-assertion is info;
+                     exceptions only via exact path+function+rule+expression+sites approvals.
+prod-reachable, assert-parity, log-parity: NOT added (report-only).
+
+--- a/scripts/electron-migration/lib/gate-checks.mjs
++++ b/scripts/electron-migration/lib/gate-checks.mjs
+@@ export function gateChecks(cwd, base, { quick = false } = {}) {
+   if (quick) return checks;
+   if (changedSrc.length) checks.push({ name: 'boundaries-strict(changed)', bin: process.execPath, args: ['scripts/electron-migration/boundaries.mjs', ...changedSrc], env: strictEnv });
++  // X6 mechanical gates (standard-v2 §4), changed production plugin files only.
++  const changedPlugin = changedSrc.filter((f) => /^host\/plugins\/[^/]+\/.*\.[cm]?tsx?$/.test(f)
++    && !/(^|\/)(tests?|__tests__|fixtures|__fixtures__)(\/|$)|\.(test|spec|d)\.[cm]?tsx?$/.test(f));
++  const x6 = (name) => path.join(cwd, 'scripts/electron-migration/gate-checks', `${name}.mjs`);
++  if (changedPlugin.length) {
++    for (const gate of ['single-writer', 'unchecked-decode']) {
++      if (fs.existsSync(x6(gate))) checks.push({ name: `${gate}(changed)`, bin: process.execPath, args: [x6(gate), '--check', '--changed', ...changedPlugin] });
++    }
++  }
+   if (touched.length) {
+
+Command impact: two node processes per gate run, each AST-scanning only the changed files
+(single-writer also reads all plugin production files once to compute duplicate-repository info,
+which never blocks). No tsc/vitest; cheap. Exit 1 only on the blocking tiers above.

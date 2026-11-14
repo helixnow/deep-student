@@ -159,16 +159,6 @@ export async function testMcpHttp(endpoint: string, apiKey: string, env?: Record
   }
 }
 
-export async function testMcpModelScope(serverId: string, apiKey: string, region: string, hosted: boolean): Promise<any> {
-  try {
-    const response = await invoke<any>('test_mcp_modelscope', { serverId, apiKey, region, hosted });
-    return response;
-  } catch (error) {
-    console.error('Failed to test MCP ModelScope connection:', error);
-    throw new Error(`Failed to test MCP ModelScope connection: ${getErrorMessage(error)}`);
-  }
-}
-
 export async function reloadMcpClient(): Promise<{ success: boolean; message?: string; error?: string }> {
   try {
     const response = await invoke<{ success: boolean; message?: string; error?: string }>('reload_mcp_client');
@@ -248,11 +238,11 @@ export interface ConnectionTestOutcome {
 export async function testApiConnection(apiKey: string, apiBase: string, model?: string, isEmbedding = false, isReranker = false): Promise<ConnectionTestOutcome> {
   try {
     return await invoke<ConnectionTestOutcome>('test_api_connection', {
-      api_key: apiKey,
-      api_base: apiBase,
+      apiKey,
+      apiBase,
       model: model || null,
-      is_embedding: isEmbedding,
-      is_reranker: isReranker,
+      isEmbedding,
+      isReranker,
     });
   } catch (error) {
     console.error('Failed to test API connection:', error);

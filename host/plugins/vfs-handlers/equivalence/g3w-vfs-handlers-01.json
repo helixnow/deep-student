@@ -1,0 +1,688 @@
+{
+  "domain": "vfs-handlers",
+  "commands": [
+    "todo_update_list",
+    "todo_delete_list",
+    "todo_ensure_inbox",
+    "todo_toggle_list_favorite",
+    "todo_create_list",
+    "todo_reorder_lists",
+    "todo_restore_list",
+    "todo_purge_list",
+    "todo_restore_item",
+    "todo_create_item",
+    "todo_purge_item",
+    "todo_delete_item",
+    "todo_toggle_item"
+  ],
+  "scenarios": [
+    {
+      "id": "g3w.vfs-handlers.todo_update_list.not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_update_list",
+          "args": {
+            "input": {
+              "id": "tdl_missing_g3w",
+              "title": "g3w"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.todo_delete_list.not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_delete_list",
+          "args": {
+            "listId": "tdl_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.todo_delete_list.default_inbox",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_ensure_inbox",
+          "args": {
+            "title": "收件箱"
+          }
+        },
+        {
+          "cmd": "todo_delete_list",
+          "args": {
+            "listId": "${0.id}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.todo_toggle_list_favorite.not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_toggle_list_favorite",
+          "args": {
+            "listId": "tdl_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.todo_reorder_lists.duplicate_ids",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "g3w list"
+            }
+          }
+        },
+        {
+          "cmd": "todo_reorder_lists",
+          "args": {
+            "input": {
+              "listIds": [
+                "${0.id}",
+                "${0.id}"
+              ]
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.todo_reorder_lists.ids_mismatch",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_reorder_lists",
+          "args": {
+            "input": {
+              "listIds": [
+                "tdl_missing_g3w"
+              ]
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.todo_restore_list.not_in_trash",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_restore_list",
+          "args": {
+            "listId": "tdl_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.todo_purge_list.not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_purge_list",
+          "args": {
+            "listId": "tdl_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.todo_purge_list.not_in_trash",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "g3w list"
+            }
+          }
+        },
+        {
+          "cmd": "todo_purge_list",
+          "args": {
+            "listId": "${0.id}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.todo_restore_item.not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_restore_item",
+          "args": {
+            "itemId": "tdi_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.todo_restore_item.list_deleted",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "g3w list"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "g3w item"
+            }
+          }
+        },
+        {
+          "cmd": "todo_delete_list",
+          "args": {
+            "listId": "${0.id}"
+          }
+        },
+        {
+          "cmd": "todo_restore_item",
+          "args": {
+            "itemId": "${1.id}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.todo_purge_item.not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_purge_item",
+          "args": {
+            "itemId": "tdi_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.todo_purge_item.not_in_trash",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "g3w list"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "g3w item"
+            }
+          }
+        },
+        {
+          "cmd": "todo_purge_item",
+          "args": {
+            "itemId": "${1.id}"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.todo_delete_item.not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_delete_item",
+          "args": {
+            "itemId": "tdi_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.todo_toggle_item.not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_toggle_item",
+          "args": {
+            "itemId": "tdi_missing_g3w"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.todo_toggle_item.conflict",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "g3w list"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "g3w item"
+            }
+          }
+        },
+        {
+          "cmd": "todo_toggle_item",
+          "args": {
+            "itemId": "${1.id}",
+            "expectedUpdatedAt": "2000-01-01T00:00:00.000Z"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.todo_create_item.empty_title",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "tdl_missing_g3w",
+              "title": "   "
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.todo_create_item.invalid_priority",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "tdl_missing_g3w",
+              "title": "g3w",
+              "priority": "critical"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.todo_create_item.invalid_due_date",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "tdl_missing_g3w",
+              "title": "g3w",
+              "dueDate": "2026/07/19"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.todo_create_item.invalid_due_time",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "tdl_missing_g3w",
+              "title": "g3w",
+              "dueDate": "2026-07-19",
+              "dueTime": "25:99"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.todo_create_item.invalid_repeat_json",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "tdl_missing_g3w",
+              "title": "g3w",
+              "repeatJson": "{\"freq\":\"hourly\",\"interval\":1}"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.todo_create_item.list_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "tdl_missing_g3w",
+              "title": "g3w"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.todo_create_item.parent_not_found",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "g3w list"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "g3w",
+              "parentId": "tdi_missing_g3w"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.todo_create_item.parent_other_list",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "g3w a"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "g3w b"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "g3w item"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${1.id}",
+              "title": "g3w",
+              "parentId": "${2.id}"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.vfs-handlers.todo_create_item.invalid_reminder",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "todo_create_list",
+          "args": {
+            "input": {
+              "title": "g3w list"
+            }
+          }
+        },
+        {
+          "cmd": "todo_create_item",
+          "args": {
+            "input": {
+              "todoListId": "${0.id}",
+              "title": "g3w",
+              "reminder": "tomorrow 9am"
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

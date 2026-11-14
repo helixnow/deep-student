@@ -1,0 +1,2062 @@
+{
+ "domain": "sync",
+ "commands": [
+  "data_governance_get_sync_status",
+  "data_governance_cancel_sync",
+  "data_governance_detect_conflicts",
+  "data_governance_resolve_conflicts",
+  "data_governance_export_sync_data",
+  "data_governance_import_sync_data",
+  "data_governance_list_quarantine",
+  "data_governance_retry_quarantine",
+  "data_governance_discard_quarantine",
+  "data_governance_retry_all_quarantine",
+  "data_governance_discard_all_quarantine",
+  "data_governance_list_record_conflicts",
+  "data_governance_count_record_conflicts",
+  "data_governance_resolve_record_conflict",
+  "data_governance_purge_resolved_conflicts",
+  "data_governance_list_sync_snapshot_batches",
+  "data_governance_rollback_sync_snapshot_batch",
+  "dstu_folder_create",
+  "dstu_folder_rename",
+  "save_text_to_file"
+ ],
+ "scenarios": [
+  {
+   "id": "sync.local.status.empty_seed",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "data_governance_get_sync_status",
+     "args": {}
+    },
+    {
+     "cmd": "data_governance_get_sync_status",
+     "args": {}
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  },
+  {
+   "id": "sync.local.status.pending_after_folder_create",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "data_governance_get_sync_status",
+     "args": {}
+    },
+    {
+     "cmd": "dstu_folder_create",
+     "args": {
+      "title": "wp077-status",
+      "parentId": null,
+      "icon": null,
+      "color": null
+     }
+    },
+    {
+     "cmd": "data_governance_get_sync_status",
+     "args": {}
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  },
+  {
+   "id": "sync.local.cancel.no_active_sync",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "data_governance_cancel_sync",
+     "args": {}
+    },
+    {
+     "cmd": "data_governance_cancel_sync",
+     "args": {}
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  },
+  {
+   "id": "sync.local.resolve_conflicts.retired_nonempty",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "data_governance_resolve_conflicts",
+     "args": {
+      "strategy": "keep_latest",
+      "cloudManifestJson": ""
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_resolve_conflicts",
+     "args": {
+      "strategy": "",
+      "cloudManifestJson": "{\"sync_transaction_id\":\"wp077-remote-tx\",\"databases\":{},\"status\":\"Complete\",\"created_at\":\"2026-01-01T00:00:00+00:00\",\"device_id\":\"wp077-remote-device\",\"format_version\":3,\"published_max_seq\":0,\"cursors\":{},\"snapshot_seen\":{}}"
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_resolve_conflicts",
+     "args": {
+      "strategy": "manual",
+      "cloudManifestJson": "{"
+     },
+     "expect": "error"
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  },
+  {
+   "id": "sync.local.resolve_conflicts.empty_args_unknown_strategy",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "data_governance_resolve_conflicts",
+     "args": {
+      "strategy": "",
+      "cloudManifestJson": ""
+     },
+     "expect": "error"
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  },
+  {
+   "id": "sync.local.resolve_conflicts.ipc_missing_args",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "data_governance_resolve_conflicts",
+     "args": {},
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_resolve_conflicts",
+     "args": {
+      "strategy": "keep_latest"
+     },
+     "expect": "error"
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  },
+  {
+   "id": "sync.local.detect.local_only",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "data_governance_detect_conflicts",
+     "args": {}
+    },
+    {
+     "cmd": "data_governance_detect_conflicts",
+     "args": {
+      "cloudManifestJson": null,
+      "cloudConfig": null
+     }
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  },
+  {
+   "id": "sync.local.detect.manifest_variants",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "data_governance_detect_conflicts",
+     "args": {
+      "cloudManifestJson": "{\"sync_transaction_id\":\"wp077-remote-tx\",\"databases\":{},\"status\":\"Complete\",\"created_at\":\"2026-01-01T00:00:00+00:00\",\"device_id\":\"wp077-remote-device\",\"format_version\":3,\"published_max_seq\":0,\"cursors\":{},\"snapshot_seen\":{}}"
+     }
+    },
+    {
+     "cmd": "data_governance_detect_conflicts",
+     "args": {
+      "cloudManifestJson": "{\"sync_transaction_id\":\"wp077-remote-tx\",\"databases\":{\"vfs\":{\"schema_version\":0,\"data_version\":0,\"checksum\":\"wp077-schema\",\"last_updated_at\":null},\"cloud_only_db\":{\"schema_version\":1,\"data_version\":18446744073709551615,\"checksum\":\"wp077-big\",\"last_updated_at\":null}},\"status\":\"Complete\",\"created_at\":\"2026-01-01T00:00:00+00:00\",\"device_id\":\"wp077-remote-device\",\"format_version\":3,\"published_max_seq\":0,\"cursors\":{},\"snapshot_seen\":{}}"
+     }
+    },
+    {
+     "cmd": "data_governance_detect_conflicts",
+     "args": {
+      "cloudManifestJson": "{\"sync_transaction_id\":\"t\",\"databases\":{},\"status\":\"Partial\",\"created_at\":\"x\",\"device_id\":\"d\"}"
+     }
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  },
+  {
+   "id": "sync.local.detect.manifest_parse_errors",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "data_governance_detect_conflicts",
+     "args": {
+      "cloudManifestJson": ""
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_detect_conflicts",
+     "args": {
+      "cloudManifestJson": "{"
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_detect_conflicts",
+     "args": {
+      "cloudManifestJson": "null"
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_detect_conflicts",
+     "args": {
+      "cloudManifestJson": "{\"databases\":{}}"
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_detect_conflicts",
+     "args": {
+      "cloudManifestJson": "{\"sync_transaction_id\":\"wp077-remote-tx\",\"databases\":{},\"status\":\"Done\",\"created_at\":\"2026-01-01T00:00:00+00:00\",\"device_id\":\"wp077-remote-device\",\"format_version\":3,\"published_max_seq\":0,\"cursors\":{},\"snapshot_seen\":{}}"
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_detect_conflicts",
+     "args": {
+      "cloudManifestJson": "{\"sync_transaction_id\":\"wp077-remote-tx\",\"databases\":{\"vfs\":{\"schema_version\":4294967296,\"data_version\":0,\"checksum\":\"x\",\"last_updated_at\":null}},\"status\":\"Complete\",\"created_at\":\"2026-01-01T00:00:00+00:00\",\"device_id\":\"wp077-remote-device\",\"format_version\":3,\"published_max_seq\":0,\"cursors\":{},\"snapshot_seen\":{}}"
+     },
+     "expect": "error"
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  },
+  {
+   "id": "sync.local.detect.manifest_wins_over_config",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "data_governance_detect_conflicts",
+     "args": {
+      "cloudManifestJson": "{\"sync_transaction_id\":\"wp077-remote-tx\",\"databases\":{},\"status\":\"Complete\",\"created_at\":\"2026-01-01T00:00:00+00:00\",\"device_id\":\"wp077-remote-device\",\"format_version\":3,\"published_max_seq\":0,\"cursors\":{},\"snapshot_seen\":{}}",
+      "cloudConfig": {
+       "provider": "webdav",
+       "webdav": {
+        "endpoint": "http://127.0.0.1:9/",
+        "username": "wp077",
+        "password": "wp077"
+       },
+       "root": "wp077"
+      }
+     }
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  },
+  {
+   "id": "sync.local.detect.config_without_ssot",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "data_governance_detect_conflicts",
+     "args": {
+      "cloudConfig": {
+       "provider": "webdav",
+       "webdav": {
+        "endpoint": "http://127.0.0.1:9/",
+        "username": "wp077",
+        "password": "wp077"
+       },
+       "root": "wp077"
+      }
+     },
+     "expect": "error"
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  },
+  {
+   "id": "sync.local.export.default_path",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "data_governance_export_sync_data",
+     "args": {}
+    },
+    {
+     "cmd": "data_governance_export_sync_data",
+     "args": {
+      "outputPath": null
+     }
+    },
+    {
+     "cmd": "dstu_folder_create",
+     "args": {
+      "title": "wp077-export",
+      "parentId": null,
+      "icon": null,
+      "color": null
+     }
+    },
+    {
+     "cmd": "data_governance_export_sync_data",
+     "args": {
+      "outputPath": "${0.output_path}"
+     }
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  },
+  {
+   "id": "sync.local.export.bad_paths",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "data_governance_export_sync_data",
+     "args": {
+      "outputPath": "../wp077/sync_export.json"
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_export_sync_data",
+     "args": {
+      "outputPath": "wp077\u0000.json"
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_export_sync_data",
+     "args": {
+      "outputPath": "content%3A%2F%2Fcom.example%2Fwp077.json"
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_export_sync_data",
+     "args": {
+      "outputPath": "content://com.example.wp077/document/sync_export.json"
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_export_sync_data",
+     "args": {
+      "outputPath": ""
+     },
+     "expect": "error"
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  },
+  {
+   "id": "sync.local.import.roundtrip_repeat",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "data_governance_export_sync_data",
+     "args": {}
+    },
+    {
+     "cmd": "data_governance_import_sync_data",
+     "args": {
+      "inputPath": "${0.output_path}"
+     }
+    },
+    {
+     "cmd": "dstu_folder_create",
+     "args": {
+      "title": "wp077-roundtrip",
+      "parentId": null,
+      "icon": null,
+      "color": null
+     }
+    },
+    {
+     "cmd": "data_governance_export_sync_data",
+     "args": {}
+    },
+    {
+     "cmd": "data_governance_import_sync_data",
+     "args": {
+      "inputPath": "${3.output_path}"
+     }
+    },
+    {
+     "cmd": "data_governance_import_sync_data",
+     "args": {
+      "inputPath": "${3.output_path}",
+      "strategy": null
+     }
+    },
+    {
+     "cmd": "data_governance_get_sync_status",
+     "args": {}
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  },
+  {
+   "id": "sync.local.import.strategies_accepted",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "data_governance_export_sync_data",
+     "args": {}
+    },
+    {
+     "cmd": "data_governance_import_sync_data",
+     "args": {
+      "inputPath": "${0.output_path}",
+      "strategy": "keep_local"
+     }
+    },
+    {
+     "cmd": "data_governance_import_sync_data",
+     "args": {
+      "inputPath": "${0.output_path}",
+      "strategy": "use_cloud"
+     }
+    },
+    {
+     "cmd": "data_governance_import_sync_data",
+     "args": {
+      "inputPath": "${0.output_path}",
+      "strategy": "keep_latest"
+     }
+    },
+    {
+     "cmd": "data_governance_import_sync_data",
+     "args": {
+      "inputPath": "${0.output_path}",
+      "strategy": "manual"
+     }
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  },
+  {
+   "id": "sync.local.import.bad_strategy",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "data_governance_export_sync_data",
+     "args": {}
+    },
+    {
+     "cmd": "data_governance_import_sync_data",
+     "args": {
+      "inputPath": "${0.output_path}",
+      "strategy": "KEEP_LATEST"
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_import_sync_data",
+     "args": {
+      "inputPath": "${0.output_path}",
+      "strategy": ""
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_import_sync_data",
+     "args": {
+      "inputPath": "${0.output_path}",
+      "strategy": "keep_cloud"
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_import_sync_data",
+     "args": {
+      "inputPath": "${0.output_path}",
+      "strategy": "merged"
+     },
+     "expect": "error"
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  },
+  {
+   "id": "sync.local.import.bad_paths",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "data_governance_import_sync_data",
+     "args": {
+      "inputPath": "../wp077/sync_export.json"
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_import_sync_data",
+     "args": {
+      "inputPath": "wp077\u0000.json"
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_import_sync_data",
+     "args": {
+      "inputPath": "content%3A%2F%2Fcom.example%2Fwp077.json"
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_import_sync_data",
+     "args": {
+      "inputPath": "content://com.example.wp077/document/sync_export.json"
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_import_sync_data",
+     "args": {
+      "inputPath": ""
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_import_sync_data",
+     "args": {
+      "inputPath": "/nonexistent-wp077/sync_export.json"
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_import_sync_data",
+     "args": {
+      "inputPath": "../wp077.json",
+      "strategy": "bogus"
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_import_sync_data",
+     "args": {},
+     "expect": "error"
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  },
+  {
+   "id": "sync.local.import.bad_content",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "data_governance_export_sync_data",
+     "args": {}
+    },
+    {
+     "cmd": "save_text_to_file",
+     "args": {
+      "path": "${0.output_path}",
+      "content": "{"
+     }
+    },
+    {
+     "cmd": "data_governance_import_sync_data",
+     "args": {
+      "inputPath": "${0.output_path}"
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "save_text_to_file",
+     "args": {
+      "path": "${0.output_path}",
+      "content": ""
+     }
+    },
+    {
+     "cmd": "data_governance_import_sync_data",
+     "args": {
+      "inputPath": "${0.output_path}"
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "save_text_to_file",
+     "args": {
+      "path": "${0.output_path}",
+      "content": "{\"manifest\":{\"sync_transaction_id\":\"wp077-remote-tx\",\"databases\":{},\"status\":\"Complete\",\"created_at\":\"2026-01-01T00:00:00+00:00\",\"device_id\":\"wp077-remote-device\",\"format_version\":3,\"published_max_seq\":0,\"cursors\":{},\"snapshot_seen\":{}}}"
+     }
+    },
+    {
+     "cmd": "data_governance_import_sync_data",
+     "args": {
+      "inputPath": "${0.output_path}"
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "save_text_to_file",
+     "args": {
+      "path": "${0.output_path}",
+      "content": "{\"manifest\":{\"sync_transaction_id\":\"wp077-remote-tx\",\"databases\":{},\"status\":\"Done\",\"created_at\":\"2026-01-01T00:00:00+00:00\",\"device_id\":\"wp077-remote-device\",\"format_version\":3,\"published_max_seq\":0,\"cursors\":{},\"snapshot_seen\":{}},\"pending_changes\":[],\"exported_at\":\"2026-01-01T00:00:00+00:00\"}"
+     }
+    },
+    {
+     "cmd": "data_governance_import_sync_data",
+     "args": {
+      "inputPath": "${0.output_path}"
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "save_text_to_file",
+     "args": {
+      "path": "${0.output_path}",
+      "content": "{\"manifest\":{\"sync_transaction_id\":\"wp077-remote-tx\",\"databases\":{},\"status\":\"Complete\",\"created_at\":\"2026-01-01T00:00:00+00:00\",\"device_id\":\"wp077-remote-device\",\"format_version\":3,\"published_max_seq\":0,\"cursors\":{},\"snapshot_seen\":{}},\"pending_changes\":[{\"table_name\":\"mastery_events\",\"record_id\":\"bad-op\",\"operation\":\"UPSERT\",\"changed_at\":\"2026-01-01T00:00:00Z\",\"database_name\":\"vfs\",\"source_device_id\":\"wp077-remote-device\",\"source_seq\":1,\"data\":{\"id\":\"bad-op\",\"created_at\":\"2026-01-01T00:00:00Z\",\"updated_at\":\"2026-01-01T00:00:00Z\",\"source\":\"qbank\",\"concept_key\":\"代数\",\"item_id\":\"bad-op\",\"outcome\":\"wrong\",\"weight\":1,\"signal\":0}}],\"exported_at\":\"2026-01-01T00:00:00+00:00\"}"
+     }
+    },
+    {
+     "cmd": "data_governance_import_sync_data",
+     "args": {
+      "inputPath": "${0.output_path}"
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "save_text_to_file",
+     "args": {
+      "path": "${0.output_path}",
+      "content": "{\"manifest\":{\"sync_transaction_id\":\"wp077-remote-tx\",\"databases\":{},\"status\":\"Complete\",\"created_at\":\"2026-01-01T00:00:00+00:00\",\"device_id\":\"wp077-remote-device\",\"format_version\":3,\"published_max_seq\":0,\"cursors\":{},\"snapshot_seen\":{}},\"pending_changes\":[],\"exported_at\":\"2026-01-01T00:00:00+00:00\"}"
+     }
+    },
+    {
+     "cmd": "data_governance_import_sync_data",
+     "args": {
+      "inputPath": "${0.output_path}",
+      "strategy": "bogus"
+     },
+     "expect": "error"
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  },
+  {
+   "id": "sync.local.import.empty_pending_changes",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "data_governance_export_sync_data",
+     "args": {}
+    },
+    {
+     "cmd": "save_text_to_file",
+     "args": {
+      "path": "${0.output_path}",
+      "content": "{\"manifest\":{\"sync_transaction_id\":\"wp077-remote-tx\",\"databases\":{},\"status\":\"Complete\",\"created_at\":\"2026-01-01T00:00:00+00:00\",\"device_id\":\"wp077-remote-device\",\"format_version\":3,\"published_max_seq\":0,\"cursors\":{},\"snapshot_seen\":{}},\"pending_changes\":[],\"exported_at\":\"2026-01-01T00:00:00+00:00\"}"
+     }
+    },
+    {
+     "cmd": "data_governance_import_sync_data",
+     "args": {
+      "inputPath": "${0.output_path}"
+     }
+    },
+    {
+     "cmd": "save_text_to_file",
+     "args": {
+      "path": "${0.output_path}",
+      "content": "{\"manifest\":{\"sync_transaction_id\":\"wp077-remote-tx\",\"databases\":{\"vfs\":{\"schema_version\":0,\"data_version\":0,\"checksum\":\"x\",\"last_updated_at\":null},\"cloud_only_db\":{\"schema_version\":1,\"data_version\":1,\"checksum\":\"y\",\"last_updated_at\":null}},\"status\":\"Complete\",\"created_at\":\"2026-01-01T00:00:00+00:00\",\"device_id\":\"wp077-remote-device\",\"format_version\":3,\"published_max_seq\":0,\"cursors\":{},\"snapshot_seen\":{}},\"pending_changes\":[],\"exported_at\":\"2026-01-01T00:00:00+00:00\"}"
+     }
+    },
+    {
+     "cmd": "data_governance_import_sync_data",
+     "args": {
+      "inputPath": "${0.output_path}",
+      "strategy": "manual"
+     }
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  },
+  {
+   "id": "sync.local.import.unroutable_changes",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "data_governance_export_sync_data",
+     "args": {}
+    },
+    {
+     "cmd": "save_text_to_file",
+     "args": {
+      "path": "${0.output_path}",
+      "content": "{\"manifest\":{\"sync_transaction_id\":\"wp077-remote-tx\",\"databases\":{},\"status\":\"Complete\",\"created_at\":\"2026-01-01T00:00:00+00:00\",\"device_id\":\"wp077-remote-device\",\"format_version\":3,\"published_max_seq\":0,\"cursors\":{},\"snapshot_seen\":{}},\"pending_changes\":[{\"table_name\":\"wp077_unknown_table\",\"record_id\":\"legacy-1\",\"operation\":\"Insert\",\"changed_at\":\"2026-01-01T00:00:00Z\",\"source_device_id\":\"wp077-remote-device\",\"source_seq\":1,\"data\":{\"id\":\"legacy-1\",\"created_at\":\"2026-01-01T00:00:00Z\",\"updated_at\":\"2026-01-01T00:00:00Z\",\"source\":\"qbank\",\"concept_key\":\"代数\",\"item_id\":\"legacy-1\",\"outcome\":\"wrong\",\"weight\":1,\"signal\":0}}],\"exported_at\":\"2026-01-01T00:00:00+00:00\"}"
+     }
+    },
+    {
+     "cmd": "data_governance_import_sync_data",
+     "args": {
+      "inputPath": "${0.output_path}"
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "save_text_to_file",
+     "args": {
+      "path": "${0.output_path}",
+      "content": "{\"manifest\":{\"sync_transaction_id\":\"wp077-remote-tx\",\"databases\":{},\"status\":\"Complete\",\"created_at\":\"2026-01-01T00:00:00+00:00\",\"device_id\":\"wp077-remote-device\",\"format_version\":3,\"published_max_seq\":0,\"cursors\":{},\"snapshot_seen\":{}},\"pending_changes\":[{\"table_name\":\"mastery_events\",\"record_id\":\"nodb-1\",\"operation\":\"Insert\",\"changed_at\":\"2026-01-01T00:00:00Z\",\"database_name\":\"wp077_nodb\",\"source_device_id\":\"wp077-remote-device\",\"source_seq\":2,\"data\":{\"id\":\"nodb-1\",\"created_at\":\"2026-01-01T00:00:00Z\",\"updated_at\":\"2026-01-01T00:00:00Z\",\"source\":\"qbank\",\"concept_key\":\"代数\",\"item_id\":\"nodb-1\",\"outcome\":\"wrong\",\"weight\":1,\"signal\":0}}],\"exported_at\":\"2026-01-01T00:00:00+00:00\"}"
+     }
+    },
+    {
+     "cmd": "data_governance_import_sync_data",
+     "args": {
+      "inputPath": "${0.output_path}"
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_list_quarantine",
+     "args": {}
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  },
+  {
+   "id": "sync.local.import.mastery_rebuild_and_repeat",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "data_governance_export_sync_data",
+     "args": {}
+    },
+    {
+     "cmd": "save_text_to_file",
+     "args": {
+      "path": "${0.output_path}",
+      "content": "{\"manifest\":{\"sync_transaction_id\":\"wp077-remote-tx\",\"databases\":{},\"status\":\"Complete\",\"created_at\":\"2026-01-01T00:00:00+00:00\",\"device_id\":\"wp077-remote-device\",\"format_version\":3,\"published_max_seq\":0,\"cursors\":{},\"snapshot_seen\":{}},\"pending_changes\":[{\"table_name\":\"mastery_events\",\"record_id\":\"m-a\",\"operation\":\"Insert\",\"changed_at\":\"2026-01-01T00:00:00Z\",\"database_name\":\"vfs\",\"source_device_id\":\"wp077-remote-device\",\"source_seq\":1,\"data\":{\"id\":\"m-a\",\"created_at\":\"2026-01-01T00:00:00Z\",\"updated_at\":\"2026-01-01T00:00:00Z\",\"source\":\"qbank\",\"concept_key\":\"代数\",\"item_id\":\"m-a\",\"outcome\":\"wrong\",\"weight\":1,\"signal\":0}},{\"table_name\":\"mastery_events\",\"record_id\":\"m-b\",\"operation\":\"Insert\",\"changed_at\":\"2026-01-01T00:00:00Z\",\"database_name\":\"vfs\",\"source_device_id\":\"wp077-remote-device\",\"source_seq\":2,\"data\":{\"id\":\"m-b\",\"created_at\":\"2026-01-01T00:00:00Z\",\"updated_at\":\"2026-01-01T00:00:00Z\",\"source\":\"qbank\",\"concept_key\":\"代数\",\"item_id\":\"m-b\",\"outcome\":\"wrong\",\"weight\":1,\"signal\":0}},{\"table_name\":\"mastery_events\",\"record_id\":\"m-c\",\"operation\":\"Insert\",\"changed_at\":\"2026-01-01T00:00:00Z\",\"database_name\":\"vfs\",\"source_device_id\":\"wp077-remote-device\",\"source_seq\":3,\"data\":{\"id\":\"m-c\",\"created_at\":\"2026-01-01T00:00:00Z\",\"updated_at\":\"2026-01-01T00:00:00Z\",\"source\":\"qbank\",\"concept_key\":\"代数\",\"item_id\":\"m-c\",\"outcome\":\"correct\",\"weight\":1,\"signal\":0}}],\"exported_at\":\"2026-01-01T00:00:00+00:00\"}"
+     }
+    },
+    {
+     "cmd": "data_governance_import_sync_data",
+     "args": {
+      "inputPath": "${0.output_path}"
+     }
+    },
+    {
+     "cmd": "data_governance_import_sync_data",
+     "args": {
+      "inputPath": "${0.output_path}"
+     }
+    },
+    {
+     "cmd": "save_text_to_file",
+     "args": {
+      "path": "${0.output_path}",
+      "content": "{\"manifest\":{\"sync_transaction_id\":\"wp077-remote-tx\",\"databases\":{},\"status\":\"Complete\",\"created_at\":\"2026-01-01T00:00:00+00:00\",\"device_id\":\"wp077-remote-device\",\"format_version\":3,\"published_max_seq\":0,\"cursors\":{},\"snapshot_seen\":{}},\"pending_changes\":[{\"table_name\":\"mastery_events\",\"record_id\":\"m-a\",\"operation\":\"Delete\",\"data\":null,\"changed_at\":\"2026-01-02T00:00:00Z\",\"database_name\":\"vfs\",\"source_device_id\":\"wp077-remote-device\",\"source_seq\":4}],\"exported_at\":\"2026-01-01T00:00:00+00:00\"}"
+     }
+    },
+    {
+     "cmd": "data_governance_import_sync_data",
+     "args": {
+      "inputPath": "${0.output_path}"
+     }
+    },
+    {
+     "cmd": "save_text_to_file",
+     "args": {
+      "path": "${0.output_path}",
+      "content": "{\"manifest\":{\"sync_transaction_id\":\"wp077-remote-tx\",\"databases\":{},\"status\":\"Complete\",\"created_at\":\"2026-01-01T00:00:00+00:00\",\"device_id\":\"wp077-remote-device\",\"format_version\":3,\"published_max_seq\":0,\"cursors\":{},\"snapshot_seen\":{}},\"pending_changes\":[{\"table_name\":\"mastery_events\",\"record_id\":\"m-b\",\"operation\":\"Delete\",\"data\":null,\"changed_at\":\"2026-01-02T00:00:00Z\",\"database_name\":\"vfs\",\"source_device_id\":\"wp077-remote-device\",\"source_seq\":5},{\"table_name\":\"mastery_events\",\"record_id\":\"m-c\",\"operation\":\"Delete\",\"data\":null,\"changed_at\":\"2026-01-02T00:00:00Z\",\"database_name\":\"vfs\",\"source_device_id\":\"wp077-remote-device\",\"source_seq\":6}],\"exported_at\":\"2026-01-01T00:00:00+00:00\"}"
+     }
+    },
+    {
+     "cmd": "data_governance_import_sync_data",
+     "args": {
+      "inputPath": "${0.output_path}",
+      "strategy": "use_cloud"
+     }
+    },
+    {
+     "cmd": "data_governance_get_sync_status",
+     "args": {}
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  },
+  {
+   "id": "sync.local.quarantine.seed_list_repeat",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "data_governance_export_sync_data",
+     "args": {}
+    },
+    {
+     "cmd": "save_text_to_file",
+     "args": {
+      "path": "${0.output_path}",
+      "content": "{\"manifest\":{\"sync_transaction_id\":\"wp077-remote-tx\",\"databases\":{},\"status\":\"Complete\",\"created_at\":\"2026-01-01T00:00:00+00:00\",\"device_id\":\"wp077-remote-device\",\"format_version\":3,\"published_max_seq\":0,\"cursors\":{},\"snapshot_seen\":{}},\"pending_changes\":[{\"table_name\":\"mastery_events\",\"record_id\":\"q-ok\",\"operation\":\"Insert\",\"changed_at\":\"2026-01-01T00:00:00Z\",\"database_name\":\"vfs\",\"source_device_id\":\"wp077-remote-device\",\"source_seq\":1,\"data\":{\"id\":\"q-ok\",\"created_at\":\"2026-01-01T00:00:00Z\",\"updated_at\":\"2026-01-01T00:00:00Z\",\"source\":\"qbank\",\"concept_key\":\"代数\",\"item_id\":\"q-ok\",\"outcome\":\"wrong\",\"weight\":1,\"signal\":0}},{\"table_name\":\"mastery_events\",\"record_id\":\"q-bad-source\",\"operation\":\"Insert\",\"changed_at\":\"2026-01-01T00:00:00Z\",\"database_name\":\"vfs\",\"source_device_id\":\"wp077-remote-device\",\"source_seq\":2,\"data\":{\"id\":\"q-bad-source\",\"created_at\":\"2026-01-01T00:00:00Z\",\"updated_at\":\"2026-01-01T00:00:00Z\",\"source\":\"wp077\",\"concept_key\":\"代数\",\"item_id\":\"q-bad-source\",\"outcome\":\"wrong\",\"weight\":1,\"signal\":0}},{\"table_name\":\"wp077_missing_table\",\"record_id\":\"q-bad-table\",\"operation\":\"Insert\",\"changed_at\":\"2026-01-01T00:00:00Z\",\"database_name\":\"vfs\",\"source_device_id\":\"wp077-remote-device\",\"source_seq\":3,\"data\":{\"id\":\"q-bad-table\",\"created_at\":\"2026-01-01T00:00:00Z\",\"updated_at\":\"2026-01-01T00:00:00Z\",\"source\":\"qbank\",\"concept_key\":\"代数\",\"item_id\":\"q-bad-table\",\"outcome\":\"wrong\",\"weight\":1,\"signal\":0}}],\"exported_at\":\"2026-01-01T00:00:00+00:00\"}"
+     }
+    },
+    {
+     "cmd": "data_governance_import_sync_data",
+     "args": {
+      "inputPath": "${0.output_path}"
+     }
+    },
+    {
+     "cmd": "data_governance_list_quarantine",
+     "args": {}
+    },
+    {
+     "cmd": "data_governance_import_sync_data",
+     "args": {
+      "inputPath": "${0.output_path}"
+     }
+    },
+    {
+     "cmd": "data_governance_list_quarantine",
+     "args": {
+      "limit": null,
+      "offset": null
+     }
+    },
+    {
+     "cmd": "data_governance_list_quarantine",
+     "args": {
+      "limit": 1,
+      "offset": 0
+     }
+    },
+    {
+     "cmd": "data_governance_list_quarantine",
+     "args": {
+      "limit": 1,
+      "offset": 1
+     }
+    },
+    {
+     "cmd": "data_governance_list_quarantine",
+     "args": {
+      "limit": 0
+     }
+    },
+    {
+     "cmd": "data_governance_list_quarantine",
+     "args": {
+      "limit": 4294967295,
+      "offset": 4294967295
+     }
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  },
+  {
+   "id": "sync.local.quarantine.retry_discard_one",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "data_governance_export_sync_data",
+     "args": {}
+    },
+    {
+     "cmd": "save_text_to_file",
+     "args": {
+      "path": "${0.output_path}",
+      "content": "{\"manifest\":{\"sync_transaction_id\":\"wp077-remote-tx\",\"databases\":{},\"status\":\"Complete\",\"created_at\":\"2026-01-01T00:00:00+00:00\",\"device_id\":\"wp077-remote-device\",\"format_version\":3,\"published_max_seq\":0,\"cursors\":{},\"snapshot_seen\":{}},\"pending_changes\":[{\"table_name\":\"mastery_events\",\"record_id\":\"q-bad-source\",\"operation\":\"Insert\",\"changed_at\":\"2026-01-01T00:00:00Z\",\"database_name\":\"vfs\",\"source_device_id\":\"wp077-remote-device\",\"source_seq\":2,\"data\":{\"id\":\"q-bad-source\",\"created_at\":\"2026-01-01T00:00:00Z\",\"updated_at\":\"2026-01-01T00:00:00Z\",\"source\":\"wp077\",\"concept_key\":\"代数\",\"item_id\":\"q-bad-source\",\"outcome\":\"wrong\",\"weight\":1,\"signal\":0}},{\"table_name\":\"wp077_missing_table\",\"record_id\":\"q-bad-table\",\"operation\":\"Insert\",\"changed_at\":\"2026-01-01T00:00:00Z\",\"database_name\":\"vfs\",\"source_device_id\":\"wp077-remote-device\",\"source_seq\":3,\"data\":{\"id\":\"q-bad-table\",\"created_at\":\"2026-01-01T00:00:00Z\",\"updated_at\":\"2026-01-01T00:00:00Z\",\"source\":\"qbank\",\"concept_key\":\"代数\",\"item_id\":\"q-bad-table\",\"outcome\":\"wrong\",\"weight\":1,\"signal\":0}}],\"exported_at\":\"2026-01-01T00:00:00+00:00\"}"
+     }
+    },
+    {
+     "cmd": "data_governance_import_sync_data",
+     "args": {
+      "inputPath": "${0.output_path}"
+     }
+    },
+    {
+     "cmd": "data_governance_list_quarantine",
+     "args": {}
+    },
+    {
+     "cmd": "data_governance_retry_quarantine",
+     "args": {
+      "databaseName": "${3.0.database_name}",
+      "quarantineId": "${3.0.id}"
+     }
+    },
+    {
+     "cmd": "data_governance_list_quarantine",
+     "args": {}
+    },
+    {
+     "cmd": "data_governance_discard_quarantine",
+     "args": {
+      "databaseName": "${3.0.database_name}",
+      "quarantineId": "${3.0.id}"
+     }
+    },
+    {
+     "cmd": "data_governance_discard_quarantine",
+     "args": {
+      "databaseName": "${3.0.database_name}",
+      "quarantineId": "${3.0.id}"
+     }
+    },
+    {
+     "cmd": "data_governance_retry_quarantine",
+     "args": {
+      "databaseName": "${3.0.database_name}",
+      "quarantineId": "${3.0.id}"
+     }
+    },
+    {
+     "cmd": "data_governance_retry_quarantine",
+     "args": {
+      "databaseName": "vfs",
+      "quarantineId": 9223372036854775807
+     }
+    },
+    {
+     "cmd": "data_governance_discard_quarantine",
+     "args": {
+      "databaseName": "vfs",
+      "quarantineId": -1
+     }
+    },
+    {
+     "cmd": "data_governance_list_quarantine",
+     "args": {}
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  },
+  {
+   "id": "sync.local.quarantine.batch_retry_discard_all",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "data_governance_export_sync_data",
+     "args": {}
+    },
+    {
+     "cmd": "save_text_to_file",
+     "args": {
+      "path": "${0.output_path}",
+      "content": "{\"manifest\":{\"sync_transaction_id\":\"wp077-remote-tx\",\"databases\":{},\"status\":\"Complete\",\"created_at\":\"2026-01-01T00:00:00+00:00\",\"device_id\":\"wp077-remote-device\",\"format_version\":3,\"published_max_seq\":0,\"cursors\":{},\"snapshot_seen\":{}},\"pending_changes\":[{\"table_name\":\"mastery_events\",\"record_id\":\"q-bad-source\",\"operation\":\"Insert\",\"changed_at\":\"2026-01-01T00:00:00Z\",\"database_name\":\"vfs\",\"source_device_id\":\"wp077-remote-device\",\"source_seq\":2,\"data\":{\"id\":\"q-bad-source\",\"created_at\":\"2026-01-01T00:00:00Z\",\"updated_at\":\"2026-01-01T00:00:00Z\",\"source\":\"wp077\",\"concept_key\":\"代数\",\"item_id\":\"q-bad-source\",\"outcome\":\"wrong\",\"weight\":1,\"signal\":0}},{\"table_name\":\"wp077_missing_table\",\"record_id\":\"q-bad-table\",\"operation\":\"Insert\",\"changed_at\":\"2026-01-01T00:00:00Z\",\"database_name\":\"vfs\",\"source_device_id\":\"wp077-remote-device\",\"source_seq\":3,\"data\":{\"id\":\"q-bad-table\",\"created_at\":\"2026-01-01T00:00:00Z\",\"updated_at\":\"2026-01-01T00:00:00Z\",\"source\":\"qbank\",\"concept_key\":\"代数\",\"item_id\":\"q-bad-table\",\"outcome\":\"wrong\",\"weight\":1,\"signal\":0}}],\"exported_at\":\"2026-01-01T00:00:00+00:00\"}"
+     }
+    },
+    {
+     "cmd": "data_governance_import_sync_data",
+     "args": {
+      "inputPath": "${0.output_path}"
+     }
+    },
+    {
+     "cmd": "data_governance_retry_all_quarantine",
+     "args": {}
+    },
+    {
+     "cmd": "data_governance_list_quarantine",
+     "args": {}
+    },
+    {
+     "cmd": "data_governance_discard_all_quarantine",
+     "args": {}
+    },
+    {
+     "cmd": "data_governance_discard_all_quarantine",
+     "args": {}
+    },
+    {
+     "cmd": "data_governance_retry_all_quarantine",
+     "args": {}
+    },
+    {
+     "cmd": "data_governance_list_quarantine",
+     "args": {}
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  },
+  {
+   "id": "sync.local.quarantine.empty_and_bad_input",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "data_governance_list_quarantine",
+     "args": {}
+    },
+    {
+     "cmd": "data_governance_retry_all_quarantine",
+     "args": {}
+    },
+    {
+     "cmd": "data_governance_discard_all_quarantine",
+     "args": {}
+    },
+    {
+     "cmd": "data_governance_retry_quarantine",
+     "args": {
+      "databaseName": "vfs",
+      "quarantineId": 1
+     }
+    },
+    {
+     "cmd": "data_governance_discard_quarantine",
+     "args": {
+      "databaseName": "vfs",
+      "quarantineId": 1
+     }
+    },
+    {
+     "cmd": "data_governance_retry_quarantine",
+     "args": {
+      "databaseName": "VFS",
+      "quarantineId": 1
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_discard_quarantine",
+     "args": {
+      "databaseName": "",
+      "quarantineId": 1
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_retry_quarantine",
+     "args": {
+      "databaseName": "vfs",
+      "quarantineId": 9223372036854775808
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_discard_quarantine",
+     "args": {
+      "databaseName": "vfs",
+      "quarantineId": "1"
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_retry_quarantine",
+     "args": {
+      "databaseName": "vfs"
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_list_quarantine",
+     "args": {
+      "limit": -1
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_list_quarantine",
+     "args": {
+      "offset": 4294967296
+     },
+     "expect": "error"
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  },
+  {
+   "id": "sync.local.conflicts.empty_reads",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "data_governance_list_record_conflicts",
+     "args": {}
+    },
+    {
+     "cmd": "data_governance_list_record_conflicts",
+     "args": {
+      "limit": 0,
+      "offset": 0
+     }
+    },
+    {
+     "cmd": "data_governance_list_record_conflicts",
+     "args": {
+      "limit": 4294967295,
+      "offset": 4294967295
+     }
+    },
+    {
+     "cmd": "data_governance_count_record_conflicts",
+     "args": {}
+    },
+    {
+     "cmd": "data_governance_purge_resolved_conflicts",
+     "args": {}
+    },
+    {
+     "cmd": "data_governance_purge_resolved_conflicts",
+     "args": {
+      "olderThanDays": null
+     }
+    },
+    {
+     "cmd": "data_governance_purge_resolved_conflicts",
+     "args": {
+      "olderThanDays": 0
+     }
+    },
+    {
+     "cmd": "data_governance_list_sync_snapshot_batches",
+     "args": {}
+    },
+    {
+     "cmd": "data_governance_list_sync_snapshot_batches",
+     "args": {
+      "limit": 0
+     }
+    },
+    {
+     "cmd": "data_governance_list_sync_snapshot_batches",
+     "args": {
+      "limit": 4294967295
+     }
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  },
+  {
+   "id": "sync.local.conflicts.ipc_bad_input",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "data_governance_list_record_conflicts",
+     "args": {
+      "limit": -1
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_purge_resolved_conflicts",
+     "args": {
+      "olderThanDays": -1
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_list_sync_snapshot_batches",
+     "args": {
+      "limit": 4294967296
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_rollback_sync_snapshot_batch",
+     "args": {
+      "databaseName": "vfs"
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_resolve_record_conflict",
+     "args": {
+      "databaseName": "vfs",
+      "tableName": "folders",
+      "recordId": "x",
+      "resolution": "keep_local"
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_resolve_record_conflict",
+     "args": {
+      "databaseName": "vfs",
+      "tableName": "folders",
+      "recordId": "x",
+      "resolution": "keep_local",
+      "expectedConflictIds": [
+       9223372036854775808
+      ]
+     },
+     "expect": "error"
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  },
+  {
+   "id": "sync.local.conflicts.purge_days_max",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "data_governance_purge_resolved_conflicts",
+     "args": {
+      "olderThanDays": 4294967295
+     },
+     "expect": "error"
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  },
+  {
+   "id": "sync.local.conflicts.resolve_early_errors_empty_seed",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "data_governance_resolve_record_conflict",
+     "args": {
+      "databaseName": "vfs",
+      "tableName": "folders",
+      "recordId": "x",
+      "resolution": "keep_local",
+      "expectedConflictIds": []
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_resolve_record_conflict",
+     "args": {
+      "databaseName": "wp077_nodb",
+      "tableName": "folders",
+      "recordId": "x",
+      "resolution": "keep_local",
+      "expectedConflictIds": [
+       1
+      ]
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_resolve_record_conflict",
+     "args": {
+      "databaseName": "vfs",
+      "tableName": "folders",
+      "recordId": "x",
+      "resolution": "keep_local",
+      "expectedConflictIds": [
+       1,
+       1
+      ]
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_resolve_record_conflict",
+     "args": {
+      "databaseName": "vfs",
+      "tableName": "folders",
+      "recordId": "x",
+      "resolution": "bogus",
+      "mergedDataJson": null,
+      "expectedConflictIds": [
+       1
+      ]
+     },
+     "expect": "error"
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  },
+  {
+   "id": "sync.local.snapshot.rollback_errors_empty_seed",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "data_governance_rollback_sync_snapshot_batch",
+     "args": {
+      "databaseName": "vfs",
+      "batchId": "wp077-missing"
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_rollback_sync_snapshot_batch",
+     "args": {
+      "databaseName": "vfs",
+      "batchId": ""
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_rollback_sync_snapshot_batch",
+     "args": {
+      "databaseName": "wp077_nodb",
+      "batchId": "x"
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_list_sync_snapshot_batches",
+     "args": {}
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  },
+  {
+   "id": "sync.local.conflicts.manual_keep_cloud_snapshot_rollback",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "dstu_folder_create",
+     "args": {
+      "title": "wp077-original",
+      "parentId": null,
+      "icon": null,
+      "color": null
+     }
+    },
+    {
+     "cmd": "data_governance_export_sync_data",
+     "args": {}
+    },
+    {
+     "cmd": "dstu_folder_rename",
+     "args": {
+      "folderId": "${0.id}",
+      "title": "wp077-local-edit"
+     }
+    },
+    {
+     "cmd": "data_governance_import_sync_data",
+     "args": {
+      "inputPath": "${1.output_path}",
+      "strategy": "manual"
+     }
+    },
+    {
+     "cmd": "data_governance_count_record_conflicts",
+     "args": {}
+    },
+    {
+     "cmd": "data_governance_list_record_conflicts",
+     "args": {
+      "limit": 1,
+      "offset": 0
+     }
+    },
+    {
+     "cmd": "data_governance_import_sync_data",
+     "args": {
+      "inputPath": "${1.output_path}",
+      "strategy": "manual"
+     }
+    },
+    {
+     "cmd": "data_governance_count_record_conflicts",
+     "args": {}
+    },
+    {
+     "cmd": "data_governance_resolve_record_conflict",
+     "args": {
+      "databaseName": "${5.0.database_name}",
+      "tableName": "${5.0.table_name}",
+      "recordId": "${5.0.record_id}",
+      "resolution": "keep_cloud",
+      "expectedConflictIds": [
+       "${5.0.id}"
+      ]
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_resolve_record_conflict",
+     "args": {
+      "databaseName": "${5.0.database_name}",
+      "tableName": "${5.0.table_name}",
+      "recordId": "${5.0.record_id}",
+      "resolution": "keep_both",
+      "expectedConflictIds": [
+       "${5.0.id}",
+       "${5.1.id}"
+      ]
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_resolve_record_conflict",
+     "args": {
+      "databaseName": "${5.0.database_name}",
+      "tableName": "${5.0.table_name}",
+      "recordId": "${5.0.record_id}",
+      "resolution": "keep_cloud",
+      "expectedConflictIds": [
+       "${5.1.id}",
+       "${5.0.id}",
+       "${5.1.id}"
+      ]
+     }
+    },
+    {
+     "cmd": "data_governance_count_record_conflicts",
+     "args": {}
+    },
+    {
+     "cmd": "data_governance_list_record_conflicts",
+     "args": {}
+    },
+    {
+     "cmd": "data_governance_resolve_record_conflict",
+     "args": {
+      "databaseName": "${5.0.database_name}",
+      "tableName": "${5.0.table_name}",
+      "recordId": "${5.0.record_id}",
+      "resolution": "keep_cloud",
+      "expectedConflictIds": [
+       "${5.0.id}",
+       "${5.1.id}"
+      ]
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_list_sync_snapshot_batches",
+     "args": {}
+    },
+    {
+     "cmd": "data_governance_rollback_sync_snapshot_batch",
+     "args": {
+      "databaseName": "${14.0.database_name}",
+      "batchId": "${14.0.batch_id}"
+     }
+    },
+    {
+     "cmd": "data_governance_rollback_sync_snapshot_batch",
+     "args": {
+      "databaseName": "${14.0.database_name}",
+      "batchId": "${14.0.batch_id}"
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_list_sync_snapshot_batches",
+     "args": {
+      "limit": 1
+     }
+    },
+    {
+     "cmd": "data_governance_rollback_sync_snapshot_batch",
+     "args": {
+      "databaseName": "vfs",
+      "batchId": "${15.undo_batch_id}"
+     }
+    },
+    {
+     "cmd": "data_governance_list_sync_snapshot_batches",
+     "args": {}
+    },
+    {
+     "cmd": "data_governance_get_sync_status",
+     "args": {}
+    },
+    {
+     "cmd": "data_governance_purge_resolved_conflicts",
+     "args": {}
+    },
+    {
+     "cmd": "data_governance_purge_resolved_conflicts",
+     "args": {
+      "olderThanDays": 0
+     }
+    },
+    {
+     "cmd": "data_governance_purge_resolved_conflicts",
+     "args": {
+      "olderThanDays": 0
+     }
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  },
+  {
+   "id": "sync.local.conflicts.manual_keep_local_mark_only",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "dstu_folder_create",
+     "args": {
+      "title": "wp077-original",
+      "parentId": null,
+      "icon": null,
+      "color": null
+     }
+    },
+    {
+     "cmd": "data_governance_export_sync_data",
+     "args": {}
+    },
+    {
+     "cmd": "dstu_folder_rename",
+     "args": {
+      "folderId": "${0.id}",
+      "title": "wp077-local-edit"
+     }
+    },
+    {
+     "cmd": "data_governance_import_sync_data",
+     "args": {
+      "inputPath": "${1.output_path}",
+      "strategy": "manual"
+     }
+    },
+    {
+     "cmd": "data_governance_count_record_conflicts",
+     "args": {}
+    },
+    {
+     "cmd": "data_governance_list_record_conflicts",
+     "args": {
+      "limit": 1,
+      "offset": 0
+     }
+    },
+    {
+     "cmd": "data_governance_resolve_record_conflict",
+     "args": {
+      "databaseName": "${5.0.database_name}",
+      "tableName": "${5.0.table_name}",
+      "recordId": "${5.0.record_id}",
+      "resolution": "keep_local",
+      "expectedConflictIds": [
+       "${5.0.id}",
+       "${5.1.id}"
+      ]
+     }
+    },
+    {
+     "cmd": "data_governance_list_sync_snapshot_batches",
+     "args": {}
+    },
+    {
+     "cmd": "data_governance_count_record_conflicts",
+     "args": {}
+    },
+    {
+     "cmd": "data_governance_export_sync_data",
+     "args": {}
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  },
+  {
+   "id": "sync.local.conflicts.merged_variants",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "dstu_folder_create",
+     "args": {
+      "title": "wp077-original",
+      "parentId": null,
+      "icon": null,
+      "color": null
+     }
+    },
+    {
+     "cmd": "data_governance_export_sync_data",
+     "args": {}
+    },
+    {
+     "cmd": "dstu_folder_rename",
+     "args": {
+      "folderId": "${0.id}",
+      "title": "wp077-local-edit"
+     }
+    },
+    {
+     "cmd": "data_governance_import_sync_data",
+     "args": {
+      "inputPath": "${1.output_path}",
+      "strategy": "manual"
+     }
+    },
+    {
+     "cmd": "data_governance_count_record_conflicts",
+     "args": {}
+    },
+    {
+     "cmd": "data_governance_list_record_conflicts",
+     "args": {
+      "limit": 1,
+      "offset": 0
+     }
+    },
+    {
+     "cmd": "data_governance_resolve_record_conflict",
+     "args": {
+      "databaseName": "${5.0.database_name}",
+      "tableName": "${5.0.table_name}",
+      "recordId": "${5.0.record_id}",
+      "resolution": "merged",
+      "expectedConflictIds": [
+       "${5.0.id}",
+       "${5.1.id}"
+      ]
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_resolve_record_conflict",
+     "args": {
+      "databaseName": "${5.0.database_name}",
+      "tableName": "${5.0.table_name}",
+      "recordId": "${5.0.record_id}",
+      "resolution": "merged",
+      "expectedConflictIds": [
+       "${5.0.id}",
+       "${5.1.id}"
+      ],
+      "mergedDataJson": null
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_resolve_record_conflict",
+     "args": {
+      "databaseName": "${5.0.database_name}",
+      "tableName": "${5.0.table_name}",
+      "recordId": "${5.0.record_id}",
+      "resolution": "merged",
+      "expectedConflictIds": [
+       "${5.0.id}",
+       "${5.1.id}"
+      ],
+      "mergedDataJson": "{"
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_resolve_record_conflict",
+     "args": {
+      "databaseName": "${5.0.database_name}",
+      "tableName": "${5.0.table_name}",
+      "recordId": "${5.0.record_id}",
+      "resolution": "merged",
+      "expectedConflictIds": [
+       "${5.0.id}",
+       "${5.1.id}"
+      ],
+      "mergedDataJson": "null"
+     }
+    },
+    {
+     "cmd": "data_governance_count_record_conflicts",
+     "args": {}
+    },
+    {
+     "cmd": "data_governance_list_sync_snapshot_batches",
+     "args": {}
+    },
+    {
+     "cmd": "data_governance_get_sync_status",
+     "args": {}
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  },
+  {
+   "id": "sync.local.conflicts.local_changed_after_conflict",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "dstu_folder_create",
+     "args": {
+      "title": "wp077-original",
+      "parentId": null,
+      "icon": null,
+      "color": null
+     }
+    },
+    {
+     "cmd": "data_governance_export_sync_data",
+     "args": {}
+    },
+    {
+     "cmd": "dstu_folder_rename",
+     "args": {
+      "folderId": "${0.id}",
+      "title": "wp077-local-edit"
+     }
+    },
+    {
+     "cmd": "data_governance_import_sync_data",
+     "args": {
+      "inputPath": "${1.output_path}",
+      "strategy": "manual"
+     }
+    },
+    {
+     "cmd": "data_governance_count_record_conflicts",
+     "args": {}
+    },
+    {
+     "cmd": "data_governance_list_record_conflicts",
+     "args": {
+      "limit": 1,
+      "offset": 0
+     }
+    },
+    {
+     "cmd": "dstu_folder_rename",
+     "args": {
+      "folderId": "${0.id}",
+      "title": "wp077-second-edit"
+     }
+    },
+    {
+     "cmd": "data_governance_resolve_record_conflict",
+     "args": {
+      "databaseName": "${5.0.database_name}",
+      "tableName": "${5.0.table_name}",
+      "recordId": "${5.0.record_id}",
+      "resolution": "keep_cloud",
+      "expectedConflictIds": [
+       "${5.0.id}",
+       "${5.1.id}"
+      ]
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_resolve_record_conflict",
+     "args": {
+      "databaseName": "${5.0.database_name}",
+      "tableName": "${5.0.table_name}",
+      "recordId": "${5.0.record_id}",
+      "resolution": "merged",
+      "expectedConflictIds": [
+       "${5.0.id}",
+       "${5.1.id}"
+      ],
+      "mergedDataJson": "null"
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_resolve_record_conflict",
+     "args": {
+      "databaseName": "${5.0.database_name}",
+      "tableName": "${5.0.table_name}",
+      "recordId": "${5.0.record_id}",
+      "resolution": "keep_local",
+      "expectedConflictIds": [
+       "${5.0.id}",
+       "${5.1.id}"
+      ]
+     }
+    },
+    {
+     "cmd": "data_governance_count_record_conflicts",
+     "args": {}
+    },
+    {
+     "cmd": "data_governance_list_sync_snapshot_batches",
+     "args": {}
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  },
+  {
+   "id": "sync.local.conflicts.wrong_record_and_db",
+   "seed": "empty",
+   "steps": [
+    {
+     "cmd": "dstu_folder_create",
+     "args": {
+      "title": "wp077-original",
+      "parentId": null,
+      "icon": null,
+      "color": null
+     }
+    },
+    {
+     "cmd": "data_governance_export_sync_data",
+     "args": {}
+    },
+    {
+     "cmd": "dstu_folder_rename",
+     "args": {
+      "folderId": "${0.id}",
+      "title": "wp077-local-edit"
+     }
+    },
+    {
+     "cmd": "data_governance_import_sync_data",
+     "args": {
+      "inputPath": "${1.output_path}",
+      "strategy": "manual"
+     }
+    },
+    {
+     "cmd": "data_governance_count_record_conflicts",
+     "args": {}
+    },
+    {
+     "cmd": "data_governance_list_record_conflicts",
+     "args": {
+      "limit": 1,
+      "offset": 0
+     }
+    },
+    {
+     "cmd": "data_governance_resolve_record_conflict",
+     "args": {
+      "databaseName": "chat_v2",
+      "tableName": "${5.0.table_name}",
+      "recordId": "${5.0.record_id}",
+      "resolution": "keep_local",
+      "expectedConflictIds": [
+       "${5.0.id}",
+       "${5.1.id}"
+      ]
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_resolve_record_conflict",
+     "args": {
+      "databaseName": "vfs",
+      "tableName": "${5.0.table_name}",
+      "recordId": "wp077-missing",
+      "resolution": "keep_local",
+      "expectedConflictIds": [
+       "${5.0.id}",
+       "${5.1.id}"
+      ]
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_resolve_record_conflict",
+     "args": {
+      "databaseName": "${5.0.database_name}",
+      "tableName": "${5.0.table_name}",
+      "recordId": "${5.0.record_id}",
+      "resolution": "keep_local",
+      "expectedConflictIds": [
+       "${5.0.id}",
+       9223372036854775807
+      ]
+     },
+     "expect": "error"
+    },
+    {
+     "cmd": "data_governance_list_record_conflicts",
+     "args": {
+      "limit": 1,
+      "offset": 1
+     }
+    },
+    {
+     "cmd": "data_governance_count_record_conflicts",
+     "args": {}
+    }
+   ],
+   "capture": {
+    "events": true,
+    "db": [
+     "*"
+    ]
+   },
+   "normalize": []
+  }
+ ]
+}

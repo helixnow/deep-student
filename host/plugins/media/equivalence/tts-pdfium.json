@@ -1,0 +1,98 @@
+{
+  "domain": "media-docs",
+  "commands": [
+    "tts_check_available",
+    "tts_speak",
+    "tts_stop",
+    "test_pdfium_status"
+  ],
+  "scenarios": [
+    {
+      "id": "tts.check_speak_stop",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "tts_check_available",
+          "args": {}
+        },
+        {
+          "cmd": "tts_stop",
+          "args": {}
+        },
+        {
+          "cmd": "tts_speak",
+          "args": {
+            "text": "W0",
+            "lang": "en-US",
+            "rate": 1.0,
+            "volume": 1.0
+          }
+        },
+        {
+          "cmd": "tts_speak",
+          "args": {
+            "text": "你好",
+            "lang": "zh",
+            "rate": 0.5,
+            "volume": null
+          }
+        },
+        {
+          "cmd": "tts_speak",
+          "args": {
+            "text": "konnichiwa",
+            "lang": "fr-FR",
+            "rate": null
+          }
+        },
+        {
+          "cmd": "tts_speak",
+          "args": {
+            "text": ""
+          }
+        },
+        {
+          "cmd": "tts_stop",
+          "args": {}
+        },
+        {
+          "cmd": "tts_speak",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "tts_speak",
+          "args": {
+            "text": "W0",
+            "rate": "fast"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "pdfium.status",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "test_pdfium_status",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

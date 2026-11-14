@@ -543,6 +543,9 @@ export function AppMenuContent({
     if (!isOpen || !shouldRender || !presence.shown) return undefined;
     const timer = window.setTimeout(() => {
       if (!isOpen) return;
+      // RUST-FIX(RF-W18-app-menu-open-focus-race): presence.shown 要等进入过渡的两帧；原版这之前焦点已进入本菜单（如键盘展开的子菜单项）也会被抢回容器
+      const active = document.activeElement;
+      if (menuId && active && active !== contentRef.current && active.closest(`[data-app-menu-id="${menuId}"]`)) return;
       if (showSearch && searchInputRef.current) {
         searchInputRef.current.focus({ preventScroll: true });
         return;
@@ -556,7 +559,7 @@ export function AppMenuContent({
       contentRef.current?.focus({ preventScroll: true });
     }, showSearch ? 50 : 0);
     return () => window.clearTimeout(timer);
-  }, [contentRef, ctx?.openIntentRef, getEnabledItems, isOpen, presence.shown, shouldRender, showSearch]);
+  }, [contentRef, ctx?.openIntentRef, getEnabledItems, isOpen, menuId, presence.shown, shouldRender, showSearch]);
 
   const handleContentKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     onKeyDown?.(event);

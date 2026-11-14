@@ -1,0 +1,2904 @@
+{
+  "views": [
+    {
+      "id": "dashboard",
+      "content": "dashboardContent",
+      "extraClass": "overflow-hidden",
+      "gate": "always"
+    },
+    {
+      "id": "settings",
+      "content": "settingsContent",
+      "extraClass": "overflow-hidden",
+      "gate": "always"
+    },
+    {
+      "id": "task-dashboard",
+      "content": "taskDashboardContent",
+      "extraClass": null,
+      "gate": "always"
+    },
+    {
+      "id": "skills-management",
+      "content": "skillsManagementContent",
+      "extraClass": null,
+      "gate": "always"
+    },
+    {
+      "id": "data-management",
+      "content": "dataManagementContent",
+      "extraClass": null,
+      "gate": "always"
+    },
+    {
+      "id": "template-management",
+      "content": "templateManagementContent",
+      "extraClass": null,
+      "gate": "always"
+    },
+    {
+      "id": "ui-lab",
+      "content": "styleDebugContent",
+      "extraClass": null,
+      "gate": "uiLabEnabled"
+    },
+    {
+      "id": "learning-hub",
+      "content": "learningHubContent",
+      "extraClass": null,
+      "gate": "always"
+    },
+    {
+      "id": "media",
+      "content": "mediaStudioContent",
+      "extraClass": null,
+      "gate": "always"
+    },
+    {
+      "id": "sandbox-workbench",
+      "content": "sandboxWorkbenchContent",
+      "extraClass": null,
+      "gate": "always"
+    },
+    {
+      "id": "pdf-reader",
+      "content": "pdfReaderContent",
+      "extraClass": null,
+      "gate": "always"
+    },
+    {
+      "id": "todo",
+      "content": "todoContent",
+      "extraClass": null,
+      "gate": "always"
+    },
+    {
+      "id": "flashcards",
+      "content": "flashcardsContent",
+      "extraClass": null,
+      "gate": "always"
+    },
+    {
+      "id": "crepe-demo",
+      "content": "crepeDemoContent",
+      "extraClass": null,
+      "gate": "import.meta.env.DEV"
+    },
+    {
+      "id": "chat-v2-test",
+      "content": "chatV2TestContent",
+      "extraClass": null,
+      "gate": "import.meta.env.DEV"
+    },
+    {
+      "id": "llm-playground",
+      "content": "llmPlaygroundContent",
+      "extraClass": null,
+      "gate": "import.meta.env.DEV"
+    },
+    {
+      "id": "chat-v2",
+      "content": "chatV2Content",
+      "extraClass": null,
+      "gate": "always"
+    }
+  ],
+  "navigation": [
+    {
+      "uiLabEnabled": false,
+      "items": [
+        {
+          "id": "chat-v2",
+          "label": {
+            "key": "sidebar:navigation.chat_v2",
+            "fallback": "新会话"
+          },
+          "icon": "StudyChatIcon"
+        },
+        {
+          "id": "learning-hub",
+          "label": {
+            "key": "sidebar:navigation.learning_hub",
+            "fallback": "资源库"
+          },
+          "icon": "StudyBooksIcon"
+        },
+        {
+          "id": "media",
+          "label": {
+            "key": "sidebar:navigation.media",
+            "fallback": "音视频"
+          },
+          "icon": "StudyMediaIcon"
+        },
+        {
+          "id": "todo",
+          "label": {
+            "key": "sidebar:navigation.todo",
+            "fallback": null
+          },
+          "icon": "StudyTodoIcon"
+        },
+        {
+          "id": "skills-management",
+          "label": {
+            "key": "sidebar:navigation.skills_management",
+            "fallback": "技能管理"
+          },
+          "icon": "StudyMagicWandIcon"
+        },
+        {
+          "id": "flashcards",
+          "label": {
+            "key": "sidebar:navigation.flashcards",
+            "fallback": "闪卡"
+          },
+          "icon": "StudyCardsIcon"
+        },
+        {
+          "id": "settings",
+          "label": {
+            "key": "sidebar:navigation.settings",
+            "fallback": "设置"
+          },
+          "icon": "StudySettingsIcon"
+        }
+      ]
+    },
+    {
+      "uiLabEnabled": true,
+      "items": [
+        {
+          "id": "chat-v2",
+          "label": {
+            "key": "sidebar:navigation.chat_v2",
+            "fallback": "新会话"
+          },
+          "icon": "StudyChatIcon"
+        },
+        {
+          "id": "learning-hub",
+          "label": {
+            "key": "sidebar:navigation.learning_hub",
+            "fallback": "资源库"
+          },
+          "icon": "StudyBooksIcon"
+        },
+        {
+          "id": "media",
+          "label": {
+            "key": "sidebar:navigation.media",
+            "fallback": "音视频"
+          },
+          "icon": "StudyMediaIcon"
+        },
+        {
+          "id": "todo",
+          "label": {
+            "key": "sidebar:navigation.todo",
+            "fallback": null
+          },
+          "icon": "StudyTodoIcon"
+        },
+        {
+          "id": "skills-management",
+          "label": {
+            "key": "sidebar:navigation.skills_management",
+            "fallback": "技能管理"
+          },
+          "icon": "StudyMagicWandIcon"
+        },
+        {
+          "id": "flashcards",
+          "label": {
+            "key": "sidebar:navigation.flashcards",
+            "fallback": "闪卡"
+          },
+          "icon": "StudyCardsIcon"
+        },
+        {
+          "id": "ui-lab",
+          "label": {
+            "key": "sidebar:navigation.ui_lab",
+            "fallback": null
+          },
+          "icon": "StudyBlocksIcon"
+        },
+        {
+          "id": "settings",
+          "label": {
+            "key": "sidebar:navigation.settings",
+            "fallback": "设置"
+          },
+          "icon": "StudySettingsIcon"
+        }
+      ]
+    }
+  ],
+  "mobileItems": [
+    {
+      "id": "chat-v2",
+      "icon": "StudyChatIcon",
+      "label": {
+        "key": "sidebar:navigation.launcher.chat_v2",
+        "fallback": "会话"
+      },
+      "ariaLabel": {
+        "key": "sidebar:navigation.sessions",
+        "fallback": "会话"
+      }
+    },
+    {
+      "id": "learning-hub",
+      "icon": "StudyBooksIcon",
+      "label": {
+        "key": "sidebar:navigation.launcher.learning_hub",
+        "fallback": "资源"
+      },
+      "ariaLabel": {
+        "key": "sidebar:navigation.learning_hub",
+        "fallback": "资源库"
+      }
+    },
+    {
+      "id": "media",
+      "icon": "StudyMediaIcon",
+      "label": {
+        "key": "sidebar:navigation.launcher.media",
+        "fallback": "音视频"
+      },
+      "ariaLabel": {
+        "key": "sidebar:navigation.media",
+        "fallback": "音视频"
+      }
+    },
+    {
+      "id": "todo",
+      "icon": "StudyTodoIcon",
+      "label": {
+        "key": "sidebar:navigation.launcher.todo",
+        "fallback": "待办"
+      },
+      "ariaLabel": {
+        "key": "sidebar:navigation.todo",
+        "fallback": "待办"
+      }
+    },
+    {
+      "id": "skills-management",
+      "icon": "StudyMagicWandIcon",
+      "label": {
+        "key": "sidebar:navigation.launcher.skills_management",
+        "fallback": "技能"
+      },
+      "ariaLabel": {
+        "key": "sidebar:navigation.skills_management",
+        "fallback": "技能管理"
+      }
+    },
+    {
+      "id": "flashcards",
+      "icon": "StudyCardsIcon",
+      "label": {
+        "key": "sidebar:navigation.launcher.flashcards",
+        "fallback": "闪卡"
+      },
+      "ariaLabel": {
+        "key": "sidebar:navigation.flashcards",
+        "fallback": "闪卡"
+      }
+    },
+    {
+      "id": "data-management",
+      "icon": "Database",
+      "label": {
+        "key": "sidebar:navigation.launcher.data_management",
+        "fallback": "数据"
+      },
+      "ariaLabel": {
+        "key": "common:navigation.data_management",
+        "fallback": "数据管理"
+      }
+    }
+  ],
+  "desktop": [
+    {
+      "uiLabEnabled": false,
+      "navigationScope": "full",
+      "ids": [
+        "chat-v2",
+        "learning-hub",
+        "media",
+        "todo",
+        "skills-management",
+        "flashcards"
+      ]
+    },
+    {
+      "uiLabEnabled": false,
+      "navigationScope": "chat",
+      "ids": [
+        "chat-v2"
+      ]
+    },
+    {
+      "uiLabEnabled": true,
+      "navigationScope": "full",
+      "ids": [
+        "chat-v2",
+        "learning-hub",
+        "media",
+        "todo",
+        "skills-management",
+        "flashcards",
+        "ui-lab"
+      ]
+    },
+    {
+      "uiLabEnabled": true,
+      "navigationScope": "chat",
+      "ids": [
+        "chat-v2"
+      ]
+    }
+  ],
+  "shell": [
+    {
+      "id": "dashboard",
+      "titleKey": "common:navigation.dashboard",
+      "sidebarKind": "main",
+      "pageBackButton": false,
+      "sidebarOwnsBackNavigation": false,
+      "sidebarToggle": [
+        true,
+        true
+      ],
+      "headerNav": [
+        true,
+        true
+      ],
+      "mobileBackToHome": true
+    },
+    {
+      "id": "settings",
+      "titleKey": "sidebar:navigation.settings",
+      "sidebarKind": "settings",
+      "pageBackButton": false,
+      "sidebarOwnsBackNavigation": true,
+      "sidebarToggle": [
+        false,
+        true
+      ],
+      "headerNav": [
+        false,
+        true
+      ],
+      "mobileBackToHome": true
+    },
+    {
+      "id": "task-dashboard",
+      "titleKey": "sidebar:navigation.flashcards",
+      "sidebarKind": "main",
+      "pageBackButton": false,
+      "sidebarOwnsBackNavigation": false,
+      "sidebarToggle": [
+        true,
+        true
+      ],
+      "headerNav": [
+        true,
+        true
+      ],
+      "mobileBackToHome": true
+    },
+    {
+      "id": "skills-management",
+      "titleKey": "sidebar:navigation.skills_management",
+      "sidebarKind": "main",
+      "pageBackButton": false,
+      "sidebarOwnsBackNavigation": false,
+      "sidebarToggle": [
+        true,
+        true
+      ],
+      "headerNav": [
+        true,
+        true
+      ],
+      "mobileBackToHome": true
+    },
+    {
+      "id": "data-management",
+      "titleKey": "common:navigation.data_management",
+      "sidebarKind": "main",
+      "pageBackButton": false,
+      "sidebarOwnsBackNavigation": false,
+      "sidebarToggle": [
+        true,
+        true
+      ],
+      "headerNav": [
+        true,
+        true
+      ],
+      "mobileBackToHome": true
+    },
+    {
+      "id": "template-management",
+      "titleKey": "sidebar:navigation.flashcards",
+      "sidebarKind": "main",
+      "pageBackButton": false,
+      "sidebarOwnsBackNavigation": false,
+      "sidebarToggle": [
+        true,
+        true
+      ],
+      "headerNav": [
+        true,
+        true
+      ],
+      "mobileBackToHome": true
+    },
+    {
+      "id": "ui-lab",
+      "titleKey": "sidebar:navigation.ui_lab",
+      "sidebarKind": "main",
+      "pageBackButton": false,
+      "sidebarOwnsBackNavigation": false,
+      "sidebarToggle": [
+        true,
+        true
+      ],
+      "headerNav": [
+        true,
+        true
+      ],
+      "mobileBackToHome": true
+    },
+    {
+      "id": "learning-hub",
+      "titleKey": "sidebar:navigation.learning_hub",
+      "sidebarKind": "desktop-page",
+      "pageBackButton": true,
+      "sidebarOwnsBackNavigation": false,
+      "sidebarToggle": [
+        true,
+        true
+      ],
+      "headerNav": [
+        true,
+        true
+      ],
+      "mobileBackToHome": true
+    },
+    {
+      "id": "media",
+      "titleKey": "sidebar:navigation.media",
+      "sidebarKind": "main",
+      "pageBackButton": false,
+      "sidebarOwnsBackNavigation": false,
+      "sidebarToggle": [
+        true,
+        true
+      ],
+      "headerNav": [
+        true,
+        true
+      ],
+      "mobileBackToHome": true
+    },
+    {
+      "id": "sandbox-workbench",
+      "titleKey": "common:navigation.sandbox_workbench",
+      "sidebarKind": "main",
+      "pageBackButton": false,
+      "sidebarOwnsBackNavigation": false,
+      "sidebarToggle": [
+        true,
+        true
+      ],
+      "headerNav": [
+        true,
+        true
+      ],
+      "mobileBackToHome": true
+    },
+    {
+      "id": "pdf-reader",
+      "titleKey": "common:navigation.pdf_reader",
+      "sidebarKind": "main",
+      "pageBackButton": false,
+      "sidebarOwnsBackNavigation": false,
+      "sidebarToggle": [
+        true,
+        true
+      ],
+      "headerNav": [
+        true,
+        true
+      ],
+      "mobileBackToHome": true
+    },
+    {
+      "id": "todo",
+      "titleKey": "sidebar:navigation.todo",
+      "sidebarKind": "todo",
+      "pageBackButton": false,
+      "sidebarOwnsBackNavigation": true,
+      "sidebarToggle": [
+        true,
+        true
+      ],
+      "headerNav": [
+        false,
+        true
+      ],
+      "mobileBackToHome": true
+    },
+    {
+      "id": "flashcards",
+      "titleKey": "sidebar:navigation.flashcards",
+      "sidebarKind": "main",
+      "pageBackButton": false,
+      "sidebarOwnsBackNavigation": false,
+      "sidebarToggle": [
+        true,
+        true
+      ],
+      "headerNav": [
+        true,
+        true
+      ],
+      "mobileBackToHome": true
+    },
+    {
+      "id": "crepe-demo",
+      "titleKey": "common:navigation.crepe_demo",
+      "sidebarKind": "main",
+      "pageBackButton": false,
+      "sidebarOwnsBackNavigation": false,
+      "sidebarToggle": [
+        true,
+        true
+      ],
+      "headerNav": [
+        true,
+        true
+      ],
+      "mobileBackToHome": true
+    },
+    {
+      "id": "chat-v2-test",
+      "titleKey": "common:navigation.chat_v2_test",
+      "sidebarKind": "main",
+      "pageBackButton": false,
+      "sidebarOwnsBackNavigation": false,
+      "sidebarToggle": [
+        true,
+        true
+      ],
+      "headerNav": [
+        true,
+        true
+      ],
+      "mobileBackToHome": true
+    },
+    {
+      "id": "llm-playground",
+      "titleKey": "common:navigation.llm_playground",
+      "sidebarKind": "main",
+      "pageBackButton": false,
+      "sidebarOwnsBackNavigation": false,
+      "sidebarToggle": [
+        true,
+        true
+      ],
+      "headerNav": [
+        true,
+        true
+      ],
+      "mobileBackToHome": true
+    },
+    {
+      "id": "chat-v2",
+      "titleKey": "sidebar:navigation.chat_v2",
+      "sidebarKind": "main",
+      "pageBackButton": false,
+      "sidebarOwnsBackNavigation": false,
+      "sidebarToggle": [
+        true,
+        true
+      ],
+      "headerNav": [
+        true,
+        true
+      ],
+      "mobileBackToHome": false
+    }
+  ],
+  "header": [
+    {
+      "id": "dashboard",
+      "toolbarSlot": null,
+      "chatHeader": [
+        {
+          "hasSession": false,
+          "hasTitle": false,
+          "visible": false
+        },
+        {
+          "hasSession": false,
+          "hasTitle": true,
+          "visible": false
+        },
+        {
+          "hasSession": true,
+          "hasTitle": false,
+          "visible": false
+        },
+        {
+          "hasSession": true,
+          "hasTitle": true,
+          "visible": false
+        }
+      ],
+      "cardsHubTabs": false,
+      "contentClass": null
+    },
+    {
+      "id": "settings",
+      "toolbarSlot": null,
+      "chatHeader": [
+        {
+          "hasSession": false,
+          "hasTitle": false,
+          "visible": false
+        },
+        {
+          "hasSession": false,
+          "hasTitle": true,
+          "visible": false
+        },
+        {
+          "hasSession": true,
+          "hasTitle": false,
+          "visible": false
+        },
+        {
+          "hasSession": true,
+          "hasTitle": true,
+          "visible": false
+        }
+      ],
+      "cardsHubTabs": false,
+      "contentClass": "settings-view"
+    },
+    {
+      "id": "task-dashboard",
+      "toolbarSlot": null,
+      "chatHeader": [
+        {
+          "hasSession": false,
+          "hasTitle": false,
+          "visible": false
+        },
+        {
+          "hasSession": false,
+          "hasTitle": true,
+          "visible": false
+        },
+        {
+          "hasSession": true,
+          "hasTitle": false,
+          "visible": false
+        },
+        {
+          "hasSession": true,
+          "hasTitle": true,
+          "visible": false
+        }
+      ],
+      "cardsHubTabs": true,
+      "contentClass": null
+    },
+    {
+      "id": "skills-management",
+      "toolbarSlot": "skills-toolbar",
+      "chatHeader": [
+        {
+          "hasSession": false,
+          "hasTitle": false,
+          "visible": false
+        },
+        {
+          "hasSession": false,
+          "hasTitle": true,
+          "visible": false
+        },
+        {
+          "hasSession": true,
+          "hasTitle": false,
+          "visible": false
+        },
+        {
+          "hasSession": true,
+          "hasTitle": true,
+          "visible": false
+        }
+      ],
+      "cardsHubTabs": false,
+      "contentClass": null
+    },
+    {
+      "id": "data-management",
+      "toolbarSlot": null,
+      "chatHeader": [
+        {
+          "hasSession": false,
+          "hasTitle": false,
+          "visible": false
+        },
+        {
+          "hasSession": false,
+          "hasTitle": true,
+          "visible": false
+        },
+        {
+          "hasSession": true,
+          "hasTitle": false,
+          "visible": false
+        },
+        {
+          "hasSession": true,
+          "hasTitle": true,
+          "visible": false
+        }
+      ],
+      "cardsHubTabs": false,
+      "contentClass": null
+    },
+    {
+      "id": "template-management",
+      "toolbarSlot": null,
+      "chatHeader": [
+        {
+          "hasSession": false,
+          "hasTitle": false,
+          "visible": false
+        },
+        {
+          "hasSession": false,
+          "hasTitle": true,
+          "visible": false
+        },
+        {
+          "hasSession": true,
+          "hasTitle": false,
+          "visible": false
+        },
+        {
+          "hasSession": true,
+          "hasTitle": true,
+          "visible": false
+        }
+      ],
+      "cardsHubTabs": true,
+      "contentClass": null
+    },
+    {
+      "id": "ui-lab",
+      "toolbarSlot": null,
+      "chatHeader": [
+        {
+          "hasSession": false,
+          "hasTitle": false,
+          "visible": false
+        },
+        {
+          "hasSession": false,
+          "hasTitle": true,
+          "visible": false
+        },
+        {
+          "hasSession": true,
+          "hasTitle": false,
+          "visible": false
+        },
+        {
+          "hasSession": true,
+          "hasTitle": true,
+          "visible": false
+        }
+      ],
+      "cardsHubTabs": false,
+      "contentClass": null
+    },
+    {
+      "id": "learning-hub",
+      "toolbarSlot": "learning-hub-toolbar",
+      "chatHeader": [
+        {
+          "hasSession": false,
+          "hasTitle": false,
+          "visible": false
+        },
+        {
+          "hasSession": false,
+          "hasTitle": true,
+          "visible": false
+        },
+        {
+          "hasSession": true,
+          "hasTitle": false,
+          "visible": false
+        },
+        {
+          "hasSession": true,
+          "hasTitle": true,
+          "visible": false
+        }
+      ],
+      "cardsHubTabs": false,
+      "contentClass": null
+    },
+    {
+      "id": "media",
+      "toolbarSlot": "media-toolbar",
+      "chatHeader": [
+        {
+          "hasSession": false,
+          "hasTitle": false,
+          "visible": false
+        },
+        {
+          "hasSession": false,
+          "hasTitle": true,
+          "visible": false
+        },
+        {
+          "hasSession": true,
+          "hasTitle": false,
+          "visible": false
+        },
+        {
+          "hasSession": true,
+          "hasTitle": true,
+          "visible": false
+        }
+      ],
+      "cardsHubTabs": false,
+      "contentClass": null
+    },
+    {
+      "id": "sandbox-workbench",
+      "toolbarSlot": null,
+      "chatHeader": [
+        {
+          "hasSession": false,
+          "hasTitle": false,
+          "visible": false
+        },
+        {
+          "hasSession": false,
+          "hasTitle": true,
+          "visible": false
+        },
+        {
+          "hasSession": true,
+          "hasTitle": false,
+          "visible": false
+        },
+        {
+          "hasSession": true,
+          "hasTitle": true,
+          "visible": false
+        }
+      ],
+      "cardsHubTabs": false,
+      "contentClass": null
+    },
+    {
+      "id": "pdf-reader",
+      "toolbarSlot": null,
+      "chatHeader": [
+        {
+          "hasSession": false,
+          "hasTitle": false,
+          "visible": false
+        },
+        {
+          "hasSession": false,
+          "hasTitle": true,
+          "visible": false
+        },
+        {
+          "hasSession": true,
+          "hasTitle": false,
+          "visible": false
+        },
+        {
+          "hasSession": true,
+          "hasTitle": true,
+          "visible": false
+        }
+      ],
+      "cardsHubTabs": false,
+      "contentClass": null
+    },
+    {
+      "id": "todo",
+      "toolbarSlot": "todo-toolbar",
+      "chatHeader": [
+        {
+          "hasSession": false,
+          "hasTitle": false,
+          "visible": false
+        },
+        {
+          "hasSession": false,
+          "hasTitle": true,
+          "visible": false
+        },
+        {
+          "hasSession": true,
+          "hasTitle": false,
+          "visible": false
+        },
+        {
+          "hasSession": true,
+          "hasTitle": true,
+          "visible": false
+        }
+      ],
+      "cardsHubTabs": false,
+      "contentClass": null
+    },
+    {
+      "id": "flashcards",
+      "toolbarSlot": null,
+      "chatHeader": [
+        {
+          "hasSession": false,
+          "hasTitle": false,
+          "visible": false
+        },
+        {
+          "hasSession": false,
+          "hasTitle": true,
+          "visible": false
+        },
+        {
+          "hasSession": true,
+          "hasTitle": false,
+          "visible": false
+        },
+        {
+          "hasSession": true,
+          "hasTitle": true,
+          "visible": false
+        }
+      ],
+      "cardsHubTabs": true,
+      "contentClass": null
+    },
+    {
+      "id": "crepe-demo",
+      "toolbarSlot": null,
+      "chatHeader": [
+        {
+          "hasSession": false,
+          "hasTitle": false,
+          "visible": false
+        },
+        {
+          "hasSession": false,
+          "hasTitle": true,
+          "visible": false
+        },
+        {
+          "hasSession": true,
+          "hasTitle": false,
+          "visible": false
+        },
+        {
+          "hasSession": true,
+          "hasTitle": true,
+          "visible": false
+        }
+      ],
+      "cardsHubTabs": false,
+      "contentClass": null
+    },
+    {
+      "id": "chat-v2-test",
+      "toolbarSlot": null,
+      "chatHeader": [
+        {
+          "hasSession": false,
+          "hasTitle": false,
+          "visible": false
+        },
+        {
+          "hasSession": false,
+          "hasTitle": true,
+          "visible": false
+        },
+        {
+          "hasSession": true,
+          "hasTitle": false,
+          "visible": false
+        },
+        {
+          "hasSession": true,
+          "hasTitle": true,
+          "visible": false
+        }
+      ],
+      "cardsHubTabs": false,
+      "contentClass": null
+    },
+    {
+      "id": "llm-playground",
+      "toolbarSlot": null,
+      "chatHeader": [
+        {
+          "hasSession": false,
+          "hasTitle": false,
+          "visible": false
+        },
+        {
+          "hasSession": false,
+          "hasTitle": true,
+          "visible": false
+        },
+        {
+          "hasSession": true,
+          "hasTitle": false,
+          "visible": false
+        },
+        {
+          "hasSession": true,
+          "hasTitle": true,
+          "visible": false
+        }
+      ],
+      "cardsHubTabs": false,
+      "contentClass": null
+    },
+    {
+      "id": "chat-v2",
+      "toolbarSlot": null,
+      "chatHeader": [
+        {
+          "hasSession": false,
+          "hasTitle": false,
+          "visible": false
+        },
+        {
+          "hasSession": false,
+          "hasTitle": true,
+          "visible": false
+        },
+        {
+          "hasSession": true,
+          "hasTitle": false,
+          "visible": false
+        },
+        {
+          "hasSession": true,
+          "hasTitle": true,
+          "visible": true
+        }
+      ],
+      "cardsHubTabs": false,
+      "contentClass": null
+    }
+  ],
+  "environments": [
+    {
+      "dev": false,
+      "uiLabEnabled": false,
+      "isSmallScreen": false,
+      "workbenchActive": false,
+      "demo": false,
+      "views": [
+        "dashboard",
+        "settings",
+        "task-dashboard",
+        "skills-management",
+        "data-management",
+        "template-management",
+        "learning-hub",
+        "media",
+        "sandbox-workbench",
+        "pdf-reader",
+        "todo",
+        "flashcards",
+        "chat-v2"
+      ],
+      "desktopSidebar": true
+    },
+    {
+      "dev": false,
+      "uiLabEnabled": false,
+      "isSmallScreen": false,
+      "workbenchActive": false,
+      "demo": true,
+      "views": [
+        "dashboard",
+        "settings",
+        "task-dashboard",
+        "skills-management",
+        "data-management",
+        "template-management",
+        "learning-hub",
+        "media",
+        "sandbox-workbench",
+        "pdf-reader",
+        "todo",
+        "flashcards",
+        "chat-v2"
+      ],
+      "desktopSidebar": true
+    },
+    {
+      "dev": false,
+      "uiLabEnabled": false,
+      "isSmallScreen": false,
+      "workbenchActive": true,
+      "demo": false,
+      "views": [],
+      "desktopSidebar": false
+    },
+    {
+      "dev": false,
+      "uiLabEnabled": false,
+      "isSmallScreen": false,
+      "workbenchActive": true,
+      "demo": true,
+      "views": [],
+      "desktopSidebar": false
+    },
+    {
+      "dev": false,
+      "uiLabEnabled": false,
+      "isSmallScreen": true,
+      "workbenchActive": false,
+      "demo": false,
+      "views": [
+        "dashboard",
+        "settings",
+        "task-dashboard",
+        "skills-management",
+        "data-management",
+        "template-management",
+        "learning-hub",
+        "media",
+        "sandbox-workbench",
+        "pdf-reader",
+        "todo",
+        "flashcards",
+        "chat-v2"
+      ],
+      "desktopSidebar": false
+    },
+    {
+      "dev": false,
+      "uiLabEnabled": false,
+      "isSmallScreen": true,
+      "workbenchActive": false,
+      "demo": true,
+      "views": [
+        "dashboard",
+        "settings",
+        "task-dashboard",
+        "skills-management",
+        "data-management",
+        "template-management",
+        "learning-hub",
+        "media",
+        "sandbox-workbench",
+        "pdf-reader",
+        "todo",
+        "flashcards",
+        "chat-v2"
+      ],
+      "desktopSidebar": false
+    },
+    {
+      "dev": false,
+      "uiLabEnabled": false,
+      "isSmallScreen": true,
+      "workbenchActive": true,
+      "demo": false,
+      "views": [],
+      "desktopSidebar": false
+    },
+    {
+      "dev": false,
+      "uiLabEnabled": false,
+      "isSmallScreen": true,
+      "workbenchActive": true,
+      "demo": true,
+      "views": [],
+      "desktopSidebar": false
+    },
+    {
+      "dev": false,
+      "uiLabEnabled": true,
+      "isSmallScreen": false,
+      "workbenchActive": false,
+      "demo": false,
+      "views": [
+        "dashboard",
+        "settings",
+        "task-dashboard",
+        "skills-management",
+        "data-management",
+        "template-management",
+        "ui-lab",
+        "learning-hub",
+        "media",
+        "sandbox-workbench",
+        "pdf-reader",
+        "todo",
+        "flashcards",
+        "chat-v2"
+      ],
+      "desktopSidebar": true
+    },
+    {
+      "dev": false,
+      "uiLabEnabled": true,
+      "isSmallScreen": false,
+      "workbenchActive": false,
+      "demo": true,
+      "views": [
+        "dashboard",
+        "settings",
+        "task-dashboard",
+        "skills-management",
+        "data-management",
+        "template-management",
+        "ui-lab",
+        "learning-hub",
+        "media",
+        "sandbox-workbench",
+        "pdf-reader",
+        "todo",
+        "flashcards",
+        "chat-v2"
+      ],
+      "desktopSidebar": true
+    },
+    {
+      "dev": false,
+      "uiLabEnabled": true,
+      "isSmallScreen": false,
+      "workbenchActive": true,
+      "demo": false,
+      "views": [],
+      "desktopSidebar": false
+    },
+    {
+      "dev": false,
+      "uiLabEnabled": true,
+      "isSmallScreen": false,
+      "workbenchActive": true,
+      "demo": true,
+      "views": [],
+      "desktopSidebar": false
+    },
+    {
+      "dev": false,
+      "uiLabEnabled": true,
+      "isSmallScreen": true,
+      "workbenchActive": false,
+      "demo": false,
+      "views": [
+        "dashboard",
+        "settings",
+        "task-dashboard",
+        "skills-management",
+        "data-management",
+        "template-management",
+        "ui-lab",
+        "learning-hub",
+        "media",
+        "sandbox-workbench",
+        "pdf-reader",
+        "todo",
+        "flashcards",
+        "chat-v2"
+      ],
+      "desktopSidebar": false
+    },
+    {
+      "dev": false,
+      "uiLabEnabled": true,
+      "isSmallScreen": true,
+      "workbenchActive": false,
+      "demo": true,
+      "views": [
+        "dashboard",
+        "settings",
+        "task-dashboard",
+        "skills-management",
+        "data-management",
+        "template-management",
+        "ui-lab",
+        "learning-hub",
+        "media",
+        "sandbox-workbench",
+        "pdf-reader",
+        "todo",
+        "flashcards",
+        "chat-v2"
+      ],
+      "desktopSidebar": false
+    },
+    {
+      "dev": false,
+      "uiLabEnabled": true,
+      "isSmallScreen": true,
+      "workbenchActive": true,
+      "demo": false,
+      "views": [],
+      "desktopSidebar": false
+    },
+    {
+      "dev": false,
+      "uiLabEnabled": true,
+      "isSmallScreen": true,
+      "workbenchActive": true,
+      "demo": true,
+      "views": [],
+      "desktopSidebar": false
+    },
+    {
+      "dev": true,
+      "uiLabEnabled": false,
+      "isSmallScreen": false,
+      "workbenchActive": false,
+      "demo": false,
+      "views": [
+        "dashboard",
+        "settings",
+        "task-dashboard",
+        "skills-management",
+        "data-management",
+        "template-management",
+        "learning-hub",
+        "media",
+        "sandbox-workbench",
+        "pdf-reader",
+        "todo",
+        "flashcards",
+        "crepe-demo",
+        "chat-v2-test",
+        "llm-playground",
+        "chat-v2"
+      ],
+      "desktopSidebar": true
+    },
+    {
+      "dev": true,
+      "uiLabEnabled": false,
+      "isSmallScreen": false,
+      "workbenchActive": false,
+      "demo": true,
+      "views": [
+        "dashboard",
+        "settings",
+        "task-dashboard",
+        "skills-management",
+        "data-management",
+        "template-management",
+        "learning-hub",
+        "media",
+        "sandbox-workbench",
+        "pdf-reader",
+        "todo",
+        "flashcards",
+        "crepe-demo",
+        "chat-v2-test",
+        "llm-playground",
+        "chat-v2"
+      ],
+      "desktopSidebar": true
+    },
+    {
+      "dev": true,
+      "uiLabEnabled": false,
+      "isSmallScreen": false,
+      "workbenchActive": true,
+      "demo": false,
+      "views": [],
+      "desktopSidebar": false
+    },
+    {
+      "dev": true,
+      "uiLabEnabled": false,
+      "isSmallScreen": false,
+      "workbenchActive": true,
+      "demo": true,
+      "views": [],
+      "desktopSidebar": false
+    },
+    {
+      "dev": true,
+      "uiLabEnabled": false,
+      "isSmallScreen": true,
+      "workbenchActive": false,
+      "demo": false,
+      "views": [
+        "dashboard",
+        "settings",
+        "task-dashboard",
+        "skills-management",
+        "data-management",
+        "template-management",
+        "learning-hub",
+        "media",
+        "sandbox-workbench",
+        "pdf-reader",
+        "todo",
+        "flashcards",
+        "crepe-demo",
+        "chat-v2-test",
+        "llm-playground",
+        "chat-v2"
+      ],
+      "desktopSidebar": false
+    },
+    {
+      "dev": true,
+      "uiLabEnabled": false,
+      "isSmallScreen": true,
+      "workbenchActive": false,
+      "demo": true,
+      "views": [
+        "dashboard",
+        "settings",
+        "task-dashboard",
+        "skills-management",
+        "data-management",
+        "template-management",
+        "learning-hub",
+        "media",
+        "sandbox-workbench",
+        "pdf-reader",
+        "todo",
+        "flashcards",
+        "crepe-demo",
+        "chat-v2-test",
+        "llm-playground",
+        "chat-v2"
+      ],
+      "desktopSidebar": false
+    },
+    {
+      "dev": true,
+      "uiLabEnabled": false,
+      "isSmallScreen": true,
+      "workbenchActive": true,
+      "demo": false,
+      "views": [],
+      "desktopSidebar": false
+    },
+    {
+      "dev": true,
+      "uiLabEnabled": false,
+      "isSmallScreen": true,
+      "workbenchActive": true,
+      "demo": true,
+      "views": [],
+      "desktopSidebar": false
+    },
+    {
+      "dev": true,
+      "uiLabEnabled": true,
+      "isSmallScreen": false,
+      "workbenchActive": false,
+      "demo": false,
+      "views": [
+        "dashboard",
+        "settings",
+        "task-dashboard",
+        "skills-management",
+        "data-management",
+        "template-management",
+        "ui-lab",
+        "learning-hub",
+        "media",
+        "sandbox-workbench",
+        "pdf-reader",
+        "todo",
+        "flashcards",
+        "crepe-demo",
+        "chat-v2-test",
+        "llm-playground",
+        "chat-v2"
+      ],
+      "desktopSidebar": true
+    },
+    {
+      "dev": true,
+      "uiLabEnabled": true,
+      "isSmallScreen": false,
+      "workbenchActive": false,
+      "demo": true,
+      "views": [
+        "dashboard",
+        "settings",
+        "task-dashboard",
+        "skills-management",
+        "data-management",
+        "template-management",
+        "ui-lab",
+        "learning-hub",
+        "media",
+        "sandbox-workbench",
+        "pdf-reader",
+        "todo",
+        "flashcards",
+        "crepe-demo",
+        "chat-v2-test",
+        "llm-playground",
+        "chat-v2"
+      ],
+      "desktopSidebar": true
+    },
+    {
+      "dev": true,
+      "uiLabEnabled": true,
+      "isSmallScreen": false,
+      "workbenchActive": true,
+      "demo": false,
+      "views": [],
+      "desktopSidebar": false
+    },
+    {
+      "dev": true,
+      "uiLabEnabled": true,
+      "isSmallScreen": false,
+      "workbenchActive": true,
+      "demo": true,
+      "views": [],
+      "desktopSidebar": false
+    },
+    {
+      "dev": true,
+      "uiLabEnabled": true,
+      "isSmallScreen": true,
+      "workbenchActive": false,
+      "demo": false,
+      "views": [
+        "dashboard",
+        "settings",
+        "task-dashboard",
+        "skills-management",
+        "data-management",
+        "template-management",
+        "ui-lab",
+        "learning-hub",
+        "media",
+        "sandbox-workbench",
+        "pdf-reader",
+        "todo",
+        "flashcards",
+        "crepe-demo",
+        "chat-v2-test",
+        "llm-playground",
+        "chat-v2"
+      ],
+      "desktopSidebar": false
+    },
+    {
+      "dev": true,
+      "uiLabEnabled": true,
+      "isSmallScreen": true,
+      "workbenchActive": false,
+      "demo": true,
+      "views": [
+        "dashboard",
+        "settings",
+        "task-dashboard",
+        "skills-management",
+        "data-management",
+        "template-management",
+        "ui-lab",
+        "learning-hub",
+        "media",
+        "sandbox-workbench",
+        "pdf-reader",
+        "todo",
+        "flashcards",
+        "crepe-demo",
+        "chat-v2-test",
+        "llm-playground",
+        "chat-v2"
+      ],
+      "desktopSidebar": false
+    },
+    {
+      "dev": true,
+      "uiLabEnabled": true,
+      "isSmallScreen": true,
+      "workbenchActive": true,
+      "demo": false,
+      "views": [],
+      "desktopSidebar": false
+    },
+    {
+      "dev": true,
+      "uiLabEnabled": true,
+      "isSmallScreen": true,
+      "workbenchActive": true,
+      "demo": true,
+      "views": [],
+      "desktopSidebar": false
+    }
+  ],
+  "navigationTransitions": [
+    {
+      "dev": false,
+      "demo": false,
+      "transitions": [
+        {
+          "input": "dashboard",
+          "target": "data-management",
+          "committed": "data-management",
+          "events": [
+            {
+              "from": "chat-v2",
+              "to": "data-management"
+            }
+          ]
+        },
+        {
+          "input": "settings",
+          "target": "settings",
+          "committed": "settings",
+          "events": [
+            {
+              "from": "chat-v2",
+              "to": "settings"
+            }
+          ]
+        },
+        {
+          "input": "task-dashboard",
+          "target": "task-dashboard",
+          "committed": "task-dashboard",
+          "events": [
+            {
+              "from": "chat-v2",
+              "to": "task-dashboard"
+            }
+          ]
+        },
+        {
+          "input": "skills-management",
+          "target": "skills-management",
+          "committed": "skills-management",
+          "events": [
+            {
+              "from": "chat-v2",
+              "to": "skills-management"
+            }
+          ]
+        },
+        {
+          "input": "data-management",
+          "target": "data-management",
+          "committed": "data-management",
+          "events": [
+            {
+              "from": "chat-v2",
+              "to": "data-management"
+            }
+          ]
+        },
+        {
+          "input": "template-management",
+          "target": "template-management",
+          "committed": "template-management",
+          "events": [
+            {
+              "from": "chat-v2",
+              "to": "template-management"
+            }
+          ]
+        },
+        {
+          "input": "ui-lab",
+          "target": "ui-lab",
+          "committed": "ui-lab",
+          "events": [
+            {
+              "from": "chat-v2",
+              "to": "ui-lab"
+            }
+          ]
+        },
+        {
+          "input": "learning-hub",
+          "target": "learning-hub",
+          "committed": "learning-hub",
+          "events": [
+            {
+              "from": "chat-v2",
+              "to": "learning-hub"
+            }
+          ]
+        },
+        {
+          "input": "media",
+          "target": "media",
+          "committed": "media",
+          "events": [
+            {
+              "from": "chat-v2",
+              "to": "media"
+            }
+          ]
+        },
+        {
+          "input": "sandbox-workbench",
+          "target": "sandbox-workbench",
+          "committed": "sandbox-workbench",
+          "events": [
+            {
+              "from": "chat-v2",
+              "to": "sandbox-workbench"
+            }
+          ]
+        },
+        {
+          "input": "pdf-reader",
+          "target": "pdf-reader",
+          "committed": "pdf-reader",
+          "events": [
+            {
+              "from": "chat-v2",
+              "to": "pdf-reader"
+            }
+          ]
+        },
+        {
+          "input": "todo",
+          "target": "todo",
+          "committed": "todo",
+          "events": [
+            {
+              "from": "chat-v2",
+              "to": "todo"
+            }
+          ]
+        },
+        {
+          "input": "flashcards",
+          "target": "flashcards",
+          "committed": "flashcards",
+          "events": [
+            {
+              "from": "chat-v2",
+              "to": "flashcards"
+            }
+          ]
+        },
+        {
+          "input": "crepe-demo",
+          "target": "chat-v2",
+          "committed": "chat-v2",
+          "events": []
+        },
+        {
+          "input": "chat-v2-test",
+          "target": "chat-v2",
+          "committed": "chat-v2",
+          "events": []
+        },
+        {
+          "input": "llm-playground",
+          "target": "chat-v2",
+          "committed": "chat-v2",
+          "events": []
+        },
+        {
+          "input": "chat-v2",
+          "target": "chat-v2",
+          "committed": "chat-v2",
+          "events": []
+        },
+        {
+          "input": "analysis",
+          "target": "chat-v2",
+          "committed": "chat-v2",
+          "events": []
+        },
+        {
+          "input": "chat",
+          "target": "chat-v2",
+          "committed": "chat-v2",
+          "events": []
+        },
+        {
+          "input": "notes",
+          "target": "learning-hub",
+          "committed": "learning-hub",
+          "events": [
+            {
+              "from": "chat-v2",
+              "to": "learning-hub"
+            }
+          ]
+        },
+        {
+          "input": "markdown-editor",
+          "target": "learning-hub",
+          "committed": "learning-hub",
+          "events": [
+            {
+              "from": "chat-v2",
+              "to": "learning-hub"
+            }
+          ]
+        },
+        {
+          "input": "textbook-library",
+          "target": "learning-hub",
+          "committed": "learning-hub",
+          "events": [
+            {
+              "from": "chat-v2",
+              "to": "learning-hub"
+            }
+          ]
+        },
+        {
+          "input": "exam-sheet",
+          "target": "learning-hub",
+          "committed": "learning-hub",
+          "events": [
+            {
+              "from": "chat-v2",
+              "to": "learning-hub"
+            }
+          ]
+        },
+        {
+          "input": "batch",
+          "target": "chat-v2",
+          "committed": "chat-v2",
+          "events": []
+        },
+        {
+          "input": "review",
+          "target": "chat-v2",
+          "committed": "chat-v2",
+          "events": []
+        },
+        {
+          "input": "anki-generation",
+          "target": "task-dashboard",
+          "committed": "task-dashboard",
+          "events": [
+            {
+              "from": "chat-v2",
+              "to": "task-dashboard"
+            }
+          ]
+        },
+        {
+          "input": "library",
+          "target": "learning-hub",
+          "committed": "learning-hub",
+          "events": [
+            {
+              "from": "chat-v2",
+              "to": "learning-hub"
+            }
+          ]
+        },
+        {
+          "input": "mistake-detail",
+          "target": "chat-v2",
+          "committed": "chat-v2",
+          "events": []
+        },
+        {
+          "input": "llm-usage-stats",
+          "target": "data-management",
+          "committed": "data-management",
+          "events": [
+            {
+              "from": "chat-v2",
+              "to": "data-management"
+            }
+          ]
+        },
+        {
+          "input": "irec",
+          "target": "chat-v2",
+          "committed": "chat-v2",
+          "events": []
+        },
+        {
+          "input": "irec-management",
+          "target": "chat-v2",
+          "committed": "chat-v2",
+          "events": []
+        },
+        {
+          "input": "irec-service-switcher",
+          "target": "chat-v2",
+          "committed": "chat-v2",
+          "events": []
+        },
+        {
+          "input": "math-workflow",
+          "target": "chat-v2",
+          "committed": "chat-v2",
+          "events": []
+        },
+        {
+          "input": "bridge-to-irec",
+          "target": "chat-v2",
+          "committed": "chat-v2",
+          "events": []
+        },
+        {
+          "input": "template-json-preview",
+          "target": "template-management",
+          "committed": "template-management",
+          "events": [
+            {
+              "from": "chat-v2",
+              "to": "template-management"
+            }
+          ]
+        },
+        {
+          "input": "media-studio",
+          "target": "media",
+          "committed": "media",
+          "events": [
+            {
+              "from": "chat-v2",
+              "to": "media"
+            }
+          ]
+        },
+        {
+          "input": "audio-video",
+          "target": "media",
+          "committed": "media",
+          "events": [
+            {
+              "from": "chat-v2",
+              "to": "media"
+            }
+          ]
+        },
+        {
+          "input": "media-learning",
+          "target": "media",
+          "committed": "media",
+          "events": [
+            {
+              "from": "chat-v2",
+              "to": "media"
+            }
+          ]
+        },
+        {
+          "input": "super-agent",
+          "target": "chat-v2",
+          "committed": "chat-v2",
+          "events": []
+        },
+        {
+          "input": "unknown-view",
+          "target": "chat-v2",
+          "committed": "chat-v2",
+          "events": []
+        }
+      ]
+    },
+    {
+      "dev": false,
+      "demo": true,
+      "transitions": [
+        {
+          "input": "dashboard",
+          "target": "data-management",
+          "committed": null,
+          "events": []
+        },
+        {
+          "input": "settings",
+          "target": "settings",
+          "committed": null,
+          "events": []
+        },
+        {
+          "input": "task-dashboard",
+          "target": "task-dashboard",
+          "committed": null,
+          "events": []
+        },
+        {
+          "input": "skills-management",
+          "target": "skills-management",
+          "committed": null,
+          "events": []
+        },
+        {
+          "input": "data-management",
+          "target": "data-management",
+          "committed": null,
+          "events": []
+        },
+        {
+          "input": "template-management",
+          "target": "template-management",
+          "committed": null,
+          "events": []
+        },
+        {
+          "input": "ui-lab",
+          "target": "ui-lab",
+          "committed": null,
+          "events": []
+        },
+        {
+          "input": "learning-hub",
+          "target": "learning-hub",
+          "committed": null,
+          "events": []
+        },
+        {
+          "input": "media",
+          "target": "media",
+          "committed": null,
+          "events": []
+        },
+        {
+          "input": "sandbox-workbench",
+          "target": "sandbox-workbench",
+          "committed": null,
+          "events": []
+        },
+        {
+          "input": "pdf-reader",
+          "target": "pdf-reader",
+          "committed": null,
+          "events": []
+        },
+        {
+          "input": "todo",
+          "target": "todo",
+          "committed": null,
+          "events": []
+        },
+        {
+          "input": "flashcards",
+          "target": "flashcards",
+          "committed": null,
+          "events": []
+        },
+        {
+          "input": "crepe-demo",
+          "target": "chat-v2",
+          "committed": "chat-v2",
+          "events": []
+        },
+        {
+          "input": "chat-v2-test",
+          "target": "chat-v2",
+          "committed": "chat-v2",
+          "events": []
+        },
+        {
+          "input": "llm-playground",
+          "target": "chat-v2",
+          "committed": "chat-v2",
+          "events": []
+        },
+        {
+          "input": "chat-v2",
+          "target": "chat-v2",
+          "committed": "chat-v2",
+          "events": []
+        },
+        {
+          "input": "analysis",
+          "target": "chat-v2",
+          "committed": "chat-v2",
+          "events": []
+        },
+        {
+          "input": "chat",
+          "target": "chat-v2",
+          "committed": "chat-v2",
+          "events": []
+        },
+        {
+          "input": "notes",
+          "target": "learning-hub",
+          "committed": null,
+          "events": []
+        },
+        {
+          "input": "markdown-editor",
+          "target": "learning-hub",
+          "committed": null,
+          "events": []
+        },
+        {
+          "input": "textbook-library",
+          "target": "learning-hub",
+          "committed": null,
+          "events": []
+        },
+        {
+          "input": "exam-sheet",
+          "target": "learning-hub",
+          "committed": null,
+          "events": []
+        },
+        {
+          "input": "batch",
+          "target": "chat-v2",
+          "committed": "chat-v2",
+          "events": []
+        },
+        {
+          "input": "review",
+          "target": "chat-v2",
+          "committed": "chat-v2",
+          "events": []
+        },
+        {
+          "input": "anki-generation",
+          "target": "task-dashboard",
+          "committed": null,
+          "events": []
+        },
+        {
+          "input": "library",
+          "target": "learning-hub",
+          "committed": null,
+          "events": []
+        },
+        {
+          "input": "mistake-detail",
+          "target": "chat-v2",
+          "committed": "chat-v2",
+          "events": []
+        },
+        {
+          "input": "llm-usage-stats",
+          "target": "data-management",
+          "committed": null,
+          "events": []
+        },
+        {
+          "input": "irec",
+          "target": "chat-v2",
+          "committed": "chat-v2",
+          "events": []
+        },
+        {
+          "input": "irec-management",
+          "target": "chat-v2",
+          "committed": "chat-v2",
+          "events": []
+        },
+        {
+          "input": "irec-service-switcher",
+          "target": "chat-v2",
+          "committed": "chat-v2",
+          "events": []
+        },
+        {
+          "input": "math-workflow",
+          "target": "chat-v2",
+          "committed": "chat-v2",
+          "events": []
+        },
+        {
+          "input": "bridge-to-irec",
+          "target": "chat-v2",
+          "committed": "chat-v2",
+          "events": []
+        },
+        {
+          "input": "template-json-preview",
+          "target": "template-management",
+          "committed": null,
+          "events": []
+        },
+        {
+          "input": "media-studio",
+          "target": "media",
+          "committed": null,
+          "events": []
+        },
+        {
+          "input": "audio-video",
+          "target": "media",
+          "committed": null,
+          "events": []
+        },
+        {
+          "input": "media-learning",
+          "target": "media",
+          "committed": null,
+          "events": []
+        },
+        {
+          "input": "super-agent",
+          "target": "chat-v2",
+          "committed": "chat-v2",
+          "events": []
+        },
+        {
+          "input": "unknown-view",
+          "target": "chat-v2",
+          "committed": "chat-v2",
+          "events": []
+        }
+      ]
+    },
+    {
+      "dev": true,
+      "demo": false,
+      "transitions": [
+        {
+          "input": "dashboard",
+          "target": "data-management",
+          "committed": "data-management",
+          "events": [
+            {
+              "from": "chat-v2",
+              "to": "data-management"
+            }
+          ]
+        },
+        {
+          "input": "settings",
+          "target": "settings",
+          "committed": "settings",
+          "events": [
+            {
+              "from": "chat-v2",
+              "to": "settings"
+            }
+          ]
+        },
+        {
+          "input": "task-dashboard",
+          "target": "task-dashboard",
+          "committed": "task-dashboard",
+          "events": [
+            {
+              "from": "chat-v2",
+              "to": "task-dashboard"
+            }
+          ]
+        },
+        {
+          "input": "skills-management",
+          "target": "skills-management",
+          "committed": "skills-management",
+          "events": [
+            {
+              "from": "chat-v2",
+              "to": "skills-management"
+            }
+          ]
+        },
+        {
+          "input": "data-management",
+          "target": "data-management",
+          "committed": "data-management",
+          "events": [
+            {
+              "from": "chat-v2",
+              "to": "data-management"
+            }
+          ]
+        },
+        {
+          "input": "template-management",
+          "target": "template-management",
+          "committed": "template-management",
+          "events": [
+            {
+              "from": "chat-v2",
+              "to": "template-management"
+            }
+          ]
+        },
+        {
+          "input": "ui-lab",
+          "target": "ui-lab",
+          "committed": "ui-lab",
+          "events": [
+            {
+              "from": "chat-v2",
+              "to": "ui-lab"
+            }
+          ]
+        },
+        {
+          "input": "learning-hub",
+          "target": "learning-hub",
+          "committed": "learning-hub",
+          "events": [
+            {
+              "from": "chat-v2",
+              "to": "learning-hub"
+            }
+          ]
+        },
+        {
+          "input": "media",
+          "target": "media",
+          "committed": "media",
+          "events": [
+            {
+              "from": "chat-v2",
+              "to": "media"
+            }
+          ]
+        },
+        {
+          "input": "sandbox-workbench",
+          "target": "sandbox-workbench",
+          "committed": "sandbox-workbench",
+          "events": [
+            {
+              "from": "chat-v2",
+              "to": "sandbox-workbench"
+            }
+          ]
+        },
+        {
+          "input": "pdf-reader",
+          "target": "pdf-reader",
+          "committed": "pdf-reader",
+          "events": [
+            {
+              "from": "chat-v2",
+              "to": "pdf-reader"
+            }
+          ]
+        },
+        {
+          "input": "todo",
+          "target": "todo",
+          "committed": "todo",
+          "events": [
+            {
+              "from": "chat-v2",
+              "to": "todo"
+            }
+          ]
+        },
+        {
+          "input": "flashcards",
+          "target": "flashcards",
+          "committed": "flashcards",
+          "events": [
+            {
+              "from": "chat-v2",
+              "to": "flashcards"
+            }
+          ]
+        },
+        {
+          "input": "crepe-demo",
+          "target": "crepe-demo",
+          "committed": "crepe-demo",
+          "events": [
+            {
+              "from": "chat-v2",
+              "to": "crepe-demo"
+            }
+          ]
+        },
+        {
+          "input": "chat-v2-test",
+          "target": "chat-v2-test",
+          "committed": "chat-v2-test",
+          "events": [
+            {
+              "from": "chat-v2",
+              "to": "chat-v2-test"
+            }
+          ]
+        },
+        {
+          "input": "llm-playground",
+          "target": "llm-playground",
+          "committed": "llm-playground",
+          "events": [
+            {
+              "from": "chat-v2",
+              "to": "llm-playground"
+            }
+          ]
+        },
+        {
+          "input": "chat-v2",
+          "target": "chat-v2",
+          "committed": "chat-v2",
+          "events": []
+        },
+        {
+          "input": "analysis",
+          "target": "chat-v2",
+          "committed": "chat-v2",
+          "events": []
+        },
+        {
+          "input": "chat",
+          "target": "chat-v2",
+          "committed": "chat-v2",
+          "events": []
+        },
+        {
+          "input": "notes",
+          "target": "learning-hub",
+          "committed": "learning-hub",
+          "events": [
+            {
+              "from": "chat-v2",
+              "to": "learning-hub"
+            }
+          ]
+        },
+        {
+          "input": "markdown-editor",
+          "target": "learning-hub",
+          "committed": "learning-hub",
+          "events": [
+            {
+              "from": "chat-v2",
+              "to": "learning-hub"
+            }
+          ]
+        },
+        {
+          "input": "textbook-library",
+          "target": "learning-hub",
+          "committed": "learning-hub",
+          "events": [
+            {
+              "from": "chat-v2",
+              "to": "learning-hub"
+            }
+          ]
+        },
+        {
+          "input": "exam-sheet",
+          "target": "learning-hub",
+          "committed": "learning-hub",
+          "events": [
+            {
+              "from": "chat-v2",
+              "to": "learning-hub"
+            }
+          ]
+        },
+        {
+          "input": "batch",
+          "target": "chat-v2",
+          "committed": "chat-v2",
+          "events": []
+        },
+        {
+          "input": "review",
+          "target": "chat-v2",
+          "committed": "chat-v2",
+          "events": []
+        },
+        {
+          "input": "anki-generation",
+          "target": "task-dashboard",
+          "committed": "task-dashboard",
+          "events": [
+            {
+              "from": "chat-v2",
+              "to": "task-dashboard"
+            }
+          ]
+        },
+        {
+          "input": "library",
+          "target": "learning-hub",
+          "committed": "learning-hub",
+          "events": [
+            {
+              "from": "chat-v2",
+              "to": "learning-hub"
+            }
+          ]
+        },
+        {
+          "input": "mistake-detail",
+          "target": "chat-v2",
+          "committed": "chat-v2",
+          "events": []
+        },
+        {
+          "input": "llm-usage-stats",
+          "target": "data-management",
+          "committed": "data-management",
+          "events": [
+            {
+              "from": "chat-v2",
+              "to": "data-management"
+            }
+          ]
+        },
+        {
+          "input": "irec",
+          "target": "chat-v2",
+          "committed": "chat-v2",
+          "events": []
+        },
+        {
+          "input": "irec-management",
+          "target": "chat-v2",
+          "committed": "chat-v2",
+          "events": []
+        },
+        {
+          "input": "irec-service-switcher",
+          "target": "chat-v2",
+          "committed": "chat-v2",
+          "events": []
+        },
+        {
+          "input": "math-workflow",
+          "target": "chat-v2",
+          "committed": "chat-v2",
+          "events": []
+        },
+        {
+          "input": "bridge-to-irec",
+          "target": "chat-v2",
+          "committed": "chat-v2",
+          "events": []
+        },
+        {
+          "input": "template-json-preview",
+          "target": "template-management",
+          "committed": "template-management",
+          "events": [
+            {
+              "from": "chat-v2",
+              "to": "template-management"
+            }
+          ]
+        },
+        {
+          "input": "media-studio",
+          "target": "media",
+          "committed": "media",
+          "events": [
+            {
+              "from": "chat-v2",
+              "to": "media"
+            }
+          ]
+        },
+        {
+          "input": "audio-video",
+          "target": "media",
+          "committed": "media",
+          "events": [
+            {
+              "from": "chat-v2",
+              "to": "media"
+            }
+          ]
+        },
+        {
+          "input": "media-learning",
+          "target": "media",
+          "committed": "media",
+          "events": [
+            {
+              "from": "chat-v2",
+              "to": "media"
+            }
+          ]
+        },
+        {
+          "input": "super-agent",
+          "target": "chat-v2",
+          "committed": "chat-v2",
+          "events": []
+        },
+        {
+          "input": "unknown-view",
+          "target": "chat-v2",
+          "committed": "chat-v2",
+          "events": []
+        }
+      ]
+    },
+    {
+      "dev": true,
+      "demo": true,
+      "transitions": [
+        {
+          "input": "dashboard",
+          "target": "data-management",
+          "committed": null,
+          "events": []
+        },
+        {
+          "input": "settings",
+          "target": "settings",
+          "committed": null,
+          "events": []
+        },
+        {
+          "input": "task-dashboard",
+          "target": "task-dashboard",
+          "committed": null,
+          "events": []
+        },
+        {
+          "input": "skills-management",
+          "target": "skills-management",
+          "committed": null,
+          "events": []
+        },
+        {
+          "input": "data-management",
+          "target": "data-management",
+          "committed": null,
+          "events": []
+        },
+        {
+          "input": "template-management",
+          "target": "template-management",
+          "committed": null,
+          "events": []
+        },
+        {
+          "input": "ui-lab",
+          "target": "ui-lab",
+          "committed": null,
+          "events": []
+        },
+        {
+          "input": "learning-hub",
+          "target": "learning-hub",
+          "committed": null,
+          "events": []
+        },
+        {
+          "input": "media",
+          "target": "media",
+          "committed": null,
+          "events": []
+        },
+        {
+          "input": "sandbox-workbench",
+          "target": "sandbox-workbench",
+          "committed": null,
+          "events": []
+        },
+        {
+          "input": "pdf-reader",
+          "target": "pdf-reader",
+          "committed": null,
+          "events": []
+        },
+        {
+          "input": "todo",
+          "target": "todo",
+          "committed": null,
+          "events": []
+        },
+        {
+          "input": "flashcards",
+          "target": "flashcards",
+          "committed": null,
+          "events": []
+        },
+        {
+          "input": "crepe-demo",
+          "target": "crepe-demo",
+          "committed": null,
+          "events": []
+        },
+        {
+          "input": "chat-v2-test",
+          "target": "chat-v2-test",
+          "committed": null,
+          "events": []
+        },
+        {
+          "input": "llm-playground",
+          "target": "llm-playground",
+          "committed": null,
+          "events": []
+        },
+        {
+          "input": "chat-v2",
+          "target": "chat-v2",
+          "committed": "chat-v2",
+          "events": []
+        },
+        {
+          "input": "analysis",
+          "target": "chat-v2",
+          "committed": "chat-v2",
+          "events": []
+        },
+        {
+          "input": "chat",
+          "target": "chat-v2",
+          "committed": "chat-v2",
+          "events": []
+        },
+        {
+          "input": "notes",
+          "target": "learning-hub",
+          "committed": null,
+          "events": []
+        },
+        {
+          "input": "markdown-editor",
+          "target": "learning-hub",
+          "committed": null,
+          "events": []
+        },
+        {
+          "input": "textbook-library",
+          "target": "learning-hub",
+          "committed": null,
+          "events": []
+        },
+        {
+          "input": "exam-sheet",
+          "target": "learning-hub",
+          "committed": null,
+          "events": []
+        },
+        {
+          "input": "batch",
+          "target": "chat-v2",
+          "committed": "chat-v2",
+          "events": []
+        },
+        {
+          "input": "review",
+          "target": "chat-v2",
+          "committed": "chat-v2",
+          "events": []
+        },
+        {
+          "input": "anki-generation",
+          "target": "task-dashboard",
+          "committed": null,
+          "events": []
+        },
+        {
+          "input": "library",
+          "target": "learning-hub",
+          "committed": null,
+          "events": []
+        },
+        {
+          "input": "mistake-detail",
+          "target": "chat-v2",
+          "committed": "chat-v2",
+          "events": []
+        },
+        {
+          "input": "llm-usage-stats",
+          "target": "data-management",
+          "committed": null,
+          "events": []
+        },
+        {
+          "input": "irec",
+          "target": "chat-v2",
+          "committed": "chat-v2",
+          "events": []
+        },
+        {
+          "input": "irec-management",
+          "target": "chat-v2",
+          "committed": "chat-v2",
+          "events": []
+        },
+        {
+          "input": "irec-service-switcher",
+          "target": "chat-v2",
+          "committed": "chat-v2",
+          "events": []
+        },
+        {
+          "input": "math-workflow",
+          "target": "chat-v2",
+          "committed": "chat-v2",
+          "events": []
+        },
+        {
+          "input": "bridge-to-irec",
+          "target": "chat-v2",
+          "committed": "chat-v2",
+          "events": []
+        },
+        {
+          "input": "template-json-preview",
+          "target": "template-management",
+          "committed": null,
+          "events": []
+        },
+        {
+          "input": "media-studio",
+          "target": "media",
+          "committed": null,
+          "events": []
+        },
+        {
+          "input": "audio-video",
+          "target": "media",
+          "committed": null,
+          "events": []
+        },
+        {
+          "input": "media-learning",
+          "target": "media",
+          "committed": null,
+          "events": []
+        },
+        {
+          "input": "super-agent",
+          "target": "chat-v2",
+          "committed": "chat-v2",
+          "events": []
+        },
+        {
+          "input": "unknown-view",
+          "target": "chat-v2",
+          "committed": "chat-v2",
+          "events": []
+        }
+      ]
+    }
+  ]
+}

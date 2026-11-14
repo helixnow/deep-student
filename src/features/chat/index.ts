@@ -72,6 +72,12 @@ export {
   MessageItem,
   BlockRenderer,
   InputBar,
+  TurnDiffReviewCard,
+  TurnDiffLedger,
+  computeUnifiedDiffSummary,
+  ProjectKnowledgeDagDrawer,
+  ProjectKnowledgeDagStore,
+  ContextualMiniChat,
 } from './components';
 
 export type {
@@ -80,6 +86,11 @@ export type {
   MessageItemProps,
   BlockRendererProps,
   InputBarProps,
+  TurnFileDiffEntry,
+  TurnDiffReviewCardProps,
+  ProjectKnowledgeDagDrawerProps,
+  ContextualMiniChatProps,
+  MiniChatContextAnchor,
 } from './components';
 
 // ============================================================================

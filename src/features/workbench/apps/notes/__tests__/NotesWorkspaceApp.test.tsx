@@ -841,6 +841,22 @@ describe('NotesWorkspaceApp', () => {
     expect(dstu.rename).not.toHaveBeenCalled();
   });
 
+  it('keeps the inline new-folder input open and focused after the tree context menu closes', async () => {
+    render(<NotesWorkspaceApp {...props()} />);
+    const resource = await screen.findByRole('treeitem', { name: /课堂笔记/ });
+
+    fireEvent.contextMenu(resource);
+    fireEvent.click(screen.getByRole('menuitem', { name: /新建文件夹|New folder/ }));
+    const input = await screen.findByRole('textbox', { name: /新建文件夹|New folder/ });
+    await act(async () => {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+    });
+
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(input).toBeInTheDocument();
+    expect(input).toHaveFocus();
+  });
+
   it('bridges workbench note commands to workspace actions without routing to Learning Hub', async () => {
     const { createEmpty } = await import('@/dstu');
     vi.mocked(createEmpty).mockResolvedValueOnce({ ok: true, value: nodes[0] } as never);
@@ -1087,8 +1103,7 @@ describe('NotesWorkspaceApp', () => {
 
     render(<NotesWorkspaceApp {...props()} />);
     await waitFor(() => expect(dstu.list).toHaveBeenCalledTimes(3));
-    openExplorerMenu();
-    fireEvent.click(screen.getByRole('menuitem', { name: /刷新|Refresh/ }));
+    act(() => window.dispatchEvent(new Event(DSTU_FOLDER_CHANGE_EVENT)));
     await waitFor(() => expect(dstu.list).toHaveBeenCalledTimes(5));
 
     await act(async () => {

@@ -1,0 +1,125 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Deep Student",
+  "version": "0.11.0",
+  "identifier": "com.deepstudent.app",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://127.0.0.1:1422",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "features": [
+      "sqlite",
+      "lance",
+      "mcp"
+    ]
+  },
+  "app": {
+    "macOSPrivateApi": true,
+    "windows": [
+      {
+        "title": "Deep Student",
+        "width": 1112,
+        "height": 773,
+        "minWidth": 980,
+        "minHeight": 680,
+        "resizable": true,
+        "fullscreen": false,
+        "center": true,
+        "decorations": false,
+        "transparent": false,
+        "skipTaskbar": false,
+        "alwaysOnTop": false,
+        "visible": true,
+        "dragDropEnabled": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self' tauri: asset:; connect-src 'self' data: blob: tauri: ipc: http://ipc.localhost https://ipc.localhost asset: http://asset.localhost https://asset.localhost pdfstream: http://pdfstream.localhost https://pdfstream.localhost filestream: http://filestream.localhost https://filestream.localhost https://api.openai.com https://api.anthropic.com https://generativelanguage.googleapis.com https://api.deepseek.com https://api.siliconflow.cn https://api.groq.com https://openrouter.ai https://download.deepstudent.cn https://dashscope.aliyuncs.com https://open.bigmodel.cn https://ark.cn-beijing.volces.com https://api.minimax.io https://api.moonshot.cn ws://localhost:* ws://127.0.0.1:* https://*.sentry.io; font-src 'self' data: blob:; img-src 'self' data: blob: asset: http://asset.localhost https://asset.localhost pdfstream: http://pdfstream.localhost https://pdfstream.localhost filestream: http://filestream.localhost https://filestream.localhost https:; media-src 'self' data: blob: asset: filestream: http://filestream.localhost https://filestream.localhost bilistream: http://bilistream.localhost https://bilistream.localhost http://127.0.0.1:*/deepstudent-bili-stream/v1/; script-src 'self' 'sha256-5DNqcDbjxl8CMHN6KeObYW6ELLBJSbzBWcJTOrM3wVw=' 'sha256-5evs0dDWVUb5N9pkOo34OhkuFTbtNhxLzRvbfx3JTG0='; style-src 'self' 'unsafe-inline'; style-src-elem 'self' 'unsafe-inline'; style-src-attr 'unsafe-inline'; worker-src 'self' blob:; frame-src blob: https://player.bilibili.com;",
+      "assetProtocol": {
+        "enable": true,
+        "scope": [
+          "$APPDATA/**",
+          "$APPLOCALDATA/**",
+          "$RESOURCE/**",
+          "$DOCUMENT/**",
+          "$DOWNLOAD/**",
+          "$DESKTOP/**",
+          "$PICTURE/**",
+          "$TEMP/**"
+        ]
+      }
+    },
+    "withGlobalTauri": false
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "createUpdaterArtifacts": true,
+    "category": "Education",
+    "resources": {
+      "../LICENSE": "licenses/DeepStudent-AGPL-3.0.txt",
+      "../legal/THIRD_PARTY_NOTICES.txt": "licenses/THIRD_PARTY_NOTICES.txt",
+      "vendor/lancedb/LICENSE": "licenses/lancedb-Apache-2.0.txt",
+      "vendor/object_store/LICENSE.txt": "licenses/object_store-LICENSE.txt",
+      "vendor/object_store/NOTICE.txt": "licenses/object_store-NOTICE.txt",
+      "resources/pdfium/LICENSE.pdfium-binaries": "licenses/pdfium-binaries-MIT.txt",
+      "resources/pdfium/licenses/": "licenses/pdfium/"
+    },
+    "copyright": "",
+    "shortDescription": "开源、本地优先的 AI 学习工作台",
+    "longDescription": "只专注学习本身就够了，剩下的都交给我。DeepStudent 是开源、本地优先的 AI 学习工作台。它的学习 Agent，可直接操作学习桌面上的每一个应用：说一句话，它去写笔记、建思维导图、出题、制卡、排复习、建待办、做调研。",
+    "linux": {
+      "deb": {
+        "depends": [
+          "gstreamer1.0-plugins-base",
+          "gstreamer1.0-plugins-good",
+          "gstreamer1.0-plugins-bad",
+          "gstreamer1.0-libav"
+        ]
+      }
+    },
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico",
+      "icons/icon.png"
+    ],
+    "iOS": {
+      "developmentTeam": ""
+    },
+    "macOS": {
+      "signingIdentity": "-",
+      "hardenedRuntime": true,
+      "entitlements": "./Entitlements.plist"
+    },
+    "windows": {
+      "nsis": {
+        "minimumWebview2Version": "110.0.1531.0",
+        "installMode": "both",
+        "compression": "lzma"
+      },
+      "wix": null,
+      "webviewInstallMode": {
+        "type": "embedBootstrapper"
+      }
+    },
+    "android": {
+      "versionCode": 14641
+    }
+  },
+  "plugins": {
+    "dialog": null,
+    "opener": null,
+    "http": null,
+    "updater": {
+      "endpoints": [
+        "https://download.deepstudent.cn/releases/latest.json",
+        "https://github.com/helixnow/deep-student/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDkxREY0RkI0Qjk5NEQ5MjQKUldRazJaUzV0RS9ma2JqbmNwNGNKT1FGc1BWcjRXa2J6K0psVDZFT05YUkc3OTIxYXNPR3FMcEsK"
+    }
+  }
+}

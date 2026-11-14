@@ -16,6 +16,7 @@
  * passed back unchanged so a stale UI can never overwrite newer data.
  */
 
+import { useRefreshOnReturn } from '@/hooks/useRefreshOnReturn';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
@@ -306,6 +307,8 @@ export function QuestionImportAuditPanel({
     }
   }, [examId]);
 
+  useRefreshOnReturn(() => { void loadAudit(); void loadReparse(); }, !migrating && !resolving);
+
   useEffect(() => {
     void loadAudit();
     void loadReparse();
@@ -432,19 +435,6 @@ export function QuestionImportAuditPanel({
             )}
           </p>
         </div>
-        <DsButton
-          variant="outline"
-          size="sm"
-          className="text-xs"
-          onClick={() => {
-            void loadAudit();
-            void loadReparse();
-          }}
-          disabled={loading || migrating || resolving}
-          data-testid="legacy-audit-refresh"
-        >
-          {tr('legacyAudit.refresh', '重新读取')}
-        </DsButton>
       </header>
 
       {loading && (

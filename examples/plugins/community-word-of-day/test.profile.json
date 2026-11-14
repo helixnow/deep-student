@@ -1,0 +1,4 @@
+{
+  "$comment": "端到端测试用：只加载本插件（不 extends 官方 profile）。",
+  "plugins": [{ "id": "example.word-of-day", "module": "./index.ts" }]
+}

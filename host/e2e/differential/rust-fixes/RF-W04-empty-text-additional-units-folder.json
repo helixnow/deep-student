@@ -1,0 +1,22 @@
+{
+  "id": "RF-W04-empty-text-additional-units-folder",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T09:12+08:00",
+  "title": "主文本为空时，附加文本单元的向量也写入 folder_id",
+  "rust": {
+    "file": "src-tauri/crates/dstu-vfs/src/vfs/indexing.rs",
+    "line": 2535,
+    "behavior": "主文本为空分支调用 index_additional_pending_text_units(…, None)，附加单元（OCR 等）的 Lance 行 folder_id 为空"
+  },
+  "fix": {
+    "files": ["host/plugins/vfs-index/src/full-indexing.ts"],
+    "behavior": "与另外两处调用（indexing.rs:2642 分块为空、:2929 成功路径）一致，传 resolved_folder_id"
+  },
+  "evidence": "同一函数另外两处调用都传 resolved_folder_id，只有这一处传 None；Lance 检索的文件夹过滤是对行内 folder_id 的 'folder_id IN (...)'（lance_store.rs:1910-1929），folder_id 为空的行在按文件夹检索时被漏掉，用户在文件夹范围内检索不到这些资源的 OCR 文本。Lance 行不在 G3 数据库快照中。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    { "file": "host/plugins/vfs-index/tests/index-service.test.ts", "name": "RF-W04-empty-text-additional-units-folder: additional units of an empty resource keep the folder id" }
+  ]
+}

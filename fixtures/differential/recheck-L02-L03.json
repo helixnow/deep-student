@@ -1,0 +1,67 @@
+{
+  "kind": "static-source-plus-production-recheck-not-C",
+  "rustBaseline": "2ee9a9cbeb2bff3d31748afdc3d951c166228f74",
+  "originalEvidenceRevision": "2a86d348b516db6cbbb52a83ed7a07cb17060861",
+  "tsRevision": "c334fea66bfaa47541204311eea132102a1c8c5e",
+  "results": [
+    {
+      "id": "X7-L02-HANGUL-A",
+      "lane": "L02-llm-manager",
+      "source": "dstu-util/src/utils/token_budget.rs:173",
+      "expected": 3,
+      "actual": 3,
+      "status": "matches-static-expectation",
+      "difference": null
+    },
+    {
+      "id": "X7-L02-HANGUL-B",
+      "lane": "L02-llm-manager",
+      "source": "dstu-util/src/utils/token_budget.rs:174",
+      "expected": 3,
+      "actual": 3,
+      "status": "matches-static-expectation",
+      "difference": null
+    },
+    {
+      "id": "X7-L02-HANGUL-COMPAT",
+      "lane": "L02-llm-manager",
+      "source": "dstu-util/src/utils/token_budget.rs:170-174,28",
+      "expected": 2,
+      "actual": 2,
+      "status": "matches-static-expectation",
+      "difference": null
+    },
+    {
+      "id": "X7-L03-MULTIMODAL-TEXT-TAG",
+      "lane": "L03-chat-pipeline",
+      "source": "dstu-core/src/models.rs:107-123 (serde tag=type, rename_all=lowercase)",
+      "expected": {
+        "type": "text",
+        "text": "fixture"
+      },
+      "actual": {
+        "type": "text",
+        "text": "fixture"
+      },
+      "status": "matches-static-expectation",
+      "difference": null
+    },
+    {
+      "id": "X7-L03-MULTIMODAL-IMAGE-TAG",
+      "lane": "L03-chat-pipeline",
+      "source": "dstu-core/src/models.rs:107-123 (image_url rename, mediaType field rename)",
+      "expected": {
+        "type": "image_url",
+        "mediaType": "image/png",
+        "base64": "AA=="
+      },
+      "actual": {
+        "type": "image_url",
+        "mediaType": "image/png",
+        "base64": "AA=="
+      },
+      "status": "matches-static-expectation",
+      "difference": null
+    }
+  ]
+}

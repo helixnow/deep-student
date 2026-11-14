@@ -11,13 +11,11 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/shad/Po
 // 操作菜单组件（导出供窄屏视口契约测试使用，见 #46）
 export function ActionMenu({
   onReconnect,
-  onRefresh,
   onHealthCheck,
   onClearCache,
   onOpenPolicy
 }: {
   onReconnect: () => void;
-  onRefresh: () => void;
   onHealthCheck: () => void;
   onClearCache: () => void;
   onOpenPolicy: () => void;
@@ -43,10 +41,6 @@ export function ActionMenu({
       <DsButton variant="ghost" size="sm" onClick={() => { onReconnect(); setIsOpen(false); }} className="w-full !justify-start [@media(pointer:coarse)]:!min-h-11">
         <ArrowClockwise className="w-3.5 h-3.5 text-muted-foreground" />
         {t('settings:mcp.reconnect')}
-      </DsButton>
-      <DsButton variant="ghost" size="sm" onClick={() => { onRefresh(); setIsOpen(false); }} className="w-full !justify-start [@media(pointer:coarse)]:!min-h-11">
-        <Sparkle className="w-3.5 h-3.5 text-muted-foreground" />
-        {t('settings:mcp.refresh_list')}
       </DsButton>
       <DsButton variant="ghost" size="sm" onClick={() => { onHealthCheck(); setIsOpen(false); }} className="w-full !justify-start [@media(pointer:coarse)]:!min-h-11">
         <Flask className="w-3.5 h-3.5 text-muted-foreground" />

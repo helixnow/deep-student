@@ -1,0 +1,667 @@
+<body .light-theme>
+  <div id="@1">
+    <div .flex.font-sans.h-dvh.overflow-hidden.relative.text-foreground.w-full data-shell-role="app-shell" data-sidebar-resizing="false" data-sidebar-visible="false">
+      <a .focus:absolute.focus:bg-primary.focus:font-medium.focus:left-2.focus:not-sr-only.focus:px-4.focus:py-2.focus:rounded-md.focus:shadow-lg.focus:text-primary-foreground.focus:text-sm.focus:top-2.focus:z-[9999].sr-only href="#main-content">
+        "跳转到主内容"
+      <div .desktop-shell-workspace.flex.flex-1.flex-col.h-full.min-w-0.overflow-hidden.relative data-shell-layer="workspace" data-sidebar-visible="false">
+        <main .flex-1.overflow-hidden.relative.w-full data-tour-id="analysis-main" id="@2" role="main">
+          <div .content-body.h-full.relative.w-full>
+            <div .absolute.desktop-shell-content-enter.desktop-shell-view-layer.flex.flex-col.inset-0.opacity-100.page-container.pointer-events-auto.z-10 data-view-layer-shell="chat-v2">
+              <div .absolute.chat-v2.flex.flex-col.inset-0.overflow-hidden.study-shell-page data-sandbox-owner-key="sandbox:chat-page:#1" data-wb-chat-session="demo-anki-cards">
+                <div .flex-1.h-full.overflow-clip.relative>
+                  <div .flex.h-full>
+                    <div .bg-[color:var(--shell-navigation-surface)].flex.flex-col.flex-shrink-0.font-sidebar-study-ui.h-full.min-h-0.relative.text-[color:var(--shell-navigation-foreground)].z-[2] aria-hidden="true" data-mobile-unified-drawer inert>
+                      <div .bg-[color:var(--shell-navigation-surface)].border-[color:var(--shell-navigation-border)].border-b.pt-[calc(0.5rem+var(--mobile-safe-area-top,0px))].shrink-0 data-mobile-drawer-chrome="true">
+                        <header .flex.gap-3.h-11.items-center.justify-between.pl-[calc(1rem+var(--mobile-safe-area-left,0px))].px-3>
+                          <div .flex-1.min-w-0>
+                            <p .font-bold.leading-none.min-w-0.text-[22px].text-foreground.truncate data-mobile-sidebar-fixed-region="top">
+                              "DeepStudent"
+                          <button .!h-11.!rounded-full.!w-11.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.rounded-[var(--button-radius)].select-none.shell-icon-button.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-label="设置" data-mobile-shell="sidebar-settings" type="button">
+                            <svg .size-5 aria-hidden="true" viewBox="0 0 256 256" />
+                      <div .flex-1.h-full.min-h-0.min-w-0.relative.scrollbar-none data-native-scrollbars="false" data-orientation="vertical" data-overlayscrollbars="host" data-overlayscrollbars-initialize data-scroll-axes="vertical" data-slot="scroll-area">
+                        <div .h-full.max-h-[inherit].min-h-0.min-w-0.w-full data-overlayscrollbars-viewport="scrollbarHidden overflowXHidden overflowYHidden" tabindex="-1">
+                          <div .pb-[calc(0.5rem+max(var(--mobile-safe-area-bottom,0px),var(--keyboard-inset,0px)))].pl-[calc(0.5rem+var(--mobile-safe-area-left,0px))].px-2.py-1>
+                            <div .min-h-0 data-mobile-drawer-page="true">
+                              <div .min-h-0>
+                                <div .flex.flex-col.font-sidebar-study-ui.min-h-0.text-foreground>
+                                  <div .pb-1.pt-3.space-y-2.5>
+                                    <div .flex.gap-1.items-center.px-3>
+                                      <div .flex-1.min-w-0.relative>
+                                        <svg .-translate-y-1/2.absolute.left-4.pointer-events-none.text-[color:var(--sidebar-muted)].top-1/2 aria-hidden="true" viewBox="0 0 256 256" />
+                                        <input .[@media(pointer:coarse)]:!min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:text-[16px].[@media(pointer:coarse)]:text-lg.bg-[color:var(--input-shell-surface)].bg-muted/50.border.border-[color:var(--input-shell-border)].border-border/80.disabled:cursor-not-allowed.disabled:opacity-50.ds-search-input.duration-150.file:bg-transparent.file:border-0.file:font-medium.file:text-sm.flex.focus-visible:bg-background.focus-visible:border-[color:var(--border)].focus-visible:outline-none.focus-visible:ring-0.focus:bg-background.focus:border-[color:var(--border)].focus:border-primary/40.focus:outline-none.focus:ring-0.h-11.hover:bg-[color:var(--surface-panel-strong)].lg:min-h-[var(--button-height)].min-h-0.min-h-[var(--touch-target-size)].pl-11.placeholder:text-[color:var(--sidebar-muted)].placeholder:text-muted-foreground/50.pr-10.px-3.py-2.rounded-[var(--radius-shell-control)].rounded-xl.shadow-none.text-[16px].text-[color:var(--sidebar-foreground)].text-foreground.text-sm.transition-colors.w-full aria-label="搜索会话..." placeholder="搜索会话..." type="search" value />
+                                      <div .app-menu-root.inline-flex.relative>
+                                        <button .!h-9.!w-9.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].app-menu-trigger.bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-[color:var(--sidebar-foreground)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-[color:var(--sidebar-muted)].text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-expanded="false" aria-haspopup="menu" aria-label="筛选会话" id="@3" title="筛选会话" type="button">
+                                          <svg viewBox="0 0 256 256" />
+                                    <div .pb-0.space-y-2.5>
+                                      <section .space-y-1 aria-label="课题">
+                                        <div .flex.gap-2.items-center.justify-between.px-1.rounded-xl>
+                                          <div .flex-1.min-w-0>
+                                            <span .block.desktop-shell-nav-section-label.mb-1.min-w-0.pt-1.px-3.truncate>
+                                              "课题"
+                                          <button .-my-2.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:!h-10.lg:!w-10.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-muted-foreground/80.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-label="新建分组" title="新建分组" type="button">
+                                            <svg viewBox="0 0 256 256" />
+                                        <div .space-y-1>
+                                          <section .space-y-1>
+                                            <div .relative>
+                                              <button .!justify-start.!pr-12.!px-2.5.!py-1.5.!w-full.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].appearance-none.bg-[var(--button-plain-bg)].bg-transparent.border.border-[color:var(--button-plain-border)].border-transparent.desktop-shell-sidebar-row.desktop-shell-thread-row.desktop-shell-thread-row--active.disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.gap-2.5.group.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].min-h-[2.75rem].min-w-0.motion-reduce:transition-none.outline-none.overflow-hidden.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-left.text-muted-foreground.text-ui.transition-[background-color,border-color,color].transition-colors.ui-press-coarse.w-full.whitespace-nowrap aria-expanded="true" type="button">
+                                                <span .[&_svg]:size-[18px].flex.items-center.justify-center.shrink-0.text-[color:var(--shell-navigation-foreground)].w-[18px]>
+                                                  <svg viewBox="0 0 256 256" />
+                                                <span .desktop-shell-sidebar-row-title.flex-1.min-w-0.truncate>
+                                                  "未分组"
+                                                <svg .duration-150.ease-[var(--dropdown-ease)].ml-auto.motion-reduce:transition-none.rotate-90.shrink-0.text-[color:var(--sidebar-muted)].transition-transform viewBox="0 0 256 256" />
+                                              <div .-translate-y-1/2.absolute.flex.gap-0.5.items-center.right-0.5.top-1/2>
+                                                <button .!p-0.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-[color:var(--sidebar-foreground)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:!h-10.lg:!w-10.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-[color:var(--sidebar-muted)].text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-label="新建会话" title="新建会话" type="button">
+                                                  <svg viewBox="0 0 256 256" />
+                                            <div .duration-200.ease-[var(--panel-ease)].grid.grid-rows-[1fr].opacity-100.transition-[grid-template-rows,opacity]>
+                                              <div .overflow-hidden.pl-4.space-y-0.5>
+                                                <div .duration-150.rounded-2xl.space-y-0.5.transition-colors>
+                                                  <div .app-menu-root.inline-flex.relative>
+                                                    <div .active:cursor-grabbing.app-menu-trigger.border.border-transparent.cursor-grab.cursor-pointer.duration-150.flex.gap-2.5.group.hover:bg-[var(--sidebar-study-hover)].hover:text-foreground.items-center.min-h-[2.75rem].min-w-0.px-2.5.py-1.5.rounded-2xl.shrink-0.text-foreground/80.transition-[background-color,color,box-shadow].w-full aria-describedby="@4" aria-disabled="false" aria-expanded="false" aria-haspopup="menu" aria-roledescription="draggable" id="@5" role="button" tabindex="0">
+                                                      <div .flex-1.min-w-0.overflow-hidden>
+                                                        <div .flex-1.font-normal.leading-5.min-w-0.text-[16px].text-foreground/88.transition-colors.truncate>
+                                                          "周度学习看板"
+                                                      <div .duration-150.flex.gap-1.items-center.justify-end.min-h-6.ml-2.opacity-100.shrink-0.transition-opacity>
+                                                        <span .tabular-nums.text-muted-foreground/80.text-ui>
+                                                          "1分钟前"
+                                                  <div .app-menu-root.inline-flex.relative>
+                                                    <div .active:cursor-grabbing.app-menu-trigger.bg-[var(--sidebar-study-selected)].border.border-transparent.cursor-grab.cursor-pointer.duration-150.flex.gap-2.5.group.hover:bg-[var(--sidebar-study-selected)].items-center.min-h-[2.75rem].min-w-0.px-2.5.py-1.5.rounded-2xl.shrink-0.text-foreground.transition-[background-color,color,box-shadow].w-full aria-describedby="@4" aria-disabled="false" aria-expanded="false" aria-haspopup="menu" aria-roledescription="draggable" id="@6" role="button" tabindex="0">
+                                                      <div .flex-1.min-w-0.overflow-hidden>
+                                                        <div .break-words.flex-1.font-normal.leading-5.line-clamp-1.min-w-0.text-[16px].text-foreground.transition-colors>
+                                                          "高数错题 → Anki 卡片"
+                                                      <div .duration-150.flex.gap-1.items-center.justify-end.min-h-6.ml-2.opacity-100.shrink-0.transition-opacity>
+                                                        <span .tabular-nums.text-muted-foreground/80.text-ui>
+                                                          "3分钟前"
+                                                  <div .app-menu-root.inline-flex.relative>
+                                                    <div .active:cursor-grabbing.app-menu-trigger.border.border-transparent.cursor-grab.cursor-pointer.duration-150.flex.gap-2.5.group.hover:bg-[var(--sidebar-study-hover)].hover:text-foreground.items-center.min-h-[2.75rem].min-w-0.px-2.5.py-1.5.rounded-2xl.shrink-0.text-foreground/80.transition-[background-color,color,box-shadow].w-full aria-describedby="@4" aria-disabled="false" aria-expanded="false" aria-haspopup="menu" aria-roledescription="draggable" id="@7" role="button" tabindex="0">
+                                                      <div .flex-1.min-w-0.overflow-hidden>
+                                                        <div .flex-1.font-normal.leading-5.min-w-0.text-[16px].text-foreground/88.transition-colors.truncate>
+                                                          "数据并行训练 · 知识点出题"
+                                                      <div .duration-150.flex.gap-1.items-center.justify-end.min-h-6.ml-2.opacity-100.shrink-0.transition-opacity>
+                                                        <span .tabular-nums.text-muted-foreground/80.text-ui>
+                                                          "5分钟前"
+                                                  <div .app-menu-root.inline-flex.relative>
+                                                    <div .active:cursor-grabbing.app-menu-trigger.border.border-transparent.cursor-grab.cursor-pointer.duration-150.flex.gap-2.5.group.hover:bg-[var(--sidebar-study-hover)].hover:text-foreground.items-center.min-h-[2.75rem].min-w-0.px-2.5.py-1.5.rounded-2xl.shrink-0.text-foreground/80.transition-[background-color,color,box-shadow].w-full aria-describedby="@4" aria-disabled="false" aria-expanded="false" aria-haspopup="menu" aria-roledescription="draggable" id="@8" role="button" tabindex="0">
+                                                      <div .flex-1.min-w-0.overflow-hidden>
+                                                        <div .flex-1.font-normal.leading-5.min-w-0.text-[16px].text-foreground/88.transition-colors.truncate>
+                                                          "数据并行训练 · 双语阅读"
+                                                      <div .duration-150.flex.gap-1.items-center.justify-end.min-h-6.ml-2.opacity-100.shrink-0.transition-opacity>
+                                                        <span .tabular-nums.text-muted-foreground/80.text-ui>
+                                                          "6分钟前"
+                                                  <div .app-menu-root.inline-flex.relative>
+                                                    <div .active:cursor-grabbing.app-menu-trigger.border.border-transparent.cursor-grab.cursor-pointer.duration-150.flex.gap-2.5.group.hover:bg-[var(--sidebar-study-hover)].hover:text-foreground.items-center.min-h-[2.75rem].min-w-0.px-2.5.py-1.5.rounded-2xl.shrink-0.text-foreground/80.transition-[background-color,color,box-shadow].w-full aria-describedby="@4" aria-disabled="false" aria-expanded="false" aria-haspopup="menu" aria-roledescription="draggable" id="@9" role="button" tabindex="0">
+                                                      <div .flex-1.min-w-0.overflow-hidden>
+                                                        <div .flex-1.font-normal.leading-5.min-w-0.text-[16px].text-foreground/88.transition-colors.truncate>
+                                                          "《机器学习系统》第 3 章精读"
+                                                      <div .duration-150.flex.gap-1.items-center.justify-end.min-h-6.ml-2.opacity-100.shrink-0.transition-opacity>
+                                                        <span .tabular-nums.text-muted-foreground/80.text-ui>
+                                                          "18分钟前"
+                                                  <div .app-menu-root.inline-flex.relative>
+                                                    <div .active:cursor-grabbing.app-menu-trigger.border.border-transparent.cursor-grab.cursor-pointer.duration-150.flex.gap-2.5.group.hover:bg-[var(--sidebar-study-hover)].hover:text-foreground.items-center.min-h-[2.75rem].min-w-0.px-2.5.py-1.5.rounded-2xl.shrink-0.text-foreground/80.transition-[background-color,color,box-shadow].w-full aria-describedby="@4" aria-disabled="false" aria-expanded="false" aria-haspopup="menu" aria-roledescription="draggable" id="@10" role="button" tabindex="0">
+                                                      <div .flex-1.min-w-0.overflow-hidden>
+                                                        <div .flex-1.font-normal.leading-5.min-w-0.text-[16px].text-foreground/88.transition-colors.truncate>
+                                                          "间隔重复研究综述"
+                                                      <div .duration-150.flex.gap-1.items-center.justify-end.min-h-6.ml-2.opacity-100.shrink-0.transition-opacity>
+                                                        <span .tabular-nums.text-muted-foreground/80.text-ui>
+                                                          "47分钟前"
+                                      <section .space-y-0.5>
+                                        <button .!justify-start.!px-2.5.!py-1.5.!w-full.appearance-none.bg-transparent.border.border-transparent.desktop-shell-sidebar-row.desktop-shell-thread-row.focus-visible:ring-2.focus-visible:ring-ring.gap-2.5.group.inline-flex.items-center.min-h-[2.75rem].min-w-0.outline-none.overflow-hidden.select-none.shrink-0.text-left.text-muted-foreground.transition-colors.w-full.whitespace-nowrap type="button">
+                                          <span .[&_svg]:size-[18px].flex.items-center.justify-center.shrink-0.text-[color:var(--shell-navigation-foreground)].w-[18px]>
+                                            <svg viewBox="0 0 256 256" />
+                                          <span .desktop-shell-sidebar-row-title.flex-1.min-w-0.truncate>
+                                            "已归档会话"
+                                  <div id="@4">
+                                    "To pick up a draggable item, press the space bar. While dragging, use the arrow keys to move the item. Press space again…"
+                                  <div aria-atomic="true" aria-live="assertive" id="@11" role="status" />
+                        <div .os-scrollbar.os-scrollbar-auto-hide-hidden.os-scrollbar-cornerless.os-scrollbar-handle-interactive.os-scrollbar-horizontal.os-scrollbar-unusable.os-theme-deep-student>
+                          <div .os-scrollbar-track>
+                            <div .os-scrollbar-handle />
+                        <div .os-scrollbar.os-scrollbar-auto-hide-hidden.os-scrollbar-cornerless.os-scrollbar-handle-interactive.os-scrollbar-unusable.os-scrollbar-vertical.os-theme-deep-student>
+                          <div .os-scrollbar-track>
+                            <div .os-scrollbar-handle />
+                      <div .bg-[color:var(--shell-navigation-surface)].border-[color:var(--shell-navigation-border)].border-t.pb-[calc(0.25rem+var(--mobile-safe-area-bottom,0px))].pl-[calc(0.5rem+var(--mobile-safe-area-left,0px))].pt-1.px-2.shrink-0 data-mobile-drawer-launcher="true">
+                        <nav .gap-x-0.5.gap-y-0.grid.grid-cols-3 aria-label="导航" data-mobile-app-launcher data-mobile-shell="sidebar-nav">
+                          <button .bg-[color:hsl(var(--primary)/0.1)].flex.flex-row.focus-visible:ring-2.focus-visible:ring-ring.gap-1.5.items-center.leading-none.min-h-11.outline-none.px-1.5.rounded-md.text-[14px].text-[color:var(--shell-navigation-foreground)].text-[color:var(--shell-navigation-muted)].transition-colors aria-current="page" aria-label="会话" type="button">
+                            <svg .shrink-0.size-[25px] aria-hidden="true" viewBox="0 0 256 256" />
+                            <span .min-w-0.truncate>
+                              "会话"
+                          <button .flex.flex-row.focus-visible:ring-2.focus-visible:ring-ring.gap-1.5.items-center.leading-none.min-h-11.outline-none.px-1.5.rounded-md.text-[14px].text-[color:var(--shell-navigation-muted)].transition-colors aria-label="资源库" type="button">
+                            <svg .shrink-0.size-[25px] aria-hidden="true" viewBox="0 0 256 256" />
+                            <span .min-w-0.truncate>
+                              "资源"
+                          <button .flex.flex-row.focus-visible:ring-2.focus-visible:ring-ring.gap-1.5.items-center.leading-none.min-h-11.outline-none.px-1.5.rounded-md.text-[14px].text-[color:var(--shell-navigation-muted)].transition-colors aria-label="音视频" type="button">
+                            <svg .shrink-0.size-[25px] aria-hidden="true" viewBox="0 0 256 256" />
+                            <span .min-w-0.truncate>
+                              "音视频"
+                          <button .flex.flex-row.focus-visible:ring-2.focus-visible:ring-ring.gap-1.5.items-center.leading-none.min-h-11.outline-none.px-1.5.rounded-md.text-[14px].text-[color:var(--shell-navigation-muted)].transition-colors aria-label="待办" type="button">
+                            <svg .shrink-0.size-[25px] aria-hidden="true" viewBox="0 0 256 256" />
+                            <span .min-w-0.truncate>
+                              "待办"
+                          <button .flex.flex-row.focus-visible:ring-2.focus-visible:ring-ring.gap-1.5.items-center.leading-none.min-h-11.outline-none.px-1.5.rounded-md.text-[14px].text-[color:var(--shell-navigation-muted)].transition-colors aria-label="技能管理" type="button">
+                            <svg .shrink-0.size-[25px] aria-hidden="true" viewBox="0 0 256 256" />
+                            <span .min-w-0.truncate>
+                              "技能"
+                          <button .flex.flex-row.focus-visible:ring-2.focus-visible:ring-ring.gap-1.5.items-center.leading-none.min-h-11.outline-none.px-1.5.rounded-md.text-[14px].text-[color:var(--shell-navigation-muted)].transition-colors aria-label="闪卡" type="button">
+                            <svg .shrink-0.size-[25px] aria-hidden="true" viewBox="0 0 256 256" />
+                            <span .min-w-0.truncate>
+                              "闪卡"
+                          <button .flex.flex-row.focus-visible:ring-2.focus-visible:ring-ring.gap-1.5.items-center.leading-none.min-h-11.outline-none.px-1.5.rounded-md.text-[14px].text-[color:var(--shell-navigation-muted)].transition-colors aria-label="数据管理" type="button">
+                            <svg .shrink-0.size-[25px] viewBox="0 0 256 256" />
+                            <span .min-w-0.truncate>
+                              "数据"
+                    <div .bg-[color:var(--shell-workspace-panel)].flex.flex-col.flex-shrink-0.h-full.overflow-x-hidden.relative.z-[1]>
+                      <button .absolute.appearance-none.bg-[color:var(--overlay)].border-0.duration-[var(--panel-close-dur,350ms)].ease-[var(--panel-ease,cubic-bezier(0.22,1,0.36,1))].inset-0.motion-reduce:transition-none.p-0.transition-opacity aria-hidden="true" aria-label="关闭侧边栏" data-mobile-sidebar-mask="true" tabindex="-1" type="button" />
+                      <div .flex.flex-1.flex-col.min-h-0.overflow-hidden>
+                        <header .bg-transparent.border-b.border-transparent.duration-[var(--panel-close-dur,350ms)].ease-[var(--panel-ease,cubic-bezier(0.22,1,0.36,1))].flex.flex-shrink-0.gap-2.items-center.mobile-shell-header.motion-reduce:transition-none.px-3.relative.shadow-none.shrink-0.transition-opacity.w-full data-mobile-shell="header" data-tauri-drag-region="true">
+                          <nav .flex.items-center.lg:min-w-10.min-w-[var(--touch-target-size)].shrink-0 aria-label="导航" data-no-drag="true">
+                            <button .!rounded-full.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-[color:var(--shell-navigation-foreground)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.rounded-[var(--button-radius)].select-none.shell-icon-button.shrink-0.text-[color:var(--shell-navigation-muted)].text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-label="展开侧边栏" type="button">
+                              <svg viewBox="0 0 256 256" />
+                          <div .flex.flex-1.flex-col.items-center.justify-center.min-w-0.overflow-hidden>
+                            <h1 .font-semibold.max-w-full.text-[color:var(--shell-navigation-foreground)].text-md.truncate>
+                              "高数错题 → Anki 卡片"
+                          <div .flex.gap-1.items-center.justify-end.min-w-[var(--touch-target-size)].shrink-0 data-no-drag="true">
+                            <button .!rounded-full.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-[color:var(--shell-navigation-foreground)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.rounded-[var(--button-radius)].select-none.shell-icon-button.shrink-0.text-[color:var(--shell-navigation-muted)].text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-label="新建会话" title="新建会话" type="button">
+                              <svg viewBox="0 0 256 256" />
+                        <div .flex-1.min-h-0.overflow-hidden>
+                          <div .flex.flex-col.h-full.relative>
+                            <div .flex-1.min-h-0>
+                              <div .flex.flex-col.h-full.min-h-0.overflow-hidden.relative>
+                                <div .bg-[color:var(--shell-workspace-panel)].chat-v2.flex.flex-1.flex-col.h-full.min-h-0.overflow-hidden.relative>
+                                  <div .chat-thread-enter.flex-1.min-h-0.overflow-hidden.relative>
+                                    <div .h-full.relative>
+                                      <div .sr-only aria-atomic="true" aria-live="polite" role="status">
+                                        "收到新消息，共 2 条"
+                                      <div .h-full.min-h-0.min-w-0.relative data-native-scrollbars="false" data-orientation="vertical" data-overlayscrollbars="host" data-overlayscrollbars-initialize data-scroll-axes="vertical" data-slot="scroll-area">
+                                        <div .h-full.max-h-[inherit].min-h-0.min-w-0.overscroll-contain.w-full data-overlayscrollbars-viewport="scrollbarHidden overflowXHidden overflowYScroll" tabindex="-1">
+                                          <div aria-live="polite" aria-relevant="additions" role="log">
+                                            <div data-agent-entity="chat:msg_<id>_d9omi1_0" data-chat-message-id="msg_<id>_d9omi1_0">
+                                              <div .group.md:px-8.message.pt-6.px-4.py-4.relative.user>
+                                                <div .max-w-thread.mx-auto.w-full data-slot="thread-content-shell">
+                                                  <div .message-content.message-selectable-area.min-w-0>
+                                                    <div .chat-message-user.flex.flex-col.items-end.space-y-2>
+                                                      <div .user-message-bubble>
+                                                        <div .user-message-bubble__content>
+                                                          <div .block-renderer>
+                                                            <div .chat-message-body.chat-message-body--markdown>
+                                                              <div .streaming-block-renderer data-has-visible-content="true" data-stream-preset="flowtoken-direct" data-streaming="false">
+                                                                <div .streaming-blocks>
+                                                                  <div .stream-block data-active="false" data-block-type="paragraph" data-complete="true" data-flowtoken="false" data-motion-layer="block" data-new="false">
+                                                                    <div .markdown-content>
+                                                                      <p>
+                                                                        "这三道高数错题我拍了照片传上来了，帮我整理成 Anki 卡片，重点突出每道题的易错点"
+                                                    <div .flex.justify-end.mt-2>
+                                                      <div .flex.flex-col.gap-2.items-end.justify-end>
+                                                        <div .flex.flex-wrap.gap-2.justify-end>
+                                                          <button .bg-background.border.border-border/40.cursor-pointer.focus-visible:outline-none.focus-visible:ring-2.focus-visible:ring-primary/40.group.h-16.hover:bg-[var(--interactive-hover)].overflow-hidden.relative.rounded-xl.shadow-sm.shrink-0.transition-colors.w-16 aria-label="错题1·等价无穷小替换.png" title="错题1·等价无穷小替换.png" type="button">
+                                                            <img .h-full.object-cover.w-full alt="错题1·等价无穷小替换.png" src="blob:<url>" />
+                                                            <div .[@media(pointer:coarse)]:opacity-60.absolute.bg-black/20.flex.group-hover:opacity-100.inset-0.items-center.justify-center.opacity-0.transition-opacity>
+                                                              <svg .drop-shadow-md.text-white viewBox="0 0 256 256" />
+                                                          <button .bg-background.border.border-border/40.cursor-pointer.focus-visible:outline-none.focus-visible:ring-2.focus-visible:ring-primary/40.group.h-16.hover:bg-[var(--interactive-hover)].overflow-hidden.relative.rounded-xl.shadow-sm.shrink-0.transition-colors.w-16 aria-label="错题2·换元积分忘换限.png" title="错题2·换元积分忘换限.png" type="button">
+                                                            <img .h-full.object-cover.w-full alt="错题2·换元积分忘换限.png" src="blob:<url>" />
+                                                            <div .[@media(pointer:coarse)]:opacity-60.absolute.bg-black/20.flex.group-hover:opacity-100.inset-0.items-center.justify-center.opacity-0.transition-opacity>
+                                                              <svg .drop-shadow-md.text-white viewBox="0 0 256 256" />
+                                                          <button .bg-background.border.border-border/40.cursor-pointer.focus-visible:outline-none.focus-visible:ring-2.focus-visible:ring-primary/40.group.h-16.hover:bg-[var(--interactive-hover)].overflow-hidden.relative.rounded-xl.shadow-sm.shrink-0.transition-colors.w-16 aria-label="错题3·中值定理辅助函数.png" title="错题3·中值定理辅助函数.png" type="button">
+                                                            <img .h-full.object-cover.w-full alt="错题3·中值定理辅助函数.png" src="blob:<url>" />
+                                                            <div .[@media(pointer:coarse)]:opacity-60.absolute.bg-black/20.flex.group-hover:opacity-100.inset-0.items-center.justify-center.opacity-0.transition-opacity>
+                                                              <svg .drop-shadow-md.text-white viewBox="0 0 256 256" />
+                                                    <div .mt-3>
+                                                      <div .flex.gap-1.5.items-center.justify-end>
+                                                        <div .flex.gap-0.5.items-center>
+                                                          <div .flex.gap-0.5.items-center>
+                                                            <button .!h-9.!w-9.[&_svg]:h-[14px].[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[&_svg]:w-[14px].[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].after:-inset-1.after:absolute.after:content-[''].after:rounded-full.bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.relative.rounded-[var(--button-radius)].rounded-full.select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-label="复制" title="复制" type="button">
+                                                              <span .t-icon-swap data-state="a">
+                                                                <span .t-icon data-icon="a">
+                                                                  <svg .h-4.w-4 viewBox="0 0 256 256" />
+                                                                <span .t-icon data-icon="b">
+                                                                  <svg .h-4.text-success.w-4 viewBox="0 0 256 256" />
+                                                            <div .app-menu-root.inline-flex.relative>
+                                                              <button .!h-9.!w-9.[&_svg]:h-[14px].[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[&_svg]:w-[14px].[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].after:-inset-1.after:absolute.after:content-[''].after:rounded-full.app-menu-trigger.bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.relative.rounded-[var(--button-radius)].rounded-full.select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-expanded="false" aria-haspopup="menu" aria-label="更多" id="@12" title="更多" type="button">
+                                                                <svg .h-4.w-4 viewBox="0 0 256 256" />
+                                                          <span .flex.items-center.leading-none.text-caption.text-muted-foreground/45 title="2026/3/2 09:30:<ss>">
+                                                            "09:30"
+                                                    <div .chat-collapse aria-hidden="true" data-open="false" data-slot="message-touch-action-bar">
+                                                      <div .pointer-events-none>
+                                                        <div .bg-[color:var(--surface-root,hsl(var(--background)))].border.border-[color:var(--composer-panel-border,hsl(var(--border)))].flex.gap-1.items-stretch.mt-2.p-1.rounded-2xl.shadow-[var(--shadow-shell-soft)] aria-label="消息快捷操作" role="toolbar">
+                                                          <button .!px-2.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.flex-1.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-1.5.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].min-w-0.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="复制" tabindex="-1" type="button">
+                                                            <span .t-icon-swap data-state="a">
+                                                              <span .t-icon data-icon="a">
+                                                                <svg .h-4.w-4 viewBox="0 0 256 256" />
+                                                              <span .t-icon data-icon="b">
+                                                                <svg .h-4.text-success.w-4 viewBox="0 0 256 256" />
+                                                            <span>
+                                                              "复制"
+                                                          <button .!px-2.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.flex-1.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-1.5.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].min-w-0.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="编辑" tabindex="-1" type="button">
+                                                            <svg .h-4.w-4 viewBox="0 0 256 256" />
+                                                            <span>
+                                                              "编辑"
+                                                          <button .!px-2.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.flex-1.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-1.5.gap-2.h-[var(--touch-target-size)].hover:!text-destructive.hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].min-w-0.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="删除" aria-live="polite" tabindex="-1" type="button">
+                                                            <svg .h-4.w-4 viewBox="0 0 256 256" />
+                                                            <span>
+                                                              "删除"
+                                                          <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:!min-w-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-label="取消" tabindex="-1" title="取消" type="button">
+                                                            <svg .h-4.w-4 viewBox="0 0 256 256" />
+                                            <div .chat-msg-enter data-agent-entity="chat:msg_<id>_zpp8im_1" data-chat-message-id="msg_<id>_zpp8im_1">
+                                              <div .assistant.bg-background.group.md:px-8.message.px-4.py-4.relative>
+                                                <div .max-w-thread.mx-auto.w-full data-slot="thread-content-shell">
+                                                  <div .message-content.message-selectable-area.min-w-0>
+                                                    <div .space-y-2>
+                                                      <div .activity-timeline>
+                                                        <div .activity-timeline__node.flex.gap-1.5>
+                                                          <div .activity-timeline-icon-column.flex.items-center.justify-center.shrink-0>
+                                                            <div .h-5.inline-flex.items-center.justify-center.leading-none.w-5 aria-hidden="true">
+                                                              <svg .text-primary viewBox="0 0 256 256" />
+                                                          <div .flex-1.min-w-0>
+                                                            <div .flex.items-center.max-w-full.pb-0.5.thinking-summary-row.w-full>
+                                                              <button .!gap-1.5.!h-7.!justify-start.!leading-7.!min-h-0.!px-0.!py-0.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:after:-inset-y-2.[@media(pointer:coarse)]:after:absolute.[@media(pointer:coarse)]:after:content-[''].[@media(pointer:coarse)]:after:inset-x-0.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:relative.active:bg-[var(--button-plain-active-bg)].activity-timeline-summary.activity-timeline-thinking-trigger.bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].cursor-pointer.disabled:cursor-default.disabled:cursor-not-allowed.disabled:hover:!bg-transparent.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.focus-visible:text-foreground.font-medium.gap-2.group.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].rounded-[var(--radius-shell-control)].select-none.shrink-0.text-muted-foreground.text-ui.thinking-summary-trigger.transition-[background-color,border-color,color].transition-colors.ui-press-coarse.w-full.whitespace-nowrap aria-controls="@13" aria-expanded="false" type="button">
+                                                                <span .activity-timeline-summary>
+                                                                  "已用时 <n> 秒"
+                                                                <span .flex-shrink-0.group-hover:text-foreground/70.inline-flex.items-center.justify-center.text-muted-foreground/50 aria-hidden="true">
+                                                                  <svg viewBox="0 0 256 256" />
+                                                        <div .activity-timeline__node.flex.gap-1.5>
+                                                          <div .activity-timeline-icon-column.flex.items-center.justify-center.shrink-0>
+                                                            <div .h-5.inline-flex.items-center.justify-center.leading-none.w-5 aria-hidden="true">
+                                                              <span .tool-activity-sweep>
+                                                                <svg .text-muted-foreground viewBox="0 0 256 256" />
+                                                          <div .flex-1.min-w-0>
+                                                            <div .flex.flex-col.gap-1>
+                                                              <button .!gap-1.5.!h-7.!justify-start.!leading-7.!min-h-0.!px-0.!py-0.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:after:-inset-y-2.[@media(pointer:coarse)]:after:absolute.[@media(pointer:coarse)]:after:content-[''].[@media(pointer:coarse)]:after:inset-x-0.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:relative.active:bg-[var(--button-plain-active-bg)].activity-timeline-summary.activity-timeline-tool-trigger.bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-default.disabled:cursor-not-allowed.disabled:hover:text-muted-foreground.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:!bg-transparent.hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].max-w-full.min-w-0.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-fit.whitespace-nowrap aria-controls="@14" aria-expanded="false" type="button">
+                                                                <span .activity-timeline-tool-name.min-w-0.tool-activity-sweep>
+                                                                  <span .activity-timeline-tool-name.block.text-muted-foreground.truncate>
+                                                                    "统一搜索"
+                                                                <svg .flex-shrink-0.text-success viewBox="0 0 256 256" />
+                                                                <span .activity-timeline-status.text-success>
+                                                                  "执行完成"
+                                                                <span .activity-timeline-status.text-muted-foreground/70>
+                                                                  "<n>s"
+                                                      <div .block-renderer>
+                                                        <div .chat-message-body.chat-message-body--markdown>
+                                                          <div .streaming-block-renderer data-has-visible-content="true" data-stream-preset="flowtoken-direct" data-streaming="false">
+                                                            <div .streaming-blocks>
+                                                              <div .stream-block data-active="false" data-block-type="paragraph" data-complete="true" data-flowtoken="false" data-motion-layer="block" data-new="false">
+                                                                <div .markdown-content>
+                                                                  <p>
+                                                                    "三道题分别对应"
+                                                                    <strong>
+                                                                      "极限的展开阶数、积分换元的完整步骤、中值定理的辅助函数"
+                                                                    "。我对照了教材与错题笔记，将这三个主题拆成五张问答卡。"
+                                                              <div .stream-block data-active="false" data-block-type="heading" data-complete="true" data-flowtoken="false" data-motion-layer="block" data-new="false">
+                                                                <div .markdown-content>
+                                                                  <h3>
+                                                                    "从解题步骤找到复习重点"
+                                                              <div .stream-block data-active="false" data-block-type="list" data-complete="true" data-flowtoken="false" data-motion-layer="block" data-new="false">
+                                                                <div .markdown-content>
+                                                                  <ul>
+                                                                    <li>
+                                                                      <strong>
+                                                                        "极限"
+                                                                      "：展开 sin x 到三阶，保留相减后的首个非零项，再除以 x³ 得到 −1/6。"
+                                                                      <span .align-baseline.inline-flex data-citation-anchor="true">
+                                                                        <button .!h-5.!inline-flex.!min-w-[1.25rem].!px-1.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].bg-primary/10.border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-primary/20.hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.mx-0.5.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-primary.text-ui.text-xs.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap type="button">
+                                                                          "["
+                                                                          "1"
+                                                                          "]"
+                                                                    <li>
+                                                                      <strong>
+                                                                        "定积分"
+                                                                      "：令 u = cos x，同时写出上下限和 du；也可以用 sin²x = (1 − cos 2x)/2 求得 π/2。"
+                                                                      <span .align-baseline.inline-flex data-citation-anchor="true">
+                                                                        <button .!h-5.!inline-flex.!min-w-[1.25rem].!px-1.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].bg-primary/10.border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-primary/20.hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.mx-0.5.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-primary.text-ui.text-xs.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap type="button">
+                                                                          "["
+                                                                          "2"
+                                                                          "]"
+                                                                    <li>
+                                                                      <strong>
+                                                                        "中值定理"
+                                                                      "：先把目标整理为 F′(ξ) = 0，再构造 F(x) = f(x) − k(x − a)，核对端点值与可导条件。"
+                                                                      <span .align-baseline.inline-flex data-citation-anchor="true">
+                                                                        <button .!h-5.!inline-flex.!min-w-[1.25rem].!px-1.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].bg-primary/10.border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:bg-primary/20.hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.mx-0.5.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-primary.text-ui.text-xs.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap type="button">
+                                                                          "["
+                                                                          "3"
+                                                                          "]"
+                                                              <div .stream-block data-active="false" data-block-type="paragraph" data-complete="true" data-flowtoken="false" data-motion-layer="block" data-new="false">
+                                                                <div .markdown-content>
+                                                                  <p>
+                                                                    "接下来逐张生成卡片。你可以先看正面尝试回忆，再翻面核对推导。"
+                                                      <div .block-renderer>
+                                                        <div .chat-v2-anki-cards-block>
+                                                          <div>
+                                                            <div .chat-card3d-compact>
+                                                              <div .card-3d-preview-container tabindex="0">
+                                                                <div .card-3d-controls>
+                                                                  <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].control-btn.disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap title="播放" type="button">
+                                                                    <svg viewBox="0 0 256 256" />
+                                                                  <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].control-btn.disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap title="翻转卡片" type="button">
+                                                                    <svg viewBox="0 0 256 256" />
+                                                                  <div .card-counter>
+                                                                    "1"
+                                                                    "/"
+                                                                    "5"
+                                                                <div .card-3d-scene>
+                                                                  <div .card-3d-track>
+                                                                    <div .card-3d data-card-index="0">
+                                                                      <div .card-3d-inner>
+                                                                        <div .card-3d-face.card-3d-front>
+                                                                          <div .card-3d-content-wrapper>
+                                                                            <iframe title="card-preview" />
+                                                                        <div .card-3d-back.card-3d-face>
+                                                                          <div .card-3d-content-wrapper>
+                                                                            <iframe title="card-preview" />
+                                                                      <div .card-3d-shadow />
+                                                                    <div .card-3d data-card-index="1">
+                                                                      <div .card-3d-inner>
+                                                                        <div .card-3d-face.card-3d-front>
+                                                                          <div .card-3d-content-wrapper>
+                                                                            <iframe title="card-preview" />
+                                                                        <div .card-3d-back.card-3d-face>
+                                                                          <div .card-3d-content-wrapper>
+                                                                            <iframe title="card-preview" />
+                                                                      <div .card-3d-shadow />
+                                                                    <div .card-3d data-card-index="2">
+                                                                      <div .card-3d-inner>
+                                                                        <div .card-3d-face.card-3d-front>
+                                                                          <div .card-3d-content-wrapper>
+                                                                            <iframe title="card-preview" />
+                                                                        <div .card-3d-back.card-3d-face>
+                                                                          <div .card-3d-content-wrapper>
+                                                                            <iframe title="card-preview" />
+                                                                      <div .card-3d-shadow />
+                                                                    <div .card-3d data-card-index="3">
+                                                                      <div .card-3d-inner>
+                                                                        <div .card-3d-face.card-3d-front>
+                                                                          <div .card-3d-content-wrapper>
+                                                                            <iframe title="card-preview" />
+                                                                        <div .card-3d-back.card-3d-face>
+                                                                          <div .card-3d-content-wrapper>
+                                                                            <iframe title="card-preview" />
+                                                                      <div .card-3d-shadow />
+                                                                    <div .card-3d data-card-index="4">
+                                                                      <div .card-3d-inner>
+                                                                        <div .card-3d-face.card-3d-front>
+                                                                          <div .card-3d-content-wrapper>
+                                                                            <iframe title="card-preview" />
+                                                                        <div .card-3d-back.card-3d-face>
+                                                                          <div .card-3d-content-wrapper>
+                                                                            <iframe title="card-preview" />
+                                                                      <div .card-3d-shadow />
+                                                                <div .card-3d-navigation>
+                                                                  <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.nav-btn.nav-prev.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap type="button">
+                                                                    <svg viewBox="0 0 256 256" />
+                                                                  <div .nav-dots.scrollbar-none>
+                                                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active.active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.nav-dot.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-label="跳转到第 1 张卡片" type="button" />
+                                                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.nav-dot.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-label="跳转到第 2 张卡片" type="button" />
+                                                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.nav-dot.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-label="跳转到第 3 张卡片" type="button" />
+                                                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.nav-dot.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-label="跳转到第 4 张卡片" type="button" />
+                                                                    <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.nav-dot.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-label="跳转到第 5 张卡片" type="button" />
+                                                                  <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.nav-btn.nav-next.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap type="button">
+                                                                    <svg viewBox="0 0 256 256" />
+                                                                <div .card-3d-instructions>
+                                                                  <p>
+                                                                    "← → 或 A/D：切换 • F：翻面 • 空格或 P：播放/暂停 • 1-9：跳转 • Home/End：首/末张"
+                                                            <div .flex.gap-2.items-center.justify-between.min-w-0.mt-2>
+                                                              <div .min-w-0.text-muted-foreground.text-xs.truncate>
+                                                                "共 5 张卡片"
+                                                              <button .!min-h-10.!px-2.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.text-xs.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap type="button">
+                                                                "点击编辑"
+                                                                "→"
+                                                          <div .chatanki-bottom-actions>
+                                                            <div .bg-success/5.border.border-success/25.flex.flex-wrap.gap-x-2.5.gap-y-1.items-center.mt-2.pl-3.pr-1.5.py-1.5.rounded-lg.ui-rise-in data-testid="chatanki-completion-summary">
+                                                              <svg .flex-shrink-0.text-success viewBox="0 0 256 256" />
+                                                              <span .font-medium.text-foreground.text-xs>
+                                                                "已生成 5 张卡片"
+                                                              <span .text-muted-foreground.text-xs>
+                                                                "用时 <n> 秒"
+                                                              <span .flex.flex-shrink-0.gap-1.items-center.ml-auto>
+                                                                <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].min-h-8.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.text-xs.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap type="button">
+                                                                  <svg viewBox="0 0 256 256" />
+                                                                  "任务中心"
+                                                                <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].min-h-8.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.text-xs.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-busy="false" type="button">
+                                                                  <svg viewBox="0 0 256 256" />
+                                                                  "导出 APKG"
+                                                            <section .bg-muted/10.border.border-border/50.mt-2.overflow-hidden.px-3.py-2.rounded-lg aria-busy="false" aria-live="polite" data-testid="chatanki-progress">
+                                                              <div .flex.flex-col.gap-2.sm:flex-row.sm:items-center.sm:justify-between>
+                                                                <div .flex.gap-1.items-center.min-w-0.overflow-x-auto.scrollbar-none.sm:gap-2>
+                                                                  <div .flex.flex-shrink-0.gap-1.items-center.sm:gap-1.5>
+                                                                    <div .bg-success.border.border-success.flex.flex-shrink-0.h-4.items-center.justify-center.rounded-full.sm:h-5.sm:text-2xs.sm:w-5.text-2xs.text-white.w-4 data-testid="chatanki-progress-step-routing">
+                                                                      <svg .h-2.5.sm:h-3.sm:w-3.w-2.5 viewBox="0 0 256 256" />
+                                                                    <span .leading-none.text-success.text-xs.whitespace-nowrap>
+                                                                      "路由"
+                                                                  <div .bg-success/60.flex-shrink-0.h-px.mx-0.5.sm:mx-2.sm:w-6.w-3 aria-hidden="true" />
+                                                                  <div .flex.flex-shrink-0.gap-1.items-center.sm:gap-1.5>
+                                                                    <div .bg-success.border.border-success.flex.flex-shrink-0.h-4.items-center.justify-center.rounded-full.sm:h-5.sm:text-2xs.sm:w-5.text-2xs.text-white.w-4 data-testid="chatanki-progress-step-generating">
+                                                                      <svg .h-2.5.sm:h-3.sm:w-3.w-2.5 viewBox="0 0 256 256" />
+                                                                    <span .leading-none.text-success.text-xs.whitespace-nowrap>
+                                                                      "生成"
+                                                                  <div .bg-success/60.flex-shrink-0.h-px.mx-0.5.sm:mx-2.sm:w-6.w-3 aria-hidden="true" />
+                                                                  <div .flex.flex-shrink-0.gap-1.items-center.sm:gap-1.5>
+                                                                    <div .bg-success.border.border-success.flex.flex-shrink-0.h-4.items-center.justify-center.rounded-full.sm:h-5.sm:text-2xs.sm:w-5.text-2xs.text-white.w-4 data-testid="chatanki-progress-step-completed">
+                                                                      <svg .h-2.5.sm:h-3.sm:w-3.w-2.5 viewBox="0 0 256 256" />
+                                                                    <span .leading-none.text-success.text-xs.whitespace-nowrap>
+                                                                      "完成"
+                                                                <div .flex.flex-shrink-0.gap-2.items-center>
+                                                                  <div .bg-muted/10.bg-warning/10.border-warning/40.focus:outline-none.focus:ring-2.focus:ring-offset-2.focus:ring-offset-background.focus:ring-ring.font-medium.inline-flex.items-center.max-w-[180px].px-1.5.px-2.py-0.5.rounded.rounded-full.sm:max-w-[220px].text-muted-foreground.text-warning.text-xs.transition-colors.truncate.whitespace-nowrap data-shad-badge data-testid="chatanki-progress-anki-connect">
+                                                                    "AnkiConnect"
+                                                                    ":"
+                                                                    "未连接"
+                                                                  <button .!h-10.!w-10.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!h-11.[@media(pointer:coarse)]:!w-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.rounded-[var(--button-radius)].rounded-full.select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-label="刷新 AnkiConnect 状态" title="刷新 AnkiConnect 状态" type="button">
+                                                                    <svg .h-4.text-muted-foreground.w-4 viewBox="0 0 256 256" />
+                                                                  <span .flex-shrink-0.tabular-nums.text-muted-foreground.text-xs data-testid="chatanki-progress-percent">
+                                                                    "100"
+                                                                    "%"
+                                                                  <button .!h-8.!w-8.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].after:-inset-1.5.after:absolute.after:content-[''].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.relative.rounded-[var(--button-radius)].rounded-full.select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-expanded="true" aria-label="收起详情" title="收起详情" type="button">
+                                                                    <svg .duration-200.h-3.5.rotate-180.text-muted-foreground.transition-transform.w-3.5 viewBox="0 0 256 256" />
+                                                              <div .mt-2>
+                                                                <div .[&>div]:duration-500.[&>div]:ease-out.bg-muted/50.h-1.5.overflow-hidden.relative.rounded-full.w-full aria-valuemax="100" aria-valuemin="0" aria-valuenow="100" role="progressbar">
+                                                                  <div .bar.bg-primary.h-full.motion-reduce:transition-none.transition-[width] />
+                                                              <div .flex.flex-wrap.gap-1.5.items-center.mt-2.sm:gap-2.text-muted-foreground.text-xs>
+                                                                <span data-testid="chatanki-progress-metrics">
+                                                                  "卡片：5"
+                                                            <div .border-border/50.border-t.gap-2.grid.grid-cols-2.mt-3.pt-3.sm:flex.sm:flex-wrap>
+                                                              <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].min-h-10.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.sm:text-sm.text-base.text-muted-foreground.text-ui.text-xs.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap type="button">
+                                                                <svg viewBox="0 0 256 256" />
+                                                                "编辑"
+                                                              <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].min-h-10.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.sm:text-sm.text-base.text-muted-foreground.text-ui.text-xs.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap type="button">
+                                                                <svg viewBox="0 0 256 256" />
+                                                                "加入卡片库"
+                                                              <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].min-h-10.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.sm:text-sm.text-base.text-muted-foreground.text-ui.text-xs.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap disabled title="卡片生成完成并保存、取得真实 ID 后才能复习这批卡片" type="button">
+                                                                <svg viewBox="0 0 256 256" />
+                                                                "复习这批"
+                                                              <div .inline-flex.relative>
+                                                                <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height)].lg:text-ui.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].max-w-[180px].min-h-10.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x)].rounded-[var(--button-radius)].select-none.shrink-0.sm:text-sm.text-base.text-muted-foreground.text-ui.text-xs.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-expanded="false" aria-label="牌组" title="牌组" type="button">
+                                                                  <svg viewBox="0 0 256 256" />
+                                                                  <span .truncate>
+                                                                    "高等数学 · 错题本"
+                                                              <div .app-menu-root.inline-flex.relative>
+                                                                <button .!h-10.!w-10.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!h-11.[@media(pointer:coarse)]:!w-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].app-menu-trigger.bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.justify-self-end.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-expanded="false" aria-haspopup="menu" aria-label="更多卡片操作" id="@15" title="更多卡片操作" type="button">
+                                                                  <svg viewBox="0 0 256 256" />
+                                                      <div .block-renderer>
+                                                        <div .chat-message-body.chat-message-body--markdown>
+                                                          <div .streaming-block-renderer data-has-visible-content="true" data-stream-preset="flowtoken-direct" data-streaming="false">
+                                                            <div .streaming-blocks>
+                                                              <div .stream-block data-active="false" data-block-type="paragraph" data-complete="true" data-flowtoken="false" data-motion-layer="block" data-new="false">
+                                                                <div .markdown-content>
+                                                                  <p>
+                                                                    "五张卡片已准备好，牌组名称预填为"
+                                                                    <strong>
+                                                                      "「高等数学 · 错题本」"
+                                                                    "。"
+                                                              <div .stream-block data-active="false" data-block-type="paragraph" data-complete="true" data-flowtoken="false" data-motion-layer="block" data-new="false">
+                                                                <div .markdown-content>
+                                                                  <p>
+                                                                    "点击卡片可以翻面预览，也可以进入编辑调整题目与答案。检查内容后，点击「加入卡片库」完成收录。桌面版中的复习安排会依据卡片状态与实际作答记录生成。"
+                                                    <div .mt-3>
+                                                      <div .text-left.unified-source-panel data-testid="unified-source-panel">
+                                                        <div .usp-header>
+                                                          <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.usp-header-left.whitespace-nowrap aria-expanded="false" data-testid="btn-toggle-source-panel" type="button">
+                                                            <svg .panel-header-icon viewBox="0 0 256 256" />
+                                                            <span .usp-header-title>
+                                                              "3 个结果"
+                                                            <svg .usp-header-arrow viewBox="0 0 256 256" />
+                                                        <div .duration-300.ease-in-out.grid.grid-rows-[0fr].motion-reduce:transition-none.opacity-0.pointer-events-none.transition-all.usp-collapse-wrapper.w-full aria-hidden="true">
+                                                          <div .min-h-0.overflow-hidden>
+                                                            <div .usp-container>
+                                                              <div .relative.usp-body>
+                                                                <div .usp-category-pills role="tablist">
+                                                                  <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active.active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.usp-category-pill.whitespace-nowrap aria-pressed="true" type="button">
+                                                                    <span .usp-pill-icon>
+                                                                      <svg viewBox="0 0 256 256" />
+                                                                    <span .usp-pill-label>
+                                                                      "知识库"
+                                                                    <span .usp-pill-count>
+                                                                      "3"
+                                                                  <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].ml-auto.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.usp-expand-btn.whitespace-nowrap title="展开全部" type="button">
+                                                                    <svg viewBox="0 0 256 256" />
+                                                                    <span>
+                                                                      "展开全部"
+                                                                <div .relative.usp-sources-wrapper>
+                                                                  <button .!h-11.!w-11.-translate-y-1/2.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].absolute.active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].bg-background/90.border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.right-0.rounded-[var(--button-radius)].rounded-full.select-none.shadow-md.shrink-0.text-muted-foreground.text-ui.top-1/2.transition-[background-color,border-color,color].ui-press-coarse.usp-scroll-btn.usp-scroll-right.w-[var(--touch-target-size)].whitespace-nowrap.z-10 aria-label="向右滚动" type="button">
+                                                                    <svg viewBox="0 0 256 256" />
+                                                                  <div .h-full.min-h-0.min-w-0.py-1.relative.w-full data-native-scrollbars="false" data-orientation="horizontal" data-overlayscrollbars="host" data-overlayscrollbars-initialize data-scroll-axes="horizontal" data-slot="scroll-area">
+                                                                    <div .h-full.max-h-[inherit].min-h-0.min-w-0.w-full data-overlayscrollbars-viewport="scrollbarHidden overflowXScroll overflowYHidden" tabindex="-1">
+                                                                      <div .usp-carousel role="list">
+                                                                        <div .!p-2.flex-shrink-0.usp-card-in.usp-item-card.w-44 aria-controls="@16" aria-expanded="false" role="button" tabindex="0">
+                                                                          <div .flex.gap-1.5.items-center.mb-1>
+                                                                            <span .usp-item-badge.usp-item-badge-sm>
+                                                                              "1"
+                                                                            <span .shrink-0.usp-card-icon>
+                                                                              <svg viewBox="0 0 256 256" />
+                                                                            <span .font-medium.text-xs.truncate.usp-card-title>
+                                                                              "高等数学（第七版）上册.pdf"
+                                                                          <div .line-clamp-2.min-h-6.text-2xs.text-muted-foreground>
+                                                                            "……等价无穷小替换仅适用于乘除因子；对相减的项直接替换会破坏阶的一致性，典型反例即 sin x − x ~ −x³/6……"
+                                                                        <div .!p-2.flex-shrink-0.usp-card-in.usp-item-card.w-44 aria-controls="@16" aria-expanded="false" role="button" tabindex="0">
+                                                                          <div .flex.gap-1.5.items-center.mb-1>
+                                                                            <span .usp-item-badge.usp-item-badge-sm>
+                                                                              "2"
+                                                                            <span .shrink-0.usp-card-icon>
+                                                                              <svg viewBox="0 0 256 256" />
+                                                                            <span .font-medium.text-xs.truncate.usp-card-title>
+                                                                              "高数错题本（8 月）.md"
+                                                                          <div .line-clamp-2.min-h-6.text-2xs.text-muted-foreground>
+                                                                            "……积分换元需要同步写出变量、上下限与微分的变化；∫₀^π sin²x dx 也可用降幂公式求得 π/2……"
+                                                                        <div .!p-2.flex-shrink-0.usp-card-in.usp-item-card.w-44 aria-controls="@16" aria-expanded="false" role="button" tabindex="0">
+                                                                          <div .flex.gap-1.5.items-center.mb-1>
+                                                                            <span .usp-item-badge.usp-item-badge-sm>
+                                                                              "3"
+                                                                            <span .shrink-0.usp-card-icon>
+                                                                              <svg viewBox="0 0 256 256" />
+                                                                            <span .font-medium.text-xs.truncate.usp-card-title>
+                                                                              "中值定理证明套路.md"
+                                                                          <div .line-clamp-2.min-h-6.text-2xs.text-muted-foreground>
+                                                                            "……结论形如 f′(ξ) = k 时，构造 F(x) = f(x) − k(x−a)，验证端点等值后落罗尔定理……"
+                                                                    <div .os-scrollbar.os-scrollbar-auto-hide-hidden.os-scrollbar-cornerless.os-scrollbar-handle-interactive.os-scrollbar-horizontal.os-scrollbar-visible.os-theme-deep-student>
+                                                                      <div .os-scrollbar-track>
+                                                                        <div .os-scrollbar-handle />
+                                                                    <div .os-scrollbar.os-scrollbar-auto-hide-hidden.os-scrollbar-cornerless.os-scrollbar-handle-interactive.os-scrollbar-unusable.os-scrollbar-vertical.os-theme-deep-student>
+                                                                      <div .os-scrollbar-track>
+                                                                        <div .os-scrollbar-handle />
+                                                    <div .mt-3>
+                                                      <div .flex.gap-1.5.items-center.justify-between>
+                                                        <div .flex.flex-shrink-0.gap-1.items-center>
+                                                          <span .flex.items-center.leading-none.text-caption.text-muted-foreground/45.whitespace-nowrap title="2026/3/2 09:30:<ss>">
+                                                            "09:30"
+                                                        <div .flex.gap-0.5.items-center>
+                                                          <div .flex.gap-0.5.items-center>
+                                                            <button .!h-9.!w-9.[&_svg]:h-[14px].[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[&_svg]:w-[14px].[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].after:-inset-1.after:absolute.after:content-[''].after:rounded-full.bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.relative.rounded-[var(--button-radius)].rounded-full.select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-label="复制" title="复制" type="button">
+                                                              <span .t-icon-swap data-state="a">
+                                                                <span .t-icon data-icon="a">
+                                                                  <svg .h-4.w-4 viewBox="0 0 256 256" />
+                                                                <span .t-icon data-icon="b">
+                                                                  <svg .h-4.text-success.w-4 viewBox="0 0 256 256" />
+                                                            <div .app-menu-root.inline-flex.relative>
+                                                              <button .!h-9.!w-9.[&_svg]:h-[14px].[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[&_svg]:w-[14px].[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].after:-inset-1.after:absolute.after:content-[''].after:rounded-full.app-menu-trigger.bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.relative.rounded-[var(--button-radius)].rounded-full.select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-expanded="false" aria-haspopup="menu" aria-label="更多" id="@17" title="更多" type="button">
+                                                                <svg .h-4.w-4 viewBox="0 0 256 256" />
+                                                    <div .chat-collapse aria-hidden="true" data-open="false" data-slot="message-touch-action-bar">
+                                                      <div .pointer-events-none>
+                                                        <div .bg-[color:var(--surface-root,hsl(var(--background)))].border.border-[color:var(--composer-panel-border,hsl(var(--border)))].flex.gap-1.items-stretch.mt-2.p-1.rounded-2xl.shadow-[var(--shadow-shell-soft)] aria-label="消息快捷操作" role="toolbar">
+                                                          <button .!px-2.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.flex-1.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-1.5.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].min-w-0.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="复制" tabindex="-1" type="button">
+                                                            <span .t-icon-swap data-state="a">
+                                                              <span .t-icon data-icon="a">
+                                                                <svg .h-4.w-4 viewBox="0 0 256 256" />
+                                                              <span .t-icon data-icon="b">
+                                                                <svg .h-4.text-success.w-4 viewBox="0 0 256 256" />
+                                                            <span>
+                                                              "复制"
+                                                          <button .!px-2.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.flex-1.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-1.5.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].min-w-0.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="重试" tabindex="-1" type="button">
+                                                            <svg .h-4.w-4 viewBox="0 0 256 256" />
+                                                            <span>
+                                                              "重试"
+                                                          <button .!px-2.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.flex-1.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-1.5.gap-2.h-[var(--touch-target-size)].hover:!text-destructive.hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].min-w-0.motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-label="删除" aria-live="polite" tabindex="-1" type="button">
+                                                            <svg .h-4.w-4 viewBox="0 0 256 256" />
+                                                            <span>
+                                                              "删除"
+                                                          <button .[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!min-h-11.[@media(pointer:coarse)]:!min-w-11.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.w-[var(--touch-target-size)].whitespace-nowrap aria-label="取消" tabindex="-1" title="取消" type="button">
+                                                            <svg .h-4.w-4 viewBox="0 0 256 256" />
+                                        <div .os-scrollbar.os-scrollbar-auto-hide-hidden.os-scrollbar-cornerless.os-scrollbar-handle-interactive.os-scrollbar-horizontal.os-scrollbar-unusable.os-theme-deep-student>
+                                          <div .os-scrollbar-track>
+                                            <div .os-scrollbar-handle />
+                                        <div .os-scrollbar.os-scrollbar-auto-hide-hidden.os-scrollbar-cornerless.os-scrollbar-handle-interactive.os-scrollbar-vertical.os-scrollbar-visible.os-theme-deep-student>
+                                          <div .os-scrollbar-track>
+                                            <div .os-scrollbar-handle />
+                                      <div .absolute.bottom-2.inset-x-0.md:bottom-3.md:px-8.pointer-events-none.px-4>
+                                        <div .max-w-thread.mx-auto.overflow-visible.pointer-events-none.w-full data-slot="thread-content-shell">
+                                          <div .ml-auto.t-panel-slide.w-fit aria-hidden="true" data-open="false">
+                                            <button .active:bg-[color:var(--button-utility-active)].after:-inset-1.after:absolute.after:content-[''].after:rounded-full.bg-[color:var(--button-utility-surface)].border.border-[color:var(--button-utility-border)].cursor-pointer.duration-150.flex.focus-visible:ring-2.focus-visible:ring-primary/30.focus:outline-none.h-10.hover:bg-[color:var(--button-utility-hover)].hover:border-[color:var(--button-utility-border)].hover:text-[color:var(--button-utility-foreground)].items-center.justify-center.ml-auto.pointer-events-auto.relative.rounded-full.text-[color:var(--button-utility-foreground)].transition-colors.w-10 aria-label="回到底部" data-slot="message-list-scroll-to-bottom" tabindex="-1" title="回到底部" type="button">
+                                              <svg viewBox="0 0 256 256" />
+                                  <div .flex-shrink-0.md:px-8.pb-0.px-4.w-full>
+                                    <div .max-w-[var(--chat-thread-max-w)].mx-auto>
+                                      <div .bg-transparent.duration-200.ease-out.flex.gap-2.h-7.hover:bg-[color:var(--interactive-hover)].items-center.px-2.5.rounded-[var(--radius-shell-control)].transition-all.w-fit>
+                                        <button .!bg-transparent.!border-none.!font-medium.!gap-1.5.!h-auto.!p-0.5.!shadow-none.!text-[color:var(--text-secondary)].!text-xs.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:after:-inset-x-2.[@media(pointer:coarse)]:after:-inset-y-3.5.[@media(pointer:coarse)]:after:absolute.[@media(pointer:coarse)]:after:content-[''].[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-[var(--touch-target-size)].hover:!text-[color:var(--text-primary)].hover:bg-[var(--button-plain-hover-bg)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-height-sm)].lg:text-xs.max-lg:[&_svg]:h-[18px].max-lg:[&_svg]:w-[18px].motion-reduce:transition-none.outline-none.px-[var(--button-padding-x-sm)].relative.rounded-[var(--button-radius)].select-none.shrink-0.text-muted-foreground.text-ui.transition-[background-color,border-color,color].ui-press-coarse.whitespace-nowrap aria-expanded="false" type="button">
+                                          <svg .text-[color:hsl(var(--primary))] viewBox="0 0 256 256" />
+                                          <span .max-w-[180px].truncate>
+                                            "产物 1"
+                                          <svg .text-[color:var(--text-muted)] viewBox="0 0 256 256" />
+                                  <div .chat-composer-motion-frame.chat-composer-motion-frame--docked>
+                                    <div .w-full>
+                                      <div .md:px-8.px-4.w-full>
+                                        <div .max-w-thread.mx-auto.w-full data-slot="thread-content-shell" />
+                                      <div .duration-500.ease-out.flex-shrink-0.isolate.md:pb-4.md:px-8.pt-2.5.px-4.relative.transition-[padding,background-color].unified-input-docked.w-full.z-[100] data-testid="input-bar-v2-root">
+                                        <div .max-w-thread.mx-auto.w-full data-slot="thread-content-shell">
+                                          <div .bg-[color:var(--surface-root)].border.border-[color:var(--composer-panel-border)].duration-150.ease-out.focus-within:shadow-[0_14px_28px_hsl(var(--shadow-base)/0.07)].px-3.py-2.5.relative.rounded-[22px].shadow-[0_10px_24px_hsl(var(--shadow-base)/0.05)].transition-[background-color,border-color,box-shadow].z-[200] data-composer-panel-anchor="true">
+                                            <div .mb-2.relative>
+                                              <div .overflow-y-hidden.relative.w-full>
+                                                <textarea .[@media(pointer:coarse)]:text-[16px].bg-transparent.border-0.focus:ring-0.leading-relaxed.outline-none.overflow-hidden.placeholder:text-muted-foreground/70.py-1.resize-none.text-foreground.text-md.w-full aria-label="请输入问题..." data-testid="input-bar-v2-textarea" placeholder="请输入问题..." />
+                                              <div .-z-50.[@media(pointer:coarse)]:text-[16px].absolute.break-words.invisible.leading-relaxed.left-0.overflow-hidden.text-md.top-0.whitespace-pre-wrap aria-hidden="true">
+                                                "​"
+                                            <div .flex.gap-2.items-center.justify-between>
+                                              <div .flex.flex-1.gap-1.5.items-center.min-w-0.overflow-x-auto.pr-2.scrollbar-none>
+                                                <div .flex.gap-1.items-center>
+                                                  <div .app-menu-root.inline-flex.relative>
+                                                    <span .app-menu-trigger.inline-flex.rounded-[var(--radius-shell-control)] aria-expanded="false" aria-haspopup="menu" id="@18">
+                                                      <button .!rounded-full.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].[@media(pointer:coarse)]:min-w-[var(--touch-target-size)].active:bg-[color:var(--button-utility-active)].active:bg-[var(--button-plain-active-bg)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].disabled:cursor-not-allowed.disabled:opacity-40.disabled:opacity-50.disabled:opacity-60.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-9.h-[var(--touch-target-size)].hover:bg-[color:var(--button-utility-hover)].hover:bg-[var(--button-plain-hover-bg)].hover:text-[color:var(--text-primary)].hover:text-foreground.inline-flex.items-center.justify-center.leading-none.lg:h-[var(--button-icon-size)].lg:w-[var(--button-icon-size)].max-lg:[&_svg]:h-5.max-lg:[&_svg]:w-5.motion-reduce:transition-none.outline-none.p-0.relative.rounded-[var(--button-radius)].rounded-[var(--radius-shell-control)].select-none.shrink-0.text-[color:var(--button-utility-foreground)].text-muted-foreground.text-ui.transition-[background-color,border-color,color].transition-colors.ui-press-coarse.w-9.w-[var(--touch-target-size)].whitespace-nowrap aria-expanded="false" aria-label="添加与会话选项" data-testid="btn-toggle-attachments" type="button">
+                                                        <svg .duration-[var(--dropdown-close-dur,150ms)].transition-transform viewBox="0 0 256 256" />
+                                              <div .flex.flex-shrink-0.gap-2.items-center>
+                                                <span .[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].font-semibold.h-8.inline-flex.items-center.leading-none.max-w-[8rem].min-w-0.px-1.relative.rounded-[var(--radius-shell-control)].shrink-0.text-[color:var(--text-primary)].text-ui data-testid="thinking-runtime-control">
+                                                  <div .app-menu-root.inline-flex.relative>
+                                                    <button .[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].app-menu-trigger.focus-visible:ring-2.focus-visible:ring-[color:var(--ring)].gap-1.h-7.inline-flex.items-center.min-w-0.outline-none.px-1.rounded-md.text-inherit.transition-colors aria-expanded="false" aria-haspopup="menu" aria-label="选择推理深度" data-testid="thinking-runtime-menu-trigger" id="@19" title="模型: DeepSeek / deepseek-v4 · 推理: 高" type="button">
+                                                      <div .opacity-90.shrink-0.text-[color:var(--text-primary)]>
+                                                        <svg viewBox="0 0 24 24" />
+                                                      <span .inline-block.opacity-70.relative.text-[color:var(--text-muted)].text-left.whitespace-nowrap data-testid="thinking-runtime-state-label">
+                                                        <span .inline-block.t-resize.whitespace-nowrap>
+                                                          <span .t-text-swap>
+                                                            "高"
+                                                        <span .absolute.invisible.left-0.pointer-events-none.top-0.whitespace-nowrap aria-hidden="true">
+                                                          "高"
+                                                      <svg .opacity-55.shrink-0 viewBox="0 0 256 256" />
+                                                <button .[@media(pointer:coarse)]:min-h-[var(--touch-target-size)].bg-[var(--button-plain-bg)].border.border-[color:var(--button-plain-border)].focus-visible:outline-none.focus-visible:ring-2.focus-visible:ring-[color:var(--ring)].font-medium.gap-2.h-8.hover:bg-[var(--button-plain-hover-bg)].hover:text-[color:var(--text-primary)].inline-flex.items-center.motion-reduce:transition-none.px-2.5.rounded-full.text-[color:var(--button-utility-foreground)].text-sm.transition-colors aria-label="语音输入" data-phase="idle" title="开始语音输入 · ⌘⇧space" type="button">
+                                                  <svg viewBox="0 0 256 256" />
+                                                <span .inline-flex.relative>
+                                                  <button .!bg-muted.!border-transparent.!rounded-full.!text-muted-foreground.[&_svg]:pointer-events-none.[&_svg]:shrink-0.[&_svg]:text-inherit.[@media(pointer:coarse)]:!h-[var(--touch-target-size)].[@media(pointer:coarse)]:!w-[var(--touch-target-size)].active:!bg-muted/70.border.disabled:opacity-50.disabled:pointer-events-none.duration-150.ease-out.focus-visible:ring-2.focus-visible:ring-ring.font-medium.gap-2.h-11.h-[var(--button-icon-size)].hover:!bg-muted/80.inline-flex.items-center.justify-center.leading-none.md:h-[var(--button-icon-size)].md:w-[var(--button-icon-size)].motion-reduce:transition-none.outline-none.ring-offset-background.rounded-[var(--button-radius)].select-none.shrink-0.text-ui.tracking-[0.01em].transition-[background-color,border-color,color,box-shadow].w-11.w-[var(--button-icon-size)].whitespace-nowrap aria-label="发送消息" data-testid="btn-send" disabled type="button">
+                                                    <svg viewBox="0 0 256 256" />
+                                                  <button .absolute.bg-transparent.cursor-not-allowed.inset-0.rounded-full aria-label="输入内容或添加附件后即可发送" data-testid="btn-send-disabled-hint" type="button" />
+                                        <div>
+                                          <input .hidden type="file" />
+                                          <input .hidden type="file" />
+                    <div .bg-background.flex.flex-col aria-hidden="true" inert>
+                      <div .flex-1.min-h-0.overflow-hidden>
+                        <div .flex.flex-col.h-full.study-shell-panel>
+                          <div .flex.h-full.min-h-0.min-w-0.overflow-hidden.relative.study-shell-sidebar-frame tabindex="-1">
+                            <div .flex.flex-1.flex-col.min-h-0.min-w-0.relative.unified-drag-drop-zone data-dragging="false" data-processing="false" data-zone-id="learning-hub-finder">
+                              <div .bg-background.flex.flex-1.flex-col.items-center.justify-center.px-4.select-none>
+                                <div .mb-5>
+                                  <svg .text-muted-foreground/40 viewBox="0 0 256 256" />
+                                <p .font-medium.mb-1.text-foreground/80.text-md>
+                                  "此文件夹为空"
+                                <p .max-w-[240px].text-center.text-muted-foreground/60.text-ui>
+                                  "点击下方「新建」"
+    <div .notification-container aria-label="通知" role="region" />
+  <div id="@20" />
+  <div id="@21" />

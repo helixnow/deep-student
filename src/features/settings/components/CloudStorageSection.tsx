@@ -18,6 +18,7 @@ import { Switch } from '@/components/ui/shad/Switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/shad/Tabs';
 import { DsAlertDialog } from '@/components/ui/DsDialog';
 import { ApiKeyField } from './ApiKeyField';
+import { GroupTitle } from './settingsTabPrimitives';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
@@ -34,6 +35,7 @@ import {
   localizeCloudStorageError,
 } from './data-governance/localizeCloudError';
 import { TECHNICAL_INPUT_PROPS } from '@/components/ui/shad/technicalInputProps';
+import { DevicePairingSection } from './DevicePairingSection';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
@@ -134,6 +136,8 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   onConfigChanged,
 }) => {
   const { t } = useTranslation(['cloudStorage', 'common']);
+  const [pairingRevision, setPairingRevision] = useState(0);
+  const onPairingApplied = () => { setPairingRevision(value => value + 1); onConfigChanged?.(); };
   const { enterMaintenanceMode, requireMaintenanceRestart, exitMaintenanceMode } = useSystemStatusStore(
     useShallow((state) => ({
       enterMaintenanceMode: state.enterMaintenanceMode,
@@ -177,6 +181,8 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   const [showSecretKey, setShowSecretKey] = useState(false);
   const [showFtpPassword, setShowFtpPassword] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
   const [connectionStatus, setConnectionStatus] = useState<'unknown' | 'connected' | 'failed'>('unknown');
   // 三态配置状态机（前端认知）：'draft' = 表单内容尚未发布（含已测试但未
   // 发布），'published' = 表单与后端已发布配置一致。草稿测试的成功/失败都
@@ -184,6 +190,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   const [configPhase, setConfigPhase] = useState<'draft' | 'published'>('draft');
   // 后端已发布配置回填表单时跳过一次「标记为草稿」，hydration 不是用户编辑
   const hydratingFormRef = useRef(true);
+  const formRevisionRef = useRef(0);
   const [secureStoreIssue, setSecureStoreIssue] = useState<string | null>(null);
   const [credentialStatus, setCredentialStatus] = useState<cloudApi.CloudStorageCredentialStatus>({
     webdavPasswordConfigured: false,
@@ -286,6 +293,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   // 任何表单编辑都把前端认知回退为「未测试的草稿」：后端已发布配置不受
   // 影响，但陈旧的「已连接」测试结论不能继续代表编辑后的表单内容。
   useEffect(() => {
+    formRevisionRef.current += 1;
     if (hydratingFormRef.current) {
       hydratingFormRef.current = false;
       return;
@@ -320,6 +328,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   // 加载保存的配置 & 检测 S3 是否启用
   useEffect(() => {
     let active = true;
+    const loadRevision = formRevisionRef.current;
     const loadConfig = async () => {
       let loadedFtpConfig = false;
       // 检测 S3 feature 是否启用
@@ -330,7 +339,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       // only after an explicit `configured: false`, then performs one migration.
       try {
         const config = await cloudApi.resolveCloudStorageConfig();
-        if (config && active) {
+        if (config && active && loadRevision === formRevisionRef.current) {
           // 后端已发布配置回填表单：这不是用户编辑，跳过一次草稿标记，
           // 并把前端认知置为「已发布」。
           hydratingFormRef.current = true;
@@ -352,7 +361,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
           }
           if (config.root) setRoot(config.root);
           setAllowInsecure(config.allowInsecure ?? false);
-        } else if (active) {
+        } else if (active && loadRevision === formRevisionRef.current) {
           setHasStoredFtpConfig(false);
           setAllowInsecure(false);
         }
@@ -396,7 +405,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     return () => {
       active = false;
     };
-  }, [localizeCloudError, markSecureStoreIssue, t]);
+  }, [localizeCloudError, markSecureStoreIssue, t, pairingRevision]);
 
   // 构建配置对象
   const buildConfig = useCallback((
@@ -461,6 +470,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     allowInsecureOverride = false,
     acceptPreexistingShortPassword = false,
   ) => {
+    if (savingRef.current) return;
     if (
       !acceptPreexistingShortPassword
       && isExplicitCloudEncryptionPasswordTooShort(encryptionPassword)
@@ -470,51 +480,63 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       return;
     }
 
-    const config = buildConfig(allowInsecureOverride);
-
-    let published: cloudApi.CloudConfigPublishResponse;
+    savingRef.current = true;
+    setSaving(true);
+    const savedRevision = formRevisionRef.current;
     try {
-      published = await cloudApi.publishCloudConfig(config, buildFormCredentials(), {
-        encryptionPasswordIsPreexisting: acceptPreexistingShortPassword,
-      });
-    } catch (e: unknown) {
-      console.error('Failed to publish cloud configuration:', e);
-      // 发布失败即整体失败：旧凭据与旧配置仍然生效，表单草稿原样保留。
-      // SECURE_STORE_* 给可行动的密钥库提示，其余按稳定 code 本地化。
-      const secureMessage = markSecureStoreIssue(e, 'write');
-      showGlobalNotification(
-        'error',
-        `${secureMessage ?? t('cloudStorage:messages.configPublishFailed')}: ${localizeCloudError(e)}`,
-      );
-      return;
-    }
+      const config = buildConfig(allowInsecureOverride);
 
-    setSecureStoreIssue(null);
-    setAllowInsecure(published.config.allowInsecure ?? false);
-    // 仅 UI 缓存；只有发布成功后才允许写，后端 SSOT 为准。
-    localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(published.config));
-    localStorage.setItem(cloudApi.CLOUD_STORAGE_SSOT_MIGRATED_STORAGE_KEY, '1');
-    setConfigPhase('published');
-    showGlobalNotification('success', t('cloudStorage:messages.configSaved'));
-    onConfigChanged?.();
+      let published: cloudApi.CloudConfigPublishResponse;
+      try {
+        published = await cloudApi.publishCloudConfig(config, buildFormCredentials(), {
+          encryptionPasswordIsPreexisting: acceptPreexistingShortPassword,
+        });
+      } catch (e: unknown) {
+        console.error('Failed to publish cloud configuration:', e);
+        // 发布失败即整体失败：旧凭据与旧配置仍然生效，表单草稿原样保留。
+        // SECURE_STORE_* 给可行动的密钥库提示，其余按稳定 code 本地化。
+        const secureMessage = markSecureStoreIssue(e, 'write');
+        showGlobalNotification(
+          'error',
+          `${secureMessage ?? t('cloudStorage:messages.configPublishFailed')}: ${localizeCloudError(e)}`,
+        );
+        return;
+      }
 
-    // 凭据存在旗标经只读接口刷新（secret 值不回传 IPC）；刷新失败不影响
-    // 发布结果，仅保留旧徽标。
-    try {
-      setCredentialStatus(await cloudApi.getCredentialStatus());
-    } catch (e: unknown) {
-      console.warn('Failed to refresh credential status after publish:', e);
-    }
+      setSecureStoreIssue(null);
+      // 发布的是请求发出时的快照，不能把等待期间的新编辑标为已发布。
+      if (savedRevision === formRevisionRef.current) {
+        setAllowInsecure(published.config.allow_insecure ?? false);
+        setConfigPhase('published');
+      }
+      // 仅 UI 缓存；只有发布成功后才允许写，后端 SSOT 为准。
+      localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(published.config));
+      localStorage.setItem(cloudApi.CLOUD_STORAGE_SSOT_MIGRATED_STORAGE_KEY, '1');
+      showGlobalNotification('success', t('cloudStorage:messages.configSaved'));
+      onConfigChanged?.();
 
-    // 发布成功后再刷新已发布配置的状态与版本列表；刷新失败只影响展示，
-    // 不影响发布结果。
-    try {
-      const status = await cloudApi.getSyncStatus(config);
-      setSyncStatus(status);
-      const versionList = await cloudApi.listVersions(config);
-      setVersions(versionList);
-    } catch (e: unknown) {
-      console.warn('Failed to refresh cloud status after publish:', e);
+      // 凭据存在旗标经只读接口刷新（secret 值不回传 IPC）；刷新失败不影响
+      // 发布结果，仅保留旧徽标。
+      try {
+        setCredentialStatus(await cloudApi.getCredentialStatus());
+      } catch (e: unknown) {
+        console.warn('Failed to refresh credential status after publish:', e);
+      }
+
+      // 发布成功后再刷新已发布配置的状态与版本列表；刷新失败只影响展示，
+      // 不影响发布结果。
+      try {
+        const status = await cloudApi.getSyncStatus(config);
+        if (savedRevision !== formRevisionRef.current) return;
+        setSyncStatus(status);
+        const versionList = await cloudApi.listVersions(config);
+        if (savedRevision === formRevisionRef.current) setVersions(versionList);
+      } catch (e: unknown) {
+        console.warn('Failed to refresh cloud status after publish:', e);
+      }
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
     }
   }, [buildConfig, buildFormCredentials, encryptionPassword, localizeCloudError, markSecureStoreIssue, t, onConfigChanged]);
 
@@ -577,16 +599,19 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
 
     setTesting(true);
     setConnectionStatus('unknown');
+    const testedRevision = formRevisionRef.current;
     try {
       const config = buildConfig(allowInsecureOverride);
       await cloudApi.testConnectionDraft(config, buildFormCredentials(), {
         encryptionPasswordIsPreexisting: acceptPreexistingShortPassword,
       });
+      if (testedRevision !== formRevisionRef.current) return;
       // 测试成功也仍是「已测试的草稿」：不发布；状态/版本等「已发布」视图
       // 留到发布成功后再刷新，避免草稿结论与已发布数据混在一起。
       setConnectionStatus('connected');
       showGlobalNotification('success', t('cloudStorage:messages.connectionSuccess'));
     } catch (e: unknown) {
+      if (testedRevision !== formRevisionRef.current) return;
       setConnectionStatus('failed');
       // SECURE_STORE_*（后端在测试末尾只读探测 active generation 失败）
       // 优先给可行动提示，其余按稳定 code 本地化。草稿测试不回填凭据。
@@ -1301,10 +1326,10 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
           variant="ghost"
           size="sm"
           onClick={() => setProvider('webdav')}
-          className={`relative !h-auto !justify-start flex-col items-start gap-1 !rounded-lg border-2 !p-3 text-left ${
+          className={`relative !h-auto !justify-start flex-col items-start gap-1 !rounded-xl border !p-3 text-left ${
             provider === 'webdav'
-              ? 'border-primary bg-primary/5'
-              : 'border-border bg-transparent'
+              ? 'border-primary/50 bg-primary/5'
+              : 'border-border/40 bg-background/60'
           }`}
         >
           {provider === 'webdav' && (
@@ -1322,12 +1347,12 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
           size="sm"
           onClick={() => s3Enabled !== false && setProvider('s3')}
           disabled={s3Enabled === false}
-          className={`relative !h-auto !justify-start flex-col items-start gap-1 !rounded-lg border-2 !p-3 text-left ${
+          className={`relative !h-auto !justify-start flex-col items-start gap-1 !rounded-xl border !p-3 text-left ${
             s3Enabled === false
-              ? 'opacity-50 border-border'
+              ? 'opacity-50 border-border/40'
               : provider === 's3'
-                ? 'border-primary bg-primary/5 hover:bg-primary/10'
-                : 'border-border bg-transparent hover:bg-[var(--interactive-hover)]'
+                ? 'border-primary/50 bg-primary/5 hover:bg-primary/10'
+                : 'border-border/40 bg-background/60 hover:bg-[var(--interactive-hover)]'
           }`}
         >
           {provider === 's3' && s3Enabled !== false && (
@@ -1350,12 +1375,12 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
             size="sm"
             onClick={() => !ftpDisabledOnMobile && setProvider('ftp')}
             disabled={ftpDisabledOnMobile}
-            className={`relative !h-auto !justify-start flex-col items-start gap-1 !rounded-lg border-2 !p-3 text-left ${
+            className={`relative !h-auto !justify-start flex-col items-start gap-1 !rounded-xl border !p-3 text-left ${
               ftpDisabledOnMobile
-                ? 'opacity-50 border-border'
+                ? 'opacity-50 border-border/40'
                 : provider === 'ftp'
-                  ? 'border-primary bg-primary/5'
-                  : 'border-border bg-transparent hover:bg-[var(--interactive-hover)]'
+                  ? 'border-primary/50 bg-primary/5'
+                  : 'border-border/40 bg-background/60 hover:bg-[var(--interactive-hover)]'
             }`}
           >
             {provider === 'ftp' && !ftpDisabledOnMobile && (
@@ -1676,10 +1701,11 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
               </>
             )}
           </DsButton>
-          <DsButton variant="primary" className="[@media(pointer:coarse)]:!min-h-11" onClick={saveConfig} disabled={!isConfigValid()}>
+          <DsButton variant="primary" className="[@media(pointer:coarse)]:!min-h-11" onClick={saveConfig} disabled={saving || !isConfigValid()}>
+            {saving && <CircleNotch size={16} className="mr-2 animate-spin" />}
             {t('cloudStorage:actions.save')}
           </DsButton>
-          <DsButton variant="outline" className="!text-destructive [@media(pointer:coarse)]:!min-h-11" onClick={() => setClearConfirmOpen(true)}>
+          <DsButton variant="outline" className="!text-destructive [@media(pointer:coarse)]:!min-h-11" onClick={() => setClearConfirmOpen(true)} disabled={saving}>
             {t('cloudStorage:actions.clearConfig')}
           </DsButton>
         </div>
@@ -1961,8 +1987,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         {/* [R11-check] 云端仓库巡检：独立入口区（restic `check` 档，只读不修） */}
         {syncStatus && (
           <div className="border rounded-lg p-4 space-y-3">
-            <h4 className="font-medium flex items-center gap-2">
-              <ShieldCheck size={16} />
+            <h4 className="font-medium">
               {t('cloudStorage:repoCheck.title')}
             </h4>
             <p className="text-xs text-muted-foreground leading-relaxed">
@@ -2286,18 +2311,15 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     />
   );
 
-  // Dialog 模式下直接渲染内容
+  // Dialog 模式下直接渲染内容（外层 SyncTab 已独立常驻展示 DevicePairingSection）
   if (isDialog) {
     return (
       <>
         <div className="space-y-3">
-          <div>
-            <h3 className="flex items-center gap-2 text-base font-semibold text-foreground">
-              <Cloud size={20} />
-              {t('cloudStorage:title')}
-            </h3>
-            <p className="text-sm text-muted-foreground">{t('cloudStorage:description')}</p>
-          </div>
+          <GroupTitle
+            title={t('cloudStorage:title')}
+            description={t('cloudStorage:description')}
+          />
           {content}
         </div>
         {restoreConfirmDialog}
@@ -2311,21 +2333,21 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     );
   }
 
-  // 普通模式使用 Card 包装
+  // 普通模式使用外置标题 + 无边框圆角分组卡片包装，与下方 DevicePairingSection 平级
   return (
     <>
-      <Card className="mb-6">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Cloud className="h-5 w-5" />
-            {t('cloudStorage:title')}
-          </CardTitle>
-          <CardDescription>{t('cloudStorage:description')}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {content}
-        </CardContent>
-      </Card>
+      <div className="space-y-8 mb-6">
+        <section className="min-w-0">
+          <GroupTitle
+            title={t('cloudStorage:title')}
+            description={t('cloudStorage:description')}
+          />
+          <div className="rounded-2xl bg-muted p-4">
+            {content}
+          </div>
+        </section>
+        <DevicePairingSection onApplied={onPairingApplied} />
+      </div>
       {restoreConfirmDialog}
       {deleteConfirmDialog}
       {clearConfirmDialog}

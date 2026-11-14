@@ -1,0 +1,13 @@
+{
+  "id": "RF-W01-trusted-plugin-admin",
+  "kind": "deliberate",
+  "status": "proposed",
+  "title": "主窗口本地页可信插件管理命令、配置投影与 revision CAS",
+  "rust": { "file": "src-tauri/src/plugins/manager.rs", "line": 269, "behavior": "仅内置渠道管理，没有社区 profile 管理及同意账本接线" },
+  "fix": { "files": ["host/kernel/plugin-admin.ts"], "behavior": "独立 plugin:manager 命令校验 transport-bound 主窗口本地来源；配置 Schemastery 投影及校验；profile SHA256 revision CAS 保留其它条目；同意由 W32 账本记录且装载前判定。不是物理隔离。" },
+  "evidence": "plugin-manager.test.ts 真实 runtime 与 serveHost 覆盖来源拒绝、CAS、配置热更新、启停卸载、首次同意前不导入及同意后启用。",
+  "userVisible": "插件管理可以展示状态、配置字段并启停插件；陈旧保存返回 PROFILE_CONFLICT；社区首次装载需确认。",
+  "dataCompat": "沿用 user.profile.json 格式；新增账本由 W32 管理。回撤本提交可恢复旧装载行为，不删除数据。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [{ "file": "host/kernel/tests/plugin-manager.test.ts", "name": "RF-W01-trusted-plugin-admin: plugin manager commands" }]
+}

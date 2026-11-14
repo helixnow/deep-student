@@ -1,0 +1,25 @@
+{
+  "id": "RF-W03-portable-zip-actual-size-bound",
+  "kind": "rust-bug",
+  "status": "proposed",
+  "title": "题库便携包导入时，实际解压字节也计入 200 MiB 解压上限，声明大小撒谎的条目不能再绕过上限",
+  "rust": {
+    "file": "src-tauri/crates/dstu-qbank/src/question_export_service/authoring.rs",
+    "line": 210,
+    "behavior": "import_portable 只把中央目录声明的未压缩大小（file.size()）累计到 200 MiB 上限；每个条目再用 take(200 MiB + 1) 读入内存。zip 0.6.6 不比较声明大小与实际解压量，只在 EOF 校验 CRC。声明 1 KiB、实际解压上百 MiB 且 CRC 按实际数据计算的条目会被整段读入，多个这样的条目叠加可远超 200 MiB，直到内存耗尽"
+  },
+  "fix": {
+    "files": ["host/plugins/qbank/repository/portable-zip.ts"],
+    "behavior": "声明大小的累计检查不变；另外把每个条目实际解压（或 stored 原样读取）的字节数计入同一个 200 MiB 预算，超出时立即停止解压并报 Validation「便携包解压超过安全限制」（与声明总量超限同一文案）。未超出预算时与 Rust 完全相同：声明大小与实际不符但 CRC 匹配的条目照常接受，CRC 不匹配报「Invalid checksum」。"
+  },
+  "evidence": "上限的注释意图（authoring.rs:209-212「便携包解压超过安全限制」）是限制解压总量，但计数用的是攻击者可控的声明大小。用户导入网上分享的恶意题库（qbank_import_portable / import_question_bank_stream format=zip）时，约 200 MB 的包可解压出数百 GiB，Host 进程 OOM 崩溃，在途工作全部丢失。复现见登记测试（以 1 MiB 预算构造两个各声明 1 KiB、各解压 600 KiB 的条目）。",
+  "userVisible": "只在导入被篡改的便携包时可感知：Rust 会读入超量数据甚至崩溃，修复后报「便携包解压超过安全限制」。正常便携包的导入结果与 Rust 完全一致。",
+  "dataCompat": "不改变落库数据、同步载荷或备份格式；导出格式不变，新旧版本互相读取不受影响。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "host/plugins/qbank/tests/portable-zip-limits.test.ts",
+      "name": "RF-W03-portable-zip-actual-size-bound: inflated bytes count against the same cap as the declared sizes"
+    }
+  ]
+}

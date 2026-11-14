@@ -16,13 +16,6 @@ permissions:
   pull-requests: read
 env:
   DEEP_STUDENT_BUILD_NUMBER: '14639'
-  CARGO_INCREMENTAL: '0'
-  CARGO_BUILD_JOBS: '2'
-  CARGO_PROFILE_DEV_DEBUG: '0'
-  CARGO_PROFILE_TEST_DEBUG: '0'
-  SCCACHE_GHA_ENABLED: 'true'
-  SCCACHE_IDLE_TIMEOUT: '0'
-  SCCACHE_IGNORE_SERVER_IO_ERROR: '1'
 
 jobs:
   build-config:
@@ -35,17 +28,22 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
-          node-version: '22'
+          node-version: '24'
       - run: node --test scripts/__tests__/*.test.mjs
-      - run: env -u DEEP_STUDENT_BUILD_NUMBER node scripts/generate-version.mjs --check
-      - name: Verify generation leaves tracked build config clean
-        run: |
-          mkdir -p src-tauri/gen/android/app
-          : > src-tauri/gen/android/app/tauri.properties
-          env -u DEEP_STUDENT_BUILD_NUMBER node scripts/generate-version.mjs
-          ANDROID_VERSION_CODE="$(env -u DEEP_STUDENT_BUILD_NUMBER node scripts/generate-version.mjs --print-android-version-code)"
-          grep -qx "tauri.android.versionCode=${ANDROID_VERSION_CODE}" src-tauri/gen/android/app/tauri.properties
-          git diff --exit-code
+      - run: node scripts/generate-version.mjs --check
+
+  plugin-consistency:
+    name: Plugin Migration Consistency
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --legacy-peer-deps
+      - run: npm run test:plugins
 
   frontend-checks:
     name: Frontend · ${{ matrix.task }}
@@ -59,7 +57,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
-          node-version: '22'
+          node-version: '24'
           cache: npm
       - run: npm ci --legacy-peer-deps
       - run: node scripts/generate-version.mjs
@@ -114,42 +112,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
-          node-version: '22'
+          node-version: '24'
           cache: npm
       - run: npm ci --legacy-peer-deps
       - run: node scripts/generate-version.mjs
       - run: npx vitest run --shard=${{ matrix.shard }}/4 --logHeapUsage
-
-  backend:
-    name: Backend
-    needs: [build-config, changes]
-    if: github.event_name != 'pull_request' || needs.changes.outputs.code != 'false'
-    runs-on: ubuntu-22.04
-    timeout-minutes: 60
-    env:
-      RUSTFLAGS: -C link-arg=-fuse-ld=lld
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      # Formatting fails in seconds, before apt/cache setup or any compilation.
-      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
-        with:
-          toolchain: '1.98.1'
-          components: rustfmt
-      - run: cargo fmt --manifest-path src-tauri/Cargo.toml --all --check
-      - uses: ./.github/actions/setup-linux-rust
-        with:
-          cache-key: clippy
-          components: clippy
-      # Members may only depend on lower layers; domain crates never on each other.
-      - name: Workspace crate layering
-        run: node scripts/check-crate-layers.mjs
-      - name: Clippy (all targets, correctness deny)
-        run: bash scripts/ci/with-resource-monitor.sh cargo clippy --manifest-path src-tauri/Cargo.toml --locked --workspace --all-targets -- -D clippy::correctness
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        if: always()
-        with:
-          name: resource-backend
-          path: ${{ runner.temp }}/release-resource-metrics.log
 
   changes:
     name: Detect Changed Paths
@@ -165,14 +132,12 @@ jobs:
         with:
           filters: |
             provider-contract:
-              - 'src-tauri/src/cloud_storage/**'
-              - 'src-tauri/src/data_governance/**'
-              - 'src-tauri/crates/dstu-storage/src/**'
-              - 'src-tauri/crates/dstu-sync/src/**'
-              - 'src-tauri/crates/dstu-security/src/crypto/**'
-              - 'src-tauri/tests/sync_provider_contract_tests.rs'
-              - 'src-tauri/Cargo.toml'
-              - 'src-tauri/Cargo.lock'
+              - 'host/plugins/sync-providers/**'
+              - 'host/plugins/sync/**'
+              - 'host/plugins/backup/**'
+              - 'host/platform/storage/**'
+              - 'host/platform/secrets/**'
+              - 'package-lock.json'
               - 'scripts/dev/docker-compose.sync-test.yml'
               - 'dstu-test/docker/**'
               - 'scripts/ci/**'
@@ -183,98 +148,26 @@ jobs:
             docs:
               - '*.md'
               - 'docs/**'
-            # src-tauri/tests/sync_r10_protocol_locks.rs reads the user guide.
-            docs-read-by-rust:
-              - 'docs/user-guide/**'
-      # Docs-only PRs skip the Rust jobs. Pushes, mixed changes and a missing
-      # answer all leave code != 'false', so the Rust jobs run.
+      # Docs-only PRs skip the path-filtered gates. Pushes, mixed changes and a
+      # missing answer all leave code != 'false', so those gates run.
       - name: Classify docs-only pull requests
         if: github.event_name == 'pull_request'
         id: classify
         env:
           ALL: ${{ steps.filter.outputs.all_count }}
           DOCS: ${{ steps.filter.outputs.docs_count }}
-          RUST_READS: ${{ steps.filter.outputs.docs-read-by-rust }}
         run: |
-          if [ "${ALL:-0}" -gt 0 ] && [ "$ALL" = "$DOCS" ] && [ "$RUST_READS" != true ]; then
+          if [ "${ALL:-0}" -gt 0 ] && [ "$ALL" = "$DOCS" ]; then
             echo "code=false" >> "$GITHUB_OUTPUT"
           else
             echo "code=true" >> "$GITHUB_OUTPUT"
           fi
 
-  rust-test-build:
-    name: Rust Tests · Build Archive
-    needs: [build-config, changes]
-    if: github.event_name != 'pull_request' || needs.changes.outputs.code != 'false'
-    runs-on: ${{ vars.LINUX_BUILD_RUNNER || 'ubuntu-22.04' }}
-    timeout-minutes: 90
-    env:
-      RUSTFLAGS: -C link-arg=-fuse-ld=lld
-      # Hundreds of test binaries otherwise retain duplicated symbol tables.
-      CARGO_PROFILE_TEST_STRIP: symbols
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      - uses: ./.github/actions/setup-linux-rust
-      - uses: taiki-e/install-action@4cef1412cce204788f482e778a0b9187f9626a29
-        with:
-          tool: cargo-nextest@0.9.145
-      - name: Build and archive all test binaries (including ignored provider tests)
-        working-directory: src-tauri
-        run: bash ../scripts/ci/with-resource-monitor.sh cargo nextest archive --locked --archive-file "$RUNNER_TEMP/nextest-archive.tar.zst" --workspace
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: nextest-archive
-          path: ${{ runner.temp }}/nextest-archive.tar.zst
-          retention-days: 7
-          compression-level: 0
-          overwrite: true
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        if: always()
-        with:
-          name: resource-rust-tests
-          path: ${{ runner.temp }}/release-resource-metrics.log
-
-  rust-tests:
-    name: Rust Tests (${{ matrix.partition }}/8)
-    needs: [rust-test-build]
-    runs-on: ubuntu-22.04
-    # Slow dependency/artifact downloads must not consume the test execution budget.
-    timeout-minutes: 50
-    strategy:
-      fail-fast: false
-      matrix:
-        partition: [1, 2, 3, 4, 5, 6, 7, 8]
-    env:
-      PROPTEST_CASES: '64'
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      - uses: ./.github/actions/setup-linux-rust
-        with:
-          resources: 'false'
-      - uses: taiki-e/install-action@4cef1412cce204788f482e778a0b9187f9626a29
-        with:
-          tool: cargo-nextest@0.9.145
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
-        # The shared archive is about 2 GiB; allow for slow artifact storage.
-        timeout-minutes: 20
-        with:
-          name: nextest-archive
-          path: ${{ runner.temp }}
-      - name: Run test partition
-        timeout-minutes: 15
-        working-directory: src-tauri
-        run: |
-          xvfb-run -a dbus-run-session -- cargo nextest run --no-fail-fast --archive-file "$RUNNER_TEMP/nextest-archive.tar.zst" \
-            --workspace-remap "$GITHUB_WORKSPACE/src-tauri" \
-            --partition "hash:${{ matrix.partition }}/8" \
-            -E 'not (binary(/_e2e$/) + binary(migration_fixture_upgrade_gate) + binary(mod))'
-
   provider-contract:
     name: Cloud Provider Contract Gate (${{ matrix.provider }})
-    needs: [changes, rust-test-build]
+    needs: [changes]
     if: github.event_name != 'pull_request' || needs.changes.outputs.provider-contract == 'true'
     runs-on: ubuntu-22.04
-    # Dependency/artifact downloads must leave room for bounded provider tests.
     timeout-minutes: 45
     strategy:
       fail-fast: false
@@ -284,18 +177,11 @@ jobs:
       DS_SYNC_TEST_DOCKER: '1'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      - uses: ./.github/actions/setup-linux-rust
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
-          resources: 'false'
-      - uses: taiki-e/install-action@4cef1412cce204788f482e778a0b9187f9626a29
-        with:
-          tool: cargo-nextest@0.9.145
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
-        # Keep the same download allowance as the Rust test partitions.
-        timeout-minutes: 20
-        with:
-          name: nextest-archive
-          path: ${{ runner.temp }}
+          node-version: '24'
+          cache: npm
+      - run: npm ci --legacy-peer-deps
       - name: Validate pinned provider composition
         run: |
           set -euo pipefail
@@ -323,14 +209,14 @@ jobs:
             container_id="$(docker compose -f scripts/dev/docker-compose.sync-test.yml ps -q "$service")"
             test "$(docker inspect --format '{{.State.Health.Status}}' "$container_id")" = healthy
           done
-      - name: Execute ignored provider tests from the archive (no Cargo compilation)
+      - name: Execute provider contract tests
         timeout-minutes: 15
-        working-directory: src-tauri
         run: |
-          cargo nextest run --no-fail-fast --archive-file "$RUNNER_TEMP/nextest-archive.tar.zst" \
-            --workspace-remap "$GITHUB_WORKSPACE/src-tauri" \
-            --run-ignored only --test-threads 1 --no-tests fail \
-            -E 'binary(=sync_provider_contract_tests) & test(/^${{ matrix.provider }}_/)'
+          set -euo pipefail
+          npx vitest run -c vitest.host.config.ts host/plugins/sync-providers/tests/sync_provider_contract.test.ts \
+            -t '${{ matrix.provider }}_' --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/provider-contract.json"
+          # A name filter that matches nothing, or a skipped suite, must not pass.
+          node -e 'const r = require(process.argv[1]); if (!(r.numPassedTests > 0)) { console.error("no provider contract test ran"); process.exit(1); }' "$RUNNER_TEMP/provider-contract.json"
       - name: Provider service logs
         if: always()
         run: docker compose -f scripts/dev/docker-compose.sync-test.yml logs --no-color
@@ -338,51 +224,21 @@ jobs:
         if: always()
         run: docker compose -f scripts/dev/docker-compose.sync-test.yml down --volumes --remove-orphans
 
-  windows-shell-sandbox:
-    name: Windows Shell Sandbox
-    needs: [build-config, changes]
-    if: github.event_name != 'pull_request' || needs.changes.outputs.code != 'false'
-    runs-on: windows-2025
-    timeout-minutes: 75
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
-        with:
-          toolchain: '1.98.1'
-      - uses: Mozilla-Actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba
-        continue-on-error: true
-      - shell: bash
-        run: bash scripts/ci/prepare-sccache.sh
-      - uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b
-        with:
-          repo-token: ${{ github.token }}
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
-        with:
-          workspaces: src-tauri
-          cache-on-failure: true
-      - name: Enforce AppContainer filesystem boundary
-        working-directory: src-tauri
-        # shell_sandbox 随 chat_v2 拆到 dstu-agent：必须指定包，否则根包 --lib 过滤到 0 个测试也会“通过”
-        run: cargo test --locked -p dstu-agent --lib chat_v2::tools::shell_sandbox::windows::tests -- --nocapture
-      - name: Exercise Windows shell helper end to end
-        working-directory: src-tauri
-        run: cargo test --locked --test windows_shell_helper_e2e -- --nocapture
-
   migration-gate:
-    name: Migration Gate (static + production tests + fixtures)
+    name: Migration Gate (static + Host migration tests + fixtures)
     needs: [build-config, changes]
     if: github.event_name != 'pull_request' || needs.changes.outputs.code != 'false'
-    runs-on: ${{ vars.LINUX_BUILD_RUNNER || 'ubuntu-22.04' }}
-    timeout-minutes: 60
-    env:
-      RUSTFLAGS: -C link-arg=-fuse-ld=lld
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
-          node-version: '22'
+          node-version: '24'
+          cache: npm
+      - run: npm ci --legacy-peer-deps
       - name: Static migration gate and tooling tests
         env:
           BASE_REF: ${{ github.base_ref }}
@@ -393,9 +249,13 @@ jobs:
             node scripts/check-migrations.mjs
           fi
           node --test scripts/migration-ci/__tests__/*.test.mjs
-      - uses: ./.github/actions/setup-linux-rust
-      - name: Production migration tests
-        run: bash scripts/ci/with-resource-monitor.sh bash scripts/migration-ci/run-migration-tests.sh --min-tests 50
+      - name: Host migration tests
+        run: >-
+          npx vitest run -c vitest.host.config.ts
+          host/platform/storage/tests/migration-compat.test.ts
+          host/platform/storage/tests/migration-integration.test.ts
+          host/plugins/backup/tests/migration-behavior.test.ts
+          host/e2e/data-compat/migrations.test.ts
       - name: Fetch representative fixtures
         id: fixtures
         env:
@@ -405,41 +265,15 @@ jobs:
         run: bash scripts/migration-ci/fetch-fixtures.sh --tier representative --dest "$RUNNER_TEMP/migration-fixtures" --mode skip
       - name: Representative fixture upgrades
         if: steps.fixtures.outputs.fixtures_available == 'true'
-        run: |
-          bash scripts/ci/with-resource-monitor.sh bash scripts/migration-ci/run-fixture-upgrades.sh \
-            --fixture-root "${{ steps.fixtures.outputs.fixture_root }}" --mode upgrade \
-            --report "$RUNNER_TEMP/migration-reports/representative-upgrade.jsonl"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        if: always()
-        with:
-          name: migration-gate-fixture-report
-          path: |
-            ${{ runner.temp }}/migration-reports/
-            ${{ runner.temp }}/release-resource-metrics.log
-          retention-days: 14
-
-  security-audit:
-    name: Security Audit
-    # Informational includes the advisory tool's availability, not just its
-    # exit code. A registry outage here must not invalidate CI Required.
-    continue-on-error: true
-    runs-on: ubuntu-22.04
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      - uses: taiki-e/install-action@4cef1412cce204788f482e778a0b9187f9626a29
-        with:
-          tool: cargo-audit
-      - name: Cargo audit (informational)
-        working-directory: src-tauri
-        run: |
-          cargo audit > "$RUNNER_TEMP/audit.txt" 2>&1 || echo '::warning::cargo audit reported advisories'
-          cat "$RUNNER_TEMP/audit.txt" >> "$GITHUB_STEP_SUMMARY"
+        env:
+          MIGRATION_FIXTURE_ROOT: ${{ steps.fixtures.outputs.fixture_root }}
+          MIGRATION_GATE_MODE: upgrade
+        run: npx vitest run -c vitest.host.config.ts host/platform/storage/tests/migration-integration.test.ts -t 'MIGRATION_FIXTURE_ROOT'
 
   required:
     name: CI Required
     if: always()
-    needs: [build-config, frontend, frontend-tests, backend, changes, rust-tests, provider-contract, windows-shell-sandbox, migration-gate]
+    needs: [build-config, plugin-consistency, frontend, frontend-tests, changes, provider-contract, migration-gate, examples]
     runs-on: ubuntu-22.04
     timeout-minutes: 5
     steps:
@@ -447,13 +281,29 @@ jobs:
         env:
           RESULTS: ${{ toJSON(needs) }}
           PROVIDER_REQUIRED: ${{ github.event_name != 'pull_request' || needs.changes.outputs.provider-contract == 'true' }}
-          RUST_REQUIRED: ${{ github.event_name != 'pull_request' || needs.changes.outputs.code != 'false' }}
+          CODE_REQUIRED: ${{ github.event_name != 'pull_request' || needs.changes.outputs.code != 'false' }}
         run: |
           node -e '
             const n = JSON.parse(process.env.RESULTS);
-            const rustJobs = ["backend", "rust-tests", "provider-contract", "windows-shell-sandbox", "migration-gate"];
             for (const [k, v] of Object.entries(n)) {
               if (v.result === "skipped" && k === "provider-contract" && process.env.PROVIDER_REQUIRED !== "true") continue;
-              if (v.result === "skipped" && rustJobs.includes(k) && process.env.RUST_REQUIRED !== "true") continue;
+              if (v.result === "skipped" && k === "migration-gate" && process.env.CODE_REQUIRED !== "true") continue;
               if (v.result !== "success") throw Error(`${k}: ${v.result}`);
             }'
+
+  examples:
+    name: Community Plugin Examples
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --legacy-peer-deps
+      - run: node scripts/generate-version.mjs
+      - name: Plugin manifest gate (no new findings)
+        run: node scripts/electron-migration/gate-checks/plugin-manifest.mjs --check
+      - name: Example plugin tests (examples/vitest.config.ts)
+        run: npx vitest run -c examples/vitest.config.ts

@@ -1,0 +1,144 @@
+{
+  "lane": "F1-fixture",
+  "generator": "hand-written fixture",
+  "commands": [
+    {
+      "name": "fixture_greet",
+      "lane": "F1-fixture",
+      "rust": { "file": "src/fixture.rs", "line": 1, "fn": "fixture_greet" },
+      "async": true,
+      "args": [
+        { "key": "name", "rustName": "name", "schema": { "type": "string" }, "optional": false },
+        { "key": "times", "rustName": "times", "schema": { "type": "integer", "x-int": "u32" }, "optional": true }
+      ],
+      "injected": [{ "kind": "window" }],
+      "result": { "type": "string" },
+      "error": { "type": "string" },
+      "frontend": "app"
+    },
+    {
+      "name": "fixture_struct",
+      "lane": "F1-fixture",
+      "rust": { "file": "src/fixture.rs", "line": 10, "fn": "fixture_struct" },
+      "async": false,
+      "args": [
+        { "key": "request", "rustName": "request", "schema": { "$ref": "#/$defs/GreetRequest" }, "optional": false },
+        { "key": "mode", "rustName": "mode", "schema": { "$ref": "#/$defs/Mode" }, "optional": false },
+        { "key": "origin", "rustName": "origin", "schema": { "anyOf": [{ "$ref": "_shared.json#/$defs/Point" }, { "type": "null" }] }, "optional": true }
+      ],
+      "injected": [],
+      "result": { "type": "object", "properties": { "summary": { "type": "string" } }, "required": ["summary"] },
+      "error": { "$ref": "#/$defs/AppError" },
+      "frontend": "app"
+    },
+    {
+      "name": "fixture_unit",
+      "lane": "F1-fixture",
+      "rust": { "file": "src/fixture.rs", "line": 20, "fn": "fixture_unit" },
+      "async": true,
+      "args": [],
+      "injected": [{ "kind": "app-handle" }],
+      "result": { "type": "null" },
+      "frontend": "app"
+    },
+    {
+      "name": "fixture_headers",
+      "lane": "F1-fixture",
+      "rust": { "file": "src/fixture.rs", "line": 20, "fn": "fixture_headers" },
+      "async": true,
+      "args": [],
+      "injected": [{ "kind": "ipc-request" }],
+      "result": { "x-rust": "serde_json::Value" },
+      "frontend": "app"
+    },
+    {
+      "name": "fixture_slow",
+      "lane": "F1-fixture",
+      "rust": { "file": "src/fixture.rs", "line": 30, "fn": "fixture_slow" },
+      "async": true,
+      "args": [{ "key": "ms", "rustName": "ms", "schema": { "type": "integer", "x-int": "u64" }, "optional": false }],
+      "injected": [],
+      "result": { "type": "string" },
+      "error": { "type": "string" },
+      "frontend": "app"
+    },
+    {
+      "name": "fixture_echo",
+      "lane": "F1-fixture",
+      "rust": { "file": "src/fixture.rs", "line": 40, "fn": "fixture_echo" },
+      "async": true,
+      "args": [{ "key": "value", "rustName": "value", "schema": { "x-rust": "serde_json::Value" }, "optional": false }],
+      "injected": [],
+      "result": { "x-rust": "serde_json::Value" },
+      "error": { "type": "string" },
+      "frontend": "app"
+    },
+    {
+      "name": "fixture_binary",
+      "lane": "F1-fixture",
+      "rust": { "file": "src/fixture.rs", "line": 60, "fn": "fixture_binary" },
+      "async": true,
+      "args": [],
+      "injected": [],
+      "result": {
+        "x-rust": "tauri::ipc::Response",
+        "x-binary": true,
+        "description": "InvokeResponseBody：Raw 字节时前端收到 ArrayBuffer"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "fixture_binary_envelope",
+      "lane": "F1-fixture",
+      "rust": { "file": "src/fixture.rs", "line": 70, "fn": "fixture_binary_envelope" },
+      "async": true,
+      "args": [],
+      "injected": [],
+      "result": {
+        "x-rust": "tauri::ipc::Response",
+        "x-binary": true,
+        "description": "JSON 传输上的 __dstuRawBytes 兼容信封"
+      },
+      "frontend": "none"
+    },
+    {
+      "name": "fixture_unported",
+      "lane": "F1-fixture",
+      "rust": { "file": "src/fixture.rs", "line": 50, "fn": "fixture_unported" },
+      "async": true,
+      "args": [],
+      "injected": [],
+      "result": { "type": "null" },
+      "frontend": "none"
+    }
+  ],
+  "events": [
+    {
+      "name": "fixture-greeted",
+      "dynamic": false,
+      "payload": { "type": "object", "properties": { "name": { "type": "string" } } },
+      "emitters": [{ "file": "src/fixture.rs", "line": 5, "fn": "fixture_greet", "lane": "F1-fixture", "method": "emit" }]
+    }
+  ],
+  "$defs": {
+    "GreetRequest": {
+      "type": "object",
+      "x-rust": "dstu_fixture::GreetRequest",
+      "properties": {
+        "title": { "type": "string" },
+        "count": { "type": "integer", "x-int": "u8" },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "note": { "anyOf": [{ "type": "string" }, { "type": "null" }], "x-option": "null" }
+      },
+      "required": ["title", "count"],
+      "additionalProperties": false
+    },
+    "Mode": { "type": "string", "enum": ["fast", "slow", "careful"], "x-rust": "dstu_fixture::Mode" },
+    "AppError": {
+      "type": "object",
+      "x-rust": "dstu_fixture::AppError",
+      "properties": { "code": { "type": "string" }, "message": { "type": "string" } },
+      "required": ["code", "message"]
+    }
+  }
+}

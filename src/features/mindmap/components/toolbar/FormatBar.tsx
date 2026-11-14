@@ -23,13 +23,20 @@ import {
   Palette,
   Highlighter,
   Quotes,
+  BracketsCurly,
+  Cards,
+  Article,
   X,
 } from '@phosphor-icons/react';
-import { cn } from '@/lib/utils';
+import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { getErrorMessage } from '@/utils/errorUtils';
 import { useMindMapStore } from '../../store';
+import { exportMindMapSelectionToHandoutNote } from '../../interop/handoutExport';
 import { findNodeById } from '../../utils/node/find';
 import { serializeNodesToOutlineText } from '../../utils/node/outlineText';
+import { resolveSiblingRangeForSummary } from '../../utils/summaryBraces';
 import type { MindMapNode, NodeStyle } from '../../types';
 import { getQuickBgColors, getQuickTextColors } from '../../constants/colors';
 import { useMindMapDarkMode } from '../../hooks/useMindMapTheme';
@@ -99,6 +106,8 @@ export const MindMapFormatBar: React.FC = () => {
   const focusedNodeId = useMindMapStore((state) => state.focusedNodeId);
   const selection = useMindMapStore((state) => state.selection);
   const updateNode = useMindMapStore((state) => state.updateNode);
+  const toggleNodeFlashcard = useMindMapStore((state) => state.toggleNodeFlashcard);
+  const addSummaryBrace = useMindMapStore((state) => state.addSummaryBrace);
   const mindmapId = useMindMapStore((state) => state.mindmapId);
   const mapTitle = useMindMapStore((state) => state.metadata?.title);
 
@@ -106,6 +115,51 @@ export const MindMapFormatBar: React.FC = () => {
     if (selection.length > 0) return selection;
     return focusedNodeId ? [focusedNodeId] : [];
   }, [selection, focusedNodeId]);
+
+  const siblingSummaryRange = useMemo(
+    () => resolveSiblingRangeForSummary(document.root, targetIds),
+    [document.root, targetIds],
+  );
+
+  const allFlashcards = useMemo(() => {
+    if (targetIds.length === 0) return false;
+    return targetIds.every((id) => findNodeById(document.root, id)?.isFlashcard === true);
+  }, [document.root, targetIds]);
+
+  const handleToggleFlashcard = useCallback(() => {
+    const next = !allFlashcards;
+    for (const id of targetIds) {
+      toggleNodeFlashcard(id, next);
+    }
+  }, [allFlashcards, targetIds, toggleNodeFlashcard]);
+
+  const handleExportHandout = useCallback(() => {
+    const selectedNodes: MindMapNode[] = [];
+    for (const id of targetIds) {
+      const node = findNodeById(document.root, id);
+      if (node) selectedNodes.push(node);
+    }
+    if (selectedNodes.length === 0) return;
+
+    void exportMindMapSelectionToHandoutNote({
+      nodes: selectedNodes,
+      mindmapId,
+      mindmapTitle: document.root.text,
+      defaultNoteSuffix: t('mn5.exportHandoutSuffix'),
+    })
+      .then((outcome) => {
+        showGlobalNotification(
+          'success',
+          t('mn5.exportHandoutSuccess', { title: outcome.noteTitle }),
+        );
+      })
+      .catch((err) => {
+        showGlobalNotification(
+          'error',
+          t('mn5.exportHandoutFailed', { error: getErrorMessage(err) }),
+        );
+      });
+  }, [document.root, mindmapId, t, targetIds]);
 
   /** 活跃态以第一个目标节点为准（多选时作代表值） */
   const primaryNode: MindMapNode | null = useMemo(() => {
@@ -175,7 +229,7 @@ export const MindMapFormatBar: React.FC = () => {
 
   return (
     <div
-      className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-1.5"
+      className="mm-format-bar flex flex-nowrap items-center gap-1 px-2 py-1 overflow-x-auto scrollbar-none"
       role="toolbar"
       aria-label={t('contextMenu.textStyleGroup', { defaultValue: '文本样式' })}
     >
@@ -257,6 +311,52 @@ export const MindMapFormatBar: React.FC = () => {
         clearLabel={t('contextMenu.clearColor', { defaultValue: '清除颜色' })}
         selectLabel={(color) => t('contextMenu.selectColor', { color, defaultValue: `选择颜色 ${color}` })}
       />
+
+      <div className="w-px h-4 bg-[var(--mm-border)]" />
+
+      {siblingSummaryRange && (
+        <DsButton
+          variant="ghost"
+          className="h-7 px-2 text-xs gap-1 rounded-[var(--mm-radius-sm,6px)] hover:bg-[var(--mm-bg-hover)] text-[var(--mm-text)] shrink-0"
+          onClick={() => addSummaryBrace(targetIds)}
+          title={t('mn5.addSummaryBraceHint')}
+          aria-label={t('mn5.addSummaryBrace')}
+          data-testid="mm-format-add-summary-brace"
+        >
+          <BracketsCurly className="w-3.5 h-3.5 text-[var(--mm-celadon-accent)]" />
+          <span>{t('mn5.addSummaryBrace')}</span>
+        </DsButton>
+      )}
+
+      <DsButton
+        variant="ghost"
+        className={cn(
+          'h-7 px-2 text-xs gap-1 rounded-[var(--mm-radius-sm,6px)] shrink-0',
+          allFlashcards
+            ? 'bg-[var(--mm-celadon-pill-bg)] text-[var(--mm-celadon-pill-fg)] font-medium'
+            : 'hover:bg-[var(--mm-bg-hover)] text-[var(--mm-text)]',
+        )}
+        onClick={handleToggleFlashcard}
+        aria-pressed={allFlashcards}
+        title={t(allFlashcards ? 'mn5.unprojectFlashcard' : 'mn5.projectAsFlashcard')}
+        aria-label={t(allFlashcards ? 'mn5.unprojectFlashcard' : 'mn5.projectAsFlashcard')}
+        data-testid="mm-format-flashcard-toggle"
+      >
+        <Cards className="w-3.5 h-3.5" />
+        <span className="hidden lg:inline">{t('mn5.projectAsFlashcard')}</span>
+      </DsButton>
+
+      <DsButton
+        variant="ghost"
+        className="h-7 px-2 text-xs gap-1 rounded-[var(--mm-radius-sm,6px)] hover:bg-[var(--mm-bg-hover)] text-[var(--mm-text)] shrink-0"
+        onClick={handleExportHandout}
+        title={t('mn5.exportHandoutHint')}
+        aria-label={t('mn5.exportHandout')}
+        data-testid="mm-format-export-handout"
+      >
+        <Article className="w-3.5 h-3.5 text-[var(--mm-celadon-accent)]" />
+        <span className="hidden lg:inline">{t('mn5.exportHandout')}</span>
+      </DsButton>
 
       {/* P0 选区即上下文：选中节点引用到聊天（触屏不挂载本条，见 MindMapContentView 的 isCoarsePointer 门） */}
       {mindmapId && (

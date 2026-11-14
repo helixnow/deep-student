@@ -1,0 +1,324 @@
+{
+  "domain": "storage",
+  "commands": [
+    "staged_upload_from_path",
+    "staged_upload_abort"
+  ],
+  "scenarios": [
+    {
+      "id": "storage.staged_upload.from_path.file_then_abort",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "staged_upload_from_path",
+          "args": {
+            "path": "/etc/hostname"
+          }
+        },
+        {
+          "cmd": "staged_upload_abort",
+          "args": {
+            "uploadId": "${0.uploadId}"
+          }
+        },
+        {
+          "cmd": "staged_upload_abort",
+          "args": {
+            "uploadId": "${0.uploadId}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.staged_upload.from_path.empty_file",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "staged_upload_from_path",
+          "args": {
+            "path": "/dev/null"
+          }
+        },
+        {
+          "cmd": "staged_upload_abort",
+          "args": {
+            "uploadId": "${0.uploadId}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.staged_upload.from_path.app_data_file",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_database_info",
+          "args": {}
+        },
+        {
+          "cmd": "staged_upload_from_path",
+          "args": {
+            "path": "${0.production_db_path}"
+          }
+        },
+        {
+          "cmd": "staged_upload_abort",
+          "args": {
+            "uploadId": "${1.uploadId}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.staged_upload.from_path.file_url_and_whitespace",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "staged_upload_from_path",
+          "args": {
+            "path": "file:///etc/hostname"
+          }
+        },
+        {
+          "cmd": "staged_upload_from_path",
+          "args": {
+            "path": "  /etc/hostname  "
+          }
+        },
+        {
+          "cmd": "staged_upload_abort",
+          "args": {
+            "uploadId": "${0.uploadId}"
+          }
+        },
+        {
+          "cmd": "staged_upload_abort",
+          "args": {
+            "uploadId": "${1.uploadId}"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.staged_upload.from_path.hidden_path_denied",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "staged_upload_from_path",
+          "args": {
+            "path": "/tmp/.wp236-hidden/secret.txt"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "staged_upload_from_path",
+          "args": {
+            "path": "/etc/../etc/.wp236-hidden"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "staged_upload_from_path",
+          "args": {
+            "path": "/tmp/%2Ewp236-hidden/secret.txt"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.staged_upload.from_path.open_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "staged_upload_from_path",
+          "args": {
+            "path": "/nonexistent-wp236/missing.bin"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "staged_upload_from_path",
+          "args": {
+            "path": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "staged_upload_from_path",
+          "args": {
+            "path": "   "
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "staged_upload_from_path",
+          "args": {
+            "path": "content%3A%2F%2Fcom.example%2Fdoc"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.staged_upload.from_path.directory_read_error",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "staged_upload_from_path",
+          "args": {
+            "path": "/etc"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.staged_upload.from_path.arg_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "staged_upload_from_path",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "staged_upload_from_path",
+          "args": {
+            "path": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "staged_upload_from_path",
+          "args": {
+            "path": [
+              "/etc/hostname"
+            ]
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.staged_upload.abort.unknown_id_is_noop",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "staged_upload_abort",
+          "args": {
+            "uploadId": "00000000000000000000000000000000"
+          }
+        },
+        {
+          "cmd": "staged_upload_abort",
+          "args": {
+            "uploadId": ""
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.staged_upload.abort.arg_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "staged_upload_abort",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "staged_upload_abort",
+          "args": {
+            "uploadId": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "staged_upload_abort",
+          "args": {
+            "uploadId": 1
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "staged_upload_abort",
+          "args": {
+            "upload_id": "x"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

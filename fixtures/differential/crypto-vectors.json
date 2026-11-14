@@ -1,0 +1,120 @@
+[
+  {
+    "id": "crypto-input:0:decrypt",
+    "lane": "F4-security",
+    "fn": "crypto.decryptBackup",
+    "args": {
+      "password": "fixture-only",
+      "hex": "4453424b0108000000010000000100000000112233445566778899aabbccddeeff00112233445566778899aabb786c4d45d1b08f0f597a13b488ff626614f12e4773bc727f7f7cf3718a0c56db680440270fa3"
+    }
+  },
+  {
+    "id": "crypto-input:0:wrong-password",
+    "lane": "F4-security",
+    "fn": "crypto.decryptBackup",
+    "args": {
+      "password": "fixture-only-wrong",
+      "hex": "4453424b0108000000010000000100000000112233445566778899aabbccddeeff00112233445566778899aabb786c4d45d1b08f0f597a13b488ff626614f12e4773bc727f7f7cf3718a0c56db680440270fa3"
+    }
+  },
+  {
+    "id": "crypto-input:0:tag-corrupt",
+    "lane": "F4-security",
+    "fn": "crypto.decryptBackup",
+    "args": {
+      "password": "fixture-only",
+      "hex": "4453424b0108000000010000000100000000112233445566778899aabbccddeeff00112233445566778899aabb786c4d45d1b08f0f597a13b488ff626614f12e4773bc727f7f7cf3718a0c56db680440270fa2"
+    }
+  },
+  {
+    "id": "crypto-input:0:verifier",
+    "lane": "F4-security",
+    "fn": "crypto.checkVerifier",
+    "args": {
+      "password": "fixture-only",
+      "verifier": {
+        "kdf": "argon2id",
+        "mCost": 8,
+        "tCost": 1,
+        "pCost": 1,
+        "salt": "00112233445566778899aabbccddeeff",
+        "digest": "7147f5bcaf0505ae4baec7c0cfc1ee8bc9379e1dd8b64b2ad68bd15f1089610a"
+      }
+    }
+  },
+  {
+    "id": "crypto-input:0:verifier-wrong",
+    "lane": "F4-security",
+    "fn": "crypto.checkVerifier",
+    "args": {
+      "password": "fixture-only-wrong",
+      "verifier": {
+        "kdf": "argon2id",
+        "mCost": 8,
+        "tCost": 1,
+        "pCost": 1,
+        "salt": "00112233445566778899aabbccddeeff",
+        "digest": "7147f5bcaf0505ae4baec7c0cfc1ee8bc9379e1dd8b64b2ad68bd15f1089610a"
+      }
+    }
+  },
+  {
+    "id": "crypto-input:1:decrypt",
+    "lane": "F4-security",
+    "fn": "crypto.decryptBackup",
+    "args": {
+      "password": "中文🙂",
+      "hex": "4453424b0108000000010000000100000000112233445566778899aabbccddeeff00112233445566778899aabbc04570612fc500f5b9d3611831d22aa4126baf4f5088f5d7b92ae6c4956717c5999b9db9170a"
+    }
+  },
+  {
+    "id": "crypto-input:1:wrong-password",
+    "lane": "F4-security",
+    "fn": "crypto.decryptBackup",
+    "args": {
+      "password": "中文🙂-wrong",
+      "hex": "4453424b0108000000010000000100000000112233445566778899aabbccddeeff00112233445566778899aabbc04570612fc500f5b9d3611831d22aa4126baf4f5088f5d7b92ae6c4956717c5999b9db9170a"
+    }
+  },
+  {
+    "id": "crypto-input:1:tag-corrupt",
+    "lane": "F4-security",
+    "fn": "crypto.decryptBackup",
+    "args": {
+      "password": "中文🙂",
+      "hex": "4453424b0108000000010000000100000000112233445566778899aabbccddeeff00112233445566778899aabbc04570612fc500f5b9d3611831d22aa4126baf4f5088f5d7b92ae6c4956717c5999b9db9170b"
+    }
+  },
+  {
+    "id": "crypto-input:1:verifier",
+    "lane": "F4-security",
+    "fn": "crypto.checkVerifier",
+    "args": {
+      "password": "中文🙂",
+      "verifier": {
+        "kdf": "argon2id",
+        "mCost": 8,
+        "tCost": 1,
+        "pCost": 1,
+        "salt": "00112233445566778899aabbccddeeff",
+        "digest": "5735653fa4d475dec34a9c72fd482253841767c8ab2112378f398f80007af8e4"
+      }
+    }
+  },
+  {
+    "id": "crypto-input:1:verifier-wrong",
+    "lane": "F4-security",
+    "fn": "crypto.checkVerifier",
+    "args": {
+      "password": "中文🙂-wrong",
+      "verifier": {
+        "kdf": "argon2id",
+        "mCost": 8,
+        "tCost": 1,
+        "pCost": 1,
+        "salt": "00112233445566778899aabbccddeeff",
+        "digest": "5735653fa4d475dec34a9c72fd482253841767c8ab2112378f398f80007af8e4"
+      }
+    }
+  }
+]

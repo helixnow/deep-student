@@ -17,16 +17,13 @@ import { DsButton } from '@/components/ui/DsButton';
 import { useTranslation } from 'react-i18next';
 import { listen } from '@tauri-apps/api/event';
 import {
-  Moon,
-  Sun,
   CaretDown,
   CaretRight,
   Clock,
   CheckCircle,
   CircleNotch,
   WarningCircle,
-  XCircle,
-  UsersThree,
+  MinusCircle,
   Chat,
   Robot,
   ArrowsOut,
@@ -36,6 +33,8 @@ import {
 import type { BlockComponentProps } from '../../registry/blockRegistry';
 import { blockRegistry } from '../../registry/blockRegistry';
 import { ChatContainer } from '../../components/ChatContainer';
+import { TextShimmer } from '../../components/ui/TextShimmer';
+import { ToolActivitySweep } from '../../components/ui/ToolActivitySweep';
 import { cn } from '@/utils/cn';
 // 🆕 2026-01-21: 导入 workspace store，用于获取所有 worker 代理作为回退
 // 🔧 parseAgentStatus：事件裸 string 状态统一经类型守卫解析，替代裸 cast
@@ -139,23 +138,20 @@ const SubagentEmbedItem: React.FC<SubagentEmbedItemProps> = ({
     };
   }, [agent.sessionId, isCollapsed]);
 
+  const isAgentActive = agent.status === 'running' || agent.status === 'queued';
+
   const statusIcon = useMemo(() => {
     switch (agent.status) {
-      case 'running':
-        return <CircleNotch size={14} className="text-primary animate-spin" />;
-      case 'queued':
-        return <Clock size={14} className="text-primary" />;
       case 'completed':
-        return <CheckCircle size={14} className="text-success" />;
+        return <CheckCircle size={14} weight="fill" className="w-3.5 h-3.5 text-success shrink-0" />;
       case 'failed':
-        return <WarningCircle size={14} className="text-destructive" />;
       case 'cancelled':
       case 'interrupted':
-        return <XCircle size={14} className="text-warning" />;
+        return <WarningCircle size={14} className="w-3.5 h-3.5 text-destructive shrink-0" />;
       case 'closed':
-        return <XCircle size={14} className="text-muted-foreground" />;
+        return <MinusCircle size={14} className="w-3.5 h-3.5 text-muted-foreground shrink-0" />;
       default:
-        return <Clock size={14} className="text-muted-foreground" />;
+        return null;
     }
   }, [agent.status]);
 
@@ -182,61 +178,85 @@ const SubagentEmbedItem: React.FC<SubagentEmbedItemProps> = ({
 
   const skillName = agent.skillId || t('sleep.unknownSkill');
 
-  // 🆕 P33 UI优化：简化子代理项结构
   return (
-    <div className="border-t border-border/30">
+    <div>
       {/* 紧凑头部行 */}
-      <DsButton
-        variant="ghost"
-        size="sm"
+      <div
+        role="button"
+        tabIndex={0}
         onClick={onToggle}
-        className="w-full !justify-start gap-2 !px-3 !py-2 text-left [@media(pointer:coarse)]:!min-h-11"
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onToggle();
+          }
+        }}
+        className="flex items-center justify-between gap-2 px-3 py-2 bg-muted/20 hover:bg-muted/40 transition-colors cursor-pointer [@media(pointer:coarse)]:min-h-11"
       >
-        {isCollapsed ? (
-          <CaretRight size={14} className="text-muted-foreground" />
-        ) : (
-          <CaretDown size={14} className="text-muted-foreground" />
-        )}
-        <Robot size={14} className="text-primary" />
-        <span className="text-sm font-medium truncate">{skillName}</span>
-        <div className="flex items-center gap-1 ml-auto">
-          {statusIcon}
-          <span className="text-xs text-muted-foreground">{statusText}</span>
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <ToolActivitySweep
+            active={isAgentActive}
+            className="h-6 w-6 shrink-0 justify-center rounded-md bg-muted/70 dark:bg-muted/40"
+          >
+            <Robot size={14} className="text-muted-foreground" />
+          </ToolActivitySweep>
+          <span className="truncate text-xs font-medium text-muted-foreground">
+            {skillName}
+          </span>
         </div>
-        {/* 用 span 避免 button 嵌套（同 NoteToolPreview 范式），并放开强制尺寸保证触控目标 */}
-        {!isCollapsed && (
-          <span
-            role="button"
-            tabIndex={0}
-            onClick={(e) => {
-              e.stopPropagation();
-              e.preventDefault();
-              setIsFullHeight(!isFullHeight);
-            }}
-            onMouseDown={(e) => { e.stopPropagation(); }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
+
+        <div className="flex shrink-0 items-center gap-1.5">
+          {isAgentActive ? (
+            <TextShimmer
+              className="text-xs text-muted-foreground"
+              duration={1.5}
+              spread={3}
+            >
+              {statusText}
+            </TextShimmer>
+          ) : (
+            <span className="text-xs text-muted-foreground">{statusText}</span>
+          )}
+          {statusIcon}
+          {/* 用 span 避免嵌套可交互按钮 */}
+          {!isCollapsed && (
+            <span
+              role="button"
+              tabIndex={0}
+              onClick={(e) => {
                 e.stopPropagation();
                 e.preventDefault();
                 setIsFullHeight(!isFullHeight);
-              }
-            }}
-            // 触屏：本体 ~26px（icon 14 + p-1.5 12，DsButton leading-none 无 strut），-inset-2.5 → 46px 命中
-            className="p-1.5 rounded hover:bg-[var(--interactive-hover)] transition-colors cursor-pointer relative z-10 flex-shrink-0 after:absolute after:-inset-2 after:content-[''] [@media(pointer:coarse)]:after:-inset-2.5"
-            aria-label={t('sleep.toggleSize')}
-          >
-            {isFullHeight ? (
-              <ArrowsIn size={14} className="text-muted-foreground" />
-            ) : (
-              <ArrowsOut size={14} className="text-muted-foreground" />
-            )}
-          </span>
-        )}
-      </DsButton>
+              }}
+              onMouseDown={(e) => { e.stopPropagation(); }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  setIsFullHeight(!isFullHeight);
+                }
+              }}
+              className="p-1.5 rounded hover:bg-[var(--interactive-hover)] transition-colors cursor-pointer relative z-10 flex-shrink-0 after:absolute after:-inset-2 after:content-[''] [@media(pointer:coarse)]:after:-inset-2.5"
+              aria-label={t('sleep.toggleSize')}
+            >
+              {isFullHeight ? (
+                <ArrowsIn size={14} className="text-muted-foreground" />
+              ) : (
+                <ArrowsOut size={14} className="text-muted-foreground" />
+              )}
+            </span>
+          )}
+          {isCollapsed ? (
+            <CaretRight size={14} className="text-muted-foreground shrink-0" />
+          ) : (
+            <CaretDown size={14} className="text-muted-foreground shrink-0" />
+          )}
+        </div>
+      </div>
 
       {/* 嵌入聊天视图 - 无额外边框；高度用视口相对值封顶，避免小屏嵌套滚动超出可视范围 */}
       {!isCollapsed && (
-        <div className={cn("overflow-hidden", isFullHeight ? "h-[min(450px,60vh)]" : "h-[min(250px,40vh)]")}>
+        <div className={cn('border-t border-border/30 overflow-hidden', isFullHeight ? 'h-[min(450px,60vh)]' : 'h-[min(250px,40vh)]')}>
           <ChatContainer
             key={agent.sessionId}
             sessionId={agent.sessionId}
@@ -420,48 +440,40 @@ const SleepBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block, 
     });
   };
 
-  // 状态图标和颜色
+  const isSleeping = status === 'sleeping';
+
+  // 状态图标与文案（中性容器语义，与 mcpTool 统一）
   const statusConfig = useMemo(() => {
     switch (status) {
       case 'sleeping':
         return {
-          icon: <Moon className="w-4 h-4" />,
-          bgColor: 'bg-indigo-50 dark:bg-indigo-900/20',
-          borderColor: 'border-indigo-200 dark:border-indigo-800',
-          textColor: 'text-indigo-700 dark:text-indigo-300',
+          Icon: Clock,
           label: t('sleep.status.sleeping'),
+          terminalIcon: null,
         };
       case 'awakened':
         return {
-          icon: <Sun className="w-4 h-4" />,
-          bgColor: 'bg-success/10',
-          borderColor: 'border-success/30',
-          textColor: 'text-success',
+          Icon: CheckCircle,
           label: t('sleep.status.awakened'),
+          terminalIcon: <CheckCircle size={16} weight="fill" className="w-4 h-4 text-success shrink-0" />,
         };
       case 'timeout':
         return {
-          icon: <Clock className="w-4 h-4" />,
-          bgColor: 'bg-warning/10',
-          borderColor: 'border-warning/30',
-          textColor: 'text-warning',
+          Icon: WarningCircle,
           label: t('sleep.status.timeout'),
+          terminalIcon: <WarningCircle size={16} className="w-4 h-4 text-warning shrink-0" />,
         };
       case 'cancelled':
         return {
-          icon: <WarningCircle size={16} />,
-          bgColor: 'bg-danger/10',
-          borderColor: 'border-danger/30',
-          textColor: 'text-danger',
+          Icon: WarningCircle,
           label: t('sleep.status.cancelled'),
+          terminalIcon: <WarningCircle size={16} className="w-4 h-4 text-destructive shrink-0" />,
         };
       default:
         return {
-          icon: <Moon className="w-4 h-4" />,
-          bgColor: 'bg-muted/30',
-          borderColor: 'border-border/50',
-          textColor: 'text-muted-foreground',
+          Icon: Clock,
           label: t('sleep.status.unknown'),
+          terminalIcon: null,
         };
     }
   }, [status, t]);
@@ -520,94 +532,143 @@ const SleepBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block, 
     [agents]
   );
 
-  // 🆕 P33 UI优化：简化结构，减少嵌套
+  const SleepIcon = statusConfig.Icon;
+  const hasMeta =
+    (status === 'awakened' && Boolean(awakenedBy))
+    || Boolean(createdAt)
+    || Boolean(awakenedAt)
+    || Boolean(sleepId);
+  const hasExpandedContent = agents.length > 0 || hasMeta;
+
   return (
-    <div className={cn(
-      "rounded-lg border overflow-hidden",
-      statusConfig.borderColor,
-      status === 'sleeping' ? 'bg-card' : statusConfig.bgColor
-    )}>
+    <div
+      className={cn(
+        'rounded-lg border overflow-hidden bg-card dark:bg-card/80',
+        status === 'cancelled' ? 'border-destructive/30' : 'border-border/50'
+      )}
+    >
       {/* 紧凑头部：状态 + 子代理数 + 唤醒按钮 */}
       <div
         className={cn(
-          "flex items-center gap-2 px-3 py-2 cursor-pointer [@media(pointer:coarse)]:min-h-11",
-          status === 'sleeping' ? statusConfig.bgColor : 'bg-transparent'
+          'flex items-center justify-between gap-2 px-3 py-2.5 cursor-pointer transition-colors hover:bg-muted/20 [@media(pointer:coarse)]:min-h-11',
+          isExpanded && hasExpandedContent && 'border-b border-border/30'
         )}
         onClick={() => setIsExpanded(!isExpanded)}
       >
-        <div className={statusConfig.textColor}>{statusConfig.icon}</div>
-        <span className={`text-sm font-medium ${statusConfig.textColor}`}>
-          {statusConfig.label}
-        </span>
-        {agents.length > 0 && (
-          <span className="text-xs text-muted-foreground">
-            ({agents.length})
-          </span>
-        )}
-        {/* 🆕 等待进度摘要（仅睡眠中显示）：M/N 已完成 */}
-        {status === 'sleeping' && agents.length > 0 && (
-          <span className="text-xs text-muted-foreground">
-            {t('workspace:sleep.progress', { done: terminalCount, total: agents.length })}
-          </span>
-        )}
-        <div className="flex-1" />
-        {status === 'sleeping' && (
-          <DsButton
-            variant="outline"
-            size="sm"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleManualWake();
-            }}
-            disabled={isWaking}
-            className="bg-white dark:bg-gray-800 [@media(pointer:coarse)]:!min-h-11"
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <ToolActivitySweep
+            active={isSleeping}
+            className="h-7 w-7 shrink-0 justify-center rounded-md bg-muted/70 dark:bg-muted/40"
           >
-            {isWaking ? <CircleNotch size={12} className="animate-spin" /> : t('sleep.wakeButton')}
-          </DsButton>
-        )}
-        {isExpanded ? (
-          <CaretDown size={16} className="text-muted-foreground" />
-        ) : (
-          <CaretRight size={16} className="text-muted-foreground" />
-        )}
+            <SleepIcon size={16} className="text-muted-foreground" />
+          </ToolActivitySweep>
+          <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
+            <div className="flex min-w-0 items-center gap-1.5">
+              <ToolActivitySweep active={isSleeping} className="min-w-0 max-w-full leading-4">
+                <span className="block truncate text-xs font-medium leading-4 text-muted-foreground">
+                  {t('sleep.subagents')}
+                </span>
+              </ToolActivitySweep>
+              {agents.length > 0 && (
+                <span className="shrink-0 rounded bg-muted/60 px-1.5 py-0.5 text-2xs leading-none text-muted-foreground tabular-nums">
+                  {agents.length}
+                </span>
+              )}
+            </div>
+            <div className="flex min-w-0 items-center gap-1.5">
+              {isSleeping ? (
+                <TextShimmer
+                  className="text-xs leading-4 text-muted-foreground"
+                  duration={1.5}
+                  spread={3}
+                >
+                  {statusConfig.label}
+                </TextShimmer>
+              ) : (
+                <span className="text-xs leading-4 text-muted-foreground">
+                  {statusConfig.label}
+                </span>
+              )}
+              {/* 🆕 等待进度摘要（仅睡眠中显示）：M/N 已完成 */}
+              {isSleeping && agents.length > 0 && (
+                <span className="text-2xs leading-4 text-muted-foreground tabular-nums">
+                  {t('workspace:sleep.progress', { done: terminalCount, total: agents.length })}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-1.5">
+          {isSleeping && (
+            <DsButton
+              variant="outline"
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleManualWake();
+              }}
+              disabled={isWaking}
+              className="h-6 px-2 text-xs border-border/50 bg-transparent text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground [@media(pointer:coarse)]:!min-h-11"
+            >
+              {isWaking ? <CircleNotch size={12} className="animate-spin" /> : t('sleep.wakeButton')}
+            </DsButton>
+          )}
+          {statusConfig.terminalIcon}
+          {isExpanded ? (
+            <CaretDown size={14} className="text-muted-foreground shrink-0" />
+          ) : (
+            <CaretRight size={14} className="text-muted-foreground shrink-0" />
+          )}
+        </div>
       </div>
 
-      {/* 展开内容：直接显示子代理列表，无额外包装 */}
-      {isExpanded && (
+      {/* 展开内容：子代理列表与元信息 */}
+      {isExpanded && hasExpandedContent && (
         <>
-          {/* 子代理列表 - 直接渲染，无外层容器 */}
-          {agents.map((agent) => (
-            <SubagentEmbedItem
-              key={agent.sessionId}
-              agent={agent}
-              isCollapsed={!expandedAgents.has(agent.sessionId)}
-              onToggle={() => toggleAgent(agent.sessionId)}
-            />
-          ))}
+          {agents.length > 0 && (
+            <div className="divide-y divide-border/30">
+              {agents.map((agent) => (
+                <SubagentEmbedItem
+                  key={agent.sessionId}
+                  agent={agent}
+                  isCollapsed={!expandedAgents.has(agent.sessionId)}
+                  onToggle={() => toggleAgent(agent.sessionId)}
+                />
+              ))}
+            </div>
+          )}
 
           {/* 唤醒信息 + 元信息合并为底部栏 */}
-          <div className="flex items-center gap-2 px-3 py-1.5 border-t border-border/30 bg-muted/20 text-2xs text-muted-foreground">
-            {status === 'awakened' && awakenedBy && (
-              <>
-                <Chat size={12} className="text-success" />
-                <span className="text-success">
-                  {t('sleep.awakenedBy', { agent: awakenedBy.slice(-8) })}
-                </span>
-                {awakenMessage && <span className="truncate max-w-[150px]">{awakenMessage}</span>}
-                <span className="text-border">|</span>
-              </>
-            )}
-            {createdAt && (
-              <span>{new Date(createdAt).toLocaleTimeString(locale)}</span>
-            )}
-            {awakenedAt && (
-              <>
-                <span>→</span>
-                <span>{new Date(awakenedAt).toLocaleTimeString(locale)}</span>
-              </>
-            )}
-            {sleepId && <span className="font-mono ml-auto">{sleepId.slice(-12)}</span>}
-          </div>
+          {hasMeta && (
+            <div
+              className={cn(
+                'flex items-center gap-2 px-3 py-1.5 bg-muted/20 text-2xs text-muted-foreground',
+                agents.length > 0 && 'border-t border-border/30'
+              )}
+            >
+              {status === 'awakened' && awakenedBy && (
+                <>
+                  <Chat size={12} className="text-success" />
+                  <span className="text-success">
+                    {t('sleep.awakenedBy', { agent: awakenedBy.slice(-8) })}
+                  </span>
+                  {awakenMessage && <span className="truncate max-w-[150px]">{awakenMessage}</span>}
+                  <span className="text-border">|</span>
+                </>
+              )}
+              {createdAt && (
+                <span className="tabular-nums">{new Date(createdAt).toLocaleTimeString(locale)}</span>
+              )}
+              {awakenedAt && (
+                <>
+                  <span>→</span>
+                  <span className="tabular-nums">{new Date(awakenedAt).toLocaleTimeString(locale)}</span>
+                </>
+              )}
+              {sleepId && <span className="font-mono ml-auto">{sleepId.slice(-12)}</span>}
+            </div>
+          )}
         </>
       )}
     </div>

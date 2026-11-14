@@ -196,11 +196,11 @@ describe('classifySyncE2eeError', () => {
 describe('E2EE 稳定 code 跨层契约', () => {
   it('Rust 与 TypeScript 使用同一组 code', () => {
     const rust = readFileSync(
-      resolve(process.cwd(), 'src-tauri/crates/dstu-sync/src/cloud_storage/mod.rs'),
+      resolve(process.cwd(), 'host/plugins/sync-providers/src/mod.ts'),
       'utf8',
     );
     const rustClaim = readFileSync(
-      resolve(process.cwd(), 'src-tauri/crates/dstu-sync/src/cloud_storage/e2ee_claim.rs'),
+      resolve(process.cwd(), 'host/plugins/sync-providers/src/e2ee_claim.ts'),
       'utf8',
     );
     const api = readFileSync(
@@ -214,10 +214,10 @@ describe('E2EE 稳定 code 跨层契约', () => {
       SYNC_E2EE_PASSWORD_REQUIRED_CODE,
       SYNC_E2EE_DOWNGRADE_REJECTED_CODE,
     ]) {
-      expect(rust).toContain(`"${code}"`);
+      expect(rust).toContain(`'${code}'`);
       expect(api).toContain(`'${code}'`);
     }
-    expect(rustClaim).toContain(`"${SYNC_E2EE_CLAIM_CONFLICT_CODE}"`);
+    expect(rustClaim).toContain(`'${SYNC_E2EE_CLAIM_CONFLICT_CODE}'`);
     expect(api).toContain(`'${SYNC_E2EE_CLAIM_CONFLICT_CODE}'`);
   });
 });

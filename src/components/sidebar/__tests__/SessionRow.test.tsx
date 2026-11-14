@@ -1,11 +1,14 @@
 import React from 'react';
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ModernSidebar } from '@/components/ModernSidebar';
 import {
   __resetSessionSidebarIndicatorsForTests,
   useSessionSidebarIndicators,
 } from '@/features/chat/hooks/useSessionSidebarIndicators';
+import { officialUiRender } from '@/ui-plugins/testing/render';
+
+const render = officialUiRender();
 
 const { invokeMock, getCurrentSessionId, beginPrefetch, cancelPrefetch, rowRenderCounts } = vi.hoisted(() => ({
   invokeMock: vi.fn(),

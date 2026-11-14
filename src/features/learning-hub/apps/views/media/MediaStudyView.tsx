@@ -36,8 +36,9 @@ import {
   ArrowUpRight,
   Television,
   Target,
+  TreeStructure,
 } from '@phosphor-icons/react';
-import { cn } from '@/lib/utils';
+import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
 import { DsAlertDialog } from '@/components/ui/DsDialog';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
@@ -96,6 +97,13 @@ import {
   type MediaStudyCompanionRenderContext,
 } from './mediaStudyCompanion';
 import { openMediaStudio } from '@/features/media-studio/mediaStudioNavigation';
+import { getAppKernel } from '@/ui-kernel/bootstrap';
+import type { AnchorEdgeRecord } from '@/ui-kernel/contracts/interop';
+import {
+  groupMediaAnchorEdgesByCue,
+  useMediaAnchorReveal,
+} from './mediaInteropBridge';
+import { resolveCueBranchTintMap, useMediaTintDarkTheme } from './mediaKeyframeExcerpt';
 
 /** 字幕面板放到右侧所需的最小容器宽度 */
 export const SIDE_LAYOUT_MIN_WIDTH = 720;
@@ -172,7 +180,8 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
   onError,
   bilibili = null,
 }) => {
-  const { t } = useTranslation(['learningHub', 'common']);
+  const { t } = useTranslation(['learningHub', 'common', 'mediaStudio']);
+  const tintDark = useMediaTintDarkTheme();
   const rootRef = useRef<HTMLDivElement | null>(null);
   const handleRef = useRef<MediaPlayerHandle | null>(null);
   const containerWidth = useContainerWidth(rootRef);
@@ -386,6 +395,93 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
     handle.seekTo(seconds);
     handle.play();
   }, [isActive, canSeek, resourceId, sourceId, nodePath]);
+
+  // ---------------------------------------------------------------- 跨插件互操作（Interop Protocol v1）
+  // 「划选即入图」：点选 / 划选字幕即送入当前导图或笔记（会话级，换条目复位）
+  const [autoExcerptActive, setAutoExcerptActive] = useState(false);
+  // 定位脉冲请求：nonce 单调递增，TranscriptPanel 据此滚动并高亮对应字幕段
+  useEffect(() => {
+    setAutoExcerptActive(false);
+  }, [resourceId]);
+
+  const interopIds = useMemo(
+    () => Array.from(new Set([resourceId, sourceId].filter((id): id is string => Boolean(id && id.trim())))),
+    [resourceId, sourceId],
+  );
+  const interopKey = JSON.stringify(interopIds);
+  const pulsedCue = useMediaAnchorReveal({
+    resourceId,
+    resourceIds: interopIds,
+    rootRef,
+    canSeek,
+    isActive,
+    onRequest: () => {
+      // 即使元数据尚未就绪，也必须让引用定位优先于断点续播 / 清晰度恢复。
+      externalSeekRef.current = true;
+      pendingRestoreRef.current = null;
+      setPanelPref(true);
+      companion?.onActiveTabChange(MEDIA_STUDY_TRANSCRIPT_TAB);
+    },
+    onSeek: (seconds) => {
+      const handle = handleRef.current;
+      if (!handle) return false;
+      const element = handle.getElement();
+      if (element && element.readyState < HTMLMediaElement.HAVE_METADATA) return false;
+      handle.seekTo(seconds);
+      lastTimeRef.current = seconds;
+      recomputeActive(seconds);
+      return true;
+    },
+  });
+
+  // 字幕段反向链接：查询 + 订阅变更（查询序号防止旧响应覆盖新结果）
+  const [mediaEdges, setMediaEdges] = useState<AnchorEdgeRecord[]>([]);
+  useEffect(() => {
+    setMediaEdges([]);
+    // 反向链接只挂在字幕段上：没有字幕时不查询（也不产生多余的 IPC）
+    if (interopIds.length === 0 || !hasTranscript) return;
+    const kernel = getAppKernel();
+    const ids = interopIds;
+    const idSet = new Set(ids);
+    let disposed = false;
+    let querySeq = 0;
+    const load = () => {
+      const seq = ++querySeq;
+      void kernel.anchors
+        .queryAnchorEdgesByTarget({ targetResourceIds: ids, targetKind: 'media' })
+        .then((edges) => {
+          if (!disposed && seq === querySeq) setMediaEdges(edges);
+        })
+        .catch(() => {
+          // 反向链接是增强信息：查询失败保持现状
+        });
+    };
+    load();
+    const unsubscribe = kernel.anchors.subscribeAnchorEdgesChanged((detail) => {
+      if (detail.targetResourceIds.length === 0 || detail.targetResourceIds.some((id) => idSet.has(id))) load();
+    });
+    return () => {
+      disposed = true;
+      unsubscribe();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- interopKey 是 interopIds 的稳定摘要
+  }, [interopKey, hasTranscript]);
+  const cueBacklinks = useMemo(
+    () => groupMediaAnchorEdgesByCue(displaySegments, mediaEdges),
+    [displaySegments, mediaEdges],
+  );
+  const cueBranchTints = useMemo(
+    () => resolveCueBranchTintMap(mediaEdges, displaySegments, { dark: tintDark }),
+    [mediaEdges, displaySegments, tintDark],
+  );
+  const getVideoElement = useCallback((): HTMLVideoElement | null => {
+    const el = handleRef.current?.getElement();
+    return typeof HTMLVideoElement !== 'undefined' && el instanceof HTMLVideoElement ? el : null;
+  }, []);
+  const transcriptInterop = useMemo(
+    () => ({ resourceId, aliasResourceId: sourceId, mediaTitle: fileName, autoExcerptActive, getVideoElement }),
+    [resourceId, sourceId, fileName, autoExcerptActive, getVideoElement],
+  );
 
   // 断点续播提示（一次性）
   const resumeToastShownRef = useRef(false);
@@ -797,7 +893,7 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
       <div
         role="toolbar"
         aria-label={t('learningHub:mediaTranscript.toolbarLabel')}
-        className="flex h-11 shrink-0 items-center gap-1 border-b border-border px-2 [@media(pointer:coarse)]:h-14"
+        className="flex h-11 shrink-0 items-center gap-1 border-b border-border/35 bg-background/80 backdrop-blur-sm px-2.5 [@media(pointer:coarse)]:h-14"
       >
         {showTranscribeButton && (
           <DsButton
@@ -850,6 +946,29 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
               <X size={13} aria-hidden="true" />
             </DsButton>
           </div>
+        )}
+
+        {hasTranscript && (
+          <DsButton
+            variant="ghost"
+            size="sm"
+            onClick={() => setAutoExcerptActive((prev) => !prev)}
+            aria-pressed={autoExcerptActive}
+            aria-label={t('mediaStudio:interop.auto_excerpt')}
+            title={t('mediaStudio:interop.auto_excerpt_hint')}
+            data-testid="media-auto-excerpt-toggle"
+            className={cn(
+              toolbarButtonClass,
+              'gap-1.5 px-2.5 text-xs',
+              autoExcerptActive && 'bg-primary/10 text-primary',
+            )}
+          >
+            <TreeStructure size={14} aria-hidden="true" />
+            <span className="max-sm:hidden">{t('mediaStudio:interop.auto_excerpt')}</span>
+            {autoExcerptActive && (
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-success" aria-hidden="true" />
+            )}
+          </DsButton>
         )}
 
         <div className="flex-1" />
@@ -1066,8 +1185,8 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
             className={cn(
               'flex min-h-0 flex-col bg-background',
               sideLayout
-                ? 'w-[340px] shrink-0 border-l border-border xl:w-[380px]'
-                : 'min-h-0 flex-1 border-t border-border',
+                ? 'w-[340px] shrink-0 border-l border-border/35 xl:w-[380px]'
+                : 'min-h-0 flex-1 border-t border-border/35',
             )}
           >
             {activeCheckpoint && (
@@ -1124,6 +1243,10 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
                   className="min-h-0 flex-1"
                   onQuoteSelection={handleQuoteSelection}
                   onMakeCardsFromSelection={handleCardsFromSelection}
+                  interop={transcriptInterop}
+                  cueBacklinks={cueBacklinks}
+                  cueBranchTints={cueBranchTints}
+                  pulsedCue={pulsedCue}
                 />
               ) : (
                 <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-6 py-8 text-center">
@@ -1215,6 +1338,10 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
             className={sideLayout ? 'w-[340px] shrink-0 xl:w-[380px]' : 'min-h-0 flex-1'}
             onQuoteSelection={handleQuoteSelection}
             onMakeCardsFromSelection={handleCardsFromSelection}
+            interop={transcriptInterop}
+            cueBacklinks={cueBacklinks}
+            cueBranchTints={cueBranchTints}
+            pulsedCue={pulsedCue}
           />
         )}
       </div>

@@ -6,7 +6,7 @@
  * - 点击日期内联展开当日明细（无弹窗）
  * - 月份切换带方向感滑动过渡；数据随所见月份加载
  *
- * 🆕 2026-01 新增；2026-07 复习体验改造；2026-07 美术对齐管理页
+ * 2026-01 新增；2026-07 复习体验改造；2026-07 美术对齐管理页
  */
 
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
@@ -130,12 +130,12 @@ const DayDetail: React.FC<DayDetailProps> = ({
   const failed = data ? Math.max(0, data.count - data.passed) : 0;
 
   return (
-    <div className="ui-rise-in rounded-lg border border-primary/20 bg-card p-3 sm:p-4">
+    <div className="ui-rise-in border-t border-border/35 pt-3">
       {/* 头部 */}
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <div className="min-w-0">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-baseline gap-2">
           <h3 className="truncate text-sm font-semibold text-foreground">{formattedDate}</h3>
-          <p className="mt-0.5 text-xs text-muted-foreground">{weekday}</p>
+          <span className="text-xs text-muted-foreground">{weekday}</span>
         </div>
         <DsButton
           variant="ghost"
@@ -143,9 +143,9 @@ const DayDetail: React.FC<DayDetailProps> = ({
           size="sm"
           onClick={onClose}
           aria-label={t('review:calendar.closeDetail')}
-          className="h-10 w-10 shrink-0 text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground sm:h-8 sm:w-8 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
+          className="h-8 w-8 shrink-0 text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
         >
-          <X size={16} />
+          <X size={15} />
         </DsButton>
       </div>
 
@@ -291,7 +291,7 @@ const CalendarCell: React.FC<CalendarCellProps> = ({
     >
       <span
         className={cn(
-          'absolute left-1 top-1 text-[10px] font-medium leading-none tabular-nums',
+          'absolute left-1 top-1 font-mono text-[10px] font-medium leading-none tabular-nums',
           isToday
             ? 'flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-0.5 font-semibold text-primary-foreground'
             : dense
@@ -304,7 +304,7 @@ const CalendarCell: React.FC<CalendarCellProps> = ({
       {count > 0 && (
         <span
           className={cn(
-            'absolute bottom-1 right-1 text-[10px] font-semibold tabular-nums',
+            'absolute bottom-1 right-1 font-mono text-[10px] font-semibold tabular-nums',
             dense ? 'text-primary-foreground' : 'text-primary'
           )}
         >
@@ -315,7 +315,7 @@ const CalendarCell: React.FC<CalendarCellProps> = ({
       {dueCount > 0 && (
         <span
           className={cn(
-            'absolute bottom-1 left-1 inline-flex items-center gap-0.5 text-[10px] font-semibold tabular-nums',
+            'absolute bottom-1 left-1 inline-flex items-center gap-0.5 font-mono text-[10px] font-semibold tabular-nums',
             dense ? 'text-primary-foreground/85' : 'text-warning'
           )}
         >
@@ -694,10 +694,10 @@ export const ReviewCalendarView: React.FC<ReviewCalendarViewProps> = ({
         )}
       </div>
 
-      {/* 从未复习过：空态引导提示条 */}
+      {/* 从未复习过：安静内联说明 */}
       {!hasAnyReview && (
-        <div className="ui-rise-in flex items-start gap-2 rounded-lg border border-info/15 bg-info/5 px-3 py-2.5 text-xs leading-relaxed text-muted-foreground">
-          <Info size={14} className="mt-0.5 shrink-0 text-info" />
+        <div className="ui-rise-in flex items-center gap-1.5 text-xs text-muted-foreground">
+          <Info size={13} className="shrink-0 text-info/80" />
           <span>{t('review:calendar.emptyHint')}</span>
         </div>
       )}
@@ -705,8 +705,8 @@ export const ReviewCalendarView: React.FC<ReviewCalendarViewProps> = ({
       {/* 统计概览 */}
       <StreakStats calendarData={calendarData} />
 
-      {/* 日历区域 */}
-      <div className="overflow-hidden rounded-lg border border-border/50 bg-card p-2 sm:p-4">
+      {/* 日历区域（无框平铺，减少盒套盒） */}
+      <div className="overflow-hidden border-t border-border/35 pt-3">
         {/* 月份导航 */}
         <div className="mb-3 flex items-center justify-between gap-1">
           <DsButton

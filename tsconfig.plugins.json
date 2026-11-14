@@ -1,0 +1,10 @@
+{
+  "compilerOptions": {
+    "target": "ES2022", "module": "NodeNext", "moduleResolution": "NodeNext",
+    "lib": ["ES2022", "DOM"], "types": ["node"], "strict": true,
+    "skipLibCheck": true, "resolveJsonModule": true,
+    "rootDir": ".", "outDir": ".plugin-build"
+  },
+  "include": ["src/plugin-runtime/**/*.ts", "src/plugins/**/*.ts"],
+  "exclude": ["**/*.test.ts", "**/__tests__/**"]
+}

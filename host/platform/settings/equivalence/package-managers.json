@@ -1,0 +1,455 @@
+{
+  "domain": "diagnostics",
+  "commands": [
+    "check_package_manager",
+    "check_all_package_managers",
+    "auto_install_package_manager",
+    "check_test_dependencies",
+    "toggle_devtools"
+  ],
+  "scenarios": [
+    {
+      "id": "diagnostics.pm.check.npx_variants",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "check_package_manager",
+          "args": {
+            "command": "npx"
+          }
+        },
+        {
+          "cmd": "check_package_manager",
+          "args": {
+            "command": "NPX"
+          }
+        },
+        {
+          "cmd": "check_package_manager",
+          "args": {
+            "command": "C:\\Program Files\\nodejs\\npx.cmd"
+          }
+        },
+        {
+          "cmd": "check_package_manager",
+          "args": {
+            "command": "/usr/local/bin/NPX.EXE"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "diagnostics.pm.check.uv_variants",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "check_package_manager",
+          "args": {
+            "command": "uv"
+          }
+        },
+        {
+          "cmd": "check_package_manager",
+          "args": {
+            "command": "UV"
+          }
+        },
+        {
+          "cmd": "check_package_manager",
+          "args": {
+            "command": "/opt/bin/uv.exe"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "diagnostics.pm.check.python_variants",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "check_package_manager",
+          "args": {
+            "command": "pip"
+          }
+        },
+        {
+          "cmd": "check_package_manager",
+          "args": {
+            "command": "pip3"
+          }
+        },
+        {
+          "cmd": "check_package_manager",
+          "args": {
+            "command": "python"
+          }
+        },
+        {
+          "cmd": "check_package_manager",
+          "args": {
+            "command": "Python3"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "diagnostics.pm.check.cargo",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "check_package_manager",
+          "args": {
+            "command": "cargo"
+          }
+        },
+        {
+          "cmd": "check_package_manager",
+          "args": {
+            "command": "CARGO"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "diagnostics.pm.check.not_detected",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "check_package_manager",
+          "args": {
+            "command": ""
+          }
+        },
+        {
+          "cmd": "check_package_manager",
+          "args": {
+            "command": "node"
+          }
+        },
+        {
+          "cmd": "check_package_manager",
+          "args": {
+            "command": "npm"
+          }
+        },
+        {
+          "cmd": "check_package_manager",
+          "args": {
+            "command": " npx"
+          }
+        },
+        {
+          "cmd": "check_package_manager",
+          "args": {
+            "command": "npx "
+          }
+        },
+        {
+          "cmd": "check_package_manager",
+          "args": {
+            "command": "/usr/bin/npx"
+          }
+        },
+        {
+          "cmd": "check_package_manager",
+          "args": {
+            "command": "uvx"
+          }
+        },
+        {
+          "cmd": "check_package_manager",
+          "args": {
+            "command": "/usr/bin/uv"
+          }
+        },
+        {
+          "cmd": "check_package_manager",
+          "args": {
+            "command": "pip3.11"
+          }
+        },
+        {
+          "cmd": "check_package_manager",
+          "args": {
+            "command": "/usr/bin/python3"
+          }
+        },
+        {
+          "cmd": "check_package_manager",
+          "args": {
+            "command": "cargo.exe"
+          }
+        },
+        {
+          "cmd": "check_package_manager",
+          "args": {
+            "command": "İ"
+          }
+        },
+        {
+          "cmd": "check_package_manager",
+          "args": {
+            "command": "命令"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "diagnostics.pm.check.arg_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "check_package_manager",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "check_package_manager",
+          "args": {
+            "command": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "check_package_manager",
+          "args": {
+            "command": 1
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "check_package_manager",
+          "args": {
+            "cmd": "npx"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "diagnostics.pm.check_all.basic",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "check_all_package_managers",
+          "args": {}
+        },
+        {
+          "cmd": "check_all_package_managers",
+          "args": {
+            "unexpected": true
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "diagnostics.pm.auto_install.unsupported",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "auto_install_package_manager",
+          "args": {
+            "managerType": "npm"
+          }
+        },
+        {
+          "cmd": "auto_install_package_manager",
+          "args": {
+            "managerType": "npx"
+          }
+        },
+        {
+          "cmd": "auto_install_package_manager",
+          "args": {
+            "managerType": "node"
+          }
+        },
+        {
+          "cmd": "auto_install_package_manager",
+          "args": {
+            "managerType": "pip"
+          }
+        },
+        {
+          "cmd": "auto_install_package_manager",
+          "args": {
+            "managerType": "python"
+          }
+        },
+        {
+          "cmd": "auto_install_package_manager",
+          "args": {
+            "managerType": ""
+          }
+        },
+        {
+          "cmd": "auto_install_package_manager",
+          "args": {
+            "managerType": "UV"
+          }
+        },
+        {
+          "cmd": "auto_install_package_manager",
+          "args": {
+            "managerType": "Cargo"
+          }
+        },
+        {
+          "cmd": "auto_install_package_manager",
+          "args": {
+            "managerType": " uv"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "diagnostics.pm.auto_install.arg_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "auto_install_package_manager",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "auto_install_package_manager",
+          "args": {
+            "managerType": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "auto_install_package_manager",
+          "args": {
+            "managerType": 0
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "auto_install_package_manager",
+          "args": {
+            "manager_type": "npm"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "diagnostics.test_dependencies.basic",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "check_test_dependencies",
+          "args": {}
+        },
+        {
+          "cmd": "check_test_dependencies",
+          "args": {
+            "unexpected": 1
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "diagnostics.devtools.toggle_cycle",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "toggle_devtools",
+          "args": {}
+        },
+        {
+          "cmd": "toggle_devtools",
+          "args": {}
+        },
+        {
+          "cmd": "toggle_devtools",
+          "args": {
+            "unexpected": 1
+          }
+        },
+        {
+          "cmd": "toggle_devtools",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

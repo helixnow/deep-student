@@ -1,13 +1,24 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import React from 'react';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render as renderRoot, screen, waitFor, within, cleanup } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createOfficialUiTestKernel } from '@/ui-plugins/testing/render';
+import { UiKernelProvider } from '@/ui-kernel/react';
+import type { UiKernel } from '@/ui-kernel/kernel';
 import { ModernSidebar, reorderSidebarSessionGroups } from '@/components/ModernSidebar';
 import { __resetSessionListStoreForTests } from '@/features/chat/stores/sessionListStore';
 import { COMMAND_EVENTS } from '@/command-palette/hooks/useCommandEvents';
 import { rememberCardsHubView, resetCardsHubMemoryForTests } from '@/app/navigation/cardsHub';
+
+let kernel: UiKernel;
+beforeAll(async () => { kernel = await createOfficialUiTestKernel(); });
+afterAll(async () => { cleanup(); await kernel.dispose(); });
+const render: typeof renderRoot = (ui, options) => renderRoot(ui, {
+  ...options,
+  wrapper: ({ children }) => <UiKernelProvider kernel={kernel}>{children}</UiKernelProvider>,
+});
 
 const { invokeMock } = vi.hoisted(() => ({
   invokeMock: vi.fn(),

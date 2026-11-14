@@ -1,0 +1,25 @@
+{
+  "id": "RF-W03-qbank-generation-save-failure-terminal-event",
+  "kind": "rust-bug",
+  "status": "proposed",
+  "title": "题库 AI 出题保存结果失败、任务已标记 failed 时，也补发终态 qbank_generation_task_event",
+  "rust": {
+    "file": "src-tauri/crates/dstu-qbank/src/qbank_generation/mod.rs",
+    "line": 176,
+    "behavior": "execute_generation_task 在管线成功返回后调用 save_authoring_result；失败时 `let _ = task_repo::mark_failed(...); return;`，跳过函数末尾的收尾 emit_current_task。前端最后收到的事件仍是开头那条 running，任务卡片停在「生成中」，直到 useQbankGenerationTasks 的 30 秒轮询读到 failed 才更新"
+  },
+  "fix": {
+    "files": ["host/plugins/qbank/src/generation-runner.ts"],
+    "behavior": "保存失败分支在 markFailed 之后调用一次 emitCurrentTask(taskId) 再返回，事件内容就是任务表当前行（status=failed、error=保存错误文本），与其他终态路径发出的事件同形。markFailed 本身失败时仍按 Rust 静默忽略，emit 读到什么发什么。其他分支不变。"
+  },
+  "evidence": "函数末尾的注释（mod.rs:213「收尾事件：前端据此刷新任务卡片 / 弹出完成提示」）说明每个终态都应发事件；管线失败、取消、完成三条路径都发，唯独保存失败这条提前 return。审计 V03-04 用 runner 替身复现：端口调用顺序为 markRunning, emitCurrentTask, saveAuthoringResult, markFailed:disk full，之后没有第二次 emitCurrentTask。",
+  "userVisible": "只在出题结果写库失败（磁盘满、数据库锁等）时可感知：修复前任务卡片最多停在「生成中」30 秒才变为失败，修复后立即显示失败及原因。正常出题流程的事件序列与 Rust 完全一致。",
+  "dataCompat": "不改变落库数据、同步载荷或备份格式；只多发一次与既有终态事件同形的 qbank_generation_task_event。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "host/plugins/qbank/tests/generation-runner.test.ts",
+      "name": "RF-W03-qbank-generation-save-failure-terminal-event: a failed result save still emits the closing event"
+    }
+  ]
+}

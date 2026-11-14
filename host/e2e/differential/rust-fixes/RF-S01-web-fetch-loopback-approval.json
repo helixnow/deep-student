@@ -1,0 +1,38 @@
+{
+  "id": "RF-S01-web-fetch-loopback-approval",
+  "kind": "deliberate",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T09:20+08:00",
+  "title": "web_fetch 访问本机需审批；公网页面不能把 web_fetch 重定向进本机",
+  "rust": {
+    "file": "src-tauri/crates/dstu-agent/src/chat_v2/tools/fetch_executor.rs",
+    "line": 1574,
+    "behavior": "web_fetch 固定为 Low（任何预设都不弹审批），且 dstu-core/src/net_policy.rs:44 is_blocked_internal_ip 豁免 loopback，fetch_executor.rs:602 的重定向策略也用它：模型（或被提示注入的网页）可读取 127.0.0.1/::1 上的本地服务（开发服务器、本地模型 API、调试端口）并把内容回传模型；公网页面 302 到 http://127.0.0.1:… 也会被跟随"
+  },
+  "fix": {
+    "files": ["host/plugins/agent-skills/src/tools/fetch-chat-executor.ts"],
+    "behavior": "sensitivityLevelForCall：URL 主机按 WHATWG 解析后是 loopback 字面量（127.0.0.0/8、::1、::ffff:127.x，含 127.1、2130706433 等写法）或 localhost/*.localhost 时为 High（relaxed 预设也会弹审批），其余仍为 Low；hasDynamicSensitivity=true。重定向逐跳与最终 URL 校验：只有起点全部解析为 loopback 时才允许落到 loopback，公网起点重定向进 loopback 时停在 3xx（与内网地址同样处理）"
+  },
+  "evidence": "审查报告 AGENT-EXECUTOR-SECURITY.md §2b S1。Rust 侧把 web_fetch 降为 Low 的理由是“只读网页”，但本机服务不是网页：Ollama/LM Studio 等本地 API、开发服务器的调试端点会被免审批读取，属于 SSRF 到本机。复现：web_fetch {url: 'http://127.0.0.1:11434/api/tags'} 在 Rust 中 Low 直接执行；公网页面返回 302 Location: http://127.0.0.1:11434/api/tags 时 Rust 跟随并返回本地内容。修复后前者需用户审批，后者停在 302、从不连接 127.0.0.1。已知残留：主机名经 DNS 解析为 127.0.0.1（如 *.nip.io）时同步的敏感度判断看不到，仍为 Low；现有 web_fetch 测试依赖假 DNS 把测试主机解析到本机服务器，彻底封堵需要测试夹具配合，写入交接事项。",
+  "userVisible": "能感知：模型对 localhost/127.0.0.1/[::1] 发起 web_fetch 时会出现审批弹窗（relaxed 预设下原先不弹）；公网页面重定向到本机时，结果是该 3xx 响应而不是本机内容",
+  "dataCompat": "不改变落库数据、同步载荷或备份格式；工具块结构不变",
+  "g3": {
+    "affects": false,
+    "selectors": []
+  },
+  "tests": [
+    {
+      "file": "host/plugins/agent-skills/tests/web-fetch-loopback.test.ts",
+      "name": "RF-S01-web-fetch-loopback-approval: a URL naming this machine needs approval (high); other URLs stay low"
+    },
+    {
+      "file": "host/plugins/agent-skills/tests/web-fetch-loopback.test.ts",
+      "name": "RF-S01-web-fetch-loopback-approval: a public page cannot redirect web_fetch into loopback (Rust followed it with a low-risk approval)"
+    },
+    {
+      "file": "host/plugins/agent-skills/tests/web-fetch-loopback.test.ts",
+      "name": "RF-S01-web-fetch-loopback-approval: public→public and approved loopback→loopback redirects still follow"
+    }
+  ]
+}

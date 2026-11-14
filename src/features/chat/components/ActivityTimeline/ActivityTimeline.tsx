@@ -48,6 +48,7 @@ import { formatToolDurationShort } from '@/features/chat/utils/toolDuration';
 import { getToolVisual } from '@/features/chat/utils/toolVisual';
 import { TextShimmer } from '../ui/TextShimmer';
 import { ToolActivitySweep } from '../ui/ToolActivitySweep';
+import { PulseDot } from '@/components/ui/PulseDot';
 import { useBlocksByIds } from '../../hooks/useChatStore';
 import { CompletionCard, extractCompletionData, isAttemptCompletionTool } from '../CompletionCard';
 import {
@@ -57,6 +58,17 @@ import {
   shellCommandVerb,
   ShellCommandTimelineView,
 } from './ShellCommandTimelineView';
+import {
+  isInteractiveActivityItem,
+  LIVE_ACTIVITY_VISIBLE_ROWS,
+  sliceLiveActivityWindow,
+  summarizeTurnActivity,
+  type LiveActivityItem,
+} from './liveActivityEngine';
+import {
+  BlockLineCollapsible,
+  MinDurationShineBadge,
+} from './BlockLineCollapsible';
 import './ActivityTimeline.css';
 
 // ============================================================================
@@ -155,11 +167,35 @@ const RETRIEVAL_TOOL_NAMES: Record<string, string> = {
   academic_search: 'builtin-arxiv_search',
 };
 
+function toLiveActivityItem(node: TimelineNodeData): LiveActivityItem & { node: TimelineNodeData } {
+  const rawBlock = node.block as Block & { requiresUserAction?: boolean };
+  const normalizedTool = node.toolName?.replace(/^builtin[-:]/, '') ?? '';
+  const isInteractiveTool =
+    node.type === 'askUser' ||
+    normalizedTool === 'ask_user' ||
+    normalizedTool === 'secret_request' ||
+    normalizedTool === 'approval' ||
+    normalizedTool === 'generative_ui_await';
+
+  return {
+    id: node.id,
+    kind: isInteractiveTool ? (normalizedTool || 'ask_user') : node.type === 'thinking' ? 'thinking' : 'tool',
+    toolName: node.toolName,
+    status: node.toolStatus ?? node.block.status,
+    requiresUserAction: rawBlock.requiresUserAction,
+    startedAtMs: node.block.startedAt,
+    endedAtMs: node.block.endedAt,
+    input: node.toolInput,
+    node,
+  };
+}
+
 function canMergeToolNode(node: TimelineNodeData | undefined): node is TimelineNodeData {
   return node?.type === 'tool'
     && !isTodoTool(node.toolName)
     && !isNoteTool(node.toolName)
-    && !isAttemptCompletionTool(node.toolName);
+    && !isAttemptCompletionTool(node.toolName)
+    && !isInteractiveActivityItem(toLiveActivityItem(node));
 }
 
 function mergeConsecutiveToolNodes(nodes: TimelineNodeData[]): TimelineNodeData[] {
@@ -292,6 +328,11 @@ function blocksToTimelineNodes(
 ): TimelineNodeData[] {
   const nodes: TimelineNodeData[] = [];
   const hiddenPreflightIds = hiddenShellPreflightIds(blocks);
+  const effectiveBlockCount = blocks.filter(
+    (b) =>
+      !(b.type === 'mcp_tool' && hiddenPreflightIds.has(b.id)) &&
+      !(b.type === 'tool_limit' && b.status === 'running'),
+  ).length;
 
   for (const block of blocks) {
     
@@ -387,9 +428,10 @@ function blocksToTimelineNodes(
         toolOutput: block.toolOutput,
       });
     } else if (block.type === 'ask_user') {
-      // 🆕 活跃的 ask_user 在输入栏渲染，时间线中跳过
-      if (block.status === 'running') continue;
-      // 已完成的 ask_user 作为 askUser 节点渲染完整卡片
+      const hasInteractiveFlag = (block as Block & { requiresUserAction?: boolean }).requiresUserAction === true;
+      // 🆕 活跃的 ask_user 在输入栏渲染，时间线中跳过（长流式滑动窗或显式交互标记时保留以支持 Hoisting）
+      if (block.status === 'running' && !hasInteractiveFlag && effectiveBlockCount <= LIVE_ACTIVITY_VISIBLE_ROWS) continue;
+      // 已完成或被提升的 ask_user 作为 askUser 节点渲染完整卡片
       nodes.push({
         id: block.id,
         type: 'askUser',
@@ -406,6 +448,10 @@ function blocksToTimelineNodes(
         content: block.content || '',
       });
     }
+  }
+
+  if (nodes.length > LIVE_ACTIVITY_VISIBLE_ROWS) {
+    return nodes;
   }
 
   return mergeConsecutiveToolNodes(nodes);
@@ -466,11 +512,28 @@ interface ThinkingNodeContentProps {
   node: TimelineNodeData;
   isFirst: boolean;
   isLast: boolean;
+  hasTimelineError?: boolean;
 }
 
 function readAutoCollapseSetting(): boolean {
   if (typeof document === 'undefined') return true;
   return document.documentElement.getAttribute('data-auto-collapse-thinking') !== 'false';
+}
+
+/**
+ * 判定思考链或工具调用组在流式完成时是否应该自动折叠收起：
+ * - 当内部存在错误（hasError === true，例如工具执行失败 status === 'error'）时，绝不自动折叠（返回 false）；
+ * - 当用户已手动展开/收起（userManuallyToggled === true）时，尊重用户意图，不自动折叠（返回 false）；
+ * - 否则按全局自动折叠设置判定。
+ */
+export function shouldAutoCollapseTimelineOnComplete(
+  hasError: boolean,
+  userManuallyToggled = false,
+): boolean {
+  if (hasError || userManuallyToggled) {
+    return false;
+  }
+  return readAutoCollapseSetting();
 }
 
 /**
@@ -489,7 +552,12 @@ const PEEK_FOLLOW_THRESHOLD_PX = 48;
  */
 const PEEK_SNAP_THRESHOLD_PX = 96;
 
-const ThinkingNodeContentInner: React.FC<ThinkingNodeContentProps> = ({ node, isFirst, isLast }) => {
+const ThinkingNodeContentInner: React.FC<ThinkingNodeContentProps> = ({
+  node,
+  isFirst,
+  isLast,
+  hasTimelineError = false,
+}) => {
   const { t } = useTranslation('chatV2');
   const disclosureMotion = useDisclosureMotion();
   const contentId = useId();
@@ -515,9 +583,10 @@ const ThinkingNodeContentInner: React.FC<ThinkingNodeContentProps> = ({ node, is
   const displayDurationSeconds = node.isThinking
     ? liveDurationSeconds
     : (node.durationSeconds ?? liveDurationSeconds);
+  const hasError = Boolean(hasTimelineError || node.block.status === 'error' || node.block.error);
   const autoCollapseEnabled = readAutoCollapseSetting();
   const [isExpanded, setIsExpanded] = useState(() => {
-    if (node.isThinking) return true;
+    if (node.isThinking || hasError) return true;
     return !autoCollapseEnabled;
   });
   const isManuallyControlled = useRef(false);
@@ -531,10 +600,12 @@ const ThinkingNodeContentInner: React.FC<ThinkingNodeContentProps> = ({ node, is
     if (isManuallyControlled.current) return;
     if (node.isThinking) {
       setIsExpanded(true);
-    } else if (autoCollapseEnabled) {
+    } else if (autoCollapseEnabled && shouldAutoCollapseTimelineOnComplete(hasError, isManuallyControlled.current)) {
       setIsExpanded(false);
+    } else if (hasError) {
+      setIsExpanded(true);
     }
-  }, [node.isThinking, autoCollapseEnabled]);
+  }, [node.isThinking, autoCollapseEnabled, hasError]);
 
   const toggleExpanded = useCallback(() => {
     isManuallyControlled.current = true;
@@ -709,10 +780,10 @@ const ThinkingNodeContentInner: React.FC<ThinkingNodeContentProps> = ({ node, is
                 !isPeeking && 'activity-timeline-thinking-peek--expanded'
               )}
             >
-              <div className="activity-timeline-thinking-content py-2 pl-2 pr-1 text-gray-500 dark:text-gray-400">
+              <div className="activity-timeline-thinking-content py-2 pl-2 pr-1 text-muted-foreground">
                 <div className="space-y-2">
                   {paragraphs.map((paragraph, idx, arr) => (
-                    <div key={idx} className="thinking-chain-content text-gray-500 dark:text-gray-400">
+                    <div key={idx} className="thinking-chain-content text-muted-foreground">
                       <StreamingMarkdownRenderer
                         content={paragraph}
                         isStreaming={!!node.isThinking && idx === arr.length - 1}
@@ -741,7 +812,8 @@ const ThinkingNodeContent = React.memo(
     prev.node.block === next.node.block &&
     prev.node.isThinking === next.node.isThinking &&
     prev.isFirst === next.isFirst &&
-    prev.isLast === next.isLast
+    prev.isLast === next.isLast &&
+    prev.hasTimelineError === next.hasTimelineError
 );
 
 /** 参数值预览：截断长字符串；对象序列化加 try/catch（循环引用不崩）并截断超大 JSON */
@@ -904,7 +976,8 @@ const ToolNodeContentInner: React.FC<ToolNodeContentProps> = ({ node, isFirst, i
     setIsExpanded((prev) => !prev);
   }, []);
 
-  const isPreparing = node.isPreparing === true;
+  // Avoid showing orphan "preparing..." once streaming has ended or after session restore
+  const isPreparing = node.isPreparing === true && isStreaming;
   // 🔧 P7修复：isRunning 需要同时满足 toolStatus='running' 和 isStreaming=true
   // 避免数据恢复后（activeBlockIds 为空）工具块错误显示加载状态
   const isRunning = node.toolStatus === 'running' && isStreaming;
@@ -925,8 +998,10 @@ const ToolNodeContentInner: React.FC<ToolNodeContentProps> = ({ node, isFirst, i
       }, RUNNING_AUTO_EXPAND_DELAY_MS);
       return () => clearTimeout(timer);
     }
-    if (!(isError && wasRunningRef.current)) {
+    if (shouldAutoCollapseTimelineOnComplete(isError && wasRunningRef.current, isManuallyControlled.current)) {
       setIsExpanded(false);
+    } else if (isError && wasRunningRef.current) {
+      setIsExpanded(true);
     }
     return undefined;
   }, [isPreparing, isRunning, isError]);
@@ -1025,9 +1100,11 @@ const ToolNodeContentInner: React.FC<ToolNodeContentProps> = ({ node, isFirst, i
       onToggle={toggleExpanded}
       contentId={contentId}
       icon={
-        <ToolActivitySweep active={isPreparing || isRunning}>
-          <ToolIcon size={14} className={toolVisual.className} />
-        </ToolActivitySweep>
+        <MinDurationShineBadge active={isPreparing || isRunning} toolName={node.toolName}>
+          <ToolActivitySweep active={isPreparing || isRunning}>
+            <ToolIcon size={14} className={toolVisual.className} />
+          </ToolActivitySweep>
+        </MinDurationShineBadge>
       }
     >
       <div className="flex flex-col gap-1">
@@ -1067,6 +1144,25 @@ const ToolNodeContentInner: React.FC<ToolNodeContentProps> = ({ node, isFirst, i
                 {displayToolName}
               </span>
             </ToolActivitySweep>
+          )}
+          {!shellDescriptor && typeof (
+            node.toolInput?.path ??
+            node.toolInput?.filePath ??
+            node.toolInput?.file_path ??
+            node.toolInput?.query ??
+            node.toolInput?.pattern ??
+            node.toolInput?.label
+          ) === 'string' && (
+            <span className="truncate font-mono text-xs text-muted-foreground/80">
+              {String(
+                node.toolInput?.path ??
+                node.toolInput?.filePath ??
+                node.toolInput?.file_path ??
+                node.toolInput?.query ??
+                node.toolInput?.pattern ??
+                node.toolInput?.label
+              )}
+            </span>
           )}
 
           {!shellDescriptor && (isPreparing || isRunning) ? (
@@ -1174,9 +1270,11 @@ const ToolNodeContentInner: React.FC<ToolNodeContentProps> = ({ node, isFirst, i
                   {/* 🆕 F-P1：运行中流式输出预览（最近数行，来自 block.content） */}
                   {(isPreparing || isRunning) && node.block.content && (
                     <div className="space-y-1">
-                      <div className="flex items-center gap-1 text-muted-foreground">
-                        <CircleNotch size={12} className="animate-spin text-primary" />
-                        <span>{t('timeline.tool.liveOutput', { ns: 'chatV2' })}</span>
+                      <div className="flex items-center gap-1.5 text-muted-foreground">
+                        <PulseDot className="h-1.5 w-1.5 text-primary" />
+                        <TextShimmer duration={1.5} spread={3}>
+                          {t('timeline.tool.liveOutput', { ns: 'chatV2' })}
+                        </TextShimmer>
                       </div>
                       <pre className="ml-4 max-h-24 overflow-hidden whitespace-pre-wrap break-all rounded-md bg-muted/60 px-2 py-1.5 font-mono text-caption leading-snug text-muted-foreground">
                         {node.block.content.split('\n').slice(-6).join('\n')}
@@ -1230,14 +1328,37 @@ const ToolGroupNodeContent: React.FC<ToolGroupNodeContentProps> = ({ node, isFir
   const { t } = useTranslation('chatV2');
   const disclosureMotion = useDisclosureMotion();
   const contentId = useId();
-  const [isExpanded, setIsExpanded] = useState(false);
-  const [expandedShellId, setExpandedShellId] = useState<string | null>(null);
   const toolNodes = node.toolNodes ?? [];
   const isActive = toolNodes.some((toolNode) =>
     (toolNode.isPreparing || toolNode.toolStatus === 'running') && isStreaming,
   );
   const hasError = toolNodes.some((toolNode) => toolNode.toolStatus === 'error');
+  const [isExpanded, setIsExpanded] = useState(() => isActive || hasError);
+  const [expandedShellId, setExpandedShellId] = useState<string | null>(null);
+  const isManuallyControlled = useRef(false);
+
+  useEffect(() => {
+    if (isManuallyControlled.current) return;
+    if (isActive || hasError) {
+      setIsExpanded(true);
+    } else if (shouldAutoCollapseTimelineOnComplete(hasError, isManuallyControlled.current)) {
+      setIsExpanded(false);
+    }
+  }, [isActive, hasError]);
+
   const summary = t('timeline.tool.groupSummary', { count: toolNodes.length });
+  const turnActivitySummary = useMemo(() => {
+    const activityItems: LiveActivityItem[] = toolNodes.map((toolNode) => ({
+      id: toolNode.id,
+      kind: 'tool',
+      toolName: toolNode.toolName,
+      status: toolNode.toolStatus,
+      startedAtMs: toolNode.block.startedAt,
+      endedAtMs: toolNode.block.endedAt,
+      input: toolNode.toolInput,
+    }));
+    return summarizeTurnActivity(activityItems);
+  }, [toolNodes]);
   const groupStatus = isActive
     ? t('timeline.tool.running')
     : hasError
@@ -1260,7 +1381,10 @@ const ToolGroupNodeContent: React.FC<ToolGroupNodeContentProps> = ({ node, isFir
       <DsButton
         variant="ghost"
         size="sm"
-        onClick={() => setIsExpanded((value) => !value)}
+        onClick={() => {
+          isManuallyControlled.current = true;
+          setIsExpanded((value) => !value);
+        }}
         aria-expanded={isExpanded}
         aria-controls={contentId}
         className="activity-timeline-tool-trigger activity-timeline-summary !h-7 !min-h-0 !justify-start !gap-1.5 !px-0 !py-0 !leading-7 text-muted-foreground hover:!bg-transparent hover:text-foreground [@media(pointer:coarse)]:relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:inset-x-0 [@media(pointer:coarse)]:after:-inset-y-2 [@media(pointer:coarse)]:after:content-['']"
@@ -1268,6 +1392,14 @@ const ToolGroupNodeContent: React.FC<ToolGroupNodeContentProps> = ({ node, isFir
         <ToolActivitySweep active={isActive} className="activity-timeline-tool-name min-w-0">
           <span className="activity-timeline-tool-name truncate">{summary}</span>
         </ToolActivitySweep>
+        {!isActive && turnActivitySummary.summaryText && (
+          <span
+            data-testid="timeline-turn-activity-summary"
+            className="activity-timeline-status truncate font-mono tabular-nums text-muted-foreground/70"
+          >
+            {turnActivitySummary.summaryText}
+          </span>
+        )}
         <span className="activity-timeline-status text-muted-foreground/70">{groupStatus}</span>
         <CaretRight size={12} className={cn('transition-transform', isExpanded && 'rotate-90')} aria-hidden="true" />
       </DsButton>
@@ -1282,6 +1414,14 @@ const ToolGroupNodeContent: React.FC<ToolGroupNodeContentProps> = ({ node, isFir
             className="overflow-hidden"
           >
             <div className="activity-timeline-tool-details space-y-2 pt-2 text-muted-foreground">
+              <BlockLineCollapsible
+                isExpanded={isExpanded}
+                onCollapse={() => {
+                  isManuallyControlled.current = true;
+                  setIsExpanded(false);
+                }}
+              >
+                <div className="space-y-2">
               {toolNodes.map((toolNode) => {
                 const visual = getToolVisual(toolNode.toolName);
                 const ToolIcon = visual.Icon;
@@ -1376,6 +1516,8 @@ const ToolGroupNodeContent: React.FC<ToolGroupNodeContentProps> = ({ node, isFir
                   </div>
                 );
               })}
+                </div>
+              </BlockLineCollapsible>
             </div>
           </motion.div>
         )}
@@ -1531,6 +1673,16 @@ export const ActivityTimeline: React.FC<ActivityTimelineProps> = ({
   onOpenNote,
 }) => {
   const { t } = useTranslation('chatV2');
+  const [isWindowExpandedAll, setIsWindowExpandedAll] = useState(false);
+  const [isTimelineCollapsed, setIsTimelineCollapsed] = useState(false);
+  const prevIsStreamingRef = useRef(isStreaming);
+  const turnAnchorId = blocks[0]?.messageId || blocks[0]?.id;
+  const prevTurnAnchorIdRef = useRef<string | undefined>(turnAnchorId);
+
+  const hasTimelineError = useMemo(
+    () => blocks.some((block) => block.status === 'error' || Boolean(block.error)),
+    [blocks]
+  );
 
   // 将 blocks 转换为时间线节点
   // 🔧 P7修复：传入 isStreaming 参数，确保恢复数据后不会错误显示加载状态
@@ -1539,139 +1691,246 @@ export const ActivityTimeline: React.FC<ActivityTimelineProps> = ({
     [blocks, t, isStreaming]
   );
 
+  useEffect(() => {
+    const startedNewStream = !prevIsStreamingRef.current && isStreaming;
+    const switchedTurn = prevTurnAnchorIdRef.current !== turnAnchorId;
+    prevIsStreamingRef.current = isStreaming;
+    prevTurnAnchorIdRef.current = turnAnchorId;
+
+    if (startedNewStream || switchedTurn || nodes.length <= LIVE_ACTIVITY_VISIBLE_ROWS) {
+      setIsWindowExpandedAll(false);
+    }
+  }, [isStreaming, nodes.length, turnAnchorId]);
+
+  const windowSlice = useMemo(() => {
+    const items = nodes.map((node) => toLiveActivityItem(node));
+    const shouldCollapseWindow =
+      isStreaming && !isWindowExpandedAll && nodes.length > LIVE_ACTIVITY_VISIBLE_ROWS;
+    return sliceLiveActivityWindow(items, shouldCollapseWindow, LIVE_ACTIVITY_VISIBLE_ROWS);
+  }, [nodes, isStreaming, isWindowExpandedAll]);
+
+  const displayedNodes = useMemo(() => {
+    if (isStreaming && !isWindowExpandedAll && nodes.length > LIVE_ACTIVITY_VISIBLE_ROWS) {
+      return [...windowSlice.hoistedInteractiveItems, ...windowSlice.visibleRows].map(
+        (item) => item.node,
+      );
+    }
+    return nodes;
+  }, [nodes, isStreaming, isWindowExpandedAll, windowSlice]);
+
   // 无节点时不渲染
   if (nodes.length === 0) {
     return null;
   }
 
-  return (
-    <div className={cn('activity-timeline', className)}>
-      {nodes.map((node, idx) => {
-        const isFirst = idx === 0;
-        const isLast = idx === nodes.length - 1;
+  const shouldApplyWindowFloor =
+    !isTimelineCollapsed &&
+    isStreaming &&
+    windowSlice.hiddenCount > 0 &&
+    !isWindowExpandedAll &&
+    windowSlice.minFloorPx > 0;
 
-        if (node.type === 'thinking') {
-          return (
-            <ThinkingNodeContent
-              key={node.id}
-              node={node}
-              isFirst={isFirst}
-              isLast={isLast}
+  return (
+    <div
+      data-testid="activity-timeline"
+      className={cn('activity-timeline', 'relative', className)}
+      style={shouldApplyWindowFloor ? { minHeight: `${windowSlice.minFloorPx}px` } : undefined}
+    >
+      {isTimelineCollapsed ? (
+        <button
+          type="button"
+          data-testid="activity-timeline-expand"
+          onClick={() => setIsTimelineCollapsed(false)}
+          className="inline-flex items-center gap-1.5 rounded border border-border/35 bg-muted/20 px-2 py-0.5 font-mono tabular-nums text-xs text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+        >
+          <span>已收起 {nodes.length} 项活动步骤 · 点击展开</span>
+        </button>
+      ) : (
+        <>
+          <span
+            role="button"
+            tabIndex={0}
+            data-testid="activity-block-line-collapse"
+            aria-label={t('timeline.blockLine.collapse')}
+            onClick={(event) => {
+              event.stopPropagation();
+              setIsTimelineCollapsed(true);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                event.stopPropagation();
+                setIsTimelineCollapsed(true);
+              }
+            }}
+            className="group/blockline absolute -left-1.5 top-0 bottom-0 flex w-3 cursor-pointer items-stretch justify-center bg-transparent outline-none"
+          >
+            <span
+              aria-hidden="true"
+              className="h-full w-px border-l border-border/35 bg-border/35 transition-colors duration-150 group-hover/blockline:border-primary/50 group-hover/blockline:bg-primary/50 group-focus-visible/blockline:border-primary/50 group-focus-visible/blockline:bg-primary/50"
             />
-          );
-        } else if (node.type === 'toolGroup') {
-          return (
-            <ToolGroupNodeContent
-              key={node.id}
-              node={node}
-              isFirst={isFirst}
-              isLast={isLast}
-              isStreaming={isStreaming}
-            />
-          );
-        } else if (node.type === 'tool') {
-          // 🆕 F-P0：attempt_completion 成功后在时间线主路径渲染完成卡片
-          // （此前 CompletionCard 仅在 BlockRenderer 路径可达，mcp_tool 进时间线后不可见）
-          if (isAttemptCompletionTool(node.toolName) && node.toolStatus === 'success') {
-            return (
-              <TimelineNode
-                key={node.id}
-                isFirst={isFirst}
-                isLast={isLast}
-                icon={<CheckCircle size={15} weight="fill" className="text-success" />}
-              >
-                <CompletionCard
-                  variant="inline"
-                  data={extractCompletionData(node.toolInput, node.toolOutput)}
-                  className="mb-1"
+          </span>
+
+          {windowSlice.hiddenCount > 0 && (
+            <button
+              type="button"
+              data-testid="activity-window-expand-all"
+              onClick={() => setIsWindowExpandedAll(true)}
+              className="mb-1.5 inline-flex items-center gap-1.5 rounded border border-border/35 bg-muted/30 px-2 py-0.5 font-mono tabular-nums text-xs text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+            >
+              <span>已折叠 {windowSlice.hiddenCount} 项早期步骤 · 点击展开全部</span>
+            </button>
+          )}
+
+          {displayedNodes.map((node, idx) => {
+            const isFirst = idx === 0;
+            const isLast = idx === displayedNodes.length - 1;
+
+            if (node.type === 'thinking') {
+              return (
+                <ThinkingNodeContent
+                  key={node.id}
+                  node={node}
+                  isFirst={isFirst}
+                  isLast={isLast}
+                  hasTimelineError={hasTimelineError}
                 />
-              </TimelineNode>
-            );
-          }
-          // 🆕 笔记工具使用专用预览组件（F-P2：包进 TimelineNode，保持左轨连续）
-          if (isNoteTool(node.toolName)) {
-            return (
-              <TimelineNode
-                key={node.id}
-                isFirst={isFirst}
-                isLast={isLast}
-                isActive={node.toolStatus === 'running' && isStreaming}
-              >
-                <NoteToolPreview
-                  toolName={node.toolName || ''}
-                  status={(node.toolStatus || 'pending') as 'pending' | 'running' | 'success' | 'error'}
+              );
+            } else if (node.type === 'toolGroup') {
+              return (
+                <ToolGroupNodeContent
+                  key={node.id}
+                  node={node}
+                  isFirst={isFirst}
+                  isLast={isLast}
                   isStreaming={isStreaming}
-                  input={node.toolInput}
-                  output={node.toolOutput as NoteToolPreviewProps['output']}
-                  error={node.toolError}
-                  durationMs={node.block.endedAt && node.block.startedAt ? node.block.endedAt - node.block.startedAt : undefined}
-                  noteId={(
-                    // 优先从 output 中提取（note_create 返回的 noteId）
-                    (node.toolOutput as Record<string, unknown> | undefined)?.note_id ||
-                    (node.toolOutput as Record<string, unknown> | undefined)?.noteId ||
-                    (node.toolOutput as Record<string, unknown> | undefined)?.id ||
-                    // 回退到 input 中的 noteId（note_read/append/replace/set 等）
-                    node.toolInput?.noteId ||
-                    node.toolInput?.note_id
-                  ) as string | undefined}
-                  onOpenNote={onOpenNote}
-                  className="mb-1"
                 />
-              </TimelineNode>
-            );
-          }
-          return (
-            <ToolNodeContent
-              key={node.id}
-              node={node}
-              isFirst={isFirst}
-              isLast={isLast}
-              isStreaming={isStreaming}
-            />
-          );
-        } else if (node.type === 'todoList') {
-          // 🆕 TodoList 聚合节点
-          return (
-            <TodoListNodeContent
-              key={node.id}
-              node={node}
-              isFirst={isFirst}
-              isLast={isLast}
-            />
-          );
-        } else if (node.type === 'limit') {
-          // 🔧 工具递归限制节点（带继续按钮）
-          return (
-            <ToolLimitNodeContent
-              key={node.id}
-              node={node}
-              isFirst={isFirst}
-              isLast={isLast}
-              onContinue={onContinue}
-            />
-          );
-        } else if (node.type === 'askUser') {
-          // 🆕 用户提问节点：直接渲染完整卡片（不走 TimelineNode 包裹）
-          const AskUserPlugin = blockRegistry.get('ask_user');
-          if (AskUserPlugin) {
-            const AskUserComponent = AskUserPlugin.component;
-            return (
-              <TimelineNode
-                key={node.id}
-                isFirst={isFirst}
-                isLast={isLast}
-                isActive={node.block.status === 'running'}
-              >
-                <AskUserComponent block={node.block} />
-              </TimelineNode>
-            );
-          }
-          return null;
-        } else {
-          // 未知类型，不渲染
-          return null;
-        }
-      })}
+              );
+            } else if (node.type === 'tool') {
+              // 🆕 F-P0：attempt_completion 成功后在时间线主路径渲染完成卡片
+              // （此前 CompletionCard 仅在 BlockRenderer 路径可达，mcp_tool 进时间线后不可见）
+              if (isAttemptCompletionTool(node.toolName) && node.toolStatus === 'success') {
+                return (
+                  <TimelineNode
+                    key={node.id}
+                    isFirst={isFirst}
+                    isLast={isLast}
+                    icon={<CheckCircle size={15} weight="fill" className="text-success" />}
+                  >
+                    <CompletionCard
+                      variant="inline"
+                      data={extractCompletionData(node.toolInput, node.toolOutput)}
+                      className="mb-1"
+                    />
+                  </TimelineNode>
+                );
+              }
+              // 🆕 笔记工具使用专用预览组件（F-P2：包进 TimelineNode，保持左轨连续）
+              if (isNoteTool(node.toolName)) {
+                return (
+                  <TimelineNode
+                    key={node.id}
+                    isFirst={isFirst}
+                    isLast={isLast}
+                    isActive={node.toolStatus === 'running' && isStreaming}
+                  >
+                    <NoteToolPreview
+                      toolName={node.toolName || ''}
+                      status={(node.toolStatus || 'pending') as 'pending' | 'running' | 'success' | 'error'}
+                      isStreaming={isStreaming}
+                      input={node.toolInput}
+                      output={node.toolOutput as NoteToolPreviewProps['output']}
+                      error={node.toolError}
+                      durationMs={node.block.endedAt && node.block.startedAt ? node.block.endedAt - node.block.startedAt : undefined}
+                      noteId={(
+                        // 优先从 output 中提取（note_create 返回的 noteId）
+                        (node.toolOutput as Record<string, unknown> | undefined)?.note_id ||
+                        (node.toolOutput as Record<string, unknown> | undefined)?.noteId ||
+                        (node.toolOutput as Record<string, unknown> | undefined)?.id ||
+                        // 回退到 input 中的 noteId（note_read/append/replace/set 等）
+                        node.toolInput?.noteId ||
+                        node.toolInput?.note_id
+                      ) as string | undefined}
+                      onOpenNote={onOpenNote}
+                      className="mb-1"
+                    />
+                  </TimelineNode>
+                );
+              }
+              return (
+                <ToolNodeContent
+                  key={node.id}
+                  node={node}
+                  isFirst={isFirst}
+                  isLast={isLast}
+                  isStreaming={isStreaming}
+                />
+              );
+            } else if (node.type === 'todoList') {
+              // 🆕 TodoList 聚合节点
+              return (
+                <TodoListNodeContent
+                  key={node.id}
+                  node={node}
+                  isFirst={isFirst}
+                  isLast={isLast}
+                />
+              );
+            } else if (node.type === 'limit') {
+              // 🔧 工具递归限制节点（带继续按钮）
+              return (
+                <ToolLimitNodeContent
+                  key={node.id}
+                  node={node}
+                  isFirst={isFirst}
+                  isLast={isLast}
+                  onContinue={onContinue}
+                />
+              );
+            } else if (node.type === 'askUser') {
+              // 🆕 用户提问节点：直接渲染完整卡片（不走 TimelineNode 包裹）
+              const AskUserPlugin = blockRegistry.get('ask_user');
+              if (AskUserPlugin) {
+                const AskUserComponent = AskUserPlugin.component;
+                return (
+                  <TimelineNode
+                    key={node.id}
+                    isFirst={isFirst}
+                    isLast={isLast}
+                    isActive={node.block.status === 'running'}
+                  >
+                    <AskUserComponent block={node.block} />
+                  </TimelineNode>
+                );
+              }
+              const fallbackQuestion =
+                node.block.content ||
+                (typeof node.block.toolInput?.question === 'string' ? node.block.toolInput.question : '') ||
+                (typeof node.block.toolInput?.prompt === 'string' ? node.block.toolInput.prompt : '') ||
+                node.block.toolName ||
+                '等待用户响应';
+              return (
+                <TimelineNode
+                  key={node.id}
+                  isFirst={isFirst}
+                  isLast={isLast}
+                  isActive={node.block.status === 'running'}
+                >
+                  <div
+                    data-testid={`timeline-ask-user-${node.id}`}
+                    className="rounded border border-border/35 bg-muted/20 px-2.5 py-1.5 text-xs text-foreground"
+                  >
+                    {fallbackQuestion}
+                  </div>
+                </TimelineNode>
+              );
+            } else {
+              // 未知类型，不渲染
+              return null;
+            }
+          })}
+        </>
+      )}
     </div>
   );
 };

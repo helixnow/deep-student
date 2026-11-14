@@ -3,7 +3,7 @@
 
 .notes-rel {
   padding: 10px 12px;
-  border-top: 1px solid hsl(var(--border) / 60%);
+  border-top: 1px solid var(--notes-hairline, hsl(var(--border) / 35%));
   font-size: 12px;
 }
 
@@ -79,7 +79,7 @@
 .notes-rel-row:hover,
 .notes-rel-row:focus-within,
 .notes-rel-row[data-editing] {
-  background: hsl(var(--accent) / 45%);
+  background: var(--notes-surface-hover, hsl(var(--accent) / 45%));
 }
 
 .notes-rel-row-icon {
@@ -151,10 +151,10 @@
   gap: 8px;
   min-width: 0;
   margin: 8px 0 0;
-  padding: 10px;
-  border: 1px solid hsl(var(--border) / 70%);
+  padding: 8px;
+  border: 0;
   border-radius: 8px;
-  background: hsl(var(--muted) / 30%);
+  background: var(--notes-surface-subtle, hsl(var(--muted) / 30%));
 }
 
 .notes-rel-selected {

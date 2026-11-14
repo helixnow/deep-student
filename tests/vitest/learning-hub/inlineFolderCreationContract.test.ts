@@ -7,6 +7,7 @@ describe('learning hub inline folder creation', () => {
   const sidebarDir = resolve(process.cwd(), 'src/features/learning-hub/sidebar');
   const source = [
     resolve(process.cwd(), 'src/features/learning-hub/LearningHubSidebar.tsx'),
+    resolve(process.cwd(), 'src/features/learning-hub/useLearningHubSidebarController.tsx'),
     ...readdirSync(sidebarDir).sort().map((name) => resolve(sidebarDir, name)),
   ].map((file) => readFileSync(file, 'utf-8')).join('\n');
 

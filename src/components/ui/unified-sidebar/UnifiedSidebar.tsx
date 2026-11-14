@@ -5,7 +5,7 @@
  * 提供一致的设计风格和交互体验
  */
 
-import React, { createContext, useContext, useState, useCallback, useMemo, useRef, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
@@ -17,7 +17,6 @@ import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { SidebarSheet } from './SidebarSheet';
 import { SidebarDrawer } from './SidebarDrawer';
 import {
-  ArrowsClockwise,
   CaretLeft,
   CaretRight,
   CircleNotch,
@@ -313,10 +312,6 @@ export const UnifiedSidebarHeader: React.FC<UnifiedSidebarHeaderProps> = ({
   showCreate = false,
   createTitle,
   onCreateClick,
-  showRefresh = false,
-  refreshTitle,
-  onRefreshClick,
-  isRefreshing = false,
   showCollapse = true,
   collapseTitle,
   expandTitle,
@@ -365,7 +360,7 @@ export const UnifiedSidebarHeader: React.FC<UnifiedSidebarHeaderProps> = ({
       )}
 
       {/* 搜索框和操作按钮行 - 只在有内容时显示 */}
-      {(showSearch || showRefresh || showCreate || (showCollapse && !isMobileMode) || extraActions || rightActions || (!isMobileMode && title)) && (
+      {(showSearch || showCreate || (showCollapse && !isMobileMode) || extraActions || rightActions || (!isMobileMode && title)) && (
         <div
           // coarse 指针下 min-h 压过桌面档 40px 固定高度，容纳 44px 搜索框/按钮
           className={cn('flex items-center gap-1.5 [@media(pointer:coarse)]:min-h-11', styles.header.padding)}
@@ -403,11 +398,6 @@ export const UnifiedSidebarHeader: React.FC<UnifiedSidebarHeaderProps> = ({
         <div className={cn('flex items-center', styles.header.gap)}>
           {extraActions}
 
-          {showRefresh && (
-            <DsButton variant="utility" size="icon" iconOnly onClick={onRefreshClick} disabled={isRefreshing} className={cn(styles.button.padding, '[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11')} title={refreshTitle || t('refresh')} aria-label={refreshTitle || t('refresh')}>
-              <ArrowsClockwise className={cn(styles.button.iconSize, isRefreshing && 'animate-spin')} weight="regular" />
-            </DsButton>
-          )}
 
           {showCreate && (
             <DsButton variant="utility" size="icon" iconOnly onClick={onCreateClick} className={cn(styles.button.padding, '[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11')} title={createTitle || t('create')} aria-label={createTitle || t('create')}>

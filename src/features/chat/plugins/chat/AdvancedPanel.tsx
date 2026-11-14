@@ -502,7 +502,7 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
           </div>
           <div className={sidebarMode ? 'flex flex-col gap-2' : 'grid grid-cols-1 md:grid-cols-3 gap-2'}>
             {/* Top-K 滑条 */}
-            <div className="p-2">
+            <div className="rounded-md border border-border/35 bg-card/60 p-2">
               <SnappySlider
                 className={cn(isStreaming && 'pointer-events-none opacity-60')}
                 values={RAG_TOPK_SNAP_POINTS}
@@ -524,7 +524,7 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
             </div>
 
             {/* Rerank 开关 */}
-            <div className="p-2">
+            <div className="rounded-md border border-border/35 bg-card/60 p-2">
               <div className="flex items-center justify-between">
                 <span className="text-xs text-foreground">
                   {t('enhanced_rag:enable_reranking')}
@@ -541,7 +541,7 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
               </p>
             </div>
 
-            <div className="p-2">
+            <div className="rounded-md border border-border/35 bg-card/60 p-2">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1">
                   <Image size={11} className="text-muted-foreground" />
@@ -563,7 +563,7 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
 
               {/* 多模态 Top-K + 精排（原 RagPanel 独有配置迁移至此，开关开启时展开） */}
               {multimodalRagEnabled && (
-                <div className="mt-2 border-t border-border/50 pt-2">
+                <div className="mt-2 border-t border-border/35 pt-2">
                   <SnappySlider
                     className={cn('pb-1', isStreaming && 'pointer-events-none opacity-60')}
                     values={MULTIMODAL_TOPK_SNAP_POINTS}
@@ -585,7 +585,7 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
                   <p className="text-2xs leading-3 text-muted-foreground">
                     {t('chatV2:ragPanel.multimodalTopkHelper')}
                   </p>
-                  <div className="mt-2 border-t border-border/50 pt-2">
+                  <div className="mt-2 border-t border-border/35 pt-2">
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-foreground">
                         {t('enhanced_rag:enable_reranking')}

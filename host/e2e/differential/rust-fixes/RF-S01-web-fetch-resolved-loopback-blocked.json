@@ -1,0 +1,38 @@
+{
+  "id": "RF-S01-web-fetch-resolved-loopback-blocked",
+  "kind": "deliberate",
+  "status": "approved",
+  "approvedBy": "main-agent",
+  "approvedAt": "2026-11-07T09:40:00+08:00",
+  "title": "web_fetch：域名解析到回环地址一律拦截，只有 URL 本身指向本机（需审批）才能访问本机",
+  "rust": {
+    "file": "src-tauri/crates/dstu-agent/src/chat_v2/tools/fetch_executor.rs",
+    "line": 326,
+    "behavior": "is_blocked_internal_ip 对任何主机名都豁免 loopback（注释：本地 MCP 桥/插件/开发服务器是合法抓取目标）；首跳、重定向逐跳和最终 URL 校验都用它，因此 127.0.0.1.nip.io 这类解析到 127.0.0.1 的公网域名、以及 [公网, 127.0.0.1] 混合应答，都以 Low 敏感度免审批到达本机服务"
+  },
+  "fix": {
+    "files": ["host/plugins/agent-skills/src/tools/fetch-chat-executor.ts"],
+    "behavior": "是否允许回环只看用户可见的 URL：URL 主机是回环字面量或 localhost/*.localhost（RF-S01-web-fetch-loopback-approval 已把这类调用升为 High 需审批）时允许解析/重定向落到回环；否则任何一个解析结果是回环就按内网拦截（首跳报 'Blocked: URL resolves to internal IP address'，重定向停在 3xx）。私网、链路本地等拦截规则不变"
+  },
+  "evidence": "补上 RF-S01-web-fetch-loopback-approval 登记时写明的残留缺口：审批判断是同步的，只能看 URL 文本，看不到 DNS；攻击者用任意解析到 127.0.0.1 的域名即可绕过审批读取本地模型 API、开发服务器调试端口并回传给模型。Rust 想支持的本地目标（MCP 桥、开发服务器）都以 localhost/127.0.0.1 字面量访问，仍然可用（经审批）。复现：resolve('127.0.0.1.nip.io') = ['127.0.0.1']，web_fetch http://127.0.0.1.nip.io:11434/api/tags 在 Rust 中 Low 直接返回本地内容；修复后拒绝且不发起连接。现有 fetch-chat-executor.test.ts 夹具原先把 site.test/other.test 解析到 127.0.0.1，现改为解析到公网地址 93.184.216.34，并显式注入只把该地址转接到本地测试服务器的连接器；断言未改。",
+  "userVisible": "能感知：模型抓取解析到本机的非本机域名会得到 'Blocked: URL resolves to internal IP address'；直接写 localhost/127.0.0.1 的抓取不受影响（仍需审批）",
+  "dataCompat": "不改变落库数据、同步载荷或备份格式",
+  "g3": {
+    "affects": false,
+    "selectors": []
+  },
+  "tests": [
+    {
+      "file": "host/plugins/agent-skills/tests/web-fetch-dns.test.ts",
+      "name": "RF-S01-web-fetch-resolved-loopback-blocked: a name that resolves to loopback is refused before any connection"
+    },
+    {
+      "file": "host/plugins/agent-skills/tests/web-fetch-dns.test.ts",
+      "name": "RF-S01-web-fetch-resolved-loopback-blocked: URLs that name this machine (approval required) still reach it"
+    },
+    {
+      "file": "host/plugins/agent-skills/tests/web-fetch-dns.test.ts",
+      "name": "RF-S01-web-fetch-resolved-loopback-blocked: a redirect to a name resolving to loopback stops on the 3xx"
+    }
+  ]
+}

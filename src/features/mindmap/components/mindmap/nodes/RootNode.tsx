@@ -1,7 +1,7 @@
 import React, { useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Handle, Position, NodeProps, Node } from '@xyflow/react';
-import { cn } from '@/lib/utils';
+import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
 import { Plus } from '@phosphor-icons/react';
 import { NodeContent } from './NodeContent';
@@ -17,6 +17,7 @@ import {
   parseNodeDecorations,
 } from '../../../utils/nodeDecorations';
 import { selectNodeImages } from '../../../utils/nodeImages';
+import { selectNodeExcerptMeta } from '../../../utils/nodeAnchors';
 import type { NodeStyle, BlankRange, MindMapNodeRef } from '../../../types';
 import './nodes.css';
 
@@ -68,6 +69,13 @@ export const RootNode: React.FC<NodeProps<Node<RootNodeData>>> = ({
   const decorations = parseNodeDecorations(decorationKey);
   // 内嵌图片：同样经索引直接读 store（数组引用稳定，无图不触发重渲染）
   const images = useMindMapStore(state => selectNodeImages(state.document.root, data.nodeId));
+  // 摘录出处 / 原文：同一索引模式（无摘录节点恒为 null，不触发重渲染）
+  const excerpt = useMindMapStore(state => selectNodeExcerptMeta(state.document.root, data.nodeId));
+  const removeNodeAnchor = useMindMapStore(state => state.removeNodeAnchor);
+  const removeNodeExcerptSlot = useMindMapStore(state => state.removeNodeExcerptSlot);
+  const setNodeCardNote = useMindMapStore(state => state.setNodeCardNote);
+  const toggleNodeExpandedCard = useMindMapStore(state => state.toggleNodeExpandedCard);
+  const toggleNodeFlashcard = useMindMapStore(state => state.toggleNodeFlashcard);
   const nodeRef = useRef<HTMLDivElement>(null);
   
   const isEditing = editingNodeId === data.nodeId;
@@ -127,11 +135,17 @@ export const RootNode: React.FC<NodeProps<Node<RootNodeData>>> = ({
   const rootTheme = theme?.node?.root;
   const rootMetrics = getThemeFontMetrics(theme, true);
   
+  const hasCustomBg = Boolean(data.style?.bgColor && data.style.bgColor !== 'transparent');
+
   // 自定义样式（来自 data.style）优先级高于主题样式
   // ★ 修复：剔除 undefined 字段——直接展开会把主题样式同名键覆盖为 undefined，
   //   导致主题 foreground / fontWeight 等被静默丢弃
   const customStyle: React.CSSProperties = pickDefined({
-    color: data.style?.textColor,
+    background: hasCustomBg ? data.style?.bgColor : undefined,
+    border: hasCustomBg
+      ? `1px solid color-mix(in srgb, ${data.style?.bgColor} 70%, var(--mm-text) 22%)`
+      : undefined,
+    color: data.style?.textColor || (hasCustomBg ? 'var(--mm-text)' : undefined),
     fontWeight: data.style?.fontWeight,
     fontStyle: data.style?.fontStyle === 'italic' ? 'italic' : undefined,
     textDecoration: data.style?.textDecoration && data.style.textDecoration !== 'none' ? data.style.textDecoration : undefined,
@@ -144,12 +158,12 @@ export const RootNode: React.FC<NodeProps<Node<RootNodeData>>> = ({
     background: rootTheme?.background || 'var(--mm-bg-elevated)',
     color: rootTheme?.foreground || 'var(--mm-text)',
     border: rootTheme?.border || '1px solid var(--mm-border)',
-    borderRadius: rootTheme?.borderRadius ? `${rootTheme.borderRadius}px` : '4px',
+    borderRadius: rootTheme?.borderRadius ? `${rootTheme.borderRadius}px` : '10px',
     fontSize: rootTheme?.fontSize ? `${rootTheme.fontSize}px` : `${rootMetrics.fontSize}px`,
     // 行高与布局估算（getThemeFontMetrics）保持同一系数，编辑态 textarea 继承后不跳动
     lineHeight: MM_NODE_LINE_HEIGHT_RATIO,
     fontWeight: rootTheme?.fontWeight || 600,
-    padding: rootTheme?.padding || '10px 18px',
+    padding: rootTheme?.padding || '10px 20px',
     // ★ 修复：不要强制内联 boxShadow: 'none'——内联样式会压过
     //   .selected 选中轻染 / search-match 命中框 / .mm-dragging 抬起阴影
     //   等 class 级 box-shadow 反馈；主题未定义 shadow 时干脆不写内联值
@@ -184,7 +198,6 @@ export const RootNode: React.FC<NodeProps<Node<RootNodeData>>> = ({
         refs={data.refs}
         images={images}
         icon={data.style?.icon}
-        bgColor={data.style?.bgColor}
         isRoot
         isCompleted={data.completed}
         isEditing={isEditing}
@@ -193,6 +206,13 @@ export const RootNode: React.FC<NodeProps<Node<RootNodeData>>> = ({
         revealedIndices={revealedBlanks[data.nodeId]}
         reciteMode={reciteMode}
         decorations={decorations}
+        excerpt={excerpt}
+        isSelected={selected}
+        onRemoveAnchor={isEmbed ? undefined : (anchorUri) => removeNodeAnchor(data.nodeId, anchorUri)}
+        onRemoveExcerptSlot={isEmbed ? undefined : (slotId) => removeNodeExcerptSlot(data.nodeId, slotId)}
+        onCardNoteChange={isEmbed ? undefined : (cardNote) => setNodeCardNote(data.nodeId, cardNote)}
+        onToggleExpandedCard={isEmbed ? undefined : () => toggleNodeExpandedCard(data.nodeId)}
+        onToggleFlashcard={isEmbed ? undefined : () => toggleNodeFlashcard(data.nodeId)}
         showCheckbox={data.style?.showCheckbox}
         onToggleCompleted={() => updateNode(data.nodeId, { completed: !data.completed })}
         onTextChange={handleTextChange}

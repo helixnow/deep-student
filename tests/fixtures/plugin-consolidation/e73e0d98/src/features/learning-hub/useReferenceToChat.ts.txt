@@ -1,0 +1,402 @@
+/**
+ * useReferenceToChat Hook
+ *
+ * 将学习资源引用到 Chat V2 对话中。
+ *
+ * ★ 引用模式改造（文档 24 Prompt 7）：
+ * - 调用 vfs_get_resource_refs 获取引用（只有 sourceId + resourceHash）
+ * - 存储时只存储引用，不存储 path/content
+ * - 发送时实时获取当前路径和内容
+ *
+ * 类型映射：
+ * | sourceType   | ResourceType   | typeId       |
+ * |--------------|----------------|--------------|
+ * | note         | 'note'         | 'note'       |
+ * | exam         | 'exam'         | 'exam'       |
+ * | textbook     | 'textbook'     | 'textbook'   |
+ * | essay        | 'essay'        | 'essay'      |
+ * | translation  | 'translation'  | 'translation'|
+ *
+ * @module features/learning-hub/useReferenceToChat
+ * @see 24-LRFS统一入口模型与访达式资源管理器.md Prompt 7
+ */
+
+import { mimeTypeFromFileName } from '@/hooks/useTauriDragAndDrop';
+import { useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { sessionManager } from '@/features/chat/core/session/sessionManager';
+import { ensureActiveChatSession } from '@/features/chat/pages/ensureActiveChatSession';
+import { resourceStoreApi } from '@/features/chat/resources';
+import type { ContextRef, ResourceType as StoreResourceType } from '@/features/chat/resources/types';
+import type { AttachmentMeta } from '@/features/chat/core/types/common';
+import {
+  getAttachmentMediaType,
+  buildDefaultInjectModes,
+} from '@/features/chat/components/input-bar/injectModeUtils';
+import { isCurrentChatModelMultimodal } from '@/features/chat/hooks/useAvailableModels';
+import { fetchLibraryAttachmentProcessing } from '@/features/chat/components/input-bar/libraryAttachmentProcessing';
+import { vfsRefApi, type VfsContextRefData } from '@/features/chat/context';
+import { getErrorMessage } from '@/utils/errorUtils';
+import { VfsErrorCode } from '@/shared/result';
+
+// 类型定义
+import { NOTE_TYPE_ID } from '@/features/chat/context/definitions/note';
+import { TEXTBOOK_TYPE_ID } from '@/features/chat/context/definitions/textbook';
+import { EXAM_TYPE_ID } from '@/features/chat/context/definitions/exam';
+import { ESSAY_TYPE_ID } from '@/features/chat/context/definitions/essay';
+import { TRANSLATION_TYPE_ID } from '@/features/chat/context/definitions/translation';
+import { FILE_TYPE_ID } from '@/features/chat/context/definitions/file';
+import { IMAGE_TYPE_ID } from '@/features/chat/context/definitions/image';
+
+// ============================================================================
+// 类型定义
+// ============================================================================
+
+/**
+ * 教材页面范围（引用模式下保留类型定义以维持接口兼容）
+ */
+export interface PageRange {
+  start: number;
+  end: number;
+}
+
+/**
+ * 资源来源类型
+ * 
+ * 支持的类型：
+ * - note: 笔记
+ * - exam: 题目集
+ * - textbook: 教材
+ * - essay: 作文
+ * - translation: 翻译
+ */
+export type SourceType = 'note' | 'exam' | 'textbook' | 'essay' | 'translation' | 'file' | 'image';
+
+/**
+ * 引用到对话的参数
+ *
+ * ★ 引用模式改造：content 字段不再必须（发送时实时获取）
+ */
+export interface ReferenceToChatParams {
+  /** 资源来源类型 */
+  sourceType: SourceType;
+
+  /** 原始数据 ID */
+  sourceId: string;
+
+  /** 资源内容（引用模式下不再使用，保留向后兼容） */
+  content?: string;
+
+  /** 元数据 */
+  metadata?: {
+    title?: string;
+    [key: string]: unknown;
+  };
+
+  /** 教材页面范围（仅当 sourceType='textbook' 时使用） */
+  pageRange?: PageRange;
+}
+
+/**
+ * 引用到对话的结果
+ */
+export interface ReferenceToChatResult {
+  /** 是否成功 */
+  success: boolean;
+
+  /** 上下文引用（成功时返回） */
+  contextRef?: ContextRef;
+
+  /** VFS 引用数据（引用模式下返回） */
+  refData?: VfsContextRefData;
+
+  /** 错误信息 */
+  error?: string;
+}
+
+/**
+ * useReferenceToChat Hook 返回值
+ */
+export interface UseReferenceToChatReturn {
+  /**
+   * 将资源引用到当前对话
+   *
+   * ★ 引用模式流程（文档 24 Prompt 7）：
+   * 1. 检查是否有活跃会话
+   * 2. 调用 vfs_get_resource_refs 获取引用（只有 sourceId + resourceHash）
+   * 3. 存储引用数据（不存 content）
+   * 4. 添加 ContextRef 到 chatStore.pendingContextRefs
+   *
+   * @param params 引用参数
+   * @returns 引用结果
+   */
+  referenceToChat: (params: ReferenceToChatParams) => Promise<ReferenceToChatResult>;
+
+  /**
+   * 检查是否可以引用到对话
+   *
+   * @returns 是否可以引用（有活跃会话）
+   */
+  canReferenceToChat: () => boolean;
+}
+
+// ============================================================================
+// 日志前缀
+// ============================================================================
+
+const LOG_PREFIX = '[useReferenceToChat]';
+
+// ============================================================================
+// 类型映射工具函数
+// ============================================================================
+
+/**
+ * sourceType -> ResourceType 映射
+ */
+function getResourceType(sourceType: SourceType): StoreResourceType {
+  switch (sourceType) {
+    case 'note':
+      return 'note';
+    case 'exam':
+      return 'exam';
+    case 'textbook':
+      return 'textbook';
+    case 'essay':
+      return 'essay';
+    case 'translation':
+      return 'translation';
+    case 'file':
+      return 'file';
+    case 'image':
+      return 'image';
+    default:
+      return 'file';
+  }
+}
+
+/**
+ * sourceType -> typeId 映射
+ */
+function getTypeId(sourceType: SourceType): string {
+  switch (sourceType) {
+    case 'note':
+      return NOTE_TYPE_ID;
+    case 'exam':
+      return EXAM_TYPE_ID;
+    case 'textbook':
+      return TEXTBOOK_TYPE_ID;
+    case 'essay':
+      return ESSAY_TYPE_ID;
+    case 'translation':
+      return TRANSLATION_TYPE_ID;
+    case 'file':
+      return FILE_TYPE_ID;
+    case 'image':
+      return IMAGE_TYPE_ID;
+    default:
+      return 'file';
+  }
+}
+
+// ============================================================================
+// Hook 实现
+// ============================================================================
+
+/**
+ * useReferenceToChat Hook
+ *
+ * 提供将学习资源引用到对话的能力，集成同步服务。
+ */
+export function useReferenceToChat(): UseReferenceToChatReturn {
+  const { t } = useTranslation(['notes', 'learningHub', 'chat_module']);
+
+  /**
+   * 检查是否可以引用到对话
+   *
+   * referenceToChat 现会在无活动会话时经 ensureActiveChatSession 自建
+   * 隐藏 draft 会话闭环，因此不再以「当前是否有会话」作为禁用条件。
+   */
+  const canReferenceToChat = useCallback((): boolean => {
+    return true;
+  }, []);
+
+  /**
+   * 将资源引用到当前对话
+   *
+   * ★ 引用模式改造（文档 24 Prompt 7）：
+   * - 调用 vfs_get_resource_refs 获取引用
+   * - 存储时只存储引用，不存储 content
+   */
+  const referenceToChat = useCallback(
+    async (params: ReferenceToChatParams): Promise<ReferenceToChatResult> => {
+      const { sourceType, sourceId, metadata } = params;
+
+      console.log(LOG_PREFIX, 'referenceToChat (ref mode):', { sourceType, sourceId });
+
+      // 1. 无活动会话时先经 chat 域闭环入口建立/复用隐藏 draft 会话
+      //    （2026-07-20 移动端审计闭环：此前直接 toast 丢弃动作）
+      const activeSessionId = await ensureActiveChatSession();
+      if (!activeSessionId || !sessionManager.has(activeSessionId)) {
+        const errorMsg = t('notes:reference.no_active_session');
+        showGlobalNotification('warning', errorMsg);
+        return { success: false, error: errorMsg };
+      }
+
+      const store = sessionManager.get(activeSessionId);
+      if (!store) {
+        const errorMsg = t('notes:reference.session_not_found');
+        showGlobalNotification('error', errorMsg);
+        return { success: false, error: errorMsg };
+      }
+
+      try {
+        // 2. ★ 调用后端获取引用（只有 sourceId + resourceHash）
+        const result = await vfsRefApi.getResourceRefsV2(
+          [sourceId],
+          false, // includeFolderContents
+          1      // maxItems
+        );
+
+        if (!result.ok) {
+          let errorMsg: string;
+          if (result.error.code === VfsErrorCode.NOT_FOUND) {
+            errorMsg = t('notes:reference.resource_not_found');
+            showGlobalNotification('warning', errorMsg);
+          } else if (result.error.code === VfsErrorCode.NETWORK) {
+            errorMsg = t('chat_module:vfs_inject.network_retry', {
+              defaultValue: '网络错误，请重试',
+            });
+            showGlobalNotification('error', errorMsg);
+          } else {
+            errorMsg = result.error.toUserMessage();
+            showGlobalNotification('error', errorMsg);
+          }
+          return { success: false, error: errorMsg };
+        }
+
+        const refData = result.value;
+
+        if (refData.refs.length === 0) {
+          const errorMsg = t('notes:reference.resource_not_found');
+          showGlobalNotification('warning', errorMsg);
+          return { success: false, error: errorMsg };
+        }
+
+        console.log(LOG_PREFIX, 'Got resource refs:', refData);
+
+        // 3. ★ 只存储引用，不存储 content
+        const vfsRefDataForStorage: VfsContextRefData = {
+          refs: refData.refs,
+          totalCount: refData.totalCount,
+          truncated: refData.truncated,
+        };
+
+        const resourceType = getResourceType(sourceType);
+        const typeId = getTypeId(sourceType);
+
+        const createResult = await resourceStoreApi.createOrReuse({
+          type: resourceType,
+          data: JSON.stringify(vfsRefDataForStorage),
+          sourceId,
+          metadata: {
+            title: metadata?.title || '',
+            ...metadata,
+          },
+        });
+
+        console.log(LOG_PREFIX, 'Resource created/reused (ref mode):', createResult);
+
+        // 4. 构建 ContextRef 并添加到 chatStore（对齐 useVfsContextInject：displayName + attachment + 开面板）
+        // ★ P1 物质化补全：真实 mime/type、sourceId、显式 injectModes、可用的预览 URL
+        const displayName = (typeof metadata?.title === 'string' && metadata.title) || sourceId;
+
+        const vfsMimeTypes: Record<string, string> = {
+          note: 'text/markdown',
+          textbook: 'application/pdf',
+          exam: 'application/json',
+          translation: 'text/markdown',
+          essay: 'text/markdown',
+          image: 'image/png',
+          file: 'application/octet-stream',
+          mindmap: 'application/json',
+        };
+        // 优先使用资源元数据中的真实 MIME，兜底走类型映射
+        // 「导入资料」统一归为 textbook 类型，PPTX/DOCX/EPUB 也在其中：先看扩展名，
+        // 否则全被当成 PDF，默认选中不存在的「图片」注入模式、附件一直「未就绪」
+        const realMimeType = (typeof metadata?.mimeType === 'string' && metadata.mimeType)
+          || mimeTypeFromFileName(displayName)
+          || vfsMimeTypes[sourceType]
+          || 'application/octet-stream';
+        // SSOT 媒体识别：MIME OR 扩展名（覆盖空 mime 的 .png 等）
+        const mediaType = getAttachmentMediaType(realMimeType, displayName);
+        // ★ P0 契约：PDF/图片引用创建时显式写入 UI 默认注入模式，
+        // 后端「缺省 text+image 双开」兜底逻辑不再触发
+        // ★ P1（2026-09-07）：默认模式由当前会话模型能力驱动
+        // ★ #449：引用路径（vfs_create_or_reuse）不带处理状态，按 VFS 文件 ID 补查真实
+        // processingStatus/readyModes；否则已处理完的 PDF 以空 readyModes 入列被拦发送
+        const [isMultimodal, processingPatch] = await Promise.all([
+          isCurrentChatModelMultimodal(),
+          fetchLibraryAttachmentProcessing({ mimeType: realMimeType, name: displayName, sourceId }),
+        ]);
+        const injectModes = buildDefaultInjectModes(mediaType, { multimodal: isMultimodal });
+        const previewUrl = typeof metadata?.previewUrl === 'string' ? metadata.previewUrl : undefined;
+
+        const contextRef: ContextRef = {
+          resourceId: createResult.resourceId,
+          hash: createResult.hash,
+          typeId,
+          displayName,
+          ...(injectModes ? { injectModes } : {}),
+        };
+
+        store.getState().addContextRef(contextRef);
+
+        const attachmentMeta: AttachmentMeta = {
+          id: `vfs-${sourceId}-${Date.now()}`,
+          name: displayName,
+          type: mediaType === 'image' || sourceType === 'image' ? 'image' : 'document',
+          mimeType: realMimeType,
+          size: typeof metadata?.size === 'number' ? metadata.size : 0,
+          status: 'ready',
+          resourceId: createResult.resourceId,
+          sourceId,
+          ...(previewUrl ? { previewUrl } : {}),
+          ...(injectModes ? { injectModes } : {}),
+          ...(processingPatch ?? {}),
+        };
+        store.getState().addAttachment(attachmentMeta);
+        window.dispatchEvent(new CustomEvent('CHAT_V2_OPEN_ATTACHMENT_PANEL'));
+
+        // 5. 通知用户
+        // 新建/复用上下文引用是内部细节，对学习者只说结果
+        showGlobalNotification('success', t('notes:reference.to_chat_success'));
+
+        console.log(LOG_PREFIX, 'Reference added to chat:', contextRef);
+
+        return {
+          success: true,
+          contextRef,
+          refData,
+        };
+      } catch (error) {
+        const errorMsg = getErrorMessage(error);
+        console.error(LOG_PREFIX, 'referenceToChat failed:', errorMsg);
+        showGlobalNotification('error', t('notes:reference.to_chat_failed'), errorMsg);
+        return { success: false, error: errorMsg };
+      }
+    },
+    [t]
+  );
+
+  return {
+    referenceToChat,
+    canReferenceToChat,
+  };
+}
+
+// ============================================================================
+// 导出
+// ============================================================================
+
+export default useReferenceToChat;

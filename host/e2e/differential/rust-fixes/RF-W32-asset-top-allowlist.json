@@ -1,0 +1,33 @@
+{
+  "id": "RF-W32-asset-top-allowlist",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T15:30:00+08:00",
+  "title": "同步资产只落地到扫描的资产目录：云端 key 的顶层目录不在白名单内时，下载、墓碑、未同步诊断都跳过",
+  "rust": {
+    "file": "src-tauri/crates/dstu-sync/src/data_governance/sync/mod.rs",
+    "line": 12315,
+    "behavior": "asset_local_path_from_key 只要求 root 是 active/app_data、top 是普通路径分量，任何顶层目录都映射到本地路径；ACTIVE_ASSET_DIRS（mod.rs:10217）只用于上传扫描。下载时目标已存在就存冲突副本后覆盖；应用远端 asset 墓碑时只比较 deleted_at 与本地 mtime（mod.rs:12834），deleted_at 晚于本地文件最后修改时间就删除；对经常写入的数据库，设成当前时间之后、不超过时钟漂移上限 60 秒（tombstone.rs:724-729 validate_tombstone_timestamp）即可稳定越过。活动槽位里的 databases/vfs.db、workspaces/ 等因此可被远端覆盖或删除"
+  },
+  "fix": {
+    "files": [
+      "host/plugins/sync/src/asset-filenames.ts",
+      "host/plugins/sync/src/asset-paths.ts",
+      "host/plugins/sync/src/asset-sync.ts",
+      "host/plugins/sync/src/file-tombstone-sync.ts",
+      "host/plugins/sync/src/unsynced-classification.ts"
+    ],
+    "behavior": "白名单与上传扫描同源（SYNCED_ASSET_DIRS）：active 下 images、notes_assets、documents、subjects、textbooks、audio、videos，app_data 下 pdf_ocr_sessions。assetLocalPath 对其他 key 返回 null；下载时这类云端条目不进入映射，记 warn 后跳过（不计入 download_failures，清单里的条目原样保留、不删除），也不参与大小写冲突判断；应用 asset 墓碑时同样记 warn 后跳过（本地文件不删、云端对象不删）；未同步诊断把它们报为 InvalidKey（“云端 key 不在同步的资产目录内，已拒绝落地”）。key 的结构校验（validateRootAndTop / sanitizeAssetKey）不变：把白名单放进结构校验会让这类 key 触发整趟资产同步报错，等于给恶意服务器一个拒绝服务开关，也会让将来新增资产目录的版本与旧版互相中断同步"
+  },
+  "evidence": "安全问题（S01-security-r2 M2，与 H1 同源）：同步服务器被攻破或本身恶意、用户未开端到端加密时，发布资产清单条目 active/databases/vfs.db 并上传构造好的 SQLite 文件，下次下载同步就覆盖本地数据库；或发布同名、deleted_at 比当前时间晚不到 60 秒的墓碑（墓碑用例用当前时间加 30 秒，走生产的漂移校验和 mtime 判断），删除正在使用的数据库，只留一份冲突副本。file-level-sync.ts:111 对两个根都传活动槽位，影响范围是整个活动槽位。Rust 自己只扫描、上传这些目录（mod.rs:10217、11619-11640），白名单外的 key 不可能由正常客户端产生，与 Rust 的意图一致。复现见登记测试，修复前 4 条用例全部失败：数据库被伪造内容覆盖、被墓碑删除（ENOENT）、assetLocalPath 返回路径、诊断报 DownloadPending。",
+  "userVisible": "正常同步感知不到；云端有白名单外的资产条目或墓碑时，它们不再落地或删除本地文件，日志有“跳过同步资产目录之外的云端条目 / asset tombstone”，未同步列表把它们列为非法 key。",
+  "dataCompat": "不改变落库数据、同步载荷与备份格式；白名单外的清单条目原样保留并随清单回写，旧 Rust 版与新版互相读写不受影响。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    { "file": "host/plugins/sync/tests/asset-top-allowlist.test.ts", "name": "RF-W32-asset-top-allowlist: asset keys only map into the synced asset directories" },
+    { "file": "host/plugins/sync/tests/asset-top-allowlist.test.ts", "name": "RF-W32-asset-top-allowlist: a cloud asset entry outside the synced directories does not overwrite the local database" },
+    { "file": "host/plugins/sync/tests/asset-top-allowlist.test.ts", "name": "RF-W32-asset-top-allowlist: a future-dated cloud tombstone outside the synced directories does not delete the local database" },
+    { "file": "host/plugins/sync/tests/asset-top-allowlist.test.ts", "name": "RF-W32-asset-top-allowlist: unsynced diagnostics report keys outside the synced directories as invalid" }
+  ]
+}

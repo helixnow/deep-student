@@ -59,6 +59,7 @@ export function ImageCropDialog({
   onImageAdded,
   isActive,
 }: ImageCropDialogProps) {
+  // RUST-FIX(RF-W09-english-hardcoded-labels-localized): Rust 把原图的 alt 写死为英文 “Page N”，中文界面也是英文
   const { t } = useTranslation('common');
 
   const [sourceImages, setSourceImages] = useState<SourceImageInfo[]>([]);
@@ -309,7 +310,7 @@ export function ImageCropDialog({
                 <img
                   ref={imageRef}
                   src={currentImage.dataUrl}
-                  alt={`Page ${currentImage.pageIndex + 1}`}
+                  alt={t('question_bank.source_image_page_alt', { page: currentImage.pageIndex + 1 })}
                   className="w-full h-auto pointer-events-none"
                   draggable={false}
 />

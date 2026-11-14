@@ -61,6 +61,73 @@ const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'in
 
 const OCR_MAX_FILES = 5;
 
+// ===== S-012: 作文草稿持久化（localStorage 主源 + SQLite settings 兜底）=====
+
+interface EssayDraftPayload {
+  inputText: string;
+  topicText: string;
+}
+
+/**
+ * 草稿在 SQLite `settings` 中的键。
+ * localStorage 在 Tauri→Electron origin 变更、Android WebView 缓存清理后会整块
+ * 丢失，SQLite 副本保证草稿仍可恢复。
+ */
+function essayDraftSettingKey(sessionId: string | null | undefined): string {
+  return `essay.draft.${sessionId || 'new'}`;
+}
+
+/**
+ * 写入草稿：localStorage（同步、权威）+ SQLite settings（镜像）。
+ * localStorage 写入失败（配额等）向上抛出；SQLite 镜像失败只告警。
+ */
+function writeEssayDraft(
+  draftKey: string,
+  settingKey: string,
+  payload: EssayDraftPayload,
+): void {
+  let serialized: string | null = null;
+  try {
+    serialized = JSON.stringify(payload);
+    localStorage.setItem(draftKey, serialized);
+  } finally {
+    if (serialized !== null) {
+      void TauriAPI.saveSetting(settingKey, serialized).catch((error: unknown) => {
+        console.warn('[EssayGrading] S-012: Failed to mirror draft to settings', error);
+      });
+    }
+  }
+}
+
+/** 清除草稿（localStorage 与 SQLite 副本同时删除） */
+function clearEssayDraft(draftKey: string, settingKey: string): void {
+  try {
+    localStorage.removeItem(draftKey);
+  } catch (error: unknown) {
+    console.warn('[EssayGrading] S-012: Failed to remove draft', error);
+  }
+  void TauriAPI.deleteSetting(settingKey).catch((error: unknown) => {
+    console.warn('[EssayGrading] S-012: Failed to delete draft setting', error);
+  });
+}
+
+/** 把 1s debounce 里尚未落盘的草稿立即写入（卸载/切换会话时调用） */
+function flushPendingEssayDraft(
+  pending: { draftKey: string; settingKey: string; payload: EssayDraftPayload } | null,
+): void {
+  if (!pending) return;
+  try {
+    if (!pending.payload.inputText && !pending.payload.topicText) {
+      clearEssayDraft(pending.draftKey, pending.settingKey);
+    } else {
+      writeEssayDraft(pending.draftKey, pending.settingKey, pending.payload);
+    }
+  } catch (error: unknown) {
+    console.warn('[EssayGrading] S-012: Failed to flush draft', error);
+  }
+}
+
+
 /** OCR 处理状态 */
 export type OcrStatus = 'pending' | 'processing' | 'retrying' | 'done' | 'error' | 'timeout';
 
@@ -528,70 +595,164 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
   // ★ S-012: 草稿自动保存 ─ 防止关闭/刷新时丢失用户输入
   const effectiveSessionId = currentSession?.id || initialSession?.id;
   const draftKey = effectiveSessionId ? `essay_draft_${effectiveSessionId}` : 'essay_draft_new';
+  const draftSettingKey = essayDraftSettingKey(effectiveSessionId);
 
-  // ★ S-012: debounce 保存草稿到 localStorage（1s）
+  // ★ 尚未落盘的草稿快照（1s debounce 期间的最新编辑）：
+  // 卸载 / 切换会话时立即 flush，保证"敲完 1 秒内关闭窗口"也不丢最后一笔。
+  const pendingDraftRef = useRef<{
+    draftKey: string;
+    settingKey: string;
+    payload: EssayDraftPayload;
+  } | null>(null);
+
+  const flushPendingDraftNow = useCallback(() => {
+    const pending = pendingDraftRef.current;
+    pendingDraftRef.current = null;
+    flushPendingEssayDraft(pending);
+  }, []);
+
+  // ★ S-012: debounce 保存草稿到 localStorage + SQLite settings（1s）
   // 草稿为 JSON 结构 {inputText, topicText}（图片 base64 体积过大，不进草稿）
   // 恢复完成前不写入/删除，避免挂载初期把待恢复的草稿冲掉
   // ★ 回看轮次时正文等于已批改轮次文本，不属于未保存编辑：不把旧轮次正文写进
   // 草稿（否则下次打开会被当作「未保存修改」覆盖最新轮次正文）
   useEffect(() => {
     if (!draftRestoredRef.current) return;
+    const draftInputText = inputText === lastGradedInputRef.current ? '' : inputText;
+    const payload: EssayDraftPayload = { inputText: draftInputText, topicText };
+    const pending = { draftKey, settingKey: draftSettingKey, payload };
+    pendingDraftRef.current = pending;
+
     const timer = setTimeout(() => {
-      const draftInputText = inputText === lastGradedInputRef.current ? '' : inputText;
+      // 期间已被 flush / 清除（如批改完成后清草稿）时不再补写
+      if (pendingDraftRef.current !== pending) return;
+      pendingDraftRef.current = null;
       try {
         if (!draftInputText && !topicText) {
           // 无未保存内容（用户主动清空 / 正文与轮次一致）时移除草稿，
           // 防止下次进入被"恢复"回已删除或已批改的内容
-          localStorage.removeItem(draftKey);
+          clearEssayDraft(draftKey, draftSettingKey);
         } else {
-          localStorage.setItem(draftKey, JSON.stringify({ inputText: draftInputText, topicText }));
+          writeEssayDraft(draftKey, draftSettingKey, payload);
         }
       } catch (e: unknown) {
         console.warn('[EssayGrading] S-012: Failed to save draft', e);
       }
     }, 1000);
+    // 这里只清定时器：卸载 / draftKey 切换的"立即落盘"由下方仅依赖 draftKey 的
+    // effect 负责（它的 cleanup 只在卸载或切换会话时执行，不会退化成每次击键都写盘）
     return () => clearTimeout(timer);
-  }, [inputText, topicText, draftKey]);
+  }, [inputText, topicText, draftKey, draftSettingKey]);
+
+  // ★ S-012: 卸载 / draftKey 变化（切换会话）时立即 flush 待写入草稿。
+  // cleanup 只在 key 变化或卸载时执行；debounce 已落盘时 pendingDraftRef 为 null，不会重复写。
+  useEffect(() => {
+    return () => {
+      flushPendingDraftNow();
+    };
+  }, [draftKey, flushPendingDraftNow]);
+
+  // ★ S-012: 刷新 / 关闭页面（pagehide）也立即落盘，覆盖 React 未能卸载的关闭路径
+  useEventRegistry(
+    [
+      {
+        target: 'window',
+        type: 'pagehide',
+        listener: () => flushPendingDraftNow(),
+      },
+    ],
+    [flushPendingDraftNow],
+  );
 
   // ★ S-012: 组件初始化时恢复草稿（仅在对应输入为空时；兼容旧版纯文本草稿）
+  // localStorage 为空时回退到 SQLite settings（origin 变更 / WebView 缓存清理后的兜底）。
   useEffect(() => {
     if (draftRestoredRef.current) return;
     draftRestoredRef.current = true;
-    const raw = localStorage.getItem(draftKey);
-    if (!raw) return;
-    let draftText = raw;
-    let draftTopic = '';
-    try {
-      const parsed: unknown = JSON.parse(raw);
-      if (parsed && typeof parsed === 'object') {
-        const record = parsed as { inputText?: unknown; topicText?: unknown };
-        draftText = typeof record.inputText === 'string' ? record.inputText : '';
-        draftTopic = typeof record.topicText === 'string' ? record.topicText : '';
+    let cancelled = false;
+
+    const applyDraft = (raw: string) => {
+      let draftText = raw;
+      let draftTopic = '';
+      try {
+        const parsed: unknown = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') {
+          const record = parsed as { inputText?: unknown; topicText?: unknown };
+          draftText = typeof record.inputText === 'string' ? record.inputText : '';
+          draftTopic = typeof record.topicText === 'string' ? record.topicText : '';
+        }
+      } catch {
+        // 旧格式：整个值即正文文本
       }
+      const applyText = Boolean(draftText && !inputText);
+      if (applyText) setInputText(draftText);
+      if (draftTopic) setTopicText(prev => prev || draftTopic);
+      if (applyText || draftTopic) {
+        restoredDraftRef.current = { inputText: applyText ? draftText : '', topicText: draftTopic };
+      }
+    };
+
+    let localRaw: string | null = null;
+    try {
+      localRaw = localStorage.getItem(draftKey);
     } catch {
-      // 旧格式：整个值即正文文本
+      localRaw = null;
     }
-    const applyText = Boolean(draftText && !inputText);
-    if (applyText) setInputText(draftText);
-    if (draftTopic) setTopicText(prev => prev || draftTopic);
-    if (applyText || draftTopic) {
-      restoredDraftRef.current = { inputText: applyText ? draftText : '', topicText: draftTopic };
+    if (localRaw) {
+      applyDraft(localRaw);
+      return;
     }
+
+    // localStorage 缺失：从 SQLite settings 回填（恢复成功时顺带写回 localStorage）
+    void TauriAPI.getSetting(draftSettingKey)
+      .then((stored) => {
+        if (cancelled || !stored) return;
+        try {
+          localStorage.setItem(draftKey, stored);
+        } catch {
+          // 回写失败不影响本次恢复
+        }
+        applyDraft(stored);
+      })
+      .catch((error: unknown) => {
+        console.warn('[EssayGrading] S-012: Failed to load draft setting', error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draftKey]);
+  }, [draftKey, draftSettingKey]);
 
   // ★ S-012: 会话创建后迁移草稿 key（从 'new' 到真实 sessionId）
+  // localStorage 与 SQLite 副本一起迁移，避免任一存储被清理后丢草稿。
   useEffect(() => {
     if (currentSession?.id && !initialSession?.id) {
-      const oldDraft = localStorage.getItem('essay_draft_new');
+      const sessionId = currentSession.id;
+      let oldDraft: string | null = null;
+      try {
+        oldDraft = localStorage.getItem('essay_draft_new');
+      } catch {
+        oldDraft = null;
+      }
       if (oldDraft) {
         try {
-          localStorage.setItem(`essay_draft_${currentSession.id}`, oldDraft);
+          localStorage.setItem(`essay_draft_${sessionId}`, oldDraft);
           localStorage.removeItem('essay_draft_new');
         } catch (e: unknown) {
           console.warn('[EssayGrading] S-012: Failed to migrate draft key', e);
         }
       }
+      void (async () => {
+        try {
+          const settingPayload = oldDraft ?? (await TauriAPI.getSetting(essayDraftSettingKey(null)));
+          if (!settingPayload) return;
+          await TauriAPI.saveSetting(essayDraftSettingKey(sessionId), settingPayload);
+          await TauriAPI.deleteSetting(essayDraftSettingKey(null));
+        } catch (error: unknown) {
+          console.warn('[EssayGrading] S-012: Failed to migrate draft setting', error);
+        }
+      })();
     }
   }, [currentSession?.id, initialSession?.id]);
 
@@ -618,10 +779,11 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
     // 与 S-012 debounce 写入同一格式/同一键；回看已批改轮次的正文不算未保存编辑。
     // localStorage 写入失败（配额等）向上抛出：保存失败不放行关闭。
     const draftInputText = inputText === lastGradedInputRef.current ? '' : inputText;
+    pendingDraftRef.current = null;
     if (!draftInputText && !topicText) {
-      localStorage.removeItem(draftKey);
+      clearEssayDraft(draftKey, draftSettingKey);
     } else {
-      localStorage.setItem(draftKey, JSON.stringify({ inputText: draftInputText, topicText }));
+      writeEssayDraft(draftKey, draftSettingKey, { inputText: draftInputText, topicText });
     }
   };
 
@@ -647,6 +809,7 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
 
   // 加载会话轮次；返回恢复到输入框的最新轮次正文（无轮次时返回 null）
   const loadSessionRounds = useCallback(async (sessionId: string): Promise<string | null> => {
+    const bodyAtRestoreStart = inputTextRef.current;
     try {
       const sessionRounds = await EssayGradingAPI.getRounds(sessionId);
       setRounds(sessionRounds);
@@ -655,7 +818,9 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
         // 显示最新轮次
         setCurrentRoundIndex(sessionRounds.length - 1);
         const latestRound = sessionRounds[sessionRounds.length - 1];
-        setInputText(latestRound.input_text);
+        if (inputTextRef.current === bodyAtRestoreStart) {
+          setInputText(latestRound.input_text);
+        }
         setGradingResult(latestRound.grading_result);
         markInputAsGraded(latestRound.input_text);
         return latestRound.input_text;
@@ -1112,10 +1277,9 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
     // ★ S-012: 仅在会话上下文也落盘后清除草稿。保存失败时保留正文/题目草稿，
     // 与 dirty 基准一起防止“批改轮次成功、上下文失败”后静默丢题目。
     if (contextPersisted) {
-      try {
-        localStorage.removeItem(`essay_draft_${sessionId}`);
-        localStorage.removeItem('essay_draft_new');
-      } catch {}
+      pendingDraftRef.current = null;
+      clearEssayDraft(`essay_draft_${sessionId}`, essayDraftSettingKey(sessionId));
+      clearEssayDraft('essay_draft_new', essayDraftSettingKey(null));
     }
     // 刷新轮次
     const latestText = await loadSessionRounds(sessionId);
@@ -1510,11 +1674,10 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
     setTopicImages([]);
     resetGradingState();
     // 清空后草稿一并移除，避免下次进入被"恢复"回来
-    try {
-      localStorage.removeItem(draftKey);
-    } catch {}
+    pendingDraftRef.current = null;
+    clearEssayDraft(draftKey, draftSettingKey);
     showGlobalNotification('success', t('essay_grading:toast.cleared'));
-  }, [isGrading, inputText, gradingResult, topicText, uploadedImages.length, topicImages.length, resetGradingState, draftKey, t]);
+  }, [isGrading, inputText, gradingResult, topicText, uploadedImages.length, topicImages.length, resetGradingState, draftKey, draftSettingKey, t]);
 
   // ★ 应用批改建议：前后文锚定定位（同一片段多次出现时选上下文匹配度最高的一处），
   // 替代此前的全局 indexOf；成功后记录已采纳 key，支持撤销

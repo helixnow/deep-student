@@ -1,0 +1,8 @@
+[Unit]
+Description=Deep Student 并行迁移（opencode lanes）资源组
+
+[Slice]
+MemoryHigh=44G
+MemoryMax=52G
+MemorySwapMax=32G
+TasksMax=20000

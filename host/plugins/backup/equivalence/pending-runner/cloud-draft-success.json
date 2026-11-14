@@ -1,0 +1,122 @@
+{
+  "domain": "backup",
+  "commands": [
+    "cloud_config_test_connection_draft"
+  ],
+  "scenarios": [
+    {
+      "id": "backup.cloud_draft.webdav_ok",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "cloud_config_test_connection_draft",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "${cloud.webdav.endpoint}",
+                "username": "wave0-user"
+              },
+              "root": "wave0"
+            },
+            "credentials": {
+              "webdavPassword": "wave0-pass"
+            },
+            "encryptionPasswordIsPreexisting": false
+          }
+        },
+        {
+          "cmd": "cloud_config_test_connection_draft",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "${cloud.webdav.endpoint}",
+                "username": "wave0-user"
+              },
+              "root": "wave0"
+            },
+            "credentials": {
+              "webdavPassword": "wave0-pass",
+              "encryptionPassword": "wave0-strong-pass"
+            },
+            "encryptionPasswordIsPreexisting": false
+          }
+        },
+        {
+          "cmd": "cloud_config_test_connection_draft",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "${cloud.webdav.endpoint}",
+                "username": "wave0-user"
+              }
+            },
+            "credentials": {
+              "webdavPassword": "wave0-pass",
+              "encryptionPassword": "short"
+            },
+            "encryptionPasswordIsPreexisting": true
+          }
+        },
+        {
+          "cmd": "cloud_config_test_connection_draft",
+          "args": {
+            "config": {
+              "provider": "webdav",
+              "webdav": {
+                "endpoint": "${cloud.webdav.endpoint}",
+                "username": "wave0-user"
+              },
+              "root": "  /wave0/  "
+            },
+            "credentials": {
+              "webdavPassword": "wave0-pass"
+            }
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "backup.cloud_draft.s3_ok",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "cloud_config_test_connection_draft",
+          "args": {
+            "config": {
+              "provider": "s3",
+              "s3": {
+                "endpoint": "${cloud.s3.endpoint}",
+                "bucket": "wave0-bucket",
+                "accessKeyId": "WAVE0ACCESSKEYID",
+                "region": "us-east-1",
+                "pathStyle": true
+              },
+              "root": "wave0"
+            },
+            "credentials": {
+              "s3SecretAccessKey": "wave0-secret-access-key"
+            },
+            "encryptionPasswordIsPreexisting": false
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

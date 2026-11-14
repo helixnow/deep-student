@@ -1,0 +1,401 @@
+{
+  "domain": "vfs",
+  "commands": [
+    "todo_create_list",
+    "todo_delete_list",
+    "todo_ensure_inbox",
+    "todo_create_item",
+    "todo_get_item",
+    "todo_delete_item",
+    "todo_get_active_summary",
+    "todo_counts_snapshot"
+  ],
+  "scenarios": [
+    {
+      "id": "vfs.todo.create_list.full_fields_and_blank_title",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "todo_create_list", "args": { "input": { "title": "工作", "description": "工作相关", "icon": "briefcase", "color": "#ff0000" } } },
+        { "cmd": "todo_create_list", "args": { "input": { "title": "   " } } },
+        { "cmd": "todo_create_list", "args": { "input": { "title": " 带空格 " } } },
+        { "cmd": "todo_list_lists", "args": {} },
+        { "cmd": "todo_get_list", "args": { "listId": "${0.id}" } },
+        { "cmd": "todo_get_list", "args": { "listId": "${1.id}" } },
+        { "cmd": "todo_counts_snapshot", "args": {} }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo.create_list.sort_order_after_delete",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "todo_create_list", "args": { "input": { "title": "A" } } },
+        { "cmd": "todo_create_list", "args": { "input": { "title": "B" } } },
+        { "cmd": "todo_delete_list", "args": { "listId": "${0.id}" } },
+        { "cmd": "todo_create_list", "args": { "input": { "title": "C" } } },
+        { "cmd": "todo_list_lists", "args": {} },
+        { "cmd": "todo_list_deleted_lists", "args": {} }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo.create_list.args_errors",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "todo_create_list", "args": {}, "expect": "error" },
+        { "cmd": "todo_create_list", "args": { "input": {} }, "expect": "error" },
+        { "cmd": "todo_create_list", "args": { "input": { "title": 1 } }, "expect": "error" },
+        { "cmd": "todo_create_list", "args": { "input": { "title": null } }, "expect": "error" },
+        { "cmd": "todo_create_list", "args": { "input": { "title": "ok", "color": 3 } }, "expect": "error" },
+        { "cmd": "todo_list_lists", "args": {} }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo.delete_list.cascade_items_and_idempotent",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "todo_create_list", "args": { "input": { "title": "删我" } } },
+        { "cmd": "todo_create_list", "args": { "input": { "title": "留我" } } },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${0.id}", "title": "父" } } },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${0.id}", "title": "子", "parentId": "${2.id}" } } },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${1.id}", "title": "别的清单" } } },
+        { "cmd": "todo_delete_list", "args": { "listId": "${0.id}" } },
+        { "cmd": "todo_list_lists", "args": {} },
+        { "cmd": "todo_list_deleted_lists", "args": {} },
+        { "cmd": "todo_list_items", "args": { "listId": "${0.id}", "includeCompleted": true } },
+        { "cmd": "todo_get_item", "args": { "itemId": "${2.id}" } },
+        { "cmd": "todo_get_item", "args": { "itemId": "${3.id}" } },
+        { "cmd": "todo_list_deleted_items", "args": {} },
+        { "cmd": "todo_delete_list", "args": { "listId": "${0.id}" } },
+        { "cmd": "todo_list_items", "args": { "listId": "${1.id}", "includeCompleted": true } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo.delete_list.inbox_protected_and_missing",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "todo_ensure_inbox", "args": { "title": "收件箱" } },
+        { "cmd": "todo_delete_list", "args": { "listId": "${0.id}" }, "expect": "error" },
+        { "cmd": "todo_delete_list", "args": { "listId": "tdl_missing0000" }, "expect": "error" },
+        { "cmd": "todo_delete_list", "args": { "listId": "" }, "expect": "error" },
+        { "cmd": "todo_delete_list", "args": {}, "expect": "error" },
+        { "cmd": "todo_delete_list", "args": { "listId": 1 }, "expect": "error" },
+        { "cmd": "todo_list_lists", "args": {} },
+        { "cmd": "todo_list_deleted_lists", "args": {} }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo.delete_list.same_title_regular_list_deletable",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "todo_create_list", "args": { "input": { "title": "收件箱" } } },
+        { "cmd": "todo_ensure_inbox", "args": {} },
+        { "cmd": "todo_list_lists", "args": {} },
+        { "cmd": "todo_delete_list", "args": { "listId": "${1.id}" }, "expect": "error" },
+        { "cmd": "todo_delete_list", "args": { "listId": "${0.id}" } },
+        { "cmd": "todo_list_lists", "args": {} },
+        { "cmd": "todo_ensure_inbox", "args": {} }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo.ensure_inbox.create_trimmed_then_reuse",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "todo_ensure_inbox", "args": { "title": "  我的收件箱  " } },
+        { "cmd": "todo_ensure_inbox", "args": { "title": "Other" } },
+        { "cmd": "todo_ensure_inbox", "args": {} },
+        { "cmd": "todo_list_lists", "args": {} },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${0.id}", "title": "进收件箱" } } },
+        { "cmd": "todo_counts_snapshot", "args": {} }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo.ensure_inbox.default_title_no_arg",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "todo_ensure_inbox", "args": { "title": 5 }, "expect": "error" },
+        { "cmd": "todo_list_lists", "args": {} },
+        { "cmd": "todo_ensure_inbox", "args": {} },
+        { "cmd": "todo_get_list", "args": { "listId": "${2.id}" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo.ensure_inbox.default_title_blank",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "todo_ensure_inbox", "args": { "title": "   " } },
+        { "cmd": "todo_list_lists", "args": {} }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo.create_item.full_fields_normalized",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "todo_create_list", "args": { "input": { "title": "条目清单" } } },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${0.id}", "title": "  写周报  ", "description": "本周进展", "priority": "high", "dueDate": "2026-1-5", "dueTime": "9:05:30", "reminder": "2026-01-05T08:30:59", "tags": ["工作", "周报"], "attachments": ["note_missing0000"], "repeatJson": "{\"freq\":\"weekly\",\"interval\":2,\"byWeekday\":[3,1,3]}" } } },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${0.id}", "title": "子任务", "parentId": "${1.id}", "description": "", "dueDate": "", "dueTime": "  ", "reminder": "", "repeatJson": "" } } },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${0.id}", "title": "low", "priority": "low" } } },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${0.id}", "title": "medium", "priority": "medium", "dueDate": "2026-11-06", "dueTime": "23:59" } } },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${0.id}", "title": "urgent", "priority": "urgent", "reminder": "2026-11-06T07:00" } } },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${0.id}", "title": "none", "priority": "none", "tags": [], "repeatJson": "{\"freq\":\"daily\",\"byWeekday\":[9]}" } } },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${0.id}", "title": "weekdays", "repeatJson": "{\"freq\":\"weekdays\",\"interval\":999}" } } },
+        { "cmd": "todo_get_item", "args": { "itemId": "${1.id}" } },
+        { "cmd": "todo_get_item", "args": { "itemId": "${2.id}" } },
+        { "cmd": "todo_list_items", "args": { "listId": "${0.id}", "includeCompleted": true } },
+        { "cmd": "todo_get_list", "args": { "listId": "${0.id}" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo.create_item.field_validation_errors",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "todo_create_list", "args": { "input": { "title": "校验" } } },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${0.id}", "title": "" } }, "expect": "error" },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${0.id}", "title": "   " } }, "expect": "error" },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${0.id}", "title": "x", "priority": "critical" } }, "expect": "error" },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${0.id}", "title": "x", "priority": "High" } }, "expect": "error" },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${0.id}", "title": "x", "priority": "" } }, "expect": "error" },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${0.id}", "title": "x", "dueDate": "2026/11/06" } }, "expect": "error" },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${0.id}", "title": "x", "dueDate": "2026-02-30" } }, "expect": "error" },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${0.id}", "title": "x", "dueDate": "2026-11-06T10:00" } }, "expect": "error" },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${0.id}", "title": "x", "dueTime": "25:00" } }, "expect": "error" },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${0.id}", "title": "x", "dueTime": "9am" } }, "expect": "error" },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${0.id}", "title": "x", "repeatJson": "daily" } }, "expect": "error" },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${0.id}", "title": "x", "repeatJson": "{\"freq\":\"hourly\"}" } }, "expect": "error" },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${0.id}", "title": "x", "repeatJson": "{\"freq\":\"daily\",\"interval\":0}" } }, "expect": "error" },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${0.id}", "title": "x", "repeatJson": "{\"freq\":\"daily\",\"interval\":1000}" } }, "expect": "error" },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${0.id}", "title": "x", "repeatJson": "{\"freq\":\"daily\",\"interval\":-1}" } }, "expect": "error" },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${0.id}", "title": "x", "repeatJson": "{\"freq\":\"weekly\",\"byWeekday\":[7]}" } }, "expect": "error" },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${0.id}", "title": "x", "reminder": "2026-11-06 08:00" } }, "expect": "error" },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${0.id}", "title": "x", "reminder": "2026-11-06" } }, "expect": "error" },
+        { "cmd": "todo_list_items", "args": { "listId": "${0.id}", "includeCompleted": true } },
+        { "cmd": "todo_get_list", "args": { "listId": "${0.id}" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo.create_item.validation_order",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "todo_create_list", "args": { "input": { "title": "顺序" } } },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${0.id}", "title": "", "priority": "bad" } }, "expect": "error" },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${0.id}", "title": "x", "priority": "bad", "dueDate": "bad" } }, "expect": "error" },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "tdl_missing0000", "title": "x", "dueDate": "bad" } }, "expect": "error" },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "tdl_missing0000", "title": "x", "repeatJson": "bad" } }, "expect": "error" },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "tdl_missing0000", "title": "x", "reminder": "bad" } }, "expect": "error" },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${0.id}", "title": "x", "parentId": "ti_missing0000", "reminder": "bad" } }, "expect": "error" },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${0.id}", "title": "x", "reminder": "bad" } }, "expect": "error" },
+        { "cmd": "todo_list_items", "args": { "listId": "${0.id}", "includeCompleted": true } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo.create_item.missing_and_cross_list_refs",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "todo_create_list", "args": { "input": { "title": "A" } } },
+        { "cmd": "todo_create_list", "args": { "input": { "title": "B" } } },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${0.id}", "title": "父" } } },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "tdl_missing0000", "title": "x" } }, "expect": "error" },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "", "title": "x" } }, "expect": "error" },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${1.id}", "title": "x", "parentId": "ti_missing0000" } }, "expect": "error" },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${1.id}", "title": "x", "parentId": "${2.id}" } }, "expect": "error" },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${0.id}", "title": "x", "parentId": "" } }, "expect": "error" },
+        { "cmd": "todo_list_items", "args": { "listId": "${1.id}", "includeCompleted": true } },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${0.id}", "title": "子", "parentId": "${2.id}" } } },
+        { "cmd": "todo_list_items", "args": { "listId": "${0.id}", "includeCompleted": true } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo.create_item.deleted_list_and_parent",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "todo_create_list", "args": { "input": { "title": "软删" } } },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${0.id}", "title": "父" } } },
+        { "cmd": "todo_delete_item", "args": { "itemId": "${1.id}" } },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${0.id}", "title": "子", "parentId": "${1.id}" } }, "expect": "error" },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${0.id}", "title": "新顶层" } } },
+        { "cmd": "todo_delete_list", "args": { "listId": "${0.id}" } },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${0.id}", "title": "进已删清单" } }, "expect": "error" },
+        { "cmd": "todo_list_deleted_items", "args": {} },
+        { "cmd": "todo_list_deleted_lists", "args": {} }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo.create_item.args_errors",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "todo_create_item", "args": {}, "expect": "error" },
+        { "cmd": "todo_create_item", "args": { "input": { "title": "x" } }, "expect": "error" },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "tdl_missing0000" } }, "expect": "error" },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "tdl_missing0000", "title": "x", "tags": "a" } }, "expect": "error" },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "tdl_missing0000", "title": "x", "priority": null } }, "expect": "error" },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "tdl_missing0000", "title": "x", "dueDate": 20261106 } }, "expect": "error" },
+        { "cmd": "todo_counts_snapshot", "args": {} }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo.get_item.live_completed_missing_deleted",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "todo_create_list", "args": { "input": { "title": "读取" } } },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${0.id}", "title": "读我", "priority": "medium", "dueDate": "2026-11-06", "tags": ["a"] } } },
+        { "cmd": "todo_get_item", "args": { "itemId": "${1.id}" } },
+        { "cmd": "todo_toggle_item", "args": { "itemId": "${1.id}" } },
+        { "cmd": "todo_get_item", "args": { "itemId": "${1.id}" } },
+        { "cmd": "todo_get_item", "args": { "itemId": "ti_missing0000" } },
+        { "cmd": "todo_get_item", "args": { "itemId": "" } },
+        { "cmd": "todo_delete_item", "args": { "itemId": "${1.id}" } },
+        { "cmd": "todo_get_item", "args": { "itemId": "${1.id}" } },
+        { "cmd": "todo_get_item", "args": {} , "expect": "error" },
+        { "cmd": "todo_get_item", "args": { "itemId": 7 }, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo.delete_item.subtree_cascade_and_idempotent",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "todo_create_list", "args": { "input": { "title": "子树" } } },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${0.id}", "title": "P" } } },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${0.id}", "title": "C", "parentId": "${1.id}" } } },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${0.id}", "title": "G", "parentId": "${2.id}" } } },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${0.id}", "title": "S" } } },
+        { "cmd": "todo_delete_item", "args": { "itemId": "${1.id}" } },
+        { "cmd": "todo_list_items", "args": { "listId": "${0.id}", "includeCompleted": true } },
+        { "cmd": "todo_get_item", "args": { "itemId": "${2.id}" } },
+        { "cmd": "todo_get_item", "args": { "itemId": "${3.id}" } },
+        { "cmd": "todo_list_deleted_items", "args": {} },
+        { "cmd": "todo_get_list", "args": { "listId": "${0.id}" } },
+        { "cmd": "todo_delete_item", "args": { "itemId": "${1.id}" } },
+        { "cmd": "todo_get_list", "args": { "listId": "${0.id}" } },
+        { "cmd": "todo_delete_item", "args": { "itemId": "ti_missing0000" }, "expect": "error" },
+        { "cmd": "todo_delete_item", "args": { "itemId": "" }, "expect": "error" },
+        { "cmd": "todo_delete_item", "args": {}, "expect": "error" },
+        { "cmd": "todo_list_items", "args": { "listId": "${0.id}", "includeCompleted": true } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo.delete_item.child_keeps_parent",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "todo_create_list", "args": { "input": { "title": "删子" } } },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${0.id}", "title": "P" } } },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${0.id}", "title": "C", "parentId": "${1.id}" } } },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${0.id}", "title": "G", "parentId": "${2.id}" } } },
+        { "cmd": "todo_delete_item", "args": { "itemId": "${2.id}" } },
+        { "cmd": "todo_list_items", "args": { "listId": "${0.id}", "includeCompleted": true } },
+        { "cmd": "todo_get_item", "args": { "itemId": "${3.id}" } },
+        { "cmd": "todo_get_item", "args": { "itemId": "${1.id}" } },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${0.id}", "title": "C2", "parentId": "${1.id}" } } },
+        { "cmd": "todo_list_deleted_items", "args": {} }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo.get_active_summary.none_states",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "todo_get_active_summary", "args": {} },
+        { "cmd": "todo_ensure_inbox", "args": {} },
+        { "cmd": "todo_get_active_summary", "args": {} },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${1.id}", "title": "无日期" } } },
+        { "cmd": "todo_get_active_summary", "args": {} },
+        { "cmd": "todo_delete_item", "args": { "itemId": "${3.id}" } },
+        { "cmd": "todo_get_active_summary", "args": {} }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo.get_active_summary.overdue_limit_and_order",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "todo_create_list", "args": { "input": { "title": "项目" } } },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${0.id}", "title": "A", "priority": "urgent", "dueDate": "2020-01-01", "dueTime": "09:00" } } },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${0.id}", "title": "B", "priority": "high", "dueDate": "2020-03-01" } } },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${0.id}", "title": "C", "priority": "low", "dueDate": "2020-02-01" } } },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${0.id}", "title": "D", "dueDate": "2020-04-01" } } },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${0.id}", "title": "E", "priority": "medium" } } },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${0.id}", "title": "F", "priority": "urgent", "dueDate": "2099-12-31" } } },
+        { "cmd": "todo_get_active_summary", "args": {} },
+        { "cmd": "todo_toggle_item", "args": { "itemId": "${4.id}" } },
+        { "cmd": "todo_get_active_summary", "args": {} },
+        { "cmd": "todo_delete_list", "args": { "listId": "${0.id}" } },
+        { "cmd": "todo_get_active_summary", "args": {} }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo.get_active_summary.completed_today_only",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "todo_create_list", "args": { "input": { "title": "完成" } } },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${0.id}", "title": "做完" } } },
+        { "cmd": "todo_toggle_item", "args": { "itemId": "${1.id}" } },
+        { "cmd": "todo_get_active_summary", "args": {} },
+        { "cmd": "todo_toggle_item", "args": { "itemId": "${1.id}" } },
+        { "cmd": "todo_get_active_summary", "args": {} },
+        { "cmd": "todo_delete_item", "args": { "itemId": "${1.id}" } },
+        { "cmd": "todo_get_active_summary", "args": {} }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "vfs.todo.counts_snapshot.mixed_lists",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "todo_counts_snapshot", "args": {} },
+        { "cmd": "todo_create_list", "args": { "input": { "title": "工作" } } },
+        { "cmd": "todo_ensure_inbox", "args": { "title": "收件箱" } },
+        { "cmd": "todo_counts_snapshot", "args": {} },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${2.id}", "title": "逾期", "dueDate": "2020-01-01" } } },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${2.id}", "title": "无日期" } } },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${1.id}", "title": "远期", "dueDate": "2099-12-31" } } },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${1.id}", "title": "逾期父", "dueDate": "2020-06-01" } } },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${1.id}", "title": "已完成", "dueDate": "2020-01-01" } } },
+        { "cmd": "todo_toggle_item", "args": { "itemId": "${8.id}" } },
+        { "cmd": "todo_create_item", "args": { "input": { "todoListId": "${1.id}", "title": "子", "parentId": "${7.id}" } } },
+        { "cmd": "todo_counts_snapshot", "args": {} },
+        { "cmd": "todo_delete_item", "args": { "itemId": "${7.id}" } },
+        { "cmd": "todo_counts_snapshot", "args": {} },
+        { "cmd": "todo_delete_list", "args": { "listId": "${1.id}" } },
+        { "cmd": "todo_counts_snapshot", "args": {} }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    }
+  ]
+}

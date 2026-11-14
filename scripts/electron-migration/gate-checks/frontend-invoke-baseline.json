@@ -1,0 +1,138 @@
+{
+ "description": "frontend-invoke 门禁的现存问题基线（scripts/electron-migration/gate-checks/frontend-invoke.mjs）。按 规则+文件+命令/函数+键 计数；超出计数即为新增问题。修复后用 --write-baseline 清理（保留 reason），不要为放行新问题而追加条目。",
+ "entries": [
+  {
+   "rule": "dynamic-command",
+   "file": "src/api/tauriClient.ts",
+   "function": "tauriInvoke",
+   "count": 1,
+   "reason": "透传包装：首参原样作为命令名转发给 invoke；它的字面量调用点由本门禁逐个检查"
+  },
+  {
+   "rule": "dynamic-command",
+   "file": "src/api/tauriClient.ts",
+   "function": "tauriInvokeOr",
+   "count": 1,
+   "reason": "透传包装：首参原样作为命令名转发给 invoke；它的字面量调用点由本门禁逐个检查"
+  },
+  {
+   "rule": "dynamic-command",
+   "file": "src/features/browser/browserApi.ts",
+   "function": "invokeBrowser",
+   "count": 2,
+   "reason": "透传包装：首参原样作为命令名转发给 invoke；它的字面量调用点由本门禁逐个检查"
+  },
+  {
+   "rule": "dynamic-command",
+   "file": "src/features/browser/browserApi.ts",
+   "function": "invokeState",
+   "count": 1,
+   "reason": "透传包装：首参原样作为命令名转发给 invoke；它的字面量调用点由本门禁逐个检查"
+  },
+  {
+   "rule": "dynamic-command",
+   "file": "src/features/learning-hub/apps/views/media/bilibiliLinkApi.ts",
+   "function": "invoke",
+   "count": 1,
+   "reason": "透传包装：首参原样作为命令名转发给 invoke；它的字面量调用点由本门禁逐个检查"
+  },
+  {
+   "rule": "dynamic-command",
+   "file": "src/features/learning-hub/apps/views/media/bilibiliTransport.ts",
+   "function": "command",
+   "count": 1,
+   "reason": "透传包装：首参原样作为命令名转发给 invoke；它的字面量调用点由本门禁逐个检查"
+  },
+  {
+   "rule": "dynamic-command",
+   "file": "src/features/learning-hub/apps/views/media/mediaTranscriptApi.ts",
+   "function": "invoke",
+   "count": 1,
+   "reason": "透传包装：首参原样作为命令名转发给 invoke；它的字面量调用点由本门禁逐个检查"
+  },
+  {
+   "rule": "dynamic-command",
+   "file": "src/features/mindmap/api/mindmapApi.ts",
+   "function": "invokeMindMap",
+   "count": 1,
+   "reason": "透传包装：首参原样作为命令名转发给 invoke；它的字面量调用点由本门禁逐个检查"
+  },
+  {
+   "rule": "dynamic-command",
+   "file": "src/features/notes/noteEditorHost.ts",
+   "function": "bindNoteEditorHost",
+   "count": 1,
+   "reason": "依赖注入的 invoke 适配器 (command, args) => invoke(command, args)：命令名来自被注入方，属于运行时分派"
+  },
+  {
+   "rule": "dynamic-command",
+   "file": "src/features/notes/noteHostCoordinator.ts",
+   "function": "invoke",
+   "count": 1,
+   "reason": "透传包装：首参原样作为命令名转发给 invoke；它的字面量调用点由本门禁逐个检查"
+  },
+  {
+   "rule": "dynamic-command",
+   "file": "src/features/notes/noteHostCoordinator.ts",
+   "function": "invokeWithLease",
+   "count": 1,
+   "reason": "透传包装：首参原样作为命令名转发给 invoke；它的字面量调用点由本门禁逐个检查"
+  },
+  {
+   "rule": "dynamic-command",
+   "file": "src/features/settings/components/openaiCodexAuthClient.ts",
+   "function": "call",
+   "count": 1,
+   "reason": "透传包装：首参原样作为命令名转发给 invoke；它的字面量调用点由本门禁逐个检查"
+  },
+  {
+   "rule": "dynamic-command",
+   "file": "src/features/todo/api.ts",
+   "function": "call",
+   "count": 1,
+   "reason": "透传包装：首参原样作为命令名转发给 invoke；它的字面量调用点由本门禁逐个检查"
+  },
+  {
+   "rule": "dynamic-command",
+   "file": "src/features/workbench/components/StatusBar.tsx",
+   "function": "refresh",
+   "count": 1,
+   "reason": "依赖注入的 invoke 适配器 (command, args) => invoke(command, args)：命令名来自被注入方，属于运行时分派"
+  },
+  {
+   "rule": "dynamic-command",
+   "file": "src/ui-kernel/bootstrap.ts",
+   "function": "invoke",
+   "count": 1,
+   "reason": "依赖注入的 invoke 适配器 (command, args) => invoke(command, args)：命令名来自被注入方，属于运行时分派"
+  },
+  {
+   "rule": "dynamic-command",
+   "file": "src/utils/chatApi.ts",
+   "function": "tauriInvoke",
+   "count": 1,
+   "reason": "透传包装：首参原样作为命令名转发给 invoke；它的字面量调用点由本门禁逐个检查"
+  },
+  {
+   "rule": "dynamic-command",
+   "file": "src/utils/shared.ts",
+   "function": "invokeWithDebug",
+   "count": 1,
+   "reason": "透传包装：首参原样作为命令名转发给 invoke；它的字面量调用点由本门禁逐个检查"
+  },
+  {
+   "rule": "unknown-command",
+   "file": "src/utils/clipboardUtils.ts",
+   "command": "plugin:clipboard-manager|read_text",
+   "count": 1,
+   "reason": "Tauri 内置插件命令，由 electron/shell/plugins/system.ts 在 main 中实现，不属于 Rust 命令契约"
+  },
+  {
+   "rule": "unknown-command",
+   "file": "src/utils/clipboardUtils.ts",
+   "command": "plugin:clipboard-manager|write_text",
+   "count": 1,
+   "reason": "Tauri 内置插件命令，由 electron/shell/plugins/system.ts 在 main 中实现，不属于 Rust 命令契约"
+  }
+ ]
+}

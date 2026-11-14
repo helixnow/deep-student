@@ -1,0 +1,164 @@
+{
+  "domain": "media-docs",
+  "commands": [
+    "media_bilibili_probe",
+    "media_bilibili_create",
+    "media_bilibili_import_subtitle",
+    "media_bilibili_link_get",
+    "media_bilibili_stream_quality",
+    "media_bilibili_login_qr_start",
+    "media_bilibili_login_qr_poll",
+    "media_bilibili_auth_status",
+    "media_transcribe_start"
+  ],
+  "scenarios": [
+    {
+      "id": "bili.live.probe_create_reimport",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_api_configurations",
+          "args": {
+            "configs": [
+              {
+                "id": "w0-asr-guard",
+                "name": "w0-asr-guard",
+                "providerType": "custom",
+                "apiKey": "",
+                "authMode": "none",
+                "baseUrl": "http://127.0.0.1:9/v1",
+                "model": "w0-asr-guard-model",
+                "apiProtocol": "openai_chat_completions",
+                "modelAdapter": "general",
+                "enabled": true,
+                "supportsTools": false,
+                "isMultimodal": false,
+                "isReasoning": false,
+                "isEmbedding": false,
+                "isReranker": false,
+                "contextWindow": 32768,
+                "maxOutputTokens": 256
+              }
+            ]
+          }
+        },
+        {
+          "cmd": "save_model_assignments",
+          "args": {
+            "assignments": {
+              "voice_input_asr_model_config_id": "w0-asr-guard"
+            }
+          }
+        },
+        {
+          "cmd": "media_bilibili_probe",
+          "args": {
+            "input": "https://www.bilibili.com/video/BV1GJ411x7h7/?p=1&share_source=copy_web",
+            "page": null,
+            "taskId": "w0-live-p"
+          }
+        },
+        {
+          "cmd": "media_bilibili_create",
+          "args": {
+            "input": "BV1GJ411x7h7",
+            "page": 1,
+            "lan": null,
+            "taskId": "w0-live-c"
+          }
+        },
+        {
+          "cmd": "media_bilibili_link_get",
+          "args": {
+            "resourceId": "${3.fileId}"
+          }
+        },
+        {
+          "cmd": "media_bilibili_create",
+          "args": {
+            "input": "BV1GJ411x7h7",
+            "page": 1,
+            "lan": null,
+            "taskId": null
+          }
+        },
+        {
+          "cmd": "media_bilibili_import_subtitle",
+          "args": {
+            "resourceId": "${3.fileId}",
+            "input": "BV1GJ411x7h7",
+            "page": 1,
+            "lan": null,
+            "taskId": null
+          }
+        },
+        {
+          "cmd": "media_transcribe_start",
+          "args": {
+            "resourceId": "${3.fileId}"
+          }
+        },
+        {
+          "cmd": "media_bilibili_import_subtitle",
+          "args": {
+            "resourceId": "${3.fileId}",
+            "input": "BV1xx411c7mD",
+            "page": 1
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "media_bilibili_stream_quality",
+          "args": {
+            "fileId": "${3.fileId}",
+            "qn": null,
+            "epoch": 0,
+            "attempt": 0
+          }
+        },
+        {
+          "cmd": "media_bilibili_probe",
+          "args": {
+            "input": "BV1GJ411x7h7",
+            "page": 999
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "bili.live.qr_login",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "media_bilibili_login_qr_start",
+          "args": {}
+        },
+        {
+          "cmd": "media_bilibili_login_qr_poll",
+          "args": {
+            "qrcodeKey": "${0.qrcodeKey}"
+          }
+        },
+        {
+          "cmd": "media_bilibili_auth_status",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

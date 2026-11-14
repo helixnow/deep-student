@@ -1,0 +1,16 @@
+[Unit]
+Description=Migration known-fault supervision and resource snapshot (runs as dsdev)
+
+[Service]
+Type=oneshot
+User=dsdev
+Group=dsdev
+WorkingDirectory=/home/dsdev
+Environment=HOME=/home/dsdev
+Environment=PATH=/opt/node26/bin:/usr/local/bin:/usr/bin:/bin
+UMask=0022
+# Script lives in root-owned /usr/local/sbin; -I ignores PYTHON* env and user site-packages.
+ExecStart=/usr/bin/python3 -I /usr/local/sbin/ds-night-guard.py
+Nice=10
+# The guard stops issuing commands after 110 s and saves state after every action.
+TimeoutStartSec=150

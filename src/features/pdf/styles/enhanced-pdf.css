@@ -11,8 +11,9 @@
   container-type: inline-size;
   /* 布局派生变量：底栏高度 / 进度细线高度 / 底部手势安全区。
      浮层避让统一从这里推导，不再散落魔数（64/112px）。 */
-  --ds-pdf-toolbar-h: 36px;
+  --ds-pdf-toolbar-h: 40px;
   --ds-pdf-progress-h: 3px;
+  --ds-pdf-search-h: 40px;
   --ds-pdf-safe-bottom: max(var(--mobile-safe-area-bottom, 0px), env(safe-area-inset-bottom, 0px));
 }
 
@@ -152,8 +153,10 @@
   /* 高度 = 内容高 + 底部手势安全区（教材嵌入路径同样生效） */
   height: calc(var(--ds-pdf-toolbar-h) + var(--ds-pdf-safe-bottom));
   padding: 0 8px var(--ds-pdf-safe-bottom);
-  background: hsl(var(--card));
-  border-top: 1px solid hsl(var(--border) / 0.5);
+  background: hsl(var(--background) / 0.95);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-top: 1px solid hsl(var(--border) / 0.35);
   flex-shrink: 0;
   flex-wrap: nowrap;
   overflow: visible;
@@ -325,18 +328,19 @@
   height: 24px;
   padding: 0 4px;
   border-radius: 6px;
-  border: 1px solid hsl(var(--border) / 0.7);
-  background: hsl(var(--muted) / .3);
+  border: 1px solid hsl(var(--border) / 0.35);
+  background: hsl(var(--muted) / .2);
   color: hsl(var(--foreground));
   text-align: center;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   transition: border-color .15s ease, background .15s ease;
 }
 
 .ds-input:hover {
-  border-color: hsl(var(--border));
-  background: hsl(var(--muted) / .5);
+  border-color: hsl(var(--border) / 0.65);
+  background: hsl(var(--muted) / .35);
 }
 
 .ds-input:focus {
@@ -347,7 +351,9 @@
 }
 
 .ds-page-total {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
   font-size: 12px;
+  font-variant-numeric: tabular-nums;
   color: hsl(var(--muted-foreground));
 }
 
@@ -356,6 +362,7 @@
   min-width: 3rem;
   text-align: center;
   color: hsl(var(--muted-foreground));
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   line-height: 1;
@@ -427,9 +434,12 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 14px;
-  background: hsl(var(--card));
-  border-bottom: 1px solid hsl(var(--border));
+  height: var(--ds-pdf-search-h);
+  padding: 0 12px;
+  background: hsl(var(--background) / 0.95);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-bottom: 1px solid hsl(var(--border) / 0.35);
 }
 
 /* 限定在 PDF 搜索栏内：ds-search-input 也是共用 Input（type=search）的标记类，
@@ -438,16 +448,18 @@
   flex: 1;
   /* 允许在窄屏被压缩，避免命中计数/按钮把搜索栏挤出横向溢出 */
   min-width: 0;
-  height: 32px;
-  padding: 0 12px;
-  border-radius: 8px;
-  border: 1px solid hsl(var(--border));
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: 1px solid hsl(var(--border) / 0.35);
   background: hsl(var(--background));
   color: hsl(var(--foreground));
 }
 
 .ds-search-info {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
   font-size: 12px;
+  font-variant-numeric: tabular-nums;
   color: hsl(var(--muted-foreground));
   white-space: nowrap;
 }
@@ -482,7 +494,7 @@
   min-height: 0;
   /* 对话标准 token：透明面 + 右缘软分隔线（阅读器内部面板保留 200px 层级宽度） */
   background: transparent;
-  border-right: 1px solid var(--wb-sidebar-seam, hsl(var(--border) / 0.55));
+  border-right: 1px solid hsl(var(--border) / 0.35);
   overflow: hidden;
   flex-shrink: 0;
 }
@@ -499,12 +511,12 @@
   }
 
   .ds-pdf__sidebar--open {
-    width: 200px;
-    border-right-color: var(--wb-sidebar-seam, hsl(var(--border) / 0.55));
+    width: 236px;
+    border-right-color: hsl(var(--border) / 0.35);
   }
 
   .ds-pdf__sidebar-inner {
-    width: 200px;
+    width: 236px;
   }
 }
 
@@ -520,8 +532,8 @@
   display: flex;
   align-items: center;
   gap: 2px;
-  padding: 8px 8px 7px;
-  border-bottom: 1px solid hsl(var(--border));
+  padding: 6px 8px;
+  border-bottom: 1px solid hsl(var(--border) / 0.35);
 }
 
 /* tab 走 DsButton（规范），双类名选择器压过其基础 utility（高度/边距/圆角/配色） */
@@ -692,7 +704,9 @@
 .ds-thumbnail-number {
   display: block;
   text-align: center;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
   font-size: 11px;
+  font-variant-numeric: tabular-nums;
   color: hsl(var(--muted-foreground));
   margin-top: 4px;
 }
@@ -708,14 +722,81 @@
 
 .ds-highlight-menu {
   display: flex;
-  gap: 4px;
+  flex-direction: column;
+  gap: 6px;
   padding: 6px 8px;
-  background: hsl(var(--popover));
-  border: 1px solid hsl(var(--border));
+  background: hsl(var(--popover) / 0.98);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid hsl(var(--border) / 0.35);
   border-radius: 8px;
-  box-shadow: 0 4px 12px hsl(var(--ring) / 0.15);
+  box-shadow: 0 6px 18px hsl(var(--ring) / 0.14);
   /* 消费全局层级 token（fallback 保持旧值）；z-index 全局统一待全局代理处理 */
   z-index: var(--z-popover, 1000);
+}
+
+.ds-highlight-menu--action {
+  max-width: min(320px, calc(100vw - 24px));
+}
+
+.ds-highlight-menu__row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ds-highlight-locate-btn {
+  color: hsl(var(--primary));
+  font-weight: 500;
+}
+
+.ds-highlight-popover-note {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 6px;
+  border-top: 1px solid hsl(var(--border) / 0.35);
+  min-width: 220px;
+}
+
+.ds-highlight-popover-comment {
+  padding: 5px 6px 2px;
+  border-top: 1px solid hsl(var(--border) / 0.35);
+  font-size: 12px;
+  line-height: 1.45;
+  color: hsl(var(--foreground) / 0.9);
+  max-width: 280px;
+  max-height: 96px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  cursor: text;
+}
+
+.ds-highlight-note-textarea {
+  width: 100%;
+  min-height: 52px;
+  padding: 6px 8px;
+  font-size: 12px;
+  line-height: 1.45;
+  border-radius: 6px;
+  border: 1px solid hsl(var(--border) / 0.5);
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  resize: vertical;
+  outline: none;
+}
+
+.ds-highlight-note-textarea:focus {
+  border-color: hsl(var(--primary) / 0.6);
+  box-shadow: 0 0 0 2px hsl(var(--primary) / 0.15);
+}
+
+.ds-highlight-note-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
 }
 
 .ds-highlight-color {
@@ -794,7 +875,9 @@
   position: absolute;
   right: 8px;
   top: -18px;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
   font-size: 11px;
+  font-variant-numeric: tabular-nums;
   color: hsl(var(--muted-foreground));
   background: hsl(var(--background));
   padding: 0 4px;
@@ -829,8 +912,23 @@
   transition: opacity .15s ease;
 }
 
+.ds-pdf__highlight-rect--has-comment {
+  opacity: 0.42;
+  border-bottom: 1.5px solid hsl(var(--primary) / 0.65);
+}
+
 .ds-pdf__highlight-rect:hover {
-  opacity: 0.5;
+  opacity: 0.52;
+}
+
+/* 论文内部超链接（[12] / Fig. 3 / Section / DOI）：提供温和的悬停反馈 */
+.ds-pdf-viewer .react-pdf__Page__annotations a {
+  border-radius: 2px;
+  transition: background-color .15s ease;
+}
+
+.ds-pdf-viewer .react-pdf__Page__annotations a:hover {
+  background-color: hsl(var(--primary) / 0.1);
 }
 
 /* 批注列表（原右下浮动面板已并入侧栏批注 tab，占满剩余高度） */
@@ -840,33 +938,34 @@
 }
 
 .ds-highlights-list-viewport {
-  padding: 8px;
+  padding: 6px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 2px;
 }
 
 .ds-highlight-item {
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  padding: 8px;
-  background: hsl(var(--muted) / .5);
-  border-radius: 8px;
+  padding: 7px 8px 7px 10px;
+  background: transparent;
+  border-left: 2px solid hsl(var(--primary));
+  border-radius: 0 6px 6px 0;
   cursor: pointer;
   transition: background .15s ease;
 }
 
 .ds-highlight-item:hover {
-  background: hsl(var(--accent));
+  background: hsl(var(--foreground) / 0.035);
 }
 
 .ds-highlight-item .ds-highlight-color {
-  width: 16px;
-  height: 16px;
-  border-radius: 4px;
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
   flex-shrink: 0;
-  margin-top: 2px;
+  margin-top: 5px;
 }
 
 .ds-highlight-content {
@@ -882,15 +981,47 @@
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  word-break: break-all;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
+.ds-highlight-comment {
+  margin-top: 4px;
+  padding: 4px 7px;
+  border-radius: 5px;
+  background: hsl(var(--muted) / 0.55);
+  border: 1px solid hsl(var(--border) / 0.35);
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: hsl(var(--foreground) / 0.9);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .ds-highlight-meta {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
   font-size: 11px;
+  font-variant-numeric: tabular-nums;
   color: hsl(var(--muted-foreground));
-  margin-top: 4px;
+  margin-top: 3px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
+.ds-highlight-semantic-tag {
+  font-size: 11px;
+  color: hsl(var(--muted-foreground) / 0.85);
+}
+
+.ds-highlight-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.ds-highlight-edit,
 .ds-highlight-delete {
   display: flex;
   align-items: center;
@@ -906,14 +1037,87 @@
   transition: opacity .15s ease, background .15s ease;
 }
 
+.ds-highlight-item:hover .ds-highlight-edit,
 .ds-highlight-item:hover .ds-highlight-delete {
   opacity: 1;
+}
+
+.ds-highlight-edit:hover {
+  background: hsl(var(--accent));
+  color: hsl(var(--foreground));
 }
 
 .ds-highlight-delete:hover {
   background: hsl(var(--destructive) / .1);
   color: hsl(var(--destructive));
 }
+
+/* stylelint-disable selector-class-pattern */
+
+/* 跨页跳转返回悬浮胶囊（对标 Zotero / Sioyek 阅读返回栈） */
+.ds-pdf__jump-pill {
+  position: absolute;
+  top: calc(var(--ds-pdf-toolbar-h) + 8px);
+  left: 12px;
+  z-index: 120;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px 5px;
+  border-radius: 9999px;
+  background: hsl(var(--popover) / 94%);
+  backdrop-filter: blur(10px);
+  border: 1px solid hsl(var(--border) / 35%);
+  box-shadow: var(--shadow-content-elevated);
+}
+
+.ds-pdf__search-bar ~ .ds-pdf__jump-pill {
+  top: calc(var(--ds-pdf-toolbar-h) + var(--ds-pdf-search-h) + 8px);
+}
+
+.ds-pdf-viewer.chrome-hidden .ds-pdf__jump-pill {
+  top: 8px;
+}
+
+
+.ds-pdf__jump-pill-btn {
+  height: 26px;
+  padding: 0 8px;
+  font-size: var(--font-size-sm);
+  gap: 5px;
+  border-radius: 9999px;
+}
+
+.ds-pdf__jump-pill-icon,
+.ds-pdf__jump-pill-close {
+  width: 24px;
+  height: 24px;
+  border-radius: 9999px;
+  color: hsl(var(--muted-foreground));
+}
+
+/* AI 论文导读上拉菜单 */
+.ds-paper-guide-menu {
+  position: relative;
+  display: inline-flex;
+}
+
+.ds-paper-guide-dropdown {
+  left: 0;
+  right: auto;
+  min-width: 220px;
+}
+
+.ds-paper-guide-header {
+  padding: 4px 10px 6px;
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  color: hsl(var(--muted-foreground));
+  border-bottom: 1px solid hsl(var(--border) / 35%);
+  margin-bottom: 2px;
+}
+
+/* stylelint-enable selector-class-pattern */
 
 /* ============================================================================
    批注面板（r5：筛选 + 导出为笔记；列表本体沿用 .ds-highlights-list）
@@ -1165,7 +1369,9 @@
   bottom: -24px;
   left: 50%;
   transform: translateX(-50%);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
   font-size: 11px;
+  font-variant-numeric: tabular-nums;
   color: hsl(var(--muted-foreground));
 }
 
@@ -1516,7 +1722,9 @@
 
 /* 书签计数徽章 */
 .ds-bookmark-count {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
   font-size: 10px;
+  font-variant-numeric: tabular-nums;
   min-width: 16px;
   height: 16px;
   padding: 0 4px;
@@ -1536,10 +1744,10 @@
 }
 
 .ds-bookmarks-list-viewport {
-  padding: 8px;
+  padding: 6px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 2px;
 }
 
 /* 空状态 */
@@ -1569,31 +1777,32 @@
   margin-top: 4px !important;
 }
 
-/* 书签项 */
+/* 书签项：去框化呼吸行 + 左侧 2px 语义竖线 */
 .ds-bookmark-item {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  padding: 10px 12px;
-  background: hsl(var(--muted) / .3);
-  border-radius: 8px;
+  gap: 8px;
+  padding: 7px 8px 7px 10px;
+  background: transparent;
+  border-radius: 0 6px 6px 0;
   cursor: pointer;
   transition: background .15s ease, border-color .15s ease;
-  border: 2px solid transparent;
+  border: 0;
+  border-left: 2px solid transparent;
 }
 
 .ds-bookmark-item:hover {
-  background: hsl(var(--accent));
+  background: hsl(var(--foreground) / 0.035);
 }
 
 .ds-bookmark-item.current {
-  border-color: hsl(var(--primary));
-  background: hsl(var(--primary) / .1);
+  border-left-color: hsl(var(--primary));
+  background: hsl(var(--primary) / 0.06);
 }
 
 .ds-bookmark-item.editing {
-  border-color: transparent;
-  background: hsl(var(--muted) / .3);
+  border-left-color: hsl(var(--ring));
+  background: hsl(var(--foreground) / 0.03);
 }
 
 .ds-bookmark-icon {
@@ -1618,7 +1827,7 @@
   width: 100%;
   padding: 4px 8px;
   font-size: 13px;
-  border: 1px solid hsl(var(--border));
+  border: 1px solid hsl(var(--border) / 0.35);
   border-radius: 4px;
   background: hsl(var(--background));
   color: hsl(var(--foreground));
@@ -1631,9 +1840,11 @@
 }
 
 .ds-bookmark-meta {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
   font-size: 11px;
+  font-variant-numeric: tabular-nums;
   color: hsl(var(--muted-foreground));
-  margin-top: 4px;
+  margin-top: 3px;
 }
 
 /* 书签操作按钮 */
@@ -1715,6 +1926,7 @@
   /* 底栏高度变量提升到根：工具栏自身与浮层避让共用同一来源 */
   .ds-pdf-viewer {
     --ds-pdf-toolbar-h: 48px;
+    --ds-pdf-search-h: 48px;
   }
 
   /* 触屏下进度条略增高，便于拖动跳页 */
@@ -1774,7 +1986,8 @@
     height: 32px;
   }
 
-  .ds-highlight-menu {
+  .ds-highlight-menu,
+  .ds-highlight-menu__row {
     gap: 12px;
   }
 
@@ -1789,6 +2002,7 @@
   }
 
   /* hover-only 操作在触屏上永远不可见 → 常显（行内按钮 ≥44px） */
+  .ds-highlight-edit,
   .ds-highlight-delete {
     opacity: 1;
     width: 44px;
@@ -1811,6 +2025,27 @@
   .ds-pdf__page-overlay {
     opacity: 1;
   }
+
+  /* stylelint-disable selector-class-pattern */
+
+  /* 学术阅读新增小图标按钮与分段胶囊在触屏下补齐 44×44px 触控热区 */
+  .ds-pdf__pinned-actions .ds-pdf__pinned-btn,
+  .ds-pdf__ref-preview-close,
+  .ds-pdf__jump-pill-close {
+    width: var(--touch-target-size, 44px);
+    height: var(--touch-target-size, 44px);
+    min-width: var(--touch-target-size, 44px);
+    min-height: var(--touch-target-size, 44px);
+  }
+
+  .ds-pdf__jump-pill-btn,
+  .ds-pdf__capture-mode-btn {
+    min-width: var(--touch-target-size, 44px);
+    min-height: var(--touch-target-size, 44px);
+    height: var(--touch-target-size, 44px);
+  }
+
+  /* stylelint-enable selector-class-pattern */
 }
 
 /* ============================================================================
@@ -1893,9 +2128,9 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 48px;
+  min-height: 44px;
   padding: 4px 8px;
-  border-bottom: 1px solid hsl(var(--border) / 0.6);
+  border-bottom: 1px solid hsl(var(--border) / 0.35);
   flex-shrink: 0;
 }
 
@@ -2061,6 +2296,19 @@
   text-overflow: ellipsis;
 }
 
+.ds-pdf__highlight-bar--column {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.ds-pdf__highlight-bar-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+}
+
 .ds-pdf__highlight-bar .ds-highlight-color {
   width: 36px;
   height: 36px;
@@ -2129,22 +2377,30 @@
   gap: 8px;
   width: 100%;
   min-height: 32px;
-  padding: 5px 6px;
+  padding: 5px 8px 5px 10px;
   border: 0;
-  border-radius: 6px;
+  border-left: 2px solid hsl(var(--primary) / 0.5);
+  border-radius: 0 6px 6px 0;
   background: transparent;
   color: hsl(var(--foreground));
   font: inherit;
   font-size: 12.5px;
   text-align: left;
   cursor: pointer;
+  transition: background .15s ease;
 }
 
-.ds-pdf-related-item:hover { background: var(--interactive-hover, hsl(var(--muted))); }
+.ds-pdf-related-item:hover { background: hsl(var(--foreground) / 0.035); }
 .ds-pdf-related-item:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: -2px; }
 .ds-pdf-related-item svg { flex-shrink: 0; color: hsl(var(--muted-foreground)); }
 .ds-pdf-related-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ds-pdf-related-meta { flex-shrink: 0; color: hsl(var(--muted-foreground)); font-size: 11px; }
+.ds-pdf-related-meta {
+  flex-shrink: 0;
+  color: hsl(var(--muted-foreground));
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
 
 @media (pointer: coarse) {
   .ds-pdf-related-item { min-height: 44px; }
@@ -2168,37 +2424,91 @@
   .react-pdf__Page__textContent span.ds-pdf-quote-flash { animation: none; }
 }
 
-/* 框选提问：盖在页面视口上方的覆盖层（只在框选模式挂载，位置由组件按视口测量） */
+/* stylelint-disable selector-class-pattern */
+
+/* 框选提问与提取：盖在页面视口上方的覆盖层（只在框选模式挂载，位置由组件按视口测量） */
 .ds-pdf__capture-layer {
   position: absolute;
   z-index: 140;
   cursor: crosshair;
   touch-action: none;
   user-select: none;
-  -webkit-user-select: none;
-  background: hsl(var(--foreground) / 0.04);
+  background: hsl(var(--foreground) / 4%);
 }
 
 .ds-pdf__capture-layer[data-busy='true'] {
   cursor: progress;
 }
 
-.ds-pdf__capture-hint {
+.ds-pdf__capture-hud {
   position: absolute;
   top: 10px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100% - 24px);
+  z-index: 2;
+  cursor: default;
+}
+
+.ds-pdf__capture-modes {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 999px;
+  border: 1px solid hsl(var(--border) / 35%);
+  background: hsl(var(--popover) / 96%);
+  backdrop-filter: blur(8px);
+  box-shadow: var(--shadow-content-elevated);
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.ds-pdf__capture-mode-btn {
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.ds-pdf__capture-mode-btn:hover:not(:disabled) {
+  color: hsl(var(--foreground));
+  background: hsl(var(--accent) / 65%);
+}
+
+.ds-pdf__capture-mode-btn--active {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+}
+
+.ds-pdf__capture-mode-btn--active:hover:not(:disabled) {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+}
+
+.ds-pdf__capture-hint {
+  display: flex;
   align-items: center;
   gap: 8px;
-  max-width: calc(100% - 24px);
+  max-width: 100%;
   padding: 4px 4px 4px 12px;
   border-radius: 999px;
-  border: 1px solid hsl(var(--border));
+  border: 1px solid hsl(var(--border) / 35%);
   background: hsl(var(--popover));
   color: hsl(var(--popover-foreground));
-  box-shadow: 0 4px 16px hsl(var(--ring) / 0.12);
-  font-size: 12px;
+  box-shadow: var(--shadow-content-elevated);
+  font-size: var(--font-size-sm);
   cursor: default;
 }
 
@@ -2213,6 +2523,427 @@
   position: absolute;
   border: 1.5px solid hsl(var(--primary));
   border-radius: 2px;
-  background: hsl(var(--primary) / 0.12);
+  background: hsl(var(--primary) / 12%);
   pointer-events: none;
+}
+
+.ds-pdf__capture-result {
+  position: absolute;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  width: min(520px, calc(100% - 24px));
+  border-radius: 10px;
+  border: 1px solid hsl(var(--border) / 35%);
+  background: hsl(var(--popover));
+  color: hsl(var(--popover-foreground));
+  box-shadow: var(--shadow-shell-floating);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 3;
+  cursor: default;
+}
+
+.ds-pdf__capture-result-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid hsl(var(--border) / 35%);
+}
+
+.ds-pdf__capture-result-title {
+  font-size: var(--font-size-ui);
+  font-weight: 600;
+  color: hsl(var(--foreground));
+}
+
+.ds-pdf__capture-result-meta {
+  font-size: var(--font-size-xs);
+  color: hsl(var(--muted-foreground));
+}
+
+.ds-pdf__capture-result-textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 84px;
+  max-height: 220px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid hsl(var(--border) / 35%);
+  background: hsl(var(--muted) / 45%);
+  color: hsl(var(--foreground));
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+  outline: none;
+}
+
+.ds-pdf__capture-result-textarea:focus {
+  border-color: hsl(var(--primary) / 60%);
+}
+
+.ds-pdf__capture-result-empty {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: hsl(var(--muted) / 40%);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+  color: hsl(var(--muted-foreground));
+}
+
+.ds-pdf__capture-result-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-top: 6px;
+  border-top: 1px solid hsl(var(--border) / 35%);
+}
+
+/* ============================================================================
+   Wave 2 学术论文增强：裁白边容器、文内引用就地预览卡、画中画钉图对照、进度条热力刻度
+   ============================================================================ */
+
+/* 1. 紧凑裁白边外框：保持内层 .ds-pdf__page-wrapper 原始坐标不变，仅裁切四周冗余留白 */
+.ds-pdf__page-crop-frame {
+  position: relative;
+  overflow: hidden;
+  border-radius: 3px;
+  box-shadow: var(--shadow-content-elevated);
+  background: hsl(var(--background));
+}
+
+.ds-pdf__content.dark-reading .ds-pdf__page-crop-frame {
+  background: hsl(220deg 13% 16%);
+}
+
+.ds-pdf__page-crop-frame:hover .ds-pdf__page-overlay,
+.ds-pdf__page-crop-frame .ds-pdf__page-overlay:has(.selected) {
+  opacity: 1;
+}
+
+/* 2. 文内引用 / 图表 / 公式就地预览小卡片 */
+.ds-pdf__ref-preview-card {
+  z-index: 160;
+  width: min(380px, calc(100vw - 24px));
+  border-radius: 10px;
+  border: 1px solid hsl(var(--border) / 35%);
+  background: hsl(var(--popover) / 98%);
+  color: hsl(var(--popover-foreground));
+  backdrop-filter: blur(10px);
+  box-shadow: var(--shadow-shell-floating);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ds-pdf__ref-preview-card--mobile {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  width: auto;
+  bottom: calc(var(--ds-pdf-toolbar-h, 40px) + var(--ds-pdf-progress-h, 3px) + var(--ds-pdf-safe-bottom, 0px) + 12px);
+}
+
+.ds-pdf-viewer.chrome-hidden .ds-pdf__ref-preview-card--mobile {
+  bottom: calc(var(--ds-pdf-progress-h, 3px) + var(--ds-pdf-safe-bottom, 0px) + 12px);
+}
+
+.ds-pdf__ref-preview-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid hsl(var(--border) / 35%);
+}
+
+.ds-pdf__ref-preview-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: hsl(var(--primary));
+  flex-shrink: 0;
+}
+
+.ds-pdf__ref-preview-badge {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: hsl(var(--foreground));
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: hsl(var(--primary) / 10%);
+}
+
+.ds-pdf__ref-preview-page {
+  font-size: var(--font-size-xs);
+  color: hsl(var(--muted-foreground));
+  margin-left: auto;
+}
+
+.ds-pdf__ref-preview-close {
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  min-height: 22px;
+}
+
+.ds-pdf__ref-preview-snippet {
+  margin: 0;
+  font-size: var(--font-size-ui);
+  line-height: 1.55;
+  color: hsl(var(--foreground) / 92%);
+  max-height: 156px;
+  overflow-y: auto;
+  overflow-wrap: break-word;
+}
+
+.ds-pdf__ref-preview-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  padding-top: 6px;
+  border-top: 1px solid hsl(var(--border) / 35%);
+}
+
+/* 3. 画中画图表钉住对照浮窗 */
+.ds-pdf__pinned-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 125;
+}
+
+.ds-pdf__pinned-card {
+  position: absolute;
+  pointer-events: auto;
+  border-radius: 8px;
+  border: 1px solid hsl(var(--border) / 35%);
+  background: hsl(var(--popover) / 96%);
+  color: hsl(var(--popover-foreground));
+  backdrop-filter: blur(8px);
+  box-shadow: var(--shadow-shell-floating);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.ds-pdf__pinned-card--collapsed {
+  border-radius: 999px;
+}
+
+.ds-pdf__pinned-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 7px 5px 9px;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+  border-bottom: 1px solid hsl(var(--border) / 35%);
+}
+
+.ds-pdf__pinned-card--collapsed .ds-pdf__pinned-header {
+  border-bottom: none;
+}
+
+.ds-pdf__pinned-header:active {
+  cursor: grabbing;
+}
+
+.ds-pdf__pinned-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: hsl(var(--primary));
+  flex-shrink: 0;
+}
+
+.ds-pdf__pinned-page {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: hsl(var(--primary));
+  flex-shrink: 0;
+}
+
+.ds-pdf__pinned-title {
+  font-size: var(--font-size-xs);
+  color: hsl(var(--foreground) / 88%);
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ds-pdf__pinned-actions {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  flex-shrink: 0;
+}
+
+.ds-pdf__pinned-actions .ds-pdf__pinned-btn {
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  min-height: 22px;
+  padding: 0;
+}
+
+.ds-pdf__pinned-body {
+  padding: 6px;
+  background: hsl(var(--muted) / 35%);
+  max-height: 280px;
+  overflow: auto;
+}
+
+.ds-pdf__pinned-img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 4px;
+  background: hsl(var(--background));
+}
+
+.ds-pdf-viewer:has(.ds-pdf__content.dark-reading) .ds-pdf__pinned-img {
+  background: hsl(220deg 13% 16%);
+  filter: invert(0.93) hue-rotate(180deg);
+}
+
+@media (pointer: coarse) {
+  .ds-pdf__pinned-actions .ds-pdf__pinned-btn,
+  .ds-pdf__ref-preview-close {
+    width: var(--touch-target-size, 44px);
+    height: var(--touch-target-size, 44px);
+    min-width: var(--touch-target-size, 44px);
+    min-height: var(--touch-target-size, 44px);
+  }
+
+  .ds-pdf__capture-mode-btn {
+    min-width: var(--touch-target-size, 44px);
+    min-height: var(--touch-target-size, 44px);
+    height: var(--touch-target-size, 44px);
+  }
+}
+
+/* 4. 进度条五色语义批注与搜索命中微刻度点 */
+.ds-pdf__progress-tick {
+  position: absolute;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  transform: translate(-50%, -50%);
+  background: hsl(var(--primary));
+  box-shadow: 0 0 0 1px hsl(var(--background));
+  z-index: 2;
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+.ds-pdf__progress-tick:hover {
+  transform: translate(-50%, -50%) scale(1.45);
+}
+
+.ds-pdf__progress-tick--search {
+  background: hsl(var(--primary));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ds-pdf__progress-tick {
+    transition: none;
+  }
+}
+
+/* stylelint-enable selector-class-pattern */
+
+/* The upper rail holds document actions. The lower rail only turns pages. */
+.ds-pdf__toolbar--top {
+  position: relative;
+  z-index: 160;
+  justify-content: space-between;
+  height: var(--ds-pdf-toolbar-h);
+  padding: 0 8px;
+  border-top: 0;
+  border-bottom: 1px solid hsl(var(--border) / 0.35);
+  backdrop-filter: none;
+}
+
+.ds-pdf__toolbar--top > :first-child,
+.ds-pdf__toolbar--top > :last-child {
+  margin: 0;
+}
+
+.ds-pdf__toolbar--top .ds-pdf__toolbar-more,
+.ds-pdf__toolbar--top .ds-zoom-menu {
+  position: relative;
+}
+
+.ds-pdf__toolbar--top .ds-zoom-dropdown--top {
+  left: auto;
+  right: 0;
+  transform: none;
+  min-width: 138px;
+  max-height: min(58vh, 410px);
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius-shell-control, 12px);
+  background: hsl(var(--popover));
+  box-shadow: 0 4px 12px hsl(var(--ring) / 0.1);
+  z-index: 100;
+}
+
+.ds-pdf__zoom-steps {
+  display: flex;
+  justify-content: space-around;
+}
+
+.ds-pdf__toolbar--bottom {
+  height: calc(34px + var(--ds-pdf-safe-bottom));
+}
+
+.ds-pdf__toolbar--bottom .ds-pdf__toolbar-center {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.ds-pdf__toolbar--bottom [role='alert'] {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 6px);
+  z-index: 10;
+  padding: 4px 8px;
+  border-radius: var(--radius-shell-control, 12px);
+  background: hsl(var(--popover));
+  box-shadow: 0 2px 8px hsl(var(--ring) / 0.1);
+}
+
+.ds-pdf-viewer.chrome-hidden .ds-pdf__toolbar--top {
+  display: none;
+}
+
+.ds-pdf__document-overlay {
+  top: var(--ds-pdf-toolbar-h);
+}
+
+@container (max-width: 310px) {
+  .ds-pdf__toolbar--top {
+    padding-inline: 4px;
+  }
+}
+
+@media (pointer: coarse) {
+  .ds-pdf__toolbar--top {
+    overflow: visible;
+  }
+
+  .ds-pdf__toolbar--bottom {
+    height: calc(48px + var(--ds-pdf-safe-bottom));
+  }
 }

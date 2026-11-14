@@ -7,6 +7,7 @@
 | 文档 | 说明 |
 |------|------|
 | [user-guide/README.md](./user-guide/README.md) | 用户指南总目录（17 章，覆盖桌面 + 移动双端，含快速上手） |
+| [DEEPSEEK-API.md](./DEEPSEEK-API.md) | Node 版 DeepSeek 对话功能与独立 API 配置 |
 
 ## 开发必读
 
@@ -20,6 +21,7 @@
 
 | 文档 | 说明 |
 |------|------|
+| [WEBUI-AND-PWA.md](./WEBUI-AND-PWA.md) | WebUI 与 PWA 的架构分层、运行方式、安全模型与离线扩展路径 |
 | `src/features/chat/BLOCK_RENDERING_GUIDE.md` | Chat V2 块渲染开发者手册（就地文档） |
 | `src-tauri/migrations/README.md` | 数据库迁移规范（就地文档） |
 

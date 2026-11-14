@@ -1,0 +1,29 @@
+{
+  "id": "RF-W07-attachment-foreign-original-path",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T08:52+08:00",
+  "title": "跨平台恢复备份后，另一操作系统格式的附件 original_path 也映射到当前 slot",
+  "rust": {
+    "file": "src-tauri/crates/dstu-vfs/src/vfs/repos/attachment_repo.rs",
+    "line": 522,
+    "behavior": "build_original_path_candidates 只在 Path::new(trimmed).is_absolute() 为真时做 slots/<slot>/ 之后的重映射；在 Windows 上 /Users/... 不算绝对路径、在 macOS/Linux 上 C:\\... 也不算，于是落入相对路径分支被拼成 <slot>/C:\\Users\\...，找不到文件"
+  },
+  "fix": {
+    "files": ["host/plugins/vfs-repos/repository/attachments.ts"],
+    "behavior": "original_path 按本机或另一种路径风格（posix / win32）判定为绝对路径时都提取 slots/<slot>/ 之后的相对部分映射到当前 slot root；外来风格路径本身不作为候选"
+  },
+  "evidence": "与 Rust 自己的意图矛盾：attachment_repo.rs:525-529 注释“跨平台备份恢复支持”明确以 macOS 的 /Users/alice/.../slots/slotA/textbooks/file.pptx 和 Windows 的 C:\\Users\\bob\\...\\slots\\slotA\\textbooks\\file.pptx 为例，但 :522 的 is_absolute 判定让这两个例子在对方平台上都到不了重映射。用户可见结果：在 macOS 备份、Windows 恢复（或反向）后，blob 缺失、依赖 original_path 回退的教材/附件打不开。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "host/plugins/vfs-repos/tests/attachment-paths.test.ts",
+      "name": "RF-W07-attachment-foreign-original-path: remaps a macOS original_path restored on Windows"
+    },
+    {
+      "file": "host/plugins/vfs-repos/tests/attachment-paths.test.ts",
+      "name": "RF-W07-attachment-foreign-original-path: remaps a Windows original_path restored on this host"
+    }
+  ]
+}

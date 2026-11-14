@@ -1,0 +1,2323 @@
+{
+  "$comment": "W38 App/view-switch golden. Generated before any App refactor; must stay byte-identical.",
+  "order": [
+    "chat-v2",
+    "dashboard",
+    "settings",
+    "flashcards",
+    "media",
+    "learning-hub",
+    "todo",
+    "chat-v2",
+    "ui-lab",
+    "data-management",
+    "chat-v2"
+  ],
+  "environments": [
+    {
+      "env": {
+        "dev": false,
+        "uiLabEnabled": false,
+        "isSmallScreen": false,
+        "workbenchActive": false
+      },
+      "steps": [
+        {
+          "view": "chat-v2",
+          "branch": "views",
+          "layers": [
+            {
+              "id": "chat-v2",
+              "active": true,
+              "visibility": null,
+              "enter": "enter",
+              "content": "LazyChatV2Page",
+              "scaffold": false
+            }
+          ],
+          "mountedContents": {
+            "LazyChatV2Page": 1
+          },
+          "markerRenders": {
+            "LazyChatV2Page": 1
+          },
+          "markerRenderTotal": 1
+        },
+        {
+          "view": "dashboard",
+          "branch": "views",
+          "layers": [
+            {
+              "id": "dashboard",
+              "active": true,
+              "visibility": null,
+              "enter": "enter",
+              "content": "LazySOTADashboard",
+              "scaffold": false
+            },
+            {
+              "id": "chat-v2",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyChatV2Page",
+              "scaffold": false
+            }
+          ],
+          "mountedContents": {
+            "LazySOTADashboard": 1,
+            "LazyChatV2Page": 1
+          },
+          "markerRenders": {
+            "LazyChatV2Page": 1,
+            "LazySOTADashboard": 1
+          },
+          "markerRenderTotal": 2
+        },
+        {
+          "view": "settings",
+          "branch": "views",
+          "layers": [
+            {
+              "id": "dashboard",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazySOTADashboard",
+              "scaffold": false
+            },
+            {
+              "id": "settings",
+              "active": true,
+              "visibility": null,
+              "enter": "enter",
+              "content": "LazySettings",
+              "scaffold": false
+            },
+            {
+              "id": "chat-v2",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyChatV2Page",
+              "scaffold": false
+            }
+          ],
+          "mountedContents": {
+            "LazySOTADashboard": 1,
+            "LazySettings": 1,
+            "LazyChatV2Page": 1
+          },
+          "markerRenders": {
+            "LazyChatV2Page": 1,
+            "LazySettings": 1,
+            "LazySOTADashboard": 1
+          },
+          "markerRenderTotal": 3
+        },
+        {
+          "view": "flashcards",
+          "branch": "views",
+          "layers": [
+            {
+              "id": "dashboard",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazySOTADashboard",
+              "scaffold": false
+            },
+            {
+              "id": "settings",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazySettings",
+              "scaffold": false
+            },
+            {
+              "id": "flashcards",
+              "active": true,
+              "visibility": null,
+              "enter": "enter",
+              "content": "LazyFlashcardsPage",
+              "scaffold": false
+            },
+            {
+              "id": "chat-v2",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyChatV2Page",
+              "scaffold": false
+            }
+          ],
+          "mountedContents": {
+            "LazySOTADashboard": 1,
+            "LazySettings": 1,
+            "LazyFlashcardsPage": 1,
+            "LazyChatV2Page": 1
+          },
+          "markerRenders": {
+            "LazyChatV2Page": 1,
+            "LazyFlashcardsPage": 1,
+            "LazySettings": 2,
+            "LazySOTADashboard": 1
+          },
+          "markerRenderTotal": 5
+        },
+        {
+          "view": "media",
+          "branch": "views",
+          "layers": [
+            {
+              "id": "dashboard",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazySOTADashboard",
+              "scaffold": false
+            },
+            {
+              "id": "settings",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazySettings",
+              "scaffold": false
+            },
+            {
+              "id": "media",
+              "active": true,
+              "visibility": null,
+              "enter": "enter",
+              "content": "LazyMediaStudioPage",
+              "scaffold": false
+            },
+            {
+              "id": "flashcards",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyFlashcardsPage",
+              "scaffold": false
+            },
+            {
+              "id": "chat-v2",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyChatV2Page",
+              "scaffold": false
+            }
+          ],
+          "mountedContents": {
+            "LazySOTADashboard": 1,
+            "LazySettings": 1,
+            "LazyMediaStudioPage": 1,
+            "LazyFlashcardsPage": 1,
+            "LazyChatV2Page": 1
+          },
+          "markerRenders": {
+            "LazyChatV2Page": 1,
+            "LazyFlashcardsPage": 2,
+            "LazyMediaStudioPage": 1,
+            "LazySettings": 2,
+            "LazySOTADashboard": 1
+          },
+          "markerRenderTotal": 7
+        },
+        {
+          "view": "learning-hub",
+          "branch": "views",
+          "layers": [
+            {
+              "id": "dashboard",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazySOTADashboard",
+              "scaffold": false
+            },
+            {
+              "id": "settings",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazySettings",
+              "scaffold": false
+            },
+            {
+              "id": "learning-hub",
+              "active": true,
+              "visibility": null,
+              "enter": "enter",
+              "content": "LazyLearningHubPage",
+              "scaffold": false
+            },
+            {
+              "id": "media",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyMediaStudioPage",
+              "scaffold": false
+            },
+            {
+              "id": "flashcards",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyFlashcardsPage",
+              "scaffold": false
+            },
+            {
+              "id": "chat-v2",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyChatV2Page",
+              "scaffold": false
+            }
+          ],
+          "mountedContents": {
+            "LazySOTADashboard": 1,
+            "LazySettings": 1,
+            "LazyLearningHubPage": 1,
+            "LazyMediaStudioPage": 1,
+            "LazyFlashcardsPage": 1,
+            "LazyChatV2Page": 1
+          },
+          "markerRenders": {
+            "LazyChatV2Page": 1,
+            "LazyFlashcardsPage": 2,
+            "LazyLearningHubPage": 1,
+            "LazyMediaStudioPage": 2,
+            "LazySettings": 2,
+            "LazySOTADashboard": 1
+          },
+          "markerRenderTotal": 9
+        },
+        {
+          "view": "todo",
+          "branch": "views",
+          "layers": [
+            {
+              "id": "dashboard",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazySOTADashboard",
+              "scaffold": false
+            },
+            {
+              "id": "settings",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazySettings",
+              "scaffold": false
+            },
+            {
+              "id": "learning-hub",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyLearningHubPage",
+              "scaffold": false
+            },
+            {
+              "id": "media",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyMediaStudioPage",
+              "scaffold": false
+            },
+            {
+              "id": "todo",
+              "active": true,
+              "visibility": null,
+              "enter": "enter",
+              "content": "LazyTodoPage",
+              "scaffold": false
+            },
+            {
+              "id": "flashcards",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyFlashcardsPage",
+              "scaffold": false
+            },
+            {
+              "id": "chat-v2",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyChatV2Page",
+              "scaffold": false
+            }
+          ],
+          "mountedContents": {
+            "LazySOTADashboard": 1,
+            "LazySettings": 1,
+            "LazyLearningHubPage": 1,
+            "LazyMediaStudioPage": 1,
+            "LazyTodoPage": 1,
+            "LazyFlashcardsPage": 1,
+            "LazyChatV2Page": 1
+          },
+          "markerRenders": {
+            "LazyChatV2Page": 1,
+            "LazyFlashcardsPage": 2,
+            "LazyLearningHubPage": 1,
+            "LazyMediaStudioPage": 2,
+            "LazySettings": 2,
+            "LazySOTADashboard": 1,
+            "LazyTodoPage": 1
+          },
+          "markerRenderTotal": 10
+        },
+        {
+          "view": "chat-v2",
+          "branch": "views",
+          "layers": [
+            {
+              "id": "dashboard",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazySOTADashboard",
+              "scaffold": false
+            },
+            {
+              "id": "settings",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazySettings",
+              "scaffold": false
+            },
+            {
+              "id": "learning-hub",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyLearningHubPage",
+              "scaffold": false
+            },
+            {
+              "id": "media",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyMediaStudioPage",
+              "scaffold": false
+            },
+            {
+              "id": "todo",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyTodoPage",
+              "scaffold": false
+            },
+            {
+              "id": "flashcards",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyFlashcardsPage",
+              "scaffold": false
+            },
+            {
+              "id": "chat-v2",
+              "active": true,
+              "visibility": null,
+              "enter": "enter",
+              "content": "LazyChatV2Page",
+              "scaffold": false
+            }
+          ],
+          "mountedContents": {
+            "LazySOTADashboard": 1,
+            "LazySettings": 1,
+            "LazyLearningHubPage": 1,
+            "LazyMediaStudioPage": 1,
+            "LazyTodoPage": 1,
+            "LazyFlashcardsPage": 1,
+            "LazyChatV2Page": 1
+          },
+          "markerRenders": {
+            "LazyChatV2Page": 1,
+            "LazyFlashcardsPage": 2,
+            "LazyLearningHubPage": 1,
+            "LazyMediaStudioPage": 2,
+            "LazySettings": 2,
+            "LazySOTADashboard": 1,
+            "LazyTodoPage": 1
+          },
+          "markerRenderTotal": 10
+        },
+        {
+          "view": "ui-lab",
+          "branch": "views",
+          "layers": [
+            {
+              "id": "dashboard",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazySOTADashboard",
+              "scaffold": false
+            },
+            {
+              "id": "settings",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazySettings",
+              "scaffold": false
+            },
+            {
+              "id": "learning-hub",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyLearningHubPage",
+              "scaffold": false
+            },
+            {
+              "id": "media",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyMediaStudioPage",
+              "scaffold": false
+            },
+            {
+              "id": "todo",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyTodoPage",
+              "scaffold": false
+            },
+            {
+              "id": "flashcards",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyFlashcardsPage",
+              "scaffold": false
+            },
+            {
+              "id": "chat-v2",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyChatV2Page",
+              "scaffold": false
+            }
+          ],
+          "mountedContents": {
+            "LazySOTADashboard": 1,
+            "LazySettings": 1,
+            "LazyLearningHubPage": 1,
+            "LazyMediaStudioPage": 1,
+            "LazyTodoPage": 1,
+            "LazyFlashcardsPage": 1,
+            "LazyChatV2Page": 1
+          },
+          "markerRenders": {
+            "LazyChatV2Page": 1,
+            "LazyFlashcardsPage": 2,
+            "LazyLearningHubPage": 1,
+            "LazyMediaStudioPage": 2,
+            "LazySettings": 2,
+            "LazySOTADashboard": 1,
+            "LazyTodoPage": 1
+          },
+          "markerRenderTotal": 10
+        },
+        {
+          "view": "data-management",
+          "branch": "views",
+          "layers": [
+            {
+              "id": "dashboard",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazySOTADashboard",
+              "scaffold": false
+            },
+            {
+              "id": "settings",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazySettings",
+              "scaffold": false
+            },
+            {
+              "id": "data-management",
+              "active": true,
+              "visibility": null,
+              "enter": "enter",
+              "content": "dataManagementContent",
+              "scaffold": false
+            },
+            {
+              "id": "learning-hub",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyLearningHubPage",
+              "scaffold": false
+            },
+            {
+              "id": "media",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyMediaStudioPage",
+              "scaffold": false
+            },
+            {
+              "id": "todo",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyTodoPage",
+              "scaffold": false
+            },
+            {
+              "id": "flashcards",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyFlashcardsPage",
+              "scaffold": false
+            },
+            {
+              "id": "chat-v2",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyChatV2Page",
+              "scaffold": false
+            }
+          ],
+          "mountedContents": {
+            "LazySOTADashboard": 1,
+            "LazySettings": 1,
+            "dataManagementContent": 1,
+            "LazyLearningHubPage": 1,
+            "LazyMediaStudioPage": 1,
+            "LazyTodoPage": 1,
+            "LazyFlashcardsPage": 1,
+            "LazyChatV2Page": 1
+          },
+          "markerRenders": {
+            "dataManagementContent": 1,
+            "LazyChatV2Page": 1,
+            "LazyFlashcardsPage": 2,
+            "LazyLearningHubPage": 1,
+            "LazyMediaStudioPage": 2,
+            "LazySettings": 2,
+            "LazySOTADashboard": 1,
+            "LazyTodoPage": 1
+          },
+          "markerRenderTotal": 11
+        },
+        {
+          "view": "chat-v2",
+          "branch": "views",
+          "layers": [
+            {
+              "id": "dashboard",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazySOTADashboard",
+              "scaffold": false
+            },
+            {
+              "id": "settings",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazySettings",
+              "scaffold": false
+            },
+            {
+              "id": "data-management",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "dataManagementContent",
+              "scaffold": false
+            },
+            {
+              "id": "learning-hub",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyLearningHubPage",
+              "scaffold": false
+            },
+            {
+              "id": "media",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyMediaStudioPage",
+              "scaffold": false
+            },
+            {
+              "id": "todo",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyTodoPage",
+              "scaffold": false
+            },
+            {
+              "id": "flashcards",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyFlashcardsPage",
+              "scaffold": false
+            },
+            {
+              "id": "chat-v2",
+              "active": true,
+              "visibility": null,
+              "enter": "enter",
+              "content": "LazyChatV2Page",
+              "scaffold": false
+            }
+          ],
+          "mountedContents": {
+            "LazySOTADashboard": 1,
+            "LazySettings": 1,
+            "dataManagementContent": 1,
+            "LazyLearningHubPage": 1,
+            "LazyMediaStudioPage": 1,
+            "LazyTodoPage": 1,
+            "LazyFlashcardsPage": 1,
+            "LazyChatV2Page": 1
+          },
+          "markerRenders": {
+            "dataManagementContent": 1,
+            "LazyChatV2Page": 1,
+            "LazyFlashcardsPage": 2,
+            "LazyLearningHubPage": 1,
+            "LazyMediaStudioPage": 2,
+            "LazySettings": 2,
+            "LazySOTADashboard": 1,
+            "LazyTodoPage": 1
+          },
+          "markerRenderTotal": 11
+        }
+      ]
+    },
+    {
+      "env": {
+        "dev": true,
+        "uiLabEnabled": true,
+        "isSmallScreen": false,
+        "workbenchActive": false
+      },
+      "steps": [
+        {
+          "view": "chat-v2",
+          "branch": "views",
+          "layers": [
+            {
+              "id": "chat-v2",
+              "active": true,
+              "visibility": null,
+              "enter": "enter",
+              "content": "LazyChatV2Page",
+              "scaffold": false
+            }
+          ],
+          "mountedContents": {
+            "LazyChatV2Page": 1
+          },
+          "markerRenders": {
+            "LazyChatV2Page": 1
+          },
+          "markerRenderTotal": 1
+        },
+        {
+          "view": "dashboard",
+          "branch": "views",
+          "layers": [
+            {
+              "id": "dashboard",
+              "active": true,
+              "visibility": null,
+              "enter": "enter",
+              "content": "LazySOTADashboard",
+              "scaffold": false
+            },
+            {
+              "id": "chat-v2",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyChatV2Page",
+              "scaffold": false
+            }
+          ],
+          "mountedContents": {
+            "LazySOTADashboard": 1,
+            "LazyChatV2Page": 1
+          },
+          "markerRenders": {
+            "LazyChatV2Page": 1,
+            "LazySOTADashboard": 1
+          },
+          "markerRenderTotal": 2
+        },
+        {
+          "view": "settings",
+          "branch": "views",
+          "layers": [
+            {
+              "id": "dashboard",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazySOTADashboard",
+              "scaffold": false
+            },
+            {
+              "id": "settings",
+              "active": true,
+              "visibility": null,
+              "enter": "enter",
+              "content": "LazySettings",
+              "scaffold": false
+            },
+            {
+              "id": "chat-v2",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyChatV2Page",
+              "scaffold": false
+            }
+          ],
+          "mountedContents": {
+            "LazySOTADashboard": 1,
+            "LazySettings": 1,
+            "LazyChatV2Page": 1
+          },
+          "markerRenders": {
+            "LazyChatV2Page": 1,
+            "LazySettings": 1,
+            "LazySOTADashboard": 1
+          },
+          "markerRenderTotal": 3
+        },
+        {
+          "view": "flashcards",
+          "branch": "views",
+          "layers": [
+            {
+              "id": "dashboard",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazySOTADashboard",
+              "scaffold": false
+            },
+            {
+              "id": "settings",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazySettings",
+              "scaffold": false
+            },
+            {
+              "id": "flashcards",
+              "active": true,
+              "visibility": null,
+              "enter": "enter",
+              "content": "LazyFlashcardsPage",
+              "scaffold": false
+            },
+            {
+              "id": "chat-v2",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyChatV2Page",
+              "scaffold": false
+            }
+          ],
+          "mountedContents": {
+            "LazySOTADashboard": 1,
+            "LazySettings": 1,
+            "LazyFlashcardsPage": 1,
+            "LazyChatV2Page": 1
+          },
+          "markerRenders": {
+            "LazyChatV2Page": 1,
+            "LazyFlashcardsPage": 1,
+            "LazySettings": 2,
+            "LazySOTADashboard": 1
+          },
+          "markerRenderTotal": 5
+        },
+        {
+          "view": "media",
+          "branch": "views",
+          "layers": [
+            {
+              "id": "dashboard",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazySOTADashboard",
+              "scaffold": false
+            },
+            {
+              "id": "settings",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazySettings",
+              "scaffold": false
+            },
+            {
+              "id": "media",
+              "active": true,
+              "visibility": null,
+              "enter": "enter",
+              "content": "LazyMediaStudioPage",
+              "scaffold": false
+            },
+            {
+              "id": "flashcards",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyFlashcardsPage",
+              "scaffold": false
+            },
+            {
+              "id": "chat-v2",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyChatV2Page",
+              "scaffold": false
+            }
+          ],
+          "mountedContents": {
+            "LazySOTADashboard": 1,
+            "LazySettings": 1,
+            "LazyMediaStudioPage": 1,
+            "LazyFlashcardsPage": 1,
+            "LazyChatV2Page": 1
+          },
+          "markerRenders": {
+            "LazyChatV2Page": 1,
+            "LazyFlashcardsPage": 2,
+            "LazyMediaStudioPage": 1,
+            "LazySettings": 2,
+            "LazySOTADashboard": 1
+          },
+          "markerRenderTotal": 7
+        },
+        {
+          "view": "learning-hub",
+          "branch": "views",
+          "layers": [
+            {
+              "id": "dashboard",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazySOTADashboard",
+              "scaffold": false
+            },
+            {
+              "id": "settings",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazySettings",
+              "scaffold": false
+            },
+            {
+              "id": "learning-hub",
+              "active": true,
+              "visibility": null,
+              "enter": "enter",
+              "content": "LazyLearningHubPage",
+              "scaffold": false
+            },
+            {
+              "id": "media",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyMediaStudioPage",
+              "scaffold": false
+            },
+            {
+              "id": "flashcards",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyFlashcardsPage",
+              "scaffold": false
+            },
+            {
+              "id": "chat-v2",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyChatV2Page",
+              "scaffold": false
+            }
+          ],
+          "mountedContents": {
+            "LazySOTADashboard": 1,
+            "LazySettings": 1,
+            "LazyLearningHubPage": 1,
+            "LazyMediaStudioPage": 1,
+            "LazyFlashcardsPage": 1,
+            "LazyChatV2Page": 1
+          },
+          "markerRenders": {
+            "LazyChatV2Page": 1,
+            "LazyFlashcardsPage": 2,
+            "LazyLearningHubPage": 1,
+            "LazyMediaStudioPage": 2,
+            "LazySettings": 2,
+            "LazySOTADashboard": 1
+          },
+          "markerRenderTotal": 9
+        },
+        {
+          "view": "todo",
+          "branch": "views",
+          "layers": [
+            {
+              "id": "dashboard",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazySOTADashboard",
+              "scaffold": false
+            },
+            {
+              "id": "settings",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazySettings",
+              "scaffold": false
+            },
+            {
+              "id": "learning-hub",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyLearningHubPage",
+              "scaffold": false
+            },
+            {
+              "id": "media",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyMediaStudioPage",
+              "scaffold": false
+            },
+            {
+              "id": "todo",
+              "active": true,
+              "visibility": null,
+              "enter": "enter",
+              "content": "LazyTodoPage",
+              "scaffold": false
+            },
+            {
+              "id": "flashcards",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyFlashcardsPage",
+              "scaffold": false
+            },
+            {
+              "id": "chat-v2",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyChatV2Page",
+              "scaffold": false
+            }
+          ],
+          "mountedContents": {
+            "LazySOTADashboard": 1,
+            "LazySettings": 1,
+            "LazyLearningHubPage": 1,
+            "LazyMediaStudioPage": 1,
+            "LazyTodoPage": 1,
+            "LazyFlashcardsPage": 1,
+            "LazyChatV2Page": 1
+          },
+          "markerRenders": {
+            "LazyChatV2Page": 1,
+            "LazyFlashcardsPage": 2,
+            "LazyLearningHubPage": 1,
+            "LazyMediaStudioPage": 2,
+            "LazySettings": 2,
+            "LazySOTADashboard": 1,
+            "LazyTodoPage": 1
+          },
+          "markerRenderTotal": 10
+        },
+        {
+          "view": "chat-v2",
+          "branch": "views",
+          "layers": [
+            {
+              "id": "dashboard",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazySOTADashboard",
+              "scaffold": false
+            },
+            {
+              "id": "settings",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazySettings",
+              "scaffold": false
+            },
+            {
+              "id": "learning-hub",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyLearningHubPage",
+              "scaffold": false
+            },
+            {
+              "id": "media",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyMediaStudioPage",
+              "scaffold": false
+            },
+            {
+              "id": "todo",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyTodoPage",
+              "scaffold": false
+            },
+            {
+              "id": "flashcards",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyFlashcardsPage",
+              "scaffold": false
+            },
+            {
+              "id": "chat-v2",
+              "active": true,
+              "visibility": null,
+              "enter": "enter",
+              "content": "LazyChatV2Page",
+              "scaffold": false
+            }
+          ],
+          "mountedContents": {
+            "LazySOTADashboard": 1,
+            "LazySettings": 1,
+            "LazyLearningHubPage": 1,
+            "LazyMediaStudioPage": 1,
+            "LazyTodoPage": 1,
+            "LazyFlashcardsPage": 1,
+            "LazyChatV2Page": 1
+          },
+          "markerRenders": {
+            "LazyChatV2Page": 1,
+            "LazyFlashcardsPage": 2,
+            "LazyLearningHubPage": 1,
+            "LazyMediaStudioPage": 2,
+            "LazySettings": 2,
+            "LazySOTADashboard": 1,
+            "LazyTodoPage": 1
+          },
+          "markerRenderTotal": 10
+        },
+        {
+          "view": "ui-lab",
+          "branch": "views",
+          "layers": [
+            {
+              "id": "dashboard",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazySOTADashboard",
+              "scaffold": false
+            },
+            {
+              "id": "settings",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazySettings",
+              "scaffold": false
+            },
+            {
+              "id": "ui-lab",
+              "active": true,
+              "visibility": null,
+              "enter": "enter",
+              "content": "LazyStyleDebugPage",
+              "scaffold": true
+            },
+            {
+              "id": "learning-hub",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyLearningHubPage",
+              "scaffold": false
+            },
+            {
+              "id": "media",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyMediaStudioPage",
+              "scaffold": false
+            },
+            {
+              "id": "todo",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyTodoPage",
+              "scaffold": false
+            },
+            {
+              "id": "flashcards",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyFlashcardsPage",
+              "scaffold": false
+            },
+            {
+              "id": "chat-v2",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyChatV2Page",
+              "scaffold": false
+            }
+          ],
+          "mountedContents": {
+            "LazySOTADashboard": 1,
+            "LazySettings": 1,
+            "LazyStyleDebugPage": 1,
+            "LazyLearningHubPage": 1,
+            "LazyMediaStudioPage": 1,
+            "LazyTodoPage": 1,
+            "LazyFlashcardsPage": 1,
+            "LazyChatV2Page": 1
+          },
+          "markerRenders": {
+            "LazyChatV2Page": 1,
+            "LazyFlashcardsPage": 2,
+            "LazyLearningHubPage": 1,
+            "LazyMediaStudioPage": 2,
+            "LazySettings": 2,
+            "LazySOTADashboard": 1,
+            "LazyStyleDebugPage": 1,
+            "LazyTodoPage": 1
+          },
+          "markerRenderTotal": 11
+        },
+        {
+          "view": "data-management",
+          "branch": "views",
+          "layers": [
+            {
+              "id": "dashboard",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazySOTADashboard",
+              "scaffold": false
+            },
+            {
+              "id": "settings",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazySettings",
+              "scaffold": false
+            },
+            {
+              "id": "data-management",
+              "active": true,
+              "visibility": null,
+              "enter": "enter",
+              "content": "dataManagementContent",
+              "scaffold": false
+            },
+            {
+              "id": "ui-lab",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyStyleDebugPage",
+              "scaffold": true
+            },
+            {
+              "id": "learning-hub",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyLearningHubPage",
+              "scaffold": false
+            },
+            {
+              "id": "media",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyMediaStudioPage",
+              "scaffold": false
+            },
+            {
+              "id": "todo",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyTodoPage",
+              "scaffold": false
+            },
+            {
+              "id": "flashcards",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyFlashcardsPage",
+              "scaffold": false
+            },
+            {
+              "id": "chat-v2",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyChatV2Page",
+              "scaffold": false
+            }
+          ],
+          "mountedContents": {
+            "LazySOTADashboard": 1,
+            "LazySettings": 1,
+            "dataManagementContent": 1,
+            "LazyStyleDebugPage": 1,
+            "LazyLearningHubPage": 1,
+            "LazyMediaStudioPage": 1,
+            "LazyTodoPage": 1,
+            "LazyFlashcardsPage": 1,
+            "LazyChatV2Page": 1
+          },
+          "markerRenders": {
+            "dataManagementContent": 1,
+            "LazyChatV2Page": 1,
+            "LazyFlashcardsPage": 2,
+            "LazyLearningHubPage": 1,
+            "LazyMediaStudioPage": 2,
+            "LazySettings": 2,
+            "LazySOTADashboard": 1,
+            "LazyStyleDebugPage": 1,
+            "LazyTodoPage": 1
+          },
+          "markerRenderTotal": 12
+        },
+        {
+          "view": "chat-v2",
+          "branch": "views",
+          "layers": [
+            {
+              "id": "dashboard",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazySOTADashboard",
+              "scaffold": false
+            },
+            {
+              "id": "settings",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazySettings",
+              "scaffold": false
+            },
+            {
+              "id": "data-management",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "dataManagementContent",
+              "scaffold": false
+            },
+            {
+              "id": "ui-lab",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyStyleDebugPage",
+              "scaffold": true
+            },
+            {
+              "id": "learning-hub",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyLearningHubPage",
+              "scaffold": false
+            },
+            {
+              "id": "media",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyMediaStudioPage",
+              "scaffold": false
+            },
+            {
+              "id": "todo",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyTodoPage",
+              "scaffold": false
+            },
+            {
+              "id": "flashcards",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyFlashcardsPage",
+              "scaffold": false
+            },
+            {
+              "id": "chat-v2",
+              "active": true,
+              "visibility": null,
+              "enter": "enter",
+              "content": "LazyChatV2Page",
+              "scaffold": false
+            }
+          ],
+          "mountedContents": {
+            "LazySOTADashboard": 1,
+            "LazySettings": 1,
+            "dataManagementContent": 1,
+            "LazyStyleDebugPage": 1,
+            "LazyLearningHubPage": 1,
+            "LazyMediaStudioPage": 1,
+            "LazyTodoPage": 1,
+            "LazyFlashcardsPage": 1,
+            "LazyChatV2Page": 1
+          },
+          "markerRenders": {
+            "dataManagementContent": 1,
+            "LazyChatV2Page": 1,
+            "LazyFlashcardsPage": 2,
+            "LazyLearningHubPage": 1,
+            "LazyMediaStudioPage": 2,
+            "LazySettings": 2,
+            "LazySOTADashboard": 1,
+            "LazyStyleDebugPage": 1,
+            "LazyTodoPage": 1
+          },
+          "markerRenderTotal": 12
+        }
+      ]
+    },
+    {
+      "env": {
+        "dev": true,
+        "uiLabEnabled": false,
+        "isSmallScreen": true,
+        "workbenchActive": false
+      },
+      "steps": [
+        {
+          "view": "chat-v2",
+          "branch": "views",
+          "layers": [
+            {
+              "id": "chat-v2",
+              "active": true,
+              "visibility": null,
+              "enter": "enter",
+              "content": "LazyChatV2Page",
+              "scaffold": false
+            }
+          ],
+          "mountedContents": {
+            "LazyChatV2Page": 1
+          },
+          "markerRenders": {
+            "LazyChatV2Page": 1
+          },
+          "markerRenderTotal": 1
+        },
+        {
+          "view": "dashboard",
+          "branch": "views",
+          "layers": [
+            {
+              "id": "dashboard",
+              "active": true,
+              "visibility": null,
+              "enter": "enter",
+              "content": "LazySOTADashboard",
+              "scaffold": false
+            },
+            {
+              "id": "chat-v2",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyChatV2Page",
+              "scaffold": false
+            }
+          ],
+          "mountedContents": {
+            "LazySOTADashboard": 1,
+            "LazyChatV2Page": 1
+          },
+          "markerRenders": {
+            "LazyChatV2Page": 1,
+            "LazySOTADashboard": 1
+          },
+          "markerRenderTotal": 2
+        },
+        {
+          "view": "settings",
+          "branch": "views",
+          "layers": [
+            {
+              "id": "dashboard",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazySOTADashboard",
+              "scaffold": false
+            },
+            {
+              "id": "settings",
+              "active": true,
+              "visibility": null,
+              "enter": "enter",
+              "content": "LazySettings",
+              "scaffold": false
+            },
+            {
+              "id": "chat-v2",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyChatV2Page",
+              "scaffold": false
+            }
+          ],
+          "mountedContents": {
+            "LazySOTADashboard": 1,
+            "LazySettings": 1,
+            "LazyChatV2Page": 1
+          },
+          "markerRenders": {
+            "LazyChatV2Page": 1,
+            "LazySettings": 1,
+            "LazySOTADashboard": 1
+          },
+          "markerRenderTotal": 3
+        },
+        {
+          "view": "flashcards",
+          "branch": "views",
+          "layers": [
+            {
+              "id": "dashboard",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazySOTADashboard",
+              "scaffold": false
+            },
+            {
+              "id": "settings",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazySettings",
+              "scaffold": false
+            },
+            {
+              "id": "flashcards",
+              "active": true,
+              "visibility": null,
+              "enter": "enter",
+              "content": "LazyFlashcardsPage",
+              "scaffold": false
+            },
+            {
+              "id": "chat-v2",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyChatV2Page",
+              "scaffold": false
+            }
+          ],
+          "mountedContents": {
+            "LazySOTADashboard": 1,
+            "LazySettings": 1,
+            "LazyFlashcardsPage": 1,
+            "LazyChatV2Page": 1
+          },
+          "markerRenders": {
+            "LazyChatV2Page": 1,
+            "LazyFlashcardsPage": 1,
+            "LazySettings": 2,
+            "LazySOTADashboard": 1
+          },
+          "markerRenderTotal": 5
+        },
+        {
+          "view": "media",
+          "branch": "views",
+          "layers": [
+            {
+              "id": "dashboard",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazySOTADashboard",
+              "scaffold": false
+            },
+            {
+              "id": "settings",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazySettings",
+              "scaffold": false
+            },
+            {
+              "id": "media",
+              "active": true,
+              "visibility": null,
+              "enter": "enter",
+              "content": "LazyMediaStudioPage",
+              "scaffold": false
+            },
+            {
+              "id": "flashcards",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyFlashcardsPage",
+              "scaffold": false
+            },
+            {
+              "id": "chat-v2",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyChatV2Page",
+              "scaffold": false
+            }
+          ],
+          "mountedContents": {
+            "LazySOTADashboard": 1,
+            "LazySettings": 1,
+            "LazyMediaStudioPage": 1,
+            "LazyFlashcardsPage": 1,
+            "LazyChatV2Page": 1
+          },
+          "markerRenders": {
+            "LazyChatV2Page": 1,
+            "LazyFlashcardsPage": 2,
+            "LazyMediaStudioPage": 1,
+            "LazySettings": 2,
+            "LazySOTADashboard": 1
+          },
+          "markerRenderTotal": 7
+        },
+        {
+          "view": "learning-hub",
+          "branch": "views",
+          "layers": [
+            {
+              "id": "dashboard",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazySOTADashboard",
+              "scaffold": false
+            },
+            {
+              "id": "settings",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazySettings",
+              "scaffold": false
+            },
+            {
+              "id": "learning-hub",
+              "active": true,
+              "visibility": null,
+              "enter": "enter",
+              "content": "LazyLearningHubPage",
+              "scaffold": false
+            },
+            {
+              "id": "media",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyMediaStudioPage",
+              "scaffold": false
+            },
+            {
+              "id": "flashcards",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyFlashcardsPage",
+              "scaffold": false
+            },
+            {
+              "id": "chat-v2",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyChatV2Page",
+              "scaffold": false
+            }
+          ],
+          "mountedContents": {
+            "LazySOTADashboard": 1,
+            "LazySettings": 1,
+            "LazyLearningHubPage": 1,
+            "LazyMediaStudioPage": 1,
+            "LazyFlashcardsPage": 1,
+            "LazyChatV2Page": 1
+          },
+          "markerRenders": {
+            "LazyChatV2Page": 1,
+            "LazyFlashcardsPage": 2,
+            "LazyLearningHubPage": 1,
+            "LazyMediaStudioPage": 2,
+            "LazySettings": 2,
+            "LazySOTADashboard": 1
+          },
+          "markerRenderTotal": 9
+        },
+        {
+          "view": "todo",
+          "branch": "views",
+          "layers": [
+            {
+              "id": "dashboard",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazySOTADashboard",
+              "scaffold": false
+            },
+            {
+              "id": "settings",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazySettings",
+              "scaffold": false
+            },
+            {
+              "id": "learning-hub",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyLearningHubPage",
+              "scaffold": false
+            },
+            {
+              "id": "media",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyMediaStudioPage",
+              "scaffold": false
+            },
+            {
+              "id": "todo",
+              "active": true,
+              "visibility": null,
+              "enter": "enter",
+              "content": "LazyTodoPage",
+              "scaffold": false
+            },
+            {
+              "id": "flashcards",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyFlashcardsPage",
+              "scaffold": false
+            },
+            {
+              "id": "chat-v2",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyChatV2Page",
+              "scaffold": false
+            }
+          ],
+          "mountedContents": {
+            "LazySOTADashboard": 1,
+            "LazySettings": 1,
+            "LazyLearningHubPage": 1,
+            "LazyMediaStudioPage": 1,
+            "LazyTodoPage": 1,
+            "LazyFlashcardsPage": 1,
+            "LazyChatV2Page": 1
+          },
+          "markerRenders": {
+            "LazyChatV2Page": 1,
+            "LazyFlashcardsPage": 2,
+            "LazyLearningHubPage": 1,
+            "LazyMediaStudioPage": 2,
+            "LazySettings": 2,
+            "LazySOTADashboard": 1,
+            "LazyTodoPage": 1
+          },
+          "markerRenderTotal": 10
+        },
+        {
+          "view": "chat-v2",
+          "branch": "views",
+          "layers": [
+            {
+              "id": "dashboard",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazySOTADashboard",
+              "scaffold": false
+            },
+            {
+              "id": "settings",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazySettings",
+              "scaffold": false
+            },
+            {
+              "id": "learning-hub",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyLearningHubPage",
+              "scaffold": false
+            },
+            {
+              "id": "media",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyMediaStudioPage",
+              "scaffold": false
+            },
+            {
+              "id": "todo",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyTodoPage",
+              "scaffold": false
+            },
+            {
+              "id": "flashcards",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyFlashcardsPage",
+              "scaffold": false
+            },
+            {
+              "id": "chat-v2",
+              "active": true,
+              "visibility": null,
+              "enter": "enter",
+              "content": "LazyChatV2Page",
+              "scaffold": false
+            }
+          ],
+          "mountedContents": {
+            "LazySOTADashboard": 1,
+            "LazySettings": 1,
+            "LazyLearningHubPage": 1,
+            "LazyMediaStudioPage": 1,
+            "LazyTodoPage": 1,
+            "LazyFlashcardsPage": 1,
+            "LazyChatV2Page": 1
+          },
+          "markerRenders": {
+            "LazyChatV2Page": 1,
+            "LazyFlashcardsPage": 2,
+            "LazyLearningHubPage": 1,
+            "LazyMediaStudioPage": 2,
+            "LazySettings": 2,
+            "LazySOTADashboard": 1,
+            "LazyTodoPage": 1
+          },
+          "markerRenderTotal": 10
+        },
+        {
+          "view": "ui-lab",
+          "branch": "views",
+          "layers": [
+            {
+              "id": "dashboard",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazySOTADashboard",
+              "scaffold": false
+            },
+            {
+              "id": "settings",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazySettings",
+              "scaffold": false
+            },
+            {
+              "id": "learning-hub",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyLearningHubPage",
+              "scaffold": false
+            },
+            {
+              "id": "media",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyMediaStudioPage",
+              "scaffold": false
+            },
+            {
+              "id": "todo",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyTodoPage",
+              "scaffold": false
+            },
+            {
+              "id": "flashcards",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyFlashcardsPage",
+              "scaffold": false
+            },
+            {
+              "id": "chat-v2",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyChatV2Page",
+              "scaffold": false
+            }
+          ],
+          "mountedContents": {
+            "LazySOTADashboard": 1,
+            "LazySettings": 1,
+            "LazyLearningHubPage": 1,
+            "LazyMediaStudioPage": 1,
+            "LazyTodoPage": 1,
+            "LazyFlashcardsPage": 1,
+            "LazyChatV2Page": 1
+          },
+          "markerRenders": {
+            "LazyChatV2Page": 1,
+            "LazyFlashcardsPage": 2,
+            "LazyLearningHubPage": 1,
+            "LazyMediaStudioPage": 2,
+            "LazySettings": 2,
+            "LazySOTADashboard": 1,
+            "LazyTodoPage": 1
+          },
+          "markerRenderTotal": 10
+        },
+        {
+          "view": "data-management",
+          "branch": "views",
+          "layers": [
+            {
+              "id": "dashboard",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazySOTADashboard",
+              "scaffold": false
+            },
+            {
+              "id": "settings",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazySettings",
+              "scaffold": false
+            },
+            {
+              "id": "data-management",
+              "active": true,
+              "visibility": null,
+              "enter": "enter",
+              "content": "dataManagementContent",
+              "scaffold": false
+            },
+            {
+              "id": "learning-hub",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyLearningHubPage",
+              "scaffold": false
+            },
+            {
+              "id": "media",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyMediaStudioPage",
+              "scaffold": false
+            },
+            {
+              "id": "todo",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyTodoPage",
+              "scaffold": false
+            },
+            {
+              "id": "flashcards",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyFlashcardsPage",
+              "scaffold": false
+            },
+            {
+              "id": "chat-v2",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyChatV2Page",
+              "scaffold": false
+            }
+          ],
+          "mountedContents": {
+            "LazySOTADashboard": 1,
+            "LazySettings": 1,
+            "dataManagementContent": 1,
+            "LazyLearningHubPage": 1,
+            "LazyMediaStudioPage": 1,
+            "LazyTodoPage": 1,
+            "LazyFlashcardsPage": 1,
+            "LazyChatV2Page": 1
+          },
+          "markerRenders": {
+            "dataManagementContent": 1,
+            "LazyChatV2Page": 1,
+            "LazyFlashcardsPage": 2,
+            "LazyLearningHubPage": 1,
+            "LazyMediaStudioPage": 2,
+            "LazySettings": 2,
+            "LazySOTADashboard": 1,
+            "LazyTodoPage": 1
+          },
+          "markerRenderTotal": 11
+        },
+        {
+          "view": "chat-v2",
+          "branch": "views",
+          "layers": [
+            {
+              "id": "dashboard",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazySOTADashboard",
+              "scaffold": false
+            },
+            {
+              "id": "settings",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazySettings",
+              "scaffold": false
+            },
+            {
+              "id": "data-management",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "dataManagementContent",
+              "scaffold": false
+            },
+            {
+              "id": "learning-hub",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyLearningHubPage",
+              "scaffold": false
+            },
+            {
+              "id": "media",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyMediaStudioPage",
+              "scaffold": false
+            },
+            {
+              "id": "todo",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyTodoPage",
+              "scaffold": false
+            },
+            {
+              "id": "flashcards",
+              "active": false,
+              "visibility": "hidden",
+              "enter": "none",
+              "content": "LazyFlashcardsPage",
+              "scaffold": false
+            },
+            {
+              "id": "chat-v2",
+              "active": true,
+              "visibility": null,
+              "enter": "enter",
+              "content": "LazyChatV2Page",
+              "scaffold": false
+            }
+          ],
+          "mountedContents": {
+            "LazySOTADashboard": 1,
+            "LazySettings": 1,
+            "dataManagementContent": 1,
+            "LazyLearningHubPage": 1,
+            "LazyMediaStudioPage": 1,
+            "LazyTodoPage": 1,
+            "LazyFlashcardsPage": 1,
+            "LazyChatV2Page": 1
+          },
+          "markerRenders": {
+            "dataManagementContent": 1,
+            "LazyChatV2Page": 1,
+            "LazyFlashcardsPage": 2,
+            "LazyLearningHubPage": 1,
+            "LazyMediaStudioPage": 2,
+            "LazySettings": 2,
+            "LazySOTADashboard": 1,
+            "LazyTodoPage": 1
+          },
+          "markerRenderTotal": 11
+        }
+      ]
+    },
+    {
+      "env": {
+        "dev": false,
+        "uiLabEnabled": true,
+        "isSmallScreen": false,
+        "workbenchActive": true
+      },
+      "steps": [
+        {
+          "view": "chat-v2",
+          "branch": "workbench",
+          "layers": [],
+          "mountedContents": {
+            "LazyWorkbenchDesktop": 1
+          },
+          "markerRenders": {
+            "LazyWorkbenchDesktop": 2
+          },
+          "markerRenderTotal": 2
+        },
+        {
+          "view": "dashboard",
+          "branch": "workbench",
+          "layers": [],
+          "mountedContents": {
+            "LazyWorkbenchDesktop": 1
+          },
+          "markerRenders": {
+            "LazyWorkbenchDesktop": 3
+          },
+          "markerRenderTotal": 3
+        },
+        {
+          "view": "settings",
+          "branch": "workbench",
+          "layers": [],
+          "mountedContents": {
+            "LazyWorkbenchDesktop": 1
+          },
+          "markerRenders": {
+            "LazyWorkbenchDesktop": 4
+          },
+          "markerRenderTotal": 4
+        },
+        {
+          "view": "flashcards",
+          "branch": "workbench",
+          "layers": [],
+          "mountedContents": {
+            "LazyWorkbenchDesktop": 1
+          },
+          "markerRenders": {
+            "LazyWorkbenchDesktop": 5
+          },
+          "markerRenderTotal": 5
+        },
+        {
+          "view": "media",
+          "branch": "workbench",
+          "layers": [],
+          "mountedContents": {
+            "LazyWorkbenchDesktop": 1
+          },
+          "markerRenders": {
+            "LazyWorkbenchDesktop": 6
+          },
+          "markerRenderTotal": 6
+        },
+        {
+          "view": "learning-hub",
+          "branch": "workbench",
+          "layers": [],
+          "mountedContents": {
+            "LazyWorkbenchDesktop": 1
+          },
+          "markerRenders": {
+            "LazyWorkbenchDesktop": 7
+          },
+          "markerRenderTotal": 7
+        },
+        {
+          "view": "todo",
+          "branch": "workbench",
+          "layers": [],
+          "mountedContents": {
+            "LazyWorkbenchDesktop": 1
+          },
+          "markerRenders": {
+            "LazyWorkbenchDesktop": 8
+          },
+          "markerRenderTotal": 8
+        },
+        {
+          "view": "chat-v2",
+          "branch": "workbench",
+          "layers": [],
+          "mountedContents": {
+            "LazyWorkbenchDesktop": 1
+          },
+          "markerRenders": {
+            "LazyWorkbenchDesktop": 9
+          },
+          "markerRenderTotal": 9
+        },
+        {
+          "view": "ui-lab",
+          "branch": "workbench",
+          "layers": [],
+          "mountedContents": {
+            "LazyWorkbenchDesktop": 1
+          },
+          "markerRenders": {
+            "LazyWorkbenchDesktop": 10
+          },
+          "markerRenderTotal": 10
+        },
+        {
+          "view": "data-management",
+          "branch": "workbench",
+          "layers": [],
+          "mountedContents": {
+            "LazyWorkbenchDesktop": 1
+          },
+          "markerRenders": {
+            "LazyWorkbenchDesktop": 11
+          },
+          "markerRenderTotal": 11
+        },
+        {
+          "view": "chat-v2",
+          "branch": "workbench",
+          "layers": [],
+          "mountedContents": {
+            "LazyWorkbenchDesktop": 1
+          },
+          "markerRenders": {
+            "LazyWorkbenchDesktop": 12
+          },
+          "markerRenderTotal": 12
+        }
+      ]
+    }
+  ]
+}

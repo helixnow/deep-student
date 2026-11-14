@@ -1,0 +1,29 @@
+{
+  "id": "RF-W17-community-i18n-strict",
+  "kind": "deliberate",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T16:46:00+08:00",
+  "title": "社区插件文案严格模式默认打开：API v1 社区插件用 addBundle 写非派生命名空间直接报错，不再只告警",
+  "rust": {
+    "file": "src/ui-kernel/kernel.ts",
+    "line": 52,
+    "behavior": "Rust 快照里没有社区 UI 插件，也没有这个开关。迁移期 STRICT_COMMUNITY_NAMESPACES 为 false：API v1 社区插件可以用 ctx.ui.i18n.addBundle 写未被认领的非官方命名空间（写入即认领），只收到一次弃用告警；仓库里的 v1 示例当时还写 wordOfDay 这类非派生命名空间"
+  },
+  "fix": {
+    "files": [
+      "src/ui-kernel/kernel.ts"
+    ],
+    "behavior": "STRICT_COMMUNITY_NAMESPACES 改为 true：社区插件（不论 API v1 还是 v2）用 addBundle 写的命名空间必须是本插件 id 派生的（ctx.ui.i18n.namespace），否则抛错，插件的 apply 失败、记入加载错误。官方插件不受限。UiKernelOptions.strictCommunityNamespaces: false 仍可在单个内核里退回迁移期行为。仓库里的 v1 社区示例已由 W27 93cfa17b 全部改用派生命名空间"
+  },
+  "evidence": "插件生态 v1 规定命名空间由插件 id 派生（docs/plugins、src/ui-sdk/README.md §i18n）；迁移期开关的注释写明示例迁完后改为 true。W27 93cfa17b 已把 examples/ 下的 v1 示例迁到派生命名空间，W27 交接（.reports/agent-final/W27-1245-a5c58340.md 第 71 行、W27-1340-9afec819.md 第 76 行）请求关掉 v1 回退。开着回退时，第三方插件可以先写某个通用命名空间（例如 wordOfDay）把它认领下来，挡住后装的插件。",
+  "userVisible": "能，但只对第三方社区插件：API v1 社区插件若还用 addBundle 写非派生命名空间，安装时失败并在插件加载错误里显示“namespace … is not derived from plugin id …”，之前只在控制台告警。官方插件、仓库里的示例与正常界面无变化。",
+  "dataCompat": "不改变落库数据、同步载荷与备份格式；文案只在内存里登记。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "src/ui-kernel/__tests__/i18n.test.tsx",
+      "name": "RF-W17-community-i18n-strict: a kernel built without options rejects non-derived namespaces from API v1 community plugins"
+    }
+  ]
+}

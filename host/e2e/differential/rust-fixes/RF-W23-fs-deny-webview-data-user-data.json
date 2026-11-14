@@ -1,0 +1,57 @@
+{
+  "id": "RF-W23-fs-deny-webview-data-user-data",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main-agent",
+  "approvedAt": "2026-11-07T13:00:00+08:00",
+  "title": "fs:default 的 deny-default 真正生效，deny 的对象是 Electron 的 WebView 数据（userData），macOS/Linux 不再整体拒绝 $APPLOCALDATA（=$APPDATA）",
+  "rust": {
+    "file": "src-tauri/capabilities/default.json",
+    "line": 33,
+    "behavior": "default.json 授予 fs:default，其 deny-default = deny-webview-data-linux + deny-webview-data-windows。tauri-plugin-fs 2.4.5 permissions/deny-webview-data.toml 把两条 deny（$APPLOCALDATA/**、$APPLOCALDATA/EBWebView/**）写成文件顶层的 [[scope.deny]]，不挂在任何 [[permission]] 上，Tauri 的 PermissionFile 忽略它们，两条权限因此没有作用域：Rust 版什么都不 deny。权限说明却写着 “This denies read access to the $APPLOCALDATA folder on linux / $APPLOCALDATA/EBWebView on windows as the webview data and configuration values are stored here”。修改前的 Electron 外壳按说明在所有平台同时生效两条 deny：macOS/Linux 上 $APPLOCALDATA 与 $APPDATA 是同一目录，整个 AppData 被拒（default.json 授予的 appdata 读写全部失效）；Windows 上整个 %LOCALAPPDATA%\\<id>（含 $APPLOG）被拒；而 Electron 真正存放 WebView 数据的 userData（<appData>/<id>.electron）没有被 deny"
+  },
+  "fix": {
+    "files": [
+      "electron/shell/capabilities.ts",
+      "electron/shell/scope.ts",
+      "electron/shell/runtime.ts",
+      "electron/shell/plugins/fs.ts"
+    ],
+    "behavior": "两条补充作用域改为：deny-webview-data-linux = $ELECTRON_USERDATA/**；deny-webview-data-windows = $APPLOCALDATA/EBWebView/** + $ELECTRON_USERDATA/**（与 Tauri 清单一样不限平台）。$ELECTRON_USERDATA 是外壳新增的作用域变量，由 scope.ts fsScopeFromPatterns 展开为 ShellRuntime.userDataDir：main 传入的 app.getPath('userData')，未传入时为 main 的默认位置 <appData>/<identifier>.electron（Electron 的 appData 在三个平台上都等于 dirs::config_dir()）。目录按字面路径匹配（不当作 glob），目录本身与其下全部内容都 deny；deny 先于运行时作用域判定，对话框或拖放加入的 userData 路径同样被拒；该变量只接受 `/**` 写法，其他写法抛错而不是被静默丢弃。Windows 保留 EBWebView：那里是 Tauri 版 WebView2 的用户数据目录（cookie、localStorage、IndexedDB），迁移到 Electron 后仍留在磁盘上，且不与任何授予的目录重叠。结果：macOS/Linux 上 $APPDATA（= $APPLOCALDATA）恢复为 default.json 授予的读写，与 Rust 一致；Windows 上 $APPLOCALDATA 除 EBWebView 外可用，与 Tauri 说明一致"
+  },
+  "evidence": "安全问题（Rust 侧）且与权限自身的说明矛盾：deny-default 意在不让 fs 插件读到 WebView 数据与配置，Rust 版实际没有任何作用域（tauri-plugin-fs-2.4.5/permissions/deny-webview-data.toml 的 [[scope.deny]] 在顶层）。Electron 的 WebView 数据（应用窗口的 Chromium 配置：Cookies、Local Storage/leveldb、IndexedDB、缓存）在 userData，原补充规则保护不到它，同时误伤了前端经 plugin:fs 使用的 AppData 文件：src/features/settings/components/wallpaperLibrary.ts:50（$APPDATA/workbench-wallpapers）、src/utils/pdfAssets.ts:122-135（baseDir AppData 的 pdfjs-assets）、src/features/flashcards/store/libraryStore.ts:488（$APPDATA/tmp_apkg_import），这三处在 macOS/Linux 的 Electron 版上都返回 forbidden path。目标的决定由主代理 11:45 批准（INTEGRATION-NOTES「11:45 第三批合入后的交接」W23 一节）；Windows 的 EBWebView 处理见 fix。复现：host/e2e/security/shell-builtin-acl.test.ts 的 SEC-E04 [W06] userData 用例与两条本 RF 用例在旧补充规则下都失败（已实测），新规则下通过。",
+  "userVisible": "macOS/Linux：壁纸库导入、PDF CMap/标准字体的离线缓存、apkg 导入暂存目录恢复可用（此前在 Electron 版里被 forbidden path 拒绝，Tauri 版可用）。Windows：$APPLOCALDATA 下除 EBWebView 以外的文件（如日志目录）可以经 plugin:fs 访问（Tauri 版同样可以）。所有平台：页面脚本经 plugin:fs 读写 Electron userData（cookie、localStorage）时被拒（forbidden path），正常使用不涉及。",
+  "dataCompat": "不改变落库数据、同步载荷与备份格式。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "host/e2e/security/shell-builtin-acl.test.ts",
+      "name": "RF-W23-fs-deny-webview-data-user-data: userData is refused to every fs command, at the default location and at the one main passes in"
+    },
+    {
+      "file": "host/e2e/security/shell-builtin-acl.test.ts",
+      "name": "RF-W23-fs-deny-webview-data-user-data: where $APPLOCALDATA equals $APPDATA, main reaches the AppData files the frontend keeps there (wallpaper library, PDF asset cache, apkg staging)"
+    },
+    {
+      "file": "electron/tests/webview-data-scope.test.ts",
+      "name": "RF-W23-fs-deny-webview-data-user-data: every platform denies userData; only Windows keeps the legacy WebView2 profile; nowhere the whole $APPLOCALDATA"
+    },
+    {
+      "file": "electron/tests/webview-data-scope.test.ts",
+      "name": "RF-W23-fs-deny-webview-data-user-data: on Windows, $APPLOCALDATA stays usable except EBWebView, and userData under Roaming is refused"
+    },
+    {
+      "file": "electron/tests/webview-data-scope.test.ts",
+      "name": "RF-W23-fs-deny-webview-data-user-data: ShellRuntime defaults to main's <appData>/<identifier>.electron and takes the path main passes in"
+    },
+    {
+      "file": "electron/tests/webview-data-scope.test.ts",
+      "name": "RF-W23-fs-deny-webview-data-user-data: the directory is matched literally, with and without glob metacharacters, including the directory itself"
+    },
+    {
+      "file": "electron/tests/webview-data-scope.test.ts",
+      "name": "RF-W23-fs-deny-webview-data-user-data: an unknown userData is skipped like an unresolvable variable; other spellings are rejected instead of dropped"
+    }
+  ],
+  "notes": "Windows 的 EBWebView 规则表述上 “不限平台”（与 Tauri 清单一致），在 macOS/Linux 上对应 <AppData>/EBWebView，那里不存在任何内容，不影响使用。Linux 上 Tauri 版 WebKitGTK 的旧数据（$APPLOCALDATA 下的 localstorage/、storage/ 等）不再被 deny，与 Rust 实际行为一致；如需保护，可另加针对这些子目录的 deny。main 目前没有把 app.getPath('userData') 传给 ShellRuntime（交接 W06：electron/main.ts:680 的 new ShellRuntime 加 userDataDir），在 DS_ELECTRON_USER_DATA 覆盖时 deny 的仍是默认位置。"
+}

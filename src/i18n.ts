@@ -27,6 +27,7 @@ const ALL_NS = [
   'stats', 'llm_usage', 'review', 'practice', 'sync', 'mindmap', 'vfs',
   'forms', 'console', 'cloudStorage', 'todo', 'workbench', 'flashcards',
   'quickAssistant', 'generativeUi', 'mediaStudio', 'superAgent',
+  'plugin_manager',
 ];
 
 const FALLBACK_NS = ALL_NS.filter((namespace) => namespace !== 'common');
@@ -111,6 +112,41 @@ if (!i18n.isInitialized) {
       returnObjects: true,
       debug: false,
     });
+  isolateCommunityNamespaces();
+}
+
+/**
+ * fallbackNS 是 i18next 的全局选项：任何命名空间里缺失的键都会继续到官方命名空间里找。
+ * 社区插件（addBundle 注册的非官方命名空间）的键因此会串到无关的官方文案（例如 `acme:title` → “系统设置”）。
+ * 只对“全部目标命名空间都不是官方命名空间”的查找临时关闭 fallbackNS；官方查找行为不变。
+ */
+function isolateCommunityNamespaces(): void {
+  type Resolve = (keys: unknown, opt?: Record<string, unknown>) => unknown;
+  const translator = (i18n as unknown as {
+    translator?: {
+      options: { fallbackNS?: unknown };
+      resolve: Resolve;
+      extractFromKey(key: string, opt: Record<string, unknown>): { namespaces: string[] };
+    };
+  }).translator;
+  if (!translator) return;
+  const official = new Set(ALL_NS);
+  const resolve = translator.resolve.bind(translator);
+  const communityOnly = (keys: unknown, opt: Record<string, unknown>) => {
+    const list = (Array.isArray(keys) ? keys : [keys]).filter((k): k is string => typeof k === 'string');
+    return list.length > 0 && list.every((key) =>
+      translator.extractFromKey(key, opt).namespaces.every((ns) => !official.has(ns)));
+  };
+  translator.resolve = (keys, opt = {}) => {
+    if (!translator.options.fallbackNS || !communityOnly(keys, opt)) return resolve(keys, opt);
+    const fallbackNS = translator.options.fallbackNS;
+    translator.options.fallbackNS = false;
+    try {
+      return resolve(keys, opt);
+    } finally {
+      translator.options.fallbackNS = fallbackNS;
+    }
+  };
 }
 
 /**
@@ -184,8 +220,11 @@ if (!IS_DEMO_BUILD) void (async () => {
   await loadDeferredNamespaces(activeLang);
 
   // 后台加载另一种语言（供 fallback 和后续语言切换使用）。
+  // 公网 / WAN（RTT 150–250ms）下这段补载的几十个语言包会与首屏字体、图标、
+  // 首帧后的会话/配置请求抢带宽与连接，故延后 5s 再启动；期间用户若主动切到
+  // 该语言，`languageChanged` 会立即发起同一批次（同语言批次复用 inFlight）。
   const otherLang = activeLang === 'zh-CN' ? 'en-US' : 'zh-CN';
-  requestDeferredNamespaces(otherLang);
+  setTimeout(() => requestDeferredNamespaces(otherLang), 5000);
 })().catch(() => {
   // 保持首帧非阻塞；后续 languageChanged 仍会发起可重试加载。
 });

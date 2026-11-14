@@ -1,0 +1,2401 @@
+{
+  "schema": "g3-provenance-audit/v1",
+  "at": "2026-11-06T15:52:32.506Z",
+  "scope": "read-only observations; no receipt, runner, normalization, recording or main merge changes",
+  "source": {
+    "head": "974e1fbeaa21b0c183a41b6c016ba594f6b0a817",
+    "main": "84b290accaa2317a479e4e64a3b3e94bd941c28e",
+    "mergeBase": "383ce24280c00ca4d2cbe8352ded8c12da4316bb",
+    "leftRightCommits": "58\t22",
+    "headHostTree": "bb20323243f5a015040806b4c83125ec51cb81d1",
+    "mainHostTree": "1761d5c9880539b6e6d2d0d2343f6b497ac2d158",
+    "headRustTree": "06bf55031296424439a80821691d8775ff119b0a",
+    "mainRustTree": "06bf55031296424439a80821691d8775ff119b0a",
+    "files": [
+      {
+        "file": "scripts/electron-migration/record/g3-run-a.mjs",
+        "workingSha256": "79eb0bf10788435ed4cd96bed0819eb370199976cc88647b353ee60803993677",
+        "headBlob": "b2ff1d1fab7138933f98ce7fe4c098560848503f",
+        "mainBlob": null
+      },
+      {
+        "file": "scripts/electron-migration/record/g3-run-b.mjs",
+        "workingSha256": "8bbc22034a809de56654528b84b68072f0d2e854546d789257019c705df945a9",
+        "headBlob": "fcb8abe0b9d11f8a384e4eb9e434c72089769731",
+        "mainBlob": null
+      },
+      {
+        "file": "scripts/electron-migration/record/g3-normalize.mjs",
+        "workingSha256": "b8f0bdbe289c4ed2ad34b15192b555352590564df1072f3d43af11c236d59722",
+        "headBlob": "e2d904feda3267d9a6cf6ae1b3c47d822eb0251c",
+        "mainBlob": null
+      },
+      {
+        "file": "scripts/electron-migration/record/g3-compare.mjs",
+        "workingSha256": "f070ebfa986a0bc6350b4579301c1e7d35e37788f877e4ae6b16bd128bc93615",
+        "headBlob": "4c8066f4fd217548eec806d36305d8cbac3fcdf3",
+        "mainBlob": null
+      },
+      {
+        "file": "scripts/electron-migration/record/g3-batch.mjs",
+        "workingSha256": "54113e19976743a3a43d275e43f7451eeae19d5551152ec0a20dc2c1fd618dd7",
+        "headBlob": "a0556a59b1e410e525096bf13681e5f9f98064af",
+        "mainBlob": null
+      },
+      {
+        "file": "scripts/electron-migration/record/g3-report.mjs",
+        "workingSha256": "537d8796ebb35e9a9b14e634b87c4f145bfcb73fa9c46165875a92bd6e46e175",
+        "headBlob": "556a93c85bf7bf39eec2f8d26b29b1f778422d96",
+        "mainBlob": null
+      },
+      {
+        "file": "scripts/electron-migration/record/g3-manifest.mjs",
+        "workingSha256": "17b3240a7485e19cc1aede3a32caabe333ebe7a8318b306d74f8ec40903237c6",
+        "headBlob": "3610efa6d228508895d1e47fe8bc43a604adaf01",
+        "mainBlob": null
+      },
+      {
+        "file": "fixtures/differential/g3/normalize-approvals.json",
+        "workingSha256": "71c8ac72df65785ba761eaa3824078fa18d12acbc5d06496528cccc7543b8e1a",
+        "headBlob": "6b3bfa3fe350dcbcea5cf877c0727d8e41a31cd5",
+        "mainBlob": null
+      }
+    ],
+    "hostDelta": [
+      "M\thost/e2e/differential/LANE.md",
+      "A\thost/e2e/differential/g3-manifest.test.mjs",
+      "A\thost/e2e/differential/g3-normalize.test.mjs",
+      "A\thost/e2e/differential/g3-normalize.test.ts",
+      "A\thost/e2e/differential/g3-report.test.mjs",
+      "A\thost/e2e/differential/g3-report.test.ts",
+      "A\thost/e2e/differential/g3-run-b.test.mjs",
+      "A\thost/e2e/differential/g3-run-b.test.ts",
+      "M\thost/e2e/differential/scenario-v0.test.mjs",
+      "A\thost/plugins/backup/equivalence/g3-missing.json",
+      "M\thost/plugins/llm/index.ts",
+      "M\thost/plugins/llm/src/config_builtins.ts",
+      "M\thost/plugins/llm/src/config_profiles.ts",
+      "M\thost/plugins/notes/index.ts",
+      "M\thost/plugins/sync-support/index.ts",
+      "M\thost/plugins/sync-support/src/state.ts",
+      "M\thost/plugins/sync-support/tests/service-host.ts",
+      "M\thost/plugins/sync-support/tests/state.test.ts",
+      "M\thost/plugins/vfs-index/index.ts",
+      "M\thost/plugins/vfs-index/src/legacy-kb-store.ts"
+    ],
+    "scopeRejectedFiles": [
+      {
+        "file": "host/plugins/backup/equivalence/g3-missing.json",
+        "workingSha256": "2e818400d6ed86862f20d3885334086fa33f2bd79db730f229935b90972be6c0",
+        "headBlob": "58c766489d42c34a433e3614b1b43e21e902b4ad",
+        "mainBlob": null
+      },
+      {
+        "file": "host/plugins/llm/index.ts",
+        "workingSha256": "fafe4b0909ecac272200c31406b83fab4c7c802edde9351fbe205cb3ae768ec4",
+        "headBlob": "659f14726abf2516cf8083a1ea434c1232d06b5f",
+        "mainBlob": "70cbbbcc26f8f0b3da6d6cfe5249ef103d819f06"
+      },
+      {
+        "file": "host/plugins/llm/src/config_builtins.ts",
+        "workingSha256": "3216ccacf87a4eb1c4b631f5fa5ec70cbe7adc1ace1cb4a9643032fec12790ee",
+        "headBlob": "8faa5b2bdacb2b3efd4d23fc5b66848b968fa6ef",
+        "mainBlob": "426f090df062b92d0d47312de85ffe6a9ed08a1c"
+      },
+      {
+        "file": "host/plugins/llm/src/config_profiles.ts",
+        "workingSha256": "12610662717f17ebb41330d8b08d77d80371f85dc9a5f58b4ceed65ec49b9de0",
+        "headBlob": "b19429ad9a82bb9663f15a92b2634685f0624c34",
+        "mainBlob": "d5c4863e2d65e82c1247821964f4625b47dc9791"
+      },
+      {
+        "file": "host/plugins/notes/index.ts",
+        "workingSha256": "7e6245be846246aaa1431ef7b8c627d12738554caa34d6cd10488fb7910d6be8",
+        "headBlob": "e810721d8a935c8cdfc57b24f3d1db5baa7b70c8",
+        "mainBlob": "e8cf92dee752054c73f01e1433e463f1f273a33f"
+      },
+      {
+        "file": "host/plugins/sync-support/index.ts",
+        "workingSha256": "cf665327e4588a0d8f0f810565ce5451eb48bb20318430717aec3e1b1ad65437",
+        "headBlob": "d832d79d0e0fb465ccefb84d55b68ba5438b85c5",
+        "mainBlob": "4aa58cb044c12eed294f7c71e833b1bdd2d3be72"
+      },
+      {
+        "file": "host/plugins/sync-support/src/state.ts",
+        "workingSha256": "d4d68607c13a26b311f479565d867dd90f2a6b64dd392728962478ae2d62313f",
+        "headBlob": "28238eb6cc4e43dc8ae45adb8952380ae65a20cb",
+        "mainBlob": "60311ef31b52d7ec4829e521cb20dfe636210d9c"
+      },
+      {
+        "file": "host/plugins/sync-support/tests/service-host.ts",
+        "workingSha256": "a5e248fe2e054759a37f8cf4e8038256d6d85be38343081b9c6ed01f2d4ba019",
+        "headBlob": "4a39b5e0787cd8311bac798dc5f77102d7cb07be",
+        "mainBlob": "058aa13fc0960eae0811a0e0739efd3b03382138"
+      },
+      {
+        "file": "host/plugins/sync-support/tests/state.test.ts",
+        "workingSha256": "1ec02edc55b2442bf3273aecb2f8f8a075c5afa8800d2d430ee8ff41322ebb0d",
+        "headBlob": "64d88425f8057916f6381c498bf57ffbf29ec7fe",
+        "mainBlob": "7f2fd15b7068b5f0514bca5c796758a1384197e0"
+      },
+      {
+        "file": "host/plugins/vfs-index/index.ts",
+        "workingSha256": "efb20ac5985c058d4d4c9d962a181e6d3d234bd7bdebde90be6c6f96920f6295",
+        "headBlob": "3c7894a92c42c10025fbe8f64d48526f1c6afba6",
+        "mainBlob": "221efcadc1093e052af95b00bbcc598d94380a99"
+      },
+      {
+        "file": "host/plugins/vfs-index/src/legacy-kb-store.ts",
+        "workingSha256": "16f0cd8fb8e3d9bb577d034be459e89020724bfe0a8c3f1717a09a790abbc931",
+        "headBlob": "e9d5e32ede67ea4240bfcc3abbac1cf8635b28c1",
+        "mainBlob": "5d95088fc105ff0e6cd49f4ed5fcaf32d9330470"
+      }
+    ]
+  },
+  "A": {
+    "receiptFile": "fixtures/differential/wp043/builds/20261106023719-bc16bc/receipt.json",
+    "receiptSha256": "24c9f5b77e2b63a8b0f9d9a9ea2031ad603068b62fb72f3bfd9fe8bf17bdcf3b",
+    "submittedRevision": "ec19ff0f1",
+    "receiptRevision": "c93b8c84eb229acf373ed3558ff1661814f2aee0",
+    "rustSourceTree": "cff4c0cc6eddd710a71e87cb814bf20bc0384516",
+    "binarySha256": "102b48358f08f7f0d2d9b5a887b7337bacbc03f3ff217f3553d5900ec00cac7c",
+    "rustDeltaToMain": [
+      "M\tsrc/data/builtin-templates.json"
+    ],
+    "unchangedReceipt": true
+  },
+  "B": {
+    "recordingBase": null,
+    "recordingBaseStatus": "unknown: sampled summary/trace do not record head/hostTree; no retroactive same-main claim",
+    "sampledSummary": {
+      "file": "fixtures/differential/g3/runs/full/B/electron__equivalence__shell-file-ops/000/summary.json",
+      "sha256": "c5e3bc5dd5d7b6dea492ff4b1c4ab2c846177dfcb8a98c7d4f2aa5213eecaa97",
+      "keys": [
+        "scenarioFile",
+        "inputSha256",
+        "runs"
+      ]
+    },
+    "sampledTrace": {
+      "file": "/home/dsdev/dev/ds-mig/X7-differential/fixtures/differential/g3/runs/full/B/electron__equivalence__shell-file-ops/000/shell.file.write_read_copy.roundtrip/B/trace.json.gz",
+      "sha256": "66a0f0758dfde93887469e2b911a4bbe15996b77dc6a083280ee00a1cc756c1f",
+      "host": {
+        "entry": "host/kernel/main.ts",
+        "profile": "host/profiles/desktop.json",
+        "appDataDir": "/home/dsdev/dev/ds-mig/X7-differential/fixtures/differential/g3/runs/full/B/electron__equivalence__shell-file-ops/000/shell.file.write_read_copy.roundtrip/B/run/app-data/com.deepstudent.differential",
+        "transport": "child_process.fork ipc (advanced)"
+      },
+      "topLevelKeys": [
+        "schema",
+        "scenario",
+        "before",
+        "calls",
+        "after",
+        "normalization",
+        "comparison",
+        "side",
+        "inputSha256",
+        "finalDatabases",
+        "eventScope",
+        "llmRequests",
+        "shellRequests",
+        "hostExit",
+        "host"
+      ]
+    }
+  },
+  "inputs": {
+    "scenarioTreeSha256": "ca2010ab5e7c302e6db3ff74358ecfe322b48f7258fd7dba76e42610a1f8ae98",
+    "files": [
+      {
+        "file": "electron/equivalence/g3w-shell-01.json",
+        "workingSha256": "21d729712a1ca3e8a0b701000b13401a501d290aae09fcdb903c54aa8f1799ae",
+        "headBlob": "3977546d73050b22eb67399afaaadf7f524cf99e",
+        "mainBlob": "3977546d73050b22eb67399afaaadf7f524cf99e",
+        "recordedInputSha256": [
+          "21d729712a1ca3e8a0b701000b13401a501d290aae09fcdb903c54aa8f1799ae"
+        ]
+      },
+      {
+        "file": "electron/equivalence/shell-file-ops.json",
+        "workingSha256": "d0b28b38843395097b86e8f4761a37f99b659d2cf0093897239d1c5ab94b90f5",
+        "headBlob": "3114076a375f864eecb893c5a40566e11fc1407a",
+        "mainBlob": "3114076a375f864eecb893c5a40566e11fc1407a",
+        "recordedInputSha256": [
+          "d0b28b38843395097b86e8f4761a37f99b659d2cf0093897239d1c5ab94b90f5"
+        ]
+      },
+      {
+        "file": "electron/equivalence/shell-platform.json",
+        "workingSha256": "d43b8097596c89b1ef7d3ca64fe57744e58fbd9e88ba3b6c50385b70434a7908",
+        "headBlob": "27299dd9c435f570d4a26544fef930d5a9986713",
+        "mainBlob": "27299dd9c435f570d4a26544fef930d5a9986713",
+        "recordedInputSha256": [
+          "d43b8097596c89b1ef7d3ca64fe57744e58fbd9e88ba3b6c50385b70434a7908"
+        ]
+      },
+      {
+        "file": "electron/equivalence/shell-settings-backup.json",
+        "workingSha256": "f6747c39abdd282a93a1b1f68915801802982ee74ab88062966ae764fd5e961c",
+        "headBlob": "9a3368dfe168a767779fbe5b93f7fc5a65ce4d9f",
+        "mainBlob": "9a3368dfe168a767779fbe5b93f7fc5a65ce4d9f",
+        "recordedInputSha256": [
+          "f6747c39abdd282a93a1b1f68915801802982ee74ab88062966ae764fd5e961c"
+        ]
+      },
+      {
+        "file": "fixtures/differential/wp043/get-app-version.v0.json",
+        "workingSha256": "771489967f154a87f190b4b99660bfdf1910514049f19c9be3b3d2d3a9e56e08",
+        "headBlob": "a4ceb11db6c1950f297a2c5e3f376eebde75db1a",
+        "mainBlob": "a4ceb11db6c1950f297a2c5e3f376eebde75db1a",
+        "recordedInputSha256": [
+          "771489967f154a87f190b4b99660bfdf1910514049f19c9be3b3d2d3a9e56e08"
+        ]
+      },
+      {
+        "file": "host/e2e/streaming/wave0/streaming.scenarios.json",
+        "workingSha256": "1779ed09a1e180c2f52154c58fb7c27a374d8d64841693297830577f3da93761",
+        "headBlob": "9ce16a0d8d3113c74849e00695e26ff8e79118ae",
+        "mainBlob": "9ce16a0d8d3113c74849e00695e26ff8e79118ae",
+        "recordedInputSha256": [
+          "1779ed09a1e180c2f52154c58fb7c27a374d8d64841693297830577f3da93761"
+        ]
+      },
+      {
+        "file": "host/kernel/equivalence/plugins-seeded.json",
+        "workingSha256": "fdb5f5c7fa473037f0566dcefb03964223979d3c96ecc06beca0d484fb00a928",
+        "headBlob": "aa708d76ddba126d19de0bf01e93a33048024920",
+        "mainBlob": "aa708d76ddba126d19de0bf01e93a33048024920",
+        "recordedInputSha256": [
+          "fdb5f5c7fa473037f0566dcefb03964223979d3c96ecc06beca0d484fb00a928"
+        ]
+      },
+      {
+        "file": "host/kernel/equivalence/plugins.json",
+        "workingSha256": "48fab5c0715b557179162280b9fb36b27b8681f3d5ccc858894aa799198f9b75",
+        "headBlob": "2b8d15cc9f0617329d7cc31d10c1333c0f6a8169",
+        "mainBlob": "2b8d15cc9f0617329d7cc31d10c1333c0f6a8169",
+        "recordedInputSha256": [
+          "48fab5c0715b557179162280b9fb36b27b8681f3d5ccc858894aa799198f9b75"
+        ]
+      },
+      {
+        "file": "host/platform/settings/equivalence/backup-config.json",
+        "workingSha256": "86213dc8e55c185526cb3ecfd6ad52d36368ee928788e06bc647255f7995904f",
+        "headBlob": "bff7bc7cea40c41cf091994bd65320c8d679199b",
+        "mainBlob": "bff7bc7cea40c41cf091994bd65320c8d679199b",
+        "recordedInputSha256": [
+          "86213dc8e55c185526cb3ecfd6ad52d36368ee928788e06bc647255f7995904f"
+        ]
+      },
+      {
+        "file": "host/platform/settings/equivalence/cloud-config.json",
+        "workingSha256": "9b30619ba055e288bd3141bc29ca20dd8d9ef28d7d57fea430eaa5dd72875151",
+        "headBlob": "b0c725c75e8d51155f4dde20b7c352256c7753b6",
+        "mainBlob": "b0c725c75e8d51155f4dde20b7c352256c7753b6",
+        "recordedInputSha256": [
+          "9b30619ba055e288bd3141bc29ca20dd8d9ef28d7d57fea430eaa5dd72875151"
+        ]
+      },
+      {
+        "file": "host/platform/settings/equivalence/debug-logs.json",
+        "workingSha256": "736118b28f7ce3604b2a9b10d0860ff5da679bcf36079d69e93d6626791eb93e",
+        "headBlob": "ccf4761d8b50f81ac3a8cabb383b5ccd03baf71e",
+        "mainBlob": "ccf4761d8b50f81ac3a8cabb383b5ccd03baf71e",
+        "recordedInputSha256": [
+          "736118b28f7ce3604b2a9b10d0860ff5da679bcf36079d69e93d6626791eb93e"
+        ]
+      },
+      {
+        "file": "host/platform/settings/equivalence/frontend-log-bounds.json",
+        "workingSha256": "eef7d1c958f66c97f820751f48bdfbb20e9956f1f0518ac0c243ba88a1a5a540",
+        "headBlob": "fce661f34f73e73e87d00035cec03a6ac89f75cf",
+        "mainBlob": "fce661f34f73e73e87d00035cec03a6ac89f75cf",
+        "recordedInputSha256": [
+          "eef7d1c958f66c97f820751f48bdfbb20e9956f1f0518ac0c243ba88a1a5a540"
+        ]
+      },
+      {
+        "file": "host/platform/settings/equivalence/frontend-log.json",
+        "workingSha256": "e978be2852c1211e1f944112e86ab1e1182e2f00b9dadda4312a6dcbd8be6200",
+        "headBlob": "ccc2da729b627b5f478ac2506f8a88725cd8d06f",
+        "mainBlob": "ccc2da729b627b5f478ac2506f8a88725cd8d06f",
+        "recordedInputSha256": [
+          "e978be2852c1211e1f944112e86ab1e1182e2f00b9dadda4312a6dcbd8be6200"
+        ]
+      },
+      {
+        "file": "host/platform/settings/equivalence/keystore-protection.json",
+        "workingSha256": "feb87fcb1f72e48f9592dea102b9f435c508bf7c96b5573328ec184ac6cc6b79",
+        "headBlob": "aab1425d917aba93e7607bcaedd6575d509166e0",
+        "mainBlob": "aab1425d917aba93e7607bcaedd6575d509166e0",
+        "recordedInputSha256": [
+          "feb87fcb1f72e48f9592dea102b9f435c508bf7c96b5573328ec184ac6cc6b79"
+        ]
+      },
+      {
+        "file": "host/platform/settings/equivalence/package-managers.json",
+        "workingSha256": "c95aec7b63e91c8e06d7e80a989785aa26e27a25137d45bba987510fdc337a3b",
+        "headBlob": "63b4fe804972e22816edb5fe136eac13c6348016",
+        "mainBlob": "63b4fe804972e22816edb5fe136eac13c6348016",
+        "recordedInputSha256": [
+          "c95aec7b63e91c8e06d7e80a989785aa26e27a25137d45bba987510fdc337a3b"
+        ]
+      },
+      {
+        "file": "host/platform/settings/equivalence/platform-gated/keystore-enable.json",
+        "workingSha256": "546fff795be4bbbf59f19a0fff5c10767230bcc3bb25a1739624a659bd64dabb",
+        "headBlob": "92ae034858708474204a5b194dd5a41137ab2190",
+        "mainBlob": "92ae034858708474204a5b194dd5a41137ab2190",
+        "recordedInputSha256": [
+          "546fff795be4bbbf59f19a0fff5c10767230bcc3bb25a1739624a659bd64dabb"
+        ]
+      },
+      {
+        "file": "host/platform/settings/equivalence/platform-gated/open-logs-folder.json",
+        "workingSha256": "c3c78e84e4b9d17eb763d4906d68242cb753a0c83f4aa7d9af6653bca6301c99",
+        "headBlob": "271af2da25ec3f17941bf22d1fe51a06d724373d",
+        "mainBlob": "271af2da25ec3f17941bf22d1fe51a06d724373d",
+        "recordedInputSha256": [
+          "c3c78e84e4b9d17eb763d4906d68242cb753a0c83f4aa7d9af6653bca6301c99"
+        ]
+      },
+      {
+        "file": "host/platform/settings/equivalence/platform-gated/package-install.json",
+        "workingSha256": "c261054eec60730425317bb9440f405928277fdc5f9bef8e896978e7c502cce9",
+        "headBlob": "b9a7d34e0da7b2b9c10a6f033c020bf2efb4b514",
+        "mainBlob": "b9a7d34e0da7b2b9c10a6f033c020bf2efb4b514",
+        "recordedInputSha256": [
+          "c261054eec60730425317bb9440f405928277fdc5f9bef8e896978e7c502cce9"
+        ]
+      },
+      {
+        "file": "host/platform/settings/equivalence/secure-credentials.json",
+        "workingSha256": "85e4420b660ab24449a1ac327a99597ad5ec95a9b613029a49e19a707385beea",
+        "headBlob": "6a4be5e77f7848be8be03b0c0a4d395bf6b827fb",
+        "mainBlob": "6a4be5e77f7848be8be03b0c0a4d395bf6b827fb",
+        "recordedInputSha256": [
+          "85e4420b660ab24449a1ac327a99597ad5ec95a9b613029a49e19a707385beea"
+        ]
+      },
+      {
+        "file": "host/platform/storage/equivalence/data-space.json",
+        "workingSha256": "53d3b31f9406a6aa02d827bb60bfa4405732e8ee7b4c4b914ddaba43391973e4",
+        "headBlob": "496616fcf12e7285f6df31771094cad467386b44",
+        "mainBlob": "496616fcf12e7285f6df31771094cad467386b44",
+        "recordedInputSha256": [
+          "53d3b31f9406a6aa02d827bb60bfa4405732e8ee7b4c4b914ddaba43391973e4"
+        ]
+      },
+      {
+        "file": "host/platform/storage/equivalence/llm-usage.json",
+        "workingSha256": "fe7b70181d38cde68971acdfd1ad9e4c307586ec65e5255712d45d960fd6a958",
+        "headBlob": "0f3f3d764bd12e07ff5cd99f594687105e4ca7e0",
+        "mainBlob": "0f3f3d764bd12e07ff5cd99f594687105e4ca7e0",
+        "recordedInputSha256": [
+          "fe7b70181d38cde68971acdfd1ad9e4c307586ec65e5255712d45d960fd6a958"
+        ]
+      },
+      {
+        "file": "host/platform/storage/equivalence/needs-restart/restart-app.json",
+        "workingSha256": "281d1ea65817072c06e39b13951f10c0c25a552fafe86aa930e672a1338bb220",
+        "headBlob": "fa4739c081805117405151643a9ae5fe0dda933d",
+        "mainBlob": "fa4739c081805117405151643a9ae5fe0dda933d",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/platform/storage/equivalence/pending-seed/data-space-inactive.seeded.json",
+        "workingSha256": "4c6f3a0f84153857fff74fd08b3a73989e056f09160d1999593da50f0cd1237f",
+        "headBlob": "6bb6befc9dfb2e5960210e2738347fc5aa0454b6",
+        "mainBlob": "6bb6befc9dfb2e5960210e2738347fc5aa0454b6",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/platform/storage/equivalence/pending-seed/llm-usage.seeded.json",
+        "workingSha256": "bc1e9e665b2c9e76c8d0761961bf503864977faf277198e2fd2518706e369e02",
+        "headBlob": "8c1b84d8a54a4aeeec82fe17c87aeb8ff908afd3",
+        "mainBlob": "8c1b84d8a54a4aeeec82fe17c87aeb8ff908afd3",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/platform/storage/equivalence/pending-seed/startup-recovery.seeded.json",
+        "workingSha256": "71a7459873062fcf1d9a64a371240a811b16fe6d09cc13ec01e7452dc4dc57ea",
+        "headBlob": "79d8285efe59ddea59f3c56ef02bde9f92eb7d58",
+        "mainBlob": "79d8285efe59ddea59f3c56ef02bde9f92eb7d58",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/platform/storage/equivalence/staged-upload.json",
+        "workingSha256": "2c31d51c9e5b297193169d8c8a66b87b83622347f3fb06e19409a43adbce9a65",
+        "headBlob": "893d5c80fb262b68822d706059d6c4835f53fded",
+        "mainBlob": "893d5c80fb262b68822d706059d6c4835f53fded",
+        "recordedInputSha256": [
+          "2c31d51c9e5b297193169d8c8a66b87b83622347f3fb06e19409a43adbce9a65"
+        ]
+      },
+      {
+        "file": "host/platform/storage/equivalence/startup-recovery.json",
+        "workingSha256": "784ebe20cd8e54cda14e055e382cc8494d18cdd7491097a686b0104257e1dea7",
+        "headBlob": "6171dcc983f3525790979fde2eccbc654b03d524",
+        "mainBlob": "6171dcc983f3525790979fde2eccbc654b03d524",
+        "recordedInputSha256": [
+          "784ebe20cd8e54cda14e055e382cc8494d18cdd7491097a686b0104257e1dea7"
+        ]
+      },
+      {
+        "file": "host/platform/storage/equivalence/test-database.json",
+        "workingSha256": "e2fbce16d782615f194439848311552fe7dd29a6ed6970969a4e164ba20eb935",
+        "headBlob": "6b714ee46eef7e0b9f2c267d5f98021e5b958487",
+        "mainBlob": "6b714ee46eef7e0b9f2c267d5f98021e5b958487",
+        "recordedInputSha256": [
+          "e2fbce16d782615f194439848311552fe7dd29a6ed6970969a4e164ba20eb935"
+        ]
+      },
+      {
+        "file": "host/plugins/agent-orchestration/equivalence/automations.json",
+        "workingSha256": "b74cdd64280a431ef06204751655e62381686503791c7ce0b67dbde71e9b59dd",
+        "headBlob": "8ce3f6ae6ed5d5cdefb8b69ce892d896eaae879a",
+        "mainBlob": "8ce3f6ae6ed5d5cdefb8b69ce892d896eaae879a",
+        "recordedInputSha256": [
+          "b74cdd64280a431ef06204751655e62381686503791c7ce0b67dbde71e9b59dd"
+        ]
+      },
+      {
+        "file": "host/plugins/agent-orchestration/equivalence/super-session.json",
+        "workingSha256": "a253bdf1202b32448d3b8a6f1490abafa7747aa63fda4703e9452ea2000064ca",
+        "headBlob": "e5aad994e1635c372f233fe4962143649c5e7758",
+        "mainBlob": "e5aad994e1635c372f233fe4962143649c5e7758",
+        "recordedInputSha256": [
+          "a253bdf1202b32448d3b8a6f1490abafa7747aa63fda4703e9452ea2000064ca"
+        ]
+      },
+      {
+        "file": "host/plugins/agent-skills/equivalence/pending-network/skill-market-live.json",
+        "workingSha256": "137e7ed6403eac40fc5a58ebfc85033933e290c005cad9d6673c91b3cb3ebe98",
+        "headBlob": "46672fb99eed578d64f5687217e0bbbcc3815e69",
+        "mainBlob": "46672fb99eed578d64f5687217e0bbbcc3815e69",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/plugins/agent-skills/equivalence/pending-network/skill-tap-live.json",
+        "workingSha256": "2c86b58cb4080f532f53604eee4a9c5b2069dff5a2efb6ded0abf06520b6dc8d",
+        "headBlob": "df65ae5e19269603deb832a15a7f9b677ec570d5",
+        "mainBlob": "df65ae5e19269603deb832a15a7f9b677ec570d5",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/plugins/agent-skills/equivalence/skill-arg-shapes.json",
+        "workingSha256": "72c67ed7a823069a137e8acd8e85c5dd3765cd2fa56f7d4c746383e5f3da8334",
+        "headBlob": "b091e08f6972f61a95dea112f283eb5e1bb5850d",
+        "mainBlob": "b091e08f6972f61a95dea112f283eb5e1bb5850d",
+        "recordedInputSha256": [
+          "72c67ed7a823069a137e8acd8e85c5dd3765cd2fa56f7d4c746383e5f3da8334"
+        ]
+      },
+      {
+        "file": "host/plugins/agent-skills/equivalence/skill-candidates.json",
+        "workingSha256": "9c6ec2b1de42f98119f9113520bf180f055eb061d50d3e9e99c6863fcd4eb88b",
+        "headBlob": "1ab77bfbf40e7de472d8a496b728a01f0075ea73",
+        "mainBlob": "1ab77bfbf40e7de472d8a496b728a01f0075ea73",
+        "recordedInputSha256": [
+          "9c6ec2b1de42f98119f9113520bf180f055eb061d50d3e9e99c6863fcd4eb88b"
+        ]
+      },
+      {
+        "file": "host/plugins/agent-skills/equivalence/skill-market.json",
+        "workingSha256": "67275f54401e099db05441c42318335191e6ed4ba884d94cf83dd79203b82943",
+        "headBlob": "dbc3aa7820ab9716b5e779392d6d82a9b04324a3",
+        "mainBlob": "dbc3aa7820ab9716b5e779392d6d82a9b04324a3",
+        "recordedInputSha256": [
+          "67275f54401e099db05441c42318335191e6ed4ba884d94cf83dd79203b82943"
+        ]
+      },
+      {
+        "file": "host/plugins/agent-skills/equivalence/skill-network-unreachable.json",
+        "workingSha256": "daf688ea1596d0b4ff296eeee867478a04d08ad8b91605665d0db221a816e4cd",
+        "headBlob": "5b1c37a68c3673b9f9e32eb036bc1c3c37ec52d5",
+        "mainBlob": "5b1c37a68c3673b9f9e32eb036bc1c3c37ec52d5",
+        "recordedInputSha256": [
+          "daf688ea1596d0b4ff296eeee867478a04d08ad8b91605665d0db221a816e4cd"
+        ]
+      },
+      {
+        "file": "host/plugins/agent-skills/equivalence/skill-updates.json",
+        "workingSha256": "c12e93cd3bf441fb358dd3f3f061bb44bd5ce18fa9c026ac9cdb46c58ba5762f",
+        "headBlob": "093df3de1299c2b4110632c75c9d18f65bc14523",
+        "mainBlob": "093df3de1299c2b4110632c75c9d18f65bc14523",
+        "recordedInputSha256": [
+          "c12e93cd3bf441fb358dd3f3f061bb44bd5ce18fa9c026ac9cdb46c58ba5762f"
+        ]
+      },
+      {
+        "file": "host/plugins/agent-skills/equivalence/skills-local.json",
+        "workingSha256": "e646c822ba1255030650ee863980b1a6dd331927bd1259a4cc570fabc70b2696",
+        "headBlob": "403b5c3677697d0adc110403b4c117a6dfe94c8c",
+        "mainBlob": "403b5c3677697d0adc110403b4c117a6dfe94c8c",
+        "recordedInputSha256": [
+          "e646c822ba1255030650ee863980b1a6dd331927bd1259a4cc570fabc70b2696"
+        ]
+      },
+      {
+        "file": "host/plugins/agent-workspace/equivalence/inbox-recovery.json",
+        "workingSha256": "a6795a3b467b654ffd275185727a94d3328ec94868ee2ec4dad1ed53e04c1b9c",
+        "headBlob": "99ddc6d015c9b0be40c82965d7471e0418633631",
+        "mainBlob": "99ddc6d015c9b0be40c82965d7471e0418633631",
+        "recordedInputSha256": [
+          "a6795a3b467b654ffd275185727a94d3328ec94868ee2ec4dad1ed53e04c1b9c"
+        ]
+      },
+      {
+        "file": "host/plugins/agent-workspace/equivalence/runtime-roots-errors.json",
+        "workingSha256": "6c29d71ec991ec933455e1c6934292db2660c66a47a20769cc8315c1aac9a96a",
+        "headBlob": "56fcebd4e6bdcff9ba3d10f58b2aa17367648d23",
+        "mainBlob": "56fcebd4e6bdcff9ba3d10f58b2aa17367648d23",
+        "recordedInputSha256": [
+          "6c29d71ec991ec933455e1c6934292db2660c66a47a20769cc8315c1aac9a96a"
+        ]
+      },
+      {
+        "file": "host/plugins/agent-workspace/equivalence/runtime-roots.json",
+        "workingSha256": "57efab16dd9bf746c17308fe7a7cd5e737354bd512fe84b52d26e87bab68857d",
+        "headBlob": "0ea77d18b090efdf5c5cadb12815eeb797195c82",
+        "mainBlob": "0ea77d18b090efdf5c5cadb12815eeb797195c82",
+        "recordedInputSha256": [
+          "57efab16dd9bf746c17308fe7a7cd5e737354bd512fe84b52d26e87bab68857d"
+        ]
+      },
+      {
+        "file": "host/plugins/anki/equivalence/anki-connect-import.json",
+        "workingSha256": "2149962c478019fccd77528dde527a9f260b30ae1bc0daeed5e622f8a67addc4",
+        "headBlob": "d04988dd07dd7cd84341263201ac98899d1d024c",
+        "mainBlob": "d04988dd07dd7cd84341263201ac98899d1d024c",
+        "recordedInputSha256": [
+          "2149962c478019fccd77528dde527a9f260b30ae1bc0daeed5e622f8a67addc4"
+        ]
+      },
+      {
+        "file": "host/plugins/anki/equivalence/anki-connect-import.peers.json",
+        "workingSha256": "fe987d66b0213181faf2ae70cb543fa40c1c5031e55b7dfbc7d7b718e41c920b",
+        "headBlob": "6392934f3c474acb5063d786b9190a31aa0cf2e9",
+        "mainBlob": "6392934f3c474acb5063d786b9190a31aa0cf2e9",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/plugins/anki/equivalence/anki-connect.json",
+        "workingSha256": "b1b9e22c736bcc30dfaf2ab0fbcbdc85b648404d68a7573f12f904e8242011a1",
+        "headBlob": "388600ec206db87f9861227a720a88b54b40a983",
+        "mainBlob": "388600ec206db87f9861227a720a88b54b40a983",
+        "recordedInputSha256": [
+          "b1b9e22c736bcc30dfaf2ab0fbcbdc85b648404d68a7573f12f904e8242011a1"
+        ]
+      },
+      {
+        "file": "host/plugins/anki/equivalence/anki-connect.peers.json",
+        "workingSha256": "68a8c3f847f4f59a02a18bcd119192acfd739cfde2bfee33493e2fd9970a2c02",
+        "headBlob": "bc6eccce4d230685521191f245525b414befd290",
+        "mainBlob": "bc6eccce4d230685521191f245525b414befd290",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/plugins/anki/equivalence/anki-media.json",
+        "workingSha256": "ad26fe33886294d71ca141933a9f0d4a968773b1fa942f2980f7297747b661eb",
+        "headBlob": "bcbad8fc6d15f38bad0da28a2d116352c376c907",
+        "mainBlob": "bcbad8fc6d15f38bad0da28a2d116352c376c907",
+        "recordedInputSha256": [
+          "ad26fe33886294d71ca141933a9f0d4a968773b1fa942f2980f7297747b661eb"
+        ]
+      },
+      {
+        "file": "host/plugins/anki/equivalence/cards-crud.json",
+        "workingSha256": "3a2eac789c35af31eb0e7c6b457871080e51b1f9db545f92f1d161f83a7c68c9",
+        "headBlob": "b12f913ce038e72f3c2854d24bff4163776d7d65",
+        "mainBlob": "b12f913ce038e72f3c2854d24bff4163776d7d65",
+        "recordedInputSha256": [
+          "3a2eac789c35af31eb0e7c6b457871080e51b1f9db545f92f1d161f83a7c68c9"
+        ]
+      },
+      {
+        "file": "host/plugins/anki/equivalence/document-sessions.json",
+        "workingSha256": "b24c27511316b01b62ae5c49b123eaec3c4c80e3150a57db85d9a4ac369d1877",
+        "headBlob": "4965e98f7fcceacf25acaa06f10751af823e7d73",
+        "mainBlob": "4965e98f7fcceacf25acaa06f10751af823e7d73",
+        "recordedInputSha256": [
+          "b24c27511316b01b62ae5c49b123eaec3c4c80e3150a57db85d9a4ac369d1877"
+        ]
+      },
+      {
+        "file": "host/plugins/anki/equivalence/exports-imports.json",
+        "workingSha256": "4fdf35a5d1595c9241cbe0d7ecd045543521d17fdfa766bb420a71c4a70353c0",
+        "headBlob": "31c104a0383336a18d96297b2a00378898cb5deb",
+        "mainBlob": "31c104a0383336a18d96297b2a00378898cb5deb",
+        "recordedInputSha256": [
+          "4fdf35a5d1595c9241cbe0d7ecd045543521d17fdfa766bb420a71c4a70353c0"
+        ]
+      },
+      {
+        "file": "host/plugins/anki/equivalence/g3w-anki-01.json",
+        "workingSha256": "53c06cf65fe2854df533ef4aa98e841e140a388fa90f05fb9fdb1431116a2341",
+        "headBlob": "643976af0e16b1992cd234a243a531ae7f01d3e8",
+        "mainBlob": "643976af0e16b1992cd234a243a531ae7f01d3e8",
+        "recordedInputSha256": [
+          "53c06cf65fe2854df533ef4aa98e841e140a388fa90f05fb9fdb1431116a2341"
+        ]
+      },
+      {
+        "file": "host/plugins/anki/equivalence/g3w-anki-02.json",
+        "workingSha256": "c42ab8b3dbbe7ee60b38477d50dfcd34e4f46270c602df11d70f8d3caf94d392",
+        "headBlob": "a93ce1b42e7cef25c41692264ce0605fb877c736",
+        "mainBlob": "a93ce1b42e7cef25c41692264ce0605fb877c736",
+        "recordedInputSha256": [
+          "c42ab8b3dbbe7ee60b38477d50dfcd34e4f46270c602df11d70f8d3caf94d392"
+        ]
+      },
+      {
+        "file": "host/plugins/anki/equivalence/g3w-anki-03.json",
+        "workingSha256": "7b084bf123ba85d385c6e9c714b8a963ce3d4852b96e70fcbb98b70053f40b12",
+        "headBlob": "124a35e988dbf55633f650215674dd9eb721307f",
+        "mainBlob": "124a35e988dbf55633f650215674dd9eb721307f",
+        "recordedInputSha256": [
+          "7b084bf123ba85d385c6e9c714b8a963ce3d4852b96e70fcbb98b70053f40b12"
+        ]
+      },
+      {
+        "file": "host/plugins/anki/equivalence/generation.json",
+        "workingSha256": "651e947895861b253ee24cdd8043331ba40e00021316fcf02510786889ad90ea",
+        "headBlob": "1afb124a6530e61899e8bb625a1ad703e6de4113",
+        "mainBlob": "1afb124a6530e61899e8bb625a1ad703e6de4113",
+        "recordedInputSha256": [
+          "651e947895861b253ee24cdd8043331ba40e00021316fcf02510786889ad90ea"
+        ]
+      },
+      {
+        "file": "host/plugins/anki/equivalence/pending-seed/memory-candidates.seeded.json",
+        "workingSha256": "b9fae8811579ea5f9d75d84aff7dce1c3ad3f9a60890caadda10e4617928f078",
+        "headBlob": "47710fcfb775725dc16807e6184addd6061447d6",
+        "mainBlob": "47710fcfb775725dc16807e6184addd6061447d6",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/plugins/anki/equivalence/templates-crud.json",
+        "workingSha256": "8be4cb59a2fcaa6902a911c2240731560ae4478e496f1949b7deb6c9a423f0ee",
+        "headBlob": "ed78676c51aaaf29c519a3e22455a37e96f58580",
+        "mainBlob": "ed78676c51aaaf29c519a3e22455a37e96f58580",
+        "recordedInputSha256": [
+          "8be4cb59a2fcaa6902a911c2240731560ae4478e496f1949b7deb6c9a423f0ee"
+        ]
+      },
+      {
+        "file": "host/plugins/anki/equivalence/templates-import.json",
+        "workingSha256": "654b36a6fc6bee4ea7e32186e371a27880f547f90354a329033b6fef50b6ef99",
+        "headBlob": "cdabd879a2fc012e37dc892c6aae0cfb16e46e9a",
+        "mainBlob": "cdabd879a2fc012e37dc892c6aae0cfb16e46e9a",
+        "recordedInputSha256": [
+          "654b36a6fc6bee4ea7e32186e371a27880f547f90354a329033b6fef50b6ef99"
+        ]
+      },
+      {
+        "file": "host/plugins/backup/equivalence/assets.json",
+        "workingSha256": "3729e7638b410e39dd8492878aeac3e1191733260c023441143bcc22b2c5035a",
+        "headBlob": "afd68c0404f7ff9cd1a59546e4f62d07f0895462",
+        "mainBlob": "afd68c0404f7ff9cd1a59546e4f62d07f0895462",
+        "recordedInputSha256": [
+          "3729e7638b410e39dd8492878aeac3e1191733260c023441143bcc22b2c5035a"
+        ]
+      },
+      {
+        "file": "host/plugins/backup/equivalence/audit.json",
+        "workingSha256": "74f157a149cc0c819ccf6aecb8bf73193eae4e2c2f9056a7d9790097ffdb2f9a",
+        "headBlob": "1fd9e5763840b81336c0c4986703c06834512914",
+        "mainBlob": "1fd9e5763840b81336c0c4986703c06834512914",
+        "recordedInputSha256": [
+          "74f157a149cc0c819ccf6aecb8bf73193eae4e2c2f9056a7d9790097ffdb2f9a"
+        ]
+      },
+      {
+        "file": "host/plugins/backup/equivalence/diagnostics.json",
+        "workingSha256": "6b694d5816965716f367a5be14a5b9059db47a1d5915b106d2262beafd0a2719",
+        "headBlob": "1d0f83f55b8aa0e189551cda05d3a5d29d7853c7",
+        "mainBlob": "1d0f83f55b8aa0e189551cda05d3a5d29d7853c7",
+        "recordedInputSha256": [
+          "6b694d5816965716f367a5be14a5b9059db47a1d5915b106d2262beafd0a2719"
+        ]
+      },
+      {
+        "file": "host/plugins/backup/equivalence/g3-missing.json",
+        "workingSha256": "2e818400d6ed86862f20d3885334086fa33f2bd79db730f229935b90972be6c0",
+        "headBlob": "58c766489d42c34a433e3614b1b43e21e902b4ad",
+        "mainBlob": null,
+        "recordedInputSha256": [
+          "2e818400d6ed86862f20d3885334086fa33f2bd79db730f229935b90972be6c0"
+        ]
+      },
+      {
+        "file": "host/plugins/backup/equivalence/import.json",
+        "workingSha256": "eb8c31876ed6d4ba11a4d82378b7eb7b87356d559aeebf362ffaa954e84cac63",
+        "headBlob": "4a76f93d3f299f57b4db6507af3c3bbccbd1162c",
+        "mainBlob": "4a76f93d3f299f57b4db6507af3c3bbccbd1162c",
+        "recordedInputSha256": [
+          "eb8c31876ed6d4ba11a4d82378b7eb7b87356d559aeebf362ffaa954e84cac63"
+        ]
+      },
+      {
+        "file": "host/plugins/backup/equivalence/inventory.json",
+        "workingSha256": "23358dc3efb2e855864aab97189c7ec2016537e052bdaae1faf91aeaf3551695",
+        "headBlob": "651701e6e5a91f642198083047a82e43f5c340b2",
+        "mainBlob": "651701e6e5a91f642198083047a82e43f5c340b2",
+        "recordedInputSha256": [
+          "23358dc3efb2e855864aab97189c7ec2016537e052bdaae1faf91aeaf3551695"
+        ]
+      },
+      {
+        "file": "host/plugins/backup/equivalence/jobs.json",
+        "workingSha256": "0ba021a840c6b6d63645b6981f69ec2ca94b0998236ec65738ac1c827e84314e",
+        "headBlob": "f10ba6d6ad0a440bef74d46787653ab5a1662f6d",
+        "mainBlob": "f10ba6d6ad0a440bef74d46787653ab5a1662f6d",
+        "recordedInputSha256": [
+          "0ba021a840c6b6d63645b6981f69ec2ca94b0998236ec65738ac1c827e84314e"
+        ]
+      },
+      {
+        "file": "host/plugins/backup/equivalence/metadata.json",
+        "workingSha256": "b5b9c7e98795df82792968ac77ea73ee03b712a848267d29fb8dfaa468148824",
+        "headBlob": "ed362911cea701c2beea30788e5d9915a0713238",
+        "mainBlob": "ed362911cea701c2beea30788e5d9915a0713238",
+        "recordedInputSha256": [
+          "b5b9c7e98795df82792968ac77ea73ee03b712a848267d29fb8dfaa468148824"
+        ]
+      },
+      {
+        "file": "host/plugins/backup/equivalence/pending-runner/audit-cleanup-token.json",
+        "workingSha256": "1e8d6b8b1716f99e948880d7718f23add30a4e49e1f4e1b5b53fe11a56b7530e",
+        "headBlob": "184cc85c3854c95a12701a0870c5a1d6670125a8",
+        "mainBlob": "184cc85c3854c95a12701a0870c5a1d6670125a8",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/plugins/backup/equivalence/pending-runner/import-job-lifecycle.json",
+        "workingSha256": "2a1a7395f5b73e808d61a8514c7ab78f20fec3dc1b459e9b3c182389bd795a57",
+        "headBlob": "0ddf03c4131e19af45fd324b3c3855d6cccf7e7e",
+        "mainBlob": "0ddf03c4131e19af45fd324b3c3855d6cccf7e7e",
+        "recordedInputSha256": [
+          "2a1a7395f5b73e808d61a8514c7ab78f20fec3dc1b459e9b3c182389bd795a57"
+        ]
+      },
+      {
+        "file": "host/plugins/backup/equivalence/pending-seed/assets-seeded.json",
+        "workingSha256": "626b06aeb217ae8ac8f3256f8a15240eb9a77a3573cdf378417cbdb46a929cb3",
+        "headBlob": "bb7743ba7b4ad64cc66339ae7af9e482cc8d454f",
+        "mainBlob": "bb7743ba7b4ad64cc66339ae7af9e482cc8d454f",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/plugins/backup/equivalence/pending-seed/audit-seeded.json",
+        "workingSha256": "d270e3f901369c602ceac9b03fbc846ce53f7be517843777b70b1212ba9fa1ba",
+        "headBlob": "abf7380c0f8ce0eac7339eee425179a0271714b3",
+        "mainBlob": "abf7380c0f8ce0eac7339eee425179a0271714b3",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/plugins/backup/equivalence/pending-seed/diagnostics-seeded.json",
+        "workingSha256": "52266e3c52b1893914bd8fd4cfdb7d5202ec4d0dca022c39eeeb5be882620c8e",
+        "headBlob": "37c8fe0d74e6b4f197d920fe4d2d3bd44bfde31c",
+        "mainBlob": "37c8fe0d74e6b4f197d920fe4d2d3bd44bfde31c",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/plugins/backup/equivalence/pending-seed/historical-zip.json",
+        "workingSha256": "61b7b90eef6b187e9d22acb623b448779b69cf7a0e961fe50fbdd3908c6d2c1e",
+        "headBlob": "994174be4e704326cd174575f90be61aa062b7b0",
+        "mainBlob": "994174be4e704326cd174575f90be61aa062b7b0",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/plugins/backup/equivalence/pending-seed/inventory-seeded.json",
+        "workingSha256": "00c55d4431f6106eb0f81adfc5f3ef0537c672a49006a71c34381334c2e07977",
+        "headBlob": "42a9cf6904b81de659ebcc8bcff79b8c747d3646",
+        "mainBlob": "42a9cf6904b81de659ebcc8bcff79b8c747d3646",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/plugins/backup/equivalence/pending-seed/jobs-persisted.json",
+        "workingSha256": "9fe9c72ca49bbfe8e6875850c1aaf4a66b885973b9d613ad572201c24f8ce800",
+        "headBlob": "762c3b3d8c03ec27afda37b26548bb570247b4c3",
+        "mainBlob": "762c3b3d8c03ec27afda37b26548bb570247b4c3",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/plugins/backup/equivalence/pending-seed/metadata-seeded.json",
+        "workingSha256": "85e0df7a5d2ef7b6c40ca930edf831fb960f7ac434e5fa782f48fedbdcdaf27a",
+        "headBlob": "1d4be71c39489c4097bdea40f8d550025a971624",
+        "mainBlob": "1d4be71c39489c4097bdea40f8d550025a971624",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/plugins/browser/equivalence/browser-session.json",
+        "workingSha256": "10e9819564c5359573fa63c9da82967507462ddd6ecdf2680b00f96ff9427a51",
+        "headBlob": "6e3dfbff72cd6e13d7a1a064d637308fe47d474b",
+        "mainBlob": "6e3dfbff72cd6e13d7a1a064d637308fe47d474b",
+        "recordedInputSha256": [
+          "10e9819564c5359573fa63c9da82967507462ddd6ecdf2680b00f96ff9427a51"
+        ]
+      },
+      {
+        "file": "host/plugins/browser/equivalence/g3w-browser-1.json",
+        "workingSha256": "e326a9d045cc45a96f3d486dafd704ddb833aeeab7e46f2799598d050502aa93",
+        "headBlob": "20a190623004e4b2dbf075584fe42838e20c3b0c",
+        "mainBlob": "20a190623004e4b2dbf075584fe42838e20c3b0c",
+        "recordedInputSha256": [
+          "e326a9d045cc45a96f3d486dafd704ddb833aeeab7e46f2799598d050502aa93"
+        ]
+      },
+      {
+        "file": "host/plugins/browser/equivalence/g3w-browser-2.json",
+        "workingSha256": "06c03a12097bd5140cbf5eb5900c49d309a8786c55006f200c4806d74937f250",
+        "headBlob": "14d4e0a98792773876144046117fbbb3e2a10174",
+        "mainBlob": "14d4e0a98792773876144046117fbbb3e2a10174",
+        "recordedInputSha256": [
+          "06c03a12097bd5140cbf5eb5900c49d309a8786c55006f200c4806d74937f250"
+        ]
+      },
+      {
+        "file": "host/plugins/browser/equivalence/pending-mock/websearch-searxng.json",
+        "workingSha256": "023e98ca67f7e57a80921bab623eb8d59b66e06cee77bc2894bd87284abaf480",
+        "headBlob": "f5447397bfafaf0ac75333cf0ebc9c471e12c0fc",
+        "mainBlob": "f5447397bfafaf0ac75333cf0ebc9c471e12c0fc",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/plugins/browser/equivalence/pending-network/websearch-network.json",
+        "workingSha256": "5f55460a98db9a0fb230b7fe9c876659048ae6c0e80e6af9a7b0607e32273248",
+        "headBlob": "a6d1239609f6c2c3fcc329bc9c7f1021ba980dea",
+        "mainBlob": "a6d1239609f6c2c3fcc329bc9c7f1021ba980dea",
+        "recordedInputSha256": [
+          "5f55460a98db9a0fb230b7fe9c876659048ae6c0e80e6af9a7b0607e32273248"
+        ]
+      },
+      {
+        "file": "host/plugins/browser/equivalence/settings-websearch.json",
+        "workingSha256": "f8d2ed1d3e82e11fe1e1b61cdcd68c7f67af58281fc211dcbe698818bbdeafe6",
+        "headBlob": "cf1bedd508bf851a3b7409567ea91f5e1f81411a",
+        "mainBlob": "cf1bedd508bf851a3b7409567ea91f5e1f81411a",
+        "recordedInputSha256": [
+          "f8d2ed1d3e82e11fe1e1b61cdcd68c7f67af58281fc211dcbe698818bbdeafe6"
+        ]
+      },
+      {
+        "file": "host/plugins/chat-pipeline/equivalence/pending-seed/wp227-rollback.seeded.json",
+        "workingSha256": "0d29498ee408c46cd8ae83daebb928d69977b2b681f5e4dd2c86b9cef33a0f22",
+        "headBlob": "fce9455e78e35aaa611e5f6eab3df4f73a4f1d38",
+        "mainBlob": "fce9455e78e35aaa611e5f6eab3df4f73a4f1d38",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/plugins/chat-pipeline/equivalence/workspace.json",
+        "workingSha256": "7b94e858883d1ba0523b835c5ec349d70e82cb72e8e98715015cb4ac154ef969",
+        "headBlob": "a945c0ae1565eaf9d9451c4a9ad38ba6939fc715",
+        "mainBlob": "a945c0ae1565eaf9d9451c4a9ad38ba6939fc715",
+        "recordedInputSha256": [
+          "7b94e858883d1ba0523b835c5ec349d70e82cb72e8e98715015cb4ac154ef969"
+        ]
+      },
+      {
+        "file": "host/plugins/chat-pipeline/equivalence/wp227-chat-llm.json",
+        "workingSha256": "40bb586c55991d636624c2edd1a5dfe149c410602b38baf619eceaed4f88d6b3",
+        "headBlob": "6239e39ea027fa56be0b2327a40338ccae60f423",
+        "mainBlob": "6239e39ea027fa56be0b2327a40338ccae60f423",
+        "recordedInputSha256": [
+          "40bb586c55991d636624c2edd1a5dfe149c410602b38baf619eceaed4f88d6b3"
+        ]
+      },
+      {
+        "file": "host/plugins/chat-pipeline/equivalence/wp227-harness.sidecar.json",
+        "workingSha256": "602d1918713362e9abe1e6b3fe6bcb49af1d01cdab1f1c1d296ecde575ee2eb7",
+        "headBlob": "dbe9206139340f1f112b1125c5077786f8f4247c",
+        "mainBlob": "dbe9206139340f1f112b1125c5077786f8f4247c",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/plugins/chat-pipeline/equivalence/wp227-session-settings.json",
+        "workingSha256": "f970de2e239074ff5dd7b2c9eb0a0c743da71f2513007ef2272b8e987ab806a3",
+        "headBlob": "4c2e8c82a0a852682d70f2d2f92f80b9bf2e8949",
+        "mainBlob": "4c2e8c82a0a852682d70f2d2f92f80b9bf2e8949",
+        "recordedInputSha256": [
+          "f970de2e239074ff5dd7b2c9eb0a0c743da71f2513007ef2272b8e987ab806a3"
+        ]
+      },
+      {
+        "file": "host/plugins/chat-pipeline/equivalence/wp227-workspace.json",
+        "workingSha256": "88a0aedf1fd9d0e04749532dd92025f5d00e24ce1f96ef63185c786f653f9326",
+        "headBlob": "14867ff69fa6447b4d677210fe8c5507a074e5fd",
+        "mainBlob": "14867ff69fa6447b4d677210fe8c5507a074e5fd",
+        "recordedInputSha256": [
+          "88a0aedf1fd9d0e04749532dd92025f5d00e24ce1f96ef63185c786f653f9326"
+        ]
+      },
+      {
+        "file": "host/plugins/chat/equivalence/control.json",
+        "workingSha256": "f3b7877d8b29bb0c4be29794fe883ccd64f88ef0c06ef4c2c76592cafb92f1cb",
+        "headBlob": "8af64d0b90d9e36f8c671ee351ae539b674e6431",
+        "mainBlob": "8af64d0b90d9e36f8c671ee351ae539b674e6431",
+        "recordedInputSha256": [
+          "f3b7877d8b29bb0c4be29794fe883ccd64f88ef0c06ef4c2c76592cafb92f1cb"
+        ]
+      },
+      {
+        "file": "host/plugins/chat/equivalence/g3w-chat-01.json",
+        "workingSha256": "179c8857a0d15b087e2540390c7dd3f689a5e7b32cb747f46b5f17e57a41c397",
+        "headBlob": "9de1953cf5e5115063f7462235fecad093f82747",
+        "mainBlob": "9de1953cf5e5115063f7462235fecad093f82747",
+        "recordedInputSha256": [
+          "179c8857a0d15b087e2540390c7dd3f689a5e7b32cb747f46b5f17e57a41c397"
+        ]
+      },
+      {
+        "file": "host/plugins/chat/equivalence/g3w-chat-02.json",
+        "workingSha256": "bcd78b7dcc62519aaa60822e31a06abe0ee0c79b610e8964ac5aab22369712d7",
+        "headBlob": "7af98d61aebda3e552ff35c4af25e9e33ef4b14a",
+        "mainBlob": "7af98d61aebda3e552ff35c4af25e9e33ef4b14a",
+        "recordedInputSha256": [
+          "bcd78b7dcc62519aaa60822e31a06abe0ee0c79b610e8964ac5aab22369712d7"
+        ]
+      },
+      {
+        "file": "host/plugins/chat/equivalence/g3w-chat-03.json",
+        "workingSha256": "7188db0abcca516bdfe4b1d8bc275ab17d315fa7e3e3dcc37cbebb004f679a59",
+        "headBlob": "49db0ffae0377107e5f068e66d5bb113ce51ed92",
+        "mainBlob": "49db0ffae0377107e5f068e66d5bb113ce51ed92",
+        "recordedInputSha256": [
+          "7188db0abcca516bdfe4b1d8bc275ab17d315fa7e3e3dcc37cbebb004f679a59"
+        ]
+      },
+      {
+        "file": "host/plugins/chat/equivalence/g3w-chat-04.json",
+        "workingSha256": "c53c583f389588f2e6913637874672c2a08eedb5d86ce849f84adba2b8042476",
+        "headBlob": "2d333add0f40eaae59fd23e192baafba0d8f358c",
+        "mainBlob": "2d333add0f40eaae59fd23e192baafba0d8f358c",
+        "recordedInputSha256": [
+          "c53c583f389588f2e6913637874672c2a08eedb5d86ce849f84adba2b8042476"
+        ]
+      },
+      {
+        "file": "host/plugins/chat/equivalence/g3w-chat-05.json",
+        "workingSha256": "205da5d7be4feb18eaa9bb16eaf28112921b19b32076947a9565e6483727ebdc",
+        "headBlob": "e8783c4547ef8646771b60ca10867d78e1f374ba",
+        "mainBlob": "e8783c4547ef8646771b60ca10867d78e1f374ba",
+        "recordedInputSha256": [
+          "205da5d7be4feb18eaa9bb16eaf28112921b19b32076947a9565e6483727ebdc"
+        ]
+      },
+      {
+        "file": "host/plugins/chat/equivalence/g3w-chat-06.json",
+        "workingSha256": "a46faad3b44135bd5f0ef175e03b514c48e819b530386e492645599839d079cb",
+        "headBlob": "ac2495077e5416c9834dd8dffefac6ad45470e75",
+        "mainBlob": "ac2495077e5416c9834dd8dffefac6ad45470e75",
+        "recordedInputSha256": [
+          "a46faad3b44135bd5f0ef175e03b514c48e819b530386e492645599839d079cb"
+        ]
+      },
+      {
+        "file": "host/plugins/chat/equivalence/goals.json",
+        "workingSha256": "2789ec6dc3708cd3a577ac3da0d9df8e2c4295f21b2429ac257aa1dd09ebad66",
+        "headBlob": "14a86cdcd94d246fde774748d44532166d690be7",
+        "mainBlob": "14a86cdcd94d246fde774748d44532166d690be7",
+        "recordedInputSha256": [
+          "2789ec6dc3708cd3a577ac3da0d9df8e2c4295f21b2429ac257aa1dd09ebad66"
+        ]
+      },
+      {
+        "file": "host/plugins/chat/equivalence/groups.json",
+        "workingSha256": "b0864b34121176e19199969acd0ec37ef9b6f458eab2d8521b5da007384c7b3a",
+        "headBlob": "691c7269d0d2a889f074585cb860991546346ef8",
+        "mainBlob": "691c7269d0d2a889f074585cb860991546346ef8",
+        "recordedInputSha256": [
+          "b0864b34121176e19199969acd0ec37ef9b6f458eab2d8521b5da007384c7b3a"
+        ]
+      },
+      {
+        "file": "host/plugins/chat/equivalence/messages.json",
+        "workingSha256": "ee50a8b7ac70dc8573aa577ed16c2eef5723c0bc5f09dccb9703449563d5e045",
+        "headBlob": "abd31da85d6173951502d44b950837e7426eaaa7",
+        "mainBlob": "abd31da85d6173951502d44b950837e7426eaaa7",
+        "recordedInputSha256": [
+          "ee50a8b7ac70dc8573aa577ed16c2eef5723c0bc5f09dccb9703449563d5e045"
+        ]
+      },
+      {
+        "file": "host/plugins/chat/equivalence/pending-seed/goals-todos.seeded.json",
+        "workingSha256": "d30409cfbdd7720c231d8e5534f56d60be9d9ab11b806ab78fc261371bdb3836",
+        "headBlob": "e784e65b7283eb02e935d9b697fcc67c5cdd13c3",
+        "mainBlob": "e784e65b7283eb02e935d9b697fcc67c5cdd13c3",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/plugins/chat/equivalence/resend-variant.json",
+        "workingSha256": "aec5f2f2a354e9631b5bf32da35ed32aa0df35205924661e85baa3131dad50da",
+        "headBlob": "9820ac63e4d9e2e62695a74f66b878a74bb6d07c",
+        "mainBlob": "9820ac63e4d9e2e62695a74f66b878a74bb6d07c",
+        "recordedInputSha256": [
+          "aec5f2f2a354e9631b5bf32da35ed32aa0df35205924661e85baa3131dad50da"
+        ]
+      },
+      {
+        "file": "host/plugins/chat/equivalence/session-misc.json",
+        "workingSha256": "a50ba99cf536279625e1e61c71192d0fe1ecbaac09669ffdd9f4e24c49bfba62",
+        "headBlob": "7847e9b553180ab38844b6768712d1bdff0b4c00",
+        "mainBlob": "7847e9b553180ab38844b6768712d1bdff0b4c00",
+        "recordedInputSha256": [
+          "a50ba99cf536279625e1e61c71192d0fe1ecbaac09669ffdd9f4e24c49bfba62"
+        ]
+      },
+      {
+        "file": "host/plugins/chat/equivalence/sessions.json",
+        "workingSha256": "c417c72f09c78fb5341435bba0be63a957ebeb633e87ae0df91efad209b0ee1a",
+        "headBlob": "9f5e48fea99590bc2e83bdb5d691741715b24066",
+        "mainBlob": "9f5e48fea99590bc2e83bdb5d691741715b24066",
+        "recordedInputSha256": [
+          "c417c72f09c78fb5341435bba0be63a957ebeb633e87ae0df91efad209b0ee1a"
+        ]
+      },
+      {
+        "file": "host/plugins/chat/equivalence/snapshot-export.json",
+        "workingSha256": "2f3f854444104e352a9101dd573c574b8d3a8a5c45c137507703bf8c4ec3afb0",
+        "headBlob": "18329608671e7703655837023b5947929099263d",
+        "mainBlob": "18329608671e7703655837023b5947929099263d",
+        "recordedInputSha256": [
+          "2f3f854444104e352a9101dd573c574b8d3a8a5c45c137507703bf8c4ec3afb0"
+        ]
+      },
+      {
+        "file": "host/plugins/chat/equivalence/tags.json",
+        "workingSha256": "c92cfb5a93ae647c96b1a09d4100a610bb1a74cc807089b7606792bc477226bb",
+        "headBlob": "ff7689c30617a83288154d398092722e47786ee0",
+        "mainBlob": "ff7689c30617a83288154d398092722e47786ee0",
+        "recordedInputSha256": [
+          "c92cfb5a93ae647c96b1a09d4100a610bb1a74cc807089b7606792bc477226bb"
+        ]
+      },
+      {
+        "file": "host/plugins/chat/equivalence/workspace-errors.json",
+        "workingSha256": "9506a604855a7f39ecc409a8f59f912179fcd1afd18d53858c42f5a0e1e604c4",
+        "headBlob": "5f7312f5f519e4078e871282fe356dea0a02ba96",
+        "mainBlob": "5f7312f5f519e4078e871282fe356dea0a02ba96",
+        "recordedInputSha256": [
+          "9506a604855a7f39ecc409a8f59f912179fcd1afd18d53858c42f5a0e1e604c4"
+        ]
+      },
+      {
+        "file": "host/plugins/chatanki/equivalence/harness.sidecar.json",
+        "workingSha256": "71567a6345f19250fae23caa2c4f7900daf8f917c8c050dbba66b05f4e26b2f3",
+        "headBlob": "46dd1b534f2e777bca2a71a1f7a7912fa8fb5b4b",
+        "mainBlob": "46dd1b534f2e777bca2a71a1f7a7912fa8fb5b4b",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/plugins/chatanki/equivalence/library-cards.json",
+        "workingSha256": "521868aee64a1fb953798db520c793b4116fb2f9c89a3edb1e46e54361bb1554",
+        "headBlob": "b61baccac7f19d28caedaba632d4e7afc5801bd8",
+        "mainBlob": "b61baccac7f19d28caedaba632d4e7afc5801bd8",
+        "recordedInputSha256": [
+          "521868aee64a1fb953798db520c793b4116fb2f9c89a3edb1e46e54361bb1554"
+        ]
+      },
+      {
+        "file": "host/plugins/chatanki/equivalence/templates.json",
+        "workingSha256": "c2eb35b6be6d7f4e8aa22d37ab1b9b10fdfa9ec7a053639d400fa348a53baee8",
+        "headBlob": "16412ba562c3abde0c7df0824770a0decf5b5626",
+        "mainBlob": "16412ba562c3abde0c7df0824770a0decf5b5626",
+        "recordedInputSha256": [
+          "c2eb35b6be6d7f4e8aa22d37ab1b9b10fdfa9ec7a053639d400fa348a53baee8"
+        ]
+      },
+      {
+        "file": "host/plugins/integration/equivalence/pending-seed/temp-sessions.seeded.json",
+        "workingSha256": "f7da0036a385269c45afb48e0f2e9d36369a308fa9faba6cb5dd0ac19a1bcda3",
+        "headBlob": "d68f12cc561fd625a16c3e8947998710ad5fa4d3",
+        "mainBlob": "d68f12cc561fd625a16c3e8947998710ad5fa4d3",
+        "recordedInputSha256": [
+          "f7da0036a385269c45afb48e0f2e9d36369a308fa9faba6cb5dd0ac19a1bcda3"
+        ]
+      },
+      {
+        "file": "host/plugins/integration/equivalence/temp-sessions.json",
+        "workingSha256": "717a11f12fc91c51b478d71b4a2e3cfbac5d3e3cf3ed062ad3a5458fa8374164",
+        "headBlob": "eae70cee4a5d222a7fb61bae8863130fda1ab54b",
+        "mainBlob": "eae70cee4a5d222a7fb61bae8863130fda1ab54b",
+        "recordedInputSha256": [
+          "717a11f12fc91c51b478d71b4a2e3cfbac5d3e3cf3ed062ad3a5458fa8374164"
+        ]
+      },
+      {
+        "file": "host/plugins/llm-providers/equivalence/codex-auth.json",
+        "workingSha256": "4600eb5698cc3664e9478b4fc51e6b3b59f2fa8e9409c88a43d80f720610ea2e",
+        "headBlob": "bb2f7c075ffe6d318e7ac322c3a9bef4b9cb513c",
+        "mainBlob": "bb2f7c075ffe6d318e7ac322c3a9bef4b9cb513c",
+        "recordedInputSha256": [
+          "4600eb5698cc3664e9478b4fc51e6b3b59f2fa8e9409c88a43d80f720610ea2e"
+        ]
+      },
+      {
+        "file": "host/plugins/llm/equivalence/config-store.json",
+        "workingSha256": "982ad595c2b204021fbae54ab8d95c0cfab58c3d541e3d58160f166031b4ca00",
+        "headBlob": "680cc456641cfc9dcb75f051678b6b082e569938",
+        "mainBlob": "680cc456641cfc9dcb75f051678b6b082e569938",
+        "recordedInputSha256": [
+          "982ad595c2b204021fbae54ab8d95c0cfab58c3d541e3d58160f166031b4ca00"
+        ]
+      },
+      {
+        "file": "host/plugins/llm/equivalence/extended.json",
+        "workingSha256": "be962b50c23cc225096491d310b97933362f26b5887c0d40ab49dd5c56e01980",
+        "headBlob": "b675026039cd426f5d1e5f8c99a078a228867556",
+        "mainBlob": "b675026039cd426f5d1e5f8c99a078a228867556",
+        "recordedInputSha256": [
+          "be962b50c23cc225096491d310b97933362f26b5887c0d40ab49dd5c56e01980"
+        ]
+      },
+      {
+        "file": "host/plugins/llm/equivalence/llm-calls.json",
+        "workingSha256": "1c507401362bc4bfac94b775670fbee46f11481dc21f7bca817efa036f8293ed",
+        "headBlob": "b0297189d4fe546ae4d3c3c7c56f3a60c6a67ef6",
+        "mainBlob": "b0297189d4fe546ae4d3c3c7c56f3a60c6a67ef6",
+        "recordedInputSha256": [
+          "1c507401362bc4bfac94b775670fbee46f11481dc21f7bca817efa036f8293ed"
+        ]
+      },
+      {
+        "file": "host/plugins/llm/equivalence/translation-stream.json",
+        "workingSha256": "81c542a2726b0b12759df11d29b4608f61dae70e8278199ef0710e586a0cd0f4",
+        "headBlob": "f213b0d5741ce733ab180820c7b0abebd49ed74f",
+        "mainBlob": "f213b0d5741ce733ab180820c7b0abebd49ed74f",
+        "recordedInputSha256": [
+          "81c542a2726b0b12759df11d29b4608f61dae70e8278199ef0710e586a0cd0f4"
+        ]
+      },
+      {
+        "file": "host/plugins/mcp/equivalence/g3w-mcp-1.json",
+        "workingSha256": "5ac96c453d971afdab175208dc5fc6ffa4fa7a4436f35fef3a86c7af9b45e7bd",
+        "headBlob": "ef3dd220e9c5e7499351d24af3c79bb2857228f5",
+        "mainBlob": "ef3dd220e9c5e7499351d24af3c79bb2857228f5",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/plugins/mcp/equivalence/mcp-commands.json",
+        "workingSha256": "3940eb29225f476e1920d6e99eb6b84894cc139187a8bbe1e907d87a7aa869c7",
+        "headBlob": "da9f4fd8acd1865b2a345f48d9e693f64241ff1c",
+        "mainBlob": "da9f4fd8acd1865b2a345f48d9e693f64241ff1c",
+        "recordedInputSha256": [
+          "3940eb29225f476e1920d6e99eb6b84894cc139187a8bbe1e907d87a7aa869c7"
+        ]
+      },
+      {
+        "file": "host/plugins/mcp/equivalence/pending-mock/mcp-oauth-websocket.json",
+        "workingSha256": "a5d16d0ef6ea99fc6f1c1992eff2a1ffcca215b0f305cd372f79231aca90df7e",
+        "headBlob": "6d6b6d431f2a19bcd261ea2f16d656b41519232a",
+        "mainBlob": "6d6b6d431f2a19bcd261ea2f16d656b41519232a",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/plugins/media/equivalence/bilibili-offline.json",
+        "workingSha256": "68c165481e163c144dbe5921e3da2f4ad86deb7732a32976ae8740495a2e56d9",
+        "headBlob": "8f78a6ae4ddf687e97a3bc3d98034d00de6f2f5f",
+        "mainBlob": "8f78a6ae4ddf687e97a3bc3d98034d00de6f2f5f",
+        "recordedInputSha256": [
+          "68c165481e163c144dbe5921e3da2f4ad86deb7732a32976ae8740495a2e56d9"
+        ]
+      },
+      {
+        "file": "host/plugins/media/equivalence/docs-boundaries.json",
+        "workingSha256": "1c89b07e4912b8327e9dbc1ee6ee7776d80d5d015bf8c55d8d34159cbe06000a",
+        "headBlob": "dcfee745be08fea8f67df6bb12644960e40c38e3",
+        "mainBlob": "dcfee745be08fea8f67df6bb12644960e40c38e3",
+        "recordedInputSha256": [
+          "1c89b07e4912b8327e9dbc1ee6ee7776d80d5d015bf8c55d8d34159cbe06000a"
+        ]
+      },
+      {
+        "file": "host/plugins/media/equivalence/documents-parse.json",
+        "workingSha256": "0e7321cb16a64896ce38964e86519af7bceab3d6be91f944f2a243e347e045fe",
+        "headBlob": "e99c738e428e485b19d302b118282d7d64552839",
+        "mainBlob": "e99c738e428e485b19d302b118282d7d64552839",
+        "recordedInputSha256": [
+          "0e7321cb16a64896ce38964e86519af7bceab3d6be91f944f2a243e347e045fe"
+        ]
+      },
+      {
+        "file": "host/plugins/media/equivalence/g3w-media-1.json",
+        "workingSha256": "f08ffb89dd2f77bf082ef27c6c94325f5342e100d115e02d83e96237b57e9884",
+        "headBlob": "dbcb033a22cba854ed52d7d39f4080d7c00ce662",
+        "mainBlob": "dbcb033a22cba854ed52d7d39f4080d7c00ce662",
+        "recordedInputSha256": [
+          "f08ffb89dd2f77bf082ef27c6c94325f5342e100d115e02d83e96237b57e9884"
+        ]
+      },
+      {
+        "file": "host/plugins/media/equivalence/g3w-media-2.json",
+        "workingSha256": "fd2af37d8cdc2d056f817f08a4c7426b625507791a6a42f781a62b7f1607c4f8",
+        "headBlob": "cdac8627569186b62a10ac860e216773eebc1f19",
+        "mainBlob": "cdac8627569186b62a10ac860e216773eebc1f19",
+        "recordedInputSha256": [
+          "fd2af37d8cdc2d056f817f08a4c7426b625507791a6a42f781a62b7f1607c4f8"
+        ]
+      },
+      {
+        "file": "host/plugins/media/equivalence/g3w-media-3.json",
+        "workingSha256": "3b6b15acb843efd9bab95f8b61f67fb9534e046220933b22f0936948eea97494",
+        "headBlob": "a0f1c924228f9be816b399506a12ed8d8053af34",
+        "mainBlob": "a0f1c924228f9be816b399506a12ed8d8053af34",
+        "recordedInputSha256": [
+          "3b6b15acb843efd9bab95f8b61f67fb9534e046220933b22f0936948eea97494"
+        ]
+      },
+      {
+        "file": "host/plugins/media/equivalence/handout-llm.json",
+        "workingSha256": "84947fc52faa4d646d648ff150c31f2e1553c68ed2460ff9cc79cf21a71b1e9c",
+        "headBlob": "cba3ab3a789b62a36fcc7b930b34297d2a75b361",
+        "mainBlob": "cba3ab3a789b62a36fcc7b930b34297d2a75b361",
+        "recordedInputSha256": [
+          "84947fc52faa4d646d648ff150c31f2e1553c68ed2460ff9cc79cf21a71b1e9c"
+        ]
+      },
+      {
+        "file": "host/plugins/media/equivalence/harness.sidecar.json",
+        "workingSha256": "41fea7eff5556cb693f98a5cbc39b61ea8e4ddcb556f25f3f6ac3d87bb6d0c0a",
+        "headBlob": "c698ea31c2388c973188c54b2057e5f63be632da",
+        "mainBlob": "c698ea31c2388c973188c54b2057e5f63be632da",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/plugins/media/equivalence/media-player-ledger.json",
+        "workingSha256": "c14af456244b8cecf6d8bad1cb2583dd2447ee64a0450fc350a2be714383ad26",
+        "headBlob": "81f984002325d7412d5ecf7615cc9b1a34ea8a85",
+        "mainBlob": "81f984002325d7412d5ecf7615cc9b1a34ea8a85",
+        "recordedInputSha256": [
+          "c14af456244b8cecf6d8bad1cb2583dd2447ee64a0450fc350a2be714383ad26"
+        ]
+      },
+      {
+        "file": "host/plugins/media/equivalence/media-transcripts.json",
+        "workingSha256": "244f045cf4574ae88f9f069a72e0803caacac9cfa4eb84c1a7d3b0e022fb25f1",
+        "headBlob": "8640f99539362d8316c075b568079e0888891ad9",
+        "mainBlob": "8640f99539362d8316c075b568079e0888891ad9",
+        "recordedInputSha256": [
+          "244f045cf4574ae88f9f069a72e0803caacac9cfa4eb84c1a7d3b0e022fb25f1"
+        ]
+      },
+      {
+        "file": "host/plugins/media/equivalence/ocr-config.json",
+        "workingSha256": "0a4d0ab3eab8bdfd7ce27a991502f196e514480d97e1324de6783429ea80cc67",
+        "headBlob": "de73bfc97abed47eb5c78d3dfcb5e6986ccb0b2f",
+        "mainBlob": "de73bfc97abed47eb5c78d3dfcb5e6986ccb0b2f",
+        "recordedInputSha256": [
+          "0a4d0ab3eab8bdfd7ce27a991502f196e514480d97e1324de6783429ea80cc67"
+        ]
+      },
+      {
+        "file": "host/plugins/media/equivalence/ocr-handout-heic.json",
+        "workingSha256": "96c1dc8a0736a3918caec40c812c8606b8f570cf20198185e1aa142cd4040cfb",
+        "headBlob": "93873bc3605264b142ec643559bdef1d93627e56",
+        "mainBlob": "93873bc3605264b142ec643559bdef1d93627e56",
+        "recordedInputSha256": [
+          "96c1dc8a0736a3918caec40c812c8606b8f570cf20198185e1aa142cd4040cfb"
+        ]
+      },
+      {
+        "file": "host/plugins/media/equivalence/pending-network/bilibili-live.json",
+        "workingSha256": "db56962f8d126dbe6df7d741d91a4cc1378426d609d5bc4b8b11cc6b10aec40d",
+        "headBlob": "99f8adcade321933d2b5cee86af01014bd41e0d2",
+        "mainBlob": "99f8adcade321933d2b5cee86af01014bd41e0d2",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/plugins/media/equivalence/textbooks-files.json",
+        "workingSha256": "18109f1ecb87aa7482cb150d7f5112128412e09b3e482d5c0303a06f3e42d7ec",
+        "headBlob": "3f5111034d7cdb9ba29bf5ef5b8f8c0df92149f8",
+        "mainBlob": "3f5111034d7cdb9ba29bf5ef5b8f8c0df92149f8",
+        "recordedInputSha256": [
+          "18109f1ecb87aa7482cb150d7f5112128412e09b3e482d5c0303a06f3e42d7ec"
+        ]
+      },
+      {
+        "file": "host/plugins/media/equivalence/tts-pdfium.json",
+        "workingSha256": "825ef489b772cf33603556d055a3ae47f6667a6f8df0652af92f42d2c976615a",
+        "headBlob": "7f8164e85c1528ec51b676d7b17cf09587d9e33e",
+        "mainBlob": "7f8164e85c1528ec51b676d7b17cf09587d9e33e",
+        "recordedInputSha256": [
+          "825ef489b772cf33603556d055a3ae47f6667a6f8df0652af92f42d2c976615a"
+        ]
+      },
+      {
+        "file": "host/plugins/media/equivalence/voice-input.json",
+        "workingSha256": "25f393369f8dc2036e2a37eb713cbaca097f8efe9b3010eefb76b824292b412c",
+        "headBlob": "980462da3d3a8e2a61fd61556d3e0d7543223057",
+        "mainBlob": "980462da3d3a8e2a61fd61556d3e0d7543223057",
+        "recordedInputSha256": [
+          "25f393369f8dc2036e2a37eb713cbaca097f8efe9b3010eefb76b824292b412c"
+        ]
+      },
+      {
+        "file": "host/plugins/memory/equivalence/memory-batch-export-search.json",
+        "workingSha256": "90d0a7b1dbd8583073dffba5bff61a0a0377f27ba9d065c0028bba1a990d4353",
+        "headBlob": "b735de6e834344dea033da2e70212191cbb8b48d",
+        "mainBlob": "b735de6e834344dea033da2e70212191cbb8b48d",
+        "recordedInputSha256": [
+          "90d0a7b1dbd8583073dffba5bff61a0a0377f27ba9d065c0028bba1a990d4353"
+        ]
+      },
+      {
+        "file": "host/plugins/memory/equivalence/memory-config.json",
+        "workingSha256": "6530a21002396bbf6549503ed8c66f45f14e947b16fa859ed9e59efa4de34592",
+        "headBlob": "4a32c1f32c1d4d7f96e0357fb2bad1671ceb0f32",
+        "mainBlob": "4a32c1f32c1d4d7f96e0357fb2bad1671ceb0f32",
+        "recordedInputSha256": [
+          "6530a21002396bbf6549503ed8c66f45f14e947b16fa859ed9e59efa4de34592"
+        ]
+      },
+      {
+        "file": "host/plugins/memory/equivalence/memory-crud.json",
+        "workingSha256": "ab290ce281824964a7a9ec0813b808a83cef48f36f3bd2a1671851dcdf9a70c4",
+        "headBlob": "d15a290a8db98f2190529d570d38852c80e92546",
+        "mainBlob": "d15a290a8db98f2190529d570d38852c80e92546",
+        "recordedInputSha256": [
+          "ab290ce281824964a7a9ec0813b808a83cef48f36f3bd2a1671851dcdf9a70c4"
+        ]
+      },
+      {
+        "file": "host/plugins/memory/equivalence/memory-relations-tags.json",
+        "workingSha256": "cd32d89b94dfed9bf2a538537f9c373eb52dd39700c80f573667063c1f139b1b",
+        "headBlob": "848391db030edaa3643b7aec0d132543253fd9cf",
+        "mainBlob": "848391db030edaa3643b7aec0d132543253fd9cf",
+        "recordedInputSha256": [
+          "cd32d89b94dfed9bf2a538537f9c373eb52dd39700c80f573667063c1f139b1b"
+        ]
+      },
+      {
+        "file": "host/plugins/memory/equivalence/memory-smart-write.json",
+        "workingSha256": "971edf695e1a9c36b93b52115201b08d2897544f4cba873c973c81af9cd81c9f",
+        "headBlob": "86960d030440c6449481d290254967ac23448e9e",
+        "mainBlob": "86960d030440c6449481d290254967ac23448e9e",
+        "recordedInputSha256": [
+          "971edf695e1a9c36b93b52115201b08d2897544f4cba873c973c81af9cd81c9f"
+        ]
+      },
+      {
+        "file": "host/plugins/memory/equivalence/quick-assistant.json",
+        "workingSha256": "45169006c7c16af62a9c03d37255523d473582535a451f9c96235566478c5f5c",
+        "headBlob": "5be7ae8e4c726a9586aebfc54dff9ed025023a68",
+        "mainBlob": "5be7ae8e4c726a9586aebfc54dff9ed025023a68",
+        "recordedInputSha256": [
+          "45169006c7c16af62a9c03d37255523d473582535a451f9c96235566478c5f5c"
+        ]
+      },
+      {
+        "file": "host/plugins/notes/equivalence/assets.json",
+        "workingSha256": "c2ceb428e2a8d219288919c4a6886a216ccafca8ffd19b0a3a4ea947034039d9",
+        "headBlob": "52d178178fd92c82626c3effe3d1fe8d85eeb882",
+        "mainBlob": "52d178178fd92c82626c3effe3d1fe8d85eeb882",
+        "recordedInputSha256": [
+          "c2ceb428e2a8d219288919c4a6886a216ccafca8ffd19b0a3a4ea947034039d9"
+        ]
+      },
+      {
+        "file": "host/plugins/notes/equivalence/canvas.json",
+        "workingSha256": "61ecf13a6f0acbb91d46f39d8bf20a9e23ae4b84839144b89866c77e287e5818",
+        "headBlob": "53a03f2ebc20b6adbf8f05422dac083d6d4d0d80",
+        "mainBlob": "53a03f2ebc20b6adbf8f05422dac083d6d4d0d80",
+        "recordedInputSha256": [
+          "61ecf13a6f0acbb91d46f39d8bf20a9e23ae4b84839144b89866c77e287e5818"
+        ]
+      },
+      {
+        "file": "host/plugins/notes/equivalence/format_transfer.json",
+        "workingSha256": "7e5272627627009bc90e607786a043ae64573640ddbccf3ded415d78fb70d187",
+        "headBlob": "7d03a608f370d5fc726f98868a6a69e87e5aafe7",
+        "mainBlob": "7d03a608f370d5fc726f98868a6a69e87e5aafe7",
+        "recordedInputSha256": [
+          "7e5272627627009bc90e607786a043ae64573640ddbccf3ded415d78fb70d187"
+        ]
+      },
+      {
+        "file": "host/plugins/notes/equivalence/history.json",
+        "workingSha256": "abf5881f9e8e06a889c4d9ae64a99f0b7185feb6bf9394a4a22a10b823c14a99",
+        "headBlob": "63aa7a019a26436ea4f79f4ccfcad39e039bc1ad",
+        "mainBlob": "63aa7a019a26436ea4f79f4ccfcad39e039bc1ad",
+        "recordedInputSha256": [
+          "abf5881f9e8e06a889c4d9ae64a99f0b7185feb6bf9394a4a22a10b823c14a99"
+        ]
+      },
+      {
+        "file": "host/plugins/notes/equivalence/import_export.json",
+        "workingSha256": "184bbf5f1b32f2e29cd6afef685c56eb35cdf07bf7e95b32a7a73b5c5ad6f910",
+        "headBlob": "ff0e23d3d362df4a52f13f2fbbd7c14c7ff856a6",
+        "mainBlob": "ff0e23d3d362df4a52f13f2fbbd7c14c7ff856a6",
+        "recordedInputSha256": [
+          "184bbf5f1b32f2e29cd6afef685c56eb35cdf07bf7e95b32a7a73b5c5ad6f910"
+        ]
+      },
+      {
+        "file": "host/plugins/notes/equivalence/lease.json",
+        "workingSha256": "38b2361b36158bb3c8821d884c2dc445579498ccd1aaaf448abe9d6fca723a09",
+        "headBlob": "f5b88481a9e6d0b40df2d92c0af224f29974729f",
+        "mainBlob": "f5b88481a9e6d0b40df2d92c0af224f29974729f",
+        "recordedInputSha256": [
+          "38b2361b36158bb3c8821d884c2dc445579498ccd1aaaf448abe9d6fca723a09"
+        ]
+      },
+      {
+        "file": "host/plugins/notes/equivalence/search_links_prefs.json",
+        "workingSha256": "688e74548f6344f7220c85e87098fc7148709dc67da1c8ff1c4297ccb957a319",
+        "headBlob": "97d756b79214c5064e359718777b46b23359f408",
+        "mainBlob": "97d756b79214c5064e359718777b46b23359f408",
+        "recordedInputSha256": [
+          "688e74548f6344f7220c85e87098fc7148709dc67da1c8ff1c4297ccb957a319"
+        ]
+      },
+      {
+        "file": "host/plugins/notes/equivalence/state_relations.json",
+        "workingSha256": "1ae7d9cacbae144216ae2b9110a993aa8514540c5020b29aebc6f4dcda5fbbac",
+        "headBlob": "0ce786fec5fd0c25a30a8c03775c02a3488f2ebd",
+        "mainBlob": "0ce786fec5fd0c25a30a8c03775c02a3488f2ebd",
+        "recordedInputSha256": [
+          "1ae7d9cacbae144216ae2b9110a993aa8514540c5020b29aebc6f4dcda5fbbac"
+        ]
+      },
+      {
+        "file": "host/plugins/notes/equivalence/trash.json",
+        "workingSha256": "93cc9b9713e3a739c821fd537e995d147477f875a955c3839be128353d2ab3f1",
+        "headBlob": "0734377bc8c7ad4c4de26540101f5228c099e1ae",
+        "mainBlob": "0734377bc8c7ad4c4de26540101f5228c099e1ae",
+        "recordedInputSha256": [
+          "93cc9b9713e3a739c821fd537e995d147477f875a955c3839be128353d2ab3f1"
+        ]
+      },
+      {
+        "file": "host/plugins/qbank/equivalence/ai-grading.json",
+        "workingSha256": "27f22cb01121dafd63687cd11c54ce88df03ce6123542af0cd152306924ec639",
+        "headBlob": "ef8576c7868015125e327749e6aa197b4fa45083",
+        "mainBlob": "ef8576c7868015125e327749e6aa197b4fa45083",
+        "recordedInputSha256": [
+          "27f22cb01121dafd63687cd11c54ce88df03ce6123542af0cd152306924ec639"
+        ]
+      },
+      {
+        "file": "host/plugins/qbank/equivalence/answer-mastery.json",
+        "workingSha256": "72bfea58ca38ddcd330978af6de43b214b2eaf9a75c479aa0ed5138abc565f79",
+        "headBlob": "f51f39a88061eecebb82aa9e80e35cd2446d3868",
+        "mainBlob": "f51f39a88061eecebb82aa9e80e35cd2446d3868",
+        "recordedInputSha256": [
+          "72bfea58ca38ddcd330978af6de43b214b2eaf9a75c479aa0ed5138abc565f79"
+        ]
+      },
+      {
+        "file": "host/plugins/qbank/equivalence/g3-authoring-generation.json",
+        "workingSha256": "420e026eff04cd3ea6c68a9c069d89fad39493d6f2726d918182079422fbe351",
+        "headBlob": "da3c646c21d6943f2b911ecb744936e0f7faec7d",
+        "mainBlob": "da3c646c21d6943f2b911ecb744936e0f7faec7d",
+        "recordedInputSha256": [
+          "420e026eff04cd3ea6c68a9c069d89fad39493d6f2726d918182079422fbe351"
+        ]
+      },
+      {
+        "file": "host/plugins/qbank/equivalence/g3-import-export.json",
+        "workingSha256": "c606fecf1f1296cd2d69128a87fae4fb243cebc528473c4a0fface9bfb0061c8",
+        "headBlob": "5d3f53f4df121df6beea94749c630daa9550cef6",
+        "mainBlob": "5d3f53f4df121df6beea94749c630daa9550cef6",
+        "recordedInputSha256": [
+          "c606fecf1f1296cd2d69128a87fae4fb243cebc528473c4a0fface9bfb0061c8"
+        ]
+      },
+      {
+        "file": "host/plugins/qbank/equivalence/g3-paper-exam.json",
+        "workingSha256": "8d23d60ba3079896e00dabc6ec93f09c1001b62a9ca28aa40c3023b8f4c04b30",
+        "headBlob": "446bcf09c06110013e6011b232a64e5f864103aa",
+        "mainBlob": "446bcf09c06110013e6011b232a64e5f864103aa",
+        "recordedInputSha256": [
+          "8d23d60ba3079896e00dabc6ec93f09c1001b62a9ca28aa40c3023b8f4c04b30"
+        ]
+      },
+      {
+        "file": "host/plugins/qbank/equivalence/g3-practice.json",
+        "workingSha256": "c8d8b770533beb7ed6db2a3e55d7916a5c35593caf8a275568f23075e2c12ec5",
+        "headBlob": "8c53531e7b623edf790a8c8083f466aee298a1e9",
+        "mainBlob": "8c53531e7b623edf790a8c8083f466aee298a1e9",
+        "recordedInputSha256": [
+          "c8d8b770533beb7ed6db2a3e55d7916a5c35593caf8a275568f23075e2c12ec5"
+        ]
+      },
+      {
+        "file": "host/plugins/qbank/equivalence/g3-structure.json",
+        "workingSha256": "5f8b24d7260c3fbb08fdc760c6482fe7ee371f76b418feb882d412a3037ef4aa",
+        "headBlob": "0c9760417b74d43117179db3e30bcec19d2b4378",
+        "mainBlob": "0c9760417b74d43117179db3e30bcec19d2b4378",
+        "recordedInputSha256": [
+          "5f8b24d7260c3fbb08fdc760c6482fe7ee371f76b418feb882d412a3037ef4aa"
+        ]
+      },
+      {
+        "file": "host/plugins/qbank/equivalence/g3w-qbank-01.json",
+        "workingSha256": "39eedd2fc040f9b55bc704febb2bfb96c11e4d2a8075b4d67ba7efe5c6d24587",
+        "headBlob": "f260ca65a09e45a5e9719f8f259c11a6d212a9ee",
+        "mainBlob": "f260ca65a09e45a5e9719f8f259c11a6d212a9ee",
+        "recordedInputSha256": [
+          "39eedd2fc040f9b55bc704febb2bfb96c11e4d2a8075b4d67ba7efe5c6d24587"
+        ]
+      },
+      {
+        "file": "host/plugins/qbank/equivalence/g3w-qbank-02.json",
+        "workingSha256": "526d507c1abd3dcacda360bad2af20b7940a21e3fe04bac618145a794d62c01d",
+        "headBlob": "995cbfe04fefcf259d485ab4f4c6963186023605",
+        "mainBlob": "995cbfe04fefcf259d485ab4f4c6963186023605",
+        "recordedInputSha256": [
+          "526d507c1abd3dcacda360bad2af20b7940a21e3fe04bac618145a794d62c01d"
+        ]
+      },
+      {
+        "file": "host/plugins/qbank/equivalence/g3w-qbank-03.json",
+        "workingSha256": "376b84c545fc9cb3c6afee261dbdbe080501261e8c0f088bbe5a3ecef4fd0184",
+        "headBlob": "0acc5ca2893eb4f112248d62f3b93336d4a7d5ff",
+        "mainBlob": "0acc5ca2893eb4f112248d62f3b93336d4a7d5ff",
+        "recordedInputSha256": [
+          "376b84c545fc9cb3c6afee261dbdbe080501261e8c0f088bbe5a3ecef4fd0184"
+        ]
+      },
+      {
+        "file": "host/plugins/qbank/equivalence/g3w-qbank-04.json",
+        "workingSha256": "6a490cbe675b34f69e7986c5b1e7d37ffbd3871790e8ae03ecd61fb5e60231a6",
+        "headBlob": "98e6d01e8c29d4c78cc31ec45ec4512936d803c5",
+        "mainBlob": "98e6d01e8c29d4c78cc31ec45ec4512936d803c5",
+        "recordedInputSha256": [
+          "6a490cbe675b34f69e7986c5b1e7d37ffbd3871790e8ae03ecd61fb5e60231a6"
+        ]
+      },
+      {
+        "file": "host/plugins/qbank/equivalence/pending-provider/ai-grading-scripted.json",
+        "workingSha256": "3cabc0175d551e6dea38bf7060c539b6a0a5817fd09d0336c2e941f40c225bb8",
+        "headBlob": "eb6e6a490d9e44ba97f075de8fc36c35534302a8",
+        "mainBlob": "eb6e6a490d9e44ba97f075de8fc36c35534302a8",
+        "recordedInputSha256": [
+          "3cabc0175d551e6dea38bf7060c539b6a0a5817fd09d0336c2e941f40c225bb8"
+        ]
+      },
+      {
+        "file": "host/plugins/qbank/equivalence/pending-provider/ai-grading-scripted.provider.json",
+        "workingSha256": "5d36a749f16cc6a3c5617fdaa05499ed9312484c546fe3d4036f3fd5ff16b951",
+        "headBlob": "b6844097d7f874648e915a1eb1f0039a1a45b534",
+        "mainBlob": "b6844097d7f874648e915a1eb1f0039a1a45b534",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/plugins/qbank/equivalence/pending-provider/g3-authoring-generation-llm.json",
+        "workingSha256": "548e95c687ca6dacf28f8cef86a62a092d52f09d2e3a4f53e43677a5d370873b",
+        "headBlob": "ff067171338fb5c1f89e4f3931bc687dbdc905e1",
+        "mainBlob": "ff067171338fb5c1f89e4f3931bc687dbdc905e1",
+        "recordedInputSha256": [
+          "548e95c687ca6dacf28f8cef86a62a092d52f09d2e3a4f53e43677a5d370873b"
+        ]
+      },
+      {
+        "file": "host/plugins/qbank/equivalence/pending-provider/g3-paper-exam-pending.json",
+        "workingSha256": "e23bde50ec679cc52a3d4d8f949bd0bc997e09870bd288549453785cede7b9c9",
+        "headBlob": "f40feec2e8c130778d026483c5742f0a80ec73a1",
+        "mainBlob": "f40feec2e8c130778d026483c5742f0a80ec73a1",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/plugins/qbank/equivalence/pending-provider/g3-practice-llm.json",
+        "workingSha256": "5ca61e93030ce1eb0d8a1a3b5ba07af997b7bef432186e788161eb9b3b6b5702",
+        "headBlob": "c338a055b53924fd40e9142148ed3a5bb3181616",
+        "mainBlob": "c338a055b53924fd40e9142148ed3a5bb3181616",
+        "recordedInputSha256": [
+          "5ca61e93030ce1eb0d8a1a3b5ba07af997b7bef432186e788161eb9b3b6b5702"
+        ]
+      },
+      {
+        "file": "host/plugins/qbank/equivalence/questions-crud.json",
+        "workingSha256": "06de3c33d7000a49d4962599c306103e66fc6fa8f1b8bf95a48af9a77fcca40b",
+        "headBlob": "eb4c795c6fd4f4a5f14905ac05734e5886d3706a",
+        "mainBlob": "eb4c795c6fd4f4a5f14905ac05734e5886d3706a",
+        "recordedInputSha256": [
+          "06de3c33d7000a49d4962599c306103e66fc6fa8f1b8bf95a48af9a77fcca40b"
+        ]
+      },
+      {
+        "file": "host/plugins/qbank/equivalence/search-fts.json",
+        "workingSha256": "173493bc97d2448237d0f6a2c1f80c7f323c88ed6c6a1d34c322ceecf87b03d4",
+        "headBlob": "5a1d764d4a987bbd757906dd89b7702f39aa0ab0",
+        "mainBlob": "5a1d764d4a987bbd757906dd89b7702f39aa0ab0",
+        "recordedInputSha256": [
+          "173493bc97d2448237d0f6a2c1f80c7f323c88ed6c6a1d34c322ceecf87b03d4"
+        ]
+      },
+      {
+        "file": "host/plugins/qbank/equivalence/stats-time.json",
+        "workingSha256": "fe4e712985c299ba1b8d2c17671eac1fc80253ab2bde06d184a4599c09dbe44b",
+        "headBlob": "d55a3d4fa8fa6e8f81ab406efd07a9bb68e8cf56",
+        "mainBlob": "d55a3d4fa8fa6e8f81ab406efd07a9bb68e8cf56",
+        "recordedInputSha256": [
+          "fe4e712985c299ba1b8d2c17671eac1fc80253ab2bde06d184a4599c09dbe44b"
+        ]
+      },
+      {
+        "file": "host/plugins/review/equivalence/fsrs-config-and-reads.v0.json",
+        "workingSha256": "b24e837176a773a3852cfcb088c1adf8b7f7e685f1181e66e2cd85464cf9ecc5",
+        "headBlob": "54f3d8e0a8d43e30fe4e5b0d80d9a058613befd8",
+        "mainBlob": "54f3d8e0a8d43e30fe4e5b0d80d9a058613befd8",
+        "recordedInputSha256": [
+          "b24e837176a773a3852cfcb088c1adf8b7f7e685f1181e66e2cd85464cf9ecc5"
+        ]
+      },
+      {
+        "file": "host/plugins/review/equivalence/fsrs-lifecycle.v0.json",
+        "workingSha256": "64154a5a663bb076b1687c48ecd2998456fa5400f3b497e912804219e94dc0ce",
+        "headBlob": "e531358a7bc5f0ab076f6ff384b6a4bd74ed0490",
+        "mainBlob": "e531358a7bc5f0ab076f6ff384b6a4bd74ed0490",
+        "recordedInputSha256": [
+          "64154a5a663bb076b1687c48ecd2998456fa5400f3b497e912804219e94dc0ce"
+        ]
+      },
+      {
+        "file": "host/plugins/review/equivalence/fsrs-scheduling-and-mastery.v0.json",
+        "workingSha256": "f4311e30dc9b950d5affe5dd93d8fb579179ffdfe4cdb8d4660de8de2f4e3c4f",
+        "headBlob": "dd3abfaed9bd1858048f49973aabf205b34f7b85",
+        "mainBlob": "dd3abfaed9bd1858048f49973aabf205b34f7b85",
+        "recordedInputSha256": [
+          "f4311e30dc9b950d5affe5dd93d8fb579179ffdfe4cdb8d4660de8de2f4e3c4f"
+        ]
+      },
+      {
+        "file": "host/plugins/review/equivalence/g3w-review-01.json",
+        "workingSha256": "8b4e1c8d7d759fcf826553c13c726c7b25346e56e573758967cc072f42a1e1aa",
+        "headBlob": "b4c5641cdd857bcbb808b6d5559f372af427d104",
+        "mainBlob": "b4c5641cdd857bcbb808b6d5559f372af427d104",
+        "recordedInputSha256": [
+          "8b4e1c8d7d759fcf826553c13c726c7b25346e56e573758967cc072f42a1e1aa"
+        ]
+      },
+      {
+        "file": "host/plugins/review/equivalence/g3w-review-02.json",
+        "workingSha256": "aa6266948a5f090081ecb97c0c085e9645f019a01d8707e9d93cea126b8ecd09",
+        "headBlob": "917aa0e4fa8f0931911a776a00ca6d38a87372fa",
+        "mainBlob": "917aa0e4fa8f0931911a776a00ca6d38a87372fa",
+        "recordedInputSha256": [
+          "aa6266948a5f090081ecb97c0c085e9645f019a01d8707e9d93cea126b8ecd09"
+        ]
+      },
+      {
+        "file": "host/plugins/review/equivalence/g3w-review-03.json",
+        "workingSha256": "3a03d14f4b5326aaa942de3576867f8e5fc0aff1c2d166419d421c3441064fb4",
+        "headBlob": "47e344c1c676cea6da11beb6a0c8ce1e5e7f9c13",
+        "mainBlob": "47e344c1c676cea6da11beb6a0c8ce1e5e7f9c13",
+        "recordedInputSha256": [
+          "3a03d14f4b5326aaa942de3576867f8e5fc0aff1c2d166419d421c3441064fb4"
+        ]
+      },
+      {
+        "file": "host/plugins/review/equivalence/g3w-review-04.json",
+        "workingSha256": "1a0e88e55fd12677c63d1af42c0ccc083ee047123ece6d4e9a9807012201f567",
+        "headBlob": "0e6397bd58daa1f17b584717a6c3199679c93496",
+        "mainBlob": "0e6397bd58daa1f17b584717a6c3199679c93496",
+        "recordedInputSha256": [
+          "1a0e88e55fd12677c63d1af42c0ccc083ee047123ece6d4e9a9807012201f567"
+        ]
+      },
+      {
+        "file": "host/plugins/review/equivalence/pending-provider/wp229-essay-stream-scripted.json",
+        "workingSha256": "81a0a617f99f9783f53f63e63e2df8e871af5a84d22dbcd4955151438eac4ff6",
+        "headBlob": "90922ff8fb255ab00a1664f934d8074d9ca563ef",
+        "mainBlob": "90922ff8fb255ab00a1664f934d8074d9ca563ef",
+        "recordedInputSha256": [
+          "81a0a617f99f9783f53f63e63e2df8e871af5a84d22dbcd4955151438eac4ff6"
+        ]
+      },
+      {
+        "file": "host/plugins/review/equivalence/pending-provider/wp229-essay-stream-scripted.provider.json",
+        "workingSha256": "9d274820632e6e623945c18abb2e42c84bde296e9ac7b5c5862438daf9f39839",
+        "headBlob": "8cda2d1ae93860f479bfea5a32cadf1789fe973e",
+        "mainBlob": "8cda2d1ae93860f479bfea5a32cadf1789fe973e",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/plugins/review/equivalence/review-plan-aggregate.v0.json",
+        "workingSha256": "dc22de501163b8c2d699c2629cfa02a241f7abd4cf72f402b787b140bf422492",
+        "headBlob": "3b313166fbf1c23f5828db82142e3ece18946476",
+        "mainBlob": "3b313166fbf1c23f5828db82142e3ece18946476",
+        "recordedInputSha256": [
+          "dc22de501163b8c2d699c2629cfa02a241f7abd4cf72f402b787b140bf422492"
+        ]
+      },
+      {
+        "file": "host/plugins/review/equivalence/review-plan-lifecycle.v0.json",
+        "workingSha256": "2797b6ade17e288736863dde9766b62c3d4a13563d0dd6e8e0b180fbb1bd33cb",
+        "headBlob": "7180cba48cbdb54542aa7efdb6d08c5e5a548fd3",
+        "mainBlob": "7180cba48cbdb54542aa7efdb6d08c5e5a548fd3",
+        "recordedInputSha256": [
+          "2797b6ade17e288736863dde9766b62c3d4a13563d0dd6e8e0b180fbb1bd33cb"
+        ]
+      },
+      {
+        "file": "host/plugins/review/equivalence/wp229-essay-grading.v0.json",
+        "workingSha256": "28c8503c80868f1b2053128213e2ec54ff77db69c89309bc68cfc464fb6dbc67",
+        "headBlob": "782c7dc67aa552cf6683e15bcf6a8719118ce0f6",
+        "mainBlob": "782c7dc67aa552cf6683e15bcf6a8719118ce0f6",
+        "recordedInputSha256": [
+          "28c8503c80868f1b2053128213e2ec54ff77db69c89309bc68cfc464fb6dbc67"
+        ]
+      },
+      {
+        "file": "host/plugins/review/equivalence/wp229-insight.v0.json",
+        "workingSha256": "e87b6f033c503edb656ac61e96f4d61ff56a78ed759840d99813a70eb58bb08a",
+        "headBlob": "c78d72927c7b0194d6320b32cb135eb7012f5bf2",
+        "mainBlob": "c78d72927c7b0194d6320b32cb135eb7012f5bf2",
+        "recordedInputSha256": [
+          "e87b6f033c503edb656ac61e96f4d61ff56a78ed759840d99813a70eb58bb08a"
+        ]
+      },
+      {
+        "file": "host/plugins/review/equivalence/wp229-study-time-and-fsrs-bury-optimize.v0.json",
+        "workingSha256": "f6ddd732eb837b1fb88eb1f43d9521857a3e7aac2391f5c2365338dbeb08b4fd",
+        "headBlob": "3a99d5ef886b445dfab01a19ee2c1481af295131",
+        "mainBlob": "3a99d5ef886b445dfab01a19ee2c1481af295131",
+        "recordedInputSha256": [
+          "f6ddd732eb837b1fb88eb1f43d9521857a3e7aac2391f5c2365338dbeb08b4fd"
+        ]
+      },
+      {
+        "file": "host/plugins/sync-providers/equivalence/cloud-sync.scenarios.json",
+        "workingSha256": "9e89d701431da299613ef6fb89d26a29ae7d9af47c061d090bbfbcb4334ede73",
+        "headBlob": "8006456d3e5f5d35d345f7a526ddeefc19971a1c",
+        "mainBlob": "8006456d3e5f5d35d345f7a526ddeefc19971a1c",
+        "recordedInputSha256": [
+          "9e89d701431da299613ef6fb89d26a29ae7d9af47c061d090bbfbcb4334ede73"
+        ]
+      },
+      {
+        "file": "host/plugins/sync-providers/equivalence/cloud.scenarios.json",
+        "workingSha256": "c37fe64cf4e13e1c2fcfeb2672813e74eb52278a14fe9b6420900622c994e7d8",
+        "headBlob": "d39eeaba7ecbe707cc5b6926f2f69162382b2b0c",
+        "mainBlob": "d39eeaba7ecbe707cc5b6926f2f69162382b2b0c",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/plugins/sync-support/equivalence/sync-state.json",
+        "workingSha256": "485ea9c7fc97fed6a43fbbce0b649ae84a6667091b3dd1f0b9fac1e764a090ff",
+        "headBlob": "731a3bce40678bb7aa0205e570550d62e39f10d7",
+        "mainBlob": "731a3bce40678bb7aa0205e570550d62e39f10d7",
+        "recordedInputSha256": [
+          "485ea9c7fc97fed6a43fbbce0b649ae84a6667091b3dd1f0b9fac1e764a090ff"
+        ]
+      },
+      {
+        "file": "host/plugins/sync/equivalence/sync-cloud.json",
+        "workingSha256": "472c33bf490c689581d475786cd22377c402d445d709dfc84722f9c16deb4cbc",
+        "headBlob": "f2a07429104954f40ea9ebd4d20767156f62967e",
+        "mainBlob": "f2a07429104954f40ea9ebd4d20767156f62967e",
+        "recordedInputSha256": [
+          "472c33bf490c689581d475786cd22377c402d445d709dfc84722f9c16deb4cbc"
+        ]
+      },
+      {
+        "file": "host/plugins/sync/equivalence/sync-local.json",
+        "workingSha256": "49b25534350497e140c8b7d245e1dfef4c39e3d2f6ecd94dace8f4be7020e455",
+        "headBlob": "aa9a6f8a1adfeefc4ac1aa27edf156c795963195",
+        "mainBlob": "aa9a6f8a1adfeefc4ac1aa27edf156c795963195",
+        "recordedInputSha256": [
+          "49b25534350497e140c8b7d245e1dfef4c39e3d2f6ecd94dace8f4be7020e455"
+        ]
+      },
+      {
+        "file": "host/plugins/vfs-handlers/equivalence/filestream.json",
+        "workingSha256": "cfcd4c1e243e41e2a4097fa76f52bb6e5e2bf2066a93e6cf972ac1919a40e942",
+        "headBlob": "3a8b05e0a19c2abe4eba192bfd94e4d28c6cbb30",
+        "mainBlob": "3a8b05e0a19c2abe4eba192bfd94e4d28c6cbb30",
+        "recordedInputSha256": [
+          "cfcd4c1e243e41e2a4097fa76f52bb6e5e2bf2066a93e6cf972ac1919a40e942"
+        ]
+      },
+      {
+        "file": "host/plugins/vfs-handlers/equivalence/g3w-vfs-handlers-01.json",
+        "workingSha256": "6fe6d3657d7def4e41d5fa7df5975b9b17c458ddf738f5271d4e08b29cc435da",
+        "headBlob": "94a6740f75a7a8705cffe67879457c64f32b5db0",
+        "mainBlob": "94a6740f75a7a8705cffe67879457c64f32b5db0",
+        "recordedInputSha256": [
+          "6fe6d3657d7def4e41d5fa7df5975b9b17c458ddf738f5271d4e08b29cc435da"
+        ]
+      },
+      {
+        "file": "host/plugins/vfs-handlers/equivalence/g3w-vfs-handlers-02.json",
+        "workingSha256": "abf6f3c1735fb41f31197667e83680035b0b2b94cb2dab54740d7a97b1e450c6",
+        "headBlob": "06a6c4320cad154649e5b16b1aff8b2b21f16dc3",
+        "mainBlob": "06a6c4320cad154649e5b16b1aff8b2b21f16dc3",
+        "recordedInputSha256": [
+          "abf6f3c1735fb41f31197667e83680035b0b2b94cb2dab54740d7a97b1e450c6"
+        ]
+      },
+      {
+        "file": "host/plugins/vfs-handlers/equivalence/g3w-vfs-handlers-03.json",
+        "workingSha256": "9435fd14125907fd3a1a47c471f84a5e0dfed0a376ab36e9fe4ea138aaea2a04",
+        "headBlob": "797087588aa6ff16c5b34844e8ffcbaa94a80521",
+        "mainBlob": "797087588aa6ff16c5b34844e8ffcbaa94a80521",
+        "recordedInputSha256": [
+          "9435fd14125907fd3a1a47c471f84a5e0dfed0a376ab36e9fe4ea138aaea2a04"
+        ]
+      },
+      {
+        "file": "host/plugins/vfs-handlers/equivalence/g3w-vfs-handlers-04.json",
+        "workingSha256": "07ad35fe33fff0622f21c9de6faf9291db1345f7dff377ac5d2d5ebc119ba1e7",
+        "headBlob": "7789eeedc3ee3690bdc8e321fb1c18d5d2f49bd8",
+        "mainBlob": "7789eeedc3ee3690bdc8e321fb1c18d5d2f49bd8",
+        "recordedInputSha256": [
+          "07ad35fe33fff0622f21c9de6faf9291db1345f7dff377ac5d2d5ebc119ba1e7"
+        ]
+      },
+      {
+        "file": "host/plugins/vfs-handlers/equivalence/g3w-vfs-handlers-05.json",
+        "workingSha256": "0bcf768dcd2fa562b9d648fc8a7d56d322e5f53668906d588b7b583b4a6fe984",
+        "headBlob": "81385998dbe9e34dc144d7bb1721401e72071381",
+        "mainBlob": "81385998dbe9e34dc144d7bb1721401e72071381",
+        "recordedInputSha256": [
+          "0bcf768dcd2fa562b9d648fc8a7d56d322e5f53668906d588b7b583b4a6fe984"
+        ]
+      },
+      {
+        "file": "host/plugins/vfs-handlers/equivalence/g3w-vfs-handlers-06.json",
+        "workingSha256": "c7c1ed4e28eb37f1856d31b206895747a9673877787c5817c8e06e2cd24141ad",
+        "headBlob": "858008009ae323471ca1f23be1d68f99a595da38",
+        "mainBlob": "858008009ae323471ca1f23be1d68f99a595da38",
+        "recordedInputSha256": [
+          "c7c1ed4e28eb37f1856d31b206895747a9673877787c5817c8e06e2cd24141ad"
+        ]
+      },
+      {
+        "file": "host/plugins/vfs-handlers/equivalence/g3w-vfs-handlers-07.json",
+        "workingSha256": "7781d5244a7481f05d588d442c928d938fcfa00868d807aef97db4af3a98a1ad",
+        "headBlob": "84992dfdbea2bc3dff1ef31f88e011020e6d99e0",
+        "mainBlob": "84992dfdbea2bc3dff1ef31f88e011020e6d99e0",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/plugins/vfs-handlers/equivalence/pending-provider/wp224-download-paper.json",
+        "workingSha256": "105630809ac99e946344e3ac31551fbf8ff61ec59aa22460b62dca97ee726863",
+        "headBlob": "defb3257e95b23ef2909232c09323fe1ae243fda",
+        "mainBlob": "defb3257e95b23ef2909232c09323fe1ae243fda",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/plugins/vfs-handlers/equivalence/wp224-todo-items.json",
+        "workingSha256": "6f6005d7d53aaa48d580869e2bc6eb515c2b7a8ca521166a0c8ea7104b968ef5",
+        "headBlob": "297088f71d3d57a01128a15953724076d26105fc",
+        "mainBlob": "297088f71d3d57a01128a15953724076d26105fc",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/plugins/vfs-handlers/equivalence/wp224-todo-lists.json",
+        "workingSha256": "ce6b9a0df7ba26bec16803a4dc1166a11ba53f682696f2be743061112c50c153",
+        "headBlob": "917a04f6d2ece1f9bc9b622b71529e98c9d35212",
+        "mainBlob": "917a04f6d2ece1f9bc9b622b71529e98c9d35212",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/plugins/vfs-handlers/equivalence/wp224-todo-queries.json",
+        "workingSha256": "67aa82ec5c5e5fbc85e63d60fb48fe498bd90d5c094dfc12dfeb98faa74911e6",
+        "headBlob": "25e7057258aadb80d835b2d10886c0ab40a817c2",
+        "mainBlob": "25e7057258aadb80d835b2d10886c0ab40a817c2",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/plugins/vfs-handlers/equivalence/wp224-vfs-index.json",
+        "workingSha256": "0878d3c05edd35407417cd7e55cb22af04b3e7196c2b81f2ae936d6c267f36ef",
+        "headBlob": "1137c94aac0ec91d984f51d65b02659a2a96abfe",
+        "mainBlob": "1137c94aac0ec91d984f51d65b02659a2a96abfe",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/plugins/vfs-handlers/equivalence/wp224-vfs-resources.json",
+        "workingSha256": "ebea260a1174e1fc04653503dcc56cba368a2221d245a3357db3c6a7a867fc82",
+        "headBlob": "23c86fab92e749b0c18e95a6e7d4c7cebc4fdea8",
+        "mainBlob": "23c86fab92e749b0c18e95a6e7d4c7cebc4fdea8",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/plugins/vfs-index/equivalence/chat-optimize.json",
+        "workingSha256": "f05b97a7854aeafcb25dc23b93411861d1c3a52c9fe75a677fc3d7ad1686c1e1",
+        "headBlob": "e257187ca9a873d057f9ec83abc5fd48906110b0",
+        "mainBlob": "e257187ca9a873d057f9ec83abc5fd48906110b0",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/plugins/vfs-index/equivalence/wrapper-only.json",
+        "workingSha256": "88b1af6e9e52ccf85a2af7a37599ef269d94a31cf58ed34b8183c919ef7772b0",
+        "headBlob": "cfcc38f4458acd883c01c1e9f56dc4d629350452",
+        "mainBlob": "cfcc38f4458acd883c01c1e9f56dc4d629350452",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/plugins/vfs-repos/equivalence/files-attachments-pdf.json",
+        "workingSha256": "6c1d30c20ce5a7bcafe03feadbcb208d09693c3ac5417864d08b76acebbca8d6",
+        "headBlob": "1dc3c2557b236372f03f5a01ec053171cae41de6",
+        "mainBlob": "1dc3c2557b236372f03f5a01ec053171cae41de6",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/plugins/vfs-repos/equivalence/index-dimensions.json",
+        "workingSha256": "7a01cf1eb1b66590ae49f909fc9c4dd39250bfa17c622c49a5523fa9d2152dd9",
+        "headBlob": "fdf1ecc02a608188e5b1b9fb052058b88a8dce39",
+        "mainBlob": "fdf1ecc02a608188e5b1b9fb052058b88a8dce39",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/plugins/vfs-repos/equivalence/mindmaps.json",
+        "workingSha256": "862a13a10f7bea2ba3a0108b40ef2fa1239ca94c133d50a86fbe1efc9f9a920f",
+        "headBlob": "84e53c148226b915f1d8233da9f2dc3b75b6510e",
+        "mainBlob": "84e53c148226b915f1d8233da9f2dc3b75b6510e",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/plugins/vfs-repos/equivalence/rag-multimodal.json",
+        "workingSha256": "0a60dd71c9a5f4db507ea3e79f1d3be158259d37d6442e5862092588734588c0",
+        "headBlob": "fed058fdc1c0f851444357bffc6e9352063cdf09",
+        "mainBlob": "fed058fdc1c0f851444357bffc6e9352063cdf09",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/plugins/vfs-repos/equivalence/resources-refs.json",
+        "workingSha256": "0cf7a1c28dfdbf401f503671e664910fd81ede9cac5f1fc37b8059c30e3d1492",
+        "headBlob": "d9cb2ebb36ef533f67ea389cd67233cec1fa4ac9",
+        "mainBlob": "d9cb2ebb36ef533f67ea389cd67233cec1fa4ac9",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/plugins/vfs/equivalence/dstu-crud-limits.json",
+        "workingSha256": "7cc259444e9e34b2132195b1bcb6a959a54e1739250f24437bff9f43910cdf0b",
+        "headBlob": "0b99fc26b340919959d4e703a8b8a8d1ed15771e",
+        "mainBlob": "0b99fc26b340919959d4e703a8b8a8d1ed15771e",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/plugins/vfs/equivalence/dstu-crud.json",
+        "workingSha256": "2d671995dd0e4ccc4784ac11bec2a2503b0e4a1dc8ccc1862c17816c503d8c30",
+        "headBlob": "9543caa761434dd0d8b547c3011eaa199e58d1d7",
+        "mainBlob": "9543caa761434dd0d8b547c3011eaa199e58d1d7",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/plugins/vfs/equivalence/dstu-misc.g3.json",
+        "workingSha256": "380e2794d70bce52b79e90315fa451608ce66301d59c9b6479a9ece2360e6c79",
+        "headBlob": "1fc5719e523b50a96a6bdd6129f93a4f2281e231",
+        "mainBlob": "1fc5719e523b50a96a6bdd6129f93a4f2281e231",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/plugins/vfs/equivalence/dstu-move.g3.json",
+        "workingSha256": "5882b93390813d6988fb2d5e53bb8cd5d19dae485011ca9be4e496ff8eff3cbb",
+        "headBlob": "5b61d5ed7bdbdfa9ca385558b1aea4bf073bc367",
+        "mainBlob": "5b61d5ed7bdbdfa9ca385558b1aea4bf073bc367",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/plugins/vfs/equivalence/dstu-path.g3.json",
+        "workingSha256": "84876b1af24a13ee6add69caaf9d1c6dba110ca0a7bb4d3b1ada4a00974db7eb",
+        "headBlob": "7efcfc174fc25d43c4e4d3e4d63362c3859c8c10",
+        "mainBlob": "7efcfc174fc25d43c4e4d3e4d63362c3859c8c10",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/plugins/vfs/equivalence/dstu-set-metadata.g3.json",
+        "workingSha256": "52f2d1ddba00b03c903ccdbfb7bee240cf7177677904a0a45330ec6078155ebf",
+        "headBlob": "3670d9540c5937b21cdc3d569cfdc5343b6fd10d",
+        "mainBlob": "3670d9540c5937b21cdc3d569cfdc5343b6fd10d",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/plugins/vfs/equivalence/folder-items.g3.json",
+        "workingSha256": "fb21aeac745b9e243e2d70706151068a7773647ec50dd866d9faef10d68a3167",
+        "headBlob": "2fa65bbaddabc940c1545c546be19999a86a4e9c",
+        "mainBlob": "2fa65bbaddabc940c1545c546be19999a86a4e9c",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/plugins/vfs/equivalence/folders.v0.json",
+        "workingSha256": "5056b1628923b6f2cd3ae621cec7cde5dec5129a461aef65c55e0d11ef504776",
+        "headBlob": "4e19b1878106d0e9f4bb8564f9e85676ab4774ae",
+        "mainBlob": "4e19b1878106d0e9f4bb8564f9e85676ab4774ae",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/plugins/vfs/equivalence/g3w-vfs-1.json",
+        "workingSha256": "494489356e3decae1395be431cdfb715b9443685884f2b1bdc23a9c64d09aed1",
+        "headBlob": "a3bd6932b747559ab1aa3c62f265b90a7ffe33d3",
+        "mainBlob": "a3bd6932b747559ab1aa3c62f265b90a7ffe33d3",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/plugins/vfs/equivalence/g3w-vfs-2.json",
+        "workingSha256": "7f5e44bc382742a541011dc788b438c7a7e9738acc6830f3e249f8dd1292160a",
+        "headBlob": "b2971aef0f6ecf4460dc68b9d40a4b39f3f8f5bf",
+        "mainBlob": "b2971aef0f6ecf4460dc68b9d40a4b39f3f8f5bf",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/plugins/vfs/equivalence/g3w-vfs-3.json",
+        "workingSha256": "0160d7c044af4b299a67fcda70f791185fb0366f62f78bcb1f74b25962d62f4a",
+        "headBlob": "612481b8da8bdd80d63df825136fc00315c24265",
+        "mainBlob": "612481b8da8bdd80d63df825136fc00315c24265",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/plugins/vfs/equivalence/pomodoro.g3.json",
+        "workingSha256": "418e9a62bb1fb7ceb58c99f89c33871936538eca8202ba704216c3b46d982170",
+        "headBlob": "7e5dafd1facbea068be382e5290953657b8ce8fb",
+        "mainBlob": "7e5dafd1facbea068be382e5290953657b8ce8fb",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/plugins/vfs/equivalence/raw/wp200-electron/summary.json",
+        "workingSha256": "e39262f6aa8ce41f11618b358e9c25a4c0f5a3cf87170a86dee5af2aeba4b77b",
+        "headBlob": "74fd0e612c61347b39454f31e76160ae250c72c0",
+        "mainBlob": "74fd0e612c61347b39454f31e76160ae250c72c0",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/plugins/vfs/equivalence/raw/wp200-node/summary.json",
+        "workingSha256": "7435628f071cee09a528aa66cb14193452bca75941b270fbc3764ffcb770ca10",
+        "headBlob": "17a3a3599608ceb8a5f39efa90dfa19d15a1c1bd",
+        "mainBlob": "17a3a3599608ceb8a5f39efa90dfa19d15a1c1bd",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/plugins/vfs/equivalence/todo-batch.g3.json",
+        "workingSha256": "100a649485a80a2da843bde051ba632e7de79cd2500664abe6156c9cefbcc10b",
+        "headBlob": "7b02e336d84368086882fa3604cc9ab98d71b33f",
+        "mainBlob": "7b02e336d84368086882fa3604cc9ab98d71b33f",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/plugins/vfs/equivalence/todo-crud.g3.json",
+        "workingSha256": "134989da0c57c510db1ba51b1930c1f9798114457f0217b3f2f4054bffc8ff7d",
+        "headBlob": "a249d9e343ce679429c1d3269c1ab18a7ef81836",
+        "mainBlob": "a249d9e343ce679429c1d3269c1ab18a7ef81836",
+        "recordedInputSha256": []
+      },
+      {
+        "file": "host/plugins/vfs/equivalence/trash.g3.json",
+        "workingSha256": "3ed4a307c787701362b64562a45cae30f214f7b9df7eb2cc9571d3981e1af267",
+        "headBlob": "f16caac4bedebda3177493a057914b1783d9e863",
+        "mainBlob": "f16caac4bedebda3177493a057914b1783d9e863",
+        "recordedInputSha256": []
+      }
+    ],
+    "changedSinceRecorded": []
+  },
+  "comparisons": {
+    "artifacts": 1141,
+    "equalArtifacts": 576,
+    "unequalArtifacts": 565,
+    "ruleVersions": [
+      [
+        "b8f0bdbe289c4ed2ad34b15192b555352590564df1072f3d43af11c236d59722/71c8ac72df65785ba761eaa3824078fa18d12acbc5d06496528cccc7543b8e1a",
+        1141
+      ]
+    ],
+    "note": "not 768 command-level status counts; still-changing snapshot"
+  },
+  "jobs": {
+    "running": [
+      {
+        "id": "20261106155231-148e18",
+        "from": "X7-differential",
+        "cls": "other",
+        "cmd": [
+          "node",
+          "/tmp/opencode/x7-provenance.mjs"
+        ],
+        "submittedAt": "2026-11-06T15:52:31.444Z",
+        "startedAt": "2026-11-06T15:52:32.168Z",
+        "endedAt": null,
+        "code": null
+      }
+    ],
+    "recentCompleted": [
+      {
+        "id": "20261106154002-b5e20d",
+        "from": "X7-differential",
+        "cls": "other",
+        "cmd": [
+          "node",
+          "scripts/electron-migration/record/g3-triage.mjs"
+        ],
+        "submittedAt": "2026-11-06T15:40:02.883Z",
+        "startedAt": "2026-11-06T15:40:03.612Z",
+        "endedAt": "2026-11-06T15:40:35.492Z",
+        "code": 0
+      },
+      {
+        "id": "20261106153724-df6b43",
+        "from": "X7-differential",
+        "cls": "other",
+        "cmd": [
+          "node",
+          "scripts/electron-migration/record/g3-triage.mjs"
+        ],
+        "submittedAt": "2026-11-06T15:37:24.129Z",
+        "startedAt": "2026-11-06T15:37:24.591Z",
+        "endedAt": "2026-11-06T15:37:45.807Z",
+        "code": 0
+      },
+      {
+        "id": "20261106153724-5d5cbd",
+        "from": "X7-differential",
+        "cls": "other",
+        "cmd": [
+          "node",
+          "--test",
+          "--test-reporter=spec",
+          "host/e2e/differential/g3-report.test.mjs",
+          "host/e2e/differential/g3-manifest.test.mjs"
+        ],
+        "submittedAt": "2026-11-06T15:37:24.617Z",
+        "startedAt": "2026-11-06T15:37:25.661Z",
+        "endedAt": "2026-11-06T15:37:44.395Z",
+        "code": 0
+      },
+      {
+        "id": "20261106153255-9b3702",
+        "from": "X7-differential",
+        "cls": "other",
+        "cmd": [
+          "node",
+          "--test",
+          "--test-reporter=spec",
+          "host/e2e/differential/g3-report.test.mjs",
+          "host/e2e/differential/g3-manifest.test.mjs"
+        ],
+        "submittedAt": "2026-11-06T15:32:55.877Z",
+        "startedAt": "2026-11-06T15:32:55.883Z",
+        "endedAt": "2026-11-06T15:33:12.990Z",
+        "code": 0
+      },
+      {
+        "id": "20261106152615-758c5e",
+        "from": "X7-differential",
+        "cls": "other",
+        "cmd": [
+          "npm",
+          "run",
+          "migration:ledger",
+          "--",
+          "--check",
+          "--no-write"
+        ],
+        "submittedAt": "2026-11-06T15:26:15.680Z",
+        "startedAt": "2026-11-06T15:26:16.199Z",
+        "endedAt": "2026-11-06T15:33:08.476Z",
+        "code": 0
+      },
+      {
+        "id": "20261106153124-5daef9",
+        "from": "X7-differential",
+        "cls": "other",
+        "cmd": [
+          "node",
+          "--test",
+          "--test-reporter=spec",
+          "host/e2e/differential/g3-report.test.mjs"
+        ],
+        "submittedAt": "2026-11-06T15:31:24.336Z",
+        "startedAt": "2026-11-06T15:31:24.367Z",
+        "endedAt": "2026-11-06T15:31:35.462Z",
+        "code": 1
+      },
+      {
+        "id": "20261106142245-f33227",
+        "from": "X7-differential",
+        "cls": "other",
+        "cmd": [
+          "node",
+          "scripts/electron-migration/record/g3-batch.mjs",
+          "fixtures/differential/wp043/builds/20261106023719-bc16bc/receipt.json",
+          "--out",
+          "fixtures/differential/g3/runs/full",
+          "--sides",
+          "A,B,A2",
+          "--deadline-min",
+          "18",
+          "--workers-a",
+          "7",
+          "--workers-b",
+          "5",
+          "--workers-a2",
+          "5"
+        ],
+        "submittedAt": "2026-11-06T14:22:45.796Z",
+        "startedAt": "2026-11-06T14:22:46.546Z",
+        "endedAt": "2026-11-06T14:49:10.496Z",
+        "code": 143
+      },
+      {
+        "id": "20261106135232-73da17",
+        "from": "X7-differential",
+        "cls": "other",
+        "cmd": [
+          "node",
+          "scripts/electron-migration/record/g3-batch.mjs",
+          "fixtures/differential/wp043/builds/20261106023719-bc16bc/receipt.json",
+          "--out",
+          "fixtures/differential/g3/runs/full",
+          "--sides",
+          "A,B,A2",
+          "--deadline-min",
+          "18",
+          "--workers-a",
+          "7",
+          "--workers-b",
+          "5",
+          "--workers-a2",
+          "5"
+        ],
+        "submittedAt": "2026-11-06T13:52:32.901Z",
+        "startedAt": "2026-11-06T13:52:32.959Z",
+        "endedAt": "2026-11-06T14:22:33.002Z",
+        "code": 143
+      },
+      {
+        "id": "20261106132229-477fb2",
+        "from": "X7-differential",
+        "cls": "other",
+        "cmd": [
+          "node",
+          "scripts/electron-migration/record/g3-batch.mjs",
+          "fixtures/differential/wp043/builds/20261106023719-bc16bc/receipt.json",
+          "--out",
+          "fixtures/differential/g3/runs/full",
+          "--sides",
+          "A,B,A2",
+          "--deadline-min",
+          "18",
+          "--workers-a",
+          "7",
+          "--workers-b",
+          "5",
+          "--workers-a2",
+          "5"
+        ],
+        "submittedAt": "2026-11-06T13:22:29.316Z",
+        "startedAt": "2026-11-06T13:22:30.122Z",
+        "endedAt": "2026-11-06T13:52:30.164Z",
+        "code": 143
+      },
+      {
+        "id": "20261106063644-46d604",
+        "from": "X7-differential",
+        "cls": "other",
+        "cmd": [
+          "node",
+          "scripts/electron-migration/record/g3-batch.mjs",
+          "fixtures/differential/wp043/builds/20261106023719-bc16bc/receipt.json",
+          "--out",
+          "fixtures/differential/g3/runs/full",
+          "--sides",
+          "A,B,A2",
+          "--record-only",
+          "--deadline-min",
+          "18",
+          "--retry-errors-before",
+          "2026-11-06T05:03:00Z",
+          "--workers-a",
+          "7",
+          "--workers-b",
+          "5",
+          "--workers-a2",
+          "5"
+        ],
+        "submittedAt": "2026-11-06T06:36:44.312Z",
+        "startedAt": "2026-11-06T06:36:44.923Z",
+        "endedAt": "2026-11-06T06:44:45.098Z",
+        "code": 143
+      }
+    ],
+    "latestRecording": {
+      "id": "20261106142245-f33227",
+      "from": "X7-differential",
+      "cls": "other",
+      "cmd": [
+        "node",
+        "scripts/electron-migration/record/g3-batch.mjs",
+        "fixtures/differential/wp043/builds/20261106023719-bc16bc/receipt.json",
+        "--out",
+        "fixtures/differential/g3/runs/full",
+        "--sides",
+        "A,B,A2",
+        "--deadline-min",
+        "18",
+        "--workers-a",
+        "7",
+        "--workers-b",
+        "5",
+        "--workers-a2",
+        "5"
+      ],
+      "submittedAt": "2026-11-06T14:22:45.796Z",
+      "startedAt": "2026-11-06T14:22:46.546Z",
+      "endedAt": "2026-11-06T14:49:10.496Z",
+      "code": 143
+    },
+    "A2Eta": null,
+    "A2EtaStatus": "unknown; no live recording job receipt in queue",
+    "detachedBatchObservation": "coordinator-managed detached process observed separately; not evidence of a jobs running phase"
+  },
+  "gate": {
+    "directory": "/home/dsdev/dev/deep-student/.oc-runs/gate-raw/2026-11-06T093723387Z/07-X7-differential",
+    "metaSha256": "56dfc58fb6d6a9b59fa20bb62ebf35c43e6a62d6159c46fff7ca76a5587a62f4",
+    "testsSha256": "2f6f867a5d02edc339150253e76fddc239a9412c6fc22546cff993068dbc3176",
+    "testsLogSha256": "34b6e75fb235593e4ae79ec448d57c08ba7da40378d23bb5a03db9a4da70ddd3",
+    "meta": {
+      "tag": "X7-differential",
+      "phase": "门禁",
+      "lane": "X7-differential",
+      "candidate": "36b1e0213c7fb5a4df32a53ee818cae8f682123d",
+      "tip": "f4572ba0624cb882e424869f1712cc0f89824be6",
+      "base": "5f806c95eb2ef7cee7c08579a7fbdbb615acd1cb",
+      "cwd": "/home/dsdev/dev/ds-mig/_integration-p0",
+      "merge": "118e06daed0152c1091538b651e6d218e518c5b2",
+      "startedAt": "2026-11-06T09:51:18.039Z",
+      "endedAt": "2026-11-06T09:52:47.110Z",
+      "runnerCode": 0,
+      "runnerSignal": null,
+      "checks": [
+        "typecheck",
+        "boundaries",
+        "boundaries-strict(changed)",
+        "tests"
+      ]
+    },
+    "tests": {
+      "name": "tests",
+      "attempt": 0,
+      "code": 1,
+      "signal": null,
+      "ok": false,
+      "startedAt": "2026-11-06T09:51:18.353Z",
+      "endedAt": "2026-11-06T09:52:47.075Z",
+      "bin": "npx",
+      "args": [
+        "vitest",
+        "run",
+        "-c",
+        "vitest.host.config.ts",
+        "host/e2e/differential/",
+        "--reporter=default",
+        "--reporter=json",
+        "--outputFile.json=/home/dsdev/dev/deep-student/.oc-runs/gate-raw/2026-11-06T093723387Z/07-X7-differential/tests.vitest.json"
+      ],
+      "env": {},
+      "log": "/home/dsdev/dev/deep-student/.oc-runs/gate-raw/2026-11-06T093723387Z/07-X7-differential/tests.log"
+    },
+    "diagnosis": "historical failures: synthetic temp fixtures lacked g3-normalize.mjs; current fixtures copy it. Historical failure is not rewritten or promoted to passed."
+  },
+  "manifest": {
+    "file": "fixtures/differential/g3/runs/full/RUN-MANIFEST.json",
+    "exists": false,
+    "status": "not-finalized; recording/source provenance remains unsealed"
+  },
+  "wp262Note": "WP-262 is attribution only; actual sync_state fix is L20b WP-278. WP-263/264 presence in main is not proof all structural differences are resolved."
+}

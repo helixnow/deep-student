@@ -92,6 +92,25 @@ export function shouldDirectRender(
   );
 }
 
+/**
+ * 计算「回到底部」悬浮按钮外围进度环比例（0~1）：
+ * - 流式输出期间：按 `1 - Math.exp(-Math.max(0, streamedCharCount) / 900)` 阻尼渐近趋向 0.92（最小 0.08）；
+ * - 非流式期间：限制在 [0, 1] 的阅读滚动比例 scrollRatio。
+ */
+export function computeStreamingScrollRingProgress(
+  isStreaming: boolean,
+  streamedCharCount: number,
+  scrollRatio = 0,
+): number {
+  if (isStreaming) {
+    const safeChars = Number.isFinite(streamedCharCount) ? Math.max(0, streamedCharCount) : 0;
+    const damped = 1 - Math.exp(-safeChars / 900);
+    return Math.min(0.92, Math.max(0.08, damped));
+  }
+  const safeRatio = Number.isFinite(scrollRatio) ? scrollRatio : 0;
+  return Math.min(1, Math.max(0, safeRatio));
+}
+
 /** 距底 ≤ 该值视为"在底部"（滚回底部时恢复吸底跟随的灵敏度，主流聊天产品同级） */
 const BOTTOM_THRESHOLD_PX = 50;
 
@@ -465,6 +484,7 @@ const MessageListInner: React.FC<MessageListProps> = ({
   // 是否处于吸底跟随状态（即滚动所有权在不在程序手里）
   const atBottomRef = useRef(true);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  const scrollToBottomBtnRef = useRef<HTMLButtonElement | null>(null);
   // P1-8: 用户滚离底部期间有新消息追加时，回到底部按钮上显示小圆点提示
   const [hasUnseenNewMessages, setHasUnseenNewMessages] = useState(false);
   // 🔧 优化：使用 ref 追踪上一次消息数量（追加 vs 插入检测）
@@ -861,6 +881,9 @@ const MessageListInner: React.FC<MessageListProps> = ({
     scrollToBottom();
   }, [scrollToBottom]);
 
+  const scrollRingMetaRef = useRef({ isStreaming, contentLength });
+  scrollRingMetaRef.current = { isStreaming, contentLength };
+
   // ===== 账本分类器：scroll 事件里区分用户滚动与程序化写入 =====
   // 偏离账本（|scrollTop - min(observedTop, floor)| > 0.5）才算用户滚动；
   // 浏览器收缩 clamp 恰好落在 min(observedTop, floor) 上，天然免疫误判。
@@ -871,6 +894,16 @@ const MessageListInner: React.FC<MessageListProps> = ({
 
     const onScroll = () => {
       const floor = Math.max(0, el.scrollHeight - el.clientHeight);
+      const currentScrollRatio = floor > 0 ? el.scrollTop / floor : 1;
+      const nextProgress = computeStreamingScrollRingProgress(
+        scrollRingMetaRef.current.isStreaming,
+        scrollRingMetaRef.current.contentLength,
+        currentScrollRatio,
+      );
+      scrollToBottomBtnRef.current?.style.setProperty(
+        '--scroll-ring-progress',
+        String(nextProgress),
+      );
       const movedByReader =
         Math.abs(el.scrollTop - Math.min(observedTopRef.current, floor)) > 0.5;
       const isAtBottom = movedByReader
@@ -1189,6 +1222,18 @@ const MessageListInner: React.FC<MessageListProps> = ({
     ? createPortal(searchBar, desktopChatHeaderTarget)
     : searchBar;
 
+  const scrollFloor = viewportElement
+    ? Math.max(0, viewportElement.scrollHeight - viewportElement.clientHeight)
+    : 0;
+  const currentScrollRatio = scrollFloor > 0 && viewportElement
+    ? viewportElement.scrollTop / scrollFloor
+    : 1;
+  const scrollRingProgress = computeStreamingScrollRingProgress(
+    isStreaming,
+    contentLength,
+    currentScrollRatio,
+  );
+
   return (
     <div className="relative h-full">
     {searchBarPortal}
@@ -1420,12 +1465,18 @@ const MessageListInner: React.FC<MessageListProps> = ({
         >
           {/* P1-8: 视觉 40px、透明伪元素扩大命中区到 ≥44px 触控目标 */}
           <button
+            ref={scrollToBottomBtnRef}
             type="button"
             onClick={handleScrollToBottomClick}
             title={scrollToBottomLabel}
             data-slot="message-list-scroll-to-bottom"
+            data-streaming={isStreaming ? 'true' : undefined}
             tabIndex={showScrollToBottom ? 0 : -1}
+            style={{
+              ['--scroll-ring-progress' as string]: String(scrollRingProgress),
+            }}
             className={cn(
+              'chat-scroll-bottom-ring',
               'pointer-events-auto ml-auto flex h-10 w-10 items-center justify-center rounded-full',
               'relative after:absolute after:-inset-1 after:rounded-full after:content-[\'\']',
               'border border-[color:var(--button-utility-border)] bg-[color:var(--button-utility-surface)]',

@@ -69,6 +69,24 @@ some providers task shape. One call dispatches one subagent run.
 A single delegated task therefore needs neither a prior `workspace_create` nor a follow-up
 `coordinator_sleep`.
 
+### Move an in-progress call to the background
+
+While a `wait: true` call is waiting for its dispatched child, its card offers **转后台**.
+`chat_v2_background_subagent({ sessionId, blockId })` releases only that parent's tool wait;
+it does not cancel, restart or redispatch the child. The tool returns its existing ids,
+`status: "running"` and `backgrounded: true`, with guidance to continue other work rather
+than immediately wait again. The original tool input is unchanged.
+
+The action is advertised by `can_background: true` in the dispatched progress chunk,
+after the backend registers the wait. It is unavailable before dispatch, for completed
+calls, and for already asynchronous calls. A stale request returns `false` without side
+effects. Both the Host and Rust executors implement the same command and wait behavior.
+
+Completion follows the existing runtime-owned completion and parent wake path. A
+backgrounded tool result is not a terminal result receipt and must not suppress that
+wake. The card continues showing the child's real status and retains its cancel action.
+This action currently covers `subagent_call`, not shell commands or `coordinator_sleep`.
+
 ## Runtime Model
 
 An agent is a reusable thread. A run is one execution on that thread.

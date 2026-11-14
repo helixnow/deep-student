@@ -24,7 +24,7 @@ import {
   registerBackHandler,
 } from '@/app/navigation/androidBackCoordinator';
 import { useMindMapStore, useMindMapStoreApi } from '../store';
-import { cn } from '@/lib/utils';
+import { cn } from '@/utils/cn';
 import { ListBullets } from '@phosphor-icons/react';
 import type { MindMapNode } from '../types';
 import { MindMapResourcePicker } from '../components/mindmap/MindMapResourcePicker';
@@ -44,6 +44,15 @@ import { writeMindMapClipboard } from '../utils/clipboardCodec';
 import { useMindMapIsActive } from '../MindMapActiveContext';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import '../styles/outline-enhancements.css';
+import '../styles/mn5-excerpt.css';
+import { hasExcerptMime, readExcerptDrag } from '@/ui-sdk';
+import { clearActiveExcerptDrag } from '@/ui-kernel/services/excerpt-dnd';
+import {
+  computeNodeDropZone,
+  consumeActiveStagingExcerptDragId,
+  createExcerptDragDepthTracker,
+  type NodeExcerptDropZone,
+} from '../utils/excerptIngest';
 import type { MindMapDescriptionPreview, MindMapKeymap } from '../utils/mindmapPreferences';
 import {
   LEVEL_INDENT,
@@ -1142,9 +1151,135 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
   // Empty state handling
   const hasOnlyRoot = document.root.children.length === 0;
 
+  // ============================================================================
+  // 摘录投放（DS_EXCERPT_MIME）：行高亮直接切换 DOM class（拖拽期间零 React 重渲染），
+  // enter/leave 深度计数防抖；非摘录拖拽（系统文件 / 工作台资源）完全放行。
+  // ============================================================================
+  const excerptDragDepthRef = useRef(createExcerptDragDepthTracker());
+  const excerptHighlightRef = useRef<HTMLElement | null>(null);
+  const excerptOutlineZoneRef = useRef<NodeExcerptDropZone | null>(null);
+
+  const clearExcerptRowHighlight = useCallback(() => {
+    const row = excerptHighlightRef.current;
+    if (row) row.classList.remove('mm-mn5-outline-drop', 'mm-mn5-outline-drop-merge');
+    excerptHighlightRef.current = null;
+    excerptOutlineZoneRef.current = null;
+  }, []);
+
+  const resetExcerptDrag = useCallback(() => {
+    excerptDragDepthRef.current.reset();
+    clearExcerptRowHighlight();
+  }, [clearExcerptRowHighlight]);
+
+  useEffect(() => {
+    const doc = typeof window !== 'undefined' ? window.document : null;
+    const onVisibility = () => {
+      if (doc && doc.visibilityState === 'hidden') {
+        resetExcerptDrag();
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') resetExcerptDrag();
+    };
+    window.addEventListener('dragend', resetExcerptDrag, true);
+    window.addEventListener('drop', resetExcerptDrag);
+    window.addEventListener('blur', resetExcerptDrag);
+    window.addEventListener('keydown', onKeyDown, true);
+    doc?.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('dragend', resetExcerptDrag, true);
+      window.removeEventListener('drop', resetExcerptDrag);
+      window.removeEventListener('blur', resetExcerptDrag);
+      window.removeEventListener('keydown', onKeyDown, true);
+      doc?.removeEventListener('visibilitychange', onVisibility);
+      resetExcerptDrag();
+    };
+  }, [resetExcerptDrag]);
+
+  const resolveExcerptOutlineTarget = useCallback((event: React.DragEvent) => {
+    const row = (event.target as HTMLElement | null)?.closest?.<HTMLElement>('[data-outline-node-id]') ?? null;
+    const state = storeApi.getState();
+    const targetNodeId = row?.dataset.outlineNodeId ?? state.viewRootId ?? state.document.root.id;
+    let merge = event.altKey;
+    if (row && !merge) {
+      const prevZone = excerptHighlightRef.current === row ? excerptOutlineZoneRef.current : null;
+      const zone = computeNodeDropZone(
+        row.getBoundingClientRect(),
+        { clientX: event.clientX, clientY: event.clientY },
+        { altKey: event.altKey, prevZone },
+      );
+      merge = zone === 'merge';
+    }
+    return { row, targetNodeId, merge };
+  }, [storeApi]);
+
+  const handleExcerptDragEnter = useCallback((event: React.DragEvent) => {
+    if (reciteMode || !hasExcerptMime(event.nativeEvent)) return;
+    event.preventDefault();
+    excerptDragDepthRef.current.enter();
+  }, [reciteMode]);
+
+  const handleExcerptDragOver = useCallback((event: React.DragEvent) => {
+    if (reciteMode || !hasExcerptMime(event.nativeEvent)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    try {
+      event.dataTransfer.dropEffect = 'copy';
+    } catch {
+      // 部分合成事件的 dropEffect 只读
+    }
+    const { row, merge } = resolveExcerptOutlineTarget(event);
+    if (excerptHighlightRef.current !== row) clearExcerptRowHighlight();
+    if (!row) return;
+    excerptHighlightRef.current = row;
+    excerptOutlineZoneRef.current = merge ? 'merge' : 'child';
+    row.classList.toggle('mm-mn5-outline-drop', !merge);
+    row.classList.toggle('mm-mn5-outline-drop-merge', merge);
+  }, [clearExcerptRowHighlight, reciteMode, resolveExcerptOutlineTarget]);
+
+  const handleExcerptDragLeave = useCallback((event: React.DragEvent) => {
+    if (!hasExcerptMime(event.nativeEvent)) return;
+    const leftByDepth = excerptDragDepthRef.current.leave();
+    const related = event.relatedTarget;
+    if (
+      typeof globalThis.Node !== 'undefined' &&
+      related instanceof globalThis.Node &&
+      event.currentTarget.contains(related)
+    ) {
+      return;
+    }
+    if (leftByDepth) clearExcerptRowHighlight();
+  }, [clearExcerptRowHighlight]);
+
+  const handleExcerptDrop = useCallback((event: React.DragEvent) => {
+    if (reciteMode || !hasExcerptMime(event.nativeEvent)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const { targetNodeId, merge } = resolveExcerptOutlineTarget(event);
+    const stagingId = consumeActiveStagingExcerptDragId();
+    const payload = readExcerptDrag(event.nativeEvent);
+    clearActiveExcerptDrag();
+    resetExcerptDrag();
+    const state = storeApi.getState();
+    const dropOptions = { mode: merge ? 'merge' : 'child', targetNodeId } as const;
+    if (
+      stagingId &&
+      state.document.stagingExcerpts?.some((entry) => entry.id === stagingId)
+    ) {
+      state.commitStagingExcerpt(stagingId, dropOptions);
+      return;
+    }
+    if (!payload) return;
+    state.ingestExcerpt(payload, dropOptions);
+  }, [reciteMode, resetExcerptDrag, resolveExcerptOutlineTarget, storeApi]);
+
   return (
     <div
       ref={containerRef}
+      onDragEnter={handleExcerptDragEnter}
+      onDragOver={handleExcerptDragOver}
+      onDragLeave={handleExcerptDragLeave}
+      onDrop={handleExcerptDrop}
       className="h-full w-full flex flex-col bg-[var(--mm-bg)] relative"
       onClick={(e) => {
         // 点在行外空白（含 ScrollArea padding）时清多选

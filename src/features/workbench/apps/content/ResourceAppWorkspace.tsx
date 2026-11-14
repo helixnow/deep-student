@@ -1,3 +1,4 @@
+import { useRefreshOnReturn } from '@/hooks/useRefreshOnReturn';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
@@ -23,7 +24,6 @@ import { createEmpty, dstu, type DstuNode } from '@/dstu';
 import { localizeEssayTitle } from '@/essay-grading/modeI18n';
 import UnifiedAppPanel from '@/features/learning-hub/apps/UnifiedAppPanel';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
-import { cn } from '@/lib/utils';
 import { isContentDirty } from './contentDirtyRegistry';
 import { useReviewPlanStore } from '@/stores/reviewPlanStore';
 import {
@@ -241,6 +241,8 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
       selectResource(initialResourceId);
     }
   }, [initialResourceId, selectResource]);
+
+  useRefreshOnReturn(loadItems, isActive);
 
   useEffect(() => {
     return registerResourceWorkspace(type, (resourceId) => {
@@ -508,7 +510,7 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
             isActive={!settingsOpen && libraryView === 'all'}
             onClick={() => selectLibraryView('all')}
             leftSlot={<Rows size={14} />}
-            rightSlot={<small>{items.length}</small>}
+            rightSlot={<small className="font-mono tabular-nums">{items.length}</small>}
           >
             <WorkbenchSidebarRowLabel>{t('workbench:resourceHome.all')}</WorkbenchSidebarRowLabel>
           </WorkbenchSidebarRow>
@@ -600,18 +602,7 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
         )}
 
         <footer className="wb-resource-workspace-sidebar-footer" data-wb-drawer-stay>
-          <span>{t('workbench:resourceHome.itemCount', { count: visibleItems.length })}</span>
-          <DsButton
-            variant="ghost"
-            size="icon"
-            iconOnly
-            onClick={() => void loadItems()}
-            disabled={loading}
-            title={t('resourceWorkspace.refresh')}
-            aria-label={t('resourceWorkspace.refresh')}
-          >
-            <ArrowClockwise size={13} className={cn(loading && 'animate-spin')} />
-          </DsButton>
+          <span className="font-mono tabular-nums">{t('workbench:resourceHome.itemCount', { count: visibleItems.length })}</span>
         </footer>
       </WorkbenchSidebarSurface>}
       >

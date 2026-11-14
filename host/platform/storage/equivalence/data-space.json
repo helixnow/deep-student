@@ -1,0 +1,204 @@
+{
+  "domain": "storage",
+  "commands": [
+    "get_data_space_info",
+    "mark_data_space_pending_switch_to_inactive",
+    "purge_all_database_files",
+    "purge_active_data_dir_now",
+    "get_test_slot_info",
+    "clear_test_slots"
+  ],
+  "scenarios": [
+    {
+      "id": "storage.data_space.info.fresh",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_data_space_info",
+          "args": {}
+        },
+        {
+          "cmd": "get_data_space_info",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.data_space.info.ignores_extra_args",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_data_space_info",
+          "args": {
+            "slot": "slotB"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.data_space.mark_pending.inactive_missing",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "mark_data_space_pending_switch_to_inactive",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "get_data_space_info",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.data_space.purge_all.writes_marker",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "purge_all_database_files",
+          "args": {}
+        },
+        {
+          "cmd": "purge_all_database_files",
+          "args": {}
+        },
+        {
+          "cmd": "get_data_space_info",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.data_space.purge_now.always_rejected",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "purge_active_data_dir_now",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "get_data_space_info",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.data_space.test_slots.info_fresh",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_test_slot_info",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.data_space.test_slots.clear_creates_both",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "clear_test_slots",
+          "args": {}
+        },
+        {
+          "cmd": "get_test_slot_info",
+          "args": {}
+        },
+        {
+          "cmd": "clear_test_slots",
+          "args": {}
+        },
+        {
+          "cmd": "get_test_slot_info",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "storage.data_space.test_slots.clear_fails_when_slot_is_file",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_test_slot_info",
+          "args": {}
+        },
+        {
+          "cmd": "export_startup_recovery_report",
+          "args": {
+            "destination": "${0.slot_c_dir}"
+          }
+        },
+        {
+          "cmd": "get_test_slot_info",
+          "args": {}
+        },
+        {
+          "cmd": "clear_test_slots",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "get_test_slot_info",
+          "args": {}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

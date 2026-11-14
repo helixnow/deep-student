@@ -8,9 +8,10 @@ describe('StyleDebugPage button lab', () => {
     render(<StyleDebugPage />);
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole('button', { name: '组件对比' }));
+    await user.click(screen.getByRole('tab', { name: '组件对比' }));
 
-    expect(screen.getByRole('button', { name: '组件对比' })).toHaveAttribute('data-state', 'active');
+    expect(screen.getByRole('tab', { name: '组件对比' })).toHaveAttribute('data-state', 'active');
+    expect(screen.getByRole('tab', { name: '组件对比' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByText('Button')).toBeInTheDocument();
     expect(screen.getByText('DsButton (目标)')).toBeInTheDocument();
     expect(screen.getByText('shad Button (遗留)')).toBeInTheDocument();

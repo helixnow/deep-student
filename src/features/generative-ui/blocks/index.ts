@@ -1,5 +1,6 @@
 /** UI registration. Schema-only consumers import ../blockSchemas instead. */
 import { generativeUIRegistry } from '../registry';
+import { genuiComponentContributions } from '../componentContributions';
 import { BUILTIN_GENERATIVE_BLOCK_SCHEMAS } from '../blockSchemas';
 import { StatCardBlock } from '../components/StatCardBlock';
 import { AlertBlock } from '../components/AlertBlock';
@@ -41,8 +42,11 @@ const components = {
   'table': TableBlock,
 };
 
+// The registry serves windows without a UI kernel; with one, the renderer reads `genui.components` (dstu.ui.genui).
 for (const config of BUILTIN_GENERATIVE_BLOCK_SCHEMAS) {
-  generativeUIRegistry.register({ ...config, component: components[config.type] });
+  const contribution = { ...config, component: components[config.type] };
+  generativeUIRegistry.register(contribution);
+  genuiComponentContributions.announce(contribution);
 }
 
 export {

@@ -87,6 +87,10 @@ function estimateWrappedLines(text: string, fontSize: number, maxWidth: number):
 
 /** 节点估算字号（主题权威值根 18 / 分支 15，节点级样式可覆盖） */
 function resolveNodeFontSize(node: MindMapNode, isRoot: boolean): number {
+  const heading = node.style?.headingLevel;
+  if (heading === 'h1') return 22;
+  if (heading === 'h2') return 18;
+  if (heading === 'h3') return 16;
   return node.style?.fontSize || defaultFontMetrics(isRoot).fontSize;
 }
 
@@ -103,7 +107,7 @@ export function calculateNodeWidth(
   isRoot: boolean = false
 ): number {
   const fontSize = resolveNodeFontSize(node, isRoot);
-  const textWidth = estimateTextWidth(node.text, fontSize);
+  const textWidth = estimateTextWidth(node.text || config.unnamedNodeLabel || '', fontSize);
   const padding = resolveNodeHPadding(isRoot);
   const width = textWidth + padding;
 
@@ -135,7 +139,7 @@ export function calculateNodeHeight(
   const textFontSize = resolveNodeFontSize(node, isRoot);
   const textLineHeight = Math.ceil(textFontSize * MM_NODE_LINE_HEIGHT_RATIO);
   const contentWidth = nodeWidth - resolveNodeHPadding(isRoot);
-  const textLines = Math.max(1, estimateWrappedLines(node.text || '', textFontSize, contentWidth));
+  const textLines = Math.max(1, estimateWrappedLines(node.text || config.unnamedNodeLabel || '', textFontSize, contentWidth));
   const extraTextHeight = (textLines - 1) * textLineHeight;
 
   const totalHeight = baseHeight + extraTextHeight;

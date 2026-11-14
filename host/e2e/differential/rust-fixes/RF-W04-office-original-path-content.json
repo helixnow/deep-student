@@ -1,0 +1,31 @@
+{
+  "id": "RF-W04-office-original-path-content",
+  "kind": "rust-bug",
+  "status": "proposed",
+  "title": "Office 工具读文件时优先读 files.original_path，只拦 `..`：同步改写的 original_path 可以把本机任意文件交给工具和模型",
+  "rust": {
+    "file": "src-tauri/src/chat_v2/tools/docx_executor.rs",
+    "line": 347,
+    "behavior": "load_docx_bytes（pptx_executor.rs:451、xlsx_executor.rs:419 同样）对 files.original_path 只跳过虚拟 URI 和含 `..` 的路径，文件存在就 std::fs::read 原样返回，不看内容是不是这条 files 记录导入时的文件。original_path 随记录同步写入，可以是本机任意绝对路径；读出的字节交给 DOCX/PPTX/XLSX 解析与 office_fidelity 检查，结果进入工具输出和模型上下文。"
+  },
+  "fix": {
+    "files": [
+      "host/plugins/media/src/tools/vfs-source.ts"
+    ],
+    "behavior": "loadVfsFileBytes 读出 original_path 后，只有字节的 SHA-256 等于 files.sha256 开头 64 位十六进制（大小写不敏感，覆盖复制行的 `<sha256>_copy_<id>`）时才返回；否则记 warn，接着按 Rust 原有顺序试 blob_hash、sha256 两个 blob，都没有时报原有的“无法加载文件内容”错误。与 RF-W10-blob-path-containment 对 FileRepo.getContent 的 original_path 回退同一口径（W10 61d208db）。"
+  },
+  "evidence": "AL-17 16:38 补充（A21 复核 W10 5439f6f2 时发现，F-01 同类，.reports/handoffs/AUDIT-TO-LANES.md）。修复前：media/tests/vfs-source.test.ts 中 original_path 指向内容为 'secret' 的文件、files.sha256 记的是另一份内容时，loadVfsFileBytes 返回 'secret'，有 blob 也不会去读。",
+  "userVisible": "正常数据无变化：本机导入的文件 original_path 处就是导入时记下哈希的那份内容，照常优先读取。original_path 处的文件在导入后被改动过时，改读 blob；没有 blob 时报“无法加载文件内容”，重新导入即可。",
+  "dataCompat": "只改读取，不改落库数据、同步载荷与备份格式。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "host/plugins/media/tests/vfs-source.test.ts",
+      "name": "RF-W04-office-original-path-content: an original_path holding the recorded file is still read"
+    },
+    {
+      "file": "host/plugins/media/tests/vfs-source.test.ts",
+      "name": "RF-W04-office-original-path-content: an original_path naming other content is skipped for the blobs"
+    }
+  ]
+}

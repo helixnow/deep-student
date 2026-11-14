@@ -1,6 +1,6 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { MobileLayoutProvider } from '@/components/layout/MobileLayoutContext';
 import { MobileHeaderActiveViewSync, MobileHeaderProvider } from '@/components/layout/MobileHeaderContext';
 import { MobileAppNavigationProvider } from '@/components/layout/MobileSidebarNavigation';
@@ -8,6 +8,9 @@ import { useFsrsReviewStore } from '@/features/flashcards/store/fsrsReviewStore'
 import { FlashcardsApp } from '@/features/flashcards/FlashcardsApp';
 import { useFlashcardsLibraryStore } from '@/features/flashcards/store/libraryStore';
 import { handleAndroidBack } from '@/app/navigation/androidBackCoordinator';
+import { officialUiRender } from '@/ui-plugins/testing/render';
+
+const render = officialUiRender();
 
 const initialReview = useFsrsReviewStore.getState();
 const initialLibrary = useFlashcardsLibraryStore.getState();

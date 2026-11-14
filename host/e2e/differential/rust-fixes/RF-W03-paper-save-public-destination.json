@@ -1,0 +1,41 @@
+{
+  "id": "RF-W03-paper-save-public-destination",
+  "kind": "deliberate",
+  "status": "approved",
+  "approvedBy": "main-agent",
+  "approvedAt": "2026-11-07T03:27:08Z",
+  "title": "paper_save 下载 PDF 时只允许公网目标：模型或 Unpaywall 给出的 URL 不能指向本机 / 内网 / 链路本地 / 云元数据地址（每一跳重定向都复检）",
+  "rust": {
+    "file": "src-tauri/src/chat_v2/tools/paper_save_executor.rs",
+    "line": 916,
+    "behavior": "download_pdf_with_progress 只检查 https:// 前缀（http://localhost 例外），随后 download_client.get(url) 直接请求并默认跟随重定向；http://localhost:11434 这类本机服务、https://127.0.0.1、https://10.x.x.x、https://169.254.169.254、解析到内网的域名以及重定向到这些地址的链接都会被请求，响应以 %PDF 开头就写入 VFS"
+  },
+  "fix": {
+    "files": [
+      "host/plugins/memory/src/paper-save-executor.ts"
+    ],
+    "behavior": "只接受 https://，删除 Rust 的 http://localhost 例外。本机地址（localhost、*.localhost、127/8、::1、IPv4 映射回环；按 WHATWG URL 规范化后判定）在发出请求前以 \"Local addresses are not allowed: …\" 拒绝。下载走 ctx.http.fetch(url, { destination: 'public', allowLoopback: false, redirect: 'manual' })：私网、链路本地、云元数据地址由 net-policy isSafeRemoteUrl 拒绝；经 DNS 解析到回环的域名（如 *.nip.io）由 ctx.http 拒绝（\"PDF download failed: destination resolves to a non-public address …\"；没有主机名解析的平台只能判断 IP 字面量与 localhost 名）。重定向由 paper_save 按 reqwest 策略逐跳跟随（301/302/303/307/308，最多 10 跳，整条链共用 60 s 期限），每一跳先查本机地址（\"PDF download failed: redirect to a local address is not allowed: …\"），再由 ctx.http 复检公网与回环解析。被拒只让该来源失败，批量里其它论文和候选来源照常继续。50 MB 上限、%PDF 魔数检查、User-Agent 不变；Unpaywall API 查询（固定主机）仍走 llmHttp。"
+  },
+  "evidence": "S01 安全审查 reviews/AGENT-EXECUTOR-SECURITY.md §2 S3：与 Rust 同等的缺口（非降级），建议接入内网 IP 校验 + 逐跳校验。paper_save 敏感度为 medium，relaxed 审批下不弹窗，模型给的 URL 可让 Host 访问内网 HTTPS 服务并把响应（只要以 %PDF 开头）存进资料库。主代理第八轮决定本机地址一律拒绝：模型给出的 localhost URL 可能打到本机的 Ollama 等服务（Rust 的 http://localhost 例外正是这个入口）；net-policy 的 isBlockedInternalIp 对回环放行，单靠 destination:'public' 拦不住。",
+  "userVisible": "保存公网论文无变化（含公网之间的重定向）。URL 指向本机（http://localhost、https://localhost、127.0.0.1、[::1] 等）、内网或元数据地址，或经重定向到达这些地址的论文保存失败：本机地址显示 Local addresses are not allowed（http:// 本机地址显示 Only HTTPS URLs are allowed），重定向到本机显示 PDF download failed: redirect to a local address is not allowed，解析到本机的域名显示 PDF download failed: destination resolves to a non-public address，内网/元数据显示 PDF download failed。原来 Rust 能从本机 http://localhost 服务保存 PDF，现在不行。",
+  "dataCompat": "不改变落库数据、同步载荷与备份格式。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "host/plugins/memory/tests/paper-save-executor.test.ts",
+      "name": "RF-W03-paper-save-public-destination: PDF downloads go through ctx.http as public destinations; a blocked target fails only that source"
+    },
+    {
+      "file": "host/plugins/memory/tests/paper-save-executor.test.ts",
+      "name": "RF-W03-paper-save-public-destination: local addresses (Rust allowed http://localhost) are refused without sending a request"
+    },
+    {
+      "file": "host/plugins/memory/tests/paper-save-executor.test.ts",
+      "name": "RF-W03-paper-save-public-destination: redirects are followed hop by hop as public GETs; a hop to a local address is refused before it is requested"
+    },
+    {
+      "file": "host/plugins/memory/tests/paper-save-executor.test.ts",
+      "name": "RF-W03-paper-save-public-destination: through the real ctx.http policy with allowLoopback false, names resolving to loopback are refused on every hop"
+    }
+  ]
+}

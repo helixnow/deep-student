@@ -53,6 +53,7 @@ class AutoSaveMiddlewareImpl implements AutoSaveMiddleware {
   private pendingTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
   private lastSaveTimes: Map<string, number> = new Map();
   private savingPromises: Map<string, Promise<void>> = new Map();
+  private queuedScheduledSaves = new Map<string, { store: ChatStore; promise: Promise<void> }>();
 
   constructor(config: Partial<AutoSaveConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -149,14 +150,25 @@ class AutoSaveMiddlewareImpl implements AutoSaveMiddleware {
   /**
    * Serialize every save for a session. Scheduled saves retry once and report
    * failures; force saves preserve rejection semantics for lifecycle callers.
-   * A newly queued save always chains behind the current tail, so a timer that
-   * fires during a slow save becomes a trailing latest-state persistence pass.
+   * Scheduled saves coalesce while waiting behind a slow write. Force saves
+   * keep their own queue entry and rejection semantics.
    */
   private enqueueSave(store: ChatStore, retryOnFailure: boolean): Promise<void> {
     const sessionId = store.sessionId;
     this.lastSaveTimes.set(sessionId, Date.now());
+    const queued = this.queuedScheduledSaves.get(sessionId);
+    if (retryOnFailure && queued) {
+      queued.store = store;
+      return queued.promise;
+    }
+    const scheduled = retryOnFailure ? { store, promise: Promise.resolve() } : null;
+    if (scheduled) this.queuedScheduledSaves.set(sessionId, scheduled);
     const previousTail = this.savingPromises.get(sessionId);
     const runSave = async () => {
+      if (scheduled) {
+        this.queuedScheduledSaves.delete(sessionId);
+        store = scheduled.store;
+      }
       if (!retryOnFailure) {
         await store.saveSession();
         return;
@@ -186,6 +198,7 @@ class AutoSaveMiddlewareImpl implements AutoSaveMiddleware {
       ? previousTail.catch(() => undefined).then(runSave)
       : runSave();
 
+    if (scheduled) scheduled.promise = ownPromise;
     this.savingPromises.set(sessionId, ownPromise);
     const clearIfCurrentTail = () => {
       if (this.savingPromises.get(sessionId) === ownPromise) {

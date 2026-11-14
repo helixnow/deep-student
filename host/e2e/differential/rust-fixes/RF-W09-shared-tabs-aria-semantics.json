@@ -1,0 +1,27 @@
+{
+  "id": "RF-W09-shared-tabs-aria-semantics",
+  "kind": "deliberate",
+  "status": "approved",
+  "approvedBy": "main-agent",
+  "approvedAt": "2026-11-07T13:00:00+08:00",
+  "title": "共享 shad Tabs 补齐标签页语义（tablist / tab / aria-selected / 漫游 tabIndex / 面板归属 / 方向键），并修正调用方传 onClick 后标签不切换",
+  "rust": {
+    "file": "src/components/ui/shad/Tabs.tsx",
+    "line": 62,
+    "behavior": "Rust 快照 21c9d808 中 TabsList 是无 role 的 div，TabsTrigger 渲染为普通 button（无 role=tab、aria-selected、tabIndex），TabsContent 有 role=tabpanel 但没有 id 与 aria-labelledby；读屏软件把数据治理、设置“模型服务/模型分配”、样式实验室等 17 处标签读成一排普通按钮，不知道哪个被选中，方向键不能切换。另外 {...props} 写在内置 onClick 之后，调用方一传 onClick 就覆盖掉切换逻辑"
+  },
+  "fix": {
+    "files": ["src/components/ui/shad/Tabs.tsx"],
+    "behavior": "TabsList 默认 role=tablist，在标签上按左右方向键（aria-orientation=vertical 时为上下）/ Home / End 移动焦点并切换，跳过 disabled，首尾循环；调用方自己的 onKeyDown 先执行，调用了 preventDefault 就不再处理（SettingsCategoryHeader、ComponentRecoveryShell 的手写逻辑照旧生效）。TabsTrigger 默认 role=tab、aria-selected、漫游 tabIndex（没有标签对应当前值时第一个标签可达）、id 由 Tabs 内 useId 派生、面板挂载时 aria-controls 指向面板；TabsContent 默认 id 与 aria-labelledby 指回标签。调用方显式传入的 role/id/aria-*/tabIndex 仍然优先。调用方 onClick 与切换逻辑组合调用。样式仍由 data-state 驱动，className 未改"
+  },
+  "evidence": "W12 冒烟 #24 指出恢复界面标签缺语义（已由 RF-W09-recovery-shell-tab-roles 单独修复）；同一共享组件的两个使用方 SettingsCategoryHeader.tsx、ComponentRecoveryShell.tsx 都不得不手工补 role/aria-selected/tabIndex/方向键，说明这些语义是组件应有的。其余 15 个使用方（数据治理 8 个页签、设置分类、样式实验室、技能编辑器、MCP 编辑器、冲突对话框等）对读屏仍是普通按钮。onClick 覆盖问题：TabsTrigger 内部先 props.onClick?.(e) 再 setValue，但随后的 {...props} 用调用方 onClick 替换了整个处理器，setValue 不再被调用。",
+  "userVisible": "读屏软件把这些标签读作“标签页，已选中/未选中”；键盘用户在标签间用方向键切换，Tab 键只停在当前标签上（原来每个标签都是一个 Tab 停靠点）。视觉不变（触发器本来就是 button，按 role=tab 写的样式都同时匹配 button）。",
+  "dataCompat": "不改变落库数据、同步载荷与备份格式。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "src/components/ui/shad/Tabs.a11y.test.tsx",
+      "name": "RF-W09-shared-tabs-aria-semantics: renders tablist/tab/tabpanel with selection state and roving tab stop"
+    }
+  ]
+}

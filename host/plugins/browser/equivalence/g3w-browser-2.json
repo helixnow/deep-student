@@ -1,0 +1,161 @@
+{
+  "domain": "browser",
+  "commands": [
+    "save_setting",
+    "get_setting",
+    "delete_setting",
+    "get_settings_by_prefix",
+    "is_feature_enabled"
+  ],
+  "scenarios": [
+    {
+      "id": "g3w.settings.save_setting.internal_key",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "internal.oauth.openai_codex.session",
+            "value": "x"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.settings.get_setting.internal_key",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_setting",
+          "args": {
+            "key": "internal.oauth.openai_codex.session"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.settings.delete_setting.internal_key",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "delete_setting",
+          "args": {
+            "key": "internal.oauth.openai_codex.session"
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.settings.get_settings_by_prefix.internal_prefix",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_settings_by_prefix",
+          "args": {
+            "prefix": "internal.oauth."
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.settings.get_settings_by_prefix.parent_of_internal",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_settings_by_prefix",
+          "args": {
+            "prefix": "internal."
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.settings.get_settings_by_prefix.empty_prefix",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "get_settings_by_prefix",
+          "args": {
+            "prefix": ""
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "g3w.settings.is_feature_enabled.feature_flags_corrupt",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "save_setting",
+          "args": {
+            "key": "feature_flags.config",
+            "value": "not-json"
+          }
+        },
+        {
+          "cmd": "is_feature_enabled",
+          "args": {
+            "featureName": "ui.workbench_browser",
+            "userId": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

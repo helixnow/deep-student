@@ -1,0 +1,28 @@
+{
+  "id": "RF-W09-skill-injection-audit-unhandled",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T08:32+08:00",
+  "title": "前端事件桥没有处理后端发出的 skill_injection_audit，首包时拖住序号流并在块分发里报 No handler",
+  "rust": {
+    "file": "src-tauri/crates/dstu-agent/src/chat_v2/events.rs",
+    "line": 1491,
+    "behavior": "后端在首个正文前发出带 sequenceId 的 skill_injection_audit（phase=end，只带 messageId、无 blockId）；Rust 版前端 eventBridge 没有该类型：作为首个带序号事件时走“首包非 start”分支进入缓冲区，靠间隙恢复计时器放行，之后进入 dispatchBlockEvent，因没有注册处理器只打警告，审计结果被丢弃"
+  },
+  "fix": {
+    "files": ["src/features/chat/core/middleware/eventBridge.ts"],
+    "behavior": "作为消息级事件处理：首包时与 start 同等对待作为序号基线，同步推进序号，不进入块分发；审计结果记录到会话级诊断（getLastSkillInjectionAudit）"
+  },
+  "evidence": "后端有意在正文前发出该事件（events.rs:1491 emit_skill_injection_audit，tool_loop.rs 调用），前端却没有消费方，属于前后端对接遗漏；后果是流开头的事件处理依赖计时器而非序号，并在控制台留下 No handler 警告。复现：先送 sequenceId=0 的 audit，再送 sequenceId=1 的 content start（见测试）。",
+  "userVisible": "基本不可感知：消除流开头的一次计时器等待与控制台警告；审计结果只用于诊断，不进界面。",
+  "dataCompat": "不改变落库数据、同步载荷与备份格式。",
+  "commits": ["f861980b"],
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "src/features/chat/core/middleware/__tests__/eventBridge.skillInjectionAudit.test.ts",
+      "name": "RF-W09-skill-injection-audit-unhandled: skill_injection_audit"
+    }
+  ]
+}

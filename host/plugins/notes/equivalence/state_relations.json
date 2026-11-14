@@ -1,0 +1,1075 @@
+{
+  "domain": "notes",
+  "commands": [
+    "dstu_create",
+    "dstu_delete",
+    "notes_history_current",
+    "notes_history_set_retention",
+    "notes_list_referencing_resource",
+    "notes_migrate_blocks",
+    "notes_reference_status",
+    "notes_relation_delete",
+    "notes_relation_list",
+    "notes_relation_put",
+    "notes_state_delete",
+    "notes_state_get",
+    "notes_state_list",
+    "notes_state_put"
+  ],
+  "scenarios": [
+    {
+      "id": "notes.state.put_get_list_delete_revisions",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_history_set_retention",
+          "args": {
+            "policy": {
+              "edit_bucket_seconds": 0,
+              "max_edit_versions": null
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "状态笔记",
+              "content": "# 状态\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_state_get",
+          "args": {
+            "request": {
+              "note_id": "${1.id}",
+              "type": "draft",
+              "key": "draft:main"
+            }
+          }
+        },
+        {
+          "cmd": "notes_state_list",
+          "args": {
+            "request": {
+              "note_id": "${1.id}",
+              "type": "draft",
+              "include_deleted": false
+            }
+          }
+        },
+        {
+          "cmd": "notes_state_put",
+          "args": {
+            "request": {
+              "note_id": "${1.id}",
+              "type": "draft",
+              "key": "draft:main",
+              "expected_revision": null,
+              "value": {
+                "markdown": "草稿一",
+                "expectedUpdatedAt": "x"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "notes_state_put",
+          "args": {
+            "request": {
+              "note_id": "${1.id}",
+              "type": "draft",
+              "key": "draft:main",
+              "expected_revision": null,
+              "value": {
+                "markdown": "重复创建"
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_state_put",
+          "args": {
+            "request": {
+              "note_id": "${1.id}",
+              "type": "draft",
+              "key": "draft:main",
+              "expected_revision": "${4.revision}",
+              "value": {
+                "markdown": "草稿二"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "notes_state_put",
+          "args": {
+            "request": {
+              "note_id": "${1.id}",
+              "type": "draft",
+              "key": "draft:main",
+              "expected_revision": "${4.revision}",
+              "value": {
+                "markdown": "旧版本"
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_state_put",
+          "args": {
+            "request": {
+              "note_id": "${1.id}",
+              "type": "review",
+              "key": "review:session",
+              "value": {
+                "kind": "review"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "notes_state_put",
+          "args": {
+            "request": {
+              "note_id": "${1.id}",
+              "type": {
+                "draft": null
+              },
+              "key": "draft:map-form",
+              "value": [
+                1,
+                2
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "notes_state_get",
+          "args": {
+            "request": {
+              "note_id": "${1.id}",
+              "type": "draft",
+              "key": "draft:main"
+            }
+          }
+        },
+        {
+          "cmd": "notes_state_list",
+          "args": {
+            "request": {
+              "note_id": "${1.id}",
+              "type": "draft"
+            }
+          }
+        },
+        {
+          "cmd": "notes_state_delete",
+          "args": {
+            "request": {
+              "note_id": "${1.id}",
+              "type": "draft",
+              "key": "draft:main",
+              "expected_revision": "${4.revision}"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_state_delete",
+          "args": {
+            "request": {
+              "note_id": "${1.id}",
+              "type": "draft",
+              "key": "draft:main",
+              "expected_revision": "${6.revision}"
+            }
+          }
+        },
+        {
+          "cmd": "notes_state_get",
+          "args": {
+            "request": {
+              "note_id": "${1.id}",
+              "type": "draft",
+              "key": "draft:main"
+            }
+          }
+        },
+        {
+          "cmd": "notes_state_list",
+          "args": {
+            "request": {
+              "note_id": "${1.id}",
+              "type": "draft",
+              "include_deleted": false
+            }
+          }
+        },
+        {
+          "cmd": "notes_state_list",
+          "args": {
+            "request": {
+              "note_id": "${1.id}",
+              "type": "draft",
+              "include_deleted": true
+            }
+          }
+        },
+        {
+          "cmd": "notes_state_put",
+          "args": {
+            "request": {
+              "note_id": "${1.id}",
+              "type": "draft",
+              "key": "draft:main",
+              "expected_revision": null,
+              "value": {
+                "markdown": "墓碑上新建"
+              }
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_state_put",
+          "args": {
+            "request": {
+              "note_id": "${1.id}",
+              "type": "draft",
+              "key": "draft:main",
+              "expected_revision": "${13.revision}",
+              "value": {
+                "markdown": "复活"
+              }
+            }
+          }
+        },
+        {
+          "cmd": "notes_state_delete",
+          "args": {
+            "request": {
+              "note_id": "${1.id}",
+              "type": "draft",
+              "key": "draft:absent",
+              "expected_revision": 1
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_state_put",
+          "args": {
+            "request": {
+              "note_id": "${1.id}",
+              "type": "draft",
+              "key": "",
+              "value": 1
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_state_put",
+          "args": {
+            "request": {
+              "note_id": "${1.id}",
+              "type": "draft",
+              "key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+              "value": 1
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_state_put",
+          "args": {
+            "request": {
+              "note_id": "${1.id}",
+              "type": "draft",
+              "key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+              "value": 1
+            }
+          }
+        },
+        {
+          "cmd": "notes_state_get",
+          "args": {
+            "request": {
+              "note_id": "${1.id}",
+              "type": "draft",
+              "key": ""
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_state_get",
+          "args": {
+            "request": {
+              "note_id": "note_missing_state",
+              "type": "draft",
+              "key": "draft:main"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_state_list",
+          "args": {
+            "request": {
+              "note_id": "note_missing_state",
+              "type": "draft"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_state_put",
+          "args": {
+            "request": {
+              "note_id": "note_missing_state",
+              "type": "draft",
+              "key": "draft:main",
+              "value": 1
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_state_delete",
+          "args": {
+            "request": {
+              "note_id": "note_missing_state",
+              "type": "draft",
+              "key": "draft:main",
+              "expected_revision": 1
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_state_get",
+          "args": {
+            "request": {
+              "note_id": "${1.id}",
+              "type": "draft",
+              "key": "draft:main",
+              "extra": 1
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_state_list",
+          "args": {
+            "request": {
+              "note_id": "${1.id}",
+              "type": "draft",
+              "extra": 1
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_state_put",
+          "args": {
+            "request": {
+              "note_id": "${1.id}",
+              "type": "other",
+              "key": "draft:main",
+              "value": 1
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_state_put",
+          "args": {
+            "request": {
+              "note_id": "${1.id}",
+              "type": "draft",
+              "key": "draft:main"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_state_delete",
+          "args": {
+            "request": {
+              "note_id": "${1.id}",
+              "type": "draft",
+              "key": "draft:main"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_delete",
+          "args": {
+            "path": "${1.path}"
+          }
+        },
+        {
+          "cmd": "notes_state_get",
+          "args": {
+            "request": {
+              "note_id": "${1.id}",
+              "type": "draft",
+              "key": "draft:main"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_state_list",
+          "args": {
+            "request": {
+              "note_id": "${1.id}",
+              "type": "draft"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_state_put",
+          "args": {
+            "request": {
+              "note_id": "${1.id}",
+              "type": "draft",
+              "key": "draft:main",
+              "value": 1
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_state_delete",
+          "args": {
+            "request": {
+              "note_id": "${1.id}",
+              "type": "draft",
+              "key": "draft:main",
+              "expected_revision": 1
+            }
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "notes.relations.put_list_delete_reference_status",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "notes_history_set_retention",
+          "args": {
+            "policy": {
+              "edit_bucket_seconds": 0,
+              "max_edit_versions": null
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "关系源",
+              "content": "Owner body\n"
+            }
+          }
+        },
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "note",
+              "name": "关系目标",
+              "content": "# Target\n\nTarget body\n"
+            }
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_history_current",
+          "args": {
+            "noteId": "${2.id}"
+          }
+        },
+        {
+          "cmd": "notes_migrate_blocks",
+          "args": {
+            "noteId": "${1.id}",
+            "expectedUpdatedAt": "${3.updated_at}",
+            "content": "<!-- ds:block-id=ob1 -->\nOwner body\n"
+          }
+        },
+        {
+          "cmd": "notes_migrate_blocks",
+          "args": {
+            "noteId": "${2.id}",
+            "expectedUpdatedAt": "${4.updated_at}",
+            "content": "<!-- ds:block-id=tb1 -->\n# Target\n\n<!-- ds:block-id=tb2 -->\nTarget body\n"
+          }
+        },
+        {
+          "cmd": "notes_relation_list",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_relation_put",
+          "args": {
+            "request": {
+              "id": "rel-1",
+              "note_id": "${1.id}",
+              "block_id": null,
+              "type": "source",
+              "resource_id": "${2.resourceId}",
+              "locator": {
+                "type": "whole"
+              },
+              "expected_revision": null
+            }
+          }
+        },
+        {
+          "cmd": "notes_relation_put",
+          "args": {
+            "request": {
+              "id": "rel-1",
+              "note_id": "${1.id}",
+              "block_id": null,
+              "type": "source",
+              "resource_id": "${2.resourceId}",
+              "locator": {
+                "type": "whole"
+              },
+              "expected_revision": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_relation_put",
+          "args": {
+            "request": {
+              "id": "rel-1",
+              "note_id": "${1.id}",
+              "block_id": "ob1",
+              "type": "source",
+              "resource_id": "${2.resourceId}",
+              "locator": {
+                "type": "block",
+                "value": "tb2"
+              },
+              "expected_revision": "${8.revision}"
+            }
+          }
+        },
+        {
+          "cmd": "notes_relation_put",
+          "args": {
+            "request": {
+              "id": "rel-1",
+              "note_id": "${1.id}",
+              "block_id": null,
+              "type": "source",
+              "resource_id": "${2.resourceId}",
+              "locator": {
+                "type": "whole"
+              },
+              "expected_revision": "${8.revision}"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_relation_put",
+          "args": {
+            "request": {
+              "id": "rel-0",
+              "note_id": "${1.id}",
+              "block_id": null,
+              "type": {
+                "source": null
+              },
+              "resource_id": "${2.resourceId}",
+              "locator": {
+                "type": "whole"
+              },
+              "expected_revision": null
+            }
+          }
+        },
+        {
+          "cmd": "notes_relation_list",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_relation_list",
+          "args": {
+            "noteId": "note_missing_relation"
+          }
+        },
+        {
+          "cmd": "notes_reference_status",
+          "args": {
+            "resourceId": "${2.resourceId}",
+            "locator": {
+              "type": "block",
+              "value": "tb1"
+            }
+          }
+        },
+        {
+          "cmd": "notes_reference_status",
+          "args": {
+            "resourceId": "${2.resourceId}",
+            "locator": {
+              "type": "block",
+              "value": "tb-none"
+            }
+          }
+        },
+        {
+          "cmd": "notes_reference_status",
+          "args": {
+            "resourceId": "res_missing",
+            "locator": {
+              "type": "whole"
+            }
+          }
+        },
+        {
+          "cmd": "notes_reference_status",
+          "args": {
+            "resourceId": "${2.resourceId}",
+            "locator": {
+              "type": "page",
+              "value": 1
+            }
+          }
+        },
+        {
+          "cmd": "notes_reference_status",
+          "args": {
+            "resourceId": "doc_missing",
+            "locator": {
+              "type": "card",
+              "value": "card_missing"
+            }
+          }
+        },
+        {
+          "cmd": "notes_reference_status",
+          "args": {
+            "resourceId": "${2.resourceId}",
+            "locator": {
+              "type": "question",
+              "value": "q_missing"
+            }
+          }
+        },
+        {
+          "cmd": "notes_reference_status",
+          "args": {
+            "resourceId": "${2.resourceId}",
+            "locator": {
+              "type": "page",
+              "value": -1
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_reference_status",
+          "args": {
+            "resourceId": "${2.resourceId}",
+            "locator": {
+              "type": "chapter"
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_reference_status",
+          "args": {
+            "resourceId": "${2.resourceId}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_list_referencing_resource",
+          "args": {
+            "resourceIds": [
+              "${2.resourceId}"
+            ]
+          }
+        },
+        {
+          "cmd": "notes_list_referencing_resource",
+          "args": {
+            "resourceIds": [
+              "  ",
+              "",
+              "res_missing"
+            ]
+          }
+        },
+        {
+          "cmd": "notes_list_referencing_resource",
+          "args": {
+            "resourceIds": []
+          }
+        },
+        {
+          "cmd": "notes_list_referencing_resource",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_relation_put",
+          "args": {
+            "request": {
+              "id": "  ",
+              "note_id": "${1.id}",
+              "block_id": null,
+              "type": "source",
+              "resource_id": "${2.resourceId}",
+              "locator": {
+                "type": "whole"
+              },
+              "expected_revision": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_relation_put",
+          "args": {
+            "request": {
+              "id": "rel-card",
+              "note_id": "${1.id}",
+              "block_id": null,
+              "type": "card",
+              "resource_id": "${2.resourceId}",
+              "locator": {
+                "type": "whole"
+              },
+              "expected_revision": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_relation_put",
+          "args": {
+            "request": {
+              "id": "rel-mistake",
+              "note_id": "${1.id}",
+              "block_id": null,
+              "type": "mistake",
+              "resource_id": "${2.resourceId}",
+              "locator": {
+                "type": "block",
+                "value": "tb1"
+              },
+              "expected_revision": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_relation_put",
+          "args": {
+            "request": {
+              "id": "rel-owner",
+              "note_id": "note_missing_relation",
+              "block_id": null,
+              "type": "source",
+              "resource_id": "${2.resourceId}",
+              "locator": {
+                "type": "whole"
+              },
+              "expected_revision": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_relation_put",
+          "args": {
+            "request": {
+              "id": "rel-block",
+              "note_id": "${1.id}",
+              "block_id": "ob-none",
+              "type": "source",
+              "resource_id": "${2.resourceId}",
+              "locator": {
+                "type": "whole"
+              },
+              "expected_revision": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_relation_put",
+          "args": {
+            "request": {
+              "id": "rel-res",
+              "note_id": "${1.id}",
+              "block_id": null,
+              "type": "source",
+              "resource_id": "res_missing",
+              "locator": {
+                "type": "whole"
+              },
+              "expected_revision": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_relation_put",
+          "args": {
+            "request": {
+              "id": "rel-loc",
+              "note_id": "${1.id}",
+              "block_id": null,
+              "type": "source",
+              "resource_id": "${2.resourceId}",
+              "locator": {
+                "type": "block",
+                "value": "tb-none"
+              },
+              "expected_revision": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_relation_put",
+          "args": {
+            "request": {
+              "id": "rel-page",
+              "note_id": "${1.id}",
+              "block_id": null,
+              "type": "source",
+              "resource_id": "${2.resourceId}",
+              "locator": {
+                "type": "page",
+                "value": 0
+              },
+              "expected_revision": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_relation_put",
+          "args": {
+            "request": {
+              "id": "rel-cardloc",
+              "note_id": "${1.id}",
+              "block_id": null,
+              "type": "card",
+              "resource_id": "doc_missing",
+              "locator": {
+                "type": "card",
+                "value": "card_missing"
+              },
+              "expected_revision": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_relation_put",
+          "args": {
+            "request": {
+              "id": "rel-q",
+              "note_id": "${1.id}",
+              "block_id": null,
+              "type": "mistake",
+              "resource_id": "${2.resourceId}",
+              "locator": {
+                "type": "question",
+                "value": "q_missing"
+              },
+              "expected_revision": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_relation_put",
+          "args": {
+            "request": {
+              "id": "rel-extra",
+              "note_id": "${1.id}",
+              "block_id": null,
+              "type": "source",
+              "resource_id": "${2.resourceId}",
+              "locator": {
+                "type": "whole"
+              },
+              "expected_revision": null,
+              "extra": 1
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_relation_put",
+          "args": {
+            "request": {
+              "id": "rel-nokey",
+              "note_id": "${1.id}",
+              "block_id": null,
+              "type": "source",
+              "locator": {
+                "type": "whole"
+              },
+              "expected_revision": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_relation_delete",
+          "args": {
+            "id": "rel-1",
+            "expectedRevision": "${8.revision}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_relation_delete",
+          "args": {
+            "id": "rel-1",
+            "expectedRevision": "${10.revision}"
+          }
+        },
+        {
+          "cmd": "notes_relation_delete",
+          "args": {
+            "id": "rel-1",
+            "expectedRevision": "${10.revision}"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_relation_delete",
+          "args": {
+            "id": "rel-none",
+            "expectedRevision": 1
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_relation_delete",
+          "args": {
+            "id": "rel-0"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "notes_relation_list",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "dstu_delete",
+          "args": {
+            "path": "${1.path}"
+          }
+        },
+        {
+          "cmd": "notes_list_referencing_resource",
+          "args": {
+            "resourceIds": [
+              "${2.resourceId}"
+            ]
+          }
+        },
+        {
+          "cmd": "notes_relation_list",
+          "args": {
+            "noteId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "notes_relation_put",
+          "args": {
+            "request": {
+              "id": "rel-after-delete",
+              "note_id": "${1.id}",
+              "block_id": null,
+              "type": "source",
+              "resource_id": "${2.resourceId}",
+              "locator": {
+                "type": "whole"
+              },
+              "expected_revision": null
+            }
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "dstu_delete",
+          "args": {
+            "path": "${2.path}"
+          }
+        },
+        {
+          "cmd": "notes_reference_status",
+          "args": {
+            "resourceId": "${2.resourceId}",
+            "locator": {
+              "type": "whole"
+            }
+          }
+        },
+        {
+          "cmd": "notes_relation_list",
+          "args": {},
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

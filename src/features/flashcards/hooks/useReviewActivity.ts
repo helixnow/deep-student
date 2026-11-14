@@ -24,6 +24,8 @@ export interface ReviewActivityData {
   dayCounts: Map<string, number>;
   /** 各评分档计数（stats=窗口内全部评分；approx=每卡最近一次评分） */
   ratingCounts: Record<FsrsRating, number>;
+  /** 未来 7 个学习日各卡已经排定的下一次学习或复习；近似模式没有该数据。 */
+  scheduledForecast: Array<{ date: string; count: number }> | null;
   /** 参与评分分布统计的复习/卡片数 */
   ratedTotal: number;
   /** 卡片库总数（仅 approx 路径的后端分页 total） */
@@ -99,6 +101,7 @@ function emptyRatingCounts(): Record<FsrsRating, number> {
 function emptyData(): ReviewActivityData {
   return {
     dayCounts: new Map(),
+    scheduledForecast: null,
     ratingCounts: emptyRatingCounts(),
     ratedTotal: 0,
     totalCards: null,
@@ -151,6 +154,16 @@ function parseRealStatistics(raw: unknown): ReviewActivityData | null {
     const total = readFiniteNumber(row.total);
     if (!date || total == null || total <= 0) continue;
     data.dayCounts.set(date, Math.floor(total));
+  }
+  if (Array.isArray(root.scheduledForecast)) {
+    const rows = root.scheduledForecast.flatMap((item) => {
+      const count = readFiniteNumber(item?.count);
+      const date = item?.date;
+      return typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date) && count != null && count >= 0
+        ? [{ date, count }]
+        : [];
+    });
+    if (rows.length === 7) data.scheduledForecast = rows;
   }
   const dist = distribution as Record<string, unknown>;
   const readCount = (key: string): number => {

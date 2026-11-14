@@ -345,6 +345,9 @@ export interface AskUserBlockingInteraction {
   allowCustom: boolean;
   timeoutSeconds: number | null;
   context?: string;
+  html?: string;
+  ui?: string;
+  title?: string;
 }
 
 export interface ToolLimitBlockingInteraction {

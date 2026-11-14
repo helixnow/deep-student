@@ -1,0 +1,54 @@
+{
+  "id": "RF-S01-shell-environment-failure",
+  "kind": "deliberate",
+  "status": "approved",
+  "approvedBy": "main-agent",
+  "approvedAt": "2026-11-07T03:27:08Z",
+  "title": "本地 shell 的执行环境失败（spawn、沙箱准备、RLIMIT 启动器、进程管道）单独报错：带阶段与 errno，提示模型不要原样重试",
+  "rust": {
+    "file": "src-tauri/crates/dstu-agent/src/chat_v2/tools/local_shell_execute_executor.rs",
+    "line": 2093,
+    "behavior": "spawn 失败返回 Err(\"Failed to execute local shell command: <io::Error>\")，沙箱准备失败（command()? 的 Seatbelt profile / bwrap / Windows payload 错误）、无 pid、取不到 stdout/stderr 同样是裸字符串错误；模型只看到 `Error: …`，与命令本身的失败没有区分，也没有任何是否该重试的信息，常见表现是原样反复重试同一条命令"
+  },
+  "fix": {
+    "files": [
+      "host/plugins/agent-workspace/src/tools/shell-execute.ts",
+      "host/plugins/agent-workspace/src/tools/shell-execute/environment-failure.ts",
+      "host/plugins/agent-workspace/src/tools/shell-execute/process.ts"
+    ],
+    "behavior": "这四类准备阶段失败抛 ShellEnvironmentFailure，错误文本为 `LOCAL_SHELL_ENVIRONMENT_FAILURE (stage=<resource_limits|sandbox_setup|spawn|process_io>[, code=<errno>]): <原错误文本>` 加一段说明：这是执行环境失败、不是命令失败，命令没有运行（无退出码、无输出、未改动文件）；EAGAIN/EMFILE/ENFILE/ENOMEM/EBUSY/ETXTBSY 提示等待后最多重试一次，其余提示原样重试会同样失败、应告诉用户。原错误文本（含 `Failed to execute local shell command: …`）原样保留在冒号之后。spawn 失败现在保留 errno code。命令本身的非零退出、超时、取消仍是带 exit_code 的结构化结果，错误文本不变（failureErrorForLlm）。git_* 工具经同一执行器，得到同样的错误"
+  },
+  "evidence": "BRIEF §8 D3（借鉴 DeepSeek Harness：环境失败与命令失败分开报告）。Rust 的四处准备失败都是 Err(String)，经 pipeline 以 `Error: <text>` 交给模型，与“命令写错了”的错误在形态上一样；EAGAIN 这类瞬时错误和 bwrap 缺失这类永久错误也无从区分。复现：在进程数耗尽或 TMPDIR 不可写（macOS Seatbelt profile 写不进去）时调用 local_shell_execute，Rust 返回裸错误，模型通常换个写法重试同一命令。消费方均按不透明文本处理：chat-pipeline tool-pack-executor / variant-run 把 error 原样放进工具消息，chat_v2_blocks.error 落库文本，前端 mcpTool/generic 卡片原样显示 block.error（后端错误文本本来就不做 i18n），所以无需改动其他 lane。G3：语料扫描（scanScenarios 规则，233 个套件、3887 个场景，A16 复核 S01-76965bac 第 5 节独立复扫一致）没有一个场景执行 local_shell_execute 或 git_*（automations.json 只把 builtin-local_shell_preflight 列进可信 profile 的 allowedTools，skills-local.json 只在技能描述里出现 local_shell 字样），录制环境也不会制造 spawn、沙箱准备、RLIMIT 启动器或管道失败，命令正常执行时错误文本不变，G3 观测不到这处差异，由 tests 守护。",
+  "userVisible": "能感知：只在本地 shell / git_* 工具因执行环境失败（进程数耗尽、沙箱启动器缺失、TMPDIR 不可写、RLIMIT 服务缺失等）时，工具卡片里的错误文本变为以 LOCAL_SHELL_ENVIRONMENT_FAILURE 开头、带阶段和 errno、附“不要原样重试”说明的英文文本；模型据此停止原样重试并向用户说明。命令正常执行（含非零退出、超时）时完全不变",
+  "dataCompat": "只改变 chat_v2_blocks.error 与 tool_call 错误事件里的文本，不改表结构、工具块结构、同步载荷或备份格式；旧 Rust 版读取新文本、新版读取旧文本都只是显示字符串",
+  "g3": {
+    "affects": false,
+    "selectors": []
+  },
+  "tests": [
+    {
+      "file": "host/plugins/agent-workspace/tests/shell-environment-failure.test.ts",
+      "name": "RF-S01-shell-environment-failure: a spawn refused with EAGAIN is an environment failure with the errno and no output, not a command error"
+    },
+    {
+      "file": "host/plugins/agent-workspace/tests/shell-environment-failure.test.ts",
+      "name": "RF-S01-shell-environment-failure: a missing shell (ENOENT) is a permanent environment failure"
+    },
+    {
+      "file": "host/plugins/agent-workspace/tests/shell-environment-failure.test.ts",
+      "name": "RF-S01-shell-environment-failure: a command's own non-zero exit and timeout stay structured results without the environment marker"
+    },
+    {
+      "file": "host/plugins/agent-workspace/tests/shell-environment-failure.test.ts",
+      "name": "RF-S01-shell-environment-failure: through the plugin's executor, a sandboxed command without the RLIMIT launcher reports a resource_limits failure"
+    },
+    {
+      "file": "host/plugins/agent-workspace/tests/shell-environment-failure.test.ts",
+      "name": "RF-S01-shell-environment-failure: through the plugin's executor, a Seatbelt profile that cannot be written reports a sandbox_setup failure"
+    },
+    {
+      "file": "host/plugins/agent-workspace/tests/shell-environment-failure.test.ts",
+      "name": "RF-S01-shell-environment-failure: transient resource errors are told apart from permanent ones; the detail and stage stay readable"
+    }
+  ]
+}

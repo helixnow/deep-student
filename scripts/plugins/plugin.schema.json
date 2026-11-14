@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://deepstudent.local/schemas/plugin.json",
+  "title": "DeepStudent 全栈插件包清单（plugin.json）",
+  "description": "FRONTEND-PLUGINIZATION §2.2。Host 半与 UI 半同一 id；两者至少有一个。由 scripts/plugins/validate-package.mjs 校验，并与两半源码中的 meta 交叉核对。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "version", "platforms"],
+  "anyOf": [{ "required": ["host"] }, { "required": ["ui"] }],
+  "properties": {
+    "$schema": { "type": "string" },
+    "id": {
+      "description": "两半共用的插件 id，形如 community.study-stats；dstu. 前缀保留给官方插件。",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*(\\.[a-z0-9][a-z0-9-]*)+$",
+      "maxLength": 128
+    },
+    "version": {
+      "description": "语义化版本。",
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
+    },
+    "description": { "type": "string" },
+    "engines": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "deepStudent": { "description": "兼容的应用版本范围，如 ^2.0。", "type": "string", "minLength": 1 }
+      }
+    },
+    "platforms": {
+      "description": "可装配的平台，取值即 host/kernel/platforms.ts 的 PLUGIN_PLATFORMS。",
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "enum": ["desktop", "mobile"] }
+    },
+    "host": { "description": "Host 半入口（相对包目录）。", "$ref": "#/$defs/entry" },
+    "ui": { "description": "UI 半入口（相对包目录）。", "$ref": "#/$defs/entry" },
+    "permissions": {
+      "description": "Host 半注入的官方服务，形如 service:review。",
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^service:[A-Za-z][A-Za-z0-9_.-]*$" }
+    },
+    "requiresHost": {
+      "description": "UI 半额外依赖的 Host 插件（与 UI meta.requiresHost 一致）。",
+      "$ref": "#/$defs/ids"
+    },
+    "requires": {
+      "description": "必须先安装的 UI 插件（与 UI meta.requires 一致）。",
+      "$ref": "#/$defs/ids"
+    },
+    "trust": { "description": "信任级别，缺省 sandboxed；builtin 只属于打包进应用的官方插件。", "enum": ["sandboxed", "trusted"] },
+    "contributes": {
+      "description": "静态贡献：槽位名 → 条目（懒激活与沙箱插件使用）。",
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["id"],
+          "properties": { "id": { "type": "string", "minLength": 1 } }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "entry": {
+      "type": "string",
+      "pattern": "^\\./[^\\\\]+\\.(?:ts|tsx|js|mjs|jsx)$",
+      "not": { "pattern": "(?:^|/)\\.\\.(?:/|$)" }
+    },
+    "ids": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]*(\\.[a-z0-9][a-z0-9-]*)+$" }
+    }
+  }
+}

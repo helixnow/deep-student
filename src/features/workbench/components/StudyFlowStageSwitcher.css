@@ -1,0 +1,158 @@
+/**
+ * W04 — StudyFlowStageSwitcher 样式
+ *
+ * 顶栏学习流阶段预设胶囊：
+ * - Desktop (>= 960px)：24px 高紧凑分段胶囊居中于 wb-menubar，激活态呈青瓷微染底与 6px 状态点
+ * - Compact (< 960px)：折叠为单枚 24px 胶囊触发器 + 1px border-border/35 弹出菜单，避免窄屏顶栏溢出
+ */
+
+.wb-menubar-stage-slot {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  pointer-events: none;
+}
+
+.wb-stage-switcher,
+.wb-stage-compact-wrap {
+  pointer-events: auto;
+}
+
+.wb-stage-switcher {
+  height: 24px;
+  box-sizing: border-box;
+}
+
+.wb-stage-pill {
+  height: 20px;
+  border: none;
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+  transition:
+    background-color 140ms ease-out,
+    color 140ms ease-out,
+    transform 90ms ease-in;
+}
+
+.wb-stage-pill:active,
+.wb-stage-sidecar-btn:active,
+.wb-stage-compact-trigger:active {
+  transform: scale(0.97);
+}
+
+.wb-stage-pill:focus-visible,
+.wb-stage-sidecar-btn:focus-visible,
+.wb-stage-compact-trigger:focus-visible,
+.wb-stage-compact-item:focus-visible {
+  outline: var(--wb-focus-ring-width, 2px) solid
+    var(--wb-focus-ring-color, hsl(var(--primary) / 0.85));
+  outline-offset: 1px;
+}
+
+.wb-stage-sidecar-btn {
+  height: 20px;
+  width: 20px;
+  border: none;
+  cursor: pointer;
+  transition:
+    background-color 140ms ease-out,
+    color 140ms ease-out,
+    transform 90ms ease-in;
+}
+
+.wb-stage-compact-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.wb-stage-compact-trigger {
+  height: 24px;
+  box-sizing: border-box;
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+  transition:
+    background-color 140ms ease-out,
+    transform 90ms ease-in;
+}
+
+.wb-stage-compact-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: calc(var(--wb-z-menubar-flyout, 9150) + 1);
+  min-width: 176px;
+  box-shadow: var(--wb-glass-edge), var(--wb-shadow-popover);
+}
+
+.wb-stage-compact-item {
+  width: 100%;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 140ms ease-out;
+}
+
+@media (max-width: 959.98px) {
+  .wb-menubar-stage-slot {
+    position: relative;
+    left: auto;
+    transform: none;
+    margin-left: auto;
+    flex-shrink: 0;
+  }
+}
+
+:root[data-wb-material='minimal'] .wb-stage-switcher,
+:root[data-wb-material='reduced'] .wb-stage-switcher,
+:root[data-wb-material='minimal'] .wb-stage-compact-trigger,
+:root[data-wb-material='reduced'] .wb-stage-compact-trigger {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+:root[data-wb-material='minimal'] .wb-stage-pill,
+:root[data-wb-material='reduced'] .wb-stage-pill,
+:root[data-wb-material='minimal'] .wb-stage-sidecar-btn,
+:root[data-wb-material='reduced'] .wb-stage-sidecar-btn,
+:root[data-wb-material='minimal'] .wb-stage-compact-trigger,
+:root[data-wb-material='reduced'] .wb-stage-compact-trigger,
+:root[data-wb-material='minimal'] .wb-stage-compact-item,
+:root[data-wb-material='reduced'] .wb-stage-compact-item {
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wb-stage-pill,
+  .wb-stage-sidecar-btn,
+  .wb-stage-compact-trigger,
+  .wb-stage-compact-item {
+    transition: none;
+  }
+}
+
+@media (pointer: coarse) {
+  .wb-stage-pill,
+  .wb-stage-sidecar-btn,
+  .wb-stage-compact-trigger {
+    position: relative;
+  }
+
+  .wb-stage-pill::after,
+  .wb-stage-sidecar-btn::after,
+  .wb-stage-compact-trigger::after {
+    content: '';
+    position: absolute;
+    inset: -6px 0;
+  }
+
+  .wb-stage-compact-item {
+    min-height: 36px;
+  }
+}

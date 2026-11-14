@@ -1,0 +1,11 @@
+{
+  "id": "RF-W01-degraded-error-codes", "kind": "deliberate", "status": "proposed",
+  "title": "缺服务与 apply 失败降级原因增加可解析错误码",
+  "rust": { "file": "src-tauri/src/plugins/manager.rs", "line": 269, "behavior": "内置渠道没有社区 profile 缺服务/apply 降级清单错误码" },
+  "fix": { "files": ["host/kernel/profile-install.ts"], "behavior": "缺服务加 SERVICE_MISSING，未结构化的启动失败加 APPLY_FAILED；已知 PluginLoadError 码不重复添加，原 detail 不变。" },
+  "evidence": "真实 Host 安装缺服务和抛错插件，parseDegradedReason 提取稳定 code，manifest 传播同一 reason。",
+  "userVisible": "不可用面板能按错误码区分缺服务与插件启动异常；错误文字增加前缀。",
+  "dataCompat": "仅会话状态文本变化，无数据格式变化；回撤恢复旧文本。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [{ "file": "host/kernel/tests/degraded-error-codes.test.ts", "name": "RF-W01-degraded-error-codes: missing service and apply errors have stable codes and preserve details" }]
+}

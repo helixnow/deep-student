@@ -215,18 +215,28 @@ export const NoteCustomPropsEditor: React.FC<NoteCustomPropsEditorProps> = ({
         <h3>{t('notesWorkspace.props.title', { defaultValue: '属性' })}</h3>
         {entries.length > 0 && <span className="notes-props-count">{entries.length}</span>}
         {saving && <CircleNotch className="notes-props-spinner" size={12} aria-hidden="true" />}
+        {canEdit && !adding && (
+          <button
+            type="button"
+            className="notes-props-add-button"
+            disabled={saving}
+            onClick={() => {
+              setAdding(true);
+              setError(null);
+            }}
+          >
+            <Plus size={12} aria-hidden="true" />
+            {t('notesWorkspace.props.add', { defaultValue: '添加属性' })}
+          </button>
+        )}
       </div>
 
       <NoteLearningPropsFields value={value} readOnly={!canEdit} disabled={saving || adding || editingKey !== null} onSave={commit} />
       {canEdit && <LegacyLearningPropsMapper value={value} disabled={saving || adding || editingKey !== null} onSave={commit} />}
 
-      {entries.length === 0 && !adding && (
+      {entries.length === 0 && !adding && !canEdit && (
         <p className="notes-props-empty">
-          {canEdit
-            ? t('notesWorkspace.props.emptyHint', {
-              defaultValue: '为笔记添加任意键值属性，可用 key:value 搜索。',
-            })
-            : t('notesWorkspace.props.emptyReadOnly', { defaultValue: '暂无属性。' })}
+          {t('notesWorkspace.props.emptyReadOnly', { defaultValue: '暂无属性。' })}
         </p>
       )}
 
@@ -329,7 +339,7 @@ export const NoteCustomPropsEditor: React.FC<NoteCustomPropsEditorProps> = ({
         </dl>
       )}
 
-      {canEdit && (adding ? (
+      {canEdit && adding && (
         <div className="notes-props-add-form">
           <input
             ref={keyInputRef}
@@ -391,20 +401,7 @@ export const NoteCustomPropsEditor: React.FC<NoteCustomPropsEditorProps> = ({
             <X size={13} aria-hidden="true" />
           </button>
         </div>
-      ) : (
-        <button
-          type="button"
-          className="notes-props-add-button"
-          disabled={saving}
-          onClick={() => {
-            setAdding(true);
-            setError(null);
-          }}
-        >
-          <Plus size={12} aria-hidden="true" />
-          {t('notesWorkspace.props.add', { defaultValue: '添加属性' })}
-        </button>
-      ))}
+      )}
 
       {error && (
         <p id={errorId} className="notes-props-error" role="alert">{error}</p>

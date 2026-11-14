@@ -32,20 +32,20 @@ export const ReviewStatTile: React.FC<ReviewStatTileProps> = ({
   <div
     style={style}
     className={cn(
-      'flex flex-col gap-2 rounded-lg border border-border/50 bg-muted/20 p-3',
+      'flex flex-col gap-1 rounded-lg border border-border/35 bg-muted/15 px-3 py-2',
       'transition-[background-color,border-color] duration-150 ease-standard',
-      'hover:border-border hover:bg-muted/30',
+      'hover:border-border/60 hover:bg-muted/25',
       className
     )}
   >
     <div className="flex items-center justify-between gap-2">
-      <span className="truncate text-xs font-medium text-muted-foreground">{label}</span>
-      <span className={cn('shrink-0 opacity-80', color)}>{icon}</span>
+      <span className="truncate text-xs text-muted-foreground">{label}</span>
+      <span className={cn('shrink-0 opacity-75', color)}>{icon}</span>
     </div>
-    <div className="min-w-0">
-      <p className={cn('text-xl font-semibold leading-none tabular-nums', color)}>{value}</p>
+    <div className="flex items-baseline justify-between gap-2 min-w-0">
+      <p className={cn('text-base font-mono font-semibold leading-none tabular-nums', color)}>{value}</p>
       {description && (
-        <p className="mt-1.5 truncate text-[11px] text-muted-foreground/70">{description}</p>
+        <p className="truncate text-[11px] font-mono tabular-nums text-muted-foreground/70">{description}</p>
       )}
     </div>
   </div>

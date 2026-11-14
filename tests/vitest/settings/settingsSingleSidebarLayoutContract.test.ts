@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { readAppShellSource } from '@/app/__tests__/appShellSources';
+import { readOfficialShellEntries } from '@/app/__tests__/officialShellEntries';
 
 describe('settings single sidebar layout contract', () => {
   const appSource = readAppShellSource();
 
-  it('keeps the global ModernSidebar out of the visible desktop sidebar slot while settings is active', () => {
-    expect(appSource).toContain("const desktopShellSidebarKind = currentView === 'settings'");
+  it('keeps the global ModernSidebar out of the visible desktop sidebar slot while settings is active', async () => {
+    expect(appSource).toContain("const desktopShellSidebarKind = activeShell?.sidebarKind ?? 'main';");
+    const { views } = await readOfficialShellEntries();
+    expect(views.get('settings')?.shell?.sidebarKind).toBe('settings');
     // 侧栏改为分层常驻：settings 激活 settings 层，主 ModernSidebar 仍挂载以保住会话
     // 缓存，但由 DesktopShellSidebarLayers 置 hidden + inert（行为见其单测），
     // 因此桌面上任何时刻仍只有一个可见、可聚焦的侧栏。

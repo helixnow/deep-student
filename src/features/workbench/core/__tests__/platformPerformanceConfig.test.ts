@@ -16,7 +16,7 @@ function readRepo(...parts: string[]): string {
 
 describe('OS mode drag performance anti-regression', () => {
   it('Windows WebView2 不得全局关闭 GPU / GPU 合成', () => {
-    const conf = readRepo('src-tauri', 'tauri.windows.conf.json');
+    const conf = readRepo('resources/app', 'tauri.windows.conf.json');
     expect(conf).not.toMatch(/--disable-gpu(?!-)/);
     expect(conf).not.toContain('--disable-gpu-compositing');
     // 遮挡计算关闭会让后台页/合成行为异常；OS 模式依赖正常合成路径
@@ -124,10 +124,18 @@ describe('OS mode drag performance anti-regression', () => {
     expect(app).not.toContain('data-wb-settings-snapshot');
 
     const settings = readRepo('src', 'features', 'settings', 'components', 'Settings.tsx');
+    const mainContent = readRepo('src', 'features', 'settings', 'components', 'SettingsMainContent.tsx');
     expect(settings).toContain('data-wb-settings-content-ready');
-    expect(settings).toContain('React.lazy');
-    expect(settings).toContain('React.Suspense');
-    expect(settings).toContain('viewportRef={setSettingsScrollElement}');
+    expect(settings).toContain("useSlot<SettingsSection>('settings.sections')");
+    expect(settings).toContain('<SettingsMainContent');
+    expect(mainContent).toContain('React.Suspense');
+    // 分区的 React.lazy 边界随 settings.sections 槽位改造搬进官方设置插件，Settings 只保留 Suspense 出口
+    // （边界清单由 ui-plugins/official/settings/__golden__/settings.test.ts 锁定）。
+    const sections = readRepo('src', 'ui-plugins', 'official', 'settings', 'sections.tsx');
+    expect(sections).toMatch(/React\.lazy\(\(\) => import\(/);
+    // 设置插件随启动安装：分区模块只能经动态 import 进入，静态导入任何一个都会把它拉进启动 chunk。
+    expect(sections.match(/^import (?!type )[^;]*;/gm)).toEqual(["import React from 'react';"]);
+    expect(mainContent).toContain('viewportRef={setSettingsScrollElement}');
 
     const virtualList = readRepo(
       'src',
@@ -198,7 +206,7 @@ describe('OS mode drag performance anti-regression', () => {
     expect(flags).not.toMatch(/HEAVY_HOST_SELECTOR[\s\S]*?\[data-wb-settings-host\]/);
 
     // renderer accessibility 是产品能力，禁止用全局关闭规避性能问题。
-    const windowsConfig = readRepo('src-tauri', 'tauri.windows.conf.json');
+    const windowsConfig = readRepo('resources/app', 'tauri.windows.conf.json');
     expect(windowsConfig).not.toContain('--disable-renderer-accessibility');
   });
 
@@ -264,11 +272,6 @@ describe('OS mode drag performance anti-regression', () => {
     expect(mindmap).toMatch(/isActive=\{isActive\}/);
   });
 
-  it('lib.rs 保留 WebView2 GPU 防回归注释', () => {
-    const src = readRepo('src-tauri', 'src', 'lib.rs');
-    expect(src).toMatch(/ANTI-REGRESSION[\s\S]*disable-gpu/);
-  });
-
   // 2026-07-10 OS 模式整层错位事故：WebView2 GPU 合成下「containment 边界 +
   // 视差 transform + 子树大量 transform/backdrop-filter」触发 DComp 脏区错算，
   // 桌面整体垂直错位（顶部黑条、Dock 画出窗框）。以下断言锁定修复。
@@ -294,11 +297,6 @@ describe('OS mode drag performance anti-regression', () => {
 
   it('桌面 WebView 呈现自愈不在窗口事件内同步调用 WebView2', () => {
     // 宿主侧同步 COM 调用会与 WebView 日志/IPC 锁反转，导致 Windows AppHangB1。
-    const librs = readRepo('src-tauri', 'src', 'lib.rs');
-    expect(librs).not.toContain('NotifyParentWindowPositionChanged');
-    expect(librs).not.toContain('.target(Target::new(TargetKind::Webview))');
-    expect(librs).not.toContain('crate::quick_assistant::preload_if_enabled');
-    expect(librs).toContain('不要在 WindowEvent 回调中同步调用 with_webview');
     // 页面侧：桌面根整面重绘 nudge 挂载在 WorkbenchDesktop
     const desktop = readRepo(
       'src',

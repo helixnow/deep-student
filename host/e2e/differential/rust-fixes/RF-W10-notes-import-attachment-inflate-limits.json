@@ -1,0 +1,29 @@
+{
+  "id": "RF-W10-notes-import-attachment-inflate-limits",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T16:30:00+08:00",
+  "title": "笔记归档导入按实际解压字节限制附件：单条压缩比 ≤ 200（1 MiB 以内不受比例限制）、单条 ≤ 1 GiB、单次导入附件总量 ≤ 8 GiB",
+  "rust": {
+    "file": "src-tauri/crates/dstu-notes/src/notes_exporter.rs",
+    "line": 1407,
+    "behavior": "导入笔记归档时对附件条目逐个 io::copy 到磁盘，没有单条大小、压缩比或总量上限；文本条目只看 zip 头声明的大小。高压缩比的恶意附件可以写满磁盘。Host 直接移植时用 JSZip 一次性解压到内存，后果变成 OOM。"
+  },
+  "fix": {
+    "files": ["host/plugins/notes/repository/import-archive.ts"],
+    "behavior": "所有条目经 JSZip internalStream 边解压边计数，超过上限立即中止：附件单条上限为 max(压缩大小 × 200, 1 MiB) 与 1 GiB 取小，一次导入的附件累计不超过 8 GiB；manifest、documents.json 与 Markdown 条目按实际字节套用已有的 64 MiB 文本上限，不再只信 zip 头。超限抛 validation 错误：schema 3 归档整体回滚（笔记、修订与已写附件），schema 1/2 统一 ZIP 在写该附件前中止。统一 ZIP 导入与 Rust 一样没有事务、先导入笔记再写附件，所以超限中止时，此前已导入或覆盖的笔记和已写出的附件保留（部分导入）；再次导入同一归档按所选冲突策略处理这些笔记。超限前单条附件在内存中的峰值约为单条上限的 2 倍（解压分块加最后拼接的副本，上限 1 GiB 时约 2 GiB）。"
+  },
+  "evidence": "S01 安全审计 L3（host/plugins/notes/repository/import-archive.ts:259/424/694）：附件条目没有任何检查，文本条目的检查依赖可伪造的头部大小。本仓 notes/tests/exporter.test.ts 修复前：8 MiB 全零附件（头部声明 16 字节）被完整解压后才由 JSZip 报 uncompressed data size mismatch；schema 3 归档中的同类附件与超出总量上限的附件都被成功导入。备份导入（backup/src/zip.ts）已有压缩比 200 与总量上限，笔记导入与之对齐。",
+  "userVisible": "正常导出的笔记归档不受影响（图片、PDF 等附件压缩比远低于 200，小于 1 MiB 的高压缩附件不受比例限制）。导入超限归档时提示 Archive attachment exceeds size limit: <条目名> 或 Archive attachments exceed total size limit，而不是让应用内存耗尽或写满磁盘。旧格式（schema 1/2）归档超限时，报错前已导入的笔记和附件会留在库里，不会撤销。",
+  "dataCompat": "不改变导出格式和库表；只拒绝超限的归档。",
+  "g3": {
+    "affects": false,
+    "selectors": []
+  },
+  "tests": [
+    { "file": "host/plugins/notes/tests/exporter.test.ts", "name": "RF-W10-notes-import-attachment-inflate-limits: a legacy attachment inflating past the ratio cap aborts on actual bytes, not the forged header" },
+    { "file": "host/plugins/notes/tests/exporter.test.ts", "name": "RF-W10-notes-import-attachment-inflate-limits: a schema 3 archive with a bomb attachment rolls back notes and files" },
+    { "file": "host/plugins/notes/tests/exporter.test.ts", "name": "RF-W10-notes-import-attachment-inflate-limits: the per-archive total counts actual bytes; small compressible attachments stay importable" }
+  ]
+}

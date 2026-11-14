@@ -3,23 +3,23 @@
   "layers": [
     {
       "name": "foundation",
-      "entries": ["types", "config", "lib", "shared", "constants", "locales", "data", "polyfills", "shims", "assets", "version.ts", "vite-env.d.ts"]
+      "entries": ["types", "config", "lib", "shared", "locales", "data", "polyfills", "shims", "assets", "version.ts", "vite-env.d.ts"]
     },
     {
       "name": "platform",
-      "entries": ["api", "services", "stores", "store", "events", "logging", "utils", "hooks", "contexts", "mcp", "engines", "dstu", "boot", "i18n.ts"]
+      "entries": ["api", "services", "stores", "store", "events", "logging", "utils", "hooks", "contexts", "mcp", "engines", "dstu", "boot", "plugin-runtime", "i18n.ts", "ui-kernel", "platform"]
     },
     {
       "name": "ui",
-      "entries": ["components", "styles"]
+      "entries": ["components", "styles", "ui-sdk"]
     },
     {
       "name": "feature",
-      "entries": ["features", "command-palette", "essay-grading", "quick-assistant", "translation", "voice-input", "promptkit", "menu"]
+      "entries": ["features", "command-palette", "essay-grading", "quick-assistant", "translation", "voice-input", "promptkit", "menu", "plugins"]
     },
     {
       "name": "app",
-      "entries": ["App.tsx", "main.tsx", "app", "lazyComponents.tsx", "reactRoot.ts", "dev", "debug-panel", "mcp-debug", "demo", "button-audit", "__tests__"]
+      "entries": ["App.tsx", "main.tsx", "app", "lazyComponents.tsx", "reactRoot.ts", "dev", "debug-panel", "mcp-debug", "demo", "button-audit", "ui-plugins", "__tests__"]
     }
   ]
 }

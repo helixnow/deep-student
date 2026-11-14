@@ -2,7 +2,6 @@ import { useCallback } from 'react';
 import { APP_EVENTS, dispatchAppEvent, toAppEventListener } from '@/events';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { useViewStore } from '@/stores/viewStore';
-import { workbenchBus } from '@/features/workbench/core/workbenchBus';
 import {
   resolveClassicShellOpenNoteTarget,
   type DstuOpenNoteDetail,
@@ -17,7 +16,7 @@ import type { OpenInLearningHub } from './useShellNavigationEvents';
  * 投递到学习资源页；经典壳的 DSTU_OPEN_NOTE 宿主；PREFILL_CHAT_INPUT 切到聊天并（可选
  * 新会话就绪后）填入输入框。从 App.tsx 原样搬出。
  */
-export function useCrossFeatureHandoffs(openInLearningHub: OpenInLearningHub, setCurrentView: SetCurrentView) {
+export function useCrossFeatureHandoffs(openInLearningHub: OpenInLearningHub, setCurrentView: SetCurrentView, workbenchActive: boolean) {
   // 其他页面导航事件监听（typed registry + useEventRegistry lifecycle）
   const handleNavigateToExamSheet = useCallback((detail: {
     sessionId: string;
@@ -78,7 +77,7 @@ export function useCrossFeatureHandoffs(openInLearningHub: OpenInLearningHub, se
   // 块链接跳转（source 'notes-editor'）空等 15s 超时；聊天页不可见时 Chat 自有事件
   // 开进隐藏画布同样无效。落点规则见 resolveClassicShellOpenNoteTarget。
   const handleClassicShellOpenNote = useCallback((event: Event) => {
-    if (workbenchBus.isEnabled()) return;
+    if (workbenchActive) return;
     const detail = (event as CustomEvent<DstuOpenNoteDetail>).detail;
     const target = resolveClassicShellOpenNoteTarget(detail, useViewStore.getState().currentView);
     if (target !== 'learning-hub') return;
@@ -86,7 +85,7 @@ export function useCrossFeatureHandoffs(openInLearningHub: OpenInLearningHub, se
       publishNotesHeadingTarget({ noteId: detail.noteId, heading: detail.heading });
     }
     handleNavigateToNote({ noteId: detail.noteId, source: detail.source });
-  }, [handleNavigateToNote]);
+  }, [handleNavigateToNote, workbenchActive]);
 
   const handlePrefillChatInput = useCallback((detail: {
     content: string;

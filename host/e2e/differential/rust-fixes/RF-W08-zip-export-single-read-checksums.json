@@ -1,0 +1,24 @@
+{
+  "id": "RF-W08-zip-export-single-read-checksums",
+  "kind": "deliberate",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T09:20+08:00",
+  "title": "导出 ZIP 时每个文件只读一遍，压缩的同时计算 checksums.sha256",
+  "rust": {
+    "file": "src-tauri/crates/dstu-sync/src/data_governance/backup/zip_export.rs",
+    "line": 1288,
+    "behavior": "include_checksums 时先用 calculate_file_sha256 整读一遍算哈希，再重新打开文件流式写进 ZIP，每个文件读两遍；两次读取之间文件若被改写，校验和与归档内容不一致"
+  },
+  "fix": {
+    "files": ["host/plugins/backup/src/zip.ts"],
+    "behavior": "写入 ZIP 的同一遍读取里通过 onData 更新 SHA-256，checksums.sha256 记录的就是实际归档的字节"
+  },
+  "evidence": "导出 I/O 减半（大备份尤其明显）；同时消除两次读取之间的不一致窗口。校验和文件内容与 Rust 相同。按产品决策登记。",
+  "userVisible": "大备份导出更快；导出结果不变。",
+  "dataCompat": "不改变备份格式：checksums.sha256 的格式和内容与 Rust 一致，旧 Rust 版与新版互相可读。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    { "file": "host/plugins/backup/tests/rust-fixes.test.ts", "name": "RF-W08-zip-export-single-read-checksums: each exported file is opened once and checksums match the archived bytes" }
+  ]
+}

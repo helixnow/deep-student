@@ -1,0 +1,33 @@
+{
+  "domain": "mcp",
+  "commands": ["start_mcp_oauth","get_mcp_oauth_status","get_mcp_oauth_access_token","revoke_mcp_oauth","cancel_mcp_oauth"],
+  "scenarios": [
+    {
+      "id": "mcp.pending.oauth.start_success_with_mock_as",
+      "seed": "empty",
+      "mcp": {"scripts":["success"],"oauth":true},
+      "steps": [
+        {"cmd":"start_mcp_oauth","args":{"serverId":"wave0-oauth","resourceUrl":"${mcp.oauth.resourceUrl}","clientId":null,"clientSecret":null,"scopes":["mcp:tools"]}},
+        {"cmd":"get_mcp_oauth_status","args":{"serverId":"wave0-oauth","resourceUrl":"${mcp.oauth.resourceUrl}"}},
+        {"cmd":"get_mcp_oauth_access_token","args":{"serverId":"wave0-oauth","resourceUrl":"${mcp.oauth.resourceUrl}"}},
+        {"cmd":"get_mcp_oauth_access_token","args":{"serverId":"wave0-oauth","resourceUrl":"${mcp.url}/mcp/other-origin"}},
+        {"cmd":"revoke_mcp_oauth","args":{"serverId":"wave0-oauth"}},
+        {"cmd":"get_mcp_oauth_status","args":{"serverId":"wave0-oauth","resourceUrl":"${mcp.oauth.resourceUrl}"}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "mcp.pending.oauth.start_with_client_id_then_cancel",
+      "seed": "empty",
+      "mcp": {"scripts":["success"],"oauth":true},
+      "concurrent": [[0,1]],
+      "steps": [
+        {"cmd":"start_mcp_oauth","args":{"serverId":"wave0-oauth","resourceUrl":"${mcp.oauth.resourceUrl}","clientId":"wave0-client","clientSecret":"wave0-fake-secret","scopes":null},"expect":"error"},
+        {"cmd":"cancel_mcp_oauth","args":{"serverId":"wave0-oauth"}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    }
+  ]
+}

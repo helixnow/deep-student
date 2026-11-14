@@ -1,0 +1,11 @@
+{
+  "id": "RF-P1-plugin-trust", "kind": "deliberate", "status": "proposed",
+  "title": "完全信任与受限插件分档",
+  "rust": { "file": "src-tauri/src/plugins/manager.rs", "line": 269, "behavior": "没有社区插件信任分档" },
+  "fix": { "files": ["host/kernel/plugin-admin.ts", "host/kernel/community-consent.ts", "host/kernel/profile.ts", "host/kernel/manifest.ts"], "behavior": "Host 同意账本记录 trust/source；精确主体且显式确认才能改档，full 跳过声明限制但不跳过 K7 与安全模式。" },
+  "evidence": "真实文件账本重开、真实插件启用、改档、来源拒绝与 K7 测试。",
+  "userVisible": "同进程插件可显式完全信任；这不是物理隔离。",
+  "dataCompat": "旧账本默认 restricted/package；原 ID/版本/权限绑定不变。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [{ "file": "host/kernel/tests/plugin-manager.test.ts", "name": "RF-P1-plugin-trust" }, { "file": "host/kernel/tests/community-consent.test.ts", "name": "RF-P1-plugin-trust" }]
+}

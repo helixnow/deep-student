@@ -22,6 +22,8 @@ import { Switch } from '@/components/ui/shad/Switch';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import { debugMasterSwitch } from '../debugMasterSwitch';
+import { serveDebugChannel } from '@/shared/debug/bus';
+import { TOOL_CALL_LIFECYCLE_DEBUG_CHANNEL } from '@/shared/debug/channels/toolCallLifecycle';
 
 // ============================================================================
 // 常量
@@ -681,5 +683,7 @@ const ToolCallLifecycleDebugPlugin: React.FC<DebugPanelPluginProps> = ({
     </div>
   );
 };
+
+serveDebugChannel(TOOL_CALL_LIFECYCLE_DEBUG_CHANNEL, { emitToolCallDebug, resetRound, trackPreparing, trackStart, trackEnd });
 
 export default ToolCallLifecycleDebugPlugin;

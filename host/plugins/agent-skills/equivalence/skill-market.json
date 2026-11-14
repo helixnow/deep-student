@@ -1,0 +1,823 @@
+{
+  "domain": "agent-skills",
+  "commands": [
+    "skill_market_skill_detail",
+    "skill_market_verify",
+    "skill_market_download_and_scan",
+    "skill_market_search",
+    "skill_list_directories",
+    "skill_check_updates"
+  ],
+  "scenarios": [
+    {
+      "id": "skills.market.detail.invalid_slug",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "skill_market_skill_detail",
+          "args": {
+            "slug": ""
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_skill_detail",
+          "args": {
+            "slug": "   "
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_skill_detail",
+          "args": {
+            "slug": "a/b"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_skill_detail",
+          "args": {
+            "slug": "../etc"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_skill_detail",
+          "args": {
+            "slug": "a b"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_skill_detail",
+          "args": {
+            "slug": "a@1.0.0"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_skill_detail",
+          "args": {
+            "slug": "技能"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_skill_detail",
+          "args": {
+            "slug": "a%2Fb"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_skill_detail",
+          "args": {
+            "slug": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_skill_detail",
+          "args": {
+            "slug": " "
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_skill_detail",
+          "args": {
+            "slug": "a​b"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_skill_detail",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_skill_detail",
+          "args": {
+            "slug": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_skill_detail",
+          "args": {
+            "slug": 42
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": []
+      },
+      "normalize": []
+    },
+    {
+      "id": "skills.market.verify.invalid_slug",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "skill_market_verify",
+          "args": {
+            "slug": "",
+            "version": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_verify",
+          "args": {
+            "slug": "   ",
+            "version": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_verify",
+          "args": {
+            "slug": "a/b",
+            "version": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_verify",
+          "args": {
+            "slug": "../etc",
+            "version": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_verify",
+          "args": {
+            "slug": "a b",
+            "version": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_verify",
+          "args": {
+            "slug": "a@1.0.0",
+            "version": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_verify",
+          "args": {
+            "slug": "技能",
+            "version": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_verify",
+          "args": {
+            "slug": "a%2Fb",
+            "version": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_verify",
+          "args": {
+            "slug": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "version": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_verify",
+          "args": {
+            "slug": " ",
+            "version": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_verify",
+          "args": {
+            "slug": "a​b",
+            "version": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_verify",
+          "args": {
+            "slug": "../etc",
+            "version": "1.0.0"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_verify",
+          "args": {
+            "slug": "",
+            "version": "   "
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_verify",
+          "args": {
+            "slug": "a/b"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_verify",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_verify",
+          "args": {
+            "slug": "sonoscli",
+            "version": 1
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_verify",
+          "args": {
+            "slug": [
+              "sonoscli"
+            ],
+            "version": null
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": []
+      },
+      "normalize": []
+    },
+    {
+      "id": "skills.market.download_and_scan.version_unresolved",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "skill_market_download_and_scan",
+          "args": {
+            "slug": "",
+            "version": null,
+            "install": false,
+            "overwrite": false,
+            "expectedPackageSha256": null,
+            "tempZipPath": null,
+            "declaredRiskLevel": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_download_and_scan",
+          "args": {
+            "slug": "a/b",
+            "version": "",
+            "install": false,
+            "overwrite": false,
+            "expectedPackageSha256": null,
+            "tempZipPath": null,
+            "declaredRiskLevel": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_download_and_scan",
+          "args": {
+            "slug": "技能",
+            "version": null,
+            "install": true,
+            "overwrite": false,
+            "expectedPackageSha256": null,
+            "tempZipPath": null,
+            "declaredRiskLevel": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_download_and_scan",
+          "args": {
+            "slug": "../etc"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_download_and_scan",
+          "args": {
+            "slug": "a b",
+            "version": "   ",
+            "install": false,
+            "overwrite": false,
+            "expectedPackageSha256": null,
+            "tempZipPath": null,
+            "declaredRiskLevel": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_download_and_scan",
+          "args": {
+            "slug": "a/b",
+            "version": "1.0.0",
+            "install": false,
+            "overwrite": false,
+            "expectedPackageSha256": null,
+            "tempZipPath": null,
+            "declaredRiskLevel": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_download_and_scan",
+          "args": {
+            "slug": "",
+            "version": "   ",
+            "install": true,
+            "overwrite": false,
+            "expectedPackageSha256": null,
+            "tempZipPath": null,
+            "declaredRiskLevel": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_list_directories",
+          "args": {
+            "path": "~/.deep-student/skills"
+          }
+        },
+        {
+          "cmd": "skill_check_updates",
+          "args": {
+            "skillIds": null
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "skills.market.download_and_scan.install_guards",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "skill_market_download_and_scan",
+          "args": {
+            "slug": "sonoscli",
+            "version": "1.0.0",
+            "install": true,
+            "overwrite": false,
+            "expectedPackageSha256": null,
+            "tempZipPath": null,
+            "declaredRiskLevel": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_download_and_scan",
+          "args": {
+            "slug": "sonoscli",
+            "version": "1.0.0",
+            "install": true
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_download_and_scan",
+          "args": {
+            "slug": "sonoscli",
+            "version": "1.0.0",
+            "install": true,
+            "overwrite": false,
+            "expectedPackageSha256": "",
+            "tempZipPath": null,
+            "declaredRiskLevel": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_download_and_scan",
+          "args": {
+            "slug": "sonoscli",
+            "version": "1.0.0",
+            "install": true,
+            "overwrite": false,
+            "expectedPackageSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "tempZipPath": null,
+            "declaredRiskLevel": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_download_and_scan",
+          "args": {
+            "slug": "sonoscli",
+            "version": "1.0.0",
+            "install": true,
+            "overwrite": false,
+            "expectedPackageSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "tempZipPath": null,
+            "declaredRiskLevel": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_download_and_scan",
+          "args": {
+            "slug": "sonoscli",
+            "version": "1.0.0",
+            "install": true,
+            "overwrite": false,
+            "expectedPackageSha256": "gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg",
+            "tempZipPath": null,
+            "declaredRiskLevel": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_download_and_scan",
+          "args": {
+            "slug": "sonoscli",
+            "version": "1.0.0",
+            "install": true,
+            "overwrite": false,
+            "expectedPackageSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "tempZipPath": null,
+            "declaredRiskLevel": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_download_and_scan",
+          "args": {
+            "slug": "sonoscli",
+            "version": "1.0.0",
+            "install": true,
+            "overwrite": false,
+            "expectedPackageSha256": "  AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA  ",
+            "tempZipPath": null,
+            "declaredRiskLevel": "low"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_download_and_scan",
+          "args": {
+            "slug": "sonoscli",
+            "version": "1.0.0",
+            "install": true,
+            "overwrite": false,
+            "expectedPackageSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "tempZipPath": "/tmp/deep-student-skill-market/sonoscli.zip",
+            "declaredRiskLevel": "low"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_download_and_scan",
+          "args": {
+            "slug": "sonoscli",
+            "version": "1.0.0",
+            "install": true,
+            "overwrite": true,
+            "expectedPackageSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "tempZipPath": "relative.zip",
+            "declaredRiskLevel": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_download_and_scan",
+          "args": {
+            "slug": "sonoscli",
+            "version": "1.0.0",
+            "install": true,
+            "overwrite": false,
+            "expectedPackageSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "tempZipPath": "",
+            "declaredRiskLevel": "high"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_download_and_scan",
+          "args": {
+            "slug": "a/b",
+            "version": "1.0.0",
+            "install": true,
+            "overwrite": false,
+            "expectedPackageSha256": null,
+            "tempZipPath": null,
+            "declaredRiskLevel": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_download_and_scan",
+          "args": {
+            "slug": "a/b",
+            "version": "1.0.0",
+            "install": true,
+            "overwrite": false,
+            "expectedPackageSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "tempZipPath": "/",
+            "declaredRiskLevel": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_list_directories",
+          "args": {
+            "path": "~/.deep-student/skills"
+          }
+        },
+        {
+          "cmd": "skill_check_updates",
+          "args": {
+            "skillIds": null
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "skills.market.download_and_scan.arg_shape_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "skill_market_download_and_scan",
+          "args": {},
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_download_and_scan",
+          "args": {
+            "slug": null,
+            "version": null,
+            "install": false,
+            "overwrite": false,
+            "expectedPackageSha256": null,
+            "tempZipPath": null,
+            "declaredRiskLevel": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_download_and_scan",
+          "args": {
+            "slug": 1,
+            "version": null,
+            "install": false,
+            "overwrite": false,
+            "expectedPackageSha256": null,
+            "tempZipPath": null,
+            "declaredRiskLevel": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_download_and_scan",
+          "args": {
+            "slug": "sonoscli",
+            "version": 1,
+            "install": false,
+            "overwrite": false,
+            "expectedPackageSha256": null,
+            "tempZipPath": null,
+            "declaredRiskLevel": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_download_and_scan",
+          "args": {
+            "slug": "sonoscli",
+            "version": null,
+            "install": "true",
+            "overwrite": false,
+            "expectedPackageSha256": null,
+            "tempZipPath": null,
+            "declaredRiskLevel": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_download_and_scan",
+          "args": {
+            "slug": "sonoscli",
+            "version": null,
+            "install": 1,
+            "overwrite": false,
+            "expectedPackageSha256": null,
+            "tempZipPath": null,
+            "declaredRiskLevel": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_download_and_scan",
+          "args": {
+            "slug": "sonoscli",
+            "version": null,
+            "install": false,
+            "overwrite": "false",
+            "expectedPackageSha256": null,
+            "tempZipPath": null,
+            "declaredRiskLevel": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_download_and_scan",
+          "args": {
+            "slug": "sonoscli",
+            "version": null,
+            "install": false,
+            "overwrite": false,
+            "expectedPackageSha256": 123,
+            "tempZipPath": null,
+            "declaredRiskLevel": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_download_and_scan",
+          "args": {
+            "slug": "sonoscli",
+            "version": null,
+            "install": false,
+            "overwrite": false,
+            "expectedPackageSha256": null,
+            "tempZipPath": [
+              "/tmp/x.zip"
+            ],
+            "declaredRiskLevel": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_download_and_scan",
+          "args": {
+            "slug": "sonoscli",
+            "version": null,
+            "install": false,
+            "overwrite": false,
+            "expectedPackageSha256": null,
+            "tempZipPath": null,
+            "declaredRiskLevel": 3
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_check_updates",
+          "args": {
+            "skillIds": null
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "skills.market.search.arg_shape_errors",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "skill_market_search",
+          "args": {
+            "q": null,
+            "limit": -1,
+            "nonSuspiciousOnly": true,
+            "sort": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_search",
+          "args": {
+            "q": null,
+            "limit": 4294967296,
+            "nonSuspiciousOnly": true,
+            "sort": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_search",
+          "args": {
+            "q": null,
+            "limit": 1.5,
+            "nonSuspiciousOnly": true,
+            "sort": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_search",
+          "args": {
+            "q": null,
+            "limit": "24",
+            "nonSuspiciousOnly": true,
+            "sort": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_search",
+          "args": {
+            "q": null,
+            "limit": 24,
+            "nonSuspiciousOnly": "true",
+            "sort": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_search",
+          "args": {
+            "q": null,
+            "limit": 24,
+            "nonSuspiciousOnly": 1,
+            "sort": null
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_search",
+          "args": {
+            "q": 42,
+            "limit": 24,
+            "nonSuspiciousOnly": true,
+            "sort": "trending"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_search",
+          "args": {
+            "q": [
+              "pdf"
+            ],
+            "limit": 24,
+            "nonSuspiciousOnly": true,
+            "sort": "trending"
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_search",
+          "args": {
+            "q": "pdf",
+            "limit": 24,
+            "nonSuspiciousOnly": true,
+            "sort": 1
+          },
+          "expect": "error"
+        },
+        {
+          "cmd": "skill_market_search",
+          "args": {
+            "q": "pdf",
+            "limit": 24,
+            "nonSuspiciousOnly": true,
+            "sort": [
+              "stars"
+            ]
+          },
+          "expect": "error"
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": []
+      },
+      "normalize": []
+    }
+  ]
+}

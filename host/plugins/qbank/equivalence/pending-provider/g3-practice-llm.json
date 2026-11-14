@@ -1,0 +1,422 @@
+{
+  "domain": "qbank",
+  "commands": [
+    "qbank_save_practice",
+    "qbank_submit_practice",
+    "qbank_get_practice",
+    "qbank_list_practices",
+    "qbank_grade_practice_manually",
+    "qbank_retry_practice_grading"
+  ],
+  "scenarios": [
+    {
+      "id": "qbank.g3.practice.save_and_submit_answered_mixed",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "练习-作答交卷",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "下列哪个是质数？",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "4"
+                },
+                {
+                  "key": "B",
+                  "content": "7"
+                },
+                {
+                  "key": "C",
+                  "content": "9"
+                },
+                {
+                  "key": "D",
+                  "content": "15"
+                }
+              ],
+              "answer": "B",
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "数论"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "下列哪些是质数？",
+              "question_type": "multiple_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "2"
+                },
+                {
+                  "key": "B",
+                  "content": "3"
+                },
+                {
+                  "key": "C",
+                  "content": "4"
+                },
+                {
+                  "key": "D",
+                  "content": "5"
+                }
+              ],
+              "answer": "AC",
+              "explanation": "2 与 3 都是质数。",
+              "difficulty": "medium",
+              "tags": [
+                "数论"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "地球是太阳系第三颗行星。",
+              "question_type": "true_false",
+              "answer": "true",
+              "explanation": "地球是太阳系第三颗行星。",
+              "difficulty": "easy",
+              "tags": [
+                "天文"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_practice",
+          "args": {
+            "request": {
+              "id": "practice_answered",
+              "scope_id": "${0.id}",
+              "title": "作答交卷",
+              "mode": "sequential",
+              "question_ids": [
+                "${1.id}",
+                "${2.id}",
+                "${3.id}"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "qbank_save_practice",
+          "args": {
+            "request": {
+              "id": "practice_answered",
+              "revision": 1,
+              "answers": {
+                "${1.id}": "B",
+                "${2.id}": "A",
+                "${3.id}": "false"
+              },
+              "marked_ids": [
+                "${2.id}"
+              ],
+              "current_index": 2,
+              "elapsed_seconds": 75
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_practice",
+          "args": {
+            "id": "practice_answered",
+            "revision": 2
+          }
+        },
+        {
+          "cmd": "qbank_get_practice",
+          "args": {
+            "id": "practice_answered",
+            "submitted": true
+          }
+        },
+        {
+          "cmd": "qbank_list_practices",
+          "args": {
+            "scopeId": "${0.id}",
+            "submitted": true
+          }
+        },
+        {
+          "cmd": "qbank_list_practices",
+          "args": {
+            "scopeId": "${0.id}",
+            "submitted": false
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.g3.practice.grade_manually_upgrade_and_downgrade",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "练习-人工批改",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "下列哪个是质数？",
+              "question_type": "single_choice",
+              "options": [
+                {
+                  "key": "A",
+                  "content": "4"
+                },
+                {
+                  "key": "B",
+                  "content": "7"
+                },
+                {
+                  "key": "C",
+                  "content": "9"
+                },
+                {
+                  "key": "D",
+                  "content": "15"
+                }
+              ],
+              "answer": "B",
+              "explanation": "7 只能被 1 和自身整除。",
+              "difficulty": "easy",
+              "tags": [
+                "数论"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_practice",
+          "args": {
+            "request": {
+              "id": "practice_manual",
+              "scope_id": "${0.id}",
+              "title": "人工批改",
+              "mode": "sequential",
+              "question_ids": [
+                "${1.id}"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "qbank_save_practice",
+          "args": {
+            "request": {
+              "id": "practice_manual",
+              "revision": 1,
+              "answers": {
+                "${1.id}": "A"
+              },
+              "marked_ids": [],
+              "current_index": 0,
+              "elapsed_seconds": 20
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_practice",
+          "args": {
+            "id": "practice_manual",
+            "revision": 2
+          }
+        },
+        {
+          "cmd": "qbank_grade_practice_manually",
+          "args": {
+            "id": "practice_manual",
+            "questionId": "${1.id}",
+            "correct": true
+          }
+        },
+        {
+          "cmd": "qbank_get_practice",
+          "args": {
+            "id": "practice_manual",
+            "submitted": true
+          }
+        },
+        {
+          "cmd": "qbank_list_practices",
+          "args": {
+            "scopeId": "${0.id}",
+            "submitted": true
+          }
+        },
+        {
+          "cmd": "qbank_grade_practice_manually",
+          "args": {
+            "id": "practice_manual",
+            "questionId": "${1.id}",
+            "correct": false
+          }
+        },
+        {
+          "cmd": "qbank_get_practice",
+          "args": {
+            "id": "practice_manual",
+            "submitted": true
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.g3.practice.retry_failed_grading",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "dstu_create",
+          "args": {
+            "path": "/",
+            "options": {
+              "type": "exam",
+              "name": "练习-重试批改",
+              "metadata": {
+                "status": "empty",
+                "pageCount": 0,
+                "questionCount": 0
+              }
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_question",
+          "args": {
+            "params": {
+              "exam_id": "${0.id}",
+              "content": "请论述质数的定义并举例。",
+              "question_type": "essay",
+              "answer": "参考论点：质数是只有 1 和自身两个正因数的自然数。",
+              "explanation": "按论点完整度给分。",
+              "difficulty": "hard",
+              "tags": [
+                "数论"
+              ],
+              "source_type": "manual"
+            }
+          }
+        },
+        {
+          "cmd": "qbank_create_practice",
+          "args": {
+            "request": {
+              "id": "practice_retry",
+              "scope_id": "${0.id}",
+              "title": "重试 AI 批改",
+              "mode": "sequential",
+              "question_ids": [
+                "${1.id}"
+              ]
+            }
+          }
+        },
+        {
+          "cmd": "qbank_save_practice",
+          "args": {
+            "request": {
+              "id": "practice_retry",
+              "revision": 1,
+              "answers": {
+                "${1.id}": "质数是只有 1 和自身两个正因数的自然数，例如 2、3、5。"
+              },
+              "marked_ids": [],
+              "current_index": 0,
+              "elapsed_seconds": 120
+            }
+          }
+        },
+        {
+          "cmd": "qbank_submit_practice",
+          "args": {
+            "id": "practice_retry",
+            "revision": 2
+          }
+        },
+        {
+          "cmd": "qbank_retry_practice_grading",
+          "args": {
+            "id": "practice_retry",
+            "questionId": "${1.id}"
+          }
+        },
+        {
+          "cmd": "qbank_get_practice",
+          "args": {
+            "id": "practice_retry",
+            "submitted": true
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

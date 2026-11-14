@@ -1,0 +1,32 @@
+{
+  "id": "RF-W23-menu-tray-js-api-unprovided",
+  "kind": "deliberate",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T14:25:00+08:00",
+  "title": "core:default 放行的 plugin:menu / plugin:tray JS API 在 Electron 外壳里明确报不支持，不转给 Host",
+  "rust": {
+    "file": "src-tauri/capabilities/default.json",
+    "line": 9,
+    "behavior": "default.json、quick-assistant.json、pomodoro-mini.json 都含 core:default，展开后包括 core:menu:default 与 core:tray:default（tauri-2.11.5 permissions/menu、permissions/tray），main、quick-assistant、pomodoro-mini 三个本地窗口都能调 plugin:menu|* 与 plugin:tray|* 的全部命令。Tauri 桌面版编译了这两个插件（tauri-2.11.5 lib.rs:102-114，tray 由 Cargo.lock 中 tauri 依赖 tray-icon 打开），页面可以新建菜单、替换应用菜单（set_as_app_menu）、弹出菜单、新建托盘图标。Rust 版前端从不调用这些 API：应用菜单由 Rust 代码 src-tauri/src/menu.rs:39 install_menu 构建，应用没有托盘图标"
+  },
+  "fix": {
+    "files": ["electron/shell/runtime.ts"],
+    "behavior": "ShellRuntime 对 plugin:menu|* 与 plugin:tray|* 不再当作应用命令转给 Host：调用照常先过 BuiltinAcl（browser-content、远程来源的 main、未列出的窗口仍得到 Tauri 的 not allowed by ACL；清单之外的命令名同样按 ACL 拒绝），ACL 放行后由外壳回 `[electron-shell] menu.<cmd> is not supported: the native menu is built by the Electron main process` 或 `[electron-shell] tray.<cmd> is not supported: the app has no tray icon`。命令表取自 Tauri ACL 清单 core:menu / core:tray 的命令列表；以后在 main 里注册同名插件即以注册的实现为准"
+  },
+  "evidence": "功能差异（产品决策，不是 Rust bug）。修改前这两个插件没有注册在外壳里，页面调用跳过外壳 ACL 直接转给 Host，Host 回 commandNotFound（release：Command plugin:menu|new not allowed by ACL），browser-content 等无权窗口与有权窗口得到同样的回复，且每次都多一趟 Host 往返。前端审计：src/** 没有任何 @tauri-apps/api/menu、@tauri-apps/api/tray 的导入或 plugin:menu| / plugin:tray| 调用（测试固定）；原生菜单在 Electron 版由 electron/shell/menu.ts installMenu 构建，对应 Rust 的 menu.rs。让页面能改应用菜单或建托盘图标只会扩大页面脚本可触达的原生界面（菜单项可伪装成系统操作），没有使用方。",
+  "userVisible": "正常使用感知不到（前端不调用这些 API）。页面脚本调用 Tauri 菜单或托盘 JS API 时得到明确的不支持错误，而不是 Tauri 版中的成功。",
+  "dataCompat": "不改变落库数据、同步载荷与备份格式。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "host/e2e/security/shell-builtin-acl.test.ts",
+      "name": "RF-W23-menu-tray-js-api-unprovided: app windows get an explicit unsupported error from the shell, never a Host round trip; other callers still get the ACL denial"
+    },
+    {
+      "file": "host/e2e/security/shell-builtin-acl.test.ts",
+      "name": "RF-W23-menu-tray-js-api-unprovided: no frontend code calls the Tauri menu or tray JS API"
+    }
+  ],
+  "notes": "ACL 判定本身不变（BuiltinAcl 仍按 core:default 放行这些命令，grantedCommands 与 Tauri 一致），差异只在放行之后的实现。electron/shell/W23-PROGRESS.md 的 ACL 对照表把这些行标为 Tauri 有、Electron 桩，并引用本 RF。"
+}

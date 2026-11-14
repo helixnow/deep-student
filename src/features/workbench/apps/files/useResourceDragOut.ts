@@ -12,6 +12,7 @@
  */
 import { useEffect, useRef } from 'react';
 import { useFinderStore } from '@/features/learning-hub/stores/finderStore';
+import { getOfficialResourceTypeUi } from '@/shared/resource-types/lookup';
 import {
   handleDesktopResourceDrop,
   normalizeWorkbenchResourceDragData,
@@ -27,25 +28,8 @@ export interface UseResourceDragOutOptions {
   enabled?: boolean;
 }
 
-function glyphForType(type: string): string {
-  switch (type) {
-    case 'note':
-      return 'N';
-    case 'textbook':
-      return 'T';
-    case 'exam':
-      return 'E';
-    case 'mindmap':
-      return 'M';
-    case 'image':
-      return 'I';
-    case 'essay':
-      return 'A';
-    case 'translation':
-      return 'L';
-    default:
-      return 'F';
-  }
+export function glyphForType(type: string): string {
+  return getOfficialResourceTypeUi(type)?.dragGlyph ?? 'F';
 }
 
 export function useResourceDragOut(options: UseResourceDragOutOptions): void {

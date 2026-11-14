@@ -1,0 +1,68 @@
+{
+  "domain": "qbank",
+  "commands": [
+    "qbank_complete_paper_export", "qbank_export_paper_docx", "dstu_create", "qbank_create_question",
+    "save_api_configurations", "save_model_assignments", "chat_v2_create_session", "chat_v2_send_message"
+  ],
+  "scenarios": [
+    {
+      "id": "qbank.g3.paper.complete_export.word_pending_request",
+      "seed": "empty",
+      "llm": "w0.directive",
+      "steps": [
+        {"cmd":"dstu_create","args":{"path":"/","options":{"type":"exam","name":"G3 export word","metadata":{"status":"empty","pageCount":0,"questionCount":0}}}},
+        {"cmd":"qbank_create_question","args":{"params":{"exam_id":"${0.id}","content":"1 + 1 = ?","question_type":"single_choice","options":[{"key":"A","content":"2"},{"key":"B","content":"3"}],"answer":"A","structured_data":null,"explanation":null,"difficulty":"easy","tags":[],"question_label":null,"card_id":null,"source_type":"manual","source_ref":null,"images":null,"parent_id":null}}},
+        {"cmd":"save_api_configurations","args":{"configs":[{"id":"g3-qbank-export","name":"G3 qbank export","apiKey":"","authMode":"none","baseUrl":"${llm.baseUrl}","model":"g3-qbank-model","apiProtocol":"openai_chat_completions","modelAdapter":"general","enabled":true,"supportsTools":true,"isMultimodal":false,"isReasoning":false,"isEmbedding":false,"isReranker":false,"contextWindow":32768,"maxOutputTokens":256}]}},
+        {"cmd":"save_model_assignments","args":{"assignments":{"model2_config_id":"g3-qbank-export"}}},
+        {"cmd":"chat_v2_create_session","args":{"mode":"chat","title":"G3 paper export","metadata":null}},
+        {"cmd":"chat_v2_send_message","args":{"request":{"sessionId":"${4.id}","content":"W0_DIRECTIVE {\"v\":1,\"rounds\":[[{\"id\":\"call_g3_paper_word\",\"name\":\"builtin-qbank_generate_paper\",\"arguments\":{\"session_id\":\"${0.id}\",\"config\":{\"title\":\"G3 word paper\",\"type_selection\":{\"single_choice\":1},\"shuffle\":false,\"include_answers\":true,\"include_explanations\":true,\"export_format\":\"word\"}}}]],\"final\":\"W0_DONE\"}","userMessageId":"msg_g3_paper_word_u","assistantMessageId":"msg_g3_paper_word_a","options":{"modelId":"g3-qbank-export","enableThinking":false,"memoryEnabled":false,"ragEnabled":false,"webSearchEnabled":false,"autoMemoryExtraction":false,"contextLimit":32768,"maxTokens":256,"activeSkillIds":["qbank-tools"],"mcpToolSchemas":[{"name":"builtin-qbank_generate_paper","description":"Save and export a paper","inputSchema":{"type":"object","properties":{"session_id":{"type":"string"},"config":{"type":"object"}},"required":["session_id","config"]}}]}}},"waitAfter":{"channel":"qbank-export-paper","payload":{"format":"word"}}},
+        {"cmd":"qbank_export_paper_docx","args":{"title":"${wait.5.paper.title}","blocks":[{"kind":"paragraph","runs":[{"text":"1 + 1 = ?\nA. 2\nB. 3"}]}]}},
+        {
+          "cmd": "qbank_complete_paper_export",
+          "args": {
+            "requestId": "${wait.5.request_id}",
+            "data": "${6}",
+            "error": null
+          },
+          "waitAfter": {"event":"stream_complete|stream_error|stream_cancelled","channelPrefix":"chat_v2_session_","sessionId":"${4.id}","messageId":"msg_g3_paper_word_a"}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "qbank.g3.paper.complete_export.markdown_pending_request",
+      "seed": "empty",
+      "llm": "w0.directive",
+      "steps": [
+        {"cmd":"dstu_create","args":{"path":"/","options":{"type":"exam","name":"G3 export markdown","metadata":{"status":"empty","pageCount":0,"questionCount":0}}}},
+        {"cmd":"qbank_create_question","args":{"params":{"exam_id":"${0.id}","content":"1 + 1 = ?","question_type":"single_choice","options":[{"key":"A","content":"2"},{"key":"B","content":"3"}],"answer":"A","structured_data":null,"explanation":null,"difficulty":"easy","tags":[],"question_label":null,"card_id":null,"source_type":"manual","source_ref":null,"images":null,"parent_id":null}}},
+        {"cmd":"save_api_configurations","args":{"configs":[{"id":"g3-qbank-export","name":"G3 qbank export","apiKey":"","authMode":"none","baseUrl":"${llm.baseUrl}","model":"g3-qbank-model","apiProtocol":"openai_chat_completions","modelAdapter":"general","enabled":true,"supportsTools":true,"isMultimodal":false,"isReasoning":false,"isEmbedding":false,"isReranker":false,"contextWindow":32768,"maxOutputTokens":256}]}},
+        {"cmd":"save_model_assignments","args":{"assignments":{"model2_config_id":"g3-qbank-export"}}},
+        {"cmd":"chat_v2_create_session","args":{"mode":"chat","title":"G3 paper export","metadata":null}},
+        {"cmd":"chat_v2_send_message","args":{"request":{"sessionId":"${4.id}","content":"W0_DIRECTIVE {\"v\":1,\"rounds\":[[{\"id\":\"call_g3_paper_markdown\",\"name\":\"builtin-qbank_generate_paper\",\"arguments\":{\"session_id\":\"${0.id}\",\"config\":{\"title\":\"G3 markdown paper\",\"type_selection\":{\"single_choice\":1},\"shuffle\":false,\"include_answers\":true,\"include_explanations\":true,\"export_format\":\"markdown\"}}}]],\"final\":\"W0_DONE\"}","userMessageId":"msg_g3_paper_markdown_u","assistantMessageId":"msg_g3_paper_markdown_a","options":{"modelId":"g3-qbank-export","enableThinking":false,"memoryEnabled":false,"ragEnabled":false,"webSearchEnabled":false,"autoMemoryExtraction":false,"contextLimit":32768,"maxTokens":256,"activeSkillIds":["qbank-tools"],"mcpToolSchemas":[{"name":"builtin-qbank_generate_paper","description":"Save and export a paper","inputSchema":{"type":"object","properties":{"session_id":{"type":"string"},"config":{"type":"object"}},"required":["session_id","config"]}}]}}},"waitAfter":{"channel":"qbank-export-paper","payload":{"format":"markdown"}}},
+        {
+          "cmd": "qbank_complete_paper_export",
+          "args": {
+            "requestId": "${wait.5.request_id}",
+            "data": "aGVsbG8=",
+            "error": null
+          },
+          "waitAfter": {"event":"stream_complete|stream_error|stream_cancelled","channelPrefix":"chat_v2_session_","sessionId":"${4.id}","messageId":"msg_g3_paper_markdown_a"}
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

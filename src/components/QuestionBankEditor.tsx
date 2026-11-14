@@ -40,7 +40,6 @@ import {
   CircleNotch,
   BookOpen,
   Target,
-  TrendUp,
   WarningCircle,
   Lightbulb,
   PaperPlaneRight,
@@ -171,18 +170,18 @@ export interface QuestionBankEditorProps {
   isActive?: boolean;
 }
 
-const DIFFICULTY_CONFIG: Record<Difficulty, { color: string; bg: string }> = {
-  easy: { color: 'text-success', bg: 'bg-success/10' },
-  medium: { color: 'text-warning', bg: 'bg-warning/10' },
-  hard: { color: 'text-warning', bg: 'bg-warning/10' },
-  very_hard: { color: 'text-destructive', bg: 'bg-destructive/10' },
+const DIFFICULTY_CONFIG: Record<Difficulty, { dot: string }> = {
+  easy: { dot: 'bg-success/75' },
+  medium: { dot: 'bg-warning/75' },
+  hard: { dot: 'bg-warning' },
+  very_hard: { dot: 'bg-destructive/80' },
 };
 
-const STATUS_CONFIG: Record<QuestionStatus, { color: string }> = {
-  new: { color: 'text-muted-foreground' },
-  in_progress: { color: 'text-primary' },
-  mastered: { color: 'text-success' },
-  review: { color: 'text-warning' },
+const STATUS_CONFIG: Record<QuestionStatus, { dot: string }> = {
+  new: { dot: 'bg-muted-foreground/35' },
+  in_progress: { dot: 'bg-primary' },
+  mastered: { dot: 'bg-success' },
+  review: { dot: 'bg-warning' },
 };
 
 const MODE_ICON: Record<PracticeMode, React.ElementType> = {
@@ -391,30 +390,6 @@ const SourceImagesBubble: React.FC<{
   );
 };
 
-interface StatCardProps {
-  icon: React.ElementType;
-  label: string;
-  value: number | string;
-  color: string;
-  delay?: number;
-}
-
-const StatCard: React.FC<StatCardProps> = ({ icon: Icon, label, value, color, delay = 0 }) => (
-  <div 
-    className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg hover:bg-[var(--interactive-hover)] transition-colors"
-    style={{ 
-      animationDelay: `${delay}ms`,
-      animation: 'fadeSlideUp 0.4s ease-out backwards'
-    }}
-  >
-    <Icon className={cn('w-4 h-4 flex-shrink-0', color.split(' ').find(c => c.startsWith('text-')) || 'text-muted-foreground')} />
-    <div className="min-w-0 flex items-baseline gap-1.5">
-      <span className="text-base font-medium tabular-nums">{value}</span>
-      <span className="text-xs text-muted-foreground">{label}</span>
-    </div>
-  </div>
-);
-
 interface OptionButtonProps {
   optionKey: string;
   content: string;
@@ -462,41 +437,40 @@ const OptionButton: React.FC<OptionButtonProps> = React.memo(({
       onClick={handleClick}
       disabled={isSubmitted}
       className={cn(
-        'group w-full !justify-start !h-auto !p-0 !rounded-md ui-state-colors',
+        'group w-full !justify-start !h-auto !p-0 !rounded-xl border transition-all',
         // 未提交：按压缩放反馈（ui-press 使用独立 scale 属性）
         !isSubmitted && 'ui-press',
-        !isSubmitted && !isSelected && 'hover:bg-foreground/[0.04]',
+        !isSubmitted && !isSelected && 'border-border/45 bg-card/60 hover:bg-foreground/[0.03] hover:border-border/80',
         // 选中：描边 + 浅色填充
-        !isSubmitted && isSelected && 'bg-primary/[0.07] dark:bg-primary/[0.15] ring-1 ring-inset ring-primary/40',
-        showCorrect && 'bg-success/[0.08] dark:bg-success/[0.15]',
+        !isSubmitted && isSelected && 'border-primary/45 bg-primary/[0.06]',
+        showCorrect && 'border-success/40 bg-success/[0.06]',
         // 答错：轻微 shake
-        isWrong && 'bg-destructive/[0.08] dark:bg-destructive/[0.15] qbank-anim-shake',
-        isPendingVerdict && 'bg-primary/[0.07] dark:bg-primary/[0.15] ring-1 ring-inset ring-primary/40',
-        isSubmitted && !isSelected && !isThisCorrect && 'opacity-50',
+        isWrong && 'border-destructive/35 bg-destructive/[0.05] qbank-anim-shake',
+        isPendingVerdict && 'border-primary/45 bg-primary/[0.06]',
+        isSubmitted && !isSelected && !isThisCorrect && 'border-border/35 bg-card/30 opacity-50',
         'disabled:cursor-default'
       )}
     >
-      <div className="flex items-start gap-3 px-3 py-2.5">
-        {/* 选项标识 - 简洁风格 */}
+      <div className="flex w-full items-start gap-3 px-4 py-3 text-left">
+        {/* 选项键帽 - 24×24 等宽 */}
         <div className={cn(
-          'flex-shrink-0 w-6 h-6 flex items-center justify-center text-sm font-medium',
-          type === 'single' ? 'rounded-full' : 'rounded',
-          // 默认 - 灰色边框
-          !isSubmitted && !isSelected && 'border border-foreground/[0.16] text-foreground/65',
-          // 选中 - 蓝色填充
-          !isSubmitted && isSelected && 'bg-primary text-primary-foreground',
+          'flex-shrink-0 w-6 h-6 rounded-md border flex items-center justify-center font-mono text-xs font-medium transition-colors',
+          // 默认 - 极细描边
+          !isSubmitted && !isSelected && 'border-border/60 bg-background/80 text-muted-foreground group-hover:border-border',
+          // 选中 - 主题色填充
+          !isSubmitted && isSelected && 'border-primary bg-primary text-primary-foreground',
           // 正确 - 绿色填充 + 对勾弹入
-          showCorrect && 'bg-success text-success-foreground qbank-anim-pop',
+          showCorrect && 'border-success bg-success text-success-foreground qbank-anim-pop',
           // 错误 - 红色填充
-          isWrong && 'bg-destructive text-destructive-foreground',
-          isPendingVerdict && 'bg-primary text-primary-foreground',
+          isWrong && 'border-destructive bg-destructive text-destructive-foreground',
+          isPendingVerdict && 'border-primary bg-primary text-primary-foreground',
           // 已提交非选中非正确
-          isSubmitted && !isSelected && !isThisCorrect && 'border border-foreground/[0.08] text-foreground/35'
+          isSubmitted && !isSelected && !isThisCorrect && 'border-border/40 bg-background/50 text-muted-foreground/50'
         )}>
           {showCorrect ? (
-            <Check size={14} weight="bold" />
+            <Check size={13} weight="bold" />
           ) : isWrong ? (
-            <X size={14} />
+            <X size={13} />
           ) : (
             optionKey
           )}
@@ -513,12 +487,12 @@ const OptionButton: React.FC<OptionButtonProps> = React.memo(({
               isWrong && 'text-destructive',
               isSubmitted && !isSelected && !isThisCorrect && 'text-foreground/50'
             )}
-/>
+          />
         </div>
 
         {/* 内联快捷键提示：仅悬停未提交时淡入 */}
         {!isSubmitted && shortcutHint && (
-          <kbd className="flex-shrink-0 hidden sm:inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded bg-muted text-[10px] text-muted-foreground/70 opacity-0 group-hover:opacity-100 transition-opacity">
+          <kbd className="flex-shrink-0 hidden sm:inline-flex items-center justify-center min-w-[20px] h-5 px-1 rounded border border-border/50 bg-background/80 font-mono text-[10px] text-muted-foreground/75 opacity-0 group-hover:opacity-100 transition-opacity">
             {shortcutHint}
           </kbd>
         )}
@@ -2025,7 +1999,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
             onKeyDown={onAnswerPrimaryAction}
             placeholder={t('editor.answerPlaceholder')}
             disabled={!!submitResult}
-            className="h-11 [@media(pointer:coarse)]:text-[16px]"
+            className="h-11 rounded-xl border border-border/50 bg-foreground/[0.02] px-3.5 transition-colors focus-visible:border-primary/45 focus-visible:bg-background focus-visible:ring-0 [@media(pointer:coarse)]:text-[16px]"
           />
           {renderImageAnswerControls()}
         </div>
@@ -2039,7 +2013,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
           placeholder={t('editor.answerPlaceholder')}
           disabled={!!submitResult}
           rows={4}
-          className="resize-none [@media(pointer:coarse)]:text-[16px]"
+          className="resize-none rounded-xl border border-border/50 bg-foreground/[0.02] p-3.5 transition-colors focus-visible:border-primary/45 focus-visible:bg-background focus-visible:ring-0 [@media(pointer:coarse)]:text-[16px]"
         />
         {imageAnswerEnabled && renderImageAnswerControls()}
       </div>
@@ -2392,51 +2366,77 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
             className="h-full flex-shrink-0 flex flex-col"
             style={{ width: containerWidth || '100vw' }}
           >
-            {/* 进度条 */}
-            <div className="flex-shrink-0 px-3 py-1.5 border-b border-border/30">
-              <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
-                <span>{t('editor.progress')}</span>
-                <span className="font-medium tabular-nums">
-                  {currentIndex + 1}/{totalQuestions}
-                </span>
-              </div>
-              <Progress value={progressPercent} className="h-1" />
+            {/* 顶部 2px 细进度条 */}
+            <div className="flex-shrink-0 h-0.5 bg-border/40" role="progressbar" aria-valuenow={currentIndex + 1} aria-valuemin={1} aria-valuemax={totalQuestions}>
+              <div
+                className="h-full bg-primary transition-[width] duration-300 ease-out"
+                style={{ width: `${progressPercent}%` }}
+              />
             </div>
 
-            {/* 题目内容区 */}
-            <CustomScrollArea className="flex-1" viewportClassName="p-3 space-y-3">
+            {/* 题目内容区（无框纸感舞台） */}
+            <CustomScrollArea className="flex-1" viewportClassName="px-4 py-4 space-y-4">
                 {/* 完成庆祝（内联） */}
                 {renderCompletionCelebration()}
-                <div key={currentQuestion.id} className="ui-slide-fade-in" style={questionTransitionStyle}>
-                <Card className="overflow-hidden border-border/60 shadow-sm">
-                  <CardHeader className="pb-2 space-y-2">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <Badge variant="outline" className="font-mono text-xs h-5">
-                        {currentQuestion.questionLabel || `Q${currentIndex + 1}`}
-                      </Badge>
-                      <Badge variant="secondary" className="text-xs h-5">
-                        {t(`editor.questionType.${QUESTION_TYPE_I18N_KEY[currentQuestion.questionType]}`)}
-                      </Badge>
-                      {/* 专注模式下隐藏难度 */}
-                      {!focusMode && currentQuestion.difficulty && (
-                        <Badge 
-                          variant="secondary" 
-                          className={cn(
-                            'text-xs h-5',
-                            DIFFICULTY_CONFIG[currentQuestion.difficulty].color,
-                            DIFFICULTY_CONFIG[currentQuestion.difficulty].bg
-                          )}
+                <div key={currentQuestion.id} className="ui-slide-fade-in space-y-4" style={questionTransitionStyle}>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="font-mono text-xs font-medium tabular-nums text-muted-foreground">
+                      {currentQuestion.questionLabel || `Q${currentIndex + 1}`} · {currentIndex + 1}/{totalQuestions}
+                    </span>
+                    <span className="rounded-md bg-foreground/[0.04] px-2 py-0.5 text-xs text-muted-foreground">
+                      {t(`editor.questionType.${QUESTION_TYPE_I18N_KEY[currentQuestion.questionType]}`)}
+                    </span>
+                    {/* 专注模式下隐藏难度与标签 */}
+                    {!focusMode && currentQuestion.difficulty && (
+                      <span className="inline-flex items-center gap-1.5 rounded-md bg-foreground/[0.04] px-2 py-0.5 text-xs text-muted-foreground">
+                        <span className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', DIFFICULTY_CONFIG[currentQuestion.difficulty].dot)} aria-hidden="true" />
+                        {t(`questionBank.difficulty.${DIFFICULTY_I18N_KEY[currentQuestion.difficulty]}`)}
+                      </span>
+                    )}
+                    {!focusMode && currentQuestion.tags && currentQuestion.tags.length > 0 && (
+                      currentQuestion.tags.map(tag => (
+                        <span
+                          key={tag}
+                          className="inline-flex items-center gap-1 rounded-md bg-foreground/[0.04] px-2 py-0.5 text-xs text-muted-foreground"
                         >
-                          {t(`questionBank.difficulty.${DIFFICULTY_I18N_KEY[currentQuestion.difficulty]}`)}
-                        </Badge>
+                          <Tag size={11} />
+                          {tag}
+                        </span>
+                      ))
+                    )}
+                    <div className="ml-auto flex items-center gap-1">
+                      {onToggleFavorite && (
+                        <DsButton
+                          variant="ghost"
+                          size="icon"
+                          iconOnly
+                          onClick={() => void handleToggleFavorite()}
+                          aria-label={isFavorite ? t('editor.unfavorite') : t('editor.favorite')}
+                          aria-pressed={isFavorite}
+                          title={isFavorite ? t('editor.unfavorite') : t('editor.favorite')}
+                          className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 text-muted-foreground hover:text-foreground"
+                        >
+                          <Star size={16} weight={isFavorite ? 'fill' : 'regular'} className={isFavorite ? 'text-warning' : undefined} />
+                        </DsButton>
                       )}
+                      <DsButton
+                        variant="ghost"
+                        size="icon"
+                        iconOnly
+                        onClick={() => setCropDialogOpen(true)}
+                        aria-label={t('common:question_bank.source_images')}
+                        title={t('common:question_bank.source_images')}
+                        className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 text-muted-foreground hover:text-foreground"
+                      >
+                        <Crop size={16} />
+                      </DsButton>
                       {browseMode ? browsePracticeButton : (
                         <DsButton
                           variant="ghost"
                           size="icon"
                           iconOnly
                           onClick={() => setShowSettingsPanel(true)}
-                          className="ml-auto [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
+                          className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 text-muted-foreground hover:text-foreground"
                           aria-label={t('questionBank.settings', 'Settings')}
                           title={t('questionBank.settings', 'Settings')}
                         >
@@ -2444,8 +2444,9 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                         </DsButton>
                       )}
                     </div>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
+                  </div>
+
+                  <div className="space-y-4">
                     {/* issue 491：共享材料在题目之前独立展示（单题练习同样可见） */}
                     <QuestionMaterialView
                       materials={currentQuestion.materials ?? []}
@@ -2454,10 +2455,10 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                         if (onRefreshQuestion) await onRefreshQuestion(currentQuestion.id);
                       }}
                     />
-                    <div className="prose prose-sm dark:prose-invert max-w-none text-base leading-relaxed">
+                    <div className="prose prose-sm dark:prose-invert max-w-[74ch] text-[16px] leading-[1.72] text-foreground">
                       <QuestionContentBlock
                         content={currentQuestion.content || currentQuestion.ocrText || t('editor.noContent')}
-/>
+                      />
                     </div>
 
                     {/* 题目图片 */}
@@ -2497,47 +2498,36 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                       );
                     })()}
 
-                    {/* 原始图片裁剪入口 */}
-                    <DsButton
-                      variant="ghost"
-                      size="sm"
-                      className="text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-11"
-                      onClick={() => setCropDialogOpen(true)}
-                    >
-                      <Crop size={14} className="mr-1.5" />
-                      {t('common:question_bank.source_images')}
-                    </DsButton>
-
                     {/* 答题区域（浏览模式：只读答案与解析） */}
                     {browseMode ? (
                       <div className="space-y-3">
                         {isChoiceQuestion && currentQuestion.options && (
-                          <div className="space-y-2">
+                          <div className="space-y-2.5">
                             {currentQuestion.options.map(opt => (
                               <div
                                 key={opt.key}
                                 className={cn(
-                                  'flex items-start gap-2 rounded-md border p-2.5',
+                                  'flex items-start gap-3 rounded-xl border px-4 py-3',
                                   currentQuestion.answer?.includes(opt.key)
-                                    ? 'border-success/50 bg-success/5'
-                                    : 'border-border/50'
+                                    ? 'border-success/40 bg-success/[0.06]'
+                                    : 'border-border/45 bg-card/60'
                                 )}
                               >
                                 <span className={cn(
-                                  'flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-xs font-medium',
+                                  'flex-shrink-0 w-6 h-6 rounded-md border flex items-center justify-center font-mono text-xs font-medium',
                                   currentQuestion.answer?.includes(opt.key)
-                                    ? 'bg-success text-success-foreground'
-                                    : 'bg-muted'
+                                    ? 'border-success bg-success text-success-foreground'
+                                    : 'border-border/60 bg-background/80 text-muted-foreground'
                                 )}>
                                   {opt.key}
                                 </span>
-                                <LatexText content={opt.content} className="text-sm flex-1" />
+                                <LatexText content={opt.content} className="text-sm flex-1 pt-0.5 leading-relaxed" />
                               </div>
                             ))}
                           </div>
                         )}
                         {(structuredAnswerSummaryNode || currentQuestion.answer) && (
-                          <div className="rounded-md border border-success/30 bg-success/5 p-3">
+                          <div className="rounded-xl border border-success/35 bg-success/[0.05] p-3.5">
                             <div className="flex items-center gap-1.5 mb-1">
                               <Check size={14} className="text-success" />
                               <span className="text-xs font-medium text-success">{t('editor.referenceAnswer')}</span>
@@ -2548,7 +2538,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                           </div>
                         )}
                         {!structuredAnswerSummaryNode && !currentQuestion.answer && !currentQuestion.explanation && (
-                          <div className="rounded-md bg-muted/50 p-3 text-center">
+                          <div className="rounded-xl bg-muted/40 p-3.5 text-center">
                             <p className="text-sm text-muted-foreground">{t('editor.noAnswerOrExplanation')}</p>
                           </div>
                         )}
@@ -2558,8 +2548,8 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                       <>
                         {/* 暗记模式遮罩 */}
                         {hideAnswerMode && !answerRevealed && !submitResult && (
-                          <DsButton variant="ghost" size="sm" onClick={() => setAnswerRevealed(true)} className="w-full !h-auto !p-8 !rounded-lg border-2 border-dashed border-muted-foreground/30 bg-muted/30 flex-col items-center justify-center gap-2 hover:bg-[var(--interactive-hover)]">
-                            <Eye size={32} className="text-muted-foreground" />
+                          <DsButton variant="ghost" size="sm" onClick={() => setAnswerRevealed(true)} className="w-full !h-auto !p-8 !rounded-xl border border-dashed border-border/60 bg-muted/20 flex-col items-center justify-center gap-2 hover:bg-foreground/[0.03]">
+                            <Eye size={28} className="text-muted-foreground" />
                             <span className="text-sm text-muted-foreground">{t('editor.clickToReveal')}</span>
                           </DsButton>
                         )}
@@ -2573,7 +2563,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                             size="lg"
                             onClick={handleSubmit}
                             disabled={!canSubmit || isSubmitting}
-                            className="w-full [@media(pointer:coarse)]:!min-h-11"
+                            className="w-full !rounded-xl [@media(pointer:coarse)]:!min-h-11"
                           >
                             {isSubmitting ? (
                               <><CircleNotch size={16} className="animate-spin" />{t('editor.submitting')}</>
@@ -2588,8 +2578,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                         {renderExplanation()}
                       </>
                     )}
-                  </CardContent>
-                </Card>
+                  </div>
                 </div>
             </CustomScrollArea>
 
@@ -2691,90 +2680,68 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
 
       {/* 居中栏放在视口内层：视口的 margin / padding 由 OverlayScrollbars 接管，写在 viewportClassName 上的 mx-auto 不生效 */}
       <CustomScrollArea className="flex-1">
-        <div className="max-w-3xl mx-auto px-3 py-3 sm:p-4 space-y-3 sm:space-y-4">
+        <div className="max-w-3xl mx-auto px-3 py-4 sm:px-6 sm:py-6 space-y-4">
           {/* 完成庆祝（内联） */}
           {renderCompletionCelebration()}
-          {/* 统计卡片 - 专注模式 / 浏览模式下隐藏 */}
-          {stats && !focusMode && !browseMode && (
-            <>
-              {/* 移动端：单行摘要 */}
-              <div className="flex sm:hidden items-center justify-between px-3 py-2 rounded-lg bg-muted/30 text-xs">
-                <span className="text-muted-foreground">
-                  {t('editor.totalSummary', { count: stats.total })}
-                </span>
-                <span className="text-success">
-                  {t('editor.masteredSummary', { count: stats.mastered })}
-                </span>
-                <span className="text-warning">
-                  {t('editor.reviewSummary', { count: stats.review })}
-                </span>
-                <span className="text-primary font-medium">
-                  {Math.round(stats.correctRate * 100)}%
-                </span>
-              </div>
-              {/* 桌面端：完整卡片 */}
-              <div className="hidden sm:grid grid-cols-4 gap-2">
-                <StatCard 
-                  icon={BookOpen} 
-                  label={t('editor.totalQuestions')} 
-                  value={stats.total} 
-                  color="bg-muted text-muted-foreground"
-                  delay={0}
-/>
-                <StatCard 
-                  icon={Target} 
-                  label={t('editor.mastered')} 
-                  value={stats.mastered} 
-                  color="bg-success/10 text-success"
-                  delay={50}
-/>
-                <StatCard 
-                  icon={ArrowCounterClockwise} 
-                  label={t('editor.needsReview')} 
-                  value={stats.review} 
-                  color="bg-warning/10 text-warning"
-                  delay={100}
-/>
-                <StatCard 
-                  icon={TrendUp} 
-                  label={t('editor.correctRate')} 
-                  value={`${Math.round(stats.correctRate * 100)}%`} 
-                  color="bg-primary/10 text-primary"
-                  delay={150}
-/>
-              </div>
-            </>
-          )}
 
-          <div key={currentQuestion.id} className="ui-slide-fade-in" style={questionTransitionStyle}>
-          <Card className="overflow-hidden border-border/60 shadow-sm">
-            <CardHeader className="pb-2 sm:pb-3 space-y-2">
-              {/* 题目标签行 - 专注模式下简化显示 */}
-              <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-                <Badge variant="outline" className="font-mono text-xs h-5">
-                  {currentQuestion.questionLabel || `Q${currentIndex + 1}`}
-                </Badge>
-                <Badge variant="secondary" className="text-xs h-5">
-                  {t(`editor.questionType.${QUESTION_TYPE_I18N_KEY[currentQuestion.questionType]}`)}
-                </Badge>
-                {/* 专注模式下隐藏难度和状态 */}
-                {!focusMode && currentQuestion.difficulty && (
-                  <Badge 
-                    variant="secondary" 
-                    className={cn(
-                      'text-xs h-5',
-                      DIFFICULTY_CONFIG[currentQuestion.difficulty].color,
-                      DIFFICULTY_CONFIG[currentQuestion.difficulty].bg
-                    )}
+          <div key={currentQuestion.id} className="ui-slide-fade-in space-y-5" style={questionTransitionStyle}>
+            {/* 单行题头页眉：题号 + 题型 + 难度 + 状态 + 标签 + 收藏 + 原图裁剪 + 设置 */}
+            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+              <span className="font-mono text-xs font-medium tabular-nums text-muted-foreground">
+                {currentQuestion.questionLabel || `Q${currentIndex + 1}`} · {currentIndex + 1}/{totalQuestions}
+              </span>
+              <span className="rounded-md bg-foreground/[0.04] px-2 py-0.5 text-xs text-muted-foreground">
+                {t(`editor.questionType.${QUESTION_TYPE_I18N_KEY[currentQuestion.questionType]}`)}
+              </span>
+              {!focusMode && currentQuestion.difficulty && (
+                <span className="inline-flex items-center gap-1.5 rounded-md bg-foreground/[0.04] px-2 py-0.5 text-xs text-muted-foreground">
+                  <span className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', DIFFICULTY_CONFIG[currentQuestion.difficulty].dot)} aria-hidden="true" />
+                  {t(`questionBank.difficulty.${DIFFICULTY_I18N_KEY[currentQuestion.difficulty]}`)}
+                </span>
+              )}
+              {!focusMode && currentQuestion.status && (
+                <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <span className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', STATUS_CONFIG[currentQuestion.status].dot)} aria-hidden="true" />
+                  {t(`questionBank.status.${STATUS_I18N_KEY[currentQuestion.status]}`)}
+                </span>
+              )}
+              {!focusMode && currentQuestion.tags && currentQuestion.tags.length > 0 && (
+                currentQuestion.tags.map(tag => (
+                  <span
+                    key={tag}
+                    className="inline-flex items-center gap-1 rounded-md bg-foreground/[0.04] px-2 py-0.5 text-xs text-muted-foreground"
                   >
-                    {t(`questionBank.difficulty.${DIFFICULTY_I18N_KEY[currentQuestion.difficulty]}`)}
-                  </Badge>
-                )}
-                {!focusMode && currentQuestion.status && (
-                  <span className={cn('text-xs', STATUS_CONFIG[currentQuestion.status].color)}>
-                    {t(`questionBank.status.${STATUS_I18N_KEY[currentQuestion.status]}`)}
+                    <Tag size={11} />
+                    {tag}
                   </span>
+                ))
+              )}
+              <div className="ml-auto flex items-center gap-1">
+                {onToggleFavorite && (
+                  <DsButton
+                    variant="ghost"
+                    size="sm"
+                    iconOnly
+                    onClick={() => void handleToggleFavorite()}
+                    aria-label={isFavorite ? t('editor.unfavorite') : t('editor.favorite')}
+                    aria-pressed={isFavorite}
+                    title={isFavorite ? t('editor.unfavorite') : t('editor.favorite')}
+                    className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 text-muted-foreground hover:text-foreground"
+                  >
+                    <Star size={15} weight={isFavorite ? 'fill' : 'regular'} className={isFavorite ? 'text-warning' : undefined} />
+                  </DsButton>
                 )}
+                <DsButton
+                  variant="ghost"
+                  size="sm"
+                  iconOnly
+                  onClick={() => setCropDialogOpen(true)}
+                  aria-label={t('common:question_bank.source_images')}
+                  title={t('common:question_bank.source_images')}
+                  className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 text-muted-foreground hover:text-foreground"
+                >
+                  <Crop size={15} />
+                </DsButton>
                 {browseMode ? browsePracticeButton : (
                   <DsButton
                     variant="ghost"
@@ -2784,30 +2751,15 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                     aria-label={t('editor.settings')}
                     aria-pressed={showSettingsPanel}
                     title={t('editor.settings')}
-                    className="ml-auto [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
+                    className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 text-muted-foreground hover:text-foreground"
                   >
                     <GearSix size={16} />
                   </DsButton>
                 )}
               </div>
+            </div>
 
-              {/* 标签 - 专注模式下隐藏 */}
-              {!focusMode && currentQuestion.tags && currentQuestion.tags.length > 0 && (
-                <div className="hidden sm:flex flex-wrap gap-1.5">
-                  {currentQuestion.tags.map(tag => (
-                    <span 
-                      key={tag} 
-                      className="inline-flex items-center gap-1 rounded-md bg-muted/80 px-2 py-0.5 text-xs text-muted-foreground"
-                    >
-                      <Tag size={12} />
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </CardHeader>
-
-            <CardContent className="space-y-6">
+            <div className="space-y-6">
               {/* issue 491：桌面练习路径同样在题目之前展示共享材料 */}
               <QuestionMaterialView
                 materials={currentQuestion.materials ?? []}
@@ -2816,10 +2768,10 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                   if (onRefreshQuestion) await onRefreshQuestion(currentQuestion.id);
                 }}
               />
-              <div className="prose prose-sm dark:prose-invert max-w-none">
+              <div className="prose prose-sm dark:prose-invert max-w-[74ch] text-[16px] sm:text-[17px] leading-[1.72] text-foreground">
                 <QuestionContentBlock
                   content={currentQuestion.content || currentQuestion.ocrText || t('editor.noContent')}
-/>
+                />
               </div>
 
               {/* 题目图片 */}
@@ -2853,42 +2805,31 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                 );
               })()}
 
-              {/* 原始图片裁剪入口 */}
-              <DsButton
-                variant="ghost"
-                size="sm"
-                className="text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-11"
-                onClick={() => setCropDialogOpen(true)}
-              >
-                <Crop size={14} className="mr-1.5" />
-                {t('common:question_bank.source_images')}
-              </DsButton>
-
               {/* 浏览模式：直接显示答案和解析（只读） */}
               {browseMode ? (
                 <div className="space-y-4">
                   {/* 选项展示（只读） */}
                   {isChoiceQuestion && currentQuestion.options && (
-                    <div className="space-y-2">
+                    <div className="space-y-2.5">
                       {currentQuestion.options.map(opt => (
                         <div
                           key={opt.key}
                           className={cn(
-                            'flex items-start gap-3 rounded-md border p-3 transition-colors',
+                            'flex items-start gap-3 rounded-xl border px-4 py-3 transition-colors',
                             currentQuestion.answer?.includes(opt.key)
-                              ? 'border-success/50 bg-success/5'
-                              : 'border-border/50 bg-card/30'
+                              ? 'border-success/40 bg-success/[0.06]'
+                              : 'border-border/45 bg-card/60'
                           )}
                         >
                           <span className={cn(
-                            'flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-sm font-medium',
+                            'flex-shrink-0 w-6 h-6 rounded-md border flex items-center justify-center font-mono text-xs font-medium',
                             currentQuestion.answer?.includes(opt.key)
-                              ? 'bg-success text-success-foreground'
-                              : 'bg-muted text-muted-foreground'
+                              ? 'border-success bg-success text-success-foreground'
+                              : 'border-border/60 bg-background/80 text-muted-foreground'
                           )}>
                             {opt.key}
                           </span>
-                          <LatexText content={opt.content} className="text-sm flex-1" />
+                          <LatexText content={opt.content} className="text-sm flex-1 pt-0.5 leading-relaxed" />
                           {currentQuestion.answer?.includes(opt.key) && (
                             <Check size={16} className="text-success flex-shrink-0" />
                           )}
@@ -2899,7 +2840,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
 
                   {/* 答案显示（结构化题型渲染可读摘要而非原始 JSON） */}
                   {(structuredAnswerSummaryNode || currentQuestion.answer) && (
-                    <div className="rounded-md border border-success/30 bg-success/5 p-3">
+                    <div className="rounded-xl border border-success/35 bg-success/[0.05] p-3.5">
                       <div className="flex items-center gap-2 mb-2">
                         <Check size={16} className="text-success" />
                         <span className="text-sm font-medium text-success">{t('editor.referenceAnswer')}</span>
@@ -2912,7 +2853,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
 
                   {/* 无答案提示 */}
                   {!structuredAnswerSummaryNode && !currentQuestion.answer && !currentQuestion.explanation && (
-                    <div className="rounded-md bg-muted/50 p-3 text-center">
+                    <div className="rounded-xl bg-muted/40 p-3.5 text-center">
                       <p className="text-sm text-muted-foreground">{t('editor.noAnswerOrExplanation')}</p>
                     </div>
                   )}
@@ -2924,8 +2865,8 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                 <>
                   {/* 暗记模式遮罩 */}
                   {hideAnswerMode && !answerRevealed && !submitResult && (
-                    <DsButton variant="ghost" size="sm" onClick={() => setAnswerRevealed(true)} className="w-full !h-auto !p-12 !rounded-lg border-2 border-dashed border-muted-foreground/30 bg-muted/30 flex-col items-center justify-center gap-3 hover:bg-[var(--interactive-hover)]">
-                      <Eye size={40} className="text-muted-foreground" />
+                    <DsButton variant="ghost" size="sm" onClick={() => setAnswerRevealed(true)} className="w-full !h-auto !p-12 !rounded-xl border border-dashed border-border/60 bg-muted/20 flex-col items-center justify-center gap-3 hover:bg-foreground/[0.03]">
+                      <Eye size={36} className="text-muted-foreground" />
                       <span className="text-muted-foreground">{t('editor.clickToRevealWithKey')}</span>
                     </DsButton>
                   )}
@@ -2943,7 +2884,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                       size="lg"
                       onClick={handleSubmit}
                       disabled={!canSubmit || isSubmitting}
-                      className="w-full [@media(pointer:coarse)]:!min-h-11"
+                      className="w-full !rounded-xl [@media(pointer:coarse)]:!min-h-11"
                     >
                       {isSubmitting ? (
                         <>
@@ -2978,14 +2919,14 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
               {renderSubmitResultCard()}
               {!browseMode && renderExplanation()}
 
-              {/* 用户笔记：内联展开编辑，失焦自动保存 */}
+              {/* 用户笔记：未写笔记且未展开编辑时收敛为文末轻量幽灵按钮，仅已有笔记或编辑时展开 */}
               {!browseMode && (
-                <div className="pt-4 border-t border-border/30">
+                <div>
                   {isEditingNote ? (
-                    <div className="ui-rise-in space-y-2">
+                    <div className="ui-rise-in space-y-2 rounded-xl border border-border/45 bg-foreground/[0.015] p-3">
                       <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium flex items-center gap-1.5">
-                          <Note size={16} className="text-warning" />
+                        <span className="text-xs font-medium flex items-center gap-1.5 text-muted-foreground">
+                          <Note size={14} className="text-warning" />
                           {t('editor.myNotes')}
                           {/* 自动保存指示 */}
                           {noteSaveState === 'saving' && (
@@ -3012,7 +2953,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                           size="sm"
                           onClick={handleSaveNote}
                           disabled={!onUpdateUserNote || noteSaveState === 'saving'}
-                          className="[@media(pointer:coarse)]:!min-h-11"
+                          className="!h-7 !px-2.5 text-xs [@media(pointer:coarse)]:!min-h-11"
                         >
                           {t('editor.noteDone')}
                         </DsButton>
@@ -3024,44 +2965,51 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                         placeholder={t('editor.notePlaceholder')}
                         rows={3}
                         autoFocus
-                        className="resize-none text-sm [@media(pointer:coarse)]:text-[16px]"
-/>
+                        className="resize-none rounded-lg border border-border/50 bg-background p-2.5 text-sm transition-colors focus-visible:border-primary/45 focus-visible:ring-0 [@media(pointer:coarse)]:text-[16px]"
+                      />
                       <p className="text-[11px] text-muted-foreground/60">
                         {t('editor.noteAutoSaveHint')}
                       </p>
                     </div>
+                  ) : currentQuestion?.userNote ? (
+                    <DsButton
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setIsEditingNote(true)}
+                      disabled={!onUpdateUserNote}
+                      className="w-full !justify-start !h-auto [@media(pointer:coarse)]:!min-h-11 !rounded-lg !px-3 !py-2 bg-foreground/[0.025] hover:bg-foreground/[0.045] text-left"
+                    >
+                      <div className="space-y-1 w-full">
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                          <Note size={14} className="text-warning" />
+                          <span className="font-medium text-foreground/85">{t('editor.myNotes')}</span>
+                        </div>
+                        <p className="text-sm text-muted-foreground line-clamp-2 text-left w-full">
+                          {currentQuestion.userNote}
+                        </p>
+                      </div>
+                    </DsButton>
                   ) : (
                     <DsButton
                       variant="ghost"
                       size="sm"
                       onClick={() => setIsEditingNote(true)}
                       disabled={!onUpdateUserNote}
-                      className="w-full !justify-start !h-auto [@media(pointer:coarse)]:!min-h-11 !rounded-md !p-3 border border-dashed border-border/50 hover:border-border hover:bg-[var(--interactive-hover)] group"
+                      className="!h-7 !px-2 !py-1 [@media(pointer:coarse)]:!min-h-11 text-xs text-muted-foreground hover:text-foreground gap-1.5"
                     >
-                      <div className="flex items-center gap-2 text-sm w-full">
-                        <Note size={16} className="text-warning" />
-                        <span className="font-medium">{t('editor.myNotes')}</span>
-                        {!currentQuestion?.userNote && (
-                          <span className="text-muted-foreground text-xs group-hover:hidden">{t('editor.clickToAdd')}</span>
-                        )}
-                      </div>
-                      {currentQuestion?.userNote && (
-                        <p className="mt-1.5 text-sm text-muted-foreground line-clamp-2 text-left w-full">
-                          {currentQuestion.userNote}
-                        </p>
-                      )}
+                      <Note size={14} />
+                      <span>+ {t('editor.myNotes')}</span>
                     </DsButton>
                   )}
                 </div>
               )}
-            </CardContent>
-          </Card>
+            </div>
           </div>
         </div>
       </CustomScrollArea>
 
-      <div className="flex-shrink-0 border-t border-border/40 bg-background safe-area-bottom">
-        <div className="px-4 py-3">
+      <div className="flex-shrink-0 border-t border-border/35 bg-background/95 backdrop-blur-sm safe-area-bottom">
+        <div className="px-4 py-2.5">
           {/* 未保存草稿的内联确认条 */}
           {draftNavigationBanner}
           <div className="max-w-3xl mx-auto flex items-center justify-between gap-4">
@@ -3070,7 +3018,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
               size="sm"
               onClick={() => handleNavigate('prev')}
               disabled={currentIndex === 0}
-              className="h-8 px-3 [@media(pointer:coarse)]:!min-h-11"
+              className="h-8 px-3 [@media(pointer:coarse)]:!min-h-11 text-muted-foreground hover:text-foreground"
             >
               <CaretLeft size={16} className="mr-1" />
               {t('editor.prevQuestion')}
@@ -3078,13 +3026,13 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
 
             <Popover>
               <PopoverTrigger asChild>
-                <DsButton variant="ghost" size="sm" className="!px-3 !py-1.5 [@media(pointer:coarse)]:!min-h-11 hover:bg-[var(--interactive-hover)]">
-                  <span className="font-medium">{currentIndex + 1}</span>
+                <DsButton variant="ghost" size="sm" className="!px-3 !py-1.5 font-mono text-xs tabular-nums [@media(pointer:coarse)]:!min-h-11 hover:bg-foreground/[0.04]">
+                  <span className="font-medium text-foreground">{currentIndex + 1}</span>
                   <span className="text-muted-foreground">/ {totalQuestions}</span>
                   <CaretDown size={14} className="text-muted-foreground" />
                 </DsButton>
               </PopoverTrigger>
-              <PopoverContent className="w-80 p-3" align="center" side="top" sideOffset={8}>
+              <PopoverContent className="w-80 p-3.5" align="center" side="top" sideOffset={8}>
                 {/* 搜索框 */}
                 <div className="relative mb-3">
                   <MagnifyingGlass size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -3094,7 +3042,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder={t('editor.searchPlaceholder')}
                     className="h-8 pl-8 text-sm [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:text-[16px]"
-/>
+                  />
                 </div>
                 <div className="text-xs text-muted-foreground mb-2">
                   {filteredQuestionIndices 
@@ -3103,7 +3051,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                 </div>
                 <CustomScrollArea
                   className="max-h-48"
-                  viewportClassName="grid grid-cols-8 gap-1"
+                  viewportClassName="grid grid-cols-8 gap-1.5"
                   fullHeight={false}
                   onWheel={(event) => event.stopPropagation()}
                 >
@@ -3111,16 +3059,30 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                     const q = questions[idx];
                     const status = q.status || 'new';
                     return (
-                      <DsButton key={q.id} variant="ghost" size="icon" iconOnly onClick={() => { requestNavigate(idx); setSearchQuery(''); }} className={cn('!w-7 !h-7 [@media(pointer:coarse)]:!w-full [@media(pointer:coarse)]:!h-11 text-xs font-medium [content-visibility:auto] [contain-intrinsic-size:auto_28px]', idx === currentIndex && 'bg-primary text-primary-foreground', idx !== currentIndex && status === 'mastered' && 'bg-success/10 text-success hover:bg-success/20', idx !== currentIndex && status === 'review' && 'bg-warning/10 text-warning hover:bg-warning/20', idx !== currentIndex && status === 'new' && 'bg-muted/50 text-muted-foreground hover:bg-[var(--interactive-hover)]', idx !== currentIndex && status === 'in_progress' && 'bg-primary/10 text-primary hover:bg-primary/20')}>
+                      <DsButton
+                        key={q.id}
+                        variant="ghost"
+                        size="icon"
+                        iconOnly
+                        onClick={() => { requestNavigate(idx); setSearchQuery(''); }}
+                        className={cn(
+                          '!w-7 !h-7 [@media(pointer:coarse)]:!w-full [@media(pointer:coarse)]:!h-11 !rounded-lg border font-mono text-xs tabular-nums [content-visibility:auto] [contain-intrinsic-size:auto_28px]',
+                          idx === currentIndex && 'border-primary bg-primary text-primary-foreground font-semibold',
+                          idx !== currentIndex && status === 'mastered' && 'border-success/35 bg-success/[0.08] text-success hover:bg-success/15',
+                          idx !== currentIndex && status === 'review' && 'border-warning/35 bg-warning/[0.08] text-warning hover:bg-warning/15',
+                          idx !== currentIndex && status === 'new' && 'border-border/45 bg-foreground/[0.02] text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground',
+                          idx !== currentIndex && status === 'in_progress' && 'border-primary/35 bg-primary/[0.08] text-primary hover:bg-primary/15',
+                        )}
+                      >
                         {idx + 1}
                       </DsButton>
                     );
                   })}
                 </CustomScrollArea>
-                <div className="flex items-center gap-3 mt-3 pt-2 border-t border-border/40 text-[10px] text-muted-foreground">
-                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-success/20" /> {t('editor.legendMastered')}</span>
-                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-warning/20" /> {t('editor.legendReview')}</span>
-                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-muted" /> {t('editor.legendNew')}</span>
+                <div className="flex items-center gap-3 mt-3 pt-2 border-t border-border/35 text-[10px] text-muted-foreground">
+                  <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-success" /> {t('editor.legendMastered')}</span>
+                  <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-warning" /> {t('editor.legendReview')}</span>
+                  <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/35" /> {t('editor.legendNew')}</span>
                 </div>
               </PopoverContent>
             </Popover>

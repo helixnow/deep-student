@@ -1,0 +1,46 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>ds-plugin</title></head>
+<body>
+<script>
+const NEXT_MANIFEST = __NEXT_MANIFEST__;
+(async () => {
+  const I = window.__TAURI_INTERNALS__;
+  const r = {};
+  try {
+    const first = await fetch('ds-plugin://demo/ui.js');
+    r.first = {
+      status: first.status,
+      contentType: first.headers.get('content-type'),
+      cacheControl: first.headers.get('cache-control'),
+      body: await first.text(),
+    };
+    const mod = await import('ds-plugin://demo/ui.js');
+    r.module = mod.default;
+    r.oldBefore = (await fetch('ds-plugin://demo/old.js')).status;
+  } catch (e) {
+    r.firstError = String((e && e.stack) || e);
+  }
+  try {
+    r.traversal = (await fetch('ds-plugin://demo/..%2foutside.js')).status;
+  } catch (e) {
+    r.traversalError = String((e && e.stack) || e);
+  }
+  try {
+    let resolveEvent;
+    const updated = new Promise((resolve) => { resolveEvent = resolve; });
+    r.listenId = await I.invoke('plugin:event|listen', {
+      event: 'host://ui-manifest',
+      target: { kind: 'Any' },
+      handler: I.transformCallback((event) => resolveEvent(event.payload)),
+    });
+    await I.invoke('smoke_ui_manifest_update', { manifest: NEXT_MANIFEST });
+    r.eventPayload = await updated;
+    const moved = await fetch('ds-plugin://demo/ui.js');
+    r.after = { status: moved.status, body: await moved.text() };
+    r.oldAfter = (await fetch('ds-plugin://demo/old.js')).status;
+  } catch (e) {
+    r.updateError = String((e && e.stack) || e);
+  }
+  await I.invoke('smoke_report', r);
+})();
+</script></body></html>

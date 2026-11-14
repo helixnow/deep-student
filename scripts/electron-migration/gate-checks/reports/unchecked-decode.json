@@ -1,0 +1,2001 @@
+{
+  "gate": "unchecked-decode",
+  "findings": [
+    {
+      "file": "host/plugins/agent-orchestration/index.ts",
+      "line": 446,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "apply",
+      "expression": "ctx.storage as unknown as { registerFinalizer?: ( name: string, fn: () => void | Promise<void>, options?: { after?: readonly string[] }, ) => void; }",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/agent-orchestration/index.ts",
+      "line": 469,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "apply",
+      "expression": "automationListResponse(openDatabase()) as unknown as Json",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/agent-orchestration/index.ts",
+      "line": 470,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "apply",
+      "expression": "automationToListItem(runCommand(() => { const automation = createAutomation(openDatabase(), createFieldsFromRequest(request, request.trustedProfile == null ? null : normalizeTrustedProfile(request.trustedProfile))); emitChanged('create', automation.id); return automation; }), Date.now()) as unknown as Json",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/agent-orchestration/index.ts",
+      "line": 483,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "apply",
+      "expression": "automationToListItem(current, Date.now()) as unknown as Json",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/agent-orchestration/index.ts",
+      "line": 488,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "apply",
+      "expression": "automationToListItem(current, Date.now()) as unknown as Json",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/agent-orchestration/index.ts",
+      "line": 493,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "apply",
+      "expression": "automationToListItem(deleted, Date.now()) as unknown as Json",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/agent-orchestration/index.ts",
+      "line": 495,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "apply",
+      "expression": "runCommand( () => runAutomationNow(runtimeDeps(), automationId, expectedVersion)) as unknown as Json",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/agent-orchestration/index.ts",
+      "line": 498,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "apply",
+      "expression": "listAutomationRuns(openDatabase(), automationId, limit ?? 50) as unknown as Json",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/agent-orchestration/index.ts",
+      "line": 502,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "apply",
+      "expression": "{ success: true, runId } as unknown as Json",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/agent-orchestration/index.ts",
+      "line": 507,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "apply",
+      "expression": "{ success: true, runId } as unknown as Json",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/agent-orchestration/index.ts",
+      "line": 509,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "apply",
+      "expression": "automationSummary(openDatabase()) as unknown as Json",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/agent-orchestration/index.ts",
+      "line": 513,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "apply",
+      "expression": "{ success: true, enabled } as unknown as Json",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/agent-orchestration/repository/automation-definitions.ts",
+      "line": 92,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "rowToAutomation",
+      "expression": "JSON.parse(profileJson) as TrustedAutomationProfile",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/agent-orchestration/src/custom-agent.ts",
+      "line": 217,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "readProposalMeta",
+      "expression": "JSON.parse(text) as PersonaProposalMeta",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/agent-orchestration/src/subagent-args.ts",
+      "line": 54,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "isOwnAgentCompletion",
+      "expression": "JSON.parse(content) as Json",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/agent-orchestration/src/super-session-exec.ts",
+      "line": 106,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "closeWorkerCore",
+      "expression": "metadata as unknown as Parameters<SuperWorkspaceCoordinator['updateAgentMetadata']>[2]",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/agent-skills/src/tools/ptc-runtime.ts",
+      "line": 633,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "PtcBrokerState.objectWrite",
+      "expression": "handle as unknown as StarlarkJson",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/agent-skills/src/tools/skill-workshop-executor.ts",
+      "line": 453,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "readProposalMeta",
+      "expression": "JSON.parse(text) as Record<string, unknown>",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/agent-skills/src/tools/skill-workshop-executor.ts",
+      "line": 754,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "SkillWorkshopExecutor.proposeUpdate",
+      "expression": "JSON.parse(markerText) as { packageVersion?: unknown }",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/agent-skills/src/tools/workbench-executor.ts",
+      "line": 197,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "extractErrorCode",
+      "expression": "JSON.parse(raw.slice(start)) as { code?: unknown }",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/agent-workspace/src/tools/code-navigation.ts",
+      "line": 560,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "CodeNavigationExecutor.execute",
+      "expression": "result as unknown as JsonValue",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/agent-workspace/src/tools/code-navigation.ts",
+      "line": 566,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "CodeNavigationExecutor.execute",
+      "expression": "result as unknown as JsonValue",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/agent-workspace/src/tools/lsp-navigation.ts",
+      "line": 552,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "LspSession.readMessage",
+      "expression": "JSON.parse(payload.toString('utf8')) as JsonValue",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/agent-workspace/src/tools/shell-execute.ts",
+      "line": 286,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "LocalShellExecuteExecutor.executeShellWithOptions",
+      "expression": "recordExternalChanges(checkpointPath, root.id, externalSnapshot(beforeSnapshot), externalSnapshot(afterSnapshot)) as unknown as JsonValue",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/agent-workspace/src/tools/shell-execute.ts",
+      "line": 336,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "LocalShellExecuteExecutor.executeShellWithOptions",
+      "expression": "sandboxReport as unknown as JsonValue",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/agent-workspace/src/tools/workspace-fs.ts",
+      "line": 588,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "WorkspaceFsExecutor.listDirectoryBounded",
+      "expression": "'buffer' as unknown as BufferEncoding",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/agent-workspace/src/tools/workspace-fs.ts",
+      "line": 605,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "WorkspaceFsExecutor.listDirectoryBounded",
+      "expression": "entry.name as unknown as Buffer",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/agent-workspace/src/tools/workspace-fs.ts",
+      "line": 772,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "WorkspaceFsExecutor.workspaceChangeOutput",
+      "expression": "changeSet as unknown as JsonValue",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/agent-workspace/src/tools/workspace-fs.ts",
+      "line": 773,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "WorkspaceFsExecutor.workspaceChangeOutput",
+      "expression": "receipt as unknown as JsonValue",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/agent-workspace/src/tools/workspace-fs.ts",
+      "line": 779,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "WorkspaceFsExecutor.workspaceChangeOutput",
+      "expression": "changeSet.changes as unknown as JsonValue",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/agent-workspace/src/tools/workspace-fs.ts",
+      "line": 1041,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "WorkspaceFsExecutor.executeWorkspaceRevert",
+      "expression": "changeSet as unknown as JsonValue",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/agent-workspace/src/tools/workspace-fs.ts",
+      "line": 1042,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "WorkspaceFsExecutor.executeWorkspaceRevert",
+      "expression": "rollbackResult as unknown as JsonValue",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/agent-workspace/src/tools/workspace-fs.ts",
+      "line": 1059,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "WorkspaceFsExecutor.executeWorkspaceRevert",
+      "expression": "receipt as unknown as JsonValue",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/agent-workspace/src/vfs-resolver/pdf.ts",
+      "line": 110,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "parsePreviewJson",
+      "expression": "JSON.parse(raw) as PdfPreviewJson",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/agent-workspace/src/vfs-resolver/resources.ts",
+      "line": 231,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "resolveMindmap",
+      "expression": "JSON.parse(row.data) as Record<string, unknown>",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/agent-workspace/src/workspace/coordinator.ts",
+      "line": 76,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "call",
+      "expression": "borrow() as unknown as Record<string, ((...a: unknown[]) => unknown) | undefined>",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/agent-workspace/src/workspace/coordinator.ts",
+      "line": 81,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "liveExecutor",
+      "expression": "{ get: call('get'), one: call('one'), pluck: call('pluck'), all: call('all'), iterate: call('iterate'), run: call('run'), exec: call('exec'), } as unknown as SqlExecutor",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/agent-workspace/src/workspace/repo.ts",
+      "line": 36,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "parseMetadata",
+      "expression": "JSON.parse(value) as JsonValue",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/agent-workspace/src/workspace/repo.ts",
+      "line": 44,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "parseContextValue",
+      "expression": "JSON.parse(value) as JsonValue",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/anki/src/apkg-export-model.ts",
+      "line": 835,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "initializeAnkiDatabaseWithTemplate",
+      "expression": "model as unknown as Record<string, unknown>",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/anki/src/apkg-exporter.ts",
+      "line": 611,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "exportMultiTemplateApkgReport",
+      "expression": "model as unknown as Record<string, unknown>",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/anki/src/apkg-exporter.ts",
+      "line": 617,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "exportMultiTemplateApkgReport",
+      "expression": "createBasicModel(nowSeconds) as unknown as Record<string, unknown>",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/anki/src/apkg-exporter.ts",
+      "line": 640,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "exportMultiTemplateApkgReport",
+      "expression": "createBasicModel(nowSeconds) as unknown as Record<string, unknown>",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/anki/src/apkg-import-collection.ts",
+      "line": 337,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "parseCollectionDatabase",
+      "expression": "rawRow as unknown as Record<string, unknown>",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/anki/src/apkg-import-zstd.ts",
+      "line": 17,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": null,
+      "expression": "zlib as unknown as { zstdDecompressSync(data: Uint8Array, options?: { maxOutputLength?: number }): Buffer; }",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/anki/src/document-processing.ts",
+      "line": 134,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "DocumentProcessingService.processDocumentAndCreateTasksWithId",
+      "expression": "taskOptions as unknown as Record<string, unknown>",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/anki/src/plugin-handlers-templates.ts",
+      "line": 324,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "createTemplateHandlers",
+      "expression": "args as unknown as { request: TemplateImportRequest }",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/anki/src/plugin-handlers-templates.ts",
+      "line": 386,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "createTemplateHandlers",
+      "expression": "args as unknown as { request: TemplateBulkImportRequest }",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/anki/src/save-cards.ts",
+      "line": 141,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "saveAnkiCardsInDatabase",
+      "expression": "request.options as unknown as Record<string, unknown>",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/anki/src/streaming-anki.ts",
+      "line": 203,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "buildCriticSummaryEvent",
+      "expression": "JSON.parse(criticSummaryToJson(summary)) as Record<string, unknown>",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/anki/src/templates.ts",
+      "line": 287,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "decodeTemplateRow",
+      "expression": "decodeRulesLenient(row.field_extraction_rules_json) as unknown as CustomAnkiTemplate['field_extraction_rules']",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/anki/src/templates.ts",
+      "line": 339,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "decodeCustomTemplateJson",
+      "expression": "decodeFieldExtractionRules(object.field_extraction_rules) as unknown as CustomAnkiTemplate['field_extraction_rules']",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/backup/repository/audit.ts",
+      "line": 174,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "rowToAuditLog",
+      "expression": "JSON.parse(row.operation_data) as AuditOperation",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/backup/src/governance.ts",
+      "line": 87,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "Governance.readPersistedMigrationError",
+      "expression": "JSON.parse(content) as Record<string, unknown>",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/backup/src/restore-commands.ts",
+      "line": 164,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "finalizeRestoreActivation",
+      "expression": "JSON.parse(readFileSync(markerPath, 'utf8')) as RestoreActivationMarker",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/backup/src/restore-commands.ts",
+      "line": 551,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "RestoreCommands.executeRestore",
+      "expression": "conn as unknown as DatabaseHandle",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/backup/src/zip.ts",
+      "line": 498,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "archiveEntries",
+      "expression": "file as unknown as { _data?: { uncompressedSize?: number } }",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/browser/src/bridge.ts",
+      "line": 117,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "parseBridgeJson",
+      "expression": "JSON.parse(trimmed) as JsonValue",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/browser/src/bridge.ts",
+      "line": 126,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "parseBridgeJson",
+      "expression": "JSON.parse(inner) as JsonValue",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/browser/src/browser-tool-executor.ts",
+      "line": 345,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "BrowserToolExecutor.executeOpen",
+      "expression": "state as unknown as JsonValue",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/browser/src/browser-tool-executor.ts",
+      "line": 350,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "BrowserToolExecutor.executeOpen",
+      "expression": "state as unknown as JsonValue",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/browser/src/browser-tool-executor.ts",
+      "line": 559,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "BrowserToolExecutor.executeFileUpload",
+      "expression": "objectHandle as unknown as JsonValue",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/browser/src/browser-tool-executor.ts",
+      "line": 605,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "BrowserToolExecutor.executeDownloads",
+      "expression": "downloads as unknown as JsonValue",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/browser/src/index-webpage-executor.ts",
+      "line": 372,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "IndexWebpageToolExecutor.executeStatus",
+      "expression": "summary as unknown as JsonValue",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/browser/src/index-webpage-executor.ts",
+      "line": 398,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "IndexWebpageToolExecutor.executeStatus",
+      "expression": "summary as unknown as JsonValue | null",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/browser/src/index-webpage-executor.ts",
+      "line": 401,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "IndexWebpageToolExecutor.executeStatus",
+      "expression": "(resource.metadata ?? null) as unknown as JsonValue",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/browser/src/index-webpage-executor.ts",
+      "line": 402,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "IndexWebpageToolExecutor.executeStatus",
+      "expression": "indexState as unknown as JsonValue",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/browser/src/index-webpage-executor.ts",
+      "line": 403,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "IndexWebpageToolExecutor.executeStatus",
+      "expression": "ocr as unknown as JsonValue",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/browser/src/index-webpage-executor.ts",
+      "line": 404,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "IndexWebpageToolExecutor.executeStatus",
+      "expression": "units as unknown as JsonValue",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/browser/src/policy.ts",
+      "line": 26,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "ipv6",
+      "expression": "[...segments] as unknown as Ipv6Address['segments']",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/chat/index.ts",
+      "line": 106,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "vfs",
+      "expression": "ctx.vfs as unknown as VfsFolderServiceLike",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/chat/repository/blocks.ts",
+      "line": 35,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "parseOptional",
+      "expression": "JSON.parse(value) as T",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/chat/repository/blocks.ts",
+      "line": 192,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "appendBlockIdToMessage",
+      "expression": "JSON.parse(row.block_ids_json) as string[]",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/chat/repository/messages.ts",
+      "line": 44,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "cloneJson",
+      "expression": "JSON.parse(JSON.stringify(value)) as T",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/chat/repository/session-state.ts",
+      "line": 25,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "parseJson",
+      "expression": "JSON.parse(value) as T",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/chat/src/session-actions.ts",
+      "line": 237,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "parseJson",
+      "expression": "JSON.parse(raw) as T",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/chat/src/session-branch.ts",
+      "line": 46,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "cloneJson",
+      "expression": "JSON.parse(JSON.stringify(value)) as T",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/chat/src/session-export.ts",
+      "line": 177,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "messageExportValue",
+      "expression": "JSON.parse(JSON.stringify(next)) as Record<string, unknown>",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/chat/src/session-metadata.ts",
+      "line": 197,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "resolvedSkillState",
+      "expression": "parsedState as unknown as import('../repository/session-state.ts').SessionSkillState",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/chat/src/snapshot.ts",
+      "line": 102,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "importSession",
+      "expression": "JSON.parse(snapshotJson) as ConversationSnapshot",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/chat-pipeline/src/context.ts",
+      "line": 202,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "sendContextRefToContextRef",
+      "expression": "ref.injectModes as unknown as ContextRef['injectModes']",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/chatanki/index.ts",
+      "line": 258,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "ChatAnkiToolsService.adaptContext",
+      "expression": "record as unknown as ToolExecutionContext",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/chatanki/index.ts",
+      "line": 362,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "ChatAnkiToolsService.hydrate",
+      "expression": "store as unknown as { entries: unknown[] }",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/chatanki/index.ts",
+      "line": 415,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "ChatAnkiToolsService.hydrate",
+      "expression": "review as unknown as Partial<SchedulerService> | undefined",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/chatanki/index.ts",
+      "line": 425,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "ChatAnkiToolsService.hydrate",
+      "expression": "review as unknown as ChatAnkiReviewStateService | undefined",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/chatanki/src/mutation-executor.ts",
+      "line": 43,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "settingsStore",
+      "expression": "settings as unknown as { getSetting?: (key: string) => string | null; get?: (key: string) => string | null; saveSetting?: (key: string, value: string) => void; save?: (key: string, value: string) => void; }",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/llm/index.ts",
+      "line": 226,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "apply",
+      "expression": "JSON.parse(raw) as ReturnType<typeof defaultBudgetConfig>",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/llm/index.ts",
+      "line": 243,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "apply",
+      "expression": "JSON.parse(raw) as ReturnType<typeof defaultBudgetConfig>",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/llm/src/capabilities.ts",
+      "line": 39,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": null,
+      "expression": "MODEL_CAPABILITY_REGISTRY_DOCUMENT as unknown as RegistryDocument",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/llm/src/config_builtins.ts",
+      "line": 72,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": null,
+      "expression": "GEMINI_MODEL_REGISTRY_DOCUMENT as unknown as GeminiRegistryDocument",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/llm/src/config_profiles.ts",
+      "line": 47,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "ModelProfileStore.hidden",
+      "expression": "JSON.parse(raw) as string[]",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/llm/src/config_resolution.ts",
+      "line": 106,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "mergeBuiltinProfileUserAware",
+      "expression": "existing as unknown as Record<string, unknown>",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/llm/src/config_store.ts",
+      "line": 111,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "LlmConfigStore.decryptApiKeyIfNeeded",
+      "expression": "JSON.parse(apiKey) as typeof data",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/llm/src/config_store.ts",
+      "line": 132,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "LlmConfigStore.hasUsableCodexSession",
+      "expression": "JSON.parse(raw) as Record<string, unknown>",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/llm/src/config_store.ts",
+      "line": 162,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "LlmConfigStore.bootstrapVendorModelConfig",
+      "expression": "JSON.parse(legacyRaw) as ApiConfig[]",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/llm/src/config_store.ts",
+      "line": 787,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "LlmConfigStore.getModelAssignments",
+      "expression": "JSON.parse(raw) as ModelAssignments__De",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/llm/src/mod_compat.ts",
+      "line": 290,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": null,
+      "expression": "MODEL_CAPABILITY_REGISTRY_DOCUMENT as unknown as RegistryDocument",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/llm/src/protocol.ts",
+      "line": 27,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": null,
+      "expression": "PROVIDER_PROTOCOL_REGISTRY_DOCUMENT as unknown as Document",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/llm/src/question_parsing_service.ts",
+      "line": 44,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "IncrementalJsonArrayParser.feed",
+      "expression": "JSON.parse(this.buffer) as JsonValue",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/llm/src/question_parsing_service.ts",
+      "line": 59,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "IncrementalJsonArrayParser.finalize",
+      "expression": "JSON.parse(this.buffer) as JsonValue",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/llm/src/rag_service.ts",
+      "line": 48,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "translateText",
+      "expression": "JSON.parse(responseText) as JsonValue",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/llm/src/single_shot_stream.ts",
+      "line": 311,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "finishReasonFromBlock",
+      "expression": "JSON.parse(payload.trim()) as JsonValue",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/llm/src/single_shot_stream.ts",
+      "line": 700,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "parseCompleteBody",
+      "expression": "JSON.parse(body.trim()) as JsonValue",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/llm/src/tool_calls.ts",
+      "line": 81,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "parseJson",
+      "expression": "JSON.parse(text) as JsonValue",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/llm-providers/src/json.ts",
+      "line": 14,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "parseJson",
+      "expression": "JSON.parse(text) as JsonValue",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/llm-providers/src/ocr/paddle.ts",
+      "line": 92,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "parsePaddleJsonResponse",
+      "expression": "JSON.parse(extractJsonFromResponse(response)) as JsonValue",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/llm-providers/src/providers/anthropic.ts",
+      "line": 571,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "AnthropicAdapter.convertOpenaiToAnthropic",
+      "expression": "messages as unknown as JsonValue",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/llm-providers/src/providers/anthropic.ts",
+      "line": 572,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "AnthropicAdapter.convertOpenaiToAnthropic",
+      "expression": "system as unknown as JsonValue",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/llm-providers/src/providers/anthropic.ts",
+      "line": 573,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "AnthropicAdapter.convertOpenaiToAnthropic",
+      "expression": "tools as unknown as JsonValue",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/mcp/src/oauth-manager.ts",
+      "line": 140,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "parseSession",
+      "expression": "JSON.parse(raw) as Record<string, unknown>",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/mcp/src/oauth-manager.ts",
+      "line": 294,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "McpOAuthManager.discoverInner",
+      "expression": "JSON.parse(text) as Record<string, unknown>",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/mcp/src/oauth-manager.ts",
+      "line": 365,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "McpOAuthManager.dynamicClientRegister",
+      "expression": "JSON.parse(text) as Record<string, unknown>",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/mcp/src/oauth-manager.ts",
+      "line": 450,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "McpOAuthManager.postToken",
+      "expression": "JSON.parse(text) as Record<string, unknown>",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/mcp/src/probe.ts",
+      "line": 425,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "send",
+      "expression": "JSON.parse(message) as Record<string, unknown>",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/mcp/src/probe.ts",
+      "line": 462,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "send",
+      "expression": "JSON.parse(message) as { id?: unknown; method?: string }",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/mcp/src/service.ts",
+      "line": 222,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "McpToolRegistry.callTool",
+      "expression": "result.content as unknown as JsonValue",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/mcp/src/web-search-config.ts",
+      "line": 250,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "applyDbOverrides",
+      "expression": "JSON.parse(strategies) as ProviderStrategies",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/mcp/src/web-search-core.ts",
+      "line": 69,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "jsonOrNull",
+      "expression": "JSON.parse(text) as JsonValue",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/mcp/src/web-search-providers.ts",
+      "line": 45,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "responseJson",
+      "expression": "JSON.parse(text) as JsonValue",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/mcp/src/web-search.ts",
+      "line": 145,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "resetProviderRuntime",
+      "expression": "PROVIDER_RUNTIME as unknown as { states: Map<string, ProviderRuntimeState> }",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/media/src/exam-sheet-service.ts",
+      "line": 242,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "ExamSheetSessionCore.saveToVfs",
+      "expression": "encodeMetadata(detail.summary.metadata) as unknown as JsonValue",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/media/src/exam-sheet-service.ts",
+      "line": 243,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "ExamSheetSessionCore.saveToVfs",
+      "expression": "encodePreview(detail.preview) as unknown as JsonValue",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/media/src/media-commands.ts",
+      "line": 73,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "parsePercent",
+      "expression": "JSON.parse(raw) as { percent?: unknown }",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/memory/repository/learning.ts",
+      "line": 30,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "sourceError",
+      "expression": "withLocalizedMessage({ source, code: 'SOURCE_UNAVAILABLE', retryable: true, }, 'chat.tools.learning.source_unavailable', { source }, zhCn, enUs) as unknown as SourceError",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/memory/repository/vfs.ts",
+      "line": 476,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "createOrReuseTypedResource",
+      "expression": "JSON.parse(params.metadataJson) as Record<string, unknown>",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/memory/src/memory-utils.ts",
+      "line": 198,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "ctxGet",
+      "expression": "ctx as unknown as { get(service: string): unknown }",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/memory/src/write-store.ts",
+      "line": 291,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "MemoryWriteStore.writeSmart",
+      "expression": "tx as unknown as DatabaseHandle",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/notes/repository/asset-retention.ts",
+      "line": 89,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "registerNotesAssetRetention",
+      "expression": "conn as unknown as NativeConnection",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/notes/repository/export-common.ts",
+      "line": 297,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "plainMarkdown",
+      "expression": "fromMarkdown(text) as unknown as { children: Array<{ type: string; position?: { start: { offset?: number }; end: { offset?: number } } }>; }",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/notes/repository/import-archive.ts",
+      "line": 96,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "entriesOf",
+      "expression": "file as unknown as { _data?: { uncompressedSize?: number; crc32?: number }; }",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/notes/repository/rag-config.ts",
+      "line": 38,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "getSubjectRagConfig",
+      "expression": "JSON.parse(raw) as Partial<StoredConfig>",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/notes/src/deletion-permit.ts",
+      "line": 26,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "acquireDeletePropagation",
+      "expression": "ctx.get('governance') as unknown as Partial<DeletePropagationProvider> | undefined",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/notes/src/structure.ts",
+      "line": 56,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "markdownRoots",
+      "expression": "fromMarkdown(content, { extensions: [gfm()], mdastExtensions: [gfmFromMarkdown()], }) as unknown as { children: PositionedNode[] }",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/notes/src/trash-commands.ts",
+      "line": 42,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "rawJournalConnection",
+      "expression": "conn as unknown as { rawConnection?: () => { raw?: RawJournalConnection } }",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/qbank/index.ts",
+      "line": 76,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "hostOf",
+      "expression": "ctx.get('mastery') as unknown as MasteryRecorder | undefined",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/qbank/index.ts",
+      "line": 90,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "gradingHostOf",
+      "expression": "ctx.get('mastery') as unknown as MasteryRecorder | undefined",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/qbank/index.ts",
+      "line": 124,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "practiceHostOf",
+      "expression": "ctx.get('mastery') as unknown as MasteryRecorder | undefined",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/qbank/repository/authoring.ts",
+      "line": 44,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "parse",
+      "expression": "JSON.parse(raw) as T",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/qbank/repository/authoring.ts",
+      "line": 234,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "commitSources",
+      "expression": "JSON.parse(previousRaw) as Record<string, unknown>",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/qbank/repository/authoring.ts",
+      "line": 272,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "commitDraftRows",
+      "expression": "JSON.parse(row.provenance_json) as Record<string, unknown>",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/qbank/repository/export.ts",
+      "line": 29,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "parse",
+      "expression": "JSON.parse(raw) as T",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/qbank/repository/export.ts",
+      "line": 311,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "importPortable",
+      "expression": "JSON.parse(manifestRaw.toString('utf8')) as { schema_version?: unknown; assets?: unknown }",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/qbank/repository/export.ts",
+      "line": 313,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "importPortable",
+      "expression": "JSON.parse(documentRaw.toString('utf8')) as Record<string, unknown>",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/qbank/repository/export.ts",
+      "line": 397,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "importPortable",
+      "expression": "document as unknown as QuestionDocument",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/qbank/repository/legacy.ts",
+      "line": 78,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "rawPreview",
+      "expression": "JSON.parse(raw) as unknown as Record<string, unknown>",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted (via unknown) to a type; whether a later decoder validates it needs human review"
+    },
+    {
+      "file": "host/plugins/qbank/repository/legacy.ts",
+      "line": 141,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "auditLegacyCards",
+      "expression": "JSON.parse(exam.metadata_json) as Record<string, unknown>",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/qbank/repository/legacy.ts",
+      "line": 407,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "savePreview",
+      "expression": "preview as unknown as JsonValue",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/qbank/repository/legacy.ts",
+      "line": 694,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "reparseReport",
+      "expression": "JSON.parse(JSON.stringify(saved.receipt)) as ReparseResolveReceipt",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/qbank/repository/legacy.ts",
+      "line": 890,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "updateExamImportState",
+      "expression": "JSON.parse(state) as JsonValue",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/qbank/repository/management.ts",
+      "line": 48,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "parse",
+      "expression": "JSON.parse(raw) as T",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/qbank/repository/management.ts",
+      "line": 374,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "refreshCanonicalPreview",
+      "expression": "structuredClone(raw) as unknown as { pages?: unknown[] }",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/qbank/repository/management.ts",
+      "line": 419,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "refreshCanonicalPreview",
+      "expression": "preview as unknown as JsonValue",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/qbank/repository/practice.ts",
+      "line": 8,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "json",
+      "expression": "JSON.parse(raw) as T",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/qbank/src/authoring-service.ts",
+      "line": 176,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "commitDraftInTx",
+      "expression": "JSON.parse(row.receipt_json) as CommitReceipt",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/qbank/src/exam-sheet-sessions.ts",
+      "line": 130,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "decodeExamSheetSessionMetadata",
+      "expression": "stats as unknown as ExamSheetSessionMetadata['stats']",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/qbank/src/legacy-service.ts",
+      "line": 335,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "resolveReparse",
+      "expression": "JSON.parse(importState) as Record<string, unknown>",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/review/repository/fsrs.ts",
+      "line": 613,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "statsCounts",
+      "expression": "Object.fromEntries(Object.entries(row).map(([key, value]) => [key, Number(value)])) as unknown as FsrsStatsCounts",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/review/repository/fsrs.ts",
+      "line": 668,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "stateBreakdown",
+      "expression": "Object.fromEntries(Object.entries(row).map(([key, value]) => [key, Number(value)])) as unknown as ReturnType<typeof stateBreakdown>",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/review/repository/fsrs.ts",
+      "line": 920,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "buildAgentSnapshot",
+      "expression": "JSON.parse(latest.snapshotJson) as FsrsStateBeforeSnapshot",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/review/src/review-memory.ts",
+      "line": 116,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "loadReviewHistories",
+      "expression": "JSON.parse(row.snapshotJson) as FsrsStateBeforeSnapshot",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/review/src/review.ts",
+      "line": 388,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "FsrsReviewService.undoLastReview",
+      "expression": "JSON.parse(log.snapshotJson) as FsrsStateBeforeSnapshot",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/review/src/review.ts",
+      "line": 564,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "FsrsReviewService.undoLastReviewForAgentScope",
+      "expression": "JSON.parse(latest.snapshotJson) as FsrsStateBeforeSnapshot",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/sync/repository/change-log.ts",
+      "line": 46,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "parseEntry",
+      "expression": "JSON.parse(row.field_deltas_json) as JsonValue",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/sync/repository/note-history.ts",
+      "line": 220,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "invalidateMissingBlocks",
+      "expression": "JSON.parse(row.locator_json) as NoteLocator__De",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/sync/repository/note-history.ts",
+      "line": 286,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "prepareRelationImpl",
+      "expression": "JSON.parse(rawLocator) as NoteLocator__De",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/sync/src/detect-conflicts.ts",
+      "line": 30,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "manifestJson",
+      "expression": "manifest as unknown as DbJson",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/sync/src/json.ts",
+      "line": 106,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "parseJsonLossless",
+      "expression": "JSON.parse(text, reviver as (key: string, value: unknown) => unknown) as DbJson",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/sync/src/manifest-upload.ts",
+      "line": 121,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "encodeManifest",
+      "expression": "{ ...rest, ...(superseded_by == null ? {} : { superseded_by }), } as unknown as DbJson",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/sync/src/transfer-commands.ts",
+      "line": 191,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "writeSyncExportData",
+      "expression": "data as unknown as DbJson",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/sync-providers/src/e2ee_claim.ts",
+      "line": 129,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "decodeMarker",
+      "expression": "JSON.parse(Buffer.from(raw).toString('utf8')) as EncryptionMarker",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/sync-providers/src/e2ee_claim.ts",
+      "line": 177,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "ensureNoLiveLease",
+      "expression": "JSON.parse(Buffer.from(bytes).toString('utf8')) as EncryptionClaimLease",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/sync-providers/src/json_exact.ts",
+      "line": 194,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "Parser.parseString",
+      "expression": "JSON.parse(raw) as string",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/sync-providers/src/repo_check.ts",
+      "line": 199,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "markerIsParseable",
+      "expression": "JSON.parse(Buffer.from(data).toString('utf8')) as Partial<EncryptionMarker>",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/sync-providers/src/sync_manager.ts",
+      "line": 675,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "CloudSyncManager.readEncryptionMarkerStateWithRaw",
+      "expression": "JSON.parse(Buffer.from(data).toString('utf8')) as EncryptionMarker",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/sync-providers/src/sync_manager.ts",
+      "line": 730,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "CloudSyncManager.claimMarkerWithPassword",
+      "expression": "JSON.parse(Buffer.from(published).toString('utf8')) as EncryptionMarker",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/sync-providers/src/sync_manager.ts",
+      "line": 756,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "CloudSyncManager.persistEncryptionMarker",
+      "expression": "JSON.parse(Buffer.from(published).toString('utf8')) as EncryptionMarker",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/sync-support/src/json.ts",
+      "line": 133,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "canonicalizeForCompare",
+      "expression": "JSON.parse(trimmed) as Json",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/sync-support/src/tombstone-manifests.ts",
+      "line": 140,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "decodeTombstoneFile",
+      "expression": "JSON.parse(decodeUtf8Strict(decoded)) as T",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/translation/repository/translations.ts",
+      "line": 107,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "rowToTranslation",
+      "expression": "JSON.parse(rawContent) as Record<string, unknown>",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/vfs/repository/resources.ts",
+      "line": 30,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "parseJson",
+      "expression": "JSON.parse(raw) as T",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/vfs/src/dstu-create.ts",
+      "line": 71,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "nodeTypeOf",
+      "expression": "value as unknown as Record<string, unknown>",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/vfs/src/dstu-list.ts",
+      "line": 114,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "nodeTypeOfFilter",
+      "expression": "value as unknown as Record<string, unknown>",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/vfs/src/dstu-search.ts",
+      "line": 113,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "typeFilterOf",
+      "expression": "value as unknown as Record<string, unknown>",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/vfs/src/dstu-search.ts",
+      "line": 123,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "typesAllow",
+      "expression": "value as unknown as Record<string, unknown>",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/vfs-handlers/index.ts",
+      "line": 276,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "apply",
+      "expression": "scoped.qbank as unknown as refs.RefDeps['qbank']",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/vfs-handlers/src/pdf-preview.ts",
+      "line": 50,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "value",
+      "expression": "JSON.parse(tokens[i++]![0]) as string",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/vfs-index/repository/index-state.ts",
+      "line": 125,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "inTransaction",
+      "expression": "db as unknown as { transaction?: <R>(callback: (tx: SqlExecutor) => R, options?: { behavior?: string }) => R; }",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/vfs-index/src/indexing-content.ts",
+      "line": 352,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "inTransaction",
+      "expression": "db as unknown as { transaction?: <R>(callback: (tx: SqlExecutor) => R, options?: { behavior?: string }) => R; }",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/vfs-index/src/lance-store.ts",
+      "line": 287,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "VfsLanceStore.writeChunks",
+      "expression": "rows as unknown as readonly LanceWritableRow[]",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/vfs-index/src/legacy-kb-store.ts",
+      "line": 198,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "LegacyKbStore.addChunksLocked",
+      "expression": "rows as unknown as ReadonlyArray<Readonly<Record<string, unknown>>>",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/vfs-index/src/multimodal-service.ts",
+      "line": 211,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "VfsMultimodalService.deleteResourceIndex",
+      "expression": "this.db as unknown as { transaction?: <T>(callback: (tx: SqlExecutor) => T, options?: { behavior?: string }) => T; }",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/vfs-index/src/pdf-service.ts",
+      "line": 153,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "PdfProcessingService.getStatus",
+      "expression": "JSON.parse(progressText) as ProcessingProgress",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/vfs-index/src/search-service.ts",
+      "line": 269,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "enrichAndFilterResults",
+      "expression": "JSON.parse(resource.metadataJson) as Record<string, unknown>",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/vfs-repos/repository/attachment-utils.ts",
+      "line": 350,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "parsePdfPreview",
+      "expression": "object as unknown as PdfPreviewJson",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    },
+    {
+      "file": "host/plugins/vfs-repos/repository/attachments.ts",
+      "line": 311,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "AttachmentRepo.getProcessingStatus",
+      "expression": "JSON.parse(progressJson) as JsonValue",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/vfs-repos/repository/essays.ts",
+      "line": 43,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "parseJson",
+      "expression": "JSON.parse(raw) as JsonValue",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/vfs-repos/repository/exams.ts",
+      "line": 56,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "parseJsonValue",
+      "expression": "JSON.parse(raw) as JsonValue",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/vfs-repos/repository/exams.ts",
+      "line": 386,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "ExamRepo.copyQuestions",
+      "expression": "JSON.parse(raw) as JsonValue",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/vfs-repos/repository/exams.ts",
+      "line": 435,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "ExamRepo.copyAuthoringEntities",
+      "expression": "JSON.parse(refsRaw) as JsonValue",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/vfs-repos/repository/exams.ts",
+      "line": 467,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "ExamRepo.collectExamBlobHashes",
+      "expression": "JSON.parse(previewRaw) as JsonValue",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/vfs-repos/repository/exams.ts",
+      "line": 488,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "ExamRepo.collectExamBlobHashes",
+      "expression": "JSON.parse(String(row.images_json)) as JsonValue",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/vfs-repos/repository/exams.ts",
+      "line": 504,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "ExamRepo.collectExamBlobHashes",
+      "expression": "JSON.parse(String(row.images_json)) as JsonValue",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/vfs-repos/repository/exams.ts",
+      "line": 517,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "ExamRepo.collectExamBlobHashes",
+      "expression": "JSON.parse(String(row.descriptor_json)) as JsonValue",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/vfs-repos/repository/exams.ts",
+      "line": 533,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "ExamRepo.refreshCanonicalPreview",
+      "expression": "JSON.parse(raw) as JsonValue",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/vfs-repos/repository/exams.ts",
+      "line": 554,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "ExamRepo.refreshCanonicalPreview",
+      "expression": "JSON.parse(String(descriptorRow.descriptor_json)) as JsonValue",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/vfs-repos/repository/mindmaps.ts",
+      "line": 76,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "parseSettings",
+      "expression": "JSON.parse(raw) as JsonValue",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/vfs-repos/repository/mindmaps.ts",
+      "line": 169,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "MindmapRepo.normalizeContent",
+      "expression": "JSON.parse(content) as JsonValue",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/vfs-repos/repository/question-row.ts",
+      "line": 16,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "parseJson",
+      "expression": "JSON.parse(raw) as JsonValue",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/vfs-repos/repository/textbooks.ts",
+      "line": 434,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "TextbookRepo.replaceHighlightsIfVersion",
+      "expression": "JSON.parse(rawMetadata) as JsonValue",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/vfs-repos/repository/translations.ts",
+      "line": 90,
+      "rule": "json-parse-assertion",
+      "severity": "error",
+      "function": "parseMetadata",
+      "expression": "JSON.parse(raw) as JsonValue",
+      "message": "unchecked-assertion syntax risk: JSON.parse result asserted to a type; whether a later decoder validates it needs human review (removing `as` alone does not fix it)"
+    },
+    {
+      "file": "host/plugins/vfs-repos/src/worker-entry.ts",
+      "line": 82,
+      "rule": "double-assertion",
+      "severity": "info",
+      "function": "callRepository",
+      "expression": "instance as unknown as Record<string, ((...values: unknown[]) => unknown) | undefined>",
+      "message": "as unknown as: type-assertion risk candidate; direction (inbound decode vs outbound/internal) needs review"
+    }
+  ],
+  "summary": {
+    "count": 211,
+    "byPlugin": {
+      "agent-orchestration": 16,
+      "agent-skills": 4,
+      "agent-workspace": 19,
+      "anki": 13,
+      "backup": 5,
+      "browser": 13,
+      "chat": 10,
+      "chat-pipeline": 1,
+      "chatanki": 5,
+      "llm": 18,
+      "llm-providers": 5,
+      "mcp": 11,
+      "media": 3,
+      "memory": 4,
+      "notes": 7,
+      "qbank": 22,
+      "review": 6,
+      "sync": 7,
+      "sync-providers": 7,
+      "sync-support": 2,
+      "translation": 1,
+      "vfs": 5,
+      "vfs-handlers": 2,
+      "vfs-index": 7,
+      "vfs-repos": 18
+    }
+  },
+  "scannedFiles": 1126,
+  "byRule": {
+    "double-assertion": 107,
+    "json-parse-assertion": 104
+  },
+  "approvals": [
+    {
+      "path": "host/plugins/agent-workspace/src/runtime-root-records.ts",
+      "function": "RecordReader.string",
+      "rule": "json-parse-assertion",
+      "expression": "JSON.parse(this.text.slice(start, this.offset)) as string",
+      "sites": 1,
+      "approvedBy": "C1-app",
+      "evidence": "R2 849255bc7 (single lexer token unescape after full-quote/escape scan); C1-app approval receipt 2026-11-04 for X6 14655cb03. Classification only: not parser-wide equivalence."
+    },
+    {
+      "path": "host/plugins/agent-workspace/src/runtime-root-records.ts",
+      "function": "decodeWorkspaceRootRecord",
+      "rule": "double-assertion",
+      "expression": "value as unknown as WorkspaceRootRecord",
+      "sites": 1,
+      "approvedBy": "C1-app",
+      "evidence": "R2 849255bc7 (narrowing after schema/record/identity/finish); C1-app approval receipt 2026-11-04 for X6 14655cb03. Classification only."
+    },
+    {
+      "path": "host/plugins/agent-workspace/src/runtime-root-records.ts",
+      "function": "decodeAuthorizedRootRecords",
+      "rule": "double-assertion",
+      "expression": "record(reader, item, 'AuthorizedRootRecord', schema) as unknown as AuthorizedRootRecord",
+      "sites": 1,
+      "approvedBy": "C1-app",
+      "evidence": "R2 849255bc7 (narrowing after schema/record/identity/finish); C1-app approval receipt 2026-11-04 for X6 14655cb03. Classification only."
+    },
+    {
+      "path": "host/plugins/agent-workspace/src/runtime-root-records.ts",
+      "function": "decodeSkillTrustRecord",
+      "rule": "double-assertion",
+      "expression": "value as unknown as SkillTrustRecord",
+      "sites": 1,
+      "approvedBy": "C1-app",
+      "evidence": "R2 849255bc7 (narrowing after schema/record/identity/finish); C1-app approval receipt 2026-11-04 for X6 14655cb03. Classification only."
+    },
+    {
+      "path": "host/plugins/sync-support/repository/records.ts",
+      "function": "parseLlmUsageDailyRecordId",
+      "rule": "json-parse-assertion",
+      "expression": "JSON.parse(recordId) as Record<string, unknown> | null",
+      "sites": 1,
+      "approvedBy": "C2-platform",
+      "evidence": "C2-platform 037376b1e coordination log (X6-OWN-C2-20261104 sampling) + Rust sync/mod.rs:9240-9273 vs TS records.ts:136-138 field-by-field validation (non-null object, non-array, four non-empty strings). Classification only: no parser number/duplicate/error equivalence."
+    },
+    {
+      "path": "host/plugins/agent-orchestration/repository/automation-definitions.ts",
+      "function": "automationVersionConflictError",
+      "rule": "double-assertion",
+      "expression": "automationToListObject(current, Date.now()) as unknown as JsonValue",
+      "sites": 1,
+      "approvedBy": "C1-app",
+      "evidence": "R2 849255bc7 (outbound JsonValue, excluded from inbound-decode rule); C1-app approval receipt 2026-11-04 for X6 14655cb03. Not a business sign-off."
+    }
+  ],
+  "limits": [
+    "json-parse-assertion / raw-ipc-destructure are inbound-decode candidates (severity error).",
+    "double-assertion is a type-assertion risk candidate (severity info): direction is not decided statically; outbound/internal widening is reported too.",
+    "Raw IPC: inline callbacks and straight-line direct destructures only; indirect handlers/guards need review.",
+    "Kernel commands.register input is decoded by the kernel contract; nested persisted JSON still needs a decoder."
+  ]
+}

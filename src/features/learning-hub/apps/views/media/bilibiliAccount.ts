@@ -154,7 +154,11 @@ export function buildBilibiliStreamUrl(fileId: string, qn?: number | null, epoch
   if (typeof qn === 'number' && Number.isFinite(qn)) params.push(`qn=${qn}`);
   if (epoch > 0) params.push(`e=${epoch}`);
   if (attempt > 0) params.push(`a=${attempt}`);
-  return params.length ? `${base}?${params.join('&')}` : base;
+  // WebUI 的基址是 `/api/protocol/bilistream/<path>`（不含查询串），自定义协议外壳可能自带 `?`，
+  // 两种情况都要拼出合法的单 `?` URL。
+  if (params.length === 0) return base;
+  const sep = base.includes('?') ? '&' : '?';
+  return `${base}${sep}${params.join('&')}`;
 }
 
 // ---------------------------------------------------------------- 清晰度

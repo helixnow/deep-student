@@ -13,6 +13,7 @@ import {
 } from '../config/fontConfig';
 import {
   CHAT_THREAD_WIDTH_RATIO_STORAGE_KEY,
+  DEFAULT_CHAT_THREAD_WIDTH_RATIO,
   applyThreadWidthRatioToDocument,
   normalizeThreadWidthRatio,
 } from '../config/threadWidthConfig';
@@ -66,22 +67,70 @@ const initializeZoomSetting = async () => {
   }
 };
 
+const applyThinkingAutoCollapseFromRaw = (raw: string | null | undefined): void => {
+  const enabled = String(raw ?? '').trim() !== 'false';
+  document.documentElement.setAttribute('data-auto-collapse-thinking', String(enabled));
+  window.dispatchEvent(
+    new CustomEvent('systemSettingsChanged', {
+      detail: { settingKey: 'thinking.auto_collapse', value: enabled },
+    }),
+  );
+};
+
 // 初始化思维链自动折叠开关（消费方读取 <html> 上的 data-auto-collapse-thinking 属性，
 // 之前只有打开设置页时才会写入该属性，导致关闭状态重启后不恢复）
 const initializeThinkingAutoCollapseSetting = async () => {
   try {
     const raw = await getSetting('thinking.auto_collapse');
-    const enabled = String(raw ?? '').trim() !== 'false';
-    document.documentElement.setAttribute('data-auto-collapse-thinking', String(enabled));
-    window.dispatchEvent(
-      new CustomEvent('systemSettingsChanged', {
-        detail: { settingKey: 'thinking.auto_collapse', value: enabled },
-      }),
-    );
+    applyThinkingAutoCollapseFromRaw(raw);
   } catch {
     // 读取失败：属性缺失时消费方默认按 true 处理，与设置页默认值一致
   }
 };
+
+const FONT_SCALE_FALLBACK_STORAGE_KEY = 'app-font-size-scale';
+
+/**
+ * 监听其他标签页对 localStorage 中外观/排版设置的改动并实时应用到当前文档
+ * （主题模式/色板由 useTheme.ts 的 storage 监听负责）。
+ */
+export function installCrossTabSettingsSync(): () => void {
+  if (typeof window === 'undefined') return () => {};
+  const onStorage = (event: StorageEvent) => {
+    if (event.storageArea && event.storageArea !== window.localStorage) return;
+    const key = event.key;
+    const readValue = (storageKey: string): string | null => {
+      if (key === storageKey) return event.newValue;
+      try {
+        return window.localStorage.getItem(storageKey);
+      } catch {
+        return null;
+      }
+    };
+    if (key === null || key === UI_FONT_STORAGE_KEY) {
+      applyFontToDocument(readValue(UI_FONT_STORAGE_KEY) || DEFAULT_UI_FONT);
+    }
+    if (key === null || key === UI_FONT_SIZE_STORAGE_KEY || key === FONT_SCALE_FALLBACK_STORAGE_KEY) {
+      const rawScale =
+        key === FONT_SCALE_FALLBACK_STORAGE_KEY
+          ? event.newValue
+          : (readValue(UI_FONT_SIZE_STORAGE_KEY) ?? readValue(FONT_SCALE_FALLBACK_STORAGE_KEY));
+      const parsed = rawScale == null ? DEFAULT_UI_FONT_SIZE : clampFontSize(parseFloat(rawScale));
+      applyFontSizeToDocument(parsed);
+    }
+    if (key === null || key === CHAT_THREAD_WIDTH_RATIO_STORAGE_KEY) {
+      const rawRatio = readValue(CHAT_THREAD_WIDTH_RATIO_STORAGE_KEY);
+      applyThreadWidthRatioToDocument(
+        rawRatio == null || rawRatio === '' ? DEFAULT_CHAT_THREAD_WIDTH_RATIO : normalizeThreadWidthRatio(rawRatio),
+      );
+    }
+    if (key === null || key === 'thinking.auto_collapse') {
+      applyThinkingAutoCollapseFromRaw(readValue('thinking.auto_collapse'));
+    }
+  };
+  window.addEventListener('storage', onStorage);
+  return () => window.removeEventListener('storage', onStorage);
+}
 
 interface InitializationStep {
   key: string;

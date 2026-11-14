@@ -1,0 +1,28 @@
+{
+  "id": "RF-W17-safe-mode-community-ui",
+  "kind": "deliberate",
+  "status": "proposed",
+  "title": "安全模式会话（所有安装）不加载任何社区 UI，已加载的立即卸载；旧 Host 的 v1 清单也不能再装回来",
+  "rust": {
+    "file": "src/ui-kernel/community.ts",
+    "line": 114,
+    "behavior": "Rust 快照没有社区 UI 插件，因此“安全模式只保留官方插件”在 Rust 里由宿主装载逻辑天然满足。Electron 迁移期的渲染端在清单到达后只按 v2 的 plugins 对账，不知道 safe-mode 标记：只要 Host 仍给出社区条目就会加载"
+  },
+  "fix": {
+    "files": [
+      "src/ui-kernel/community.ts",
+      "src/ui-kernel/services/host-status.ts"
+    ],
+    "behavior": "v2 清单顶层 safeMode: true 时：写入 kernel.hostStatus（含 UiHostStatusHandle.safeMode），按空清单对账（卸载已加载的社区 UI），之后的 v1 清单事件同样被挡住（sync 内部把条目替换为空）。官方 UI 仍是清单到达前的乐观安装，不受影响。字段缺失或非 true 一律按 false，兼容尚未输出该字段的 Host"
+  },
+  "evidence": "W06 安全模式契约（.reports/lanes/plugin-closeout/interfaces/safe-mode.md）要求 W01 的 v2 清单带顶层 safeMode，W17 在加载社区 UI 前消费它、安全模式只保留官方 UI；本 lane 先按可选字段消费，W01 输出后无需再改渲染端。W06 的 --safe-mode 是用户可见的恢复路径，安全模式下装上社区 UI 会让恢复失效。",
+  "userVisible": "能：以 --safe-mode 启动（或崩溃两次后用户选择恢复）时，第三方社区插件的视图/导航/设置分区不再出现，只剩官方界面。正常启动没有 safeMode 标记，行为不变。",
+  "dataCompat": "不改变落库数据、同步载荷与备份格式；只影响本次会话内渲染端安装了哪些 UI 插件。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "src/ui-kernel/__tests__/host-sync.test.ts",
+      "name": "RF-W17-safe-mode-community-ui: a safe-mode manifest unloads community UI and a late v1 event cannot load it"
+    }
+  ]
+}

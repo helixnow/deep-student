@@ -1,0 +1,168 @@
+{
+  "domain": "llm-providers",
+  "commands": [
+    "openai_codex_auth_status",
+    "openai_codex_login_start",
+    "openai_codex_login_cancel",
+    "openai_codex_logout",
+    "openai_codex_usage"
+  ],
+  "scenarios": [
+    {
+      "id": "codex.status.fresh_signed_out",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "openai_codex_auth_status", "args": {} },
+        { "cmd": "openai_codex_auth_status", "args": {} }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "codex.login_start.unsupported_flow",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "openai_codex_login_start", "args": { "flow": "" }, "expect": "error" },
+        { "cmd": "openai_codex_login_start", "args": { "flow": "Browser" }, "expect": "error" },
+        { "cmd": "openai_codex_login_start", "args": { "flow": "device-code" }, "expect": "error" },
+        { "cmd": "openai_codex_login_start", "args": { "flow": " browser" }, "expect": "error" },
+        { "cmd": "openai_codex_login_start", "args": { "flow": "oauth" }, "expect": "error" },
+        { "cmd": "openai_codex_auth_status", "args": {} }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "codex.login_start.browser_then_cancel",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "openai_codex_login_start", "args": { "flow": "browser" } },
+        { "cmd": "openai_codex_auth_status", "args": {} },
+        { "cmd": "openai_codex_login_cancel", "args": { "attemptId": "${0.attemptId}" } },
+        { "cmd": "openai_codex_auth_status", "args": {} }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "codex.login_start.busy_rejects_every_flow",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "openai_codex_login_start", "args": { "flow": "browser" } },
+        { "cmd": "openai_codex_login_start", "args": { "flow": "browser" }, "expect": "error" },
+        { "cmd": "openai_codex_login_start", "args": { "flow": "device_code" }, "expect": "error" },
+        { "cmd": "openai_codex_login_start", "args": { "flow": "device" }, "expect": "error" },
+        { "cmd": "openai_codex_login_start", "args": { "flow": "unknown" }, "expect": "error" },
+        { "cmd": "openai_codex_auth_status", "args": {} },
+        { "cmd": "openai_codex_login_cancel", "args": { "attemptId": "${0.attemptId}" } },
+        { "cmd": "openai_codex_auth_status", "args": {} }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "codex.login_start.browser_restart_after_cancel",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "openai_codex_login_start", "args": { "flow": "browser" } },
+        { "cmd": "openai_codex_login_cancel", "args": { "attemptId": "${0.attemptId}" } },
+        { "cmd": "openai_codex_login_start", "args": { "flow": "browser" } },
+        { "cmd": "openai_codex_auth_status", "args": {} },
+        { "cmd": "openai_codex_login_cancel", "args": { "attemptId": "${0.attemptId}" }, "expect": "error" },
+        { "cmd": "openai_codex_login_cancel", "args": { "attemptId": "${2.attemptId}" } },
+        { "cmd": "openai_codex_auth_status", "args": {} }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "codex.login_cancel.no_active_attempt",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "openai_codex_login_cancel", "args": { "attemptId": "00000000-0000-4000-8000-000000000000" }, "expect": "error" },
+        { "cmd": "openai_codex_login_cancel", "args": { "attemptId": "" }, "expect": "error" },
+        { "cmd": "openai_codex_auth_status", "args": {} }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "codex.login_cancel.stale_id_keeps_active_attempt",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "openai_codex_login_start", "args": { "flow": "browser" } },
+        { "cmd": "openai_codex_login_cancel", "args": { "attemptId": "stale-attempt" }, "expect": "error" },
+        { "cmd": "openai_codex_login_cancel", "args": { "attemptId": "" }, "expect": "error" },
+        { "cmd": "openai_codex_auth_status", "args": {} },
+        { "cmd": "openai_codex_login_cancel", "args": { "attemptId": "${0.attemptId}" } },
+        { "cmd": "openai_codex_login_cancel", "args": { "attemptId": "${0.attemptId}" }, "expect": "error" },
+        { "cmd": "openai_codex_auth_status", "args": {} }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "codex.logout.signed_out_increments_generation",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "openai_codex_auth_status", "args": {} },
+        { "cmd": "openai_codex_logout", "args": {} },
+        { "cmd": "openai_codex_auth_status", "args": {} },
+        { "cmd": "openai_codex_logout", "args": {} },
+        { "cmd": "openai_codex_auth_status", "args": {} }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "codex.logout.cancels_active_browser_attempt",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "openai_codex_login_start", "args": { "flow": "browser" } },
+        { "cmd": "openai_codex_logout", "args": {} },
+        { "cmd": "openai_codex_auth_status", "args": {} },
+        { "cmd": "openai_codex_login_cancel", "args": { "attemptId": "${0.attemptId}" }, "expect": "error" },
+        { "cmd": "openai_codex_usage", "args": {}, "expect": "error" }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "codex.usage.signed_out",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "openai_codex_usage", "args": {}, "expect": "error" },
+        { "cmd": "openai_codex_auth_status", "args": {} }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "codex.usage.signed_out_during_browser_login",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "openai_codex_login_start", "args": { "flow": "browser" } },
+        { "cmd": "openai_codex_usage", "args": {}, "expect": "error" },
+        { "cmd": "openai_codex_auth_status", "args": {} },
+        { "cmd": "openai_codex_login_cancel", "args": { "attemptId": "${0.attemptId}" } }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    },
+    {
+      "id": "codex.ipc.invalid_required_args",
+      "seed": "empty",
+      "steps": [
+        { "cmd": "openai_codex_login_start", "args": {}, "expect": "error" },
+        { "cmd": "openai_codex_login_start", "args": { "flow": null }, "expect": "error" },
+        { "cmd": "openai_codex_login_start", "args": { "flow": 1 }, "expect": "error" },
+        { "cmd": "openai_codex_login_cancel", "args": {}, "expect": "error" },
+        { "cmd": "openai_codex_login_cancel", "args": { "attemptId": null }, "expect": "error" },
+        { "cmd": "openai_codex_login_cancel", "args": { "attempt_id": "x" }, "expect": "error" },
+        { "cmd": "openai_codex_auth_status", "args": {} }
+      ],
+      "capture": { "events": true, "db": ["*"] },
+      "normalize": []
+    }
+  ]
+}

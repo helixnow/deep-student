@@ -42,10 +42,16 @@ export interface GenerativeUIStreamSnapshot {
 /** 剥 markdown 围栏并定位首个 `{` */
 export function sanitizeGenerativeJsonBuffer(raw: string): string {
   let s = raw.trim();
-  const fence = s.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  if (fence?.[1]) s = fence[1].trim();
   const start = s.indexOf('{');
-  return start >= 0 ? s.slice(start) : s;
+  if (start < 0) return s;
+  const hasOuterFence = /```(?:json)?\s*$/i.test(s.slice(0, start));
+  s = s.slice(start);
+  if (hasOuterFence) {
+    // JSON 字符串内的 markdown 围栏不是文档围栏；闭合围栏必须独占一行。
+    const closingFence = /\r?\n[ \t]*```[ \t]*(?:\r?\n|$)/.exec(s);
+    if (closingFence) s = s.slice(0, closingFence.index).trim();
+  }
+  return s;
 }
 
 /** Locate `"key":` even when an earlier string value equals the key name. */

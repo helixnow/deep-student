@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ModernSidebar } from '@/components/ModernSidebar';
@@ -7,6 +7,9 @@ import {
   __resetSessionSidebarIndicatorsForTests,
   useSessionSidebarIndicators,
 } from '@/features/chat/hooks/useSessionSidebarIndicators';
+import { officialUiRender } from '@/ui-plugins/testing/render';
+
+const render = officialUiRender();
 
 const { invokeMock } = vi.hoisted(() => ({
   invokeMock: vi.fn(),

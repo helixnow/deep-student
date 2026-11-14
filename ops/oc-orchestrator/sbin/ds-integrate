@@ -1,0 +1,14 @@
+#!/bin/bash
+# 以 root 运行：在 dsdev 资源组里启动一次带门禁的集成（日志写 .oc-runs/integrate-manual.log）。
+set -e
+ROOT=/home/dsdev/dev/deep-student
+if ps -eo args | grep -qE "^/opt/node26/bin/node .*(oc-dispatch.mjs integrate|integrate-parallel.mjs)"; then
+  echo "integrate already running"; exit 0
+fi
+rm -f "$ROOT/.oc-runs/integrate.lock"
+systemd-run --unit="ds-integrate-$(date +%H%M%S)" --slice=dsdev.slice --uid=dsdev --gid=dsdev \
+  --working-directory="$ROOT" -E HOME=/home/dsdev -E TMPDIR=/tmp \
+  -E PATH=/opt/node26/bin:/home/dsdev/.local/bin:/usr/local/bin:/usr/bin:/bin \
+  -E VITEST_MAX_FORKS=8 -E VITEST_MAX_THREADS=8 \
+  -p StandardOutput=file:"$ROOT/.oc-runs/integrate-manual.log" -p StandardError=file:"$ROOT/.oc-runs/integrate-manual.log" \
+  /opt/node26/bin/node scripts/electron-migration/integrate-parallel.mjs --jobs 4

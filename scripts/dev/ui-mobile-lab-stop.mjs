@@ -1,18 +1,11 @@
 #!/usr/bin/env node
 /** Stop processes started by ui-mobile-lab.mjs */
 import fs from 'node:fs';
-import { execSync } from 'node:child_process';
 
 const PID_FILE = '/tmp/ds-ui-lab.pids.json';
 
 if (!fs.existsSync(PID_FILE)) {
-  console.log('No ui-lab pid file; trying pkill fallback');
-  try {
-    execSync('pkill -f "scripts/dev/ui-bridge-server.mjs" || true');
-    execSync('pkill -f "target/debug/deep-student" || true');
-  } catch {
-    /* ignore */
-  }
+  console.log('No ui-lab pid file.');
   process.exit(0);
 }
 
@@ -26,4 +19,4 @@ for (const pid of [devPid, bridgePid]) {
     console.log(`pid ${pid} already gone`);
   }
 }
-fs.unlinkSync(PID_FILE);
+fs.renameSync(PID_FILE, `${PID_FILE}.${Date.now()}.stopped`);

@@ -780,7 +780,7 @@ export interface AnkiLibraryCard extends AnkiCard {
   /** 生成该卡的聊天会话（document_tasks.source_session_id） */
   sourceSessionId?: string | null;
   /** 生成该卡的来源笔记 / 资料页（制卡选项 source_ref） */
-  sourceRef?: { kind?: string; id?: string; title?: string; page?: number } | null;
+  sourceRef?: { kind?: string; id?: string; title?: string; page?: number; quote?: string } | null;
   template_id?: string | null;
   extra_fields?: Record<string, string>;
   tags: string[];
@@ -864,6 +864,9 @@ export interface ListAnkiCardsParams {
 export interface FsrsStats {
   total: number;
   due: number;
+  dueReview?: number;
+  dueLearning?: number;
+  dueNew?: number;
   newCount: number;
   learning: number;
   review: number;

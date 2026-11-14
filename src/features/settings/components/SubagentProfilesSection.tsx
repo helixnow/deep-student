@@ -1,7 +1,7 @@
+import { useRefreshOnReturn } from '@/hooks/useRefreshOnReturn';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  ArrowsClockwise,
   CaretDown,
   CircleNotch,
   FolderOpen,
@@ -433,6 +433,8 @@ export const SubagentProfilesSection: React.FC = () => {
     }
   }, []);
 
+  useRefreshOnReturn(load, !loading);
+
   useEffect(() => {
     void load();
   }, [load]);
@@ -755,18 +757,6 @@ export const SubagentProfilesSection: React.FC = () => {
 
   const headerActions = (
     <>
-      <DsButton
-        variant="ghost"
-        size="icon"
-        iconOnly
-        aria-label={t('settings:subagentProfiles.actions.refresh')}
-        title={t('settings:subagentProfiles.actions.refresh')}
-        disabled={loading}
-        onClick={() => void load()}
-        className="max-lg:!h-11 max-lg:!w-11 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
-      >
-        <ArrowsClockwise className={cn('h-4 w-4', loading && 'animate-spin')} />
-      </DsButton>
       {canRevealInFolder() && (
         <DsButton
           variant="ghost"

@@ -1,0 +1,21 @@
+[Unit]
+Description=重任务作业执行器（类型检查/测试/构建全局限流）
+After=network-online.target
+
+[Service]
+User=dsdev
+Group=dsdev
+Slice=dsdev.slice
+WorkingDirectory=/home/dsdev
+Environment=PATH=/opt/node26/bin:/home/dsdev/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=HOME=/home/dsdev
+Environment=TMPDIR=/tmp
+Environment=VITEST_MAX_FORKS=3
+Environment=VITEST_MAX_THREADS=3
+ExecStart=/opt/node26/bin/node /home/dsdev/dev/deep-student/scripts/electron-migration/jobs/runner.mjs --limits typecheck=8,test=8,build=2,other=6
+Restart=always
+RestartSec=3
+KillMode=mixed
+
+[Install]
+WantedBy=multi-user.target

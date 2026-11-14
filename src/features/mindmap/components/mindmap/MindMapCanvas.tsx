@@ -27,6 +27,7 @@ import { nodeTypes as defaultNodeTypes } from './nodes';
 import { edgeTypes as defaultEdgeTypes, type AssociationEdgeData } from './edges';
 import './edges/associationEdge.css';
 import { useMindMapKeyboard } from '../../hooks/useMindMapKeyboard';
+import { useMindMapTheme } from '../../hooks/useMindMapTheme';
 import { useAnimatedNodes } from '../../hooks/useAnimatedNodes';
 import { useMarqueeSelection } from '../../hooks/useMarqueeSelection';
 import { useCanvasDragMode, useCanvasWheelMode } from '../../hooks/useCanvasDragMode';
@@ -65,7 +66,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import { House, Hand, Selection, Plus, CornersOut, MouseScroll, Pencil, Trash, X } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
-import { cn } from '@/lib/utils';
+import { cn } from '@/utils/cn';
 import {
   BACK_PRIORITY,
   registerBackHandler,
@@ -73,6 +74,17 @@ import {
 import type { LayoutDirection, MindMapNode } from '../../types';
 import type { ILayoutEngine } from '../../registry/types';
 import { getAncestors } from '../../utils/node/traverse';
+import { hasExcerptMime, readExcerptDrag } from '@/ui-sdk';
+import { clearActiveExcerptDrag } from '@/ui-kernel/services/excerpt-dnd';
+import {
+  computeBranchInsertIndex,
+  computeNodeDropZone,
+  consumeActiveStagingExcerptDragId,
+  createExcerptDragDepthTracker,
+  isScreenRectWithinViewportInset,
+} from '../../utils/excerptIngest';
+import { SummaryBraceOverlay } from './SummaryBraceOverlay';
+import '../../styles/mn5-excerpt.css';
 import {
   DEFAULT_MINDMAP_VIEWPORT,
   normalizeMindMapViewport,
@@ -146,6 +158,11 @@ function getNodeScreenBounds(
   };
 }
 
+/** 摘录拖拽投放目标：节点（子节点 / Alt 合并）或空白处（按指针位置插入一级分支） */
+type ExcerptCanvasDropTarget =
+  | { kind: 'node'; nodeId: string; merge: boolean }
+  | { kind: 'pane'; flowX: number; flowY: number; insertIndex: number };
+
 /** 引用回链定位时的最小缩放：整图 fit 后很小的缩放下居中仍看不清目标节点 */
 const NODE_LOCATE_MIN_ZOOM = 0.85;
 
@@ -184,6 +201,8 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
   /** 引用回链定位：locateNode 发出的居中请求 */
   const nodeLocateRequest = useMindMapStore(s => s.nodeLocateRequest);
   const setSelection = useMindMapStore(s => s.setSelection);
+  const updateSummaryBrace = useMindMapStore(s => s.updateSummaryBrace);
+  const removeSummaryBrace = useMindMapStore(s => s.removeSummaryBrace);
   const storeApi = useMindMapStoreApi();
   // 保守框选：左键拖空白仍平移；Shift+拖框选（不改既有平移习惯）
   // 空白拖拽行为：用户可在画布控制条切换「框选 / 平移」（全局偏好，跨实例同步）。
@@ -193,8 +212,8 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
   // 响应式：外接/断开鼠标、二合一设备切换时实时更新
   const isCoarsePointer = useCoarsePointer();
   const [dragMode, setDragMode] = useCanvasDragMode();
-  // 滚轮/触控板语义偏好：默认双指平移 + pinch / Cmd/Ctrl+滚轮缩放（对齐平台习惯）；
-  // 旧「滚轮直接缩放」保留为可选偏好（localStorage，跨实例同步）
+  // 滚轮/触控板语义偏好：默认滚轮/双指滑动直接缩放；
+  // 双指平移 + pinch / Cmd/Ctrl+滚轮缩放保留为可选偏好（localStorage，跨实例同步）
   const [wheelMode, setWheelMode] = useCanvasWheelMode();
   const wheelProps = wheelMode === 'zoom' ? WHEEL_MODE_ZOOM_PROPS : WHEEL_MODE_PAN_PROPS;
   const marqueeProps = useMarqueeSelection(storeApi, {
@@ -204,6 +223,7 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
   const layoutDirection = useMindMapStore(s => s.layoutDirection);
   const edgeType = useMindMapStore(s => s.edgeType);
   const styleId = useMindMapStore(s => s.styleId);
+  const activeTheme = useMindMapTheme(styleId);
   const measuredNodeHeights = useMindMapStore(s => s.measuredNodeHeights);
   const reciteMode = useMindMapStore(s => s.reciteMode);
   // M-078: 导出时禁用虚拟化，确保所有节点都被渲染
@@ -218,6 +238,8 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
   // 滚轮平移交给系统自带惯性，不叠加）
   const momentumPan = useMomentumPan(reactFlowInstance, { enabled: !isExporting });
   const canvasContainerRef = useRef<HTMLDivElement>(null);
+  /** 摘录拖拽投放目标（节点 / 空白处）；仅在目标变化时提交，避免逐帧重渲染 */
+  const [excerptDropTarget, setExcerptDropTarget] = useState<ExcerptCanvasDropTarget | null>(null);
   const [isCanvasReady, setIsCanvasReady] = useState(false);
   /** 最近一次自动 fitView 落定的视口；与当前视口不同即用户已手动平移/缩放 */
   const autoFitViewportRef = useRef<FollowViewport | null>(null);
@@ -465,6 +487,7 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
         calculateBaseNodeHeight(ROOT_NODE_STYLE, 18, '12px 24px')
       ),
       measuredNodeHeights,
+      unnamedNodeLabel: t('node.unnamed'),
     };
 
     let layoutRoot = document.root;
@@ -494,7 +517,7 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
     );
 
     return { nodes: pixelAlignedNodes, edges: layoutResult.edges };
-  }, [document, hideCompleted, viewRootId, layoutId, layoutDirection, layoutEngine, styleId, measuredNodeHeights]);
+  }, [document, hideCompleted, viewRootId, layoutId, layoutDirection, layoutEngine, styleId, measuredNodeHeights, t]);
 
   const breadcrumbPath = useMemo(() => {
     if (!viewRootId) return [] as MindMapNode[];
@@ -636,6 +659,8 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
   // ★ P2-10 拖拽重渲染面：本 memo 不依赖每帧变化的 dragPositionOverride，
   // 拖拽中只有 dropTargetId/dropMode 变化时才全量重建；位置 override 由下方
   // 第二段轻量 memo 叠加（未被拖拽的节点复用对象引用，RF memo 不击穿）。
+  const excerptNodeTargetId = excerptDropTarget?.kind === 'node' ? excerptDropTarget.nodeId : null;
+  const excerptNodeTargetMerge = excerptDropTarget?.kind === 'node' && excerptDropTarget.merge;
   const enrichedNodes = useMemo(() => {
     const selectionSet = selection.length > 0 ? new Set(selection) : null;
     const cache = enrichedDataCacheRef.current;
@@ -675,6 +700,11 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
         className = className ? `${className} agent-updated` : 'agent-updated';
       }
 
+      // 摘录投放目标：1.5px 青瓷描边（Alt 合并为虚线）
+      if (excerptNodeTargetId === node.id) {
+        const excerptClass = excerptNodeTargetMerge ? 'mm-mn5-drop-node mm-mn5-drop-merge' : 'mm-mn5-drop-node';
+        className = className ? `${className} ${excerptClass}` : excerptClass;
+      }
       const layoutData = node.data as object;
       let data = cache.get(layoutData);
       if (!data || data.onOpenMenu !== openNodeContextMenu) {
@@ -693,7 +723,7 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
         className,
       };
     });
-  }, [layoutNodes, focusedNodeId, selection, agentEnteringIds, agentExitingIds, agentUpdatedIds, document.root.id, dropTargetId, dropMode, dropOrientation, isDragging, openNodeContextMenu]);
+  }, [layoutNodes, focusedNodeId, selection, agentEnteringIds, agentExitingIds, agentUpdatedIds, document.root.id, dropTargetId, dropMode, dropOrientation, isDragging, openNodeContextMenu, excerptNodeTargetId, excerptNodeTargetMerge]);
 
   // 拖拽位置 override 叠加：每帧只为被拖子树节点新建对象，其余节点引用不变
   const nodes = useMemo(() => {
@@ -894,6 +924,15 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
     return allEdges.map((edge) => {
       const isAssociation = (edge.data as { kind?: string } | undefined)?.kind === 'association';
       const edgeKey = `${edge.source}->${edge.target}`;
+      // 建筑感层级渐缩：主干 (Root->L1) 1.8px -> 次干 (L1->L2) 1.35px -> 枝叶 (L2->L3+) 1.05px
+      const sourceNode = layoutNodeById.get(edge.source);
+      const sourceLevel = sourceNode
+        ? sourceNode.type === 'root'
+          ? 0
+          : ((sourceNode.data as { level?: number } | undefined)?.level ?? 1)
+        : 0;
+      const taperedStrokeWidth = sourceLevel === 0 ? 1.8 : sourceLevel === 1 ? 1.35 : 1.05;
+      const taperedOpacity = sourceLevel === 0 ? 0.92 : sourceLevel === 1 ? 0.78 : 0.65;
       // 祖先链树边高亮：主色描边 + 类名（样式见 canvas-enhancements.css），提升导航可读性
       const isAncestorPath = !isAssociation && !!ancestorPathEdgeKeys?.has(edgeKey);
       // 悬停路径：比焦点路径弱一档的主色混合，帮助扫视时快速看清分支归属
@@ -915,25 +954,32 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
             ? `${edge.className} ${pathClass}`
             : pathClass
           : edge.className,
-        data: isEmphasized
-          ? { ...(edge.data as object | undefined), emphasized: true }
-          : edge.data,
+        data: isAssociation
+          ? edge.data
+          : {
+              ...(edge.data as object | undefined),
+              sourceLevel,
+              ...(isEmphasized ? { emphasized: true } : {}),
+            },
         style: {
           ...edge.style,
-          opacity: isAssociation ? (edge.selected ? 1 : 0.72) : 1,
+          ...(isAssociation
+            ? { opacity: edge.selected ? 1 : 0.72 }
+            : { strokeWidth: taperedStrokeWidth, opacity: taperedOpacity }),
           ...(isAncestorPath
-            ? { stroke: 'var(--mm-primary)', strokeWidth: 2.25 }
+            ? { stroke: 'var(--mm-edge-active, var(--mm-primary))', strokeWidth: 2.25, opacity: 1 }
             : {}),
           ...(isHoverPath
             ? {
-                stroke: 'color-mix(in srgb, var(--mm-primary) 60%, var(--mm-edge))',
-                strokeWidth: 2,
+                stroke: 'color-mix(in srgb, var(--mm-edge-active, var(--mm-primary)) 65%, var(--mm-edge))',
+                strokeWidth: 1.95,
+                opacity: 0.96,
               }
             : {}),
         },
       };
     });
-  }, [allEdges, ancestorPathEdgeKeys, hoverPathEdgeKeys, focusedNodeId]);
+  }, [allEdges, layoutNodeById, ancestorPathEdgeKeys, hoverPathEdgeKeys, focusedNodeId]);
 
   // MiniMap 分支着色：视图根的一级分支各取主题色板一色（整支继承），便于缩略图定位分支。
   // 主画布保持主题默认色（彩虹分支已禁用），仅缩略图用色板做导航提示。
@@ -1085,6 +1131,208 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅布局/方向/就绪时重跑；focusedNodeId 变化本身不应触发（否则清除焦点会意外整图 fit）
   }, [layoutId, layoutDirection, isCanvasReady, fitVisibleNodes, ensureNodeVisible]);
+
+  // ============================================================================
+  // 摘录投放（DS_EXCERPT_MIME）：深度计数防子元素抖动、rAF 合帧、flow 坐标换算；
+  // 非摘录拖拽（系统文件 / 工作台资源）完全放行。
+  // ============================================================================
+  const excerptDragDepthRef = useRef(createExcerptDragDepthTracker());
+  const excerptDropPendingRef = useRef<ExcerptCanvasDropTarget | null>(null);
+  const excerptDropFrameRef = useRef<number | null>(null);
+  const excerptDropKeyRef = useRef<string | null>(null);
+
+  const clearExcerptDropTarget = useCallback(() => {
+    excerptDragDepthRef.current.reset();
+    excerptDropPendingRef.current = null;
+    excerptDropKeyRef.current = null;
+    if (excerptDropFrameRef.current != null) {
+      cancelAnimationFrame(excerptDropFrameRef.current);
+      excerptDropFrameRef.current = null;
+    }
+    setExcerptDropTarget(null);
+  }, []);
+
+  useEffect(() => {
+    const reset = () => clearExcerptDropTarget();
+    const doc = typeof window !== 'undefined' ? window.document : null;
+    const onVisibility = () => {
+      if (doc && doc.visibilityState === 'hidden') {
+        clearExcerptDropTarget();
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') clearExcerptDropTarget();
+    };
+    window.addEventListener('dragend', reset, true);
+    window.addEventListener('drop', reset);
+    window.addEventListener('blur', reset);
+    window.addEventListener('keydown', onKeyDown, true);
+    doc?.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('dragend', reset, true);
+      window.removeEventListener('drop', reset);
+      window.removeEventListener('blur', reset);
+      window.removeEventListener('keydown', onKeyDown, true);
+      doc?.removeEventListener('visibilitychange', onVisibility);
+      if (excerptDropFrameRef.current != null) cancelAnimationFrame(excerptDropFrameRef.current);
+    };
+  }, [clearExcerptDropTarget]);
+
+  const resolveExcerptDropTarget = useCallback(
+    (event: React.DragEvent): ExcerptCanvasDropTarget => {
+      const nodeEl = (event.target as HTMLElement | null)?.closest?.<HTMLElement>('.react-flow__node[data-id]');
+      const nodeId = nodeEl?.getAttribute('data-id');
+      if (nodeId && nodeEl) {
+        const rect = nodeEl.getBoundingClientRect();
+        const prev = excerptDropPendingRef.current;
+        const prevZone =
+          prev && prev.kind === 'node' && prev.nodeId === nodeId
+            ? (prev.merge ? 'merge' : 'child')
+            : null;
+        const zone = computeNodeDropZone(
+          rect,
+          { clientX: event.clientX, clientY: event.clientY },
+          { altKey: event.altKey, prevZone },
+        );
+        return { kind: 'node', nodeId, merge: zone === 'merge' };
+      }
+      const flow = reactFlowInstance.screenToFlowPosition({ x: event.clientX, y: event.clientY });
+      const state = storeApi.getState();
+      const scope =
+        (state.viewRootId ? findNodeById(state.document.root, state.viewRootId) : null) ?? state.document.root;
+      const slots = scope.children.flatMap((child) => {
+        const laid = layoutNodeById.get(child.id);
+        if (!laid) return [];
+        return [{
+          id: child.id,
+          x: laid.position.x,
+          y: laid.position.y,
+          width: laid.width ?? 0,
+          height: laid.height ?? 0,
+        }];
+      });
+      const axis = layoutDirection === 'up' || layoutDirection === 'down' ? 'x' : 'y';
+      return {
+        kind: 'pane',
+        flowX: flow.x,
+        flowY: flow.y,
+        insertIndex: computeBranchInsertIndex(flow, slots, axis),
+      };
+    },
+    [layoutDirection, layoutNodeById, reactFlowInstance, storeApi],
+  );
+
+  const scheduleExcerptDropTarget = useCallback((target: ExcerptCanvasDropTarget) => {
+    excerptDropPendingRef.current = target;
+    if (excerptDropFrameRef.current != null) return;
+    excerptDropFrameRef.current = requestAnimationFrame(() => {
+      excerptDropFrameRef.current = null;
+      const next = excerptDropPendingRef.current;
+      if (!next) return;
+      // 节点目标仅在节点 / Alt 状态变化时提交，避免每帧重渲染；空白处跟随指针移动幽灵胶囊
+      const key = next.kind === 'node' ? `node:${next.nodeId}:${next.merge ? 1 : 0}` : null;
+      if (key && key === excerptDropKeyRef.current) return;
+      excerptDropKeyRef.current = key;
+      setExcerptDropTarget(next);
+    });
+  }, []);
+
+  const acceptsExcerptDrag = useCallback(
+    (event: React.DragEvent) => !reciteMode && !isExporting && hasExcerptMime(event.nativeEvent),
+    [isExporting, reciteMode],
+  );
+
+  const handleExcerptDragEnter = useCallback((event: React.DragEvent) => {
+    if (!acceptsExcerptDrag(event)) return;
+    event.preventDefault();
+    excerptDragDepthRef.current.enter();
+  }, [acceptsExcerptDrag]);
+
+  const handleExcerptDragOver = useCallback((event: React.DragEvent) => {
+    if (!acceptsExcerptDrag(event)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    try {
+      event.dataTransfer.dropEffect = 'copy';
+    } catch {
+      // 部分合成事件的 dropEffect 只读
+    }
+    scheduleExcerptDropTarget(resolveExcerptDropTarget(event));
+  }, [acceptsExcerptDrag, resolveExcerptDropTarget, scheduleExcerptDropTarget]);
+
+  const handleExcerptDragLeave = useCallback((event: React.DragEvent) => {
+    if (!hasExcerptMime(event.nativeEvent)) return;
+    const leftByDepth = excerptDragDepthRef.current.leave();
+    const related = event.relatedTarget;
+    if (
+      typeof globalThis.Node !== 'undefined' &&
+      related instanceof globalThis.Node &&
+      event.currentTarget.contains(related)
+    ) {
+      return;
+    }
+    if (leftByDepth) clearExcerptDropTarget();
+  }, [clearExcerptDropTarget]);
+
+  const handleExcerptDrop = useCallback((event: React.DragEvent) => {
+    if (!acceptsExcerptDrag(event)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const target = resolveExcerptDropTarget(event);
+    const stagingId = consumeActiveStagingExcerptDragId();
+    const payload = readExcerptDrag(event.nativeEvent);
+    clearActiveExcerptDrag();
+    clearExcerptDropTarget();
+    const state = storeApi.getState();
+    const dropOptions =
+      target.kind === 'node'
+        ? ({ mode: target.merge ? 'merge' : 'child', targetNodeId: target.nodeId } as const)
+        : ({ mode: 'branch', insertIndex: target.insertIndex } as const);
+    if (
+      stagingId &&
+      state.document.stagingExcerpts?.some((entry) => entry.id === stagingId)
+    ) {
+      state.commitStagingExcerpt(stagingId, dropOptions);
+      return;
+    }
+    if (!payload) return;
+    state.ingestExcerpt(payload, dropOptions);
+  }, [acceptsExcerptDrag, clearExcerptDropTarget, resolveExcerptDropTarget, storeApi]);
+
+  // 摘录入图后的视口跟随：新节点已在视口安全边距（12%）内则镜头不动；
+  // 先于聚焦居中 effect 声明，抢先写 prevFocusedNodeId，避免两次镜头动画。
+  const excerptRevealRequest = useMindMapStore(s => s.excerptRevealRequest);
+  const handledExcerptRevealRef = useRef(0);
+  useEffect(() => {
+    const request = excerptRevealRequest;
+    if (!request || request.nonce === handledExcerptRevealRef.current) return;
+    handledExcerptRevealRef.current = request.nonce;
+    prevFocusedNodeId.current = request.nodeId;
+    if (!isCanvasReady) return;
+    let attempts = 0;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const check = () => {
+      const rendered = getNodes().find(n => n.id === request.nodeId);
+      const viewportRect = canvasContainerRef.current?.getBoundingClientRect();
+      if (!rendered || !viewportRect || viewportRect.width <= 1 || viewportRect.height <= 1) {
+        attempts += 1;
+        if (attempts < 4) timer = setTimeout(check, 80);
+        return;
+      }
+      const width = rendered.measured?.width || rendered.width || 100;
+      const height = rendered.measured?.height || rendered.height || 36;
+      const bounds = getNodeScreenBounds(reactFlowInstance.flowToScreenPosition, rendered.position, width, height);
+      if (isScreenRectWithinViewportInset(bounds, viewportRect)) return;
+      setCenter(rendered.position.x + width / 2, rendered.position.y + height / 2, {
+        zoom: normalizeMindMapViewport({ x: 0, y: 0, zoom: getZoom() })?.zoom ?? 1,
+        duration: 240,
+      });
+    };
+    timer = setTimeout(check, 60);
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [excerptRevealRequest, getNodes, getZoom, isCanvasReady, reactFlowInstance, setCenter]);
 
   // 聚焦居中：仅当节点完全在视口外时才 setCenter。
   // 单击扫视可见节点不再拽视口；键盘导航 / 大纲切回 / 加载定位仍会在节点不可见时居中。
@@ -1855,9 +2103,24 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
     };
   }, [editingNodeId, reactFlowInstance]);
 
+  const canvasThemeStyle = useMemo<React.CSSProperties>(() => {
+    const vars: Record<string, string> = {};
+    if (activeTheme?.canvas?.background) {
+      vars['--mm-bg'] = activeTheme.canvas.background;
+    }
+    if (activeTheme?.edge?.stroke) {
+      vars['--mm-edge'] = activeTheme.edge.stroke;
+    }
+    if (activeTheme?.edge?.strokeActive) {
+      vars['--mm-edge-active'] = activeTheme.edge.strokeActive;
+    }
+    return vars as React.CSSProperties;
+  }, [activeTheme]);
+
   return (
     <div
       ref={canvasContainerRef}
+      style={canvasThemeStyle}
       className={cn(
         'w-full h-full overflow-hidden bg-[var(--mm-bg)] relative',
         isExporting && 'mm-exporting',
@@ -1874,6 +2137,10 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
       onTouchMoveCapture={handleContainerTouchMove}
       onTouchEndCapture={handleContainerTouchEnd}
       onTouchCancelCapture={handleContainerTouchEnd}
+      onDragEnter={handleExcerptDragEnter}
+      onDragOver={handleExcerptDragOver}
+      onDragLeave={handleExcerptDragLeave}
+      onDrop={handleExcerptDrop}
     >
       {breadcrumbPath.length > 1 && (
         <div className="mm-canvas-breadcrumb">
@@ -1951,8 +2218,8 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
         elementsSelectable={REACTFLOW_CONFIG.elementsSelectable}
         edgesFocusable={!reciteMode}
         // 滚轮/触控板语义（useCanvasWheelMode 偏好，localStorage 持久化）：
-        // - pan（默认）：双指滚动/滚轮平移，pinch 或 Cmd/Ctrl+滚轮缩放（平台习惯）
-        // - zoom（旧行为）：滚轮直接缩放
+        // - zoom（默认）：滚轮直接缩放，平移靠拖空白 / Space / 中键
+        // - pan：双指滚动/滚轮平移，pinch 或 Cmd/Ctrl+滚轮缩放（平台习惯）
         // Shift+滚动横向平移为 RF 内置；空白拖拽的框选/平移 dragMode 不受影响。
         panOnScroll={wheelProps.panOnScroll}
         zoomOnScroll={wheelProps.zoomOnScroll}
@@ -2051,7 +2318,7 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
               <span>{t('canvas.panMode', { defaultValue: '拖动画布' })}</span>
             </DsButton>
             <span className="mm-canvas-mode-divider" aria-hidden="true" />
-            {/* 滚轮语义偏好：默认双指平移（平台习惯），可切回旧「滚轮缩放」 */}
+            {/* 滚轮语义偏好：默认滚轮缩放，可切换为双指平移 */}
             <DsButton
               variant="ghost"
               size="sm"
@@ -2063,10 +2330,10 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
               title={
                 wheelMode === 'zoom'
                   ? t('canvas.wheelModeZoom', {
-                      defaultValue: '滚轮缩放（已开启）：滚轮/双指滑动直接缩放；点击切换为双指平移',
+                      defaultValue: '滚轮缩放（默认）：滚轮/双指滑动直接缩放；点击切换为双指平移',
                     })
                   : t('canvas.wheelModePan', {
-                      defaultValue: '双指平移（默认）：滚轮/双指滑动平移，捏合或 Cmd/Ctrl+滚轮缩放；点击切换为滚轮缩放',
+                      defaultValue: '双指平移（已开启）：滚轮/双指滑动平移，捏合或 Cmd/Ctrl+滚轮缩放；点击切换为滚轮缩放',
                     })
               }
               aria-pressed={wheelMode === 'zoom'}
@@ -2077,6 +2344,16 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
             <span className="mm-canvas-mode-divider" aria-hidden="true" />
             {/* 缩放百分比指示：实时读数，点击恢复 100% */}
             <CanvasZoomIndicator />
+            <DsButton
+              variant="ghost"
+              size="sm"
+              className="mm-canvas-mode-button !min-w-0 !px-1.5"
+              onClick={() => fitVisibleNodes(300)}
+              title={t('contextMenu.fitView', { defaultValue: '适应视图' })}
+              aria-label={t('contextMenu.fitView', { defaultValue: '适应视图' })}
+            >
+              <CornersOut size={14} />
+            </DsButton>
           </div>
         )}
         {/* 小图（≤10 节点）一屏可尽收，隐藏 MiniMap 减少 chrome 与每帧刷新（E02 C12）；
@@ -2135,6 +2412,28 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
             )}
           </ViewportPortal>
         )}
+        {document.summaries && document.summaries.length > 0 && (
+          <ViewportPortal>
+            <SummaryBraceOverlay
+              summaries={document.summaries}
+              root={document.root}
+              layoutNodeById={layoutNodeById}
+              direction={layoutDirection}
+              readonly={reciteMode || isExporting}
+              onUpdateLabel={updateSummaryBrace}
+              onRemove={removeSummaryBrace}
+            />
+          </ViewportPortal>
+        )}
+        {excerptDropTarget?.kind === 'pane' && (
+          <ViewportPortal>
+            <div
+              className="mm-mn5-drop-branch-ghost"
+              style={{ left: excerptDropTarget.flowX, top: excerptDropTarget.flowY }}
+              aria-hidden="true"
+            />
+          </ViewportPortal>
+        )}
         {/* 关联线模式：源节点 → 指针的跟手虚线预览 */}
         {associatingFromId && associationSourceCenter && associationPointer && (
           <ViewportPortal>
@@ -2160,6 +2459,19 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
           </ViewportPortal>
         )}
       </ReactFlow>
+
+      {excerptDropTarget && (
+        <div className="mm-mn5-drop-hint" role="status" data-testid="mm-excerpt-drop-hint">
+          <span className="mm-mn5-drop-hint-dot" aria-hidden="true" />
+          <span>
+            {excerptDropTarget.kind === 'pane'
+              ? t('mn5.dropNewBranchHint')
+              : excerptDropTarget.merge
+                ? t('mn5.dropMergeHint')
+                : t('mn5.dropAsChildHint')}
+          </span>
+        </div>
+      )}
 
       <CanvasContextMenu
         isOpen={contextMenu.isOpen}

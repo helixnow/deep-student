@@ -10,6 +10,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.20.1](https://github.com/helixnow/deep-student/compare/v0.11.0...v0.20.1) (2026-11-14)
+
+Node.js / Electron / Capacitor / Cordis 架构正式切换版本（整合 `0.20.0`–`0.20.1` 迁移与功能里程碑，主仓库统一回归 `helixnow/deep-student`，正式退役上一代 Tauri 2 / Rust 后端）。
+
+### Architecture & Runtime Cutover
+
+* **Cordis 双内核架构：** 后端全面迁移为基于 `@deepseek-ai/cordis` 4 的 100% TypeScript 插件架构，由 Host 内核（`host/kernel`、`host/platform`、`host/plugins`，`desktop.json` 装配 43 个模块，`host/plugins/` 含 29 个插件目录）与 UI 内核（`src/ui-kernel`、`src/ui-plugins/official/` 19 个官方 UI 插件包）组成，由 `contracts/ipc/` 治理 1,061 条命令、127 个事件与 978 个类型定义。
+* **Electron 45 桌面宿主与零重写兼容：** 新增 `electron/` 桌面外壳（Electron 45 + `UtilityProcess` Host + `MessagePortMain`），通过 `window.__TAURI_INTERNALS__` 兼容桥（`electron/preload/bridge.ts`）保留 `src/` React 18 前端与现有磁盘 SQLite / LanceDB 数据目录（原地挂载并完整回放 SQL 迁移历史）。
+* **Hybrid N-API + WASI-WASM 原生引擎：** 将原生绑定严格收敛于平台与外壳层（`better-sqlite3`、`@lancedb/lancedb`、`@embedpdf/pdfium`、`@napi-rs/keyring`、`@node-rs/argon2` 与 `koffi` FFI），并通过预编译 `f7-native-wasm.wasm`（`wasm32-wasip1`）承载 `regex`、`starlark`、`symphonia`、`image`、`fsrs`、`roxmltree` 及 `docx-rs` / `calamine` / `pptx-to-md` / `rtf-parser` / `html2text`，开发与构建不再依赖 Rust 或 Tauri 工具链。
+* **WebUI & PWA（`web/`）：** 新增浏览器与可安装 PWA 形态（`npm run web` / `npm run build:web` / `npm run web:prod`），经 HTTP / WebSocket（`/api/ws` 二进制帧与 HTTP 206 流式读取）直连完整 Host 内核，配备 `timingSafeEqual` 令牌与 `SameSite=Strict` 会话 Cookie 鉴权、爆破限流及 Service Worker。
+* **Capacitor 8.6 移动端（`mobile/`）：** 移动端切换为 Capacitor 8.6 + Web Worker Host + `@sqlite.org/sqlite-wasm` / OPFS（`host/profiles/mobile.json` 装配 33 个模块，经 `scripts/portability/scan.mjs` 验证 0 处 Node 运行时依赖），支持签名 APK 构建校验。
+
+### Features
+
+* **AI 插件工坊与 `.dstuplugin`：** 新增 `plugin-workshop`（`dstu-plugin-development` 技能 + 14 个 `dstu_plugin_*` Agent 工具），支持 AI 读取真实 SDK/服务/插槽目录、Host 托管 `esbuild` 编译、隔离生命周期试装载与最多 3 轮诊断自动修复、用户一键确认热安装/热重载、导出 `.dstuplugin` 插件包、运行时配置热更新（`inventory` / `config_get` / `configure` / `set_enabled`）及 `versions/<v>/package` 版本回滚。
+* **生成式 UI（`openui-lang`）：** 新增 `dstu.ui.genui` 插件、`OpenUILangRenderer`、`interactive-explainer` 技能、`DiagramAndLiveSvgView` 与高保真 HTML 沙箱，支持在对话中直接渲染交互式讲解界面。
+* **DeepSeek 官方应用 API 集成：** 原生接入 DeepSeek Responses 协议（`deepseek-flash`）、内置联网/图片搜索与读链接、内容审核、最多 20 个文件的对话文档解析，以及独立 Search / Fetch、OCR、ASR 与 TTS（`Stella` / `Tide`）。
+* **文档优先阅读与 PDF 页码/引文反链：** 对话新增可折叠导航与可调节分栏的文档优先阅读布局、大纲引导整篇 AI 精读，并在笔记、对话导出与闪卡中全程保留 PDF 页码与引文反向链接。
+* **FSRS-7 桌面隔离试跑与微信 iLink Bot：** 在 FSRS-6 基础上新增基于 `ts-fsrs` 双时间尺度模型的 FSRS-7 桌面隔离试跑；内置 `ilinkbot` 微信通道插件（二维码登录、主人配对守卫与图片批处理聚合）。
+* **Sync V5 与 Agent UX 升级：** 新增 Sync V5 同步引擎（HLC 因果序、Merkle 快照、加密 `.dsix` 索引包、Range 读取与 `DSPAIR2` 局域网扫码配对）及完整数据治理 CRUD；对话升级 7 行活动窗口、回合 Diff 审阅与回退、项目知识 DAG 抽屉、会话挂起/恢复/分叉、Prompt 缓存与上下文压缩、消息排队/插话及密钥脱敏卡片。
+
+### Security & Upgrade Compatibility
+
+* **Electron Fuses 与浏览器隔离：** 打包强制开启 Electron Fuses（禁用 `RunAsNode`、`EnableNodeOptionsEnvironmentVariable`、`EnableNodeCliInspectArguments` 与 `GrantFileProtocolExtraPrivileges`，启用 `EnableEmbeddedAsarIntegrityValidation` 与 `OnlyLoadAppFromAsar`，并在 Windows/Linux 及正式签名 macOS 启用 `EnableCookieEncryption`）；集中式 `web-security.ts` 实施分角色导航/权限策略并禁用 `<webview>`。
+* **`ds-plugin://` 校验与逐响应 CSP Nonce：** `ds-plugin://` 协议按 `plugins.lock.json` 执行 SHA-256 完整性校验与路径逃逸拦截（`--safe-mode` 下禁用）；HTML 生产响应按次生成随机加密 `scriptNonce` 并注入 CSP 与 `<meta name="ds-csp-nonce">`。
+* **无损升级与更新器兼容：** 兼容 `tauri-plugin-updater` 2.10 `latest.json` 与 Minisign 签名校验，应用内升级前校验已启用用户插件兼容性、更新过程保持 macOS `.app` bundle 完整，并在升级后保留用户插件源码、配置与数据目录。
+
 ## [0.11.0](https://github.com/helixnow/deep-student/compare/v0.10.10...v0.11.0) (2026-11-01)
 
 

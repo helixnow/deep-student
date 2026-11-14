@@ -80,8 +80,8 @@ import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 const PROPERTY_ROW_CLASS =
   'flex items-center gap-3 rounded-[var(--radius-shell-control)] px-2 -mx-2 py-1.5 transition-colors duration-150 hover:bg-[color:var(--interactive-hover)]';
 
-/** 分区分隔（统一 --border-default 分隔线 + 呼吸间距） */
-const SECTION_CLASS = 'border-t border-[color:var(--border-default)] pt-4';
+/** 分区分隔（统一 border-border/35 分隔线 + 呼吸间距） */
+const SECTION_CLASS = 'border-t border-border/35 pt-4';
 
 /** chip 行缩进（与属性行的标签列对齐） */
 const CHIP_INDENT_CLASS = 'flex items-start gap-3 px-2 -mx-2';
@@ -1010,7 +1010,7 @@ export const TodoItemDetail: React.FC<{
       </CustomScrollArea>
 
       {/* 底部安全区由 MobileDetailOverlay 容器统一兜底，此处不再重复叠加 */}
-      <div className="flex items-center justify-between gap-3 border-t border-[color:var(--border-default)] px-4 py-3">
+      <div className="flex items-center justify-between gap-3 border-t border-border/35 px-4 py-3">
         <span className="min-w-0 flex-shrink truncate text-xs text-muted-foreground">
           {item.updatedAt
             ? t('todo:detail.updatedAt', {

@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { setupMilkdownTimers } from '../../../__tests__/milkdownTimers';
+setupMilkdownTimers();
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from '@milkdown/kit/core';
 import { commonmark } from '@milkdown/kit/preset/commonmark';
 import { getMarkdown } from '@milkdown/kit/utils';

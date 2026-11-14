@@ -1,0 +1,1 @@
+{"id":"20261105140230-b2aba4","cwd":"/home/dsdev/dev/ds-mig/X7-differential","cmd":["npx","tsc","-p","tsconfig.host.json","--incremental","--tsBuildInfoFile",".lane.tsbuildinfo"],"from":"X7-differential","submittedAt":"2026-11-05T14:02:30.885Z","cls":"typecheck","startedAt":"2026-11-05T14:02:30.892Z","endedAt":"2026-11-05T14:07:02.593Z","code":0}

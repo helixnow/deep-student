@@ -1,0 +1,1 @@
+{"id":"20261106154532-9f84be","cwd":"/home/dsdev/dev/ds-mig/F7-native","cmd":["sh","-c","node host/platform/native/wp280/probe.mjs > host/platform/native/wp280/probe.json"],"from":"F7-native","submittedAt":"2026-11-06T15:45:32.443Z","cls":"other","startedAt":"2026-11-06T15:45:49.769Z","endedAt":"2026-11-06T15:45:51.419Z","code":1}

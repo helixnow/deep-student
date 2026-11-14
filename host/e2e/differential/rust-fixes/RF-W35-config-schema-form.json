@@ -1,0 +1,24 @@
+{
+  "id": "RF-W35-config-schema-form",
+  "kind": "deliberate",
+  "status": "proposed",
+  "title": "按可序列化 Schemastery Config 投影生成配置表单（boolean→Switch、enum→SegmentedControl、string/number→Input），带默认值、校验与修订号保存",
+  "rust": {
+    "file": "src/features/settings/components/plugins/PluginsTab.tsx",
+    "behavior": "Rust 版渠道插件配置是固定的 IlinkBotConfig 字段集，经 plugin_get_config/plugin_set_config 整包读写；没有插件自定义 Config schema，也没有表单生成、字段级校验或 revision，无法用于社区/官方 UI 插件"
+  },
+  "fix": {
+    "files": ["src/features/plugin-manager/config-schema.ts", "src/features/plugin-manager/ConfigForm.tsx"],
+    "behavior": "config-schema 只消费 W01 投影出的可序列化节点：顶层 object 的 boolean/enum（常量联合）/string/number 生成字段，meta.default 补默认值，meta.required/min/max/step/pattern 用于校验；数组、嵌套对象、非闭合联合会报为“暂不支持”，保存时保留原值。ConfigForm 的 boolean 用 Switch、enum 用 SegmentedControl、string/number 用 Input，字段错误经 aria-invalid 与 role=alert 暴露，保存原样带回读取时的 revision；REVISION_CONFLICT 不覆盖 Host 值，显示冲突并要求重新读取"
+  },
+  "evidence": "W01 已发布 plugin:manager|config/config|save；HostPluginManagerAdapter 消费 fields 投影并原样回传字符串 CAS token，保存后读取 Host 校验与默认值结果。config-schema.test.ts、ConfigForm.test.tsx、host-adapter.test.ts 与 real-host.host-e2e.tsx 覆盖 schema 表单、冲突、真实 profile 保存/热更新服务；未渲染的原始值保留。",
+  "userVisible": "接线后每个可配置插件显示“配置”按钮：开关/分段选项/文本与数字输入按插件 schema 生成，默认值直接生效并标注，必填/范围/格式错误就地提示；别处改过配置时保存会提示修订号冲突而不是静默覆盖",
+  "dataCompat": "不改变落库数据与备份格式；配置仍写入 Host 的 profile（W01 命令），本表单只负责编辑与校验，未渲染字段原样带回",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "src/features/plugin-manager/__tests__/ConfigForm.test.tsx",
+      "name": "RF-W35-config-schema-form: renders switches, segmented options, text and number inputs from the schema with defaults"
+    }
+  ]
+}

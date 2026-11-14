@@ -9,30 +9,15 @@
  *   与常用平铺命令（左半屏 / 右半屏 / 最大化，调 windowStore 冻结 API）。
  *
  * 弹层壳复用 StatusBarMenu（与品牌菜单同款玻璃面板与键盘语义）。
+ * 菜单行来自 `app.menu`（官方行见 ui-plugins/official/menu/workbenchMenus.tsx，渲染见 MenuBarRows.tsx）。
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  AppWindow,
-  CornersOut,
-  Plus,
-  SquareHalf,
-  SquaresFour,
-  X,
-  XSquare,
-} from '@phosphor-icons/react';
 import { appRegistry } from '../core/appRegistry';
 import { useWindowStore } from '../core/windowStore';
-import { getSortedWindows } from '../core/windowListCache';
-import { workbenchBus } from '../core/workbenchBus';
 import { useWorkbenchOverlay } from '../core/shortcuts';
-import {
-  requestCloseAnimated,
-  requestCloseAppWindowsAnimated,
-} from '../hooks/useWindowLifecycleAnim';
-import { openAppsPanel } from './appsPanelStore';
-import { ActionItem } from './DesktopContextMenu';
 import { StatusBarMenu } from './StatusBarMenu';
+import { MenuBarRows, menuBarWindows, useAppMenuRows, useMenuBarTranslate } from './MenuBarRows';
 
 type OpenMenu = 'app' | 'window' | null;
 
@@ -46,78 +31,15 @@ function useFocusedApp(): { windowId: string | null; typeId: string | null } {
   return { windowId, typeId };
 }
 
-/** 窗口菜单内容：仅菜单打开期间挂载，windows 全量订阅不落在常驻顶栏上 */
+/** 窗口菜单内容（app.menu 的 workbench.window 行）：仅菜单打开期间挂载，windows 全量订阅不落在常驻顶栏上 */
 const WindowMenuItems: React.FC<{
   focusedWindowId: string | null;
   onDone: () => void;
 }> = ({ focusedWindowId, onDone }) => {
-  const { t } = useTranslation('workbench');
   const windows = useWindowStore((s) => s.windows);
-  const ordered = getSortedWindows(windows);
-
-  const run = (fn: () => void) => () => {
-    fn();
-    onDone();
-  };
-
-  const windowLabel = (id: string): string => {
-    const win = windows[id];
-    if (!win) return t('expose.untitled');
-    const def = appRegistry.get(win.typeId);
-    const base = win.title || (def ? t(def.nameKey, win.typeId) : win.typeId);
-    return win.minimized ? `${base} · ${t('dock.minimized')}` : base;
-  };
-
-  const tile = (mode: 'tiled-left' | 'tiled-right' | 'maximized') => {
-    if (!focusedWindowId) return;
-    useWindowStore.getState().setDisplayMode(focusedWindowId, mode);
-  };
-
-  return (
-    <>
-      {ordered.length === 0 ? (
-        <ActionItem
-          icon={<AppWindow size={15} weight="duotone" />}
-          label={t('expose.empty')}
-          testId="wb-menubar-window-empty"
-          disabled
-        />
-      ) : (
-        ordered.map((win) => (
-          <ActionItem
-            key={win.id}
-            icon={<AppWindow size={15} weight="duotone" />}
-            label={windowLabel(win.id)}
-            checked={win.id === focusedWindowId && !win.minimized}
-            testId={`wb-menubar-window-item-${win.id}`}
-            onClick={run(() => useWindowStore.getState().focusWindow(win.id))}
-          />
-        ))
-      )}
-      <div className="wb-desk-menu-sep" role="separator" />
-      <ActionItem
-        icon={<SquareHalf size={15} weight="duotone" />}
-        label={t('tile.left')}
-        disabled={!focusedWindowId}
-        testId="wb-menubar-window-tile-left"
-        onClick={run(() => tile('tiled-left'))}
-      />
-      <ActionItem
-        icon={<SquareHalf size={15} weight="duotone" style={{ transform: 'scaleX(-1)' }} />}
-        label={t('tile.right')}
-        disabled={!focusedWindowId}
-        testId="wb-menubar-window-tile-right"
-        onClick={run(() => tile('tiled-right'))}
-      />
-      <ActionItem
-        icon={<CornersOut size={15} weight="duotone" />}
-        label={t('window.maximize')}
-        disabled={!focusedWindowId}
-        testId="wb-menubar-window-maximize"
-        onClick={run(() => tile('maximized'))}
-      />
-    </>
-  );
+  const t = useMenuBarTranslate();
+  const rows = useAppMenuRows('workbench.window', { focusedWindowId, windows: menuBarWindows(windows, t) });
+  return <MenuBarRows rows={rows} onDone={onDone} />;
 };
 
 export interface StatusBarAppMenusProps {
@@ -143,14 +65,6 @@ export const StatusBarAppMenus: React.FC<StatusBarAppMenusProps> = ({ onOpenChan
   }, [exposeOpen]);
 
   const closeMenus = useCallback(() => setOpenMenu(null), []);
-  const runAndClose = useCallback(
-    (action: () => void) => () => {
-      action();
-      setOpenMenu(null);
-    },
-    [],
-  );
-
   const focusedDef = focusedTypeId ? appRegistry.get(focusedTypeId) : undefined;
   const appName = focusedTypeId
     ? focusedDef
@@ -158,12 +72,7 @@ export const StatusBarAppMenus: React.FC<StatusBarAppMenusProps> = ({ onOpenChan
       : focusedTypeId
     : t('menubar.appName');
 
-  // 关窗一律走 requestCloseAnimated：canClose（未保存确认）+ 退场动画统一，
-  // 菜单栏不得绕过 guard 直接 store.closeWindow
-  const closeAllOfApp = () => {
-    if (!focusedWindowId) return;
-    void requestCloseAppWindowsAnimated(focusedWindowId);
-  };
+  const appRows = useAppMenuRows('workbench.app', { focusedWindowId, focusedTypeId });
 
   return (
     <>
@@ -200,40 +109,7 @@ export const StatusBarAppMenus: React.FC<StatusBarAppMenusProps> = ({ onOpenChan
         onClose={closeMenus}
         testId="wb-menubar-appmenu-panel"
       >
-        {focusedTypeId ? (
-          <>
-            <ActionItem
-              icon={<Plus size={15} weight="bold" />}
-              label={t('dock.newWindow')}
-              testId="wb-menubar-app-new-window"
-              onClick={runAndClose(() =>
-                workbenchBus.launch({ typeId: focusedTypeId, reason: 'api' }),
-              )}
-            />
-            <div className="wb-desk-menu-sep" role="separator" />
-            <ActionItem
-              icon={<X size={15} weight="bold" />}
-              label={t('dock.closeWindow')}
-              testId="wb-menubar-app-close-window"
-              onClick={runAndClose(() => {
-                if (focusedWindowId) void requestCloseAnimated(focusedWindowId);
-              })}
-            />
-            <ActionItem
-              icon={<XSquare size={15} weight="duotone" />}
-              label={t('dock.closeAll')}
-              testId="wb-menubar-app-close-all"
-              onClick={runAndClose(closeAllOfApp)}
-            />
-          </>
-        ) : (
-          <ActionItem
-            icon={<SquaresFour size={15} weight="duotone" />}
-            label={t('menubar.allApps')}
-            testId="wb-menubar-app-all-apps"
-            onClick={runAndClose(() => openAppsPanel())}
-          />
-        )}
+        <MenuBarRows rows={appRows} onDone={closeMenus} />
       </StatusBarMenu>
 
       <StatusBarMenu

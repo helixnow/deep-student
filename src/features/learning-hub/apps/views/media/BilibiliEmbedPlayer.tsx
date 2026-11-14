@@ -5,6 +5,7 @@
  * play 只给刚请求的跳转加上自动播放，pause 无法生效；getElement 恒为 null（不能截帧）。
  * 不活跃（保活的隐藏标签）时卸载 iframe：无法暂停，只能卸载才不会在后台出声。
  */
+import { useRefreshOnReturn } from '@/hooks/useRefreshOnReturn';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ArrowClockwise, Television } from '@phosphor-icons/react';
@@ -35,7 +36,7 @@ export const BilibiliEmbedPlayer: React.FC<BilibiliEmbedPlayerProps> = ({
   handleRef,
   onStatusChange,
 }) => {
-  const { t } = useTranslation(['learningHub']);
+  const { t } = useTranslation(['learningHub', 'common']);
   const [frame, setFrame] = useState<FrameState>({ seconds: 0, autoplay: false, nonce: 0 });
   const [loadedSrc, setLoadedSrc] = useState<string | null>(null);
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
@@ -62,6 +63,8 @@ export const BilibiliEmbedPlayer: React.FC<BilibiliEmbedPlayerProps> = ({
     setFailedSrc(null);
     setFrame((prev) => ({ ...prev, nonce: prev.nonce + 1 }));
   }, []);
+
+  useRefreshOnReturn(reload, isActive && failedSrc === frameKey);
 
   useEffect(() => {
     handleRef.current = {
@@ -127,8 +130,8 @@ export const BilibiliEmbedPlayer: React.FC<BilibiliEmbedPlayerProps> = ({
           <span className="min-w-0 break-words">{t('learningHub:mediaBilibili.playback.embedTimeout')}</span>
         </div>
       )}
-      {isActive && (
-        <DsButton variant="ghost" size="sm" iconOnly onClick={reload} title={t('learningHub:mediaBilibili.playback.reloadEmbed')} aria-label={t('learningHub:mediaBilibili.playback.reloadEmbed')} className="absolute right-1 top-1 z-20 bg-black/80 text-white hover:bg-black">
+      {isActive && failedSrc === frameKey && (
+        <DsButton variant="ghost" size="sm" iconOnly onClick={reload} title={t('common:actions.retry')} aria-label={t('common:actions.retry')} className="absolute right-1 top-1 z-20 bg-black/80 text-white hover:bg-black">
           <ArrowClockwise size={16} />
         </DsButton>
       )}

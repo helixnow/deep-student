@@ -1,0 +1,9 @@
+[Unit]
+Description=main 前进后生成自动质量反馈（未前进时只刷新状态）
+
+[Timer]
+OnBootSec=5min
+OnUnitInactiveSec=10min
+
+[Install]
+WantedBy=timers.target

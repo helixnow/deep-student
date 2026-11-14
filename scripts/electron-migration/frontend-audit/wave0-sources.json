@@ -1,0 +1,28 @@
+{
+  "wp": "WP-C2-W0-011",
+  "note": "Fixed inputs for wave0-inventory. base = frontend/contracts/registration and main corpus. Candidate tips = lane deliveries formally handed in by 2026-11-05T18:22Z; only files each tip changed itself are read. F1/L03/L05/L12/L24 corpora come from base. Later deliveries are not chased.",
+  "base": "e1204ee8a02f1cfb3255fb1a75bb234c72236ce9",
+  "fromBase": ["F1-kernel", "L03-chat-pipeline", "L05-agent-workspace", "L12-vfs-index", "L24-chatanki"],
+  "candidates": [
+    { "label": "F4-security", "sha": "606bf4959227a9f10a91f3db07362a09cdd736d7" },
+    { "label": "L01-llm-providers", "sha": "dad7211e5c16db66a52d25cd04369264f56f5a69" },
+    { "label": "L02-llm-manager", "sha": "4a26ae8d3e2344f618710023639fe8da7d61b7dc" },
+    { "label": "L04-chat-session", "sha": "0bf6e313eddd87f402f2084cd962df010b849cc9" },
+    { "label": "L06-agent-orchestration", "sha": "eef27570110ec6db45f50279636f520182c1fa5e" },
+    { "label": "L07-agent-skills-ptc", "sha": "e13c2ad163f9db8e5ebdc072b88c44ae07c32190" },
+    { "label": "L10-notes", "sha": "7d4f68c07e470a90e154e6b47fad5dbe4f48ff72" },
+    { "label": "L13-vfs-api", "sha": "303fbc2d5ade8f5dd95edbe2b1edad67588edd9f" },
+    { "label": "L13b-vfs-handlers", "sha": "0cf0d8d9dbb807f167fbd77e365336d816bcce28" },
+    { "label": "L14-qbank", "sha": "a8f856ddbc1082eb5825e2e4ecee5c2bc3230968" },
+    { "label": "L15-review-analytics", "sha": "50c3b67f9ce5f20ada07df97dbf1d1c2111bc86f" },
+    { "label": "L16-anki", "sha": "df37dca8b91079a4c1b7975bf3ac9c0c1a532172" },
+    { "label": "L17-memory-research", "sha": "8226b0ec12e81d85b654254d7739276c0a8c1305" },
+    { "label": "L18-media-docs", "sha": "ee5c432719e58c2d55003905990a0b396e289346" },
+    { "label": "L19-mcp-browser", "sha": "8a761e118c46900ab223cc414ab7eb6f14a3de80" },
+    { "label": "L20-sync", "sha": "fb98daa369a87eab7e1febff66ceeefd6fcadcec" },
+    { "label": "L20b-sync-support", "sha": "58f68140fa3103e4a22dd613db1c5f4330354c16" },
+    { "label": "L21-backup-governance", "sha": "e2b578e74c5c95f5c8c686c27c07b6d41c0a7319" },
+    { "label": "L22-app-commands", "sha": "6286339cd6e52dab1989a492a6a938ceea6eb874" },
+    { "label": "L23-sync-providers", "sha": "af9676afc8e161e030c28ec32eaf7e534c45bde2" }
+  ]
+}

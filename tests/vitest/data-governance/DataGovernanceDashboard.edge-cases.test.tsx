@@ -182,14 +182,14 @@ describe('Edge case: empty databases list', () => {
 
     // 组件应正常渲染，核心 UI 元素存在
     expect(container.firstChild).not.toBeNull();
-    // 刷新按钮应可用
-    expect(screen.getByRole('button', { name: /刷新|common:actions\.refresh/i })).toBeInTheDocument();
+    // 健康检查入口应可用
+    expect(screen.getByRole('button', { name: /运行健康检查|data:governance\.run_health_check/i })).toBeInTheDocument();
 
     expect(screen.getAllByText(/暂无数据|data:governance\.no_data/i)).toHaveLength(2);
 
     // Tab 按钮仍然可用
     expect(
-      screen.getByRole('button', { name: /^(?:备份|data:governance\.tab_backup)$/i }),
+      screen.getByRole('tab', { name: /^(?:备份|data:governance\.tab_backup)$/i }),
     ).toBeInTheDocument();
   });
 
@@ -229,7 +229,7 @@ describe('Edge case: large backup list (100 items)', () => {
     render(<DataGovernanceDashboard embedded />);
 
     // 导航到备份 Tab
-    const backupTab = await screen.findByRole('button', {
+    const backupTab = await screen.findByRole('tab', {
       name: /^(?:备份|data:governance\.tab_backup)$/i,
     });
     fireEvent.click(backupTab);
@@ -259,7 +259,7 @@ describe('Edge case: large backup list (100 items)', () => {
 
     render(<DataGovernanceDashboard embedded />);
 
-    const backupTab = await screen.findByRole('button', {
+    const backupTab = await screen.findByRole('tab', {
       name: /^(?:备份|data:governance\.tab_backup)$/i,
     });
     fireEvent.click(backupTab);
@@ -310,7 +310,7 @@ describe('Edge case: concurrent operation conflict', () => {
     render(<DataGovernanceDashboard embedded />);
 
     // 导航到备份 Tab
-    const backupTab = await screen.findByRole('button', {
+    const backupTab = await screen.findByRole('tab', {
       name: /^(?:备份|data:governance\.tab_backup)$/i,
     });
     fireEvent.click(backupTab);
@@ -353,7 +353,7 @@ describe('Edge case: concurrent operation conflict', () => {
 
     render(<DataGovernanceDashboard embedded />);
 
-    const backupTab = await screen.findByRole('button', {
+    const backupTab = await screen.findByRole('tab', {
       name: /^(?:备份|data:governance\.tab_backup)$/i,
     });
     fireEvent.click(backupTab);
@@ -457,7 +457,7 @@ describe('Edge case: empty audit logs', () => {
     render(<DataGovernanceDashboard embedded />);
 
     // 切换到审计 Tab
-    const auditTab = await screen.findByRole('button', {
+    const auditTab = await screen.findByRole('tab', {
       name: /^(?:审计|data:governance\.tab_audit)$/i,
     });
     fireEvent.click(auditTab);
@@ -472,7 +472,7 @@ describe('Edge case: empty audit logs', () => {
   it('does not show any log table rows when audit logs are empty', async () => {
     render(<DataGovernanceDashboard embedded />);
 
-    const auditTab = await screen.findByRole('button', {
+    const auditTab = await screen.findByRole('tab', {
       name: /^(?:审计|data:governance\.tab_audit)$/i,
     });
     fireEvent.click(auditTab);
@@ -512,7 +512,7 @@ describe('Edge case: maintenance mode UI state', () => {
 
     render(<DataGovernanceDashboard embedded />);
 
-    const backupTab = await screen.findByRole('button', {
+    const backupTab = await screen.findByRole('tab', {
       name: /^(?:备份|data:governance\.tab_backup)$/i,
     });
     fireEvent.click(backupTab);
@@ -552,9 +552,9 @@ describe('Edge case: maintenance mode UI state', () => {
     });
 
     expect(container.firstChild).not.toBeNull();
-    // 刷新按钮和 Tab 导航应存在
-    expect(screen.getByRole('button', { name: /刷新|common:actions\.refresh/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /^(?:概览|data:governance\.tab_overview)$/i })).toBeInTheDocument();
+    // 健康检查入口和 Tab 导航应存在
+    expect(screen.getByRole('button', { name: /运行健康检查|data:governance\.run_health_check/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /^(?:概览|data:governance\.tab_overview)$/i })).toBeInTheDocument();
     // 维护模式状态应保持
     expect(useSystemStatusStore.getState().maintenanceMode).toBe(true);
   });
@@ -569,7 +569,7 @@ describe('Edge case: maintenance mode UI state', () => {
 
     render(<DataGovernanceDashboard embedded />);
 
-    const backupTab = await screen.findByRole('button', {
+    const backupTab = await screen.findByRole('tab', {
       name: /^(?:备份|data:governance\.tab_backup)$/i,
     });
     fireEvent.click(backupTab);
@@ -643,7 +643,7 @@ describe('Edge case: unmount cleanup', () => {
     const { unmount } = render(<DataGovernanceDashboard embedded />);
 
     // 导航到备份 Tab
-    const backupTab = await screen.findByRole('button', {
+    const backupTab = await screen.findByRole('tab', {
       name: /^(?:备份|data:governance\.tab_backup)$/i,
     });
     fireEvent.click(backupTab);
@@ -720,7 +720,7 @@ describe('Edge case: tab switching data loading', () => {
     const resumableCallsBefore = mockDataGovernanceApi.listResumableJobs.mock.calls.length;
 
     // 切换到备份 Tab
-    const backupTab = screen.getByRole('button', {
+    const backupTab = screen.getByRole('tab', {
       name: /^(?:备份|data:governance\.tab_backup)$/i,
     });
     fireEvent.click(backupTab);
@@ -744,7 +744,7 @@ describe('Edge case: tab switching data loading', () => {
     const syncCallsBefore = mockDataGovernanceApi.getSyncStatus.mock.calls.length;
 
     // 切换到同步 Tab
-    const syncTab = screen.getByRole('button', {
+    const syncTab = screen.getByRole('tab', {
       name: /^(?:同步|data:governance\.tab_sync)$/i,
     });
     fireEvent.click(syncTab);
@@ -768,7 +768,7 @@ describe('Edge case: tab switching data loading', () => {
     const initialHealthCalls = mockDataGovernanceApi.runHealthCheck.mock.calls.length;
 
     // 切换到备份 Tab
-    const backupTab = screen.getByRole('button', {
+    const backupTab = screen.getByRole('tab', {
       name: /^(?:备份|data:governance\.tab_backup)$/i,
     });
     fireEvent.click(backupTab);
@@ -778,7 +778,7 @@ describe('Edge case: tab switching data loading', () => {
     });
 
     // 切换回概览 Tab
-    const overviewTab = screen.getByRole('button', {
+    const overviewTab = screen.getByRole('tab', {
       name: /^(?:概览|data:governance\.tab_overview)$/i,
     });
     fireEvent.click(overviewTab);

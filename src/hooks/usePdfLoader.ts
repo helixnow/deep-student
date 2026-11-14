@@ -11,6 +11,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { base64ToFile, estimateBase64Size, LARGE_FILE_THRESHOLD } from '@/utils/base64FileUtils';
+import { supportsStreamProtocol } from '@/utils/platform';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import i18n from '@/i18n';
 import {
@@ -138,6 +139,28 @@ async function resolveStreamableBlobPath(nodeId: string): Promise<string | undef
   return undefined;
 }
 
+/**
+ * Mobile shells do not host the `pdfstream://` custom protocol, so a
+ * `pdfstream.localhost` fetch can only fail (often after a long timeout).
+ * Read the blob through IPC and hand PDF.js an in-memory File instead.
+ */
+async function readBlobAsPdfFile(nodeId: string, fileName: string): Promise<File | null> {
+  try {
+    const blobPath = await invoke<string | null>('vfs_get_file_blob_path', { id: nodeId });
+    if (!blobPath) return null;
+    // Same memory ceiling as the base64 fallback: never pull an oversized PDF
+    // into the renderer just because streaming is unavailable.
+    const size = await invoke<number>('get_file_size', { path: blobPath }).catch(() => 0);
+    if (size > LARGE_FILE_THRESHOLD) return null;
+    const buffer = await invoke<ArrayBuffer>('read_file_bytes', { path: blobPath });
+    if (!buffer || buffer.byteLength === 0) return null;
+    return new File([buffer], fileName, { type: 'application/pdf' });
+  } catch (err: unknown) {
+    debugLog.warn('[usePdfLoader] direct blob read failed:', err);
+    return null;
+  }
+}
+
 export function usePdfLoader({
   nodeId,
   fileName,
@@ -166,7 +189,11 @@ export function usePdfLoader({
 
     const loadPdf = async () => {
       try {
-        const filePath = explicitFilePath || await resolveStreamableBlobPath(nodeId);
+        // 移动端原生外壳没有 pdfstream://，跳过注定失败的协议探测；
+        // WebUI 里同一协议是 HTTP 206 端点，移动浏览器照常流式。
+        const filePath = supportsStreamProtocol()
+          ? (explicitFilePath || await resolveStreamableBlobPath(nodeId))
+          : undefined;
         if (cancelled) return;
         if (filePath) {
           publish({ filePath, loadSource: 'stream' });
@@ -193,6 +220,21 @@ export function usePdfLoader({
             file: cached.name === fileName ? cached : new File([cached], fileName, { type: cached.type }),
             fileSize: cached.size,
             isLargeFile: cached.size > LARGE_FILE_HINT_THRESHOLD,
+            loadSource: 'memory',
+          });
+          return;
+        }
+
+        // IPC byte path: mobile (no pdfstream) and desktop blobs that are not
+        // streamable both load through read_file_bytes instead of base64.
+        const blobFile = await readBlobAsPdfFile(nodeId, fileName);
+        if (cancelled) return;
+        if (blobFile) {
+          cachePut(cacheStorageKey, blobFile);
+          publish({
+            file: blobFile,
+            fileSize: blobFile.size,
+            isLargeFile: blobFile.size > LARGE_FILE_HINT_THRESHOLD,
             loadSource: 'memory',
           });
           return;

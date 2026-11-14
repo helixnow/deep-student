@@ -233,4 +233,26 @@ describe('CodeBlock HTML live preview', () => {
     expect(front.hasAttribute('inert')).toBe(false);
     expect(front.getAttribute('tabindex')).toBeNull();
   });
+
+  it('allows switching script-bearing HTML blocks inline to InteractiveHtmlCanvas and supports html-interactive / openui-lang blocks', () => {
+    const { container } = render(
+      <CodeBlock className="language-html">{`${PAGE_HEAD}<p class="a">hi</p><script>window.dstu.submit({ok:true},"ok")</script></body></html>`}</CodeBlock>,
+    );
+    // Default is still script-free ChatHtmlPreview
+    expect(container.querySelector('iframe.chat-html-preview-frame')?.getAttribute('sandbox')).toBe('allow-same-origin');
+    expect(screen.getByText(/脚本未运行|Scripts not run/)).toBeInTheDocument();
+
+    // Click "内联运行交互 / Run inline"
+    fireEvent.click(screen.getByRole('button', { name: /内联运行交互|Run inline/ }));
+    const interactiveFrame = container.querySelector('iframe.interactive-html-canvas-frame');
+    expect(interactiveFrame).not.toBeNull();
+    expect(interactiveFrame?.getAttribute('sandbox')).toBe('allow-scripts');
+
+    // Render openui-lang directly
+    const { container: openuiContainer } = render(
+      <CodeBlock className="language-openui-lang">{'root = Stack([Stat("Users", "1,024", "+12%", "success")])'}</CodeBlock>,
+    );
+    expect(openuiContainer.querySelector('[data-testid="openui-lang-renderer"]')).not.toBeNull();
+    expect(screen.getByText('1,024')).toBeInTheDocument();
+  });
 });

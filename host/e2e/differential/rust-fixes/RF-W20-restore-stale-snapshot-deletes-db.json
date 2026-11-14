@@ -1,0 +1,29 @@
+{
+  "id": "RF-W20-restore-stale-snapshot-deletes-db",
+  "kind": "rust-bug",
+  "status": "approved",
+  "approvedBy": "main-agent",
+  "approvedAt": "2026-11-07T09:50:00+08:00",
+  "title": "单库迁移失败后的自动恢复只用本次迁移前建立的快照；没有可信快照时不删除、不覆盖数据库并保持阻断",
+  "rust": {
+    "file": "src-tauri/crates/dstu-storage/src/migration/coordinator.rs",
+    "line": 991,
+    "behavior": "restore_database_from_latest_core_backup（965-1069）总是取 migration_core_backups 下最新的 startup_* 快照，不管它是不是本次启动建立的。本次启动按设计不建快照时（版本读不出 686-700、无待迁移 702-708、本进程已建过 1071+），最新快照来自更早的启动：快照里没有该库就把现有数据库当作“迁移前不存在”删除（1038-1046），有该库就用旧数据覆盖（1004-1008），并删除 WAL/SHM（1049+）。run_all 无论实际做了什么都写 \"Restored this database from the startup snapshot.\"（379）；retry_persisted_restore_failures（559-574）跨重启同样取最新快照。"
+  },
+  "fix": {
+    "files": ["host/platform/storage/migration/backup.ts", "host/platform/storage/migration/coordinator.ts"],
+    "behavior": "runAll 开始时清空“本次快照”；只有本次 runAll 建立的快照（或随恢复故障记录一起保存的 snapshot）可信。没有可信快照时数据库及其 WAL/SHM 原样保留在原位置、不删除不覆盖不隔离，组件保持阻断，下次启动迁移再次失败仍阻断；原因文本如实写出：用哪个快照恢复了 / 按快照删除了失败迁移新建的文件 / 没有快照、文件保留在 <路径>，并指出更早含该库的快照名（不自动应用）。恢复失败写入 restore-failures.json 时附带本次快照名，重启重试只用该快照；没有 snapshot 的旧记录（Rust 写的）重试时不删除不覆盖，保持阻断。"
+  },
+  "evidence": "W12 冒烟 ⑪（11-core-recovery.spec.ts）复现：首启后 vfs.db 损坏，下一次启动版本读不出→不建快照→最新快照是首启的 copied_files=[]→vfs.db 被删除，恢复页却显示 Restored；再启动一次退出维护模式、新建空 vfs.db，notes_list 返回 []，用户的整个资料库从界面上消失。无待迁移项时迁移失败（702-708 不建快照）则用更早启动的快照覆盖现有数据库，丢失之后写入的数据。单测 rf-w20-restore-stale-snapshot.test.ts 在修复前全部失败（删除 vfs.db、覆盖后 no such table: __user_marker）。",
+  "userVisible": "核心恢复页：原因文本不再一律写 Restored，没有可信快照时写明文件保留在原位置（含路径）以及是否有更早的快照；损坏的库在之后每次启动都保持维护阻断，不会再进入空资料库。用户需要从备份恢复或手动处理，而不是静默丢数据。由 Rust 写入的旧 restore-failures.json 记录升级后不会自动按最新快照恢复，需手动处理。",
+  "dataCompat": "数据库文件与快照目录格式（startup_<时间>_<pid>/、metadata.json）不变，不产生隔离文件。restore-failures.json 每条记录可附加可选字段 snapshot（快照目录名），Rust 四个字段及顺序不变；旧版 Rust serde 忽略未知字段，Rust 重写记录时会丢掉该字段，之后的重试按“无可信快照”保持阻断。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    { "file": "host/platform/storage/tests/rf-w20-restore-stale-snapshot.test.ts", "name": "RF-W20-restore-stale-snapshot-deletes-db: a corrupt vfs.db next to the first-run snapshot is kept in place and stays blocked on every later start (Rust deletes it)" },
+    { "file": "host/platform/storage/tests/rf-w20-restore-stale-snapshot.test.ts", "name": "RF-W20-restore-stale-snapshot-deletes-db: a failure with no pending migrations never rolls the database back to an earlier startup's snapshot (Rust overwrites it)" },
+    { "file": "host/platform/storage/tests/rf-w20-restore-stale-snapshot.test.ts", "name": "RF-W20-restore-stale-snapshot-deletes-db: the WAL and SHM of a database without a trusted snapshot are left alone" },
+    { "file": "host/platform/storage/tests/rf-w20-restore-stale-snapshot.test.ts", "name": "RF-W20-restore-stale-snapshot-deletes-db: a restore failure records this run's snapshot, and the retry after a restart restores from exactly that snapshot" },
+    { "file": "host/platform/storage/tests/rf-w20-restore-stale-snapshot.test.ts", "name": "RF-W20-restore-stale-snapshot-deletes-db: a persisted failure without a recorded snapshot (written by the Rust version) never deletes the database from the latest snapshot" },
+    { "file": "host/platform/storage/tests/rf-w20-restore-stale-snapshot.test.ts", "name": "RF-W20-restore-stale-snapshot-deletes-db: a persisted failure whose recorded snapshot is gone keeps the database and says which snapshot is missing" }
+  ]
+}

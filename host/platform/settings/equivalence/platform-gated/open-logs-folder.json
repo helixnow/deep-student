@@ -1,0 +1,103 @@
+{
+  "domain": "log",
+  "commands": [
+    "open_logs_folder"
+  ],
+  "scenarios": [
+    {
+      "id": "log.logs_folder.open_all",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "open_logs_folder",
+          "args": {
+            "logType": "all"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "log.logs_folder.open_backend",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "open_logs_folder",
+          "args": {
+            "logType": "backend"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "log.logs_folder.open_frontend",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "open_logs_folder",
+          "args": {
+            "logType": "frontend"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "log.logs_folder.open_debug",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "open_logs_folder",
+          "args": {
+            "logType": "debug"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    },
+    {
+      "id": "log.logs_folder.open_crash",
+      "seed": "empty",
+      "steps": [
+        {
+          "cmd": "open_logs_folder",
+          "args": {
+            "logType": "crash"
+          }
+        }
+      ],
+      "capture": {
+        "events": true,
+        "db": [
+          "*"
+        ]
+      },
+      "normalize": []
+    }
+  ]
+}

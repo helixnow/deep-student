@@ -1,0 +1,55 @@
+{
+  "domain": "quick-assistant",
+  "commands": ["quick_assistant_show","quick_assistant_hide","quick_assistant_apply_enabled"],
+  "scenarios": [
+    {
+      "id": "quick_assistant.hide_before_window",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"quick_assistant_hide","args":{}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "quick_assistant.show_hide_cycle",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"quick_assistant_show","args":{}},
+        {"cmd":"quick_assistant_show","args":{}},
+        {"cmd":"quick_assistant_hide","args":{}},
+        {"cmd":"quick_assistant_hide","args":{}},
+        {"cmd":"quick_assistant_show","args":{}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "quick_assistant.apply_enabled_cycle",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"quick_assistant_apply_enabled","args":{"enabled":true}},
+        {"cmd":"quick_assistant_show","args":{}},
+        {"cmd":"quick_assistant_apply_enabled","args":{"enabled":false}},
+        {"cmd":"quick_assistant_apply_enabled","args":{"enabled":false}},
+        {"cmd":"quick_assistant_hide","args":{}},
+        {"cmd":"quick_assistant_apply_enabled","args":{"enabled":true}},
+        {"cmd":"quick_assistant_show","args":{}}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    },
+    {
+      "id": "quick_assistant.apply_enabled.bad_args",
+      "seed": "empty",
+      "steps": [
+        {"cmd":"quick_assistant_apply_enabled","args":{},"expect":"error"},
+        {"cmd":"quick_assistant_apply_enabled","args":{"enabled":"false"},"expect":"error"},
+        {"cmd":"quick_assistant_apply_enabled","args":{"enabled":0},"expect":"error"},
+        {"cmd":"quick_assistant_apply_enabled","args":{"enabled":null},"expect":"error"}
+      ],
+      "capture": {"events":true,"db":["*"]},
+      "normalize": []
+    }
+  ]
+}

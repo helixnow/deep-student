@@ -7,9 +7,12 @@
 import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { checkMock, relaunchMock } = vi.hoisted(() => ({
+const { checkMock, relaunchMock, invokeMock, confirmMock, shellMock } = vi.hoisted(() => ({
   checkMock: vi.fn(),
   relaunchMock: vi.fn(),
+  invokeMock: vi.fn(),
+  confirmMock: vi.fn(),
+  shellMock: vi.fn(),
 }));
 
 vi.mock('@/i18n', () => ({
@@ -21,6 +24,10 @@ vi.mock('@/i18n', () => ({
 vi.mock('@tauri-apps/plugin-updater', () => ({
   check: checkMock,
 }));
+
+vi.mock('@tauri-apps/api/core', () => ({ invoke: invokeMock }));
+vi.mock('@tauri-apps/plugin-dialog', () => ({ confirm: confirmMock }));
+vi.mock('@/ui-kernel/services/shell-platform', () => ({ readShellPlatform: shellMock }));
 
 vi.mock('@tauri-apps/plugin-process', () => ({
   relaunch: relaunchMock,
@@ -42,6 +49,7 @@ const CJK_PATTERN = /[\u4e00-\u9fff]/;
 describe('useAppUpdater error message i18n', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    shellMock.mockReturnValue(undefined);
     localStorage.clear();
     // 关闭启动自动检查，避免测试期间的定时器副作用
     localStorage.setItem('ds-update-frequency', 'never');
@@ -52,6 +60,24 @@ describe('useAppUpdater error message i18n', () => {
     const controller = result.current;
     rerender();
     expect(result.current).toBe(controller);
+  });
+
+  it('warns before installing and leaves the update available if the user cancels', async () => {
+    shellMock.mockReturnValue({ kind: 'desktop' });
+    invokeMock.mockResolvedValue({ incompatible: ['alice.old'], unchecked: [] });
+    const download = vi.fn();
+    checkMock.mockResolvedValue({ version: '0.21.0', downloadAndInstall: download });
+    confirmMock.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    const { result } = renderHook(() => useAppUpdater());
+
+    await act(async () => { await result.current.downloadAndInstall(); });
+    expect(invokeMock).toHaveBeenCalledWith('plugin:manager|update-impact', { version: '0.21.0' });
+    expect(confirmMock).toHaveBeenCalledWith(expect.stringContaining('common:update.pluginImpactIncompatible'), expect.anything());
+    expect(download).not.toHaveBeenCalled();
+    expect(result.current.downloading).toBe(false);
+
+    await act(async () => { await result.current.downloadAndInstall(); });
+    expect(download).toHaveBeenCalledTimes(1);
   });
 
   it('uses the i18n unavailable key when check() finds no update before install', async () => {
@@ -109,7 +135,7 @@ describe('useAppUpdater error message i18n', () => {
     expect(result.current.error!.message).not.toMatch(CJK_PATTERN);
   });
 
-  it('uses the i18n relaunch key when a post-install error is thrown after Finished', async () => {
+  it('reports an install failure when installation throws after download Finished', async () => {
     checkMock.mockResolvedValue({
       version: '99.0.0',
       date: undefined,
@@ -131,8 +157,8 @@ describe('useAppUpdater error message i18n', () => {
     expect(relaunchMock).not.toHaveBeenCalled();
     expect(result.current.downloading).toBe(false);
     expect(result.current.error).toEqual({
-      phase: 'relaunch',
-      message: 'settings:about.update.error.relaunch',
+      phase: 'install',
+      message: 'app bundle replaced',
     });
     expect(result.current.error!.message).not.toMatch(CJK_PATTERN);
   });

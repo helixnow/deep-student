@@ -1,0 +1,13 @@
+{
+  "id": "RF-W01-package-manager-wiring",
+  "kind": "deliberate",
+  "status": "proposed",
+  "title": "可信离线安装、锁指针与同意启用事务接线",
+  "rust": { "file": "src-tauri/src/plugins/manager.rs", "line": 269, "behavior": "没有社区 .dsplugin 安装与版本/权限同意流程" },
+  "fix": { "files": ["host/kernel/plugin-admin.ts"], "behavior": "主窗口本地来源 install(path,revision) 调 W34 PluginPackages，实际应用版本/平台/已装 map 校验，安装后停用；profile 失败调用 restore 并报告 rollback。社区启用先核 W32 同意，不匹配返回精确 id/version/permissions，失败恢复 profile/lock；安全模式禁止写命令。" },
+  "evidence": "真实 ZIP、FilesService、PluginPackages 与 HostRuntime 测试：安装停用→未同意拒绝不写 revision→同意→启用→停用→卸载；注入 profile 写失败后指针恢复。",
+  "userVisible": "可离线安装插件；安装不代表同意或运行；失败返回 rollback 状态。安全模式仅官方。",
+  "dataCompat": "沿用 W34 lock v1 和既有 profile；回撤命令不删除 release。UI-only 包暂拒绝 PLUGIN_HOST_REQUIRED，保留旧指针。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [{ "file": "host/kernel/tests/plugin-manager.test.ts", "name": "RF-W01-package-manager-wiring: installs a real ZIP disabled, grants exact consent, enables, disables and uninstalls its lock pointer" }]
+}

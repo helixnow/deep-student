@@ -1,0 +1,306 @@
+{
+  "schema": "g3-template-baseline-delta/v1",
+  "at": "2026-11-06T15:58:53.599Z",
+  "receipt": {
+    "file": "fixtures/differential/wp043/builds/20261106023719-bc16bc/receipt.json",
+    "rustSourceTree": "cff4c0cc6eddd710a71e87cb814bf20bc0384516",
+    "templateFile": "src/data/builtin-templates.json",
+    "sha256": "8cc8d004f056656c8a12259782be4646c0356a00d094eebdf0783ea7d0ca78b9"
+  },
+  "currentMain": {
+    "head": "84b290accaa2317a479e4e64a3b3e94bd941c28e",
+    "templateFile": "src-tauri/src/data/builtin-templates.json",
+    "sha256": "9932e2dcd6b0fc6aad17f1ccf04a8ba9c368518efd812ec18b308a43e8e03cc6"
+  },
+  "evidenceSnapshot": {
+    "file": "fixtures/differential/g3/runs/full/DIFF-TRIAGE.json.gz",
+    "sha256": "6f9de78fce589f697388d0a071c21c203f81eeda16af6ca60218232cd1900776"
+  },
+  "templates": [
+    {
+      "id": "design-swiss",
+      "oldVersion": "2.1.7",
+      "mainVersion": "2.1.8",
+      "columns": [
+        {
+          "column": "version",
+          "oldValueSha256": "560ef8d2a73d0f3db2f228414e79c23059187dff019ff6acce6f79765f438727",
+          "mainValueSha256": "9d7c4d9166887ca13cc12e4c282e886f47ab3e745905e4bed55ad9d4d0c79d6d"
+        },
+        {
+          "column": "css_style",
+          "oldValueSha256": "6f0ebe32ecc02b8eaba929737a3a44d333d60e270e82049c671af3c17d77e8c3",
+          "mainValueSha256": "ddbf2da9b2137df15ce10501687d1dddaba8e33fd9254262ba7cdef7c2dfa6c5"
+        },
+        {
+          "column": "front_template",
+          "oldValueSha256": "619274bb9976d7561b564fb25c2083249ea5b32aaa1ede06fc5bb38430cc6089",
+          "mainValueSha256": "4bb4a953fa74b476c941242171edc0e38a67809f7440560e0d4c00afbb2333e9"
+        }
+      ]
+    },
+    {
+      "id": "design-polaroid",
+      "oldVersion": "2.2.0",
+      "mainVersion": "2.2.1",
+      "columns": [
+        {
+          "column": "version",
+          "oldValueSha256": "577d5c7fac7338f60a20c6934da04f6b446391b9b58f775ee24b2bca79143aed",
+          "mainValueSha256": "ba568f36f3e1af00b143657ea89132e74bba3347f93b8bbdcf25a7068f3f906a"
+        },
+        {
+          "column": "css_style",
+          "oldValueSha256": "112431ecfef9befe894fecc0378cab4c1397b7931dcda02e7389616f972a81b4",
+          "mainValueSha256": "0dadd012dcc13aac8e47b0c5b7394fd28d9d62691a2bdf381e651e0b7fba9673"
+        },
+        {
+          "column": "front_template",
+          "oldValueSha256": "ff581a5f6429ef6d8e43eae561d18f519d4aa639bc13eb9ebb49b8855ceb90c7",
+          "mainValueSha256": "c5eeaaec40bf25f74ec09e51a4a897ba2ff1bfa2db6f8cf328ebd6fc97417c28"
+        }
+      ]
+    },
+    {
+      "id": "design-architect",
+      "oldVersion": "2.2.0",
+      "mainVersion": "2.2.1",
+      "columns": [
+        {
+          "column": "version",
+          "oldValueSha256": "577d5c7fac7338f60a20c6934da04f6b446391b9b58f775ee24b2bca79143aed",
+          "mainValueSha256": "ba568f36f3e1af00b143657ea89132e74bba3347f93b8bbdcf25a7068f3f906a"
+        },
+        {
+          "column": "css_style",
+          "oldValueSha256": "35be5bf8870b756cbe0d7d6f959382d78a9396b958b63998863760fa82af1a5c",
+          "mainValueSha256": "74635e7c0a26a71df841ec9b56d2255d593ebdfff3d15bccae3091882cb279a4"
+        },
+        {
+          "column": "front_template",
+          "oldValueSha256": "2c0f85f76cdd9d282b431631fff859b91f3e95273c7c2a826acbd43afbb5454d",
+          "mainValueSha256": "040d8eeb7682fb089c179b764cce4e985dc284c233886b312b5534e43b31323f"
+        }
+      ]
+    },
+    {
+      "id": "design-lexicon",
+      "oldVersion": "2.1.3",
+      "mainVersion": "2.1.4",
+      "columns": [
+        {
+          "column": "version",
+          "oldValueSha256": "d53c8586dba974bc2859b682fa4dfa159a276164532ef7ce4bec65e8087dbb9a",
+          "mainValueSha256": "dff9cb6c21e4eeae2be03d12b7c3f8b0b363fddb5db312248e4c544d725b84f6"
+        },
+        {
+          "column": "css_style",
+          "oldValueSha256": "b3692124ff064b3c9f7803e3192d6d4e8f8b79b04ece89dd6194a32cc2e85119",
+          "mainValueSha256": "58ba47af593c6c808083626a2ac5f06a41d4a92e3d458b0d4497e9bfa91ebdf0"
+        },
+        {
+          "column": "front_template",
+          "oldValueSha256": "94a58c55a5636a1dc01e25309235db749d4b926853c741f6ce038dfc26fd440f",
+          "mainValueSha256": "15f661886c4bb43a0c4a18c975ec0d223675215a67440e3c168ab58ad86ea18a"
+        }
+      ]
+    },
+    {
+      "id": "design-botanical",
+      "oldVersion": "2.2.0",
+      "mainVersion": "2.2.1",
+      "columns": [
+        {
+          "column": "version",
+          "oldValueSha256": "577d5c7fac7338f60a20c6934da04f6b446391b9b58f775ee24b2bca79143aed",
+          "mainValueSha256": "ba568f36f3e1af00b143657ea89132e74bba3347f93b8bbdcf25a7068f3f906a"
+        },
+        {
+          "column": "css_style",
+          "oldValueSha256": "5095702e89ef654c55fb57868688842224444a62f389349ee12af4402fa37f7d",
+          "mainValueSha256": "4b73b20ba594fda9a6d96fbf4ee2854957a7e3deca048e98e1c77a77f30f96f6"
+        },
+        {
+          "column": "front_template",
+          "oldValueSha256": "4af25e5162e3c493c8a506223a25dea936d3e2e28f6d1ffe9a3b70a42bb61091",
+          "mainValueSha256": "6d16db64b5a5a58ba96fe85f4e698c3715e002bdb90668770111007163055e2c"
+        }
+      ]
+    },
+    {
+      "id": "design-eink",
+      "oldVersion": "2.1.3",
+      "mainVersion": "2.1.4",
+      "columns": [
+        {
+          "column": "version",
+          "oldValueSha256": "d53c8586dba974bc2859b682fa4dfa159a276164532ef7ce4bec65e8087dbb9a",
+          "mainValueSha256": "dff9cb6c21e4eeae2be03d12b7c3f8b0b363fddb5db312248e4c544d725b84f6"
+        },
+        {
+          "column": "css_style",
+          "oldValueSha256": "a6ac390cd45508cdc6279387208e20fb7def306ab2bf07394bb5c50bbc3758e1",
+          "mainValueSha256": "67e454f2f549b86cc5ea0a1713a3a4898b33dd346ed819b7a2f9f0770492a204"
+        },
+        {
+          "column": "front_template",
+          "oldValueSha256": "787974839c046c4e2e6c740a4e84ccef86afe694df85d1349347a94050ccc148",
+          "mainValueSha256": "5d94f891bf68c071484389d4c6762308001bee3dd576604bc78e121f119fc87c"
+        }
+      ]
+    },
+    {
+      "id": "design-monograph",
+      "oldVersion": "1.0.1",
+      "mainVersion": "1.0.2",
+      "columns": [
+        {
+          "column": "version",
+          "oldValueSha256": "7880ed586dd70a4229ac2eb8dfa0e3d09cd66c6c688fac0699f48923e8cccf09",
+          "mainValueSha256": "a36636638297f3a3f5deec13aacd109c0494a5e322d27953c82ba35c588b3aaf"
+        },
+        {
+          "column": "css_style",
+          "oldValueSha256": "b531bee38b7093fc1d658b52a8877a974d14b83f40ab9b882d6012072dd8c38e",
+          "mainValueSha256": "d2e15d291a858f3640f56d35b8631b889cbeca5f51d83a22b87fd6e7f063109c"
+        },
+        {
+          "column": "front_template",
+          "oldValueSha256": "286f763f3ac7bd1d29ce21015cfaaada422772d02f70b2433d80ed0e68231d64",
+          "mainValueSha256": "e5d8fb3d684e0e44007438565dbf3a69f05b19931b92fe9752ea1c993e9a57b8"
+        }
+      ]
+    },
+    {
+      "id": "design-footnote",
+      "oldVersion": "1.0.1",
+      "mainVersion": "1.0.2",
+      "columns": [
+        {
+          "column": "version",
+          "oldValueSha256": "7880ed586dd70a4229ac2eb8dfa0e3d09cd66c6c688fac0699f48923e8cccf09",
+          "mainValueSha256": "a36636638297f3a3f5deec13aacd109c0494a5e322d27953c82ba35c588b3aaf"
+        },
+        {
+          "column": "css_style",
+          "oldValueSha256": "dcf454be484fd804e1d38f72769d812e9428d3db557005dd3c5f4e9132a9c5a3",
+          "mainValueSha256": "4fa9037fae6937ad9330e7db5bb2a8d9a70b22109ee8150161bfb904e357fd21"
+        },
+        {
+          "column": "front_template",
+          "oldValueSha256": "659587b240c6a9a9d6ca8264de8dd8b6245d63618bcc30450124d67395d3694c",
+          "mainValueSha256": "473779bf687a1533f017d88d302a39597ec567b42efab5a269873d63152a5b0a"
+        }
+      ]
+    },
+    {
+      "id": "design-marginalia",
+      "oldVersion": "1.0.1",
+      "mainVersion": "1.0.2",
+      "columns": [
+        {
+          "column": "version",
+          "oldValueSha256": "7880ed586dd70a4229ac2eb8dfa0e3d09cd66c6c688fac0699f48923e8cccf09",
+          "mainValueSha256": "a36636638297f3a3f5deec13aacd109c0494a5e322d27953c82ba35c588b3aaf"
+        },
+        {
+          "column": "css_style",
+          "oldValueSha256": "717cfc9da177dc6794f1c19bcf9cc7651483346b34fcfe1179ec5071208cea0e",
+          "mainValueSha256": "61d92993b023957091834e9b570c23b10663a94dd33f5af277178b54babeba85"
+        },
+        {
+          "column": "front_template",
+          "oldValueSha256": "10c1373c2790457a6315166d19d3e2f09384f9b8fc3f3dca5ada5fb1b68f1101",
+          "mainValueSha256": "ff3814d795b49aa2c12ea4355b6ca8b8832266664a9d90d4a045cfa168943863"
+        }
+      ]
+    },
+    {
+      "id": "design-seminar",
+      "oldVersion": "1.0.1",
+      "mainVersion": "1.0.2",
+      "columns": [
+        {
+          "column": "version",
+          "oldValueSha256": "7880ed586dd70a4229ac2eb8dfa0e3d09cd66c6c688fac0699f48923e8cccf09",
+          "mainValueSha256": "a36636638297f3a3f5deec13aacd109c0494a5e322d27953c82ba35c588b3aaf"
+        },
+        {
+          "column": "css_style",
+          "oldValueSha256": "759e5bbcb941af60663abf0e091715be31ceb1bb5ea58e31d35a554fa97a349a",
+          "mainValueSha256": "3e121e786eaec523d1f325a653c3df2d3c21abe2907967dc7f056540c7079a19"
+        },
+        {
+          "column": "front_template",
+          "oldValueSha256": "5e390207d28572ff0ce50dfcf1f4f016bb02b868676e562c3e35ae8a92f6c011",
+          "mainValueSha256": "26dd23e9e46461c9c969ce133b69aa19963131bc888912065735cc36bc0948d8"
+        }
+      ]
+    },
+    {
+      "id": "design-nomenclature",
+      "oldVersion": "1.0.1",
+      "mainVersion": "1.0.2",
+      "columns": [
+        {
+          "column": "version",
+          "oldValueSha256": "7880ed586dd70a4229ac2eb8dfa0e3d09cd66c6c688fac0699f48923e8cccf09",
+          "mainValueSha256": "a36636638297f3a3f5deec13aacd109c0494a5e322d27953c82ba35c588b3aaf"
+        },
+        {
+          "column": "css_style",
+          "oldValueSha256": "a0706de095a55470ae695aed8ea371aec56575d8b7de9d821f9dc933f9d1a64e",
+          "mainValueSha256": "8a42bb93249e464f629075cb02aef454f0d18142c730c0003be55bf1e5114f27"
+        },
+        {
+          "column": "front_template",
+          "oldValueSha256": "6d24cbd3245bd368a30eacc9a844badf17a57659eda6597799a754c13a78b6c3",
+          "mainValueSha256": "3366608b927780c420fdbececb274e8dfb4c99545831df9dfb34bbe0464e8e08"
+        }
+      ]
+    }
+  ],
+  "samples": [
+    {
+      "id": "design-architect",
+      "column": "css_style",
+      "sampleOccurrences": 887,
+      "compare": {
+        "file": "fixtures/differential/g3/runs/full/compare/host__plugins__anki__equivalence__cards-crud/anki.cards.builtin-template-referenced-delete-deactivates.compare.json.gz",
+        "sha256": "d34e01e3b3908e828c6ffa6933f0311418ff2a57f96b4b50bd0bf8683ac80f01"
+      },
+      "A_equals_receiptSourceValue": true,
+      "B_equals_mainSourceValue": true,
+      "AValueSha256": "3022f3f5cebf1bc1f7186688d8ce102f178308229d42a9cf04346db1a4ea78ed",
+      "BValueSha256": "f8de0fcaa8b789041aeea05f49443d98f2d0d4dc10aeaad6412d68a3847417c0"
+    },
+    {
+      "id": "design-architect",
+      "column": "front_template",
+      "sampleOccurrences": 887,
+      "compare": {
+        "file": "fixtures/differential/g3/runs/full/compare/host__plugins__anki__equivalence__cards-crud/anki.cards.builtin-template-referenced-delete-deactivates.compare.json.gz",
+        "sha256": "d34e01e3b3908e828c6ffa6933f0311418ff2a57f96b4b50bd0bf8683ac80f01"
+      },
+      "A_equals_receiptSourceValue": true,
+      "B_equals_mainSourceValue": true,
+      "AValueSha256": "ece14bd3db7c718459f20a546e076a507f666410897cb38d48d90bdd4fb66cec",
+      "BValueSha256": "cac61ee5a463646af583067cf045839f4c8c7b08c785733f703dd0e2d3dd6597"
+    },
+    {
+      "id": "design-architect",
+      "column": "version",
+      "sampleOccurrences": 882,
+      "compare": {
+        "file": "fixtures/differential/g3/runs/full/compare/host__plugins__anki__equivalence__cards-crud/anki.cards.builtin-template-referenced-delete-deactivates.compare.json.gz",
+        "sha256": "d34e01e3b3908e828c6ffa6933f0311418ff2a57f96b4b50bd0bf8683ac80f01"
+      },
+      "A_equals_receiptSourceValue": true,
+      "B_equals_mainSourceValue": true,
+      "AValueSha256": "edc8e395a5182e3b231816e191b303407d511f70c1d9cb6d532927cc559c507c",
+      "BValueSha256": "d01c4e9bf10ed63e0de02bdaa54ae5a279486e9125f5febcc5d8bb3fab332568"
+    }
+  ],
+  "classification": "source-baseline version delta; not a normalization approval, not a proven B implementation defect, no receipt changes",
+  "limit": "Only the listed representative samples are proven A=old/B=main; other rows and artifact counts still require owner review."
+}

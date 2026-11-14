@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import type { VendorConfig } from '@/types';
@@ -64,7 +64,7 @@ describe('OpenCodeGoUsageSection', () => {
     expect(fetcher).toHaveBeenCalledWith('builtin-opencode-go');
   });
 
-  it('shows the backend error and allows a manual refresh', async () => {
+  it('recovers from the backend error when the connection returns', async () => {
     const fetcher = vi
       .fn()
       .mockRejectedValueOnce(new Error('OpenCode Go API Key 已过期'))
@@ -72,7 +72,8 @@ describe('OpenCodeGoUsageSection', () => {
     render(<OpenCodeGoUsageSection vendor={vendor} active fetcher={fetcher} />);
 
     expect(await screen.findByText('OpenCode Go API Key 已过期')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: '刷新用量' }));
+    expect(screen.queryByRole('button', { name: '刷新用量' })).toBeNull();
+    fireEvent(window, new Event('online'));
     await waitFor(() => expect(screen.getByTestId('opencode-go-usage-weekly')).toHaveTextContent('本周3%'));
     expect(fetcher).toHaveBeenCalledTimes(2);
   });

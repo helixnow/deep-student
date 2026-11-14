@@ -6,7 +6,11 @@
 
 import type { GenerativeUIIntent } from '../types';
 import { tryParsePartialIntent } from '../parser';
-import { generativeUIIntentSchema, parseGenerativeUIIntent } from '../schema';
+import {
+  generativeUIIntentSchema,
+  parseGenerativeUIIntent,
+  recoverGenerativeUIIntent,
+} from '../schema';
 import {
   appendGenerativeUIStreamContent,
   finalizeGenerativeUIStream,
@@ -24,7 +28,15 @@ export interface GenerativeUIBlockOutput {
 
 function validateIntentObject(value: unknown): GenerativeUIIntent | null {
   const result = generativeUIIntentSchema.safeParse(value);
-  return result.success ? (result.data as GenerativeUIIntent) : null;
+  if (result.success) return result.data as GenerativeUIIntent;
+
+  // 整份 schema 失败（成员块缺字段 / version 漂移 / 少量非法块）时做块级恢复，
+  // 只要还剩合法块就返回可渲染意图，而不是整块丢弃。
+  const recovered = recoverGenerativeUIIntent(value);
+  if (recovered && recovered.intent.blocks.length > 0) {
+    return recovered.intent as GenerativeUIIntent;
+  }
+  return null;
 }
 
 /** 终态 intent 规范化：对象过 zod；字符串走严格解析 */

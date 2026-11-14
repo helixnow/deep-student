@@ -47,10 +47,12 @@ describe('DesktopShellSidebarLayers', () => {
     expect(document.activeElement).toBe(input);
     view.rerender(<DesktopShellSidebarLayers activeKind="settings" layers={layers} />);
     const main = view.container.querySelector<HTMLElement>('[data-sidebar-layer="main"]')!;
-    expect(main.hidden).toBe(true);
+    expect(main.dataset.sidebarPhase).toBe('exit');
     expect(main.inert).toBe(true);
     expect(main.getAttribute('aria-hidden')).toBe('true');
     expect(document.activeElement).not.toBe(input);
+    fireEvent.animationEnd(main);
+    expect(main.hidden).toBe(true);
     view.rerender(<DesktopShellSidebarLayers activeKind="main" layers={layers} />);
     expect(main.hidden).toBe(false);
     expect(main.inert).toBe(false);

@@ -13,7 +13,7 @@ import { clearAdapterErrorFlag, reportAdapterError } from '../errors/adapterErro
 import { streamingBlockSaver } from '../../core/middleware/autoSave';
 import type { BackendEvent } from '../../core/middleware/eventBridge';
 import { clearEventContext } from '../../core/middleware/eventBridge';
-import { logMultiVariant } from '@/debug-panel/plugins/MultiVariantDebugPlugin';
+import { logMultiVariant } from '@/shared/debug/channels/multiVariant';
 import { autoSave } from '../../core/middleware/autoSave';
 import { chunkBuffer } from '../../core/middleware/chunkBuffer';
 // 🔧 优化：sessionManager 仅用于获取元数据，不再用于获取 Store 状态

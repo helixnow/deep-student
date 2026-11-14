@@ -1,0 +1,27 @@
+{
+  "id": "RF-W06-browser-content-label-taken",
+  "kind": "deliberate",
+  "status": "approved",
+  "approvedBy": "main",
+  "approvedAt": "2026-11-07T15:02:00+08:00",
+  "title": "页面先用 create_webview_window 建了 label 为 browser-content 的应用窗口时，内置浏览器的创建按 Tauri 撞 label 的报错失败，不把这个应用窗口当作浏览器交给 Agent",
+  "rust": {
+    "file": "src-tauri/crates/dstu-browser/src/browser/window.rs",
+    "line": 413,
+    "behavior": "get_or_create_content_window_desktop 先 app.get_webview(BROWSER_CONTENT_LABEL)，有就直接返回；页面建的同名应用窗口的 webview 因而被当作已有的 browser-content，之后 Agent 的导航、执行脚本、截图都作用在这个应用窗口上（它用的是应用自己的会话，不是浏览器 profile 目录）"
+  },
+  "fix": {
+    "files": ["electron/shell/browser-surface.ts"],
+    "behavior": "createContentWindow 在建会话与原生视图之前检查是否已有同名应用窗口（main 经 runtime.windows.get 回答）；有则以 Rust 同样的前缀加 Tauri 的撞 label 文本报错：内嵌为 `failed to create embedded browser-content webview: a webview with label `browser-content` already exists`，Linux detached 为 `failed to create detached browser-content window: a window with label `browser-content` already exists`（tauri-2.11.5 error.rs:38-42）。不建浏览器面，原窗口不受影响"
+  },
+  "evidence": "安全上的产品决策。Electron 的外壳把应用窗口与浏览器 webview 分开登记，复用同名应用窗口就意味着同一个 label 下有两样东西，命令路由不再确定；而按 Rust 那样把应用窗口交给 Agent，Agent 会在应用会话里导航和执行脚本。前端没有建这个 label 的调用方（W23 交接 5，W23-PROGRESS.md），反方向（browser-content 在用时页面建同名窗口）W23 已按 Tauri 报错（58ddcbc0）。electron/tests/browser-label-taken-host.test.ts 用真实 main.ts 验证；把 main 的判断改成恒为 false 时，浏览器面会照常建出来，用例失败。",
+  "userVisible": "正常使用不可感知：应用前端从不建这个 label 的窗口。只有页面（例如被注入的脚本）先占用该 label 时，Agent 打开内置浏览器会得到上述错误，而 Rust 版会让 Agent 操作那个应用窗口。",
+  "dataCompat": "不涉及落库数据、同步载荷与备份格式。",
+  "g3": { "affects": false, "selectors": [] },
+  "tests": [
+    {
+      "file": "electron/tests/browser-label-taken-host.test.ts",
+      "name": "RF-W06-browser-content-label-taken: createContentWindow fails with the Tauri label error and creates no surface"
+    }
+  ]
+}
