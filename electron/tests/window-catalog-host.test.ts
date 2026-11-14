@@ -56,6 +56,11 @@ it('late Host service discovers existing main, native focus, and a live fallback
     child.kill('SIGKILL');
     await closed;
     await new Promise<void>((resolve) => server.close(() => resolve()));
-    rmSync(dir, { recursive: true, force: true });
+    try {
+      rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== 'ENOTEMPTY' && code !== 'EBUSY') throw error;
+    }
   }
 }, 45_000);
