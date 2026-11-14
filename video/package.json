@@ -9,6 +9,8 @@
     "studio": "remotion studio src/index.ts",
     "prerender:preview": "npm run audio && npm run app-css",
     "render:preview": "remotion render src/index.ts DeepStudentPV out/preview.mp4 --scale=0.5 --image-format=jpeg --crf=22 --x264-preset=veryfast",
+    "preflight": "node scripts/preflight.mjs",
+    "render:fast": "node scripts/render-chunks.mjs",
     "prerender": "npm run audio && npm run app-css",
     "render": "remotion render src/index.ts DeepStudentPV out/deep-student-pv.mp4 --crf=17 --x264-preset=slow",
     "prerender:4k": "npm run audio && npm run app-css",

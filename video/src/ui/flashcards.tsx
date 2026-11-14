@@ -594,7 +594,7 @@ const FcMemoryPanel = ({ t, start, m }: { t: number; start: number; m: FcMemoryD
   const retention = m.trueRetention;
   const figures: Array<[string, string, string]> = [
     [S.fcMemory.averageLabel, memPercent(m.averageRetrievability), S.fcMemory.averageHint(m.memorizedCount)],
-    [S.fcMemory.trueRetentionLabel(retention.windowDays), memPercent(retention.passed / retention.reviews), S.fcMemory.trueRetentionHint(retention.reviews)],
+    [S.fcMemory.trueRetentionLabel(retention.windowDays), memPercent(retention.passed / retention.reviews), S.fcMemory.trueRetentionHint(retention.passed, retention.reviews)],
     [S.fcMemory.desiredLabel, memPercent(m.desiredRetention), S.fcMemory.desiredHint],
   ];
   return (

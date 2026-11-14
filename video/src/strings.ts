@@ -210,7 +210,7 @@ export const S = {
     averageLabel: tr('flashcards', 'stats.memory.averageLabel'),
     averageHint: (n: number) => tr('flashcards', 'stats.memory.averageHint_other', { count: n }),
     trueRetentionLabel: (days: number) => tr('flashcards', 'stats.memory.trueRetentionLabel', { days }),
-    trueRetentionHint: (n: number) => tr('flashcards', 'stats.memory.trueRetentionHint_other', { count: n }),
+    trueRetentionHint: (passed: number, total: number) => tr('flashcards', 'stats.memory.trueRetentionHint', { passed, total }),
     desiredLabel: tr('flashcards', 'stats.memory.desiredLabel'),
     desiredHint: tr('flashcards', 'stats.memory.desiredHint'),
     recentTitle: (n: number) => tr('flashcards', 'stats.memory.recentTitle_other', { count: n }),
