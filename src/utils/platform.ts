@@ -41,6 +41,11 @@ export const isAndroid = (): boolean => {
   return !!text && (text[0].includes('android') || text[1].includes('android'));
 };
 
+export const isAndroidMobileShell = (): boolean => {
+  const shell = readShellPlatform();
+  return shell?.kind === 'mobile' && shell.os === 'android';
+};
+
 export const isIOS = (): boolean => {
   const shell = readShellPlatform();
   if (shell) return shell.os === 'ios';

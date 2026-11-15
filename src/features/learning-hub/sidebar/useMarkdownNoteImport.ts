@@ -7,6 +7,9 @@ import type { DstuNode } from '@/dstu';
 import { VfsError, VfsErrorCode, err } from '@/shared/result';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { pLimit } from '@/utils/concurrency';
+import { isAndroidMobileShell } from '@/utils/platform';
+import { pickWebViewFiles } from '@/utils/pickWebViewFiles';
+import { getFileExtension } from './sidebarConstants';
 import { dstuNodeToResourceListItem } from '../types';
 import type { LearningHubSidebarProps } from '../types';
 import { summarizeFailedMarkdownFiles } from '../dragDropRouting';
@@ -67,6 +70,12 @@ export function useMarkdownNoteImport({
     const results = await Promise.all(
       files.map((file) => limit(async () => {
         try {
+          if (!['md', 'markdown'].includes(getFileExtension(file.name))) {
+            throw new Error(t('finder.markdownImport.filterName'));
+          }
+          if (file.size > 10 * 1024 * 1024) {
+            throw new Error(t('finder.markdownImport.tooLarge', { defaultValue: 'Markdown 文件不能超过 10 MB' }));
+          }
           const content = await file.text();
           const result = await notesDstuAdapter.importMarkdownContent(file.name, content, folderId);
           return { fileName: file.name, result };
@@ -145,6 +154,7 @@ export interface ImportMarkdownNoteFromDialogContext {
   ensureCreatableView: () => boolean;
   t: SidebarT;
   importMarkdownPathNotes: MarkdownNoteImport['importMarkdownPathNotes'];
+  importMarkdownFileObjects: MarkdownNoteImport['importMarkdownFileObjects'];
   isMountedRef: React.MutableRefObject<boolean>;
   handleRefresh: () => Promise<void>;
   openImportedMarkdownNote: MarkdownNoteImport['openImportedMarkdownNote'];
@@ -157,6 +167,7 @@ export async function importMarkdownNoteFromDialog(
     ensureCreatableView,
     t,
     importMarkdownPathNotes,
+    importMarkdownFileObjects,
     isMountedRef,
     handleRefresh,
     openImportedMarkdownNote,
@@ -167,21 +178,25 @@ export async function importMarkdownNoteFromDialog(
   if (!ensureCreatableView()) return;
 
   try {
-    const selected = await dialogOpen({
-      multiple: true,
-      filters: [{
-        name: t('finder.markdownImport.filterName'),
-        extensions: ['md', 'markdown'],
-      }],
-      title: t('finder.markdownImport.selectFiles'),
-    });
-
-    if (!selected || (Array.isArray(selected) && selected.length === 0)) {
-      return;
+    let result: Awaited<ReturnType<MarkdownNoteImport['importMarkdownPathNotes']>>;
+    if (isAndroidMobileShell()) {
+      // Some document providers report Markdown as application/octet-stream.
+      const files = await pickWebViewFiles(true);
+      if (files.length === 0) return;
+      result = await importMarkdownFileObjects(files, folderId);
+    } else {
+      const selected = await dialogOpen({
+        multiple: true,
+        filters: [{
+          name: t('finder.markdownImport.filterName'),
+          extensions: ['md', 'markdown'],
+        }],
+        title: t('finder.markdownImport.selectFiles'),
+      });
+      if (!selected || (Array.isArray(selected) && selected.length === 0)) return;
+      result = await importMarkdownPathNotes(Array.isArray(selected) ? selected : [selected], folderId);
     }
-
-    const filePaths = Array.isArray(selected) ? selected : [selected];
-    const { importedNodes, failedCount, firstError, failedFiles } = await importMarkdownPathNotes(filePaths, folderId);
+    const { importedNodes, failedCount, firstError, failedFiles } = result;
 
     if (!isMountedRef.current) return;
 

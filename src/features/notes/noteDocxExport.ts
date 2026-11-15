@@ -73,6 +73,7 @@ export async function exportNoteAsDocx(
     const fileName = docxFileName(spec.title || title);
     const saved = await fileManager.saveBinaryFile({
       data: base64ToBytes(b64),
+      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       title: t('chrome.export_docx'),
       defaultFileName: fileName,
       filters: [{ name: 'Word', extensions: ['docx'] }],

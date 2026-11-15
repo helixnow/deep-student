@@ -5,7 +5,7 @@
  *   CLICK_WINDOW_MS 内第一次回到前台，按「点了通知」处理，之后再回前台不跳转
  */
 import { addTypedEventListener } from '@/events';
-import { isMobilePlatform } from './platform';
+import { isAndroidMobileShell, isMobilePlatform } from './platform';
 import { isTauriRuntime } from './shared';
 
 export type NotificationTargetHandler = (target: string) => void;
@@ -38,7 +38,20 @@ function onReturnToForeground(): void {
 export function initNotificationRouting(onTarget: NotificationTargetHandler): () => void {
   handler = onTarget;
   const disposers: Array<() => void> = [];
-  if (isMobilePlatform()) {
+  if (isAndroidMobileShell()) {
+    let stopped = false;
+    void (async () => {
+      const [{ invoke }, { listen }] = await Promise.all([import('@tauri-apps/api/core'), import('@tauri-apps/api/event')]);
+      const unlisten = await listen<{ target: string }>('deepstudent://notification-action', ({ payload }) => {
+        if (!stopped) onTarget(payload.target);
+      });
+      if (stopped) { unlisten(); return; }
+      disposers.push(unlisten);
+      // Attach the native listener last so retained cold-start actions reach this handler.
+      await invoke('plugin:notification|start_action_listener');
+    })().catch((error: unknown) => console.warn('[NotificationRouting] Android registration failed:', error));
+    disposers.push(() => { stopped = true; });
+  } else if (isMobilePlatform()) {
     if (isTauriRuntime) {
       let stopped = false;
       void import('@tauri-apps/plugin-notification')

@@ -12,6 +12,7 @@
  */
 import type {
   VectorConnection,
+  VectorDatabaseOwner,
   VectorRow,
   VectorService,
   VectorTable,
@@ -303,6 +304,7 @@ class VectorLanceTable implements LanceTable {
 }
 
 class VectorLanceConnection implements LanceConnection {
+  get supportsApproximateSearch(): boolean { return this.connection.supportsApproximateSearch !== false; }
   private readonly extras: VectorConnectionExtras;
   private knownTables: Set<string> | null = null;
 
@@ -359,8 +361,8 @@ export class VectorLanceEngine implements LanceEngineService {
     this.vector = vector;
   }
 
-  async connect(path: string): Promise<LanceConnection> {
-    return new VectorLanceConnection(await this.vector.connect(path));
+  async connect(path: string, owner?: VectorDatabaseOwner): Promise<LanceConnection> {
+    return new VectorLanceConnection(await this.vector.connect(path, owner));
   }
 }
 
@@ -383,8 +385,8 @@ export class LifecycleLanceEngine implements LanceEngineService {
     this.current = createLanceEngine(vector);
   }
 
-  async connect(path: string): Promise<LanceConnection> {
-    return this.current.connect(path);
+  async connect(path: string, owner?: VectorDatabaseOwner): Promise<LanceConnection> {
+    return this.current.connect(path, owner);
   }
 }
 

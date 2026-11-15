@@ -6,6 +6,7 @@
  * - 裸实例：`dispose()` 关连接后可再开库；`shutdown()` 是终态，之后会开连接的入口都抛 `TX_CLOSED`，维护屏障不开连接，照常可用。
  * - 插件卸载：`beforeShutdown` 的收尾在关库前执行（后登记先执行，失败不阻止关库），之后卸载前取走的引用一律 `TX_CLOSED`。
  */
+import { createWebCrypto } from '../../../host/platform/crypto/web.ts';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -145,7 +146,7 @@ async function desktopUnload(): Promise<UnloadSide> {
 
 async function mobileUnload(): Promise<UnloadSide> {
   const runtime = nodeRuntime(await nodeSqlite());
-  const host = await createTestHost({ provide: { sqliteRuntime: runtime } });
+  const host = await createTestHost({ provide: { crypto: createWebCrypto(), files: { exists: async () => false }, sqliteRuntime: runtime } });
   hosts.push(host);
   await host.install(mobileStorage);
   return {

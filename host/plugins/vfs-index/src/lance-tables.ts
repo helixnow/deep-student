@@ -64,7 +64,7 @@ export class LanceTables {
   async connect(): Promise<LanceConnection> {
     if (this.connectionPromise === null) {
       this.connectionPromise = (this.prepare ? this.prepare() : Promise.resolve())
-        .then(() => this.adapter.connect(this.lancePath)).then((connection) => {
+        .then(() => this.adapter.connect(this.lancePath, 'vfs')).then((connection) => {
         this.connection = connection;
         return connection;
       }).catch((error: unknown) => {
@@ -216,7 +216,8 @@ export class LanceTables {
     });
 
     const embedOk = true;
-    if (rowCount < MIN_ROWS_FOR_ANN_INDEX) {
+    const useAnn = connection.supportsApproximateSearch !== false && rowCount >= MIN_ROWS_FOR_ANN_INDEX;
+    if (!useAnn) {
       setAnnStatus(this.db, dim, modality, 'exact', ANN_INDEX_VERSION);
     } else {
       const state = getByKey(this.db, dim, modality);
@@ -263,7 +264,7 @@ export class LanceTables {
         }
       }
     }
-    if (embedOk && ftsOk && scalarOk && rowCount >= MIN_ROWS_FOR_ANN_INDEX) {
+    if (embedOk && ftsOk && scalarOk && (useAnn || connection.supportsApproximateSearch === false)) {
       this.ensuredTables.add(tableName);
     }
     return table;
@@ -291,7 +292,7 @@ export class LanceTables {
     const rowCount = await table.countRows().catch((error: unknown) => {
       throw other(`统计 profile Lance 表 ${profile.lance_table_name} 失败: ${messageOf(error)}`);
     });
-    if (rowCount >= MIN_ROWS_FOR_ANN_INDEX) {
+    if (connection.supportsApproximateSearch !== false && rowCount >= MIN_ROWS_FOR_ANN_INDEX) {
       const mustReplace = profile.ann_metric !== 'cosine'
         || profile.ann_index_version !== ANN_INDEX_VERSION;
       try {

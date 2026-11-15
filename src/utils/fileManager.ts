@@ -1,3 +1,5 @@
+import { invoke } from '@tauri-apps/api/core';
+import { readShellPlatform } from '@/ui-kernel/services/shell-platform';
 import { open as dialogOpen, save as dialogSave } from '@tauri-apps/plugin-dialog';
 import { writeFile } from '@tauri-apps/plugin-fs';
 import i18next from 'i18next';
@@ -108,6 +110,7 @@ export interface SaveTextOptions extends SaveDialogOptions {
 
 export interface SaveBinaryOptions extends SaveDialogOptions {
   data: Uint8Array;
+  mimeType?: string;
 }
 
 export interface PickDirectoryOptions {
@@ -150,6 +153,15 @@ const buildDefaultPath = (options: SaveDialogOptions): string | undefined => {
   }
   return undefined;
 };
+
+export function usesAndroidSaf(): boolean {
+  const shell = readShellPlatform();
+  return shell?.kind === 'mobile' && shell.os === 'android';
+}
+
+export async function saveAndroidStagedFile(path: string, fileName: string, mimeType: string): Promise<boolean> {
+  return (await invoke<{ method: string } | null>('mobile_save_document', { path, fileName, mimeType })) !== null;
+}
 
 export const fileManager = {
   async pickSingleFile(options: FilePickerOptions = {}): Promise<string | null> {
@@ -219,6 +231,9 @@ export const fileManager = {
   },
 
   async saveTextFile(options: SaveTextOptions): Promise<{ canceled: boolean; path?: string }> {
+    if (usesAndroidSaf()) return fileManager.saveBinaryFile({
+      ...options, data: new TextEncoder().encode(options.content), mimeType: 'text/plain',
+    });
     const destPath = await dialogSave({
       title: options.title,
       defaultPath: buildDefaultPath(options),
@@ -242,6 +257,16 @@ export const fileManager = {
   },
 
   async saveBinaryFile(options: SaveBinaryOptions): Promise<{ canceled: boolean; path?: string }> {
+    if (usesAndroidSaf()) {
+      const fileName = options.defaultFileName || 'deep-student-export';
+      const saved = await invoke<{ method: string } | null>('mobile_save_document', options.data, {
+        headers: {
+          'x-file-name': encodeURIComponent(fileName),
+          'x-file-mime': options.mimeType ?? 'application/octet-stream',
+        },
+      });
+      return saved === null ? { canceled: true } : { canceled: false, path: fileName };
+    }
     const destPath = await dialogSave({
       title: options.title,
       defaultPath: buildDefaultPath(options),

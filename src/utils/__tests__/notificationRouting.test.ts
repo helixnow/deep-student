@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const env = vi.hoisted(() => ({ mobile: false, onAction: vi.fn(), unregister: vi.fn() }));
 
-vi.mock('../platform', () => ({ isMobilePlatform: () => env.mobile }));
+vi.mock('../platform', () => ({ isAndroidMobileShell: () => false, isMobilePlatform: () => env.mobile }));
 vi.mock('../shared', () => ({ isTauriRuntime: true }));
 vi.mock('@tauri-apps/plugin-notification', () => ({ onAction: env.onAction }));
 

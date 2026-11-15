@@ -108,7 +108,7 @@ export class LegacyKbStore {
       // The directory only needs creating once; keep the resolved path afterwards.
       this.prepare = undefined;
     }
-    return this.engine.connect(this.lancePath);
+    return this.engine.connect(this.lancePath, 'mistakes');
   }
 
   static parseDimFromTableName(name: string, prefix: string): number | null {
@@ -166,6 +166,7 @@ export class LegacyKbStore {
     ] as const) {
       // `ensure_embedding_ann_index` skips IVF-PQ below the training threshold
       // and deliberately does not cache the table so it is retried later.
+      if (kind === 'cosine-ivf-pq' && connection.supportsApproximateSearch === false) continue;
       if (kind === 'cosine-ivf-pq' && rowCount < MIN_ROWS_FOR_ANN_INDEX) {
         allReady = false;
         continue;

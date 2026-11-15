@@ -14,6 +14,8 @@ import { Switch } from '@/components/ui/shad/Switch';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { usePomodoroStore } from '@/features/pomodoro/stores/usePomodoroStore';
 import { NOISE_TYPES, type NoiseType } from '@/features/pomodoro/noiseEngine';
+import { setAndroidBackgroundCompletion } from '@/features/pomodoro';
+import { isAndroidMobileShell } from '@/utils/platform';
 
 // ============================================================================
 // 行件
@@ -139,6 +141,13 @@ export const PomodoroWindowSettings: React.FC = () => {
         checked={settings.countUp}
         onChange={(v) => updateSettings({ countUp: v })}
       />
+      {isAndroidMobileShell() && (
+        <ToggleRow
+          label={t('pomodoro.settings.androidBackgroundCompletion')}
+          checked={settings.androidBackgroundCompletion}
+          onChange={setAndroidBackgroundCompletion}
+        />
+      )}
       <SliderRow
         label={t('pomodoro.settings.endReminderShort')}
         display={

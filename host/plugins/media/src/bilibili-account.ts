@@ -11,7 +11,7 @@ import {
   cookieHasSession, isValidQrcodeKey, sessionWithProfile,
   type AuthClient, type NavResult, type StoredSession,
 } from './bilibili-auth.ts';
-import { invalidateAuth } from './bilibili-attempt.ts';
+import { invalidateAuth } from './bilibili-auth-generation.ts';
 
 export const SESSION_SECRET_KEY = 'internal.oauth.bilibili.session';
 

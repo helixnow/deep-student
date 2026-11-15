@@ -82,8 +82,11 @@ export class NativeAttachmentProcessing implements AttachmentProcessingAdapter {
     return renderPdfPreview(conn, blobsDir, bytes, config, {
       pdfium: () => this.sources.pdfium(),
       image: () => this.sources.image(),
-      storeBlob: (target, dir, imageBytes, mimeType, extension) =>
-        this.sources.blobs().storeBlob(target, dir, imageBytes, mimeType, extension),
+      storeBlob: async (target, dir, imageBytes, mimeType, extension) => {
+        const blobs = this.sources.blobs();
+        const path = await blobs.persistBlob(target, dir, imageBytes, extension);
+        return blobs.storeBlob(target, dir, imageBytes, mimeType, extension, path);
+      },
       checkEncryption: (pdfBytes, pdfName) => {
         const docs = this.sources.docs();
         if (docs !== null) docs.checkPdfEncryptionBytes(pdfBytes, pdfName);

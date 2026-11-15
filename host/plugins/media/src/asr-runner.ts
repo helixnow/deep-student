@@ -11,7 +11,7 @@ import {
   Aimd, classifyFailure, formatAsrHttpError, type AsrClipResult, type AsrHttpError,
 } from './asr.ts';
 import { MediaError } from './errors.ts';
-import { encodeWavMono16k } from './wav.ts';
+import { encodeWavMono16k } from './wav-encoding.ts';
 
 export const CLIP_PAD_MS = 100;
 export const MAX_ATTEMPTS = 3;

@@ -344,7 +344,9 @@ export class VfsMultimodalService {
           continue;
         }
         const mime = page.image_mime ?? 'image/png';
-        const blob = repos.blobs.storeBlob(this.db, blobsDir, data, mime, imageExtension(mime));
+        const ext = imageExtension(mime);
+        const path = await repos.blobs.persistBlob(this.db, blobsDir, data, ext);
+        const blob = repos.blobs.storeBlob(this.db, blobsDir, data, mime, ext, path);
         page.blob_hash = blob.hash;
         page.image_base64 = null;
       }

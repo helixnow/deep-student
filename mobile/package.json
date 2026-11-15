@@ -1,7 +1,7 @@
 {
   "name": "deep-student-mobile",
   "private": true,
-  "version": "0.20.1",
+  "version": "0.20.2",
   "type": "module",
   "description": "Mobile (learning companion) prototype: same React frontend, Host in a Web Worker, SQLite WASM + OPFS storage. Dependencies are isolated from the root package.",
   "scripts": {

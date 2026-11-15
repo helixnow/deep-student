@@ -11,6 +11,10 @@ import { getErrorMessage } from '../utils/errorUtils';
 import { debugLog } from '../debug-panel/debugMasterSwitch';
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
+declare global {
+  var __DS_ANDROID_MCP_FETCH__: ((endpoint: string, input: RequestInfo | URL, init?: RequestInit) => Promise<Response>) | undefined;
+}
+
 type TransportType = 'sse' | 'websocket' | 'streamable-http' | 'streamable_http' | 'stdio';
 
 // MCP 规范安全要求：Clients SHOULD validate tool results before passing to LLM
@@ -627,7 +631,10 @@ class McpServiceImpl {
         Boolean((window as any).__TAURI_INTERNALS__)
       );
 
-      if (shouldUseTauriFetch) {
+      const androidFetch = globalThis.__DS_ANDROID_MCP_FETCH__;
+      if (mappedUrl && androidFetch) {
+        customFetch = (input, init) => androidFetch(mappedUrl, input, init);
+      } else if (shouldUseTauriFetch) {
         try {
           const { fetch: tauriFetch } = await import('@tauri-apps/plugin-http');
           customFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {

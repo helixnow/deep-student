@@ -7,11 +7,14 @@
  *   只显示 Host 启动结果（Playwright 用例与性能数据测的是它）；
  * - 完整前端（`--mode app`，app.html 的 `#root`）：`bootMobileShell()` resolve 之后动态加载仓库根的 `src/main.tsx`。
  */
+import './shell/webview-compat.ts';
 import { installTauriBridge } from '../../electron/preload/bridge.ts';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { Capacitor, CapacitorHttp } from '@capacitor/core';
 import type { ShellRequest } from '../../host/kernel/protocol.ts';
+import { createMobileHttp } from '../../host/platform/http/mobile.ts';
+import { MOBILE_APP_DATA_DIR } from '../../host/platform/storage-mobile/restore-intent.ts';
 import { MOBILE_DIAGNOSTICS_PLUGIN_ID } from './diagnostics-id.ts';
 import { HostWorkerSupervisor } from './shell/host-supervisor.ts';
 import { MobileShell } from './shell/mobile-shell.ts';
@@ -19,8 +22,12 @@ import { requestPersistentStorage } from './shell/persistent-storage.ts';
 import { installPagePlatform, mobileBridgeInit } from './shell/platform.ts';
 import { shouldMountApp } from './shell/page-mode.ts';
 import { pickBackupFile } from './shell/backup-picker.ts';
+import { createAndroidInvokeHandler, isNativeAndroid, pickAndroidBackup, postAndroidNotification, saveAndroidDocument } from './shell/android-native.ts';
+import { closeLegacyData, readLegacyData, readLegacyFileChunk } from './shell/legacy-data.ts';
+import { decodeMobileAudio } from './shell/media-audio.ts';
 import { fetchWithTimeout } from './shell/http-fetch.ts';
 import mobilePackage from '../package.json';
+import { androidHttpRequest } from './shell/android-http.ts';
 
 /**
  * `src/version.ts` is generated (gitignored). App builds generate it before Vite starts; other builds
@@ -64,7 +71,7 @@ interface ShellHttpRequest {
   readonly url: string;
   readonly method?: string;
   readonly headers?: Record<string, string>;
-  /** string / Uint8Array / ArrayBuffer / FormData / Blob；可结构化克隆。 */
+  /** Worker serializes all request bodies here as strings or binary data. */
   readonly body?: unknown;
   readonly timeoutMs?: number | null;
   readonly redirect?: 'follow' | 'manual' | 'error';
@@ -103,24 +110,30 @@ function capacitorResponseBytes(data: unknown, contentType: string, status: numb
   return new TextEncoder().encode(JSON.stringify(data));
 }
 
-function isTextBody(body: unknown): body is string | undefined {
-  return body === undefined || body === null || typeof body === 'string';
+function bytesToBase64(bytes: Uint8Array): string {
+  const chunks: string[] = [];
+  for (let offset = 0; offset < bytes.length; offset += 8192) {
+    chunks.push(String.fromCharCode(...bytes.subarray(offset, offset + 8192)));
+  }
+  return btoa(chunks.join(''));
 }
 
-/** `CapacitorHttp.request` 不能在原生侧发送二进制/FormData；这些请求交给已打补丁的 `fetch`。 */
 async function shellHttpFetch(request: ShellHttpRequest): Promise<ShellHttpResponse> {
   const headers = { ...(request.headers ?? {}) };
   const timeout = request.timeoutMs;
-  const useNativeHttp = Capacitor.isNativePlatform() && isTextBody(request.body) && typeof CapacitorHttp?.request === 'function';
+  const bytes = request.body instanceof Uint8Array ? request.body
+    : request.body instanceof ArrayBuffer ? new Uint8Array(request.body) : undefined;
+  const useNativeHttp = Capacitor.isNativePlatform() && typeof CapacitorHttp?.request === 'function';
   if (useNativeHttp) {
     try {
       const response = await CapacitorHttp.request({
         url: request.url,
         method: request.method ?? 'GET',
         headers,
-        data: typeof request.body === 'string' ? request.body : undefined,
+        data: bytes !== undefined ? bytesToBase64(bytes) : typeof request.body === 'string' ? request.body : undefined,
+        ...(bytes === undefined ? {} : { dataType: 'file' as const }),
         responseType: 'arraybuffer',
-        disableRedirects: request.redirect === 'manual',
+        disableRedirects: request.redirect === 'manual' || request.redirect === 'error',
         ...(typeof timeout === 'number' && timeout > 0 ? { connectTimeout: timeout, readTimeout: timeout } : {}),
       });
       const responseHeaders: Record<string, string> = {};
@@ -154,67 +167,6 @@ async function shellHttpFetch(request: ShellHttpRequest): Promise<ShellHttpRespo
   };
 }
 
-/** 旧版原生 Android 应用（0.15.x）在应用私有 files 目录里留下的数据库。 */
-const LEGACY_SLOTS = ['slotA', 'slotB'] as const;
-const LEGACY_DATABASES = ['chat_v2.db', 'mistakes.db', 'llm_usage.db', 'browser.db', 'databases/vfs.db'] as const;
-const LEGACY_AUDIT_DATABASE = 'databases/audit.db';
-const LEGACY_FILES_DIR = '/data/user/0/com.deepstudent.app/files';
-
-interface ShellLegacyDatabases {
-  readonly slot: string;
-  readonly files: ReadonlyArray<{ readonly name: string; readonly bytes: Uint8Array }>;
-}
-
-function legacyFileUrl(path: string): string {
-  try {
-    return Capacitor.convertFileSrc(path);
-  } catch {
-    return `https://localhost/_capacitor_file_${path}`;
-  }
-}
-
-async function readLegacyFile(relativePath: string): Promise<Uint8Array | null> {
-  try {
-    const response = await fetch(legacyFileUrl(`${LEGACY_FILES_DIR}/${relativePath}`));
-    if (!response.ok) return null;
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    return bytes.byteLength > 0 ? bytes : null;
-  } catch {
-    // Missing / unreadable legacy file.
-    return null;
-  }
-}
-
-async function readLegacyNativeDatabases(): Promise<ShellLegacyDatabases | null> {
-  if (Capacitor.getPlatform() !== 'android') return null;
-  const stateBytes = await readLegacyFile('slots/state.json');
-  let activeSlot: string | undefined;
-  if (stateBytes !== null) {
-    const state = JSON.parse(new TextDecoder().decode(stateBytes)) as { active?: string };
-    if (state.active === 'slotA' || state.active === 'slotB') activeSlot = state.active;
-  }
-  const candidates: ShellLegacyDatabases[] = [];
-  for (const slot of LEGACY_SLOTS) {
-    const files: Array<{ name: string; bytes: Uint8Array }> = [];
-    for (const name of LEGACY_DATABASES) {
-      const bytes = await readLegacyFile(`slots/${slot}/${name}`);
-      if (bytes !== null) files.push({ name, bytes });
-    }
-    if (files.length > 0) candidates.push({ slot, files });
-  }
-  if (candidates.length === 0) return null;
-  // 优先遵循旧版插槽状态；仅缺失状态文件时按聊天库大小推断。
-  const sizeOf = (candidate: ShellLegacyDatabases): number => candidate.files.find(file => file.name === 'chat_v2.db')?.bytes.byteLength ?? 0;
-  const best = candidates.find(candidate => candidate.slot === activeSlot)
-    ?? (stateBytes === null ? candidates.sort((a, b) => sizeOf(b) - sizeOf(a))[0]! : candidates[0]!);
-  // Tauri 的审计库不在数据槽里：`<files>/databases/audit.db`。
-  if (!best.files.some(file => file.name === LEGACY_AUDIT_DATABASE)) {
-    const audit = await readLegacyFile(LEGACY_AUDIT_DATABASE);
-    if (audit !== null) return { slot: best.slot, files: [...best.files, { name: LEGACY_AUDIT_DATABASE, bytes: audit }] };
-  }
-  return best;
-}
-
 async function opfsReadFile(path: string): Promise<File> {
   const root = await navigator.storage.getDirectory();
   const parts = path.split('/').filter(part => part !== '' && part !== '.');
@@ -242,10 +194,11 @@ async function opfsWriteFile(path: string, bytes: Uint8Array, mimeType = 'applic
   }
 }
 
-/** 把 OPFS 里的备份交给系统：Web Share → File System Access → 浏览器下载（Capacitor 只命中第一/第三条）。 */
-async function saveBackupToSystem(path: string, fileName: string): Promise<{ method: string }> {
+/** 把 OPFS 文件交给系统。Android 走原生文件选择器，其余平台使用 Web API。 */
+async function saveDocumentToSystem(path: string, fileName: string, mimeType: string): Promise<{ method: string } | null> {
   const file = await opfsReadFile(path);
-  const shareFile = new File([file], fileName, { type: 'application/zip' });
+  if (isNativeAndroid()) return saveAndroidDocument(file, fileName, mimeType);
+  const shareFile = new File([file], fileName, { type: mimeType });
   const navigatorWithShare = navigator as Navigator & {
     canShare?(data?: ShareData): boolean;
     share?(data?: ShareData): Promise<void>;
@@ -263,7 +216,7 @@ async function saveBackupToSystem(path: string, fileName: string): Promise<{ met
   if (typeof picker === 'function') {
     const handle = await picker.call(window, {
       suggestedName: fileName,
-      types: [{ description: 'Deep Student backup', accept: { 'application/zip': ['.zip'] } }],
+      ...(mimeType === 'application/zip' ? { types: [{ description: 'Deep Student backup', accept: { [mimeType]: ['.zip'] } }] } : {}),
     });
     const writable = await handle.createWritable();
     await writable.write(shareFile);
@@ -287,6 +240,7 @@ async function saveBackupToSystem(path: string, fileName: string): Promise<{ met
  * 选择器等能力，这些都必须回到主线程。
  */
 async function onShellRequest(request: ShellRequest): Promise<unknown> {
+  if (request.op.startsWith('http.android.')) return androidHttpRequest(request);
   switch (request.op) {
     case 'http.fetch':
       return shellHttpFetch((request.args ?? {}) as ShellHttpRequest);
@@ -295,22 +249,51 @@ async function onShellRequest(request: ShellRequest): Promise<unknown> {
       setTimeout(() => window.location.reload(), 250);
       return null;
     case 'mobile:legacy-databases':
-      return readLegacyNativeDatabases();
+      return readLegacyData();
+    case 'mobile:legacy-file':
+      return readLegacyFileChunk(request.args);
+    case 'mobile:legacy-close':
+      return closeLegacyData(request.args);
+    case 'mobile:decode-media': {
+      const args = (request.args ?? {}) as { bytes?: unknown };
+      if (!(args.bytes instanceof Uint8Array)) throw new Error('mobile:decode-media requires binary audio');
+      return decodeMobileAudio(args.bytes);
+    }
+    case 'plugin:window|is_visible':
+      return document.visibilityState === 'visible';
+    case 'plugin:window|is_focused':
+      return document.hasFocus();
+    case 'plugin:window|is_minimized':
+      return document.visibilityState === 'hidden';
+    case 'plugin:notification|notify': {
+      const options = (request.args as { options?: { title?: unknown; body?: unknown } } | null)?.options;
+      if (!isNativeAndroid() || typeof options?.title !== 'string' || typeof options.body !== 'string') {
+        throw new Error('Mobile system notification unavailable');
+      }
+      if (!await postAndroidNotification({ title: options.title, body: options.body })) {
+        throw new Error('Android system notifications are not permitted');
+      }
+      return null;
+    }
     // `filestream_check_access` / `pdfstream_check_access` ask for the desktop allow-list before
     // serving a path. Mobile has no process-wide filesystem roots (all files live in OPFS), so the
     // answer is the empty list; an unknown op here used to abort the whole command.
     case 'app.pdfStreamAllowedDirs':
       return [];
-    case 'mobile:save-backup': {
-      const args = (request.args ?? {}) as { path?: unknown; fileName?: unknown };
-      if (typeof args.path !== 'string') throw new Error('mobile:save-backup requires a path');
+    case 'mobile:save-backup':
+    case 'mobile:save-document': {
+      const args = (request.args ?? {}) as { path?: unknown; fileName?: unknown; mimeType?: unknown };
+      if (typeof args.path !== 'string') throw new Error(`${request.op} requires a path`);
       const fileName = typeof args.fileName === 'string' && args.fileName.trim() !== '' ? args.fileName : 'deep-student-backup.zip';
-      return saveBackupToSystem(args.path, fileName);
+      const mimeType = typeof args.mimeType === 'string' && args.mimeType.trim() !== '' ? args.mimeType : 'application/zip';
+      const result = await saveDocumentToSystem(args.path, fileName, mimeType);
+      if (result === null && request.op === 'mobile:save-backup') throw new Error('已取消选择保存位置');
+      return result;
     }
     case 'mobile:pick-backup': {
       const args = (request.args ?? {}) as { targetPath?: unknown };
       if (typeof args.targetPath !== 'string') throw new Error('mobile:pick-backup requires a targetPath');
-      return pickBackupFile(args.targetPath, opfsWriteFile);
+      return isNativeAndroid() ? pickAndroidBackup(args.targetPath) : pickBackupFile(args.targetPath, opfsWriteFile);
     }
     default:
       throw new Error(`shell operation "${request.op}" is not available on mobile`);
@@ -318,10 +301,35 @@ async function onShellRequest(request: ShellRequest): Promise<unknown> {
 }
 
 async function bootMobileShell(): Promise<MobileApp> {
-  const shell = new MobileShell({
+  if (isNativeAndroid()) {
+    const nativeHttp = createMobileHttp({
+      shell: { request: async <R>(op: string, args?: unknown) => androidHttpRequest({ kind: 'shell-request', id: '', op, args }) as Promise<R> },
+    });
+    Object.defineProperty(globalThis, '__DS_ANDROID_MCP_FETCH__', {
+      value: async (endpoint: string, input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+        const request = new Request(input, init);
+        const target = new URL(request.url);
+        if (target.origin !== new URL(endpoint).origin || target.username || target.password) {
+          throw new TypeError('The MCP request must stay on the configured server origin');
+        }
+        const body = request.body === null ? undefined : await request.text();
+        const response = await nativeHttp.fetch(target, {
+          method: request.method, headers: request.headers, body, signal: request.signal,
+          // Manual mode selects the native streaming transport without making a preliminary browser request.
+          redirect: 'manual', timeoutMs: null,
+        });
+        if (response.status >= 300 && response.status < 400) {
+          await response.body?.cancel();
+          throw new TypeError('MCP redirects are disabled; configure the final endpoint URL');
+        }
+        return response;
+      },
+    });
+  }
+  const shell: MobileShell = new MobileShell({
     // Host 协议的 platform 目前只有 darwin/win32/linux（见 PROGRESS.md「协议待定项」）。
     handshake: {
-      appDataDir: '/deep-student',
+      appDataDir: MOBILE_APP_DATA_DIR,
       appVersion: MOBILE_APP_VERSION,
       platform: 'linux',
       // Tauri 的 `cfg!(debug_assertions)`：只有开发服务器与诊断构建是 debug。
@@ -329,6 +337,9 @@ async function bootMobileShell(): Promise<MobileApp> {
     },
     log: message => console.warn(message),
     onShellRequest,
+    onNativeInvoke: isNativeAndroid()
+      ? createAndroidInvokeHandler(target => shell.emitNativeEvent('deepstudent://notification-action', { target }))
+      : undefined,
   });
   let workerCreatedMs = 0;
   let resolveLoaded!: (atMs: number) => void;
@@ -395,7 +406,24 @@ function render(app: MobileApp): void {
 /** 完整前端：Host 就绪、桥已装好之后才求值 `src/main.tsx`（它在模块顶层就会 `invoke`）。 */
 async function mountApp(): Promise<void> {
   // 条件在构建期替换成常量：非 app 构建里整个 import 被删掉，前端闭包（React、Tailwind CSS…）不进诊断产物。
-  if (import.meta.env.MODE === 'app') await import('virtual:dstu-app-entry');
+  if (import.meta.env.MODE === 'app') {
+    // The new Android WebView origin cannot see the old app's localStorage.
+    // Restore the SQLite copy before React applies the theme; a local choice wins.
+    if (isNativeAndroid()) {
+      try {
+        if (localStorage.getItem('dstu-theme-mode') === null && localStorage.getItem('aimm-theme-mode') === null) {
+          const mode = await invoke<string | null>('get_setting', { key: 'theme' });
+          if (mode === 'light' || mode === 'dark' || mode === 'auto') {
+            localStorage.setItem('dstu-theme-mode', mode);
+          }
+        }
+      } catch (error) {
+        // A restricted recovery Host has no settings command. It must still show its recovery page.
+        console.warn('[mobile] Could not restore the saved theme:', error);
+      }
+    }
+    await import('virtual:dstu-app-entry');
+  }
   document.body.dataset.ready = 'true';
 }
 

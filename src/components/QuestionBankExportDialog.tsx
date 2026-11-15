@@ -320,7 +320,6 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
       title: t('exam_sheet:questionBank.export.title'),
       onBack: handleInlineBack,
     },
-    [t, handleInlineBack],
     inline && open && isActive !== false,
   );
 

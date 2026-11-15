@@ -1,5 +1,4 @@
 /** Rust `src/cmd/ocr.rs:566-789` test_ocr_engine. The LLM branch is L02 `testOcrWithEngine`. */
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from '../../../platform/util/path.ts';
 import { AppError } from '../../../platform/errors/api.ts';
 import { CommandError } from '../../../kernel/api.ts';
@@ -9,15 +8,15 @@ import type {
 import { Base64DecodeError, decodeBase64Standard } from './base64.ts';
 import { engineInfoList, parseEngineType, systemOcrPlatformSupported } from './ocr-settings.ts';
 import type { LlmOcrPages } from '../../llm/api.ts';
-import { performSystemOcr } from '../../llm-providers/api.ts';
-import { errorLike } from './pdf-ocr-service.ts';
 
 export interface OcrEngineTestDeps {
   settings: { get(key: string): string | null };
   appDataDir(): string;
   ocrPages(): LlmOcrPages | undefined;
   /** L01 `performSystemOcr` (ocr_adapters/system_ocr::perform_system_ocr). */
-  systemOcr?(imageBytes: Uint8Array): Promise<string>;
+  systemOcr(imageBytes: Uint8Array): Promise<string>;
+  writeTemp(path: string, bytes: Uint8Array): Promise<void>;
+  removeTemp(path: string): Promise<void>;
   platform: string;
   now?(): number;
 }
@@ -67,23 +66,22 @@ export async function testOcrEngine(deps: OcrEngineTestDeps, request: OcrTestReq
     ?? engineType;
 
   const start = now();
+  if (request.imageBase64.length > 30 * 1024 * 1024) {
+    throw new CommandError(AppError.validation('OCR 测试图片过大'));
+  }
   let imageBytes: Uint8Array;
   try { imageBytes = parseBase64Image(request.imageBase64); }
   catch (error) { throw new CommandError(AppError.validation(`图片解析失败: ${(error as Error).message}`)); }
 
   const tempDir = join(deps.appDataDir(), 'ocr_test_temp');
-  try { mkdirSync(tempDir, { recursive: true }); }
-  catch (error) { throw new CommandError(AppError.file_system(`创建临时目录失败: ${(error as Error).message}`)); }
   const tempPath = join(tempDir, `test_${globalThis.crypto.randomUUID()}.${inferExtensionFromDataUrl(request.imageBase64)}`);
-  try { writeFileSync(tempPath, imageBytes); }
-  catch (error) { throw new CommandError(AppError.file_system(`写入临时文件失败: ${(error as Error).message}`)); }
 
   let outcome: { ok: true; text: string; regions: OcrTestRegion[] } | { ok: false; error: string };
   try {
     const pages = deps.ocrPages();
     if (engineType === 'system_ocr') {
       let text: string;
-      try { text = await (deps.systemOcr ?? performSystemOcr)(imageBytes); }
+      try { text = await deps.systemOcr(imageBytes); }
       catch (error) {
         // `Err(e) => Err(e.into())`: From<OcrError> for AppError.
         const toAppError = (error as { toAppError?: () => unknown }).toAppError;
@@ -92,6 +90,7 @@ export async function testOcrEngine(deps: OcrEngineTestDeps, request: OcrTestReq
       outcome = { ok: true, text, regions: [{ text, bbox: null, label: 'document' }] };
     } else {
       if (pages === undefined) throw new CommandError(AppError.configuration('OCR 页面服务不可用'));
+      await deps.writeTemp(tempPath, imageBytes);
       const result = await pages.testOcrWithEngine(tempPath, engineType, configId);
       outcome = {
         ok: true,
@@ -103,10 +102,10 @@ export async function testOcrEngine(deps: OcrEngineTestDeps, request: OcrTestReq
       };
     }
   } catch (error) {
-    outcome = { ok: false, error: errorLike(error).message };
+    outcome = { ok: false, error: String((error as { message?: unknown } | null)?.message ?? error) };
   } finally {
     // M10 TempFileGuard
-    try { rmSync(tempPath, { force: true }); } catch { // boundary-allow empty-catch: TempFileGuard drop ignores removal errors like Rust
+    try { if (engineType !== 'system_ocr') await deps.removeTemp(tempPath); } catch { // boundary-allow empty-catch: TempFileGuard drop ignores removal errors like Rust
     }
   }
   const elapsedMs = Math.trunc(now() - start);

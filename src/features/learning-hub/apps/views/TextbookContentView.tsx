@@ -38,7 +38,9 @@ import { CONVERT_MARKDOWN_TO_NOTE_EVENT } from '../../dragDropRouting';
 import EpubPreview from './EpubPreview';
 import { loadTextPreviewContent } from './textPreviewLoader';
 import { usePdfFocusListener } from './usePdfFocusListener';
-import { isMobilePlatform } from '@/utils/platform';
+import { isAndroidMobileShell, isMobilePlatform } from '@/utils/platform';
+import { pickWebViewFiles } from '@/utils/pickWebViewFiles';
+import { withStagedTextbookFile } from '../../textbookFileImport';
 
 /** 预览在 WebView 内整份 base64 + 解析；手机收紧到 30MB 防渲染进程 OOM（桌面 100MB） */
 const MOBILE_PREVIEW_MAX_BYTES = 30 * 1024 * 1024;
@@ -339,7 +341,7 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
     nodeId: node.id,
     fileName: node.name,
     filePath: effectiveFilePath,
-    cacheKey: `${node.id}:${node.updatedAt || ''}`,
+    cacheKey: `${node.id}:${node.updatedAt || ''}:${relinkTick}`,
     enabled: isPdf && !effectiveFilePath, // 只有当是 PDF 且没有可用 filePath 时才从数据库加载
   });
   
@@ -487,7 +489,7 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
       isMounted = false;
     };
 
-  }, [needsFileContent, isText, effectiveFilePath, effectiveFileSize, node.id, node.name, node.size, t, contentRetryCount]);
+  }, [needsFileContent, isText, effectiveFilePath, effectiveFileSize, node.id, node.name, node.size, t, contentRetryCount, relinkTick]);
   
   // 从 node.metadata 提取阅读进度
   const readingProgress = useMemo<ReadingProgress | undefined>(() => {
@@ -571,16 +573,21 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
   const handleRelink = useCallback(async () => {
     setIsRelinking(true);
     try {
-      const { open } = await import('@tauri-apps/plugin-dialog');
-      const ext = node.name.includes('.') ? node.name.split('.').pop()?.toLowerCase() : undefined;
-      const selected = await open({
-        multiple: false,
-        title: t('textbook:relink.dialogTitle'),
-        filters: ext ? [{ name: node.name, extensions: [ext] }] : undefined,
-      });
-      if (!selected || typeof selected !== 'string') return;
-
-      await invoke('textbooks_relink', { id: node.id, newPath: selected });
+      if (isAndroidMobileShell()) {
+        const [file] = await pickWebViewFiles(false);
+        if (!file) return;
+        await withStagedTextbookFile(file, (newPath) => invoke('textbooks_relink', { id: node.id, newPath }));
+      } else {
+        const { open } = await import('@tauri-apps/plugin-dialog');
+        const ext = node.name.includes('.') ? node.name.split('.').pop()?.toLowerCase() : undefined;
+        const selected = await open({
+          multiple: false,
+          title: t('textbook:relink.dialogTitle'),
+          filters: ext ? [{ name: node.name, extensions: [ext] }] : undefined,
+        });
+        if (!selected || typeof selected !== 'string') return;
+        await invoke('textbooks_relink', { id: node.id, newPath: selected });
+      }
       showGlobalNotification('success', t('textbook:relink.success'));
       setRelinkTick((c) => c + 1);
     } catch (err: unknown) {

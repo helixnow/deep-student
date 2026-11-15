@@ -3,7 +3,8 @@ import { rustTrim } from './transcript.ts';
 import { readZipEntries } from './zip.ts';
 import { ParsingError } from './document-errors.ts';
 import { MAX_SINGLE_ENTRY_SIZE, checkFileSize, checkZipBomb } from './document-guards.ts';
-import { htmlToText, xmlTokens } from './document-xml.ts';
+import { htmlToText } from './document-xml.ts';
+import { epubFindRootFile, epubParseOpf } from './epub-structure.ts';
 
 /** `extract_epub_pages_from_bytes`：第一页为元信息（标题/作者），其后每个 spine 条目一页。 */
 export function extractEpubPagesFromBytes(bytes: Uint8Array, warn: (message: string) => void): string[] {
@@ -56,71 +57,4 @@ export function extractEpubPagesFromBytes(bytes: Uint8Array, warn: (message: str
     if (rustTrim(plainText) !== '') pages.push(rustTrim(plainText));
   }
   return pages;
-}
-
-function epubFindRootFile(containerXml: string): string {
-  for (const token of xmlTokens(containerXml)) {
-    if (token.kind === 'start' && token.local === 'rootfile') {
-      const path = token.attrs['full-path'];
-      if (path !== undefined) return path;
-    }
-  }
-  throw new ParsingError('EpubParsingError', 'container.xml 中未找到 rootfile');
-}
-
-function epubParseOpf(opfContent: string): {
-  metadata: Map<string, string>;
-  spineHrefs: string[];
-} {
-  const metadata = new Map<string, string>();
-  const manifest = new Map<string, string>();
-  const spineIdrefs: string[] = [];
-  let section: 'none' | 'metadata' | 'manifest' | 'spine' = 'none';
-  let currentMetaTag: string | null = null;
-
-  for (const token of xmlTokens(opfContent)) {
-    if (token.kind === 'start') {
-      switch (token.local) {
-        case 'metadata': section = 'metadata'; break;
-        case 'manifest': section = 'manifest'; break;
-        case 'spine': section = 'spine'; break;
-        case 'title':
-        case 'creator':
-        case 'language':
-        case 'description':
-        case 'publisher':
-          if (section === 'metadata') currentMetaTag = token.local;
-          break;
-        case 'item':
-          if (section === 'manifest') {
-            const id = token.attrs.id ?? '';
-            const href = token.attrs.href ?? '';
-            if (id !== '' && href !== '') manifest.set(id, href);
-          }
-          break;
-        case 'itemref':
-          if (section === 'spine' && token.attrs.idref !== undefined) {
-            spineIdrefs.push(token.attrs.idref);
-          }
-          break;
-        default:
-          break;
-      }
-    } else if (token.kind === 'text') {
-      if (currentMetaTag !== null) {
-        const text = rustTrim(token.text);
-        if (text !== '') metadata.set(currentMetaTag, text);
-      }
-    } else {
-      if (token.local === 'metadata' || token.local === 'manifest' || token.local === 'spine') {
-        section = 'none';
-      }
-      currentMetaTag = null;
-    }
-  }
-
-  const spineHrefs = spineIdrefs
-    .map(idref => manifest.get(idref))
-    .filter((href): href is string => href !== undefined);
-  return { metadata, spineHrefs };
 }

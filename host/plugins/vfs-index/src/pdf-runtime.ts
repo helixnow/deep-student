@@ -254,7 +254,8 @@ export class NativePdfStageRuntime implements PdfStageRuntime {
         const image = this.deps.nativeImage();
         if (image === undefined) throw new Error('F7 nativeImage service is not available');
         const png = await image.encode(rendered, { format: 'png' });
-        const blob = repos.blobs.storeBlob(this.deps.db, this.deps.blobsDir, png, PNG_MIME, 'png');
+        const path = await repos.blobs.persistBlob(this.deps.db, this.deps.blobsDir, png, 'png');
+        const blob = repos.blobs.storeBlob(this.deps.db, this.deps.blobsDir, png, PNG_MIME, 'png', path);
         pages.push({
           pageIndex: index,
           blobHash: blob.hash,
@@ -339,7 +340,8 @@ export class NativePdfStageRuntime implements PdfStageRuntime {
         page.compressedBlobHash = page.blobHash;
       } else {
         const hash = toHex(await createWebCrypto().digest('SHA-256', compressed));
-        repos.blobs.storeBlob(this.deps.db, this.deps.blobsDir, compressed, JPEG_MIME, 'jpg');
+        const path = await repos.blobs.persistBlob(this.deps.db, this.deps.blobsDir, compressed, 'jpg');
+        repos.blobs.storeBlob(this.deps.db, this.deps.blobsDir, compressed, JPEG_MIME, 'jpg', path);
         page.compressedBlobHash = hash;
       }
       if (staleHash !== undefined && rustTrim(staleHash) !== ''
@@ -690,7 +692,8 @@ async function compressImageFile(
   if (result.compressed.byteLength < result.originalSize * 9 / 10
     && result.compressed.byteLength > 0) {
     const compressedHash = toHex(await createWebCrypto().digest('SHA-256', result.compressed));
-    repos.blobs.storeBlob(deps.db, deps.blobsDir, result.compressed, JPEG_MIME, 'jpg');
+    const path = await repos.blobs.persistBlob(deps.db, deps.blobsDir, result.compressed, 'jpg');
+    repos.blobs.storeBlob(deps.db, deps.blobsDir, result.compressed, JPEG_MIME, 'jpg', path);
     finalHash = compressedHash;
   }
   updateCompressedBlobHashRow(deps.db, file.id, finalHash);

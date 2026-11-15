@@ -69,6 +69,8 @@ export interface NotesLocalRuntime {
   readBytes(path: string): Uint8Array;
   /** `writeFileSync`；`exclusive` 对应 `{ flag: 'wx' }`。 */
   writeBytes(path: string, bytes: Uint8Array, options?: { readonly exclusive?: boolean }): void;
+  /** Mobile queues writes to OPFS. Wait for this asset to be durable before returning its path. */
+  ensureAssetPersisted?(path: string): Promise<void>;
   /** `mkdir -p`。 */
   mkdirp(path: string): void;
   /** `rmdirSync`：目录非空时报错。 */

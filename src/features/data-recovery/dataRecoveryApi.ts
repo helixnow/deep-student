@@ -31,6 +31,7 @@ export interface StartupRecoveryIncident {
   recovery_error: string | null;
   failed_operation: string | null;
   retry_requires_restart: boolean;
+  previous_backup_id?: string | null;
 }
 
 export interface StartupRecoveryStatus {
@@ -52,10 +53,11 @@ function normalizeStartupRecoveryIncident(
     ? rawIncident.candidates as Array<Record<string, unknown>>
     : [];
   const resolved = Boolean(rawIncident.resolved);
+  const mobileRestore = rawIncident.failed_operation === 'mobile_pending_restore';
 
   return {
     id: String(rawIncident.id ?? rawIncident.incident_id ?? ''),
-    kind: String(rawIncident.kind ?? 'timeline_conflict'),
+    kind: mobileRestore ? 'mobile_pending_restore' : String(rawIncident.kind ?? 'timeline_conflict'),
     created_at: String(rawIncident.created_at ?? ''),
     status: resolved ? 'resolved' : 'awaiting_selection',
     reason: String(rawIncident.reason ?? ''),
@@ -67,6 +69,9 @@ function normalizeStartupRecoveryIncident(
     failed_operation:
       typeof rawIncident.failed_operation === 'string' ? rawIncident.failed_operation : null,
     retry_requires_restart: Boolean(rawIncident.retry_requires_restart),
+    ...(mobileRestore ? {
+      previous_backup_id: typeof rawCandidates[0]?.id === 'string' ? rawCandidates[0].id : null,
+    } : {}),
     candidates: rawCandidates.map((candidate) => ({
       id: String(candidate.id) as RecoveryCandidateId,
       has_data: Boolean(candidate.has_data),

@@ -95,6 +95,7 @@ function repositories(db: DatabaseHandle): VfsReposService {
   const repos = {
     blobs: {
       getBlobPath: (_db: unknown, _dir: unknown, hash: string) => tempHashes.get(hash)?.path ?? null,
+      persistBlob: async () => undefined,
       storeBlob: (_db: unknown, _dir: unknown, data: Uint8Array) => ({ hash: storeBlob(data) }),
       getBlob: () => null,
       blobExists: (hash: string) => tempHashes.has(hash),

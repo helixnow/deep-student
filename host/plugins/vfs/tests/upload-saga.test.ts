@@ -4,9 +4,11 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { Worker } from 'node:worker_threads';
 import { once } from 'node:events';
-import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest';
 import { createTestHost, type TestHost } from '../../../kernel/testing.ts';
 import { createStorageService } from '../../../platform/storage/service.ts';
+import { createNodeFiles } from '../../../platform/files/index.ts';
+import { MobileLocalRuntime } from '../../../platform/files/mobile-local-runtime.ts';
 import type { DatabaseHandle } from '../../../platform/storage/api.ts';
 import plugin from '../index.ts';
 import indexPlugin from '../../vfs-index/index.ts';
@@ -15,6 +17,8 @@ import pathsPlugin from '../../../platform/paths/index.ts';
 import notesPlugin from '../../notes/index.ts';
 // boundary-allow cross-plugin-impl: exercise real owner repository writes and compensations
 import reposPlugin from '../../vfs-repos/index.ts';
+// boundary-allow cross-plugin-impl: run the upload commands against the mobile owner filesystem port
+import { setVfsReposLocalRuntime, vfsReposLocalRuntime } from '../../vfs-repos/src/local-runtime.ts';
 import { vfsRepositories } from '../repository/services.ts';
 
 let template: string, root: string, host: TestHost, db: DatabaseHandle, blobs: string;
@@ -30,7 +34,9 @@ beforeEach(async () => {
   root = fs.mkdtempSync(path.join(os.tmpdir(), 'upload-saga-'));
   fs.cpSync(template, root, { recursive: true });
   storage = createStorageService({ baseDir: root, dataLocalDir: root });
-  host = await createTestHost({ plugins: [pathsPlugin, notesPlugin, reposPlugin, indexPlugin, plugin], provide: { storage }, app: { dataDir: root } });
+  host = await createTestHost({ plugins: [pathsPlugin, notesPlugin, reposPlugin, indexPlugin, plugin],
+    provide: { storage, settings: { get: () => null },
+      memoryConfig: { get: () => null, set: () => undefined } }, app: { dataDir: root } });
   db = storage.database('vfs'); blobs = host.ctx.vfsDatabase.blobsDir();
 }, 60_000);
 afterEach(async () => { await host?.dispose(); storage?.dispose(); fs.rmSync(root, { recursive: true, force: true }); });
@@ -43,6 +49,43 @@ const exists = (hash: string) => {
 const store = (data: Buffer) => vfsRepositories().blobs.storeBlob(db, blobs, data, null, null);
 const createFile = (data: Buffer, blob: string | null) => vfsRepositories().files.createFileWithDocDataInFolderOutcome(
   db, hash(data), 'upload.pdf', data.length, 'pdf', 'application/pdf', blob, null, null, null, 'text', 1);
+
+it('mobile file and media uploads reject real storage failures before committing references', async () => {
+  const files = createNodeFiles({ roots: [{ name: 'appData', path: root }], backupRoot: path.join(root, 'backups') });
+  const persisted = vi.spyOn(files, 'writeAtomic');
+  const mobile = new MobileLocalRuntime(root, () => files);
+  const previous = vfsReposLocalRuntime();
+  setVfsReposLocalRuntime(mobile.views().vfsRepos);
+  const file = Buffer.from('mobile upload and retry');
+  const audio = Buffer.from('fixture bytes for staged audio');
+  const filename = (data: Buffer, extension: string) => path.join(blobs, hash(data).slice(0, 2), `${hash(data)}.${extension}`);
+  const count = (data: Buffer) => db.pluck('SELECT COUNT(*) FROM files WHERE sha256 = ?', [hash(data)]);
+  const upload = () => host.invoke('vfs_upload_file', { params: { name: 'fixture.txt', mimeType: 'text/plain', base64Content: file.toString('base64') } });
+  const uploadAudio = () => vfsRepositories().attachments.uploadMediaStreamPersisted(db, blobs,
+    { name: 'fixture.mp3', mimeType: 'audio/mpeg', base64Content: '' }, [audio], null);
+  try {
+    await files.mkdir(filename(file, 'txt'), { recursive: true });
+    await expect(upload()).rejects.toMatch(/persist attachment/);
+    expect(count(file)).toBe(0);
+    expect(refs(hash(file))).toBeUndefined();
+    expect(mobile.exists(filename(file, 'txt'))).toBe(false);
+    await files.rename(filename(file, 'txt'), path.join(root, 'displaced-directory'));
+    // A failure after staging (e.g. the destination move is rejected) must reach the caller too.
+    persisted.mockRejectedValueOnce(new Error('move rejected by storage'));
+    await expect(uploadAudio()).rejects.toThrow('move rejected by storage');
+    expect(count(audio)).toBe(0);
+    expect(refs(hash(audio))).toBeUndefined();
+    await expect(upload()).resolves.toMatchObject({ isNew: true });
+    await expect(uploadAudio()).resolves.toMatchObject({ isNew: true });
+    expect(await files.readBytes(filename(file, 'txt'))).toEqual(new Uint8Array(file));
+    expect(await files.readBytes(filename(audio, 'mp3'))).toEqual(new Uint8Array(audio));
+    // Re-upload repairs a damaged same-size payload without creating a second reference.
+    await files.writeAtomic(filename(file, 'txt'), new Uint8Array(file.byteLength));
+    await expect(upload()).resolves.toMatchObject({ isNew: false });
+    expect(await files.readBytes(filename(file, 'txt'))).toEqual(new Uint8Array(file));
+    expect(refs(hash(file))).toBe(1);
+  } finally { setVfsReposLocalRuntime(previous); }
+});
 
 for (const withBlob of [false, true]) {
   it(withBlob ? 'upload_with_blob_waits_for_concurrent_writer' : 'upload_without_blob_waits_for_concurrent_writer', async () => {

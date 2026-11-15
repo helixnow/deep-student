@@ -72,6 +72,7 @@ async function saveDownloadedPaper(deps: PaperSaveDeps, params: VfsDownloadPaper
   let existing: VfsFile | null = null;
   try { existing = repos.files.getBySha256(conn, sha256); } catch { existing = null; }
   if (existing !== null && existing.status === 'active') {
+    if (existing.blobHash) await repos.blobs.persistBlob(conn, deps.blobsDir(), pdfBytes, 'pdf', existing.blobHash);
     return { success: true, fileId: existing.id, fileName: null, sizeBytes: pdfBytes.length,
       pageCount: existing.pageCount ?? null, error: null };
   }
@@ -88,8 +89,9 @@ async function saveDownloadedPaper(deps: PaperSaveDeps, params: VfsDownloadPaper
 
   let saved: [string, VfsFile, boolean];
   try {
+    const persistedPath = await repos.blobs.persistBlob(conn, blobsDir, pdfBytes, 'pdf');
     saved = deps.withSavepoint(conn, 'vfs_download_paper_saga', () => {
-      const blobHash = repos.blobs.storeBlob(conn, blobsDir, pdfBytes, 'application/pdf', 'pdf').hash;
+      const blobHash = repos.blobs.storeBlob(conn, blobsDir, pdfBytes, 'application/pdf', 'pdf', persistedPath).hash;
       const [file, created] = repos.files.createFileWithDocDataInFolderOutcome(conn, sha256, fileName, pdfBytes.length,
         'pdf', 'application/pdf', blobHash, null, folderId, previewJson, extractedText, pageCount);
       return [blobHash, file, created] as [string, VfsFile, boolean];

@@ -1,6 +1,23 @@
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import Database from 'better-sqlite3';
 import { describe, expect, it } from 'vitest';
-import { featureFlagsResult, rustF64AsF32 } from '../src/feature-flags.ts';
-import { loadF3Flags } from './support/f3-feature-flags.ts';
+import { createFeatureFlagCommands, featureFlagsResult, rustF64AsF32 } from '../../../platform/settings/feature-flag-commands.ts';
+import { f3FeatureFlags, loadF3Flags } from './support/f3-feature-flags.ts';
+
+function openFlags(file: string, readOnly = false) {
+  const db = new Database(file, { readonly: readOnly });
+  if (!readOnly) db.exec('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)');
+  const commands = createFeatureFlagCommands({
+    appVersion: '0.20.0', debug: false, featureFlags: f3FeatureFlags,
+    settings: {
+      get: key => (db.prepare('SELECT value FROM settings WHERE key = ?').pluck().get(key) as string | undefined) ?? null,
+      save: (key, value) => { db.prepare('INSERT OR REPLACE INTO settings VALUES (?, ?)').run(key, value); },
+    },
+  });
+  return { commands, close: () => db.close() };
+}
 
 // feature_flags.rs::tests belong to F3 (host/platform/storage/tests/feature-flags.test.ts).
 describe('src/cmd/web_search.rs feature flag command shaping', () => {
@@ -24,5 +41,42 @@ describe('src/cmd/web_search.rs feature flag command shaping', () => {
     expect(rustF64AsF32(0)).toBe(0);
     expect(rustF64AsF32(1e39)).toBe(Infinity);
     expect(rustF64AsF32(-1e39)).toBe(-Infinity);
+  });
+
+  it('reads the updated flag after closing and reopening its SQLite settings', () => {
+    const file = join(mkdtempSync(join(tmpdir(), 'dstu-feature-flags-')), 'flags.db');
+    const featureName = 'tools.workbench_agent';
+    const first = openFlags(file);
+    try {
+      expect(first.commands.isFeatureEnabled({ featureName })).toBe(true);
+      expect(first.commands.updateFeatureFlag({ featureName, action: 'disable' }).success).toBe(true);
+    } finally {
+      first.close();
+    }
+    const restarted = openFlags(file);
+    try {
+      expect(restarted.commands.getFeatureFlags().flags).toContainEqual(expect.objectContaining({ name: featureName, state: 'Disabled' }));
+      expect(restarted.commands.isFeatureEnabled({ featureName })).toBe(false);
+      restarted.commands.updateFeatureFlag({ featureName, action: 'reset' });
+      expect(restarted.commands.isFeatureEnabled({ featureName })).toBe(true);
+    } finally {
+      restarted.close();
+    }
+  });
+
+  it('fails unsupported edits and a failed real database write', () => {
+    const file = join(mkdtempSync(join(tmpdir(), 'dstu-feature-flags-')), 'flags.db');
+    openFlags(file).close();
+    const locked = openFlags(file, true);
+    const featureName = 'tools.workbench_agent';
+    try {
+      expect(() => locked.commands.updateFeatureFlag({ featureName, action: 'noop' })).toThrow(/不支持的操作/);
+      expect(() => locked.commands.updateFeatureFlag({ featureName: 'missing', action: 'enable' })).toThrow(/not found/);
+      expect(() => locked.commands.updateFeatureFlag({ featureName, action: 'set_gradual', value: NaN })).toThrow(/百分比/);
+      expect(() => locked.commands.updateFeatureFlag({ featureName, action: 'disable' })).toThrow(/保存功能开关失败/);
+      expect(locked.commands.isFeatureEnabled({ featureName })).toBe(true);
+    } finally {
+      locked.close();
+    }
   });
 });

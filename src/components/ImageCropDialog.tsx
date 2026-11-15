@@ -240,7 +240,6 @@ export function ImageCropDialog({
       title: t('question_bank.source_images'),
       onBack: () => onOpenChange(false),
     },
-    [t, onOpenChange],
     open && isActive !== false,
   );
 

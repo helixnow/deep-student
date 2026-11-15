@@ -116,8 +116,8 @@ async function bundleWorker(mode: 'production' | 'diagnostics', outDir: string, 
   return result;
 }
 
-function runBundle(bundleDir: string, extraInvokes: readonly [string, unknown][] = []): Record<string, unknown> {
-  const stdout = execFileSync(process.execPath, [join(MOBILE, 'tests/boot/worker-boot-runner.ts'), bundleDir, JSON.stringify(extraInvokes)], {
+function runBundle(bundleDir: string, extraInvokes: readonly [string, unknown][] = [], fixture = ''): Record<string, unknown> {
+  const stdout = execFileSync(process.execPath, [join(MOBILE, 'tests/boot/worker-boot-runner.ts'), bundleDir, JSON.stringify(extraInvokes), fixture], {
     cwd: MOBILE,
     encoding: 'utf8',
     timeout: 60_000,
@@ -245,7 +245,9 @@ describe('production Host Worker bundle', () => {
 
   it('boots without Node globals: handshake, migrations, invoke, orderly exit, invokes after exit fail at once', async () => {
     // 第二个参数：Worker 里 `plugin:host|call` 不带 caller —— 移动端 Host 入口没有覆盖 kernel 默认（require），必须拒绝。
-    const result = runBundle(join(dir, 'production'), [['plugin:host|call', { service: 'mobileDiagnostics', method: 'ping', args: [] }]]);
+    const result = runBundle(join(dir, 'production'), [
+      ['plugin:host|call', { service: 'mobileDiagnostics', method: 'ping', args: [] }], ['get_startup_recovery_status', {}],
+    ]);
 
     expect(result.error).toBeUndefined();
     expect(result.uncaught).toEqual([]);
@@ -292,11 +294,39 @@ describe('production Host Worker bundle', () => {
       expect(plugin.platforms, plugin.id).toContain('mobile');
     }
     expect(result.diagnostics).toEqual({ ok: false, body: { error_type: 'Validation', message: 'unknown service "mobileDiagnostics"', details: null } });
-    expect(result.extra).toEqual([{ ok: false, body: { error_type: 'Validation', message: 'plugin:host|call requires "caller", the plugin id of the calling UI half (SEC-E06)', details: null } }]);
+    expect(result.extra).toEqual([
+      { ok: false, body: { error_type: 'Validation', message: 'plugin:host|call requires "caller", the plugin id of the calling UI half (SEC-E06)', details: null } },
+      { ok: true, body: { recovery_required: false, incident: null } },
+    ]);
     expect(unexpectedWarnings(result)).toEqual([]);
     expect(result.workerExits).toEqual([0]);
     expect(result.closeCalls).toBe(1);
     expect(result.logs).not.toContain('[host] shutdown timed out, terminating');
     expect(result.afterShutdown).toEqual({ ok: false, body: 'Mobile Host exited (code 0)' });
+  });
+
+  it('boots an isolated recovery Host when the restore marker cannot be read', () => {
+    const result = runBundle(join(dir, 'production'), [
+      ['get_startup_recovery_status', {}], ['list_startup_recovery_incidents', {}],
+      ['data_governance_get_maintenance_status', {}], ['get_database_info', {}],
+    ], 'corrupt-restore');
+    expect(result.error).toBeUndefined();
+    expect(result.uncaught).toEqual([]);
+    expect(result.ready).toBe('ready');
+    expect(result.events).toEqual([]);
+    expect(result.extra).toMatchObject([
+      { ok: true, body: { recovery_required: true, incident: {
+        incident_id: 'pending-mobile-restore', failed_operation: 'mobile_pending_restore',
+        recovery_error: '无法读取上次数据恢复的意图文件', resolved: false, candidates: [],
+      } } },
+      { ok: true, body: [{ failed_operation: 'mobile_pending_restore' }] },
+      { ok: true, body: { is_in_maintenance_mode: true, blocked_components: ['vfs', 'mistakes', 'chat_v2', 'llm_usage', 'audit'] } },
+      { ok: false, body: 'get_database_info not allowed. Command not found' },
+    ]);
+    const manifest = result.manifest as { ok: boolean; body: { plugins: { id: string }[] } };
+    expect(manifest.body.plugins.map(plugin => plugin.id).sort()).toEqual([
+      'dstu.mobile.shell', 'dstu.platform.crypto', 'dstu.platform.files', 'dstu.platform.storage',
+    ]);
+    expect(result.workerExits).toEqual([0]);
   });
 });

@@ -172,6 +172,14 @@ export const CN_TRUSTED_SITES: readonly string[] = [
   'huawei.com', 'xiaomi.com', 'bytedance.com', 'infoq.cn', '51cto.com', 'iteye.com', 'ibiblio.org',
   'apache.org', 'python.org', 'nodejs.org', 'mysql.com', 'postgresql.org',
 ];
+export function parseCnCustomSites(raw: string | null): string[] {
+  if (raw === null || raw.trim() === '') return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (Array.isArray(parsed) && parsed.every(item => typeof item === 'string')) return parsed;
+  } catch { /* Legacy UI stores a comma-separated list. */ }
+  return raw.split(',').map(item => item.trim()).filter(item => item !== '');
+}
 export function mergedWhitelist(config: CnWhitelistConfig): string[] {
   const list: string[] = config.use_default_list ? [...CN_TRUSTED_SITES] : [];
   if (config.custom_sites !== null) list.push(...config.custom_sites);
@@ -289,18 +297,8 @@ export function applyDbOverrides(
     const parsed = parseRustBool(cnDefault);
     if (parsed !== null) config.cn_whitelist.use_default_list = parsed;
   }
-  const cnCustom = setting('web_search.cn_whitelist.custom_sites');
-  if (cnCustom !== null && cnCustom.trim() !== '') {
-    let list: string[];
-    try {
-      const parsed: unknown = JSON.parse(cnCustom);
-      if (!Array.isArray(parsed) || !parsed.every(item => typeof item === 'string')) throw new Error('not a string array');
-      list = parsed;
-    } catch {
-      list = cnCustom.split(',').map(item => item.trim()).filter(item => item !== '');
-    }
-    if (list.length) config.cn_whitelist.custom_sites = list;
-  }
+  const cnCustom = parseCnCustomSites(setting('web_search.cn_whitelist.custom_sites'));
+  if (cnCustom.length) config.cn_whitelist.custom_sites = cnCustom;
 }
 
 const ENV_KEYS: [keyof ProviderKeys, string][] = [
@@ -311,8 +309,9 @@ const ENV_KEYS: [keyof ProviderKeys, string][] = [
 ];
 export function toolConfigFromEnv(): ToolConfig {
   const config = defaultToolConfig();
+  const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env;
   for (const [field, name] of ENV_KEYS) {
-    const value = process.env[name];
+    const value = env?.[name];
     if (config.keys[field] === null && value !== undefined) config.keys[field] = value;
   }
   return config;

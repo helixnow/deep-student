@@ -2,6 +2,7 @@
  * V06-03：诊断插件的 `storageBatch` 不再改写用户数据。批处理作用于整张表；在真实 mistakes.db 上跑会把用户
  * 30 天前的错题归档、删掉用户的孤儿消息。现在它在同结构的临时库上跑，结果与 e2e（全新库）期望的相同。
  */
+import { createWebCrypto } from '../../../host/platform/crypto/web.ts';
 import { afterEach, describe, expect, it } from 'vitest';
 import { HOST_CALL_COMMAND } from '../../../host/kernel/core.ts';
 import { loadImportedProfile } from '../../../host/kernel/profile-install.ts';
@@ -21,7 +22,7 @@ afterEach(async () => {
 describe('mobile diagnostics storageBatch', () => {
   it('leaves the user\'s mistakes and messages untouched and reports only its own rows', async () => {
     const runtime = nodeRuntime(await nodeSqlite());
-    host = await createTestHost({ provide: { sqliteRuntime: runtime, files: {}, appCommandState: {} } });
+    host = await createTestHost({ provide: { crypto: createWebCrypto(), sqliteRuntime: runtime, files: {}, appCommandState: {} } });
     // 存储以 builtin 身份安装：测试条目的 `source` 会被判成社区插件，社区 ctx 的深层代理不让 `Object.keys`
     // 枚举注入服务的普通对象（`sqliteRuntime.migrations`），迁移会被当成空集。
     const loaded = await loadImportedProfile(host.runtime, [

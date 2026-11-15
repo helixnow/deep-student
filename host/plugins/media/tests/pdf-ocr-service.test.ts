@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { createNodeFiles } from '../../../platform/files/index.ts';
 import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
@@ -16,6 +17,7 @@ type OcrCall = [string, number, string];
 let root: string;
 let host: TestHost | null = null;
 
+const localFiles = () => createNodeFiles({ roots: [{ name: 'appData', path: root }] });
 beforeEach(() => { root = fs.mkdtempSync(path.join(os.tmpdir(), 'pdf-ocr-')); });
 afterEach(async () => {
   if (host !== null) await host.dispose();
@@ -50,6 +52,7 @@ async function start(fakes: Fakes, extra: Record<string, unknown> = {}): Promise
     provide: { storage: unusedStorage(),
       settings: settings(new Map([['ocr.available_models', JSON.stringify([{ configId: 'cfg-1', name: '我的 Paddle' }])]])),
       paths: { appDataDir: root },
+      files: localFiles(),
       llmOcrModels: {
         getOcrEngineType: async () => 'paddle_ocr_vl',
         getOcrModelConfig: async () => {
@@ -363,6 +366,7 @@ function productionService(h: TestHost, emit = (payload: Parameters<typeof h.ctx
   h.ctx.backendEvents.emit('pdf_ocr_progress', payload);
 }) {
   return new PdfOcrService({
+    files: localFiles, canonicalize: fs.promises.realpath,
     appDataDir: () => root, imagesDir: () => path.join(root, 'images'),
     ocrModels: () => h.ctx.llmOcrModels, ocrPages: () => h.ctx.llmOcrPages,
     pdfium: () => h.ctx.nativePdfium, image: () => h.ctx.nativeImage,
@@ -651,6 +655,7 @@ it('rate_limit_hint, render size, file name sanitizing and LRU budget follow Rus
 
   const logs: string[] = [];
   const service = new PdfOcrService({
+    files: localFiles, canonicalize: fs.promises.realpath,
     appDataDir: () => root, imagesDir: () => path.join(root, 'images'), ocrModels: () => undefined,
     ocrPages: () => undefined, pdfium: () => undefined, image: () => undefined, emit: () => {},
     log: { info: () => {}, warn: (m) => logs.push(m), error: () => {} },

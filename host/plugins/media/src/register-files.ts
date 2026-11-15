@@ -1,5 +1,7 @@
 /** File, image and document-parsing commands (`src/commands.rs`, `crates/dstu-media/src/cmd/media.rs`). */
 import type { Context } from '@deepseek-ai/cordis';
+import { readFile, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { CommandError } from '../../../kernel/api.ts';
 import { AppError, isAppErrorValue } from '../../../platform/errors/api.ts';
 import type { NativeHeic } from '../../../platform/native/heic/api.ts';
@@ -75,7 +77,11 @@ export function registerFileCommands(ctx: Context, { docs, plugin }: FileCommand
   // crates/dstu-media/src/cmd/media.rs:54-149: Result<_, String> → plain string errors.
   ctx.commands.register<Commands['compress_image']['args'],
     Commands['compress_image']['result']>('compress_image', async args => {
-      try { return await compressImage(plugin.nativeImage, args); }
+      try {
+        return await compressImage(plugin.nativeImage, args, {
+          read: readFile, async write(path, bytes) { await writeFile(path, bytes); }, tempDir: tmpdir,
+        });
+      }
       catch (error) {
         if (error instanceof CompressImageError) throw new CommandError(error.message);
         if (error instanceof CommandError && isAppErrorValue(error.value)) throw new CommandError(error.value.message);

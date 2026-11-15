@@ -101,7 +101,6 @@ export function lockedRuntime(sqlite3: SqliteRuntime['sqlite3'], cause: PoolBusy
     exists: () => false,
     unlink: () => undefined,
     exportFile: (path) => { throw locked(path); },
-    importDb: async (path) => { throw locked(path); },
     migrations,
   };
 }
@@ -162,6 +161,18 @@ export async function createSqliteRuntime(deps: SqliteRuntimeDeps = {}): Promise
   }
   const pool = installed.value;
   const t2 = performance.now();
+  const importDb = async (path: string, bytes: Uint8Array): Promise<number> => {
+    // Validate before disassociating any existing pool entry. All callers must hold the
+    // closed-database barrier; a restore intent and its backup survive an interrupted write.
+    if (bytes.byteLength < 512 || bytes.byteLength % 512 !== 0 || new TextDecoder().decode(bytes.subarray(0, 16)) !== 'SQLite format 3\0') {
+      throw new Error('Cannot import an invalid SQLite database file');
+    }
+    // SAH pool's Uint8Array import writes over the main file without truncating it or
+    // clearing virtual sidecars. After a crash, an old WAL can replay newer rows on top
+    // of the restored snapshot. Start with an empty main file and no stale transaction logs.
+    for (const old of [`${path}-wal`, `${path}-shm`, `${path}-journal`, path]) pool.unlink(old);
+    return pool.importDb(path, bytes);
+  };
   const runtime: SqliteRuntime = {
     sqlite3,
     open: path => new pool.OpfsSAHPoolDb(path),
@@ -169,7 +180,7 @@ export async function createSqliteRuntime(deps: SqliteRuntimeDeps = {}): Promise
     exists: path => pool.getFileNames().includes(path),
     unlink: (path) => { pool.unlink(path); },
     exportFile: path => pool.exportFile(path),
-    importDb: (path, bytes) => pool.importDb(path, bytes),
+    importDb,
     migrations,
   };
   return { runtime, timings: { wasmInitMs: t1 - t0, poolInstallMs: t2 - t1, poolAttempts: installed.attempts, poolError: null } };

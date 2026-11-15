@@ -10,13 +10,12 @@
 import { CommandError } from '../../../kernel/api.ts';
 import { AppError } from '../../../platform/errors/api.ts';
 import type { NativeOfficeWriter } from '../../../platform/native/office/api.ts';
-import { ImageBase64Error } from './image-base64.ts';
 import { toBase64 } from '../../../platform/crypto/encoding.ts';
 
 export interface NotesExportDocxDeps {
   /** `state.file_manager.get_image_as_base64(&src)` (restricted to the app data dir). */
   imageAsBase64(src: string): Promise<string>;
-  writer(): NativeOfficeWriter;
+  writer(): Pick<NativeOfficeWriter, 'generateDocx'>;
   warn(message: string): void;
 }
 
@@ -33,7 +32,6 @@ function field(value: unknown, key: string): unknown {
 }
 
 function errorText(error: unknown): string {
-  if (error instanceof ImageBase64Error) return error.appError.message;
   return error instanceof Error ? error.message : String(error);
 }
 

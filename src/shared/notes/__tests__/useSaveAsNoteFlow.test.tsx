@@ -52,7 +52,6 @@ vi.mock('@/features/learning-hub/components/finder/FolderPickerDialog', async ()
   }> = ({ open, onOpenChange, onConfirm, title, inline, footerStart }) => {
     const hosted = useMobileSubviewChrome(
       { title, onBack: () => onOpenChange(false), screen: 'center' },
-      [title, onOpenChange],
       Boolean(inline && open),
     );
     if (!open) return null;

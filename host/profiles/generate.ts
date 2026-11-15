@@ -36,6 +36,7 @@ const SHELL_PLUGINS = ['../electron/index.ts'] as const;
 /** Independently exported plugins not covered by the directory index scan. */
 const STANDALONE_PLUGINS = [
   'platform/settings/backup-commands.ts',
+  'plugins/browser/mobile-search.ts',
   'plugins/sync/startup.ts',
 ] as const;
 

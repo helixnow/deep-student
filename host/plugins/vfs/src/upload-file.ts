@@ -207,10 +207,12 @@ async function uploadFile(deps: FileUploadDeps, params: VfsUploadFileParams): Pr
   const size = content.length;
   const blobsDir = deps.blobsDir();
   const isImage = params.mimeType.startsWith('image/');
+  const blobExtension = extensionForMime(params.name, params.mimeType);
 
   let conn = deps.conn();
   const existing = repos.files.getBySha256(conn, sha256);
   if (existing !== null && existing.status === 'active') {
+    if (existing.blobHash) await repos.blobs.persistBlob(conn, blobsDir, content, blobExtension, existing.blobHash);
     log.info('[VFS::handlers] File reused: %s', existing.id);
     const reusedPdf = existing.mimeType === 'application/pdf' || existing.fileName.toLowerCase().endsWith('.pdf');
     const reusedImage = existing.mimeType?.startsWith('image/') ?? false;
@@ -288,11 +290,11 @@ async function uploadFile(deps: FileUploadDeps, params: VfsUploadFileParams): Pr
   // Every upload keeps its bytes: the previous `< 1 MiB non-image` branch
   // wrote an inline `('inline', '')` resource row and silently dropped the file
   // content, so neither read_file_bytes nor vfs_get_file_content could recover it.
-  const blobExtension = extensionForMime(params.name, params.mimeType);
   let saved: [string | null, VfsFile, boolean];
   try {
+    const persistedPath = await repos.blobs.persistBlob(conn, blobsDir, content, blobExtension);
     saved = deps.withSavepoint(conn, 'vfs_upload_file_saga', () => {
-      const blobHash = repos.blobs.storeBlob(conn, blobsDir, content, params.mimeType, blobExtension).hash;
+      const blobHash = repos.blobs.storeBlob(conn, blobsDir, content, params.mimeType, blobExtension, persistedPath).hash;
       const [file, created] = repos.files.createFileWithDocDataInFolderOutcome(conn, sha256, params.name, size, fileType,
         params.mimeType, blobHash, null, targetFolderId, previewJson, extractedText, pageCount);
       return [blobHash, file, created] as [string | null, VfsFile, boolean];

@@ -26,6 +26,7 @@ import {
   type TextbookImportProgress,
 } from './sidebarConstants';
 import type { MarkdownNoteImport } from './useMarkdownNoteImport';
+import { canParseAsMobileTextbook, withStagedTextbookFile } from '../textbookFileImport';
 
 type AttachImportProgress = { done: number; total: number } | null;
 
@@ -350,6 +351,7 @@ export interface ImportDroppedFilesContext {
   setAttachImportProgress: React.Dispatch<React.SetStateAction<AttachImportProgress>>;
   handleRefresh: () => Promise<void>;
   openImportedMarkdownNote: MarkdownNoteImport['openImportedMarkdownNote'];
+  onOpenApp?: LearningHubSidebarProps['onOpenApp'];
 }
 
 /**
@@ -366,15 +368,17 @@ export async function importDroppedFiles(
     setAttachImportProgress,
     handleRefresh,
     openImportedMarkdownNote,
+    onOpenApp,
   }: ImportDroppedFilesContext,
   files: File[],
+  fromPicker = false,
 ): Promise<void> {
   if (files.length === 0) return;
-  if (consumePathsDropHandledFlag(pathsDropHandledRef)) {
+  if (!fromPicker && consumePathsDropHandledFlag(pathsDropHandledRef)) {
     debugLog.log('[LearningHub] 跳过 files 回调，统一走 paths 导入链路');
     return;
   }
-  if (isDragDropBlockedView(currentPath)) {
+  if (!fromPicker && isDragDropBlockedView(currentPath)) {
     showGlobalNotification('warning', t('finder.dragDrop.notAllowedHere'));
     return;
   }
@@ -417,7 +421,8 @@ export async function importDroppedFiles(
 
   let totalSuccess = 0;
   let totalFailed = 0;
-  const limit = pLimit(3);
+  // On mobile each staged document is fully parsed in the Host, so consume one at a time.
+  const limit = pLimit(fromPicker ? 1 : 3);
   let firstImportedNode: DstuNode | null = null;
 
   if (markdownFiles.length > 0) {
@@ -441,17 +446,26 @@ export async function importDroppedFiles(
         const isImage = IMAGE_EXTENSIONS.has(ext);
 
         try {
+          if (fromPicker && DOCUMENT_EXTENSIONS.has(ext) && canParseAsMobileTextbook(ext)) {
+            const result = await withStagedTextbookFile(file, (source) =>
+              textbookDstuAdapter.addTextbooks([source], currentCreatableFolderId));
+            if (!result.ok) {
+              return { ok: false as const, name: file.name, reason: result.error.toUserMessage() };
+            }
+            const node = result.value[0];
+            if (!node) return { ok: false as const, name: file.name };
+            return { ok: true as const, name: file.name, node, isMedia: false };
+          }
           // ★ 2026-06-12（审阅问题 FE-M1）：传递当前文件夹 ID，
           // 修复浏览器拖入的附件总是落到根目录的问题（Tauri paths 链路本就正确）。
           const result = await attachmentDstuAdapter.create(
-            file,
-            isImage ? 'image' : 'file',
+            file, isImage ? 'image' : 'file',
             currentCreatableFolderId ? { folderId: currentCreatableFolderId } : undefined,
           );
           if (!result.ok) {
             return { ok: false as const, name: file.name, reason: result.error.toUserMessage() };
           }
-          return { ok: true as const, name: file.name };
+          return { ok: true as const, name: file.name, node: result.value, isMedia: MEDIA_EXTENSIONS.has(ext) };
         } catch (e) {
           return {
             ok: false as const,
@@ -506,8 +520,12 @@ export async function importDroppedFiles(
 
   if (totalSuccess > 0) {
     handleRefresh();
-    if (firstImportedNode) {
-      openImportedMarkdownNote(firstImportedNode);
+    if (firstImportedNode) openImportedMarkdownNote(firstImportedNode);
+    else if (fromPicker && onOpenApp) {
+      const firstPreview = results.find((entry) => entry.ok && (entry.node.type === 'textbook' || entry.isMedia));
+      if (firstPreview?.ok) {
+        onOpenApp(dstuNodeToResourceListItem(firstPreview.node, firstPreview.node.type === 'textbook' ? 'textbook' : 'file'));
+      }
     }
   }
 }

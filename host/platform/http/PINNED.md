@@ -1,7 +1,7 @@
 # `ctx.http` · `destination: 'public-pinned'`
 
 用于 URL 来自不可信内容、又必须防 DNS rebinding 的请求（`web_fetch` 等）。实现：`pinned-policy.ts`（地址判定，平台无关）、
-`pinned.ts`（桌面传输）、`index.ts`（策略层接线）。测试：`tests/pinned.test.ts`。
+`pinned.ts`（桌面传输）、`index.ts`（桌面策略层接线）和 `mobile.ts`（Android 策略层接线）。
 
 ## 语义
 
@@ -45,24 +45,22 @@ const { address } = await ctx.http.checkPublicPinned(url, { allowLoopback });   
 - 结果不缓存：之后的 `fetch` 仍会重新解析、校验、钉住，所以检查与连接之间的 rebinding 不会生效。
 - 用途：Rust 先校验目标、再尝试别的通道（`web_fetch` 在 DeepSeek 之前，`fetch_executor.rs:936-979`）。
   替代“用已中止的 signal 发一次 `public-pinned` 请求”的写法。
-- 需要钉住传输与主机名解析（`createHttpService({ pinnedTransport, resolveHost })`，`createDesktopHttp` 已接好两者）；缺一即 `UnsupportedOnPlatform`。
+- 需要钉住传输与主机名解析（桌面和 Android 已接好两者）；缺一即 `UnsupportedOnPlatform`。
 
 ## `destination: 'public'` + `allowLoopback: false`
 
 `public` 默认放行回环（与 Rust `is_safe_remote_url` 一致）。URL 来自不可信内容且不需要访问本机时传 `allowLoopback: false`：
 net-policy 判定通过后，再用 `resolvePinnedAddress(url, false, resolveHost)` 解析一次，IP 字面量、`localhost` 名和解析到回环的主机名
 都以 `BlockedDestination`（`reason: 'blocked-address'`）拒绝；`follow` 时每一跳重新判定，`manual` 时调用方对每一跳再发请求。
-连接仍走普通传输（可经代理、不钉住），所以它挡不住 DNS rebinding；需要防 rebinding 时用 `public-pinned`。
-没有主机名解析的平台（`resolveHost` 缺省）只能判断 IP 字面量与 `localhost` 名，与 `net.publicPolicy` 的移动端限制相同。
+桌面 `public` 连接仍走普通传输（可经代理、不钉住）。Android 对 `public` 同样使用钉住传输。
+跨平台需要防 DNS rebinding 时用 `public-pinned`。
 
 ## 平台
 
 - **桌面**：undici `Agent` 的 `connect.lookup` 只返回钉住的地址，显式 dispatcher 绕开代理。
-- **移动端**：未实现，返回 `UnsupportedOnPlatform`（`mobile/src/capabilities.ts` 中为 `unsupported`）。
-  - Android：OkHttp 可以做到——自定义 `Dns.lookup(hostname)` 只返回已校验的地址，证书仍按主机名校验，`Proxy.NO_PROXY` 关闭代理。
-    需要原生插件，并把 `pickPinnedAddress` 的判定搬到原生侧或在 JS 侧先解析（WebView 没有 DNS 接口，仍需原生解析）。
-  - iOS：`URLSession` 不能指定连接地址；要么用 `Network.framework`（`NWConnection` 直连 IP + 自行处理 TLS SNI 与校验，相当于自写 HTTP 客户端），
-    要么不提供该能力。目前判定为能力缺口。
+- **Android**：原生桥解析所有地址，Worker 用 `pickPinnedAddress` 校验，OkHttp 自定义 `Dns` 只返回通过校验的单个地址；证书仍按主机名校验，
+  `Proxy.NO_PROXY` 关闭代理，钉住请求使用独立连接池。响应按需分块读取，超限或取消时关闭连接。
+- **iOS 和浏览器外壳**：返回 `UnsupportedOnPlatform`。
 
 ## 给 S01：`web_fetch` 迁移要点
 
@@ -105,4 +103,4 @@ for (let hops = 0; REDIRECT_STATUSES.has(response.status) && hops < MAX_REDIRECT
 - 测试注入：`createDesktopHttp({ env: {}, platformProxy: async () => null, pinned: { resolve } })`，`resolve(host)` 返回
   `[{ address }]`；本机测试服务器配 `allowLoopback: true`，主机名用 `.test` 证明没有再次解析。
 - 工具执行器拿 `ctx.http` 的方式与其他平台服务相同（插件 `inject: ['http']` 后传入执行器依赖）。
-- 移动端调用会得到 `UnsupportedOnPlatform`，`web_fetch` 在移动端应报告不可用，而不是退回到不钉住的请求。
+- `UnsupportedOnPlatform` 应原样说明当前平台限制，不能退回到不钉住的请求。

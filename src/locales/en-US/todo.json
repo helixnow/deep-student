@@ -735,6 +735,7 @@
     "notifications": {
       "workCompleteTitle": "Pomodoro Complete",
       "workCompleteBody": "Focus session finished. Time for a break ({{value}} pomodoros today)",
+      "androidBackgroundWorkBody": "Your focus timer has finished.",
       "breakCompleteTitle": "Break Over",
       "breakCompleteBody": "Break finished. Ready for the next pomodoro?",
       "endReminderTitle": "Almost done",
@@ -764,6 +765,7 @@
       "strictMode": "Strict mode (no pausing)",
       "countUp": "Stopwatch (count up)",
       "endReminder": "End reminder (0 = off)",
+      "androidBackgroundCompletion": "Notify when the countdown ends in the background",
       "noiseType": "Ambient sound",
       "noiseVolume": "Volume",
       "noiseAutoWithFocus": "Auto-play ambient sound while focusing",
