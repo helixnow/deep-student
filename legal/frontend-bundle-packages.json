@@ -1,6 +1,6 @@
 {
   "generatedBy": "scripts/licenses/collect-frontend-bundle-packages.mjs",
-  "packageLockSha256": "1971941920729f5c151028fcff2d3645f9b0deee30e40bc7cacc0ff47c0fd092",
+  "packageLockSha256": "c744368f035904809ff24aa0e082ea553573d76ba8e863192f69bb90c5dc9ff2",
   "packages": [
     {
       "path": "node_modules/@babel/runtime",
