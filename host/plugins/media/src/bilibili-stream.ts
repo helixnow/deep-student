@@ -378,7 +378,7 @@ export interface BiliStreamClientOptions {
   /** 生产环境开启出口策略校验；测试客户端指向本地 HTTP 服务时关闭。 */
   strictHosts?: boolean;
   /** 生产出口（native / proxy / browser_bridge）；缺省时使用本类的直连测试客户端。 */
-  attempt?: BiliAttempt;
+  attempt?: Pick<BiliAttempt, 'execute' | 'verifyIdentity'> & Partial<Pick<BiliAttempt, 'cacheScope'>>;
 }
 
 /**
@@ -436,7 +436,7 @@ async function readLimitedBody(response: Response, maxBytes: number | undefined)
 export class BiliStreamClient implements BiliAttemptLike {
   readonly apiBase: string;
   readonly strictHosts: boolean;
-  readonly attempt: BiliAttempt | null;
+  readonly attempt: NonNullable<BiliStreamClientOptions['attempt']> | null;
   protected readonly timeoutMs: number;
   private readonly cookie: string | null;
   private readonly fetchImpl: typeof fetch;

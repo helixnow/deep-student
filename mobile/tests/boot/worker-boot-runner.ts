@@ -52,6 +52,7 @@ async function prepareSqlite(): Promise<{ sqlite3: NodeSqlite; installs: () => n
         OpfsSAHPoolDb,
         getFileNames: () => [...files],
         unlink: (path: string) => files.delete(path),
+        importDb: () => { throw new Error('No database should be imported by this boot fixture'); },
         exportFile: (path: string) => { throw new Error(`exportFile(${path}) is not used during boot`); },
         reserveMinimumCapacity: async () => undefined,
       };
@@ -73,9 +74,17 @@ async function warmWebGlobals(): Promise<void> {
   });
 }
 
-async function main(bundleDir: string, extraInvokes: readonly [cmd: string, args: unknown][]): Promise<void> {
+async function main(bundleDir: string, extraInvokes: readonly [cmd: string, args: unknown][], corruptRestore: boolean): Promise<void> {
   const { sqlite3, installs } = await prepareSqlite();
   const opfs = createFakeOpfs();
+  if (corruptRestore) {
+    const app = await opfs.getDirectoryHandle('deep-student', { create: true });
+    const recovery = await app.getDirectoryHandle('recovery', { create: true });
+    const intent = await recovery.getFileHandle('pending-mobile-restore.json', { create: true });
+    const handle = await intent.createSyncAccessHandle!();
+    handle.write(new TextEncoder().encode('{corrupt-json'));
+    handle.close();
+  }
   Object.defineProperty(globalThis.navigator, 'storage', { configurable: true, value: { getDirectory: async () => opfs } });
   await warmWebGlobals();
 
@@ -120,7 +129,7 @@ async function main(bundleDir: string, extraInvokes: readonly [cmd: string, args
   const started = performance.now();
   await import(pathToFileURL(join(bundleDir, 'host-worker.js')).href);
   const { startShell } = await import(pathToFileURL(join(bundleDir, 'boot-driver.js')).href) as typeof import('./boot-driver.ts');
-  const driver: BootDriver = startShell(worker);
+  const driver: BootDriver = startShell(worker, corruptRestore);
   const listened = await driver.listen('data-governance-migration-status');
   const ready = await Promise.race([
     driver.ready.then(() => 'ready', (error: unknown) => `rejected: ${error instanceof Error ? error.message : String(error)}`),
@@ -157,4 +166,4 @@ async function main(bundleDir: string, extraInvokes: readonly [cmd: string, args
   });
 }
 
-main(proc.argv[2]!, JSON.parse(proc.argv[3] ?? '[]') as [string, unknown][]).catch((error: unknown) => report({ error: error instanceof Error ? error.stack ?? error.message : String(error) }));
+main(proc.argv[2]!, JSON.parse(proc.argv[3] ?? '[]') as [string, unknown][], proc.argv[4] === 'corrupt-restore').catch((error: unknown) => report({ error: error instanceof Error ? error.stack ?? error.message : String(error) }));

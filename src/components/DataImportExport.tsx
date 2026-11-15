@@ -10,6 +10,7 @@ import { useTranslation } from 'react-i18next';
 import { CustomScrollArea } from './custom-scroll-area';
 import { useMobileHeader, MobileSlidingLayout } from '@/components/layout';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { readShellPlatform } from '@/ui-kernel/services/shell-platform';
 import {
   Upload, DownloadSimple, Warning, Trash, HardDrive, Clock, ArrowsClockwise,
   FileZip, FloppyDisk, FileText,
@@ -403,6 +404,13 @@ export const DataImportExport: React.FC<DataImportExportProps> = ({ onClose, emb
   const [backupList, setBackupList] = useState<GovernanceBackupInfo[]>([]);
   const [isLoadingBackups, setIsLoadingBackups] = useState(false);
   const [showClearDataDialog, setShowClearDataDialog] = useState(false);
+  const [backupPasswordAction, setBackupPasswordAction] = useState<{ run: (password?: string) => void; exporting: boolean } | null>(null);
+  const [backupPassword, setBackupPassword] = useState('');
+  const askBackupPassword = (exporting: boolean, run: (password?: string) => void) => {
+    if (readShellPlatform()?.kind !== 'mobile') { run(); return; }
+    setBackupPassword('');
+    setBackupPasswordAction({ run, exporting });
+  };
   const [clearDataStep, setClearDataStep] = useState(0);
   const [confirmText, setConfirmText] = useState('');
   const [countdown, setCountdown] = useState(0);
@@ -722,7 +730,7 @@ export const DataImportExport: React.FC<DataImportExportProps> = ({ onClose, emb
     });
   }, [cleanupExportListener, exitMaintenanceMode]);
 
-  const handleExport = async () => {
+  const runExport = async (password?: string) => {
     cleanupExportListener();
     setIsExporting(true);
     setExportError(null);
@@ -737,12 +745,12 @@ export const DataImportExport: React.FC<DataImportExportProps> = ({ onClose, emb
       debugLog.log(t('data:console.export_start'));
 
       let targetPath: string | null = null;
-      const picked = await fileManager.pickSavePath({
+      const picked = readShellPlatform()?.kind === 'mobile' ? '' : await fileManager.pickSavePath({
         title: t('data:dialogs.pick_backup_destination'),
         defaultFileName: `dstu-backup-${new Date().toISOString().replace(/[:.]/g, '-')}.zip`,
         filters: [{ name: t('data:file_filter_backup_archive'), extensions: ['zip'] }],
       });
-      if (!picked) {
+      if (picked === null) {
         setIsExporting(false);
         setExportJob({
           jobId: 'cancelled',
@@ -765,12 +773,14 @@ export const DataImportExport: React.FC<DataImportExportProps> = ({ onClose, emb
         debugLog.warn('[DataImportExport] 保存 WebView 设置失败，继续备份:', e);
       }
 
-      const backupJobResp = await DataGovernanceApi.backupTiered(
-        mapUiTiersToGovernance(exportBackupTiers),
-        undefined,
-        undefined,
-        exportBackupTiers.includes('large_files') || exportBackupTiers.includes('vfs_full'),
-      );
+      const backupJobResp = readShellPlatform()?.kind === 'mobile' && password
+        ? await DataGovernanceApi.runBackup('full', true)
+        : await DataGovernanceApi.backupTiered(
+            mapUiTiersToGovernance(exportBackupTiers),
+            undefined,
+            undefined,
+            exportBackupTiers.includes('large_files') || exportBackupTiers.includes('vfs_full'),
+          );
       const backupPayload = await waitForJobTerminal(backupJobResp.job_id, 'export', 600000);
       const backupId = resolveBackupIdFromEvent(backupPayload);
       if (!backupId) {
@@ -782,6 +792,7 @@ export const DataImportExport: React.FC<DataImportExportProps> = ({ onClose, emb
         targetPath || undefined,
         6,
         true,
+        password,
       );
       const jobId = jobResp.job_id;
       setExportJob({
@@ -838,6 +849,7 @@ ${resolvedPath}`);
       exitMaintenanceMode();
     }
   };
+  const handleExport = () => askBackupPassword(true, runExport);
   handleExportRef.current = handleExport;
 
   // 手动备份（仅创建治理系统备份，不导出 ZIP）
@@ -845,12 +857,14 @@ ${resolvedPath}`);
     setIsExporting(true);
     try {
       debugLog.log(t('data:console.auto_backup_start'));
-      const backupJobResp = await DataGovernanceApi.backupTiered(
-        mapUiTiersToGovernance(exportBackupTiers),
-        undefined,
-        undefined,
-        exportBackupTiers.includes('large_files') || exportBackupTiers.includes('vfs_full'),
-      );
+      const backupJobResp = readShellPlatform()?.kind === 'mobile'
+        ? await DataGovernanceApi.runBackup('full', true)
+        : await DataGovernanceApi.backupTiered(
+            mapUiTiersToGovernance(exportBackupTiers),
+            undefined,
+            undefined,
+            exportBackupTiers.includes('large_files') || exportBackupTiers.includes('vfs_full'),
+          );
       await waitForJobTerminal(backupJobResp.job_id, 'export');
       showGlobalNotification('success', t('data:auto_backup_success'));
       await loadBackupList();
@@ -924,12 +938,12 @@ ${resolvedPath}`);
   /**
    * 使用系统文件对话框选择 Zip 备份并执行导入恢复
    */
-  const handleImportZipBackup = async () => {
+  const runImportZipBackup = async (password?: string) => {
     setIsExporting(true);
     let maintenanceModeEntered = false;
     let restoreRequiresRestart = false;
     try {
-      const zipPath = await fileManager.pickSingleFile({
+      const zipPath = readShellPlatform()?.kind === 'mobile' ? 'mobile-picker:' : await fileManager.pickSingleFile({
         title: t('data:dialogs.select_zip_title'),
       });
 
@@ -970,7 +984,7 @@ ${resolvedPath}`);
         return false;
       };
 
-      if (!isLikelyZipPath(zipPath)) {
+      if (zipPath !== 'mobile-picker:' && !isLikelyZipPath(zipPath)) {
         showGlobalNotification('warning', t('data:dialogs.invalid_zip'));
         return;
       }
@@ -978,7 +992,7 @@ ${resolvedPath}`);
       enterMaintenanceMode(t('data:governance.maintenance_import'));
       maintenanceModeEntered = true;
 
-      const importJob = await DataGovernanceApi.importZip(zipPath);
+      const importJob = await DataGovernanceApi.importZip(zipPath, undefined, password);
       const importResult = await waitForJobTerminal(importJob.job_id, 'import');
       const importedBackupId = resolveBackupIdFromEvent(importResult);
       if (!importedBackupId) {
@@ -1038,22 +1052,24 @@ ${resolvedPath}`);
   /**
    * 导出单个备份到指定位置（iPad专用）
    */
-  const handleSaveBackup = async (backupId: string) => {
+  const handleImportZipBackup = () => askBackupPassword(false, runImportZipBackup);
+  const handleSaveBackup = (backupId: string) => askBackupPassword(true, password => { void runSaveBackup(backupId, password); });
+  const runSaveBackup = async (backupId: string, password?: string) => {
     setIsExporting(true);
     try {
       const fileName = `${backupId}.zip`;
-      const outputPath = await fileManager.pickSavePath({
+      const outputPath = readShellPlatform()?.kind === 'mobile' ? '' : await fileManager.pickSavePath({
         title: t('data:save_backup.title'),
         defaultFileName: fileName,
         filters: [{ name: t('data:file_filter_backup_archive'), extensions: ['zip'] }],
       });
 
-      if (!outputPath) {
+      if (outputPath === null) {
         showGlobalNotification('info', t('data:save_backup.cancelled'));
         return;
       }
 
-      const exportJob = await DataGovernanceApi.exportZip(backupId, outputPath, 6, true);
+      const exportJob = await DataGovernanceApi.exportZip(backupId, outputPath, 6, true, password);
       const exportResult = await waitForJobTerminal(exportJob.job_id, 'export');
       const resolvedPath =
         exportResult.result?.resolvedPath ||
@@ -1791,6 +1807,29 @@ ${resolvedPath}`);
         </DataManagementContent>
 
         {/* 清空数据确认对话框 */}
+        <DsDialog open={backupPasswordAction !== null} onOpenChange={open => { if (!open) { setBackupPassword(''); setBackupPasswordAction(null); } }} maxWidth="max-w-md">
+          <DsDialogHeader>
+            <DsDialogTitle>{t(backupPasswordAction?.exporting ? 'data:governance.e2ee_password_label' : 'data:governance.import_password_title')}</DsDialogTitle>
+            <DsDialogDescription>{backupPasswordAction?.exporting
+              ? t('data:governance.e2ee_password_hint', { min: 8 })
+              : t('data:governance.import_password_desc')}</DsDialogDescription>
+          </DsDialogHeader>
+          <DsDialogBody>
+            <Input type="password" aria-label={t('data:governance.import_password_label')} value={backupPassword}
+              autoComplete={backupPasswordAction?.exporting ? 'new-password' : 'current-password'}
+              onChange={event => setBackupPassword(event.target.value)} />
+          </DsDialogBody>
+          <DsDialogFooter>
+            <DsButton variant="ghost" onClick={() => { setBackupPassword(''); setBackupPasswordAction(null); }}>{t('common:cancel')}</DsButton>
+            <DsButton disabled={backupPasswordAction?.exporting && [...backupPassword.trim()].length < 8} onClick={() => {
+              const action = backupPasswordAction;
+              const password = backupPassword;
+              setBackupPassword('');
+              setBackupPasswordAction(null);
+              action?.run(password || undefined);
+            }}>{t('common:continue')}</DsButton>
+          </DsDialogFooter>
+        </DsDialog>
         <DsDialog open={showClearDataDialog} onOpenChange={setShowClearDataDialog} maxWidth="max-w-md" closeOnOverlay={false} showClose={false}>
             {clearDataStep === 0 && (
               <>

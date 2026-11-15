@@ -618,6 +618,7 @@
     "presentationFiles": "演示文稿/电子书",
     "dataFiles": "数据文件",
     "selectFiles": "选择学习资料文件",
+    "mobileImportTooLarge": "文件超过 Android 的 50 MB 大小上限。",
     "importEmpty": "没有成功导入任何教材"
   },
   "preview": {
@@ -882,6 +883,7 @@
     "markdownImport": {
       "selectFiles": "选择 Markdown 文件",
       "filterName": "Markdown 文件",
+      "tooLarge": "Markdown 文件不能超过 10 MB。",
       "success": "已导入 {{count}} 个 Markdown 笔记",
       "partial": "成功导入 {{success}} 个 Markdown 笔记，{{failed}} 个失败",
       "failed": "Markdown 导入失败",

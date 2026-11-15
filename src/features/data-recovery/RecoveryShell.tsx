@@ -10,6 +10,7 @@ import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { isMobilePlatform } from '@/utils/platform';
 import type { StartupRecoveryStatus } from './dataRecoveryApi';
 import { RecoveryCenter } from './RecoveryCenter';
+import { MobileRestoreRecovery } from './MobileRestoreRecovery';
 
 interface RecoveryShellProps {
   status: StartupRecoveryStatus;
@@ -28,6 +29,7 @@ export const RecoveryShell: React.FC<RecoveryShellProps> = ({
   const { isSmallScreen } = useBreakpoint();
   const showDesktopWindowChrome = !isMobilePlatform() && !isSmallScreen;
   const dragRegion = showDesktopWindowChrome ? true : undefined;
+  const mobileIncident = status.incident?.kind === 'mobile_pending_restore' ? status.incident : null;
 
   return (
     <div
@@ -66,6 +68,7 @@ export const RecoveryShell: React.FC<RecoveryShellProps> = ({
 
       <CustomScrollArea className="min-h-0 flex-1">
         <main className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
+          {mobileIncident ? <MobileRestoreRecovery incident={mobileIncident} /> : <>
           <div className="mb-7 max-w-3xl">
             <p className="text-xs font-medium uppercase tracking-[0.16em] text-primary">
               {t('data:recovery.eyebrow')}
@@ -84,6 +87,7 @@ export const RecoveryShell: React.FC<RecoveryShellProps> = ({
             debugPreview={debugPreview}
             onDebugExit={onDebugExit}
           />
+          </>}
         </main>
       </CustomScrollArea>
     </div>

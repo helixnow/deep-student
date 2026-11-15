@@ -447,7 +447,9 @@ export class AttachmentRepo implements AttachmentRepository {
 
       if (attachment.resourceId !== undefined) {
         const resourceRow = conn.get<Row>(
-          'SELECT data, external_hash FROM resources WHERE id = ?1', [attachment.resourceId]);
+          `SELECT r.data, r.external_hash, f.extracted_text
+             FROM resources r JOIN files f ON f.resource_id = r.id WHERE r.id = ?1 AND f.id = ?2`,
+          [attachment.resourceId, fileId]);
         const data = resourceRow === undefined ? null : optionalText(resourceRow.data);
         const resourceExternalHash = resourceRow === undefined ? null : optionalText(resourceRow.external_hash);
 
@@ -459,6 +461,9 @@ export class AttachmentRepo implements AttachmentRepository {
           const trimmed = data.trim();
           if (trimmed === '') {
             logWarn(`[VFS::AttachmentRepo] resources.data is empty for ${fileId}: resource_id=${attachment.resourceId}`);
+            shouldFallback = true;
+          } else if (attachment.blobHash !== undefined && data === resourceRow?.extracted_text) {
+            // Textbooks materialize extracted text in resources.data for indexing, not original file bytes.
             shouldFallback = true;
           } else if (isProbablyBase64(trimmed)) {
             shouldFallback = false;
@@ -771,7 +776,13 @@ export class AttachmentRepo implements AttachmentRepository {
 
   uploadMediaStreamFinalized(conn: SqlExecutor, blobsDir: string, params: VfsUploadAttachmentParams,
     chunks: Iterable<Uint8Array>, folderId: string | null,
-    finalize?: (conn: SqlExecutor, result: VfsUploadAttachmentResult) => void): VfsUploadAttachmentResult {
-    return this.upload.uploadMediaStreamFinalized(conn, blobsDir, params, chunks, folderId, finalize);
+    finalize?: (conn: SqlExecutor, result: VfsUploadAttachmentResult) => void, persistedPath?: string): VfsUploadAttachmentResult {
+    return this.upload.uploadMediaStreamFinalized(conn, blobsDir, params, chunks, folderId, finalize, persistedPath);
+  }
+
+  uploadMediaStreamPersisted(conn: SqlExecutor, blobsDir: string, params: VfsUploadAttachmentParams,
+    chunks: Iterable<Uint8Array>, folderId: string | null,
+    finalize?: (conn: SqlExecutor, result: VfsUploadAttachmentResult) => void): Promise<VfsUploadAttachmentResult> {
+    return this.upload.uploadMediaStreamPersisted(conn, blobsDir, params, chunks, folderId, finalize);
   }
 }

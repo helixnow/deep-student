@@ -3,6 +3,11 @@
  * `POOL_RETRY_DELAYS_MS` 有限退避重试；仍失败时不让 Host 启动失败，而是交出“库被锁定”的运行时，
  * 存储插件据此进入核心恢复屏障，原因经迁移状态事件与 MAINTENANCE 错误给到前端。
  */
+import { createWebCrypto } from '../../../host/platform/crypto/web.ts';
+import { copyFileSync, existsSync, mkdtempSync, openSync, closeSync, readFileSync, statSync, renameSync, writeSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import Database from 'better-sqlite3';
 import { afterEach, describe, expect, it } from 'vitest';
 import { definePlugin } from '../../../host/kernel/core.ts';
 import { loadImportedProfile } from '../../../host/kernel/profile-install.ts';
@@ -43,6 +48,67 @@ async function stubbedSqlite(busyFor: number, busy: () => unknown = () => new DO
   return { calls, init: async () => sqlite3 as unknown as typeof real };
 }
 
+it('restores the snapshot instead of replaying newer setting writes from a closed database WAL', async () => {
+  // Synthesize a process exit with a real SQLite WAL. These copies have no open connection.
+  const dir = mkdtempSync(join(tmpdir(), 'dstu-sah-wal-'));
+  const sourcePath = join(dir, 'source.db');
+  const archivePath = join(dir, 'snapshot.db');
+  const activePath = join(dir, 'active.db');
+  const source = new Database(sourcePath);
+  try {
+    source.exec("CREATE TABLE settings(key TEXT PRIMARY KEY, value TEXT); INSERT INTO settings VALUES('audit.rollback_test','SNAPSHOT'); CREATE TABLE pages(x BLOB)");
+    source.prepare('VACUUM INTO ?').run(archivePath);
+    source.exec('INSERT INTO pages VALUES(zeroblob(262144))');
+    source.pragma('journal_mode = WAL');
+    source.pragma('wal_autocheckpoint = 0');
+    source.exec("UPDATE settings SET value='SECOND_ATTEMPT' WHERE key='audit.rollback_test'");
+    for (const path of [activePath, join(dir, 'old-import.db')]) {
+      copyFileSync(sourcePath, path);
+      copyFileSync(`${sourcePath}-wal`, `${path}-wal`);
+    }
+  } finally { source.close(); }
+  const snapshot = readFileSync(archivePath);
+  const physicallyImport = (path: string, bytes: Uint8Array) => {
+    // Matches the pinned SAH Uint8Array import: overwrite, force rollback-journal header, no truncation.
+    const fd = openSync(path, existsSync(path) ? 'r+' : 'w+');
+    try {
+      const length = writeSync(fd, bytes);
+      writeSync(fd, new Uint8Array([1, 1]), 0, 2, 18);
+      return length;
+    } finally { closeSync(fd); }
+  };
+  const readSetting = (path: string) => {
+    const sqlite = new Database(path);
+    try {
+      sqlite.pragma('locking_mode = EXCLUSIVE');
+      sqlite.pragma('journal_mode = WAL');
+      return sqlite.prepare('SELECT value FROM settings').pluck().get();
+    } finally { sqlite.close(); }
+  };
+  const oldImport = join(dir, 'old-import.db');
+  physicallyImport(oldImport, snapshot);
+  expect(readSetting(oldImport)).toBe('SECOND_ATTEMPT');
+  const wasm = await nodeSqlite();
+  const unlinked: string[] = [];
+  const fakePool = {
+    importDb: physicallyImport,
+    unlink(path: string) {
+      if (existsSync(path)) renameSync(path, join(dir, `retained-${unlinked.length}`));
+      unlinked.push(path);
+    },
+    reserveMinimumCapacity: async () => undefined,
+  };
+  const init = async () => ({ ...wasm, installOpfsSAHPoolVfs: async () => fakePool }) as unknown as typeof wasm;
+  const { runtime } = await createSqliteRuntime({ init });
+  await expect(runtime.importDb!(activePath, new Uint8Array(512))).rejects.toThrow('invalid SQLite');
+  expect(unlinked).toEqual([]);
+  expect(existsSync(`${activePath}-wal`)).toBe(true);
+  await expect(runtime.importDb!(activePath, snapshot)).resolves.toBe(snapshot.length);
+  expect(statSync(activePath).size).toBe(snapshot.length);
+  expect(existsSync(`${activePath}-wal`)).toBe(false);
+  expect(readSetting(activePath)).toBe('SNAPSHOT');
+});
+
 describe('SAH pool contention', () => {
   it('retries while the pool is held and succeeds once it is released', async () => {
     const { calls, init } = await stubbedSqlite(3);
@@ -82,7 +148,7 @@ describe('SAH pool contention', () => {
       storageError: true, code: 'SQLITE', sqliteCode: 'SQLITE_BUSY', phase: 'execute', database: '/data/slots/slotA/databases/vfs.db', message: 'database is locked',
     });
 
-    host = await createTestHost({ provide: { sqliteRuntime: runtime } });
+    host = await createTestHost({ provide: { crypto: createWebCrypto(), files: { exists: async () => false }, sqliteRuntime: runtime } });
     const business = definePlugin({
       meta: { id: 'dstu.notes', commands: ['notes_list'] },
       inject: ['storage'],

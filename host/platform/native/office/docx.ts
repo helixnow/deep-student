@@ -2,9 +2,11 @@ import {
   AlignmentType, Document, ImageRun, LineRuleType, Packer, PageBreak, Paragraph,
   Table, TableCell, TableRow, TextRun, WidthType, type IParagraphOptions, type IRunOptions,
 } from 'docx';
-import { rustTrim } from '../../util/index.ts';
-import { image } from '../image/index.ts';
-import type { RgbaImage } from '../image/api.ts';
+import { rustTrim } from '../../util/portable.ts';
+import { fromBase64, toBase64 } from '../../crypto/encoding.ts';
+import type { NativeImage, RgbaImage } from '../image/api.ts';
+
+type DocxImage = Pick<NativeImage, 'decodeRgba' | 'resizeDimensions' | 'resizeRgba' | 'encode'>;
 
 type JsonObject = Record<string, unknown>;
 const object = (value: unknown): JsonObject => value !== null && typeof value === 'object' && !Array.isArray(value) ? value as JsonObject : {};
@@ -27,7 +29,7 @@ function centered(value: string, cn: string, size: number, keepNext = false): Pa
   return paragraph(value, { font: fonts(cn), size }, { alignment: AlignmentType.CENTER, spacing: exact, keepNext });
 }
 
-async function picture(block: JsonObject, handout: boolean): Promise<Paragraph[]> {
+async function picture(block: JsonObject, handout: boolean, image: DocxImage): Promise<Paragraph[]> {
   const caption = rustTrim(str(block.caption));
   // Rust decode_image_data(..).and_then(prepare_png): invalid base64 and
   // image::load_from_memory failures are `.ok()?` — no warning, caption kept.
@@ -37,8 +39,8 @@ async function picture(block: JsonObject, handout: boolean): Promise<Paragraph[]
     const index = raw.indexOf('base64,');
     if (raw.startsWith('data:') && index !== -1) raw = raw.slice(index + 7);
     raw = raw.replace(/\p{White_Space}/gu, '');
-    const data = Buffer.from(raw, 'base64');
-    if (data.toString('base64') !== raw) throw new Error('Invalid image base64');
+    const data = fromBase64(raw);
+    if (toBase64(data) !== raw) throw new Error('Invalid image base64');
     decoded = await image.decodeRgba(data);
   } catch {
     decoded = null;
@@ -76,7 +78,7 @@ async function picture(block: JsonObject, handout: boolean): Promise<Paragraph[]
   return paragraphs;
 }
 
-export async function generateDocx(value: unknown): Promise<Uint8Array> {
+export async function generateDocx(value: unknown, image: DocxImage): Promise<Uint8Array> {
   const spec = object(value);
   const handout = spec.template === 'handout' || spec.template === 'official';
   const children: Array<Paragraph | Table> = [];
@@ -109,7 +111,7 @@ export async function generateDocx(value: unknown): Promise<Uint8Array> {
         }
         break;
       }
-      case 'image': children.push(...await picture(block, handout)); break;
+      case 'image': children.push(...await picture(block, handout, image)); break;
       case 'table': {
         const caption = rustTrim(str(block.caption));
         if (handout && caption !== '') children.push(centered(caption, '黑体', 24, true));
@@ -148,6 +150,6 @@ export async function generateDocx(value: unknown): Promise<Uint8Array> {
   const settings = (document.Settings as unknown as { root: Array<{ rootKey?: string }> }).root;
   const evenAndOdd = settings.findIndex(child => child.rootKey === 'w:evenAndOddHeaders');
   if (evenAndOdd >= 0) settings.splice(evenAndOdd, 1);
-  try { return await Packer.toBuffer(document); }
+  try { return new Uint8Array(await Packer.toArrayBuffer(document)); }
   catch (error) { throw new Error(`DOCX解析错误: DOCX 生成失败: ${error instanceof Error ? error.message : String(error)}`); }
 }

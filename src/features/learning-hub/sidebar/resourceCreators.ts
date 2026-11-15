@@ -3,6 +3,8 @@ import { open as dialogOpen } from '@tauri-apps/plugin-dialog';
 import { createEmpty } from '@/dstu';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
+import { isAndroidMobileShell } from '@/utils/platform';
+import { pickWebViewFiles } from '@/utils/pickWebViewFiles';
 import { dstuNodeToResourceListItem } from '../types';
 import type { LearningHubSidebarProps } from '../types';
 import type { ImportProgressState } from '../components/ImportProgressModal';
@@ -23,6 +25,7 @@ export interface ResourceCreatorsContext {
   setSelectedIds: (ids: Set<string>) => void;
   importProgress: ImportProgressState;
   importPaths: (paths: string[]) => Promise<void>;
+  importFiles: (files: File[]) => Promise<void>;
 }
 
 /** 新建空资源（笔记/题目集/翻译/作文/思维导图）与「导入资料…」对话框 */
@@ -36,6 +39,7 @@ export function createResourceCreators({
   setSelectedIds,
   importProgress,
   importPaths,
+  importFiles,
 }: ResourceCreatorsContext) {
   const handleNewNote = async () => {
     if (!ensureCreatableView()) return;
@@ -88,6 +92,10 @@ export function createResourceCreators({
     if (importProgress.isImporting) return; // 防止重复点击
 
     try {
+      if (isAndroidMobileShell()) {
+        await importFiles(await pickWebViewFiles(true));
+        return;
+      }
       // 打开文件选择对话框。选中的文件与拖拽走同一条导入链路（importPaths）：
       // 文档按资料导入，Markdown 导入为笔记，图片 / 音视频作为附件导入
       const selected = await dialogOpen({

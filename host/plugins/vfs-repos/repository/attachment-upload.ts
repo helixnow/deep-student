@@ -101,6 +101,9 @@ export class AttachmentUploadPipeline {
     // Rust 3.5: an existing active/deleted hash returns before PDF/text
     // rendering; only the stale-PDF repair branch renders here.
     const existing = this.host.getByHash(conn, contentHash);
+    const persistedPath = existing?.blobHash || (existing === null && data.byteLength >= INLINE_SIZE_THRESHOLD)
+      ? await this.host.blobs.persistBlob(conn, blobsDir, data, inferExtension(params.mimeType, params.name), existing?.blobHash ?? undefined)
+      : undefined;
     if (existing !== null) {
       if (existing.deletedAt === undefined) {
         const isExistingPdf = existing.mimeType === 'application/pdf'
@@ -113,6 +116,7 @@ export class AttachmentUploadPipeline {
       }
       return {
         data, contentHash, attachmentType, isPdf,
+        ...(persistedPath === undefined ? {} : { persistedPath }),
         previewJson: null, extractedText: null, pageCount: null,
         pagedTextPages: null, pdfRenderError: null,
       };
@@ -176,6 +180,7 @@ export class AttachmentUploadPipeline {
 
     return {
       data,
+      ...(persistedPath === undefined ? {} : { persistedPath }),
       contentHash,
       attachmentType,
       isPdf,
@@ -274,16 +279,37 @@ export class AttachmentUploadPipeline {
 
   uploadMediaStreamFinalized(conn: SqlExecutor, blobsDir: string, params: VfsUploadAttachmentParams,
     chunks: Iterable<Uint8Array>, folderId: string | null,
-    finalize?: (conn: SqlExecutor, result: VfsUploadAttachmentResult) => void): VfsUploadAttachmentResult {
+    finalize?: (conn: SqlExecutor, result: VfsUploadAttachmentResult) => void, persistedPath?: string): VfsUploadAttachmentResult {
+    const staged = this.stageMedia(blobsDir, params, chunks);
+    try { return this.finalizeMedia(conn, blobsDir, params, staged, folderId, finalize, persistedPath); }
+    finally { staged.dispose(); }
+  }
+
+  async uploadMediaStreamPersisted(conn: SqlExecutor, blobsDir: string, params: VfsUploadAttachmentParams,
+    chunks: Iterable<Uint8Array>, folderId: string | null,
+    finalize?: (conn: SqlExecutor, result: VfsUploadAttachmentResult) => void): Promise<VfsUploadAttachmentResult> {
+    const staged = this.stageMedia(blobsDir, params, chunks);
+    try {
+      const persistedPath = await this.host.blobs.persistStagedBlob(conn, blobsDir, staged, inferExtension(params.mimeType, params.name));
+      return this.finalizeMedia(conn, blobsDir, params, staged, folderId, finalize, persistedPath);
+    } finally { staged.dispose(); }
+  }
+
+  private stageMedia(blobsDir: string, params: VfsUploadAttachmentParams, chunks: Iterable<Uint8Array>) {
+    this.host.validateUploadType(params.name, params.mimeType);
+    if (mediaKind(params.mimeType, params.name) === null) {
+      throw invalidArgument('mime_type', `Not an audio/video file: ${params.name}`);
+    }
+    return this.host.blobs.stageStream(blobsDir, chunks, MAX_MEDIA_IMPORT_BYTES);
+  }
+
+  private finalizeMedia(conn: SqlExecutor, blobsDir: string, params: VfsUploadAttachmentParams,
+    staged: StagedBlob, folderId: string | null,
+    finalize?: (conn: SqlExecutor, result: VfsUploadAttachmentResult) => void, persistedPath?: string): VfsUploadAttachmentResult {
     return databaseResult(() => {
-      this.host.validateUploadType(params.name, params.mimeType);
-      if (mediaKind(params.mimeType, params.name) === null) {
-        throw invalidArgument('mime_type', `Not an audio/video file: ${params.name}`);
-      }
-      const staged = this.host.blobs.stageStream(blobsDir, chunks, MAX_MEDIA_IMPORT_BYTES);
       conn.exec('SAVEPOINT upload_media_stream');
       try {
-        const result = this.registerStagedMedia(conn, blobsDir, params, staged, folderId);
+        const result = this.registerStagedMedia(conn, blobsDir, params, staged, folderId, persistedPath);
         if (finalize !== undefined) finalize(conn, result);
         conn.exec('RELEASE upload_media_stream');
         return result;
@@ -298,7 +324,7 @@ export class AttachmentUploadPipeline {
   }
 
   private registerStagedMedia(conn: SqlExecutor, blobsDir: string, params: VfsUploadAttachmentParams,
-    staged: StagedBlob, folderId: string | null): VfsUploadAttachmentResult {
+    staged: StagedBlob, folderId: string | null, persistedPath?: string): VfsUploadAttachmentResult {
     const contentHash = staged.hash;
     const size = staged.size;
     const attachmentType = params.type ?? this.host.inferTypeFromMime(params.mimeType);
@@ -316,7 +342,7 @@ export class AttachmentUploadPipeline {
       };
     } else {
       const extension = inferExtension(params.mimeType, params.name);
-      const blob = this.host.blobs.storeStagedBlob(conn, blobsDir, staged, params.mimeType, extension);
+      const blob = this.host.blobs.storeStagedBlob(conn, blobsDir, staged, params.mimeType, extension, persistedPath);
       const metadata = {
         name: params.name,
         mimeType: params.mimeType,
@@ -434,7 +460,7 @@ export class AttachmentUploadPipeline {
 
     const [resourceId, blobHash] = size < INLINE_SIZE_THRESHOLD
       ? this.storeInline(conn, data, params, attachmentType)
-      : this.storeExternal(conn, blobsDir, data, params);
+      : this.storeExternal(conn, blobsDir, data, params, prepared.persistedPath);
 
     const now = utcTimestamp();
     const nowMs = Date.now();
@@ -558,9 +584,9 @@ export class AttachmentUploadPipeline {
   }
 
   private storeExternal(conn: SqlExecutor, blobsDir: string, data: Uint8Array,
-    params: VfsUploadAttachmentParams): [string | null, string | null] {
+    params: VfsUploadAttachmentParams, persistedPath?: string): [string | null, string | null] {
     const extension = inferExtension(params.mimeType, params.name);
-    const blob = this.host.blobs.storeBlob(conn, blobsDir, data, params.mimeType, extension);
+    const blob = this.host.blobs.storeBlob(conn, blobsDir, data, params.mimeType, extension, persistedPath);
     const resourceType = (params.type ?? 'file') === 'image' ? 'image' : 'file';
     const result = this.host.resources.createOrReuseExternal(conn, resourceType, blob.hash, blob.hash,
       null, null, { name: params.name, mimeType: params.mimeType, size: data.length });

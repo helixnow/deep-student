@@ -3,7 +3,7 @@
  * API-key CryptoService uses portable AES-GCM; desktop backup/publication remain unavailable.
  */
 import { definePlugin } from '../../kernel/core.ts';
-import type { FilesService } from '../files/api.ts';
+import { isFileNotFound, type FilesService } from '../files/api.ts';
 import type { CryptoService as Crypto } from '../crypto/api.ts';
 import { toHex, utf8Decode } from '../crypto/encoding.ts';
 import { sha256Sync, sha256HexSync } from '../crypto/sync.ts';
@@ -66,8 +66,13 @@ export function createMobileSecrets(files: FilesService, crypto: Crypto, base: s
       },
       async deleteSecret(key) { await files.rm(pathOf(key), { force: true }); },
       async listSensitiveKeys() {
-        if (!await files.exists(dir)) return new Set();
-        return new Set((await files.readDir(dir)).filter(entry => entry.name.endsWith('.enc')).map(entry => entry.name.slice(0, -4)));
+        try {
+          const entries = await files.readDir(dir);
+          return new Set(entries.filter(entry => entry.kind === 'file' && entry.name.endsWith('.enc')).map(entry => entry.name.slice(0, -4)));
+        } catch (error) {
+          if (!isFileNotFound(error)) throw error;
+          return new Set();
+        }
       },
       async isAvailable() { try { ensureEnabled(); await keyFor(dir); return true; } catch { return false; } },
       async keystoreProtectionStatus() { return { supported: false, enabled: false, seedInKeystore: false }; },

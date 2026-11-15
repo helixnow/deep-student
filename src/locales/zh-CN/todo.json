@@ -734,6 +734,7 @@
     },
     "notifications": {
       "workCompleteTitle": "番茄完成",
+      "androidBackgroundWorkBody": "本次专注倒计时已结束。",
       "workCompleteBody": "专注结束，休息一下吧（今日已完成 {{value}} 个番茄）",
       "breakCompleteTitle": "休息结束",
       "breakCompleteBody": "休息结束，开始下一个番茄吧",
@@ -769,6 +770,7 @@
       "noiseAutoWithFocus": "专注时自动播放环境音",
       "dailyGoal": "每日目标（0 不设）",
       "endReminderShort": "结束前提醒",
+      "androidBackgroundCompletion": "倒计时在后台结束时通知",
       "dailyGoalShort": "每日目标",
       "valueOff": "关闭",
       "valueUnset": "不设",

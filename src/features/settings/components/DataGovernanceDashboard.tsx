@@ -35,9 +35,11 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/shad/T
 import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { DsAlertDialog } from '@/components/ui/DsDialog';
+import { SecurityStatusIndicator } from '@/components/SecurityStatusIndicator';
 import { SettingSection } from './SettingsCommon';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
+import { readShellPlatform } from '@/ui-kernel/services/shell-platform';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import * as cloudApi from '@/utils/cloudStorageApi';
 import { localizeCloudStorageError } from './data-governance/localizeCloudError';
@@ -1173,13 +1175,13 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
     }
 
     try {
-      const savePath = await save({
+      const savePath = readShellPlatform()?.kind === 'mobile' ? '' : await save({
         title: t('data:governance.save_zip'),
         defaultPath: `backup-${new Date().toISOString().slice(0, 10)}.zip`,
         filters: [{ name: 'ZIP', extensions: ['zip'] }],
       });
 
-      if (!savePath) {
+      if (savePath === null) {
         return;
       }
 
@@ -1242,13 +1244,13 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
 
     try {
       // 让用户选择保存路径
-      const savePath = await save({
+      const savePath = readShellPlatform()?.kind === 'mobile' ? '' : await save({
         title: t('data:governance.save_zip'),
         defaultPath: `backup-${new Date().toISOString().slice(0, 10)}.zip`,
         filters: [{ name: 'ZIP', extensions: ['zip'] }],
       });
       
-      if (!savePath) {
+      if (savePath === null) {
         return;
       }
 
@@ -1292,7 +1294,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
 
     try {
       // 让用户选择 ZIP 文件
-      const selected = await open({
+      const selected = readShellPlatform()?.kind === 'mobile' ? 'mobile-picker:' : await open({
         title: t('data:governance.select_zip'),
         multiple: false,
         filters: [{ name: 'ZIP', extensions: ['zip'] }],
@@ -1887,6 +1889,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       </TabsList>
 
       <TabsContent value="overview">
+        {readShellPlatform()?.kind === 'mobile' && <SecurityStatusIndicator className="mb-4" />}
         <OverviewTab
           migrationStatus={migrationStatus}
           healthCheck={healthCheck}

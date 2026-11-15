@@ -48,7 +48,7 @@ export interface ArchiveEntryInfo {
   entry: ZipEntry;
 }
 
-export function archiveEntries(reader: ArchiveReader): ArchiveEntryInfo[] {
+export function archiveEntries(reader: Pick<ArchiveReader, 'entries'>): ArchiveEntryInfo[] {
   return reader.entries.map(entry => ({
     name: entry.name.replace(/\\/g, '/').replace(/\/+$/, ''),
     isDirectory: entry.isDirectory,

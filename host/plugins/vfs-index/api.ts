@@ -22,7 +22,7 @@ export type {
 export type { VfsIndexProfile } from './repository/embedding-dim.ts';
 /** VFS Lance boundary; this lane provides it as `lanceEngine` over F7 `vector`. */
 export interface LanceEngineService {
-  connect(path: string): Promise<LanceConnection>;
+  connect(path: string, owner?: import('../../platform/vector/api.ts').VectorDatabaseOwner): Promise<LanceConnection>;
 }
 export const lanceEngineService = { name: 'lanceEngine', version: '1.0.0' } as const;
 export const retrievalService = { name: 'retrieval', version: '1.0.0' } as const;

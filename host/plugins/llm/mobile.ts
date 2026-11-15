@@ -1,5 +1,5 @@
 /**
- * 移动端入口：无 `undici` / 桌面系统代理，使用 Web 标准 `fetch`。
+ * 移动端入口：通过平台 HTTP 使用 Worker fetch 或原生网络回退。
  */
 import { createLlmPlugin } from './src/plugin.ts';
 

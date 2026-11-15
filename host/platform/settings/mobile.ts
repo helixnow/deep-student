@@ -1,8 +1,11 @@
 /** Mobile entry (`mobile.json`): SQL repository and secret migration semantics unchanged. */
 import { CommandError, definePlugin } from '../../kernel/core.ts';
 import { AppError } from '../errors/api.ts';
+import { registerUnsupportedCommands } from '../errors/unsupported-commands.ts';
 import { dirname } from '../util/path.ts';
+import { createFeatureFlagCommands } from './feature-flag-commands.ts';
 import { createSettingsService } from './index.ts';
+import { getMobileSecurityStatus } from './mobile-security-status.ts';
 
 function ensurePublicSettingKey(key: string): void {
   if (key.startsWith('internal.oauth.')) {
@@ -34,9 +37,6 @@ export default definePlugin({
       'get_security_status',
       'detect_tool_conflicts',
       'get_tools_namespace_config',
-      'get_cn_whitelist_config',
-      'get_provider_strategies_config',
-      'save_provider_strategies_config',
       'get_feature_flags',
       'update_feature_flag',
       'is_feature_enabled',
@@ -46,11 +46,12 @@ export default definePlugin({
       'plugin_list',
     ],
   },
-  inject: ['storage', 'secrets'],
+  inject: ['storage', 'secrets', 'featureFlags'],
   apply(ctx) {
+    const secureStore = () => ctx.secrets.openStore(dirname(ctx.storage.pathOf('mistakes')));
     const settings = createSettingsService({
       db: () => ctx.storage.database('mistakes'),
-      secureStore: () => ctx.secrets.openStore(dirname(ctx.storage.pathOf('mistakes'))),
+      secureStore,
       secrets: ctx.secrets,
     });
     ctx.provide('settings', settings);
@@ -85,15 +86,7 @@ export default definePlugin({
       try { return settings.deleteByPrefix(prefix); }
       catch (e) { throw new CommandError(AppError.database(`按前缀批量删除设置失败: ${errorMessage(e)}`)); }
     });
-    ctx.commands.register('get_security_status', () => ({
-      keychain_available: false,
-      migration_completed: true,
-      sensitive_keys_count: 0,
-      last_migration_time: null,
-      warnings: ['🚨 钥匙串功能已彻底禁用以避免密码弹窗，敏感数据使用加密数据库存储'],
-      sensitive_key_patterns: ['web_search.api_key.*', 'web_search.searxng.api_key', 'api_configs', 'mcp.transport.*'],
-      timestamp: new Date().toISOString().replace(/\.000Z$/, 'Z').replace('Z', '+00:00'),
-    }));
+    ctx.commands.register('get_security_status', () => getMobileSecurityStatus(secureStore()));
     ctx.commands.register('detect_tool_conflicts', () => []);
     ctx.commands.register('get_tools_namespace_config', () => ({
       namespace_prefix: readSettingOrNone('mcp.tools.namespace_prefix'),
@@ -108,36 +101,20 @@ export default definePlugin({
         conflict_resolution: 'mcp.tools.conflict_resolution',
       },
     }));
-    ctx.commands.register('get_cn_whitelist_config', () => ({
-      default_sites: ['zhihu.com', 'baike.baidu.com', 'bilibili.com', 'csdn.net', 'juejin.cn'],
-      user_config: {
-        enabled: readSettingOrNone('web_search.cn_whitelist.enabled') === 'true',
-        use_default_list: readSettingOrNone('web_search.cn_whitelist.use_default') !== 'false',
-        custom_sites: [],
-      },
-    }));
-    ctx.commands.register('get_provider_strategies_config', () => ({
-      provider_strategies: {},
-      config_keys: { provider_strategies: 'web_search.provider_strategies' },
-    }));
-    ctx.commands.register<{ strategies: unknown }>('save_provider_strategies_config', ({ strategies }) => {
-      try { settings.save('web_search.provider_strategies', JSON.stringify(strategies ?? {})); }
-      catch (e) { throw new CommandError(AppError.from(`保存Provider策略失败: ${errorMessage(e)}`)); }
-      return true;
+    const flagCommands = createFeatureFlagCommands({
+      featureFlags: ctx.featureFlags,
+      settings,
+      appVersion: ctx.app.version,
+      debug: ctx.app.debug,
     });
-    ctx.commands.register('get_feature_flags', () => ({
-      flags: {},
-      total_count: 0,
-      enabled_count: 0,
-    }));
-    ctx.commands.register<{ featureName: string; action: string }>('update_feature_flag', ({ featureName }) => ({
-      success: true,
-      message: `功能 '${featureName}' 已更新`,
-    }));
-    ctx.commands.register('is_feature_enabled', () => false);
-    ctx.commands.register('set_android_immersive_mode', () => null);
+    ctx.commands.register('get_feature_flags', flagCommands.getFeatureFlags);
+    ctx.commands.register('update_feature_flag', flagCommands.updateFeatureFlag);
+    ctx.commands.register('is_feature_enabled', flagCommands.isFeatureEnabled);
+    ctx.commands.register('set_android_immersive_mode', () => {
+      throw new Error('Immersive mode requires the Android app shell');
+    });
     ctx.commands.register('get_mcp_stdio_allow_unapproved', () => false);
-    ctx.commands.register('set_mcp_stdio_allow_unapproved', () => null);
+    registerUnsupportedCommands(ctx, ['set_mcp_stdio_allow_unapproved'], () => 'mcp.stdio');
     ctx.commands.register('plugin_list', () => []);
   },
 });

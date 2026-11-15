@@ -293,6 +293,20 @@ export const QuestionHistoryView: React.FC<QuestionHistoryViewProps> = ({
     }
   }, [questionId, onJumpToQuestion, onOpenChange]);
 
+  const viewQuestionLabel = t('learningHub:exam.library.viewQuestion');
+  const chromeActions = useMemo(() => questionId ? (
+    <DsButton
+      variant="ghost"
+      size="icon"
+      onClick={handleJumpToQuestion}
+      className="!h-11 !w-11 text-primary"
+      aria-label={viewQuestionLabel}
+      title={viewQuestionLabel}
+    >
+      <ArrowSquareOut size={20} />
+    </DsButton>
+  ) : undefined, [questionId, handleJumpToQuestion, viewQuestionLabel]);
+
   // 📱 小屏 learning-hub 承载：标题/返回/「查看题目」上移 App 级统一顶栏，
   // 页内不再自绘第二条顶栏；返回箭头与系统返回键同语义（关闭子屏）。
   // 无宿主（桌面分栏等）时返回 false，保持下方自绘顶栏。
@@ -300,20 +314,8 @@ export const QuestionHistoryView: React.FC<QuestionHistoryViewProps> = ({
     {
       title: t('exam_sheet:questionBank.history.title'),
       onBack: () => onOpenChange(false),
-      rightActions: questionId ? (
-        <DsButton
-          variant="ghost"
-          size="icon"
-          onClick={handleJumpToQuestion}
-          className="!h-11 !w-11 text-primary"
-          aria-label={t('learningHub:exam.library.viewQuestion')}
-          title={t('learningHub:exam.library.viewQuestion')}
-        >
-          <ArrowSquareOut size={20} />
-        </DsButton>
-      ) : undefined,
+      rightActions: chromeActions,
     },
-    [t, onOpenChange, questionId, handleJumpToQuestion],
     inline && open && isActive !== false,
   );
 

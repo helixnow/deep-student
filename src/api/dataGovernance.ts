@@ -326,6 +326,7 @@ export interface BackupJobSummary {
   result?: BackupJobResultPayload;
   /** 后端标记：失败且具备检查点时可恢复 */
   resumable?: boolean;
+  cancellable?: boolean;
 }
 
 /**

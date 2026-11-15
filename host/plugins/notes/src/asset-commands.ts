@@ -9,15 +9,18 @@ import type { Commands } from '../../../../contracts/ipc/generated/L10-notes.ts'
 import { notesLocalRuntime } from './local-runtime.ts';
 import { assetFailure, errorMessage } from './command-utils.ts';
 
-export function saveAsset(
+export async function saveAsset(
   baseDir: string,
   subject: string | null | undefined,
   noteId: string,
   base64Data: string,
   defaultExt: string | null | undefined,
-): Commands['notes_save_asset']['result'] {
+): Promise<Commands['notes_save_asset']['result']> {
   try {
-    return saveNoteAsset(baseDir, normalizeSubject(subject), noteId, base64Data, defaultExt ?? 'jpg');
+    const asset = saveNoteAsset(baseDir, normalizeSubject(subject), noteId, base64Data, defaultExt ?? 'jpg');
+    try { await notesLocalRuntime().ensureAssetPersisted?.(asset.absolute_path); }
+    catch (error) { throw new AssetError('filesystem', `保存图片资产失败: ${errorMessage(error)}`); }
+    return asset;
   } catch (error) {
     return assetFailure(error);
   }

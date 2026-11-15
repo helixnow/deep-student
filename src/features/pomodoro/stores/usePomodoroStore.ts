@@ -14,10 +14,10 @@ import { noiseEngine } from '../noiseEngine';
 // ★ I2 修复：阶段完成时发送系统通知（应用在后台时用户也能感知）
 // ★ 8.1 统一通知策略：默认 background 档（前台时有声音+UI 反馈，无需系统通知）
 // 通知失败静默吞掉：通知只是增强，绝不能让状态机流程抛未处理拒绝
-const sendSystemNotification = async (title: string, body: string) => {
+const sendSystemNotification = async (title: string, body: string, pomodoroDeadline?: number) => {
   try {
     const { sendSystemNotification: send } = await import('@/utils/systemNotification');
-    await send(title, body);
+    await send(title, body, pomodoroDeadline ? { pomodoroDeadline } : undefined);
   } catch {
     /* ignore */
   }
@@ -639,6 +639,7 @@ export const usePomodoroStore = create<PomodoroState>()(
           lastActiveDate,
           currentTaskId,
           sessionStartTime,
+          phaseEndsAt,
           phaseStartedAt,
           timeLeft,
           sessionCountUp,
@@ -649,6 +650,7 @@ export const usePomodoroStore = create<PomodoroState>()(
 
         // 空闲态无可完成的阶段（防御外部直调：小窗命令 / agent 控制）
         if (mode === 'idle') return;
+        const notificationDeadline = settings.androidBackgroundCompletion ? phaseEndsAt ?? undefined : undefined;
 
         // 离开期间完成（休眠唤醒后补记）：不放提示音，避免唤醒瞬间惊吓
         const away = (options?.awayMs ?? 0) > 0;
@@ -729,6 +731,7 @@ export const usePomodoroStore = create<PomodoroState>()(
                     : 'todo:pomodoro.notifications.workCompleteBody',
                   { value: newCompletedCount },
                 ),
+            notificationDeadline,
           );
 
           // 离开期间完成：不自动开始休息，避免唤醒后发现休息也早已「跑完」的连锁错乱
@@ -773,6 +776,7 @@ export const usePomodoroStore = create<PomodoroState>()(
                   defaultValue: '休息在你离开期间结束了，准备好后手动开始下一个番茄',
                 })
               : i18n.t('todo:pomodoro.notifications.breakCompleteBody'),
+            notificationDeadline,
           );
 
           // 离开期间结束：不自动开始下一个番茄（否则唤醒瞬间「已专注」一大段幽灵时间）

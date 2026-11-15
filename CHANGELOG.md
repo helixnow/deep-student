@@ -10,6 +10,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.20.2](https://github.com/helixnow/deep-student/compare/v0.20.1...v0.20.2) (2026-11-15)
+
+### Android
+
+- 保留从旧版升级时的笔记、附件、PDF 教材和深色设置。已在独立 Android 14 模拟器从正式签名 v0.11.0 原地覆盖验证；真机待验。
+- 修复资料库的文件和 Markdown 导入、教材重新关联以及启动时的恢复流程。附件写入失败会报错；缺附件的备份不能通过完整性校验。
+- 安全状态显示实际保护方式和加密设置计数；功能开关和搜索供应商策略重启后可读回。
+
 ## [0.20.1](https://github.com/helixnow/deep-student/compare/v0.11.0...v0.20.1) (2026-11-14)
 
 Node.js / Electron / Capacitor / Cordis 架构正式切换版本（整合 `0.20.0`–`0.20.1` 迁移与功能里程碑，主仓库统一回归 `helixnow/deep-student`，正式退役上一代 Tauri 2 / Rust 后端）。

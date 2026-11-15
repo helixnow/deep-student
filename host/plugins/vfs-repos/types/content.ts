@@ -44,7 +44,7 @@ export interface TextbookRepository {
    * `updated_at` is generated here as `%Y-%m-%dT%H:%M:%S%.3fZ`, matching Rust's `now` taken
    * immediately before the UPDATE; it is L18's relink owner entry (no separate files setter).
    */
-  setOriginalPathWithConn(conn: SqlExecutor, textbookId: string, originalPath: string): number;
+  setOriginalPathWithConn(conn: SqlExecutor, textbookId: string, originalPath: string | null): number;
   /**
    * cmd/textbooks.rs:631-641 `textbooks_add` pptx/epub page text: only `ocr_pages_json`
    * (no `updated_at`), caller's connection, 0 rows unchecked. SQL errors propagate unwrapped;
@@ -60,6 +60,9 @@ export interface TextbookRepository {
   markTextbookRenderError(conn: SqlExecutor, textbookId: string, renderError: string): void;
   attachBlobIfMissing(conn: SqlExecutor, blobsDir: string, textbookId: string,
     data: Uint8Array, mimeType: string | null, extension: string | null): boolean;
+  /** Attach bytes prewritten to durable storage and clear the obsolete external path. */
+  relinkPersistedBlob(conn: SqlExecutor, blobsDir: string, textbookId: string, sha256: string,
+    data: Uint8Array, extension: string | null, persistedPath: string): VfsTextbook;
   purgeTextbook(conn: SqlExecutor, blobsDir: string, textbookId: string): void;
   purgeTextbookWithConn(conn: SqlExecutor, textbookId: string, blobsDir: string): void;
   listDeletedTextbooks(conn: SqlExecutor, limit: number, offset: number): VfsTextbook[];
@@ -232,7 +235,10 @@ export interface AttachmentRepository {
     data: Uint8Array, folderId: string | null): Promise<VfsUploadAttachmentResult>;
   uploadMediaStreamFinalized(conn: SqlExecutor, blobsDir: string, params: VfsUploadAttachmentParams,
     chunks: Iterable<Uint8Array>, folderId: string | null,
-    finalize?: (conn: SqlExecutor, result: VfsUploadAttachmentResult) => void): VfsUploadAttachmentResult;
+    finalize?: (conn: SqlExecutor, result: VfsUploadAttachmentResult) => void, persistedPath?: string): VfsUploadAttachmentResult;
+  uploadMediaStreamPersisted(conn: SqlExecutor, blobsDir: string, params: VfsUploadAttachmentParams,
+    chunks: Iterable<Uint8Array>, folderId: string | null,
+    finalize?: (conn: SqlExecutor, result: VfsUploadAttachmentResult) => void): Promise<VfsUploadAttachmentResult>;
 }
 /** VfsMindMap mirrors types.rs `VfsMindMap` (camelCase, absent optional fields). */
 export interface VfsMindMap {

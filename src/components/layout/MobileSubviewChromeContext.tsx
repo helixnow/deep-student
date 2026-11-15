@@ -10,7 +10,7 @@
  * 机制（保持「每个 viewId 单一写者」的注册表契约）：
  * - 拥有统一顶栏 viewId 的宿主页面（当前为 LearningHubPage）通过
  *   useMobileSubviewChromeHost() 建立子屏 chrome 栈并渲染 Provider；
- * - 子屏打开时通过 useMobileSubviewChrome(chrome, deps, enabled) 把
+ * - 子屏打开时通过 useMobileSubviewChrome(chrome, enabled) 把
  *   标题 / 返回 / 右侧动作推给宿主；宿主把栈顶 chrome 并入自己
  *   useMobileHeader(viewId) 的配置 —— 不引入第二个 useMobileHeader 写者，
  *   子屏关闭（enabled=false）或卸载时自动出栈，宿主配置随 deps 复原。
@@ -109,34 +109,36 @@ export function useMobileSubviewChromeHost(): {
 /**
  * 子屏侧：向宿主统一顶栏发布本子屏的 标题/返回/右侧动作。
  *
- * @param chrome - 顶栏配置（每次渲染重建即可，effect 触发时取最新值）
- * @param deps - 依赖数组，变化时向宿主重发配置（enabled 自动纳入依赖）
+ * @param chrome - 顶栏配置。rightActions 如非静态节点，须在调用方 memo 化。
  * @param enabled - 是否接管。必须包含子屏打开态与宿主标签页活跃性
  *   （isActive !== false），保活隐藏实例不得接管活跃标签页的顶栏
  * @returns 是否存在宿主（存在时子屏应隐藏页内自绘顶栏）
  */
 export function useMobileSubviewChrome(
-  chrome: MobileSubviewChrome,
-  deps: React.DependencyList,
+  { title, onBack, rightActions, screen }: MobileSubviewChrome,
   enabled: boolean,
 ): boolean {
   const host = useContext(MobileSubviewChromeContext);
   const ownerId = useId();
-  const chromeRef = useRef(chrome);
-  chromeRef.current = chrome;
+  const backRef = useRef(onBack);
+  useLayoutEffect(() => {
+    backRef.current = onBack;
+  }, [onBack]);
+  const handleBack = useCallback(() => backRef.current(), []);
 
   useLayoutEffect(() => {
-    if (!host) return;
-    host.setSubviewChrome(ownerId, enabled ? chromeRef.current : null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [...deps, enabled, host, ownerId]);
+    // A closed picker stays mounted in Finder. Even a no-op host state update
+    // from its layout effect can nest inside a tab's React commit.
+    if (!enabled || !host) return;
+    host.setSubviewChrome(ownerId, { title, onBack: handleBack, rightActions, screen });
+  }, [enabled, host, ownerId, title, handleBack, rightActions, screen]);
 
-  // 卸载时出栈（不能只依赖 enabled=false 分支：卸载不会再跑上面的 effect）
+  // Only a publisher that was enabled needs removal. Content changes must not
+  // reorder the stack, so cleanup is tied to activation, not configuration.
   useLayoutEffect(() => {
-    return () => {
-      host?.setSubviewChrome(ownerId, null);
-    };
-  }, [host, ownerId]);
+    if (!enabled || !host) return;
+    return () => host.setSubviewChrome(ownerId, null);
+  }, [enabled, host, ownerId]);
 
   return host !== null;
 }

@@ -4,7 +4,6 @@ import { createWebCrypto } from '../../crypto/web.ts';
 import { createMobilePaths } from '../mobile.ts';
 import { createMobileSecrets } from '../../secrets/mobile.ts';
 import { createMobileHttp } from '../../http/mobile.ts';
-import { createMobileVector } from '../../vector/mobile.ts';
 import { createMobileDiagnostics } from '../../diagnostics/mobile.ts';
 import { createMobileLog } from '../../log/mobile.ts';
 
@@ -18,7 +17,7 @@ function memoryFiles() {
     readBytes: async (path: string) => data.get(path)!,
     writeAtomic: async (path: string, value: string | Uint8Array) => { data.set(path, typeof value === 'string' ? new TextEncoder().encode(value) : value.slice()); },
     rm: async (path: string) => { data.delete(path); },
-    readDir: async (path: string) => [...data.keys()].filter(key => key.startsWith(path + '/')).map(key => ({ name: key.slice(path.length + 1) })),
+    readDir: async (path: string) => [...data.keys()].filter(key => key.startsWith(path + '/')).map(key => ({ name: key.slice(path.length + 1), kind: 'file' })),
   } as unknown as FilesService;
   return { files, data };
 }
@@ -69,8 +68,7 @@ describe('staged mobile platform providers', () => {
     expect(transport.mock.calls.length).toBe(calls);
   });
 
-  it('reports native features unavailable instead of silently providing empty indexes', async () => {
-    await expect(createMobileVector().connect('/app/index')).rejects.toThrow('UNSUPPORTED_ON_PLATFORM');
+  it('reports native package manager installation unavailable', async () => {
     expect((await createMobileDiagnostics().autoInstallPackageManager('npm')).success).toBe(false);
   });
 

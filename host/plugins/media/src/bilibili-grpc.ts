@@ -3,7 +3,7 @@
  * subset over gRPC-Web framing (protobuf + optional gzip), used to read
  * subtitle tracks without DASH. Unknown protobuf fields are skipped like prost.
  */
-import { gunzipSync } from 'node:zlib';
+import pako from 'pako';
 import { BiliRequestError } from './bilibili-policy.ts';
 
 export const API_LIMIT = 2 * 1024 * 1024;
@@ -133,14 +133,19 @@ function protocolError(message: string): BiliRequestError {
 }
 
 function gzipPayload(data: Uint8Array): Uint8Array {
-  try {
-    return gunzipSync(data, { maxOutputLength: API_LIMIT + 1 });
-  } catch (error) {
-    if ((error as { code?: string }).code === 'ERR_BUFFER_TOO_LARGE') {
-      throw new BiliRequestError('response-too-large', '字幕解压后超过大小限制');
-    }
-    throw protocolError('B 站字幕协议响应无效');
-  }
+  const inflate = new pako.Inflate();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  inflate.onData = chunk => {
+    size += chunk.byteLength;
+    if (size > API_LIMIT) throw new BiliRequestError('response-too-large', '字幕解压后超过大小限制');
+    chunks.push(chunk);
+  };
+  if (!inflate.push(data, true) || inflate.err) throw protocolError('B 站字幕协议响应无效');
+  const out = new Uint8Array(size);
+  let position = 0;
+  for (const chunk of chunks) { out.set(chunk, position); position += chunk.byteLength; }
+  return out;
 }
 
 function trailerStatuses(data: Uint8Array): string[] {

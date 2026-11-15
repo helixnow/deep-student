@@ -536,7 +536,7 @@ export class TextbookRepo implements TextbookRepository {
     });
   }
 
-  setOriginalPathWithConn(conn: SqlExecutor, textbookId: string, originalPath: string): number {
+  setOriginalPathWithConn(conn: SqlExecutor, textbookId: string, originalPath: string | null): number {
     return conn.run('UPDATE files SET original_path = ?1, updated_at = ?2 WHERE id = ?3',
       [originalPath, utcTimestamp(), textbookId]).changes;
   }
@@ -561,6 +561,31 @@ export class TextbookRepo implements TextbookRepository {
       conn.run('UPDATE files SET blob_hash = ?1, updated_at = ?2 WHERE id = ?3',
         [blob.hash, utcTimestamp(), textbookId]);
       return true;
+    });
+  }
+
+  relinkPersistedBlob(conn: SqlExecutor, blobsDir: string, textbookId: string, sha256: string,
+    data: Uint8Array, extension: string | null, persistedPath: string): VfsTextbook {
+    return databaseResult(() => {
+      const textbook = this.getTextbook(conn, textbookId);
+      if (textbook === null) throw notFound('Textbook', textbookId);
+      if (textbook.sha256 !== sha256) throw invalidState('Textbook changed while relinking; please reselect its file');
+      const current = textbook.blobHash;
+      const knownPath = this.blobs.getBlobPath(conn, blobsDir, sha256);
+      if (current !== sha256 || !knownPath) {
+        const blob = this.blobs.storeBlob(conn, blobsDir, data, null, extension, persistedPath);
+        if (blob.hash !== sha256) throw invalidState('Restored file digest changed');
+        if (current && current !== sha256 && this.blobs.blobExists(conn, current)) {
+          this.blobs.decrementRef(conn, current);
+        }
+      } else if (knownPath !== persistedPath) {
+        throw invalidState('Textbook storage location changed while relinking');
+      }
+      conn.run('UPDATE files SET blob_hash = ?1, original_path = NULL, updated_at = ?2 WHERE id = ?3',
+        [sha256, utcTimestamp(), textbookId]);
+      const updated = this.getTextbook(conn, textbookId);
+      if (updated === null) throw notFound('Textbook', textbookId);
+      return updated;
     });
   }
 

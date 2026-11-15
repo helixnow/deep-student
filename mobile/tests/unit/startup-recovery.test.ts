@@ -6,6 +6,7 @@
  * - 插件层：vfs 被阻断时移动端存储插件在业务插件装配前进入核心恢复屏障，业务命令得到 kernel 的
  *   MAINTENANCE 占位错误，诊断 / 恢复类调用照常可用，并发出与桌面相同的迁移状态事件载荷。
  */
+import { createWebCrypto } from '../../../host/platform/crypto/web.ts';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -86,7 +87,7 @@ const recoveryContract: LaneContract = {
 
 describe('core recovery barrier on the mobile storage plugin', () => {
   it('vfs blocked: business plugins degrade to MAINTENANCE placeholders, recovery calls keep working, status payload matches desktop', async () => {
-    host = await createTestHost({ contracts: [recoveryContract], provide: { sqliteRuntime: nodeRuntime(await nodeSqlite()) } });
+    host = await createTestHost({ contracts: [recoveryContract], provide: { crypto: createWebCrypto(), files: { exists: async () => false }, sqliteRuntime: nodeRuntime(await nodeSqlite()) } });
     const runtime = host.ctx.get('sqliteRuntime') as ReturnType<typeof nodeRuntime>;
     const probe = new MobileStorageService({ runtime, baseDir: host.ctx.app.dataDir });
     runtime.put(probe.pathOf('vfs'), GARBAGE);
@@ -160,7 +161,7 @@ describe('core recovery barrier on the mobile storage plugin', () => {
   }, 60_000);
 
   it('healthy start: no barrier, success payload without has_warnings', async () => {
-    host = await createTestHost({ provide: { sqliteRuntime: nodeRuntime(await nodeSqlite()) } });
+    host = await createTestHost({ provide: { crypto: createWebCrypto(), files: { exists: async () => false }, sqliteRuntime: nodeRuntime(await nodeSqlite()) } });
     await loadImportedProfile(host.runtime, [{ plugin: mobileStorage, source: 'test:storage-mobile' }]);
     await host.ctx.storage.runStartupFinalizers();
     const report = host.ctx.storage.startupMigrationReport()!;

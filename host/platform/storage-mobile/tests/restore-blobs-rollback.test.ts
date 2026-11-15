@@ -16,17 +16,19 @@ function setup() {
   const active = new Map(names.map((name, i) => [`/${name}.db`, sqlite(i)]));
   const before = new Map([...active].map(([name, bytes]) => [name, bytes.slice()]));
   const files = new Map<string, Uint8Array>([
+    ['/backups/imports/test/manifest.json', encoder.encode('{\"mobile_restorable\":true}')],
     ['/active/vfs_blobs/keep.pdf', encoder.encode('KEEP')],
     ['/active/vfs_blobs/sub/old.bin', encoder.encode('OLD')],
     ['/backups/imports/test/vfs.db', sqlite(9)],
     ['/backups/imports/test/llm_usage.db', sqlite(9)],
     ['/backups/imports/test/chat_v2.db', sqlite(9)],
     ['/backups/imports/test/mistakes.db', sqlite(9)],
-    ['/backups/imports/test/vfs_blobs/a.bin', encoder.encode('A')],
-    ['/backups/imports/test/vfs_blobs/b.bin', encoder.encode('B')],
+    ['/backups/imports/test/live/vfs_blobs/a.bin', encoder.encode('A')],
+    ['/backups/imports/test/live/vfs_blobs/b.bin', encoder.encode('B')],
   ]);
   const under = (root: string): string[] => [...files.keys()].filter(key => key.startsWith(`${root}/`));
   const runtime = {
+    open: () => ({ exec() {}, prepare: () => ({ step: () => false, finalize() {} }), close() {} }),
     exists: (name: string) => active.has(name),
     exportFile: (name: string) => active.get(name)!,
     unlink: (name: string) => { active.delete(name); },
@@ -35,7 +37,11 @@ function setup() {
   const fileService = {
     backupRoot: '/backups',
     exists: async (name: string) => files.has(name) || under(name).length > 0,
+    writeAtomic: async () => {},
+    readText: async (name: string) => decoder.decode(files.get(name)),
     readBytes: async () => sqlite(42),
+    stat: async () => ({ size: 512 }),
+    mkdir: async () => {},
     walk: async function* (root: string) {
       for (const path of under(root)) yield { kind: 'file', path, relativePath: path.slice(root.length + 1) };
     },
@@ -65,7 +71,7 @@ function setup() {
     },
   };
   const service = new MobileBackupService({
-    ctx: { logger: () => ({ warn() {} }) },
+    ctx: { crypto: { randomUUID: () => 'fixture' }, logger: () => ({ warn() {} }) },
     files: fileService,
     storage: {
       locations: { activeDir: '/active' },
@@ -88,6 +94,6 @@ it('restores the original vfs_blobs when copying the archived attachments fails 
   await expect(service.restoreArchive('test')).rejects.toThrow('attachment failed');
   // 半成品附件不能留下，原附件必须逐字节换回。
   expect(activeBlobs()).toEqual({ 'keep.pdf': 'KEEP', 'sub/old.bin': 'OLD' });
-  expect([...files.keys()].filter(key => key.includes('.restore-tmp'))).toEqual([]);
+  expect([...files.keys()].filter(key => key.includes('/rollback/'))).toEqual([]);
   expect(active).toEqual(before);
 });

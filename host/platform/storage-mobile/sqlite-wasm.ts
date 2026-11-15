@@ -78,7 +78,7 @@ export interface SqliteRuntime {
   /** 导出整个库文件的字节（`VACUUM INTO` 之后的备份文件下载 / 分享）。 */
   exportFile(path: string): Uint8Array;
   /**
-   * 把一个 SQLite 数据库文件的字节写入 pool（覆盖同名文件），返回写入字节数。
+   * 用一个 SQLite 数据库文件完整替换 pool 中同名库及其事务日志，返回写入字节数。
    * 数据库连接必须先关闭：sahpool 对已打开文件的导入结果未定义。
    * 用于备份恢复（ZIP 导入）与 0.15.x 原生 Android 数据的首次迁移。
    * 可选：测试宿主的最小运行时不必实现（生产 `mobile/src/worker/sqlite-runtime.ts` 实现）。

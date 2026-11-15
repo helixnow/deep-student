@@ -2,6 +2,7 @@
  * SEC-E06：诊断页的 `plugin:host|call` 带 `caller`（诊断插件 id），kernel 切到 `require` 后照常可用；
  * 主线程（`main.ts`）与诊断插件 `meta.id` 用同一个常量，不会各写各的。
  */
+import { createWebCrypto } from '../../../host/platform/crypto/web.ts';
 import { afterEach, describe, expect, it } from 'vitest';
 import { HOST_CALL_COMMAND } from '../../../host/kernel/core.ts';
 import { loadImportedProfile } from '../../../host/kernel/profile-install.ts';
@@ -20,7 +21,7 @@ afterEach(async () => {
 describe('diagnostics page caller', () => {
   it('passes the kernel in require mode; a missing or foreign caller is refused', async () => {
     const runtime = nodeRuntime(await nodeSqlite());
-    host = await createTestHost({ hostCallCaller: 'require', provide: { sqliteRuntime: runtime, files: {}, appCommandState: {} } });
+    host = await createTestHost({ hostCallCaller: 'require', provide: { crypto: createWebCrypto(), sqliteRuntime: runtime, files: {}, appCommandState: {} } });
     const loaded = await loadImportedProfile(host.runtime, [
       { plugin: mobileStorage, source: 'test:storage-mobile' },
       { plugin: createDiagnosticsPlugin(runtime, { modulesEvaluatedMs: 0, wasmInitMs: 0, poolInstallMs: 0 }), source: 'test:diagnostics' },

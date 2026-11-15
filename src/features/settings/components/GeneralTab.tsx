@@ -8,6 +8,7 @@ import { MarkdownEditorWindowSettings } from './MarkdownEditorWindowSettings';
 import { RendererCapabilitiesSection } from './RendererCapabilitiesSection';
 import { AnkiConnectSettingsSection } from './AnkiConnectSettingsSection';
 import { SystemPermissionsSection } from './SystemPermissionsSection';
+import { AndroidFeatureFlagsSection } from './AndroidFeatureFlagsSection';
 import { SettingRow, SettingsGroup, SwitchRow } from './settingsTabPrimitives';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { DsButton } from '@/components/ui/DsButton';
@@ -21,7 +22,7 @@ import { setPendingSettingsTab } from '@/utils/pendingSettingsTab';
 import { APP_EVENTS, dispatchAppEvent } from '@/events';
 import { useQueueSettings } from '@/features/chat/queue/useQueueSettings';
 import { debugMasterSwitch } from '@/debug-panel/debugMasterSwitch';
-import { isAndroid, isMobilePlatform } from '@/utils/platform';
+import { isAndroid, isAndroidMobileShell, isMobilePlatform } from '@/utils/platform';
 import { getDefaultConfig, configFromPreset, type CopyFilterConfig } from '@/features/chat/hooks/useDevShowRawRequest';
 import {
   ensureSystemNotificationPermission,
@@ -374,6 +375,8 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
               </DsButton>
             </SettingRow>
         </SettingsGroup>
+
+        {isAndroidMobileShell() && invoke && <AndroidFeatureFlagsSection invoke={invoke} />}
 
         <div className="mt-8">
           <AnkiConnectSettingsSection />

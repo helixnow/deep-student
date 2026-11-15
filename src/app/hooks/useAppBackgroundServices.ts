@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import type { i18n as I18n } from 'i18next';
 import { initReminderScheduler } from '@/features/todo/reminderScheduler';
+import { initAndroidPomodoroAlarm } from '@/features/pomodoro/androidBackgroundAlarm';
 import {
   ensureAutoSyncSchedulerStarted,
   ensureSyncProgressListener,
@@ -15,6 +16,7 @@ import {
 export function useAppBackgroundServices(_i18n: I18n) {
   // ⏰ 待办提醒调度器（应用级，到点弹系统通知）
   useEffect(() => initReminderScheduler(), []);
+  useEffect(() => initAndroidPomodoroAlarm(), []);
 
   // ☁️ 云同步进度（应用级监听，issue 447）：进度写入全局 useGlobalSyncStore，
   //   同步面板被设置页切栏目卸载/重挂载后仍能立即显示当前进度与取消入口。

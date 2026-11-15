@@ -31,6 +31,8 @@ export interface MobileShellOptions {
   readonly webviewLabel?: string;
   /** Host 请求主线程代办的平台操作；未提供或抛错时以错误回复 Host。 */
   readonly onShellRequest?: (request: ShellRequest) => Promise<unknown>;
+  /** 主线程原生能力；返回 undefined 时按常规命令路由。 */
+  readonly onNativeInvoke?: (message: InvokeMessage) => Promise<unknown> | undefined;
   readonly log?: (message: string) => void;
 }
 
@@ -154,6 +156,19 @@ export class MobileShell {
       this.handleEventCommand(message);
       return;
     }
+    const callbacks = { callback: message.callback, error: message.error };
+    try {
+      const native = this.options.onNativeInvoke?.(message);
+      if (native !== undefined) {
+        void native
+          .then(value => this.reply(callbacks, true, encodeBody(value)))
+          .catch((error: unknown) => this.reply(callbacks, false, encodeBody((error as { message?: unknown } | null)?.message ?? String(error))));
+        return;
+      }
+    } catch (error: unknown) {
+      this.reply(callbacks, false, encodeBody(error instanceof Error ? error.message : String(error)));
+      return;
+    }
     const shellResults: Record<string, unknown> = {
       'plugin:window|is_visible': true,
       'plugin:window|is_focused': true,
@@ -163,7 +178,7 @@ export class MobileShell {
       'plugin:window|unminimize': null,
       'plugin:notification|is_permission_granted': false,
       'plugin:notification|request_permission': 'denied',
-      'plugin:notification|notify': null,
+      'plugin:notification|notify': false,
     };
     if (Object.hasOwn(shellResults, message.cmd)) {
       this.reply({ callback: message.callback, error: message.error }, true, encodeBody(shellResults[message.cmd]));
@@ -240,6 +255,10 @@ export class MobileShell {
     for (const [, ids] of this.listeners.collect(event, filter, [this.webviewLabel])) {
       this.toRenderer({ type: 'emit-js', event, payload: payloadJson, ids });
     }
+  }
+
+  emitNativeEvent(event: string, payload: unknown): void {
+    this.emitJs(event, JSON.stringify(payload), null);
   }
 
   /** `plugin:event|*`（tauri `src/event/plugin.rs`，同桌面 `electron/shell/plugins/event.ts`）。 */

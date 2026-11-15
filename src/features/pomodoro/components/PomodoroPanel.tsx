@@ -17,6 +17,8 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { setAndroidBackgroundCompletion } from '../androidBackgroundAlarm';
+import { isAndroidMobileShell } from '@/utils/platform';
 import {
   Play,
   Pause,
@@ -324,6 +326,14 @@ export const PomodoroSettingsContent: React.FC<{ size?: SettingsRowSize }> = ({ 
           checked={settings.countUp}
           onChange={(v) => updateSettings({ countUp: v })}
         />
+        {isAndroidMobileShell() && (
+          <SettingsToggleRow
+            size={size}
+            label={t('pomodoro.settings.androidBackgroundCompletion')}
+            checked={settings.androidBackgroundCompletion}
+            onChange={setAndroidBackgroundCompletion}
+          />
+        )}
         <SettingsSliderRow
           size={size}
           label={t('pomodoro.settings.endReminder')}

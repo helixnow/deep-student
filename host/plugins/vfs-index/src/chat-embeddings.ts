@@ -69,7 +69,7 @@ export class ChatLanceStore {
   private async connect(): Promise<LanceConnection> {
     if (this.connection === null) {
       if (this.prepare !== undefined) this.lancePath = await this.prepare();
-      this.connection = await this.engine.connect(this.lancePath);
+      this.connection = await this.engine.connect(this.lancePath, 'mistakes');
     }
     return this.connection;
   }

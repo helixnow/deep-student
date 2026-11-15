@@ -147,6 +147,7 @@ export interface LanceTable {
 }
 
 export interface LanceConnection {
+  readonly supportsApproximateSearch?: boolean;
   tableNames(): Promise<string[]>;
   openTable(name: string): Promise<LanceTable | null>;
   /** F7 `createTableWithSchema`: callers pass their complete VFS/legacy schema. */
@@ -157,7 +158,7 @@ export interface LanceConnection {
 }
 
 export interface LanceAdapter {
-  connect(path: string): Promise<LanceConnection>;
+  connect(path: string, owner?: import('../../../platform/vector/api.ts').VectorDatabaseOwner): Promise<LanceConnection>;
 }
 
 export interface VfsLanceStoreOptions {

@@ -22,19 +22,13 @@ import { nextRequestId, selectRoute } from './bilibili-session.ts';
 import { decodeAccount } from './bilibili-bridge-probe.ts';
 import { API_LIMIT } from './bilibili-grpc.ts';
 import { CancellationToken } from './handout.ts';
+import { currentAuthEpoch } from './bilibili-auth-generation.ts';
+export { currentAuthEpoch, invalidateAuth } from './bilibili-auth-generation.ts';
 
 const REQUEST_TIMEOUT_MS = 15_000;
 const TASK_TIMEOUT_MS = 60_000;
 const USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 '
   + '(KHTML, like Gecko) Chrome/128.0 Safari/537.36';
-
-let authEpoch = 1;
-export function invalidateAuth(): void {
-  authEpoch += 1;
-}
-export function currentAuthEpoch(): number {
-  return authEpoch;
-}
 
 export interface BiliRequest {
   kind: RequestKind;

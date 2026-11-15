@@ -3,7 +3,7 @@
  * `.bilibili` file for a video page, or create it atomically with imported
  * subtitle cues. Descriptor bytes are never decoded as media.
  */
-import { readFileSync, statSync } from 'node:fs';
+import { fromBase64 } from '../../../platform/crypto/encoding.ts';
 import type { SqlExecutor } from '../../../platform/storage/api.ts';
 import type { VfsDatabase } from '../../vfs/api.ts';
 import type {
@@ -12,7 +12,6 @@ import type {
 } from '../../vfs-repos/api.ts';
 import type { BiliLinkDescriptor } from '../api.ts';
 import { MediaError } from './errors.ts';
-import { resolveMediaSource } from './pipeline.ts';
 import { BILIBILI_LINK_MIME } from './media-types.ts';
 import {
   MAX_DESCRIPTOR_BYTES, descriptorFileName, descriptorToBytes, parseDescriptor,
@@ -41,35 +40,11 @@ export function linkItemRepos(service: VfsReposService): LinkItemRepos {
   };
 }
 
-function ioError(error: unknown): MediaError {
-  return new MediaError('Io', error instanceof Error ? error.message : String(error));
-}
-
-/**
- * `bilibili.rs:950-959 read_link_descriptor`：先 `resolve_media_source`（缺内容即
- * `媒体文件内容缺失`），再按实际内容大小拒绝超限，整读并校验。
- */
-export function readLinkDescriptor(
-  conn: SqlExecutor,
-  repos: LinkItemRepos,
-  blobsDir: string,
-  fileId: string,
-): BiliLinkDescriptor {
-  const source = resolveMediaSource({ getConnSafe: () => conn, blobsDir: () => blobsDir }, repos, fileId);
-  try {
-    let size: number;
-    try { size = statSync(source.path).size; }
-    catch (error) { throw ioError(error); }
-    if (size > MAX_DESCRIPTOR_BYTES) {
-      throw new MediaError('InvalidInput', '不是有效的 B 站链接条目');
-    }
-    let bytes: Uint8Array;
-    try { bytes = readFileSync(source.path); }
-    catch (error) { throw ioError(error); }
-    return parseDescriptor(bytes);
-  } finally {
-    source.cleanup();
-  }
+/** Reads the small descriptor through the platform repository (OPFS on mobile). */
+export function readLinkDescriptor(conn: SqlExecutor, repos: LinkItemRepos, blobsDir: string, fileId: string): BiliLinkDescriptor {
+  const row = loadMediaFileRow(conn, fileId);
+  if (!row) throw new MediaError('NotFound', `媒体文件内容缺失: ${fileId}`);
+  return readDescriptorById(conn, repos.files, blobsDir, fileId, row.size);
 }
 
 function readDescriptorById(
@@ -86,7 +61,7 @@ function readDescriptorById(
   if (content === null) {
     throw new MediaError('NotFound', `媒体文件内容缺失: ${fileId}`);
   }
-  const bytes = Buffer.from(content, 'base64');
+  const bytes = fromBase64(content);
   if (bytes.length > MAX_DESCRIPTOR_BYTES) {
     throw new MediaError('InvalidInput', '不是有效的 B 站链接条目');
   }
@@ -132,6 +107,7 @@ export function upsertLinkItem(
   repos: LinkItemRepos,
   descriptor: BiliLinkDescriptor,
   subtitle: Uint8Array | null = null,
+  persistedPath?: string,
 ): UpsertLinkItemResult {
   const cues = subtitle === null
     ? null
@@ -172,6 +148,7 @@ export function upsertLinkItem(
             tx, uploaded.sourceId, descriptor.durationMs);
         }
       },
+      persistedPath,
     );
     fileId = result.sourceId;
     attachment = result.isNew ? result.attachment : null;

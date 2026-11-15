@@ -6,6 +6,7 @@
  * - 桌面包装层暂时丢弃 `register()` 的 disposer（W07 补丁未落地），disposer 语义对拍桌面 registry 本身；
  * - `late: 'run'` 异步失败：桌面没传 `onLateError`（未处理拒绝写 stderr），移动端 Worker 里的未处理拒绝到不了外壳，改记 error 日志。
  */
+import { createWebCrypto } from '../../../host/platform/crypto/web.ts';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -210,7 +211,7 @@ describe('mobile startup finalizers', () => {
   });
 
   it('a plugin that registers with a signal tied to ctx.effect: unload drops its hook, reinstall after the run does not throw', async () => {
-    const host = await createTestHost({ provide: { sqliteRuntime: nodeRuntime(await nodeSqlite()) } });
+    const host = await createTestHost({ provide: { crypto: createWebCrypto(), files: { exists: async () => false }, sqliteRuntime: nodeRuntime(await nodeSqlite()) } });
     hosts.push(host);
     await host.install(mobileStorage);
     const ran: string[] = [];

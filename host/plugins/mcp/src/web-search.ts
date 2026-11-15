@@ -221,6 +221,7 @@ export async function doSearch(
   config: ToolConfig, input: SearchInput,
   log: (message: string) => void = () => undefined,
   signal?: AbortSignal,
+  fetcher?: typeof fetch,
 ): Promise<SearchResult> {
   throwIfAborted(signal);
   if (input.top_k === 0) {
@@ -278,7 +279,7 @@ export async function doSearch(
   try {
     await runtimeState.acquireRateSlot(signal);
     let provider: Provider;
-    try { provider = createProvider(engine); }
+    try { provider = createProvider(engine, fetcher); }
     catch (error) {
       return toolErrorResult(input, error instanceof ToolError ? error : new ToolError('unknown', String(error)), 0);
     }

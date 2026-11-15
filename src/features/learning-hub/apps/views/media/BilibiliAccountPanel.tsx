@@ -10,6 +10,7 @@ import { DsButton } from '@/components/ui/DsButton';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { cn } from '@/lib/utils';
 import { BilibiliTransportPanel } from './BilibiliTransportPanel';
+import { isAndroidMobileShell } from '@/utils/platform';
 import {
   bilibiliAccountApi,
   setBilibiliAccount,
@@ -179,5 +180,10 @@ const NativeBilibiliAccountPanel: React.FC<BilibiliAccountPanelProps> = ({ class
   );
 };
 
-export const BilibiliAccountPanel: React.FC<BilibiliAccountPanelProps> = (props) => <div className="min-w-0 space-y-2"><BilibiliTransportPanel /><NativeBilibiliAccountPanel {...props} /></div>;
+export const BilibiliAccountPanel: React.FC<BilibiliAccountPanelProps> = (props) => (
+  <div className="min-w-0 space-y-2">
+    {!isAndroidMobileShell() && <BilibiliTransportPanel />}
+    <NativeBilibiliAccountPanel {...props} />
+  </div>
+);
 export default BilibiliAccountPanel;

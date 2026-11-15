@@ -207,7 +207,6 @@ const NoteContentView: React.FC<ContentViewProps> = ({
       title: t('notes:contextPanel.title'),
       onBack: () => setMobilePanelOpen(false),
     },
-    [t],
     isActive && isSmallScreen && mobilePanelOpen,
   );
 
