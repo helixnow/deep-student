@@ -4,6 +4,7 @@
  * 合法的重开路径不受影响：插件重装得到新实例，裸实例 `dispose()` 后可复用；`shutdown()` 是终态；
  * `beforeShutdown` 登记的收尾在关库前执行（后登记先执行，失败只记 warn）。
  */
+import { createWebCrypto } from '../../../host/platform/crypto/web.ts';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createTestHost, type TestHost } from '../../../host/kernel/testing.ts';
 import type { StorageService } from '../../../host/platform/storage/api.ts';
@@ -19,7 +20,7 @@ afterEach(async () => {
 });
 
 async function storageHost(runtime: NodeRuntime, warnings: string[] = []): Promise<TestHost> {
-  host = await createTestHost({ provide: { sqliteRuntime: runtime } });
+  host = await createTestHost({ provide: { crypto: createWebCrypto(), files: { exists: async () => false }, sqliteRuntime: runtime } });
   host.ctx.logger.exporter({ levels: { default: 4 }, export: (message) => { if (message.type === 'warn') warnings.push(String(message.args[0])); } });
   await host.install(mobileStorage);
   return host;

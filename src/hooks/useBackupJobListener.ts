@@ -121,7 +121,7 @@ export function useBackupJobListener(
       try {
         const job = await DataGovernanceApi.getBackupJob(jobId);
         if (job && mountedRef.current && !terminalHandled.current) {
-          if (isBackupJobTerminal(job.status as BackupJobEvent['status'])) {
+          if (isBackupJobTerminal(job.status as BackupJobEvent['status']) || job.cancellable === true) {
             handleEvent({
               job_id: job.job_id,
               kind: job.kind,
@@ -131,7 +131,7 @@ export function useBackupJobListener(
               message: job.message,
               processed_items: 0,
               total_items: 0,
-              cancellable: false,
+              cancellable: job.cancellable ?? false,
               created_at: job.created_at,
               started_at: job.started_at,
               finished_at: job.finished_at,

@@ -57,7 +57,17 @@ interface ProviderStrategy {
   cache_max_entries?: number;
 }
 
-type ProviderStrategiesMap = Record<string, ProviderStrategy>;
+type ProviderStrategiesMap = Record<string, ProviderStrategy | null>;
+
+const strategyFields = [
+  { field: 'timeout_ms', label: 'settings:advanced_search.providers.timeout_ms', min: 1000 },
+  { field: 'max_retries', label: 'settings:advanced_search.providers.max_retries', min: 0 },
+  { field: 'initial_retry_delay_ms', label: 'settings:advanced_search.providers.initial_delay_ms', min: 0 },
+  { field: 'max_concurrent_requests', label: 'settings:advanced_search.providers.max_concurrent_requests', min: 0 },
+  { field: 'rate_limit_per_minute', label: 'settings:advanced_search.providers.rate_limit_per_minute', min: 0 },
+  { field: 'cache_ttl_seconds', label: 'settings:advanced_search.providers.cache_ttl_seconds', min: 0 },
+  { field: 'cache_max_entries', label: 'settings:advanced_search.providers.cache_max_entries', min: 0 },
+] as const;
 
 // 内部组件：设置行 - 简洁风格（与 ModelAssignmentRow 保持一致的结构）
 const SettingRow = ({
@@ -142,7 +152,7 @@ export const EngineSettingsSection: React.FC<{
     }
   };
 
-  const StrategySummary: React.FC<{ id: string }> = ({ id }) => {
+  const renderStrategySummary = (id: string) => {
     const s = providerStrategies?.[id] || providerStrategies?.default;
     if (!s) return <div className="text-xs text-muted-foreground/70">{t('settings:config_status.not_configured_use_default')}</div>;
     return (
@@ -169,7 +179,7 @@ export const EngineSettingsSection: React.FC<{
       if (raw !== '' && Number.isNaN(value)) return;
       setProviderStrategies(prev => {
         const base = prev || {};
-        const current = base[id] || {};
+        const current = base[id] ?? base.default ?? {};
         return {
           ...base,
           [id]: { ...current, [field]: value },
@@ -190,80 +200,26 @@ export const EngineSettingsSection: React.FC<{
     }
   };
 
-  const StrategyEditor: React.FC<{ id: string }> = ({ id }) => {
-    const s = getEffectiveStrategy(id);
+  const renderStrategyEditor = (id: string) => {
+    const strategy = getEffectiveStrategy(id);
     return (
       <div className="mt-6 grid gap-4 text-xs grid-cols-2 md:grid-cols-4 lg:grid-cols-7">
-        <div className="space-y-1.5">
-          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:advanced_search.providers.timeout_ms')}</div>
-          <Input
-            type="number"
-            min={1000}
-            value={s.timeout_ms ?? ''}
-            onChange={handleStrategyFieldChange(id, 'timeout_ms')}
-            className="h-8 [@media(pointer:coarse)]:!h-11"
-          />
-        </div>
-        <div className="space-y-1.5">
-          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:advanced_search.providers.max_retries')}</div>
-          <Input
-            type="number"
-            min={0}
-            value={s.max_retries ?? ''}
-            onChange={handleStrategyFieldChange(id, 'max_retries')}
-            className="h-8 [@media(pointer:coarse)]:!h-11"
-          />
-        </div>
-        <div className="space-y-1.5">
-          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:advanced_search.providers.initial_delay_ms')}</div>
-          <Input
-            type="number"
-            min={0}
-            value={s.initial_retry_delay_ms ?? ''}
-            onChange={handleStrategyFieldChange(id, 'initial_retry_delay_ms')}
-            className="h-8 [@media(pointer:coarse)]:!h-11"
-          />
-        </div>
-        <div className="space-y-1.5">
-          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:advanced_search.providers.max_concurrent_requests')}</div>
-          <Input
-            type="number"
-            min={0}
-            value={s.max_concurrent_requests ?? ''}
-            onChange={handleStrategyFieldChange(id, 'max_concurrent_requests')}
-            className="h-8 [@media(pointer:coarse)]:!h-11"
-          />
-        </div>
-        <div className="space-y-1.5">
-          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:advanced_search.providers.rate_limit_per_minute')}</div>
-          <Input
-            type="number"
-            min={0}
-            value={s.rate_limit_per_minute ?? ''}
-            onChange={handleStrategyFieldChange(id, 'rate_limit_per_minute')}
-            className="h-8 [@media(pointer:coarse)]:!h-11"
-          />
-        </div>
-        <div className="space-y-1.5">
-          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:advanced_search.providers.cache_ttl_seconds')}</div>
-          <Input
-            type="number"
-            min={0}
-            value={s.cache_ttl_seconds ?? ''}
-            onChange={handleStrategyFieldChange(id, 'cache_ttl_seconds')}
-            className="h-8 [@media(pointer:coarse)]:!h-11"
-          />
-        </div>
-        <div className="space-y-1.5">
-          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:advanced_search.providers.cache_max_entries')}</div>
-          <Input
-            type="number"
-            min={0}
-            value={s.cache_max_entries ?? ''}
-            onChange={handleStrategyFieldChange(id, 'cache_max_entries')}
-            className="h-8 [@media(pointer:coarse)]:!h-11"
-          />
-        </div>
+        {strategyFields.map(({ field, label, min }) => {
+          const inputId = `search-strategy-${id}-${field}`;
+          return (
+            <div key={field} className="space-y-1.5">
+              <label htmlFor={inputId} className="block text-xs font-medium text-muted-foreground uppercase tracking-wider">{t(label)}</label>
+              <Input
+                id={inputId}
+                type="number"
+                min={min}
+                value={strategy[field] ?? ''}
+                onChange={handleStrategyFieldChange(id, field)}
+                className="h-8 [@media(pointer:coarse)]:!h-11"
+              />
+            </div>
+          );
+        })}
       </div>
     );
   };
@@ -294,8 +250,8 @@ export const EngineSettingsSection: React.FC<{
           </div>
         </div>
         <div>
-          <StrategySummary id={id} />
-          {providerStrategies && <StrategyEditor id={id} />}
+          {renderStrategySummary(id)}
+          {providerStrategies && renderStrategyEditor(id)}
         </div>
       </div>
     </div>

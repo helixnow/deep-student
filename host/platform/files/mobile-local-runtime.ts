@@ -41,6 +41,7 @@ import { Disposer } from '../../kernel/api.ts';
 import type { SqlExecutor } from '../storage/api.ts';
 import type { NoteAssetRetention, PreparedDeletionIntent } from '../storage/node.ts';
 import { decodeBase64Standard } from '../util/portable.ts';
+import { createHasherSync } from '../crypto/sync.ts';
 import pako from 'pako';
 import { ZipArchiveReader } from '../../plugins/anki/src/apkg-zip.ts';
 
@@ -422,6 +423,36 @@ export class MobileLocalRuntime {
     });
   }
 
+  private writeDurableFile(path: string, bytes: Uint8Array, sha256: string): Promise<void> {
+    const target = this.resolvePath(path);
+    const operation = this.flushChain.then(async () => {
+      const service = this.service;
+      if (!service) throw new Error('Mobile asset storage is unavailable');
+      const existing = await service.exists(target) ? await service.stat(target) : null;
+      if (existing && existing.kind !== 'file') throw EISDIR(target);
+      let matches = false;
+      if (existing?.size === bytes.byteLength) {
+        const hash = createHasherSync('SHA-256');
+        const reader = (await service.openRead(target)).getReader();
+        try {
+          for (;;) {
+            const chunk = await reader.read();
+            if (chunk.done) break;
+            hash.update(chunk.value);
+          }
+          matches = hash.digestHex() === sha256;
+        } finally { reader.releaseLock(); }
+      }
+      if (!matches) await service.writeAtomic(target, bytes, { createParents: true });
+      const persisted = await service.stat(target);
+      if (persisted.kind !== 'file' || persisted.size !== bytes.byteLength) throw new Error(`Mobile asset was not completely persisted: ${target}`);
+      this.setFile(target, bytes);
+    });
+    // Other staged writes can proceed after a failed upload; the caller still sees the rejection.
+    this.flushChain = operation.catch(() => undefined);
+    return operation;
+  }
+
   writeText(path: string, text: string): void {
     this.writeBytes(path, encodeUtf8(text));
   }
@@ -704,6 +735,16 @@ export class MobileLocalRuntime {
       readDir: (path): NotesLocalDirEntry[] => tree.readDirKind(path),
       readBytes: path => tree.readBytes(path),
       writeBytes: (path, bytes, options) => tree.writeBytes(path, bytes, options),
+      async ensureAssetPersisted(path) {
+        const target = tree.resolvePath(path);
+        await tree.flushChain;
+        const service = tree.service;
+        if (!service) throw new Error('Mobile asset storage is unavailable');
+        const entry = await service.stat(target);
+        if (entry.kind !== 'file' || entry.size !== tree.fileNode(target).data.byteLength) {
+          throw new Error('Mobile asset was not completely persisted');
+        }
+      },
       mkdirp: path => tree.mkdirp(path),
       rmdir: path => tree.rmdir(path),
       unlink: path => tree.unlink(path),
@@ -824,6 +865,7 @@ export class MobileLocalRuntime {
       lstat: path => stat(path) as VfsReposLocalStat,
       realpath: path => tree.resolvePath(path),
       readFile: path => tree.readBytes(path),
+      writeDurableFile: (path, bytes, sha256) => tree.writeDurableFile(path, bytes, sha256),
       appendFile: (path, bytes) => tree.appendBytes(path, bytes),
       mkdirp: path => tree.mkdirp(path),
       rename: (from, to) => tree.rename(from, to),

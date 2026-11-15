@@ -3,24 +3,7 @@ import { join } from '../../../platform/util/path.ts';
 import { tmpdir } from 'node:os';
 import { MediaError } from './errors.ts';
 
-export function encodeWavMono16k(samples: Int16Array): Uint8Array {
-  const dataLen = samples.length * 2;
-  const out = Buffer.allocUnsafe(44 + dataLen);
-  out.write('RIFF', 0);
-  out.writeUInt32LE((36 + dataLen) >>> 0, 4);
-  out.write('WAVEfmt ', 8);
-  out.writeUInt32LE(16, 16);
-  out.writeUInt16LE(1, 20);
-  out.writeUInt16LE(1, 22);
-  out.writeUInt32LE(16_000, 24);
-  out.writeUInt32LE(32_000, 28);
-  out.writeUInt16LE(2, 32);
-  out.writeUInt16LE(16, 34);
-  out.write('data', 36);
-  out.writeUInt32LE(dataLen >>> 0, 40);
-  for (let i = 0; i < samples.length; i++) out.writeInt16LE(samples[i]!, 44 + i * 2);
-  return out;
-}
+export { encodeWavMono16k } from './wav-encoding.ts';
 
 export class PcmSpoolWriter {
   _fd: number | null;

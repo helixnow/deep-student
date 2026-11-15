@@ -3111,6 +3111,18 @@
     "delete": "Delete",
     "save": "Save"
   },
+  "feature_flags": {
+    "title": "Feature flags",
+    "editor_tools": "AI tools in open editors",
+    "editor_tools_description": "Allow AI editing tools to work with the open note or mind map. Turning this off keeps supported edits on saved content.",
+    "status": "Configured: {{configured}} · Flag is {{effective}}",
+    "on": "On",
+    "off": "Off",
+    "conditional": "Conditional",
+    "reset": "Restore default",
+    "retry": "Retry",
+    "flag_unavailable": "This feature flag is unavailable."
+  },
   "immersive_mode": {
     "title": "Immersive full screen",
     "description": "Hide the status bar and navigation bar; swipe from the screen edge to reveal them temporarily. Useful on tablets where the status bar or system handle covers the top buttons."

@@ -485,6 +485,20 @@
     "switch_failed": "操作失败: {{error}}"
   },
   "recovery": {
+    "mobile_restore": {
+      "title": "上次数据恢复未完成",
+      "description": "应用无法验证上次恢复的暂存数据。为避免继续改动可能不完整的数据，已暂停打开业务数据库。请恢复到覆盖前的备份，或选择一份有效的完整备份。",
+      "previous_description": "使用上次恢复开始前保存的快照。恢复后，只保留截至该快照的数据。",
+      "previous": "恢复恢复前的备份",
+      "choose_description": "也可从设备中选择一份加密的完整 Deep Student ZIP 备份。",
+      "password": "完整备份密码",
+      "choose": "选择完整备份并恢复",
+      "complete_backup_required": "这不是可恢复的完整备份；未覆盖当前数据。",
+      "working": "正在检查备份…",
+      "completed_title": "数据恢复已完成",
+      "completed_description": "请重启应用以打开已恢复的数据。",
+      "restart": "重启应用"
+    },
     "shell_title": "Deep Student 数据恢复",
     "eyebrow": "数据治理",
     "preflight_failed_title": "安全检查需要处理",

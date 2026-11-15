@@ -83,6 +83,8 @@ export function* xmlTokens(xml: string): Generator<XmlToken> {
       if (xml[pos] === '/' && xml[pos + 1] === '>') { selfClosing = true; pos += 2; break; }
       const attrStart = pos;
       while (pos < xml.length && !/[\s=/>]/.test(xml[pos]!)) pos += 1;
+      // An unexpected slash/equal sign is malformed XML, and cannot stall the tokenizer.
+      if (pos === attrStart) { pos += 1; continue; }
       const attrName = xml.slice(attrStart, pos);
       while (pos < xml.length && /\s/.test(xml[pos]!)) pos += 1;
       let attrValue = '';

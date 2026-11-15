@@ -1,7 +1,10 @@
 /** PDF OCR sessions and the OCR engine probe (`src/commands.rs:726-871`); settings commands live in
  * `register-ocr-settings.ts` (portable, shared with the mobile entry). */
-import { join } from '../../../platform/util/path.ts';
+import { mkdir, realpath, rm, writeFile } from 'node:fs/promises';
+import { performSystemOcr } from '../../llm-providers/api.ts';
+import { dirname, join } from '../../../platform/util/path.ts';
 import type { Context } from '@deepseek-ai/cordis';
+import type { FilesService } from '../../../platform/files/api.ts';
 import { CommandError } from '../../../kernel/api.ts';
 import { AppError } from '../../../platform/errors/api.ts';
 import type { NativeImage } from '../../../platform/native/image/api.ts';
@@ -44,6 +47,12 @@ export function registerPdfOcrCommands(ctx: Context, { ocr }: OcrCommandDeps): v
   // src/commands.rs:726-871 + dstu-vision pdf_ocr_service.rs; page OCR via L02 llmOcrPages.
   const pdfOcrSessions = new Map<string, PdfOcrSession>();
   const pdfOcr = new PdfOcrService({
+    files: () => {
+      const files = ctx.reflect.get('files', false) as FilesService | undefined;
+      if (!files) throw new CommandError(AppError.configuration('PDF OCR 文件服务不可用'));
+      return files;
+    },
+    canonicalize: realpath,
     appDataDir: () => ctx.paths.appDataDir,
     imagesDir: () => join(ctx.paths.appDataDir, 'images'),
     ocrModels: () => ctx.get('llmOcrModels') as PdfOcrModelsPort | undefined,
@@ -82,6 +91,9 @@ export function registerPdfOcrCommands(ctx: Context, { ocr }: OcrCommandDeps): v
       appDataDir: () => ctx.paths.appDataDir,
       ocrPages: () => ctx.get(LLM_OCR_PAGES_SERVICE) as LlmOcrPages | undefined,
       platform: ctx.app.platform,
+      systemOcr: performSystemOcr,
+      async writeTemp(path, bytes) { await mkdir(dirname(path), { recursive: true }); await writeFile(path, bytes); },
+      removeTemp: path => rm(path, { force: true }),
     }, request));
   // commands.rs:876-900: `file_manager.get_writable_app_data_dir()` (active slot, then the temp fallback chain).
   const tempAppDataDir = (): string => {

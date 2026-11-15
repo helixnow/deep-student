@@ -273,7 +273,7 @@ export class ZipReader {
     if (dataStart + entry.compressedSize > this.source.size) {
       throw new ZipFormatError('Io', 'failed to fill whole buffer');
     }
-    let stream = sourceRangeStream(this.source, dataStart, entry.compressedSize, READ_CHUNK);
+    let stream = sourceRangeStream(this.source, dataStart, entry.compressedSize, this.codec.inputChunkBytes ?? READ_CHUNK);
     if (entry.compression === 'deflated') stream = throughTransform(stream, this.codec.inflateRaw());
 
     const codec = this.codec;

@@ -51,7 +51,8 @@ import {
 } from '@/components/ui/app-menu';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
-import { fileManager } from '@/utils/fileManager';
+import { fileManager, saveAndroidStagedFile, usesAndroidSaf } from '@/utils/fileManager';
+import { abortStagedUpload, stageBlobUpload } from '@/utils/stagedUpload';
 import { useReferenceToChat } from '@/features/learning-hub/useReferenceToChat';
 import { uploadAttachmentBlob } from '@/features/chat/context/vfsRefApi';
 import { openUrl } from '@/utils/urlOpener';
@@ -188,19 +189,20 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
   const sideLayout = containerWidth >= SIDE_LAYOUT_MIN_WIDTH;
   const isVideo = kind === 'video';
   const isLink = bilibili !== null;
+  const androidEmbed = usesAndroidSaf();
   /** 链接条目直接播放出错后退回 B 站外链播放器（换条目时重置） */
-  const [linkEmbed, setLinkEmbed] = useState(false);
+  const [linkEmbed, setLinkEmbed] = useState(androidEmbed);
   /** 外链播放器是播放出错自动退回的（提示语不同） */
   const [embedFallback, setEmbedFallback] = useState(false);
   const [linkFailure, setLinkFailure] = useState<string | null>(null);
   useEffect(() => {
-    setLinkEmbed(false);
+    setLinkEmbed(androidEmbed);
     setEmbedFallback(false);
     setLinkFailure(null);
-  }, [resourceId]);
+  }, [resourceId, androidEmbed]);
   /** 外链 iframe 播放：拿不到画面与进度 */
   const embedPlayback = isLink && linkEmbed;
-  const bilibiliQuality = useBilibiliQuality(isLink ? resourceId : null);
+  const bilibiliQuality = useBilibiliQuality(isLink && !androidEmbed ? resourceId : null);
   const playerSrc = isLink ? (bilibiliQuality.streamUrl ?? src) : src;
   /** 讲义 / 伴随分区按此取帧：外链播放器没有可抽帧的画面 */
   const contentKind = embedPlayback ? 'audio' : kind;
@@ -534,7 +536,23 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
     void transcriptState.cancel();
   }, [transcriptState]);
 
+  const subtitleInputRef = useRef<HTMLInputElement>(null);
+  const importSubtitleFile = useCallback(async (file: File) => {
+    let uploadId: string | undefined;
+    try {
+      if (file.size > 20 * 1024 * 1024) throw new Error(t('learningHub:mediaTranscript.importTooLarge', { defaultValue: 'Subtitle files must be 20 MB or smaller.' }));
+      uploadId = await stageBlobUpload(file, { name: file.name });
+      const count = await transcriptState.importFromPath(`dstu-staged:${uploadId}`);
+      uploadId = undefined;
+      setPanelPref(true);
+      showGlobalNotification('success', t('learningHub:mediaTranscript.importSuccess', { count }));
+    } catch (error: unknown) {
+      showGlobalNotification('error', getErrorMessage(error), t('learningHub:mediaTranscript.importFailed'));
+    } finally { if (uploadId) await abortStagedUpload(uploadId); }
+  }, [transcriptState, t]);
+
   const handleImport = useCallback(async () => {
+    if (usesAndroidSaf()) { subtitleInputRef.current?.click(); return; }
     try {
       const path = await fileManager.pickSingleFile({
         filters: [
@@ -579,6 +597,13 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
     async (format: TranscriptExportFormat) => {
       try {
         const base = fileName.replace(/\.[^.]+$/, '') || 'transcript';
+        if (usesAndroidSaf()) {
+          const staged = `/deep-student/recovery/exports/${crypto.randomUUID()}.${format}`;
+          await transcriptState.exportToPath(format, staged);
+          if (!await saveAndroidStagedFile(staged, `${base}.${format}`, format === 'vtt' ? 'text/vtt' : 'text/plain')) return;
+          showGlobalNotification('success', t('learningHub:mediaTranscript.exportSuccess'));
+          return;
+        }
         const dest = await fileManager.pickSavePath({
           defaultFileName: `${base}.${format}`,
           filters: [{ name: format.toUpperCase(), extensions: [format] }],
@@ -889,6 +914,11 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
 
   return (
     <div ref={rootRef} className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
+      {usesAndroidSaf() && <input ref={subtitleInputRef} type="file" accept=".srt,.vtt,.json" hidden onChange={event => {
+        const file = event.currentTarget.files?.[0];
+        event.currentTarget.value = '';
+        if (file) void importSubtitleFile(file);
+      }} />}
       {/* 工具栏：转写入口 / 进度 / 字幕操作 / 截帧 */}
       <div
         role="toolbar"
@@ -1023,7 +1053,7 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
           </DsButton>
         )}
 
-        {isLink && (
+        {isLink && !androidEmbed && (
           <DsButton
             variant="ghost"
             size="sm"

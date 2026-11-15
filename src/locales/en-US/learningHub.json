@@ -618,6 +618,7 @@
     "presentationFiles": "Presentations/E-books",
     "dataFiles": "Data Files",
     "selectFiles": "Select Learning Material Files",
+    "mobileImportTooLarge": "This file exceeds the 50 MB limit on Android.",
     "importEmpty": "No textbooks were imported successfully"
   },
   "preview": {
@@ -882,6 +883,7 @@
     "markdownImport": {
       "selectFiles": "Select Markdown Files",
       "filterName": "Markdown Files",
+      "tooLarge": "Markdown files must be smaller than 10 MB.",
       "success": "Imported {{count}} Markdown note(s)",
       "partial": "Imported {{success}} Markdown note(s), {{failed}} failed",
       "failed": "Markdown import failed",

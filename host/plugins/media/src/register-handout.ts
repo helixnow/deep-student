@@ -8,11 +8,11 @@ import type { AppCommandState } from '../../integration/api.ts';
 import type { LLMManager, LlmOcrModels, LlmRawPrompt } from '../../llm/api.ts';
 import { HandoutRegistry } from './handout.ts';
 import { handoutLlmComplete, handoutVlmCaption, type HandoutLlmDeps } from './handout-llm.ts';
-import { getImageAsBase64 } from './image-base64.ts';
 import { notesExportDocx } from './notes-export-docx.ts';
 import { pinImages, unpinImages } from './pin-images.ts';
 
-export function registerHandoutCommands(ctx: Context): void {
+export function registerHandoutCommands(ctx: Context, imageAsBase64: (src: string) => Promise<string>,
+  getWriter?: () => Pick<NativeOfficeWriter, 'generateDocx'>): void {
   // src/commands.rs:356-395: temp session owned by L22 appCommandState (modify_temp_session).
   const pinDeps = {
     appCommandState: (): AppCommandState => {
@@ -53,14 +53,14 @@ export function registerHandoutCommands(ctx: Context): void {
   const notesDocxLog = ctx.logger('media.handout');
   ctx.commands.register<Commands['notes_export_docx']['args'], string>('notes_export_docx',
     ({ spec }) => notesExportDocx(spec, {
-      imageAsBase64: (src) => getImageAsBase64(ctx.paths.appDataDir, src),
-      writer: () => {
+      imageAsBase64,
+      writer: getWriter ?? (() => {
         const service = ctx.get('nativeOfficeWriter') as NativeOfficeWriter | undefined;
         if (service === undefined) {
           throw new CommandError(AppError.configuration('DOCX 生成服务未提供：需要 F7 nativeOfficeWriter'));
         }
         return service;
-      },
+      }),
       warn: (message) => notesDocxLog.warn(message),
     }));
 }

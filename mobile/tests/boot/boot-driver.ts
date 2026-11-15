@@ -25,12 +25,16 @@ function decode(body: ResponseBody): unknown {
   return body.kind === 'json' ? JSON.parse(body.data) as unknown : body.data;
 }
 
-export function startShell(worker: WorkerLike): BootDriver {
+export function startShell(worker: WorkerLike, debug = false): BootDriver {
   const logs: string[] = [];
   const events: { event: string; payload: unknown }[] = [];
   const shell = new MobileShell({
-    handshake: { appDataDir: '/deep-student', appVersion: '0.0.0-boot', platform: 'linux', debug: false },
+    handshake: { appDataDir: '/deep-student', appVersion: '0.0.0-boot', platform: 'linux', debug },
     log: message => logs.push(message),
+    onShellRequest: async request => {
+      if (request.op === 'mobile:legacy-databases') return null;
+      throw new Error(`Unhandled boot fixture request: ${request.op}`);
+    },
   });
   const supervisor = new HostWorkerSupervisor({ shell, createWorker: () => worker, log: message => logs.push(message) });
 

@@ -20,12 +20,12 @@ function abortReason(signal: AbortSignal): unknown {
 }
 
 async function send(
-  url: string, init: RequestInit, timeoutMs: number, signal?: AbortSignal,
+  fetcher: typeof fetch, url: string, init: RequestInit, timeoutMs: number, signal?: AbortSignal,
 ): Promise<Response> {
   const timeout = AbortSignal.timeout(timeoutMs);
   const combined = signal === undefined ? timeout : AbortSignal.any([timeout, signal]);
   try {
-    return await fetch(url, { ...init, signal: combined, redirect: 'follow' });
+    return await fetcher(url, { ...init, signal: combined, redirect: 'follow' });
   } catch (error) {
     if (signal?.aborted === true) throw abortReason(signal);
     const message = error instanceof Error ? error.message : String(error);
@@ -89,7 +89,15 @@ export interface Provider {
   ): Promise<ProviderResult>;
 }
 
-class BingRssProvider implements Provider {
+abstract class HttpProvider {
+  private readonly fetcher: typeof fetch;
+  constructor(fetcher: typeof fetch) { this.fetcher = fetcher; }
+  protected send(url: string, init: RequestInit, timeoutMs: number, signal?: AbortSignal): Promise<Response> {
+    return send(this.fetcher, url, init, timeoutMs, signal);
+  }
+}
+
+class BingRssProvider extends HttpProvider implements Provider {
   name(): string { return 'bing_rss'; }
   async search(
     config: ToolConfig, input: SearchInput, _log?: (message: string) => void, signal?: AbortSignal,
@@ -102,7 +110,7 @@ class BingRssProvider implements Provider {
     url.searchParams.set('format', 'rss');
     url.searchParams.set('first', String(Math.max(input.start ?? 1, 1)));
     const started = performance.now();
-    const response = await send(url.toString(), {
+    const response = await this.send(url.toString(), {
       method: 'GET', headers: {
         Accept: 'application/rss+xml, application/xml;q=0.9, text/xml;q=0.8',
         'User-Agent': 'Mozilla/5.0 (compatible; DeepStudent/1.0; +https://github.com/helixnow/deep-student)',
@@ -186,7 +194,7 @@ export function parseBingRss(xml: string): SearchItem[] {
   return items;
 }
 
-class GoogleCseProvider implements Provider {
+class GoogleCseProvider extends HttpProvider implements Provider {
   name(): string { return 'google_cse'; }
   async search(
     config: ToolConfig, input: SearchInput, log: (message: string) => void, signal?: AbortSignal,
@@ -213,7 +221,7 @@ class GoogleCseProvider implements Provider {
         : input.time_range === '365d' || input.time_range === '1y' || input.time_range === '12m' ? 'y1' : null;
     if (dateRestrict !== null) url.searchParams.set('dateRestrict', dateRestrict);
     const started = performance.now();
-    const response = await send(url.toString(), { method: 'GET', headers: { 'User-Agent': 'web_search_tool/0.1' } }, timeoutOf(config), signal);
+    const response = await this.send(url.toString(), { method: 'GET', headers: { 'User-Agent': 'web_search_tool/0.1' } }, timeoutOf(config), signal);
     const latency = Math.trunc(performance.now() - started);
     if (!isSuccess(response.status)) {
       const body = await responseText(response);
@@ -233,7 +241,7 @@ class GoogleCseProvider implements Provider {
   }
 }
 
-class SerpApiProvider implements Provider {
+class SerpApiProvider extends HttpProvider implements Provider {
   name(): string { return 'serpapi'; }
   async search(
     config: ToolConfig, input: SearchInput, log: (message: string) => void, signal?: AbortSignal,
@@ -264,7 +272,7 @@ class SerpApiProvider implements Provider {
       if (asQdr !== null) url.searchParams.set('as_qdr', asQdr);
     }
     const started = performance.now();
-    const response = await send(url.toString(), { method: 'GET', headers: { 'User-Agent': 'web_search_tool/0.1' } }, timeoutOf(config), signal);
+    const response = await this.send(url.toString(), { method: 'GET', headers: { 'User-Agent': 'web_search_tool/0.1' } }, timeoutOf(config), signal);
     const latency = Math.trunc(performance.now() - started);
     if (!isSuccess(response.status)) {
       const body = await responseText(response);
@@ -280,7 +288,7 @@ class SerpApiProvider implements Provider {
   }
 }
 
-class TavilyProvider implements Provider {
+class TavilyProvider extends HttpProvider implements Provider {
   name(): string { return 'tavily'; }
   async search(
     config: ToolConfig, input: SearchInput, log: (message: string) => void, signal?: AbortSignal,
@@ -305,7 +313,7 @@ class TavilyProvider implements Provider {
     const range = input.time_range?.trim().toLowerCase();
     if (range !== undefined && ranges[range] !== undefined) body.time_range = ranges[range]!;
     const started = performance.now();
-    const response = await send('https://api.tavily.com/search', {
+    const response = await this.send('https://api.tavily.com/search', {
       method: 'POST', headers: {
         'Content-Type': 'application/json', Authorization: `Bearer ${key}`, 'User-Agent': 'web_search_tool/0.1',
       },
@@ -326,7 +334,7 @@ class TavilyProvider implements Provider {
   }
 }
 
-class BraveProvider implements Provider {
+class BraveProvider extends HttpProvider implements Provider {
   name(): string { return 'brave'; }
   async search(
     config: ToolConfig, input: SearchInput, log: (message: string) => void, signal?: AbortSignal,
@@ -354,7 +362,7 @@ class BraveProvider implements Provider {
     }
     if (input.start !== null) url.searchParams.set('offset', String(Math.max(input.start - 1, 0)));
     const started = performance.now();
-    const response = await send(url.toString(), {
+    const response = await this.send(url.toString(), {
       method: 'GET', headers: {
         Accept: 'application/json', 'X-Subscription-Token': key, 'User-Agent': 'web_search_tool/0.1',
       },
@@ -379,7 +387,7 @@ class BraveProvider implements Provider {
   }
 }
 
-class SearxngProvider implements Provider {
+class SearxngProvider extends HttpProvider implements Provider {
   name(): string { return 'searxng'; }
   async search(
     config: ToolConfig, input: SearchInput, _log?: (message: string) => void, signal?: AbortSignal,
@@ -400,7 +408,8 @@ class SearxngProvider implements Provider {
     if (apiKey !== null) {
       const separator = apiKey.indexOf(':');
       if (separator >= 0) {
-        headers.Authorization = `Basic ${Buffer.from(`${apiKey.slice(0, separator)}:${apiKey.slice(separator + 1)}`).toString('base64')}`;
+        const bytes = new TextEncoder().encode(apiKey);
+        headers.Authorization = `Basic ${btoa(Array.from(bytes, byte => String.fromCharCode(byte)).join(''))}`;
       } else {
         url.searchParams.set('apikey', apiKey);
         headers.Authorization = `Bearer ${apiKey}`;
@@ -411,7 +420,7 @@ class SearxngProvider implements Provider {
     const range = input.time_range?.trim().toLowerCase();
     if (range !== undefined && ranges[range] !== undefined) url.searchParams.set('time_range', ranges[range]!);
     const started = performance.now();
-    const response = await send(url.toString(), { method: 'GET', headers }, timeoutOf(config), signal);
+    const response = await this.send(url.toString(), { method: 'GET', headers }, timeoutOf(config), signal);
     const latency = Math.trunc(performance.now() - started);
     if (!isSuccess(response.status)) {
       const body = await responseText(response);
@@ -427,7 +436,7 @@ class SearxngProvider implements Provider {
   }
 }
 
-class ZhipuProvider implements Provider {
+class ZhipuProvider extends HttpProvider implements Provider {
   name(): string { return 'zhipu'; }
   async search(
     config: ToolConfig, input: SearchInput, log: (message: string) => void, signal?: AbortSignal,
@@ -456,7 +465,7 @@ class ZhipuProvider implements Provider {
     };
     const headers = { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', 'User-Agent': 'deep-student/1.0' };
     const started = performance.now();
-    let response = await send('https://open.bigmodel.cn/api/paas/v4/web_search', {
+    let response = await this.send('https://open.bigmodel.cn/api/paas/v4/web_search', {
       method: 'POST', headers, body: JSON.stringify(buildBody('search-prime')),
     }, timeoutOf(config), signal);
     let latency = Math.trunc(performance.now() - started);
@@ -466,7 +475,7 @@ class ZhipuProvider implements Provider {
       const lower = body.toLowerCase();
       if (isClientError(response.status) && (lower.includes('search_engine') || lower.includes('search-prime'))) {
         log('[web_search][zhipu] search-prime rejected, retrying with search_pro');
-        response = await send('https://open.bigmodel.cn/api/paas/v4/web_search', {
+        response = await this.send('https://open.bigmodel.cn/api/paas/v4/web_search', {
           method: 'POST', headers, body: JSON.stringify(buildBody('search_pro')),
         }, timeoutOf(config), signal);
         if (!isSuccess(response.status)) throw errorFrom(response.status, await responseText(response));
@@ -485,7 +494,7 @@ class ZhipuProvider implements Provider {
   }
 }
 
-class BochaProvider implements Provider {
+class BochaProvider extends HttpProvider implements Provider {
   name(): string { return 'bocha'; }
   async search(
     config: ToolConfig, input: SearchInput, log: (message: string) => void, signal?: AbortSignal,
@@ -503,7 +512,7 @@ class BochaProvider implements Provider {
           : range === '365d' || range === '1y' || range === '12m' ? 'oneYear' : 'noLimit';
     }
     const started = performance.now();
-    const response = await send('https://api.bochaai.com/v1/web-search', {
+    const response = await this.send('https://api.bochaai.com/v1/web-search', {
       method: 'POST', headers: {
         Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', 'User-Agent': 'deep-student/1.0',
       },
@@ -600,7 +609,7 @@ export function parseDeepseekResults(raw: JsonValue): SearchItem[] {
   return items;
 }
 
-class DeepseekProvider implements Provider {
+class DeepseekProvider extends HttpProvider implements Provider {
   name(): string { return 'deepseek'; }
   async search(
     config: ToolConfig, input: SearchInput, log: (message: string) => void, signal?: AbortSignal,
@@ -615,7 +624,7 @@ class DeepseekProvider implements Provider {
     const body: Record<string, JsonValue> = { query, count: topK };
     if (config.deepseek_need_content === true) body.need_content = true;
     const started = performance.now();
-    const response = await send('https://api.deepseek.com/v1/tools/search', {
+    const response = await this.send('https://api.deepseek.com/v1/tools/search', {
       method: 'POST', headers: {
         Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', 'User-Agent': 'deep-student/1.0',
       },
@@ -631,17 +640,17 @@ class DeepseekProvider implements Provider {
   }
 }
 
-export function createProvider(engine: string): Provider {
+export function createProvider(engine: string, fetcher: typeof fetch = globalThis.fetch): Provider {
   switch (engine) {
-    case 'bing_rss': return new BingRssProvider();
-    case 'google_cse': return new GoogleCseProvider();
-    case 'serpapi': return new SerpApiProvider();
-    case 'tavily': return new TavilyProvider();
-    case 'brave': return new BraveProvider();
-    case 'searxng': return new SearxngProvider();
-    case 'zhipu': return new ZhipuProvider();
-    case 'bocha': return new BochaProvider();
-    case 'deepseek': return new DeepseekProvider();
+    case 'bing_rss': return new BingRssProvider(fetcher);
+    case 'google_cse': return new GoogleCseProvider(fetcher);
+    case 'serpapi': return new SerpApiProvider(fetcher);
+    case 'tavily': return new TavilyProvider(fetcher);
+    case 'brave': return new BraveProvider(fetcher);
+    case 'searxng': return new SearxngProvider(fetcher);
+    case 'zhipu': return new ZhipuProvider(fetcher);
+    case 'bocha': return new BochaProvider(fetcher);
+    case 'deepseek': return new DeepseekProvider(fetcher);
     default: throw new ToolError('config', `unknown engine: ${engine}`);
   }
 }

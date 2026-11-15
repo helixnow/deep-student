@@ -17,6 +17,8 @@
  */
 
 import { rememberNotificationTarget } from './notificationRouting';
+import { invoke } from '@tauri-apps/api/core';
+import { isAndroidMobileShell } from './platform';
 import { getSetting, saveSetting } from './settingsApi';
 import { isTauriRuntime } from './shared';
 
@@ -40,12 +42,20 @@ export function getSystemNotificationPolicy(): SystemNotificationPolicy {
   }
 }
 
+function syncAndroidNotificationPolicy(policy: SystemNotificationPolicy): void {
+  if (!isAndroidMobileShell()) return;
+  void invoke('plugin:notification|set_policy', { policy }).catch((error: unknown) => {
+    console.warn('[SystemNotification] Failed to update Android background notification policy:', error);
+  });
+}
+
 export function setSystemNotificationPolicy(policy: SystemNotificationPolicy): void {
   try {
     localStorage.setItem(POLICY_STORAGE_KEY, policy);
   } catch {
     // localStorage 不可用时静默（当次会话默认值生效）
   }
+  syncAndroidNotificationPolicy(policy);
   // 异步同步到后端 settings 表（Rust 侧发通知前读取同一键）；
   // 失败不阻塞——下次启动 syncSystemNotificationPolicyFromBackend 会再对齐。
   if (isTauriRuntime) {
@@ -62,6 +72,7 @@ export function setSystemNotificationPolicy(policy: SystemNotificationPolicy): v
  *   补齐后 Rust 侧策略拦截才能生效）。
  */
 export async function syncSystemNotificationPolicyFromBackend(): Promise<void> {
+  syncAndroidNotificationPolicy(getSystemNotificationPolicy());
   if (!isTauriRuntime) return;
   try {
     const backendPolicy = normalizePolicy(await getSetting(POLICY_STORAGE_KEY));
@@ -73,6 +84,7 @@ export async function syncSystemNotificationPolicyFromBackend(): Promise<void> {
     }
     if (backendPolicy) {
       if (backendPolicy !== localPolicy) {
+        syncAndroidNotificationPolicy(backendPolicy);
         try {
           localStorage.setItem(POLICY_STORAGE_KEY, backendPolicy);
         } catch {
@@ -107,7 +119,7 @@ async function isAppInBackground(): Promise<boolean> {
   } catch {
     // 继续走窗口级判断
   }
-  if (isTauriRuntime) {
+  if (isTauriRuntime && !isAndroidMobileShell()) {
     try {
       const { getAllWindows } = await import('@tauri-apps/api/window');
       const windows = await getAllWindows();
@@ -142,6 +154,8 @@ export interface SystemNotificationOptions {
   force?: boolean;
   /** 点通知要打开的界面（路由见 notificationRouting）：手机经 extra 带回，桌面按回到前台推断 */
   target?: string;
+  /** Shared ID with the Android background alarm for this countdown completion. */
+  pomodoroDeadline?: number;
 }
 
 export type SystemNotificationPermissionState =
@@ -153,6 +167,10 @@ export type SystemNotificationPermissionState =
 /** 查询系统通知权限；优先读取 WebView 暴露的三态结果，再回退到插件查询。 */
 export async function getSystemNotificationPermissionState(): Promise<SystemNotificationPermissionState> {
   try {
+    if (isAndroidMobileShell()) {
+      const { invoke } = await import('@tauri-apps/api/core');
+      return await invoke('plugin:notification|permission_state');
+    }
     if (typeof window !== 'undefined' && window.Notification) {
       if (window.Notification.permission === 'granted') return 'granted';
       if (window.Notification.permission === 'denied') return 'denied';
@@ -167,6 +185,10 @@ export async function getSystemNotificationPermissionState(): Promise<SystemNoti
 /** 由明确的用户操作触发系统通知授权。 */
 export async function requestSystemNotificationPermission(): Promise<SystemNotificationPermissionState> {
   try {
+    if (isAndroidMobileShell()) {
+      const { invoke } = await import('@tauri-apps/api/core');
+      return await invoke('plugin:notification|request_permission');
+    }
     const { requestPermission } = await import('@tauri-apps/plugin-notification');
     const state = String(await requestPermission());
     if (state === 'granted') return 'granted';
@@ -207,6 +229,12 @@ export async function sendSystemNotification(
   }
 
   try {
+    if (isAndroidMobileShell()) {
+      // Permission is requested when the user subscribes, never while firing a background reminder.
+      return await invoke<boolean>('plugin:notification|notify', {
+        title, body, target: options?.target, pomodoroDeadline: options?.pomodoroDeadline,
+      });
+    }
     const { isPermissionGranted, requestPermission, sendNotification } = await import(
       '@tauri-apps/plugin-notification'
     );

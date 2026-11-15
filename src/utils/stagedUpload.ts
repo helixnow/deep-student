@@ -14,7 +14,7 @@
  * 已有文件路径（拖放/对话框/content://）时用 `stagePathUpload`，Rust 直接复制。
  */
 import { invoke } from '@tauri-apps/api/core';
-import { isAndroid, isWebUiShell } from './platform';
+import { isAndroid, isAndroidMobileShell, isWebUiShell } from './platform';
 
 /** 超过该大小走分块暂存；更小的文件保留原 base64 快速路径 */
 export const STAGED_UPLOAD_THRESHOLD = 8 * 1024 * 1024;
@@ -79,9 +79,8 @@ export async function abortStagedUpload(uploadId: string): Promise<void> {
  */
 export async function stageBlobUpload(blob: Blob, options: StageBlobOptions): Promise<string> {
   const { name, onProgress, signal } = options;
-  // WebUI 的 `staged_upload_append` 走的是浏览器 → 宿主的 WebSocket，二进制帧原样传输，
-  // 不需要 Android WebView 那套 base64 兜底（那只是绕开 wry 的请求体限制）。
-  const android = options.android ?? (isAndroid() && !isWebUiShell());
+  // Capacitor 的 Host Worker 和 WebUI 都支持原始二进制，只有旧 Tauri/wry Android 需要 base64。
+  const android = options.android ?? (isAndroid() && !isAndroidMobileShell() && !isWebUiShell());
   const chunkSize = options.chunkSize ?? STAGED_UPLOAD_CHUNK_SIZE;
   if (!Number.isSafeInteger(chunkSize) || chunkSize <= 0 || chunkSize > 16 * 1024 * 1024) {
     throw new RangeError('Upload chunk size must be an integer between 1 and 16 MiB');

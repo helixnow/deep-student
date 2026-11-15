@@ -6,6 +6,7 @@
  * - 压缩与 CRC：`ZipCodec`，默认用 `CompressionStream` / `DecompressionStream('deflate-raw')`
  *   与纯 JS CRC-32；桌面适配层注入 zlib 实现（可指定压缩级别、原生 CRC）。
  */
+import pako from 'pako';
 import { crc32Update, ZipFormatError } from './format.ts';
 
 export interface ZipByteSource {
@@ -27,6 +28,7 @@ export interface ZipTransform {
 }
 
 export interface ZipCodec {
+  readonly inputChunkBytes?: number;
   /** raw deflate（无 zlib 头）；`level` 省略时为 zlib 默认级别 6（与 `FileOptions::default()` 一致）。 */
   deflateRaw(level?: number): ZipTransform;
   inflateRaw(): ZipTransform;
@@ -34,16 +36,49 @@ export interface ZipCodec {
   crc32(data: Uint8Array, previous: number): number;
 }
 
-/** 标准 Web API 实现：浏览器、WebView、Worker 与 Node 都可用。 */
+/** Older WebViews throw when the otherwise available streams receive deflate-raw. */
+function pakoStream(codec: InstanceType<typeof pako.Inflate>, decode = false): ZipTransform {
+  let ended = false;
+  const push = (chunk: Uint8Array, finish: boolean, controller: TransformStreamDefaultController<Uint8Array>) => {
+    if (ended) {
+      if (chunk.length) throw new Error('Unexpected bytes after raw deflate stream');
+      return;
+    }
+    // Pako 1 finalizes a truncated stream successfully when push receives Z_FINISH.
+    // Valid streams reach Z_STREAM_END while processing the last input chunk.
+    if (finish && decode) throw new Error('Truncated raw deflate stream');
+    codec.onData = part => controller.enqueue(part);
+    if (!codec.push(chunk, finish) || codec.err) throw new Error(codec.msg || 'Invalid raw deflate stream');
+    ended = codec.ended;
+    if (decode && ended && codec.strm.avail_in !== 0) throw new Error('Unexpected bytes after raw deflate stream');
+  };
+  return new TransformStream({
+    transform: (chunk, controller) => push(chunk, false, controller),
+    flush: controller => push(new Uint8Array(), true, controller),
+  });
+}
+
+const supportsRawInflate = (() => {
+  try { new DecompressionStream('deflate-raw'); return true; }
+  catch { return false; }
+})();
+
+/** Web-native when supported; small input chunks bound synchronous JS inflate on older WebViews. */
 export const webZipCodec: ZipCodec = {
+  ...(supportsRawInflate ? {} : { inputChunkBytes: 4096 }),
   deflateRaw(level) {
     if (level !== undefined && level !== 6) {
-      throw new RangeError(`CompressionStream cannot set a deflate level (requested ${level}); inject a codec that supports levels`);
+      throw new RangeError('The browser ZIP codec does not support a non-default compression level');
     }
-    return new CompressionStream('deflate-raw') as ZipTransform;
+    try { return new CompressionStream('deflate-raw') as ZipTransform; }
+    catch (error) {
+      if (!(error instanceof TypeError || error instanceof ReferenceError)) throw error;
+    }
+    return pakoStream(new pako.Deflate({ raw: true, level }));
   },
   inflateRaw() {
-    return new DecompressionStream('deflate-raw') as ZipTransform;
+    return supportsRawInflate ? new DecompressionStream('deflate-raw') as ZipTransform
+      : pakoStream(new pako.Inflate({ raw: true }), true);
   },
   crc32: crc32Update,
 };

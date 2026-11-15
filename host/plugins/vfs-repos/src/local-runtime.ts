@@ -69,6 +69,8 @@ export interface VfsReposLocalRuntime {
   /** `realpathSync.native`。 */
   realpath(path: string): string;
   readFile(path: string): Uint8Array;
+  /** Mobile uploads require OPFS to flush the canonical bytes before committing metadata. */
+  writeDurableFile?(path: string, bytes: Uint8Array, sha256: string): Promise<void>;
   /** `writeFileSync(path, bytes, { flag: 'a' })`。 */
   appendFile(path: string, bytes: Uint8Array): void;
   /** `mkdir -p`。 */

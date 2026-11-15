@@ -5,6 +5,7 @@
  * 提供一键导出备份、ZIP 导入/导出、备份列表管理
  */
 
+import { readShellPlatform } from '@/ui-kernel/services/shell-platform';
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -196,6 +197,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
   lastAutoVerifyResult,
 }) => {
   const { t } = useTranslation(['data', 'common', 'settings', 'cloudStorage']);
+  const isMobile = readShellPlatform()?.kind === 'mobile';
   const [selectedBackup, setSelectedBackup] = useState<string | null>(null);
 
   // 备份设置状态
@@ -850,8 +852,8 @@ export const BackupTab: React.FC<BackupTabProps> = ({
         </div>
       </section>
 
-      {/* 备份设置 */}
-      <section className="min-w-0">
+      {/* 后台调度只由桌面主进程提供。 */}
+      {!isMobile && <section className="min-w-0">
         <GroupTitle
           title={t('data:governance.backup_settings')}
           description={t('data:governance.backup_settings_desc')}
@@ -969,7 +971,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
             )}
           </div>
         ) : null}
-      </section>
+      </section>}
 
       {/* 备份列表 */}
       <section className="min-w-0">

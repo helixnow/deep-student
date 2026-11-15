@@ -525,11 +525,12 @@ export function useLearningHubSidebarController(props: LearningHubSidebarProps) 
     ensureCreatableView,
     t,
     importMarkdownPathNotes,
+    importMarkdownFileObjects,
     isMountedRef,
     handleRefresh,
     openImportedMarkdownNote,
     notifyMarkdownImportResult,
-  }, folderId), [currentCreatableFolderId, ensureCreatableView, handleRefresh, importMarkdownPathNotes, notifyMarkdownImportResult, openImportedMarkdownNote, t]);
+  }, folderId), [currentCreatableFolderId, ensureCreatableView, handleRefresh, importMarkdownPathNotes, importMarkdownFileObjects, notifyMarkdownImportResult, openImportedMarkdownNote, t]);
 
   const handleQuickAccessNavigate = useQuickAccessNavigation({ enterFolder, quickAccessNavigate, t, mode, sessionActive });
 
@@ -598,7 +599,7 @@ export function useLearningHubSidebarController(props: LearningHubSidebarProps) 
     await importPaths(paths);
   }, [currentPath, importPaths, t]);
 
-  const handleFilesDrop = useCallback((files: File[]) => importDroppedFiles({
+  const importFileObjects = useCallback((files: File[], fromPicker = false) => importDroppedFiles({
     pathsDropHandledRef,
     currentPath,
     t,
@@ -608,7 +609,10 @@ export function useLearningHubSidebarController(props: LearningHubSidebarProps) 
     setAttachImportProgress,
     handleRefresh,
     openImportedMarkdownNote,
-  }, files), [currentCreatableFolderId, currentPath, currentQuickAccessType, handleRefresh, importMarkdownFileObjects, openImportedMarkdownNote, t]);
+    onOpenApp,
+  }, files, fromPicker), [currentCreatableFolderId, currentPath, handleRefresh, importMarkdownFileObjects, openImportedMarkdownNote, onOpenApp, t]);
+
+  const handleFilesDrop = useCallback((files: File[]) => importFileObjects(files), [importFileObjects]);
 
   const {
     handleNewNote,
@@ -627,6 +631,7 @@ export function useLearningHubSidebarController(props: LearningHubSidebarProps) 
     setSelectedIds,
     importProgress,
     importPaths,
+    importFiles: (files) => importFileObjects(files, true),
   });
 
   // 是否允许拖拽导入（排除回收站、特殊视图等）

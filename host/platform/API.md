@@ -693,7 +693,7 @@ Windows：只认 `X:\` 与 `\\server\share\` 根，`\\?\` 前缀去掉后同等�
 - `allowLoopback`（默认 false，只对 `public-pinned` 生效，其他 destination 忽略）：额外放行回环地址，私网、链路本地等仍然拒绝。
   只在用户已批准访问本机、且请求 URL 本身指向本机（回环字面量或 `localhost`）时打开。传输层不核对 URL，由调用方按 URL 决定；
   若按解析结果决定，一个解析到 `127.0.0.1` 的公网域名也会被放行。
-- **`UnsupportedOnPlatform`**：策略层没有钉住传输时（`createHttpService` 未传 `pinnedTransport`，目前除桌面外的所有实现），
+- **`UnsupportedOnPlatform`**：策略层没有钉住传输时（如 iOS、浏览器外壳或 `createHttpService` 未传 `pinnedTransport`），
   `public-pinned` 请求抛 `HttpError('UnsupportedOnPlatform')`，**不会退化成 `public`**。消息以
   `UNSUPPORTED_ON_PLATFORM: http.destination.publicPinned is not available on <platform>` 开头，`capability`
   （`PUBLIC_PINNED_CAPABILITY`）与 `platform` 字段和平台能力清单（`mobile/src/capabilities.ts`）一致。这个前缀与存储层
@@ -708,15 +708,11 @@ Windows：只认 `X:\` 与 `\\server\share\` 根，`\\?\` 前缀去掉后同等�
 - 传输层在首次请求时创建，插件卸载时 `close()` 释放连接池。测试可用 `createHttpService({ transport })` 注入传输层，
   或 `createDesktopHttp({ env: {}, platformProxy: async () => null })` 隔离开发者机器上的代理设置。
 
-**移动端实现（原型阶段）**：策略层（`createHttpService`）本身可移植，只需换传输层与 `isPublicUrl`：
+**移动端实现**：普通请求优先用 Worker 的 fetch。Android 通过 OkHttp 原生桥处理 CORS 回退、需要手动重定向的 WebDAV 请求和流式上传；
+原生响应按需分块读取，支持 SSE 和取消。其他外壳的 Capacitor HTTP 回退仍缓冲响应。
 
-- 传输层：`CapacitorHttp.request({ url, method, headers, data, responseType: 'arraybuffer', connectTimeout, readTimeout })`
-  （原生 HTTP，绕过 WebView CORS，自动使用系统代理），把结果包装成标准 `Response`。Capacitor 插件只在主线程可用，
-  worker 内经 `messagePortTransport` 转发。原生 HTTP 一次性返回响应体，`fetchBytes` 是自然形态；
-  **LLM 流式（SSE）需要逐块响应**，`CapacitorHttp` 不支持流式，需要原生流式插件或在 WebView 内直接 `fetch`
-  （受 provider 的 CORS 策略限制）——这是移动端原型要验证的风险项。
-- `isPublicUrl`：WebView 里没有 DNS 解析 API，纯 JS 只能判定 IP 字面量与 `localhost` 类主机名；完整判定需要原生 DNS 插件，
-  或在原生侧连接后检查对端地址。原型阶段先做字面量判定并在报告中标注风险。
+Android 原生桥提供 DNS，Worker 使用相同的 IP 判定。`public` 和 `public-pinned` 都逐跳校验并连接已校验的地址；
+两者的回环默认值仍不相同。其他移动外壳不提供 `public` 或 `public-pinned`，不会用普通传输替代。
 
 ## 插件平台声明与移动端 profile
 

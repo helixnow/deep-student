@@ -1,6 +1,5 @@
 /**
- * QR Code encoder (iLink / Bilibili login flows). Desktop-only submodule of `platform/util`:
- * the PNG writer uses `node:zlib` and `Buffer`.
+ * QR Code encoder (iLink / Bilibili login flows), shared by desktop and Android.
  *
  * Rust delegates this to `qrcode` 0.13 + `image` (dstu-util/src/qr.rs:11): `QrCode::new`
  * selects the smallest normal version, error correction level M, the crate's optimal
@@ -8,8 +7,9 @@
  * This module ports those defaults rather than emitting a fixed-mask approximation, and
  * renders the same ≥256px 8-bit grayscale PNG with a 4-module quiet zone.
  */
-import { deflateSync } from 'node:zlib';
+import pako from 'pako';
 import { AppError } from '../../kernel/error-model.ts';
+import { toBase64 } from '../crypto/encoding.ts';
 
 // qrcode 0.13.0 tables (ISO/IEC 18004:2006 §6.5.1 Table 9), error correction level M.
 const ECC_PER_BLOCK_M = [10, 16, 26, 18, 24, 16, 18, 22, 22, 26, 30, 22, 22, 24, 24, 28, 28, 26, 26, 26, 26, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28];
@@ -760,22 +760,22 @@ function crc32(bytes: Uint8Array): number {
   return (crc ^ 0xffffffff) >>> 0;
 }
 
-function chunk(type: string, data: Uint8Array): Buffer {
-  const typeBytes = Buffer.from(type, 'ascii');
-  const out = Buffer.alloc(12 + data.length);
-  out.writeUInt32BE(data.length, 0);
-  typeBytes.copy(out, 4);
-  Buffer.from(data).copy(out, 8);
-  out.writeUInt32BE(crc32(Buffer.concat([typeBytes, Buffer.from(data)])), 8 + data.length);
+function chunk(type: string, data: Uint8Array): Uint8Array {
+  const out = new Uint8Array(12 + data.length);
+  const view = new DataView(out.buffer);
+  view.setUint32(0, data.length);
+  out.set(new TextEncoder().encode(type), 4);
+  out.set(data, 8);
+  view.setUint32(8 + data.length, crc32(out.subarray(4, 8 + data.length)));
   return out;
 }
 
-function pngFromMatrix(matrix: QrMatrix, quietZone = 4): Buffer {
+function pngFromMatrix(matrix: QrMatrix, quietZone = 4): Uint8Array {
   // qrcode renderer `min_dimensions(256, 256)` rounds the module size up
   // (render/mod.rs:135-142), so the PNG is at least 256px instead of smaller.
   const scale = Math.max(1, Math.ceil(256 / (matrix.size + quietZone * 2)));
   const dimension = (matrix.size + quietZone * 2) * scale;
-  const raw = Buffer.alloc(dimension * (dimension + 1));
+  const raw = new Uint8Array(dimension * (dimension + 1));
   for (let y = 0; y < dimension; y++) {
     const rowStart = y * (dimension + 1);
     raw[rowStart] = 0;
@@ -791,26 +791,34 @@ function pngFromMatrix(matrix: QrMatrix, quietZone = 4): Buffer {
       raw[rowStart + 1 + x] = dark ? 0 : 255;
     }
   }
-  const header = Buffer.alloc(13);
-  header.writeUInt32BE(dimension, 0);
-  header.writeUInt32BE(dimension, 4);
+  const header = new Uint8Array(13);
+  const view = new DataView(header.buffer);
+  view.setUint32(0, dimension);
+  view.setUint32(4, dimension);
   header[8] = 8; // bit depth
   header[9] = 0; // grayscale
   header[10] = 0;
   header[11] = 0;
   header[12] = 0;
-  return Buffer.concat([
-    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+  const parts = [
+    Uint8Array.of(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a),
     chunk('IHDR', header),
-    chunk('IDAT', deflateSync(raw)),
+    chunk('IDAT', pako.deflate(raw)),
     chunk('IEND', new Uint8Array()),
-  ]);
+  ];
+  const png = new Uint8Array(parts.reduce((sum, part) => sum + part.byteLength, 0));
+  let offset = 0;
+  for (const part of parts) {
+    png.set(part, offset);
+    offset += part.byteLength;
+  }
+  return png;
 }
 
 /** Rust: dstu_util::qr::qrcode_png_base64 — raw base64 (no data-url prefix). */
 export function qrcodePngBase64(content: string): string {
   try {
-    return pngFromMatrix(encodeQrMatrix(content)).toString('base64');
+    return toBase64(pngFromMatrix(encodeQrMatrix(content)));
   } catch (error) {
     if (typeof error === 'object' && error !== null && 'error_type' in error) throw error;
     throw qrError(error instanceof Error ? error.message : String(error));

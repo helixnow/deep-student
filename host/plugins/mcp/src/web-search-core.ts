@@ -212,7 +212,7 @@ export function normalizeUrl(input: string): string {
 }
 function encodeQueryPart(value: string): string {
   if (!/[^A-Za-z0-9\-._~]/u.test(value)) return value;
-  return [...Buffer.from(value, 'utf8')].map(byte => {
+  return [...new TextEncoder().encode(value)].map(byte => {
     const ch = String.fromCharCode(byte);
     return /[A-Za-z0-9\-._~]/.test(ch) ? ch : `%${byte.toString(16).toUpperCase().padStart(2, '0')}`;
   }).join('');

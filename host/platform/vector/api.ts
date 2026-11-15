@@ -24,6 +24,8 @@ export interface VectorTable {
   optimizeAll?(options?: { olderThanDays?: number; deleteUnverified?: boolean }): Promise<void>;
 }
 export interface VectorConnection {
+  /** False when vector search always uses exact distances and cannot create an ANN index. */
+  readonly supportsApproximateSearch?: boolean;
   tableNames(): Promise<string[]>;
   openTable(name: string): Promise<VectorTable>;
   /** Pass the owner's explicit schema; no business table-name/schema inference. */
@@ -32,7 +34,11 @@ export interface VectorConnection {
   dropTable(name: string): Promise<void>;
   close(): void;
 }
-export interface VectorService { connect(path: string): Promise<VectorConnection> }
+export type VectorDatabaseOwner = 'vfs' | 'mistakes';
+export interface VectorService {
+  /** Embedded implementations can store vectors with their owning database so backup/restore includes them. */
+  connect(path: string, owner?: VectorDatabaseOwner): Promise<VectorConnection>;
+}
 declare module '@deepseek-ai/cordis' {
   interface Context { vector: VectorService }
 }

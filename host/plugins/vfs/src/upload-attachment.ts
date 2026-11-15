@@ -158,7 +158,7 @@ async function uploadAttachment(deps: UploadAttachmentDeps, params: VfsUploadAtt
       const chunks: Iterable<Uint8Array> = staged !== undefined
         ? stagedChunks(staged)
         : [decodeStandardBase64(uploadParams.base64Content.trim())];
-      result = repos.attachments.uploadMediaStreamFinalized(conn, blobsDir, uploadParams, chunks, targetFolderId);
+      result = await repos.attachments.uploadMediaStreamPersisted(conn, blobsDir, uploadParams, chunks, targetFolderId);
     } else if (stagedBytes !== undefined) {
       result = await repos.attachments.uploadBytesWithFolderConn(conn, blobsDir, uploadParams, stagedBytes, targetFolderId);
     } else {

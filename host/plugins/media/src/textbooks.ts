@@ -7,8 +7,7 @@ import { createHash } from 'node:crypto';
 import { mkdir, open, stat, type FileHandle } from 'node:fs/promises';
 import { dirname } from '../../../platform/util/path.ts';
 import { AppError } from '../../../platform/errors/api.ts';
-import type { VfsTextbook } from '../../vfs-repos/api.ts';
-import type { Textbook } from '../../../../contracts/ipc/generated/L18-media-docs.ts';
+export { toTextbook, extensionOf } from './textbook-record.ts';
 
 /** 教材/文档导入单文件读取上限（`textbooks.rs` MAX_TEXTBOOK_IMPORT_BYTES）。 */
 export const MAX_TEXTBOOK_IMPORT_BYTES = 200 * 1024 * 1024;
@@ -21,7 +20,6 @@ export class TextbookFileError extends Error {
     this.appError = appError;
   }
 }
-
 function fileSystem(message: string): never {
   throw new TextbookFileError(AppError.file_system(message));
 }
@@ -83,7 +81,6 @@ export async function hashFileSha256(rawPath: string): Promise<string> {
     await closeQuietly(handle);
   }
 }
-
 /** `unified_file_manager::read_all_bytes_bounded`（本地路径分支）：读到上限 + 1 字节为止。 */
 export async function readAllBytesBounded(rawPath: string, maxBytes: number): Promise<Uint8Array> {
   const path = localPathOf(rawPath);
@@ -154,33 +151,4 @@ export async function writeTextFile(rawPath: string, content: string): Promise<v
   } finally {
     await closeQuietly(handle);
   }
-}
-
-/** `VfsTextbook::to_textbook`（`textbooks_db.rs`）。 */
-export function toTextbook(textbook: VfsTextbook): Textbook {
-  return {
-    id: textbook.id,
-    sha256: textbook.sha256,
-    file_name: textbook.fileName,
-    file_path: textbook.originalPath ?? '',
-    size: textbook.size,
-    page_count: textbook.pageCount ?? null,
-    tags_json: JSON.stringify(textbook.tags),
-    favorite: textbook.isFavorite ? 1 : 0,
-    last_opened_at: textbook.lastOpenedAt ?? null,
-    last_page: textbook.lastPage ?? null,
-    bookmarks_json: JSON.stringify(textbook.bookmarks),
-    cover_key: textbook.coverKey ?? null,
-    origin_json: null,
-    status: textbook.status,
-    created_at: textbook.createdAt,
-    updated_at: textbook.updatedAt,
-  };
-}
-
-/** `path.extension()` 小写（Rust `Path::extension` → `to_lowercase`）。 */
-export function extensionOf(fileName: string): string | null {
-  const index = fileName.lastIndexOf('.');
-  if (index <= 0 || index === fileName.length - 1) return null;
-  return fileName.slice(index + 1).toLowerCase();
 }

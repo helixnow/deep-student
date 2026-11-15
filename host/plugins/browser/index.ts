@@ -1,6 +1,7 @@
 import { CommandError, definePlugin } from '../../kernel/api.ts';
 import { AppError } from '../../platform/errors/api.ts';
 import type { SettingsStore } from '../../platform/settings/api.ts';
+import { createFeatureFlagCommands } from '../../platform/settings/feature-flag-commands.ts';
 import type {} from '../../platform/storage/api.ts';
 import { rustTrim } from '../../platform/util/portable.ts';
 import type {} from '../agent-skills/api.ts';
@@ -16,16 +17,11 @@ import { browserToolPolicy, indexWebpageToolPolicy } from './api.ts';
 import { BrowserToolExecutor } from './src/browser-tool-executor.ts';
 import { createWebSearchFallback } from './src/web-search-fallback.ts';
 import { IndexWebpageToolExecutor } from './src/index-webpage-executor.ts';
-import {
-  CN_TRUSTED_SITES, defaultProviderStrategies, doSearch, hasValidKeys, loadToolConfig,
-  normalizeProviderStrategies, parseProviderStrategies, serializeProviderStrategies,
-  toolConfigFromEnv,
-} from '../mcp/api.ts';
+import { doSearch, hasValidKeys, loadToolConfig, toolConfigFromEnv } from '../mcp/api.ts';
 import { createWebSearchToolRegistry } from '../mcp/api.ts';
-import type { ProviderStrategies, SearchInput, SearchResult, ToolConfig } from '../mcp/api.ts';
-import { ensurePublicSettingKey, ensurePublicSettingPrefix, errorMessage, namespaceConfig, readSettingOrNone, securityStatus } from './src/settings.ts';
+import type { SearchInput, SearchResult, ToolConfig } from '../mcp/api.ts';
+import { ensurePublicSettingKey, ensurePublicSettingPrefix, errorMessage, namespaceConfig, securityStatus } from './src/settings.ts';
 import { networkProbe } from './src/network-probe.ts';
-import { featureFlagsResult, rustF64AsF32 } from './src/feature-flags.ts';
 import { BrowserRuntimeService, type BrowserPlatform } from './src/browser-service.ts';
 import { BrowserDatabase } from './src/database.ts';
 import { ShellBrowserSurface } from './src/surface-host.ts';
@@ -33,20 +29,8 @@ import { BrowserFailure } from './src/error.ts';
 import { mapBrowserError, stateResult, type JsonValue } from './src/command-result.ts';
 import { BROWSER_CONTENT_LABEL } from './src/session.ts';
 import { nowTimestamp } from './src/time.ts';
+import { registerSearchSettings } from './src/register-search-settings.ts';
 
-function parseBoolSetting(settings: Parameters<typeof readSettingOrNone>[0], key: string, fallback: boolean): boolean {
-  const raw = readSettingOrNone(settings, key);
-  if (raw === null) return fallback;
-  return raw === 'true' ? true : raw === 'false' ? false : fallback;
-}
-function cnCustomSites(raw: string | null): string[] {
-  if (raw === null) return [];
-  let parsed: unknown = null;
-  try { parsed = JSON.parse(raw); }
-  catch { parsed = null; }
-  if (Array.isArray(parsed) && parsed.every(item => typeof item === 'string')) return parsed;
-  return raw.split(',').map(site => site.trim()).filter(site => site !== '');
-}
 function hasAnyKey(config: ToolConfig, engine: string): boolean {
   switch (engine) {
     case 'serpapi': return config.keys.serpapi !== null;
@@ -100,18 +84,10 @@ export default definePlugin({
       log: (level, message) => { ctx.log?.logger?.('dstu_mcp::tools')?.[level]?.(message); },
       searchLog,
     }));
-    const featureFlagStore = {
-      getSetting: (key: string) => ctx.settings.get(key),
-      saveSetting: (key: string, value: string) => { ctx.settings.save(key, value); },
-    };
-    const loadFlags = (userId: string | null = null) => {
-      try {
-        return ctx.featureFlags.load(
-          featureFlagStore, ctx.app.version, { debug: ctx.app.debug, userId },
-        );
-      } catch (e) { throw new CommandError(AppError.from(`加载功能开关失败: ${errorMessage(e)}`)); }
-    };
-    const featureFlagEnabled = (name: string): boolean => loadFlags().isFeatureEnabled(name);
+    const flagCommands = createFeatureFlagCommands({
+      featureFlags: ctx.featureFlags, settings: ctx.settings, appVersion: ctx.app.version, debug: ctx.app.debug,
+    });
+    const featureFlagEnabled = (name: string): boolean => flagCommands.isFeatureEnabled({ featureName: name });
     const platform = ctx.app.platform as BrowserPlatform;
     const surface = ctx.get('browserSurface')
       ?? new ShellBrowserSurface(ctx.shell, platform, ctx.backendEvents);
@@ -401,54 +377,13 @@ export default definePlugin({
     ctx.commands.register('detect_tool_conflicts', () => []);
     ctx.commands.register('get_tools_namespace_config', () => namespaceConfig(ctx.settings));
 
-    ctx.commands.register('get_cn_whitelist_config', () => ({
-      default_sites: [...CN_TRUSTED_SITES],
-      user_config: {
-        enabled: parseBoolSetting(ctx.settings, 'web_search.cn_whitelist.enabled', false),
-        use_default_list: parseBoolSetting(ctx.settings, 'web_search.cn_whitelist.use_default', true),
-        custom_sites: cnCustomSites(readSettingOrNone(ctx.settings, 'web_search.cn_whitelist.custom_sites')),
-      },
-    }));
-
-    ctx.commands.register('get_provider_strategies_config', () => {
-      const raw = readSettingOrNone(ctx.settings, 'web_search.provider_strategies');
-      const parsed = raw === null ? null : parseProviderStrategies(raw);
-      return {
-        provider_strategies: parsed ?? defaultProviderStrategies(),
-        config_keys: { provider_strategies: 'web_search.provider_strategies' },
-      };
-    });
-    ctx.commands.register<{ strategies: ProviderStrategies }>('save_provider_strategies_config', ({ strategies }) => {
-      const normalized = normalizeProviderStrategies(strategies);
-      if (normalized === null) throw new CommandError(AppError.from('序列化Provider策略失败: invalid ProviderStrategies'));
-      try { ctx.settings.save('web_search.provider_strategies', serializeProviderStrategies(normalized)); }
-      catch (e) { throw new CommandError(AppError.from(`保存Provider策略失败: ${errorMessage(e)}`)); }
+    registerSearchSettings(ctx, () => {
       ctx.log?.logger?.('deep_student::cmd::web_search')?.info?.('Provider策略配置已保存');
-      return true;
     });
 
-    ctx.commands.register('get_feature_flags', () => featureFlagsResult(loadFlags()));
-    ctx.commands.register<{ featureName: string; action: string; value?: unknown | null }>(
-      'update_feature_flag', ({ featureName, action, value }) => {
-        const manager = loadFlags();
-        const fail = (prefix: string, e: unknown) => new CommandError(AppError.from(`${prefix}: ${errorMessage(e)}`));
-        if (action === 'enable') {
-          try { manager.enableFeature(featureName); } catch (e) { throw fail('启用功能失败', e); }
-        } else if (action === 'disable') {
-          try { manager.disableFeature(featureName); } catch (e) { throw fail('禁用功能失败', e); }
-        } else if (action === 'set_gradual') {
-          if (typeof value !== 'number') throw new CommandError(AppError.from('渐进发布需要提供百分比参数'));
-          try { manager.setGradualRollout(featureName, rustF64AsF32(value)); } catch (e) { throw fail('设置渐进发布失败', e); }
-        } else {
-          throw new CommandError(AppError.from(`不支持的操作: ${action}`));
-        }
-        try { ctx.featureFlags.save(manager, featureFlagStore); }
-        catch (e) { throw new CommandError(AppError.from(`保存功能开关失败: ${errorMessage(e)}`)); }
-        const actionText = action === 'enable' ? '启用' : action === 'disable' ? '禁用' : '设置渐进发布';
-        return { success: true, message: `功能 '${featureName}' 已成功${actionText}` };
-      });
-    ctx.commands.register<{ featureName: string; userId?: string | null }>('is_feature_enabled', ({ featureName, userId }) =>
-      loadFlags(userId ?? null).isFeatureEnabled(featureName));
+    ctx.commands.register('get_feature_flags', flagCommands.getFeatureFlags);
+    ctx.commands.register('update_feature_flag', flagCommands.updateFeatureFlag);
+    ctx.commands.register('is_feature_enabled', flagCommands.isFeatureEnabled);
 
     ctx.commands.register<{ engine: string }>('test_search_engine', async ({ engine }) => {
       return await testSearchEngine(engine);

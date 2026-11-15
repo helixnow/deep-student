@@ -187,8 +187,16 @@ function quarantinePath(path: string, operationId: string): string {
 }
 
 export class BlobRepo implements BlobRepository {
-  storeBlob(conn: SqlExecutor, blobsDir: string, data: Uint8Array, mimeType?: string | null, extension?: string | null): VfsBlob {
-    return databaseResult(() => this.storeSource(conn, blobsDir, { kind: 'bytes', data }, mimeType ?? null, extension ?? null));
+  async persistBlob(conn: SqlExecutor, blobsDir: string, data: Uint8Array, extension?: string | null, expectedHash?: string): Promise<string | undefined> {
+    const runtime = localRuntime();
+    if (!runtime.writeDurableFile) return undefined;
+    const hash = computeBlobHash(data);
+    if (expectedHash !== undefined && hash !== expectedHash) throw invalidState('uploaded bytes do not match the existing blob');
+    return this.persistBytes(conn, blobsDir, data, hash, extension ?? null, runtime.writeDurableFile);
+  }
+
+  storeBlob(conn: SqlExecutor, blobsDir: string, data: Uint8Array, mimeType?: string | null, extension?: string | null, persistedPath?: string): VfsBlob {
+    return databaseResult(() => this.storeSource(conn, blobsDir, { kind: 'bytes', data }, mimeType ?? null, extension ?? null, persistedPath));
   }
 
   stageStream(blobsDir: string, chunks: Iterable<Uint8Array>, maxBytes: number): StagedBlob {
@@ -217,21 +225,31 @@ export class BlobRepo implements BlobRepository {
     });
   }
 
-  storeStagedBlob(conn: SqlExecutor, blobsDir: string, staged: StagedBlob, mimeType?: string | null, extension?: string | null): VfsBlob {
+  storeStagedBlob(conn: SqlExecutor, blobsDir: string, staged: StagedBlob, mimeType?: string | null, extension?: string | null, persistedPath?: string): VfsBlob {
     return databaseResult(() => {
       if (staged.path === null) throw new VfsRepositoryError('VFS_INTERNAL', 'Internal error: staged blob already consumed');
-      return this.storeSource(conn, blobsDir, { kind: 'staged', staged }, mimeType ?? null, extension ?? null);
+      return this.storeSource(conn, blobsDir, { kind: 'staged', staged }, mimeType ?? null, extension ?? null, persistedPath);
     });
   }
 
-  private storeSource(conn: SqlExecutor, blobsDir: string, source: BlobSource, mimeType: string | null, extension: string | null): VfsBlob {
-    const hash = source.kind === 'bytes' ? computeBlobHash(source.data) : source.staged.hash;
-    const dataLength = source.kind === 'bytes' ? source.data.length : source.staged.size;
+  async persistStagedBlob(conn: SqlExecutor, blobsDir: string, staged: StagedBlob, extension?: string | null): Promise<string | undefined> {
+    const runtime = localRuntime();
+    if (!runtime.writeDurableFile) return undefined;
+    const data = staged.path === null && staged.size === 0 ? new Uint8Array() : runtime.readFile(staged.path!);
+    if (data.byteLength !== staged.size) throw invalidState('staged attachment size changed');
+    return this.persistBytes(conn, blobsDir, data, staged.hash, extension ?? null, runtime.writeDurableFile);
+  }
 
-    // Reserve the write lock before the first read when an enclosing SAVEPOINT is
-    // deferred (Rust checks is_autocommit; a no-op UPDATE is safe in both modes).
-    conn.run('UPDATE blobs SET ref_count = ref_count WHERE 0');
+  private async persistBytes(conn: SqlExecutor, blobsDir: string, data: Uint8Array, hash: string, extension: string | null,
+    write: NonNullable<ReturnType<typeof localRuntime>['writeDurableFile']>): Promise<string> {
+    this.assertNotDeleting(conn, hash);
+    const [, target] = this.blobPath(conn, blobsDir, hash, extension);
+    try { await write(target, data, hash); }
+    catch (error) { throw ioError('Failed to persist attachment', error); }
+    return target;
+  }
 
+  private assertNotDeleting(conn: SqlExecutor, hash: string): void {
     const pending = Number(conn.pluck<number>(`SELECT EXISTS(
         SELECT 1 FROM __file_deletion_journal
         WHERE target_kind = 'blob' AND entity_key = ?1 AND state = 'prepared')`, [hash]) ?? 0) !== 0;
@@ -239,12 +257,23 @@ export class BlobRepo implements BlobRepository {
       throw conflict('blob.deletion_prepared',
         `Blob ${hash} has a prepared deletion; retry after deletion recovery`);
     }
+  }
 
+  private blobPath(conn: SqlExecutor, blobsDir: string, hash: string, extension: string | null): [string, string] {
     const existingRelativePath = conn.pluck<string | null>('SELECT relative_path FROM blobs WHERE hash = ?1', [hash]) ?? null;
     // RUST-FIX(RF-W10-blob-path-containment): blob_repo.rs reuses the stored relative_path unchecked.
-    const [relativePath, absolutePath] = existingRelativePath === null
-      ? buildBlobPath(blobsDir, hash, extension)
-      : [existingRelativePath, safeBlobPath(blobsDir, existingRelativePath, BLOB_PATH_REASON)];
+    const relativePath = existingRelativePath ?? buildBlobPath(blobsDir, hash, extension)[0];
+    return [relativePath, safeBlobPath(blobsDir, relativePath, BLOB_PATH_REASON)];
+  }
+
+  private storeSource(conn: SqlExecutor, blobsDir: string, source: BlobSource, mimeType: string | null, extension: string | null, persistedPath?: string): VfsBlob {
+    const hash = source.kind === 'bytes' ? computeBlobHash(source.data) : source.staged.hash;
+    const dataLength = source.kind === 'bytes' ? source.data.length : source.staged.size;
+
+    // Reserve the write lock before the first read in a deferred savepoint.
+    conn.run('UPDATE blobs SET ref_count = ref_count WHERE 0');
+    this.assertNotDeleting(conn, hash);
+    const [relativePath, absolutePath] = this.blobPath(conn, blobsDir, hash, extension);
 
     try { localRuntime().mkdirp(dirname(absolutePath)); }
     catch (error) {
@@ -253,8 +282,14 @@ export class BlobRepo implements BlobRepository {
     }
 
     let shouldWrite: boolean;
-    try { shouldWrite = localRuntime().stat(absolutePath).size !== dataLength; }
+    try {
+      const entry = localRuntime().stat(absolutePath);
+      shouldWrite = entry.kind !== 'file' || entry.size !== dataLength;
+    }
     catch { shouldWrite = true; }
+    if (persistedPath !== undefined && (persistedPath !== absolutePath || shouldWrite)) {
+      throw conflict('blob.persisted_path', 'The persisted attachment changed before its metadata could be committed');
+    }
 
     if (source.kind === 'staged') {
       if (shouldWrite) {

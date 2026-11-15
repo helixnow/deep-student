@@ -237,6 +237,9 @@ function patchAppGradle(android, { versionName, versionCode }) {
   text = replaceRequired(text, /applicationId\s+(['"])[^'"]*\1/, `applicationId "${APP_ID}"`, 'applicationId');
   text = replaceRequired(text, /versionCode\s+\d+/, `versionCode ${versionCode}`, 'versionCode');
   text = replaceRequired(text, /versionName\s+(['"])[^'"]*\1/, `versionName "${versionName}"`, 'versionName');
+  if (!text.includes('com.squareup.okhttp3:okhttp:4.12.0')) {
+    text = replaceRequired(text, /dependencies\s*\{/, 'dependencies {\n    implementation "com.squareup.okhttp3:okhttp:4.12.0"', 'Android HTTP dependency');
+  }
   writeFileSync(file, text);
 }
 
@@ -261,6 +264,12 @@ function patchAndroidManifest(android) {
     '<activity\n            android:windowSoftInputMode="adjustResize"',
     'windowSoftInputMode',
   );
+
+  if (!text.includes('android:name=".PomodoroAlarmReceiver"')) {
+    text = replaceRequired(text, /<\/application>/,
+      '    <receiver android:name=".PomodoroAlarmReceiver" android:exported="false" />\n    </application>',
+      'Pomodoro alarm receiver');
+  }
 
   const declared = new Set([...text.matchAll(/<uses-permission[^>]*android:name=(["'])([^"']+)\1/g)].map(match => match[2]));
   const missing = ANDROID_PERMISSIONS.filter(permission => !declared.has(permission));
@@ -298,33 +307,12 @@ function copyAppIcon(mobile, android) {
 function patchAndroidProject(mobile, android, appVersion) {
   patchAppGradle(android, appVersion);
   patchAndroidManifest(android);
-  // Capacitor's default back handling bypasses the frontend's dialog/navigation coordinator.
-  const activity = join(android, 'app/src/main/java', ...APP_ID.split('.'), 'MainActivity.java');
-  mkdirSync(dirname(activity), { recursive: true });
-  writeFileSync(activity, `package ${APP_ID};
-
-import android.os.Bundle;
-import androidx.activity.OnBackPressedCallback;
-import com.getcapacitor.BridgeActivity;
-
-public class MainActivity extends BridgeActivity {
-    @Override
-    public void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
-            @Override
-            public void handleOnBackPressed() {
-                getBridge().getWebView().evaluateJavascript(
-                    "Boolean(window.__DEEP_STUDENT_HANDLE_BACK__?.())",
-                    handled -> {
-                        if ("false".equals(handled)) moveTaskToBack(true);
-                    }
-                );
-            }
-        });
-    }
-}
-`);
+  const sources = join(mobile, 'android-native');
+  const target = join(android, 'app/src/main/java', ...APP_ID.split('.'));
+  mkdirSync(target, { recursive: true });
+  for (const file of readdirSync(sources)) {
+    if (file.endsWith('.java')) copyFileSync(join(sources, file), join(target, file));
+  }
   copyAppIcon(mobile, android);
   const strings = join(android, 'app/src/main/res/values/strings.xml');
   if (existsSync(strings)) {

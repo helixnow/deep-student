@@ -3111,6 +3111,18 @@
     "delete": "删除",
     "save": "保存"
   },
+  "feature_flags": {
+    "title": "功能开关",
+    "editor_tools": "允许 AI 工具操作打开的编辑器",
+    "editor_tools_description": "允许 AI 编辑工具操作已打开的笔记或思维导图。关闭后，支持的编辑操作仍可作用于已保存的内容。",
+    "status": "已配置：{{configured}} · 开关当前为{{effective}}",
+    "on": "开启",
+    "off": "关闭",
+    "conditional": "按条件启用",
+    "reset": "恢复默认",
+    "retry": "重试",
+    "flag_unavailable": "当前无法读取此功能开关。"
+  },
   "immersive_mode": {
     "title": "沉浸式全屏",
     "description": "隐藏状态栏和导航栏，从屏幕边缘滑动可临时呼出。适合状态栏或系统小横条遮挡顶部按钮的平板。"

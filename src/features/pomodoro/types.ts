@@ -16,6 +16,8 @@ export interface PomodoroSettings {
   countUp: boolean;
   /** 结束前提醒（秒）：倒计时剩余该秒数时轻提示；0 = 关闭 */
   endReminderSeconds: number;
+  /** Allow the Android OS to notify when the current countdown ends in the background. */
+  androidBackgroundCompletion: boolean;
   /** 环境音类型 */
   noiseType: NoiseType;
   /** 环境音音量 0-1 */
@@ -40,6 +42,7 @@ export const DEFAULT_POMODORO_SETTINGS: PomodoroSettings = {
   strictMode: false,
   countUp: false,
   endReminderSeconds: 0,
+  androidBackgroundCompletion: false,
   noiseType: 'brown',
   noiseVolume: 0.12,
   noiseAutoWithFocus: false,

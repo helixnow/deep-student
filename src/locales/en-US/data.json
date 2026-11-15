@@ -485,6 +485,20 @@
     "switch_failed": "Operation failed: {{error}}"
   },
   "recovery": {
+    "mobile_restore": {
+      "title": "The previous restore did not finish",
+      "description": "The app could not verify the staged restore. It paused before opening your databases to avoid modifying data that may be incomplete. Restore the snapshot saved before the previous attempt or choose a valid full backup.",
+      "previous_description": "Use the snapshot saved before the previous restore began. Data added after that snapshot will not be present.",
+      "previous": "Restore the previous snapshot",
+      "choose_description": "You can also choose an encrypted full Deep Student ZIP backup from your device.",
+      "password": "Full backup password",
+      "choose": "Choose and restore a full backup",
+      "complete_backup_required": "This ZIP cannot be used for a full restore. No current data was overwritten.",
+      "working": "Checking backup…",
+      "completed_title": "Data restore complete",
+      "completed_description": "Restart the app to open the restored data.",
+      "restart": "Restart app"
+    },
     "shell_title": "Deep Student Data Recovery",
     "eyebrow": "Data Governance",
     "preflight_failed_title": "Safety check needs attention",

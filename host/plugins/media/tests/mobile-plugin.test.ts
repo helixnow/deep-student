@@ -8,7 +8,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from 'vitest';
+import { afterAll, afterEach, assert, beforeAll, beforeEach, expect, it } from 'vitest';
 import type { DatabaseHandle } from '../../../platform/storage/api.ts';
 import { createStorageService } from '../../../platform/storage/service.ts';
 import { createTestHost, type TestHost } from '../../../kernel/testing.ts';
@@ -19,6 +19,15 @@ import type { VfsReposService } from '../../vfs-repos/api.ts';
 import { FileRepo } from '../../vfs-repos/repository/files.ts';
 // boundary-allow cross-plugin-impl: 测试用 L11 真实仓储构造依赖；被测对象是本 lane 的命令
 import { MediaTranscriptRepo } from '../../vfs-repos/repository/media-transcripts.ts';
+import { BlobRepo } from '../../vfs-repos/repository/blobs.ts';
+import { TextbookRepo } from '../../vfs-repos/repository/textbooks.ts';
+import { AttachmentRepo } from '../../vfs-repos/repository/attachments.ts';
+import { FolderRepo } from '../../vfs-repos/repository/folders.ts';
+import { setVfsReposLocalRuntime } from '../../vfs-repos/src/local-runtime.ts';
+import mobileCrypto from '../../../platform/crypto/mobile.ts';
+import { createNodeFiles } from '../../../platform/files/index.ts';
+import { appendMobileStagedUpload, beginMobileStagedUpload, mobileLocalRuntime, resetMobileLocalRuntime } from '../../../platform/files/mobile-local-runtime.ts';
+import type { Textbook } from '../../../../contracts/ipc/generated/L18-media-docs.ts';
 import mobileMedia from '../mobile.ts';
 import { unusedStorage } from './helpers/storage-double.ts';
 
@@ -58,24 +67,31 @@ beforeEach(async () => {
   repos = {
     files: new FileRepo(),
     mediaTranscripts: new MediaTranscriptRepo(),
+    blobs: new BlobRepo(),
+    textbooks: new TextbookRepo(),
+    folders: new FolderRepo(),
   } as unknown as VfsReposService;
   host = await createTestHost({
-    plugins: [mobileMedia],
+    plugins: [mobileCrypto, mobileMedia],
     // 与发布版移动端一致（握手 `debug: false`）：占位命令抛的是字符串，各命令契约的 error schema
     // 既有 `string` 也有 `AppError`，debug 模式的结果校验会把它们改写成 contract violation。
-    app: { debug: false },
+    app: { debug: false, dataDir: root },
     provide: {
       storage: unusedStorage(),
       settings: settings(),
       vfsDatabase: database,
       vfsRepo: repos,
+      secrets: { openStore: () => ({ getSecret: async () => null }) },
       paths: { appDataDir: root },
+      files: createNodeFiles({ roots: [{ name: 'appData', path: root }] }),
       notes: { repository: { getNoteContent: () => null } },
     },
   });
 }, 60_000);
 afterEach(async () => {
   await host?.dispose();
+  setVfsReposLocalRuntime(null);
+  resetMobileLocalRuntime();
   storage?.dispose();
   fs.rmSync(root, { recursive: true, force: true });
 }, 60_000);
@@ -93,7 +109,17 @@ it('installs the mobile media plugin with its declared commands', () => {
   expect(mobileMedia.meta.platforms).toEqual(['mobile']);
   expect(declared.has('media_library_list')).toBe(true);
   expect(declared.has('media_bilibili_create')).toBe(true);
-  expect(mobileMedia.meta.provides).toBeUndefined();
+  expect(mobileMedia.meta.provides).toContain('mediaTranscriber');
+});
+
+it('exposes the document service used for uploads and Bilibili guest status', async () => {
+  const docs = host.ctx.get('docs');
+  expect(docs).toBeDefined();
+  if (!docs) throw new Error('Missing docs service');
+  expect(docs.isPlainTextCodeExtension('py')).toBe(true);
+  expect(docs.isPlainTextCodeExtension('wav')).toBe(false);
+  await expect(docs.extractTextFromBytes('example.py', new TextEncoder().encode('print(42)'))).resolves.toBe('print(42)');
+  await expect(host.invoke('media_bilibili_auth_status', {})).resolves.toMatchObject({ loggedIn: false });
 });
 
 it('lists the media library through the portable data path', async () => {
@@ -130,13 +156,49 @@ it('has no disk blob paths on mobile', async () => {
   await expect(host.invoke('vfs_get_file_blob_path', { id: 'file_a' })).resolves.toBeNull();
 });
 
+it('imports actual DOCX bytes, preserves its identity and refuses unrelated bytes during relink', async () => {
+  setVfsReposLocalRuntime(mobileLocalRuntime(host.ctx).vfsRepos);
+  const name = 'Android acceptance 文档.docx';
+  const bytes = new Uint8Array(fs.readFileSync(new URL('../equivalence/fixtures/tiny.docx', import.meta.url)));
+  const stage = (content = bytes, fileName = name) => {
+    const id = beginMobileStagedUpload(fileName, content.length);
+    appendMobileStagedUpload(id, 0, content);
+    return 'dstu-staged:' + id;
+  };
+  const [textbook] = await host.invoke('textbooks_add', { sources: [stage()] }) as Textbook[];
+  assert(textbook !== undefined);
+  expect(textbook).toMatchObject({ file_name: name, file_path: '', size: bytes.length });
+  expect(conn.get('SELECT extracted_text, blob_hash FROM files WHERE id = ?1', [textbook.id]))
+    .toMatchObject({ extracted_text: expect.stringMatching(/\w/), blob_hash: textbook.sha256 });
+  const stored = repos.blobs.getBlobPath(conn, database.blobsDir(), textbook.sha256);
+  expect(stored).not.toBeNull();
+  expect(new Uint8Array(fs.readFileSync(stored!))).toEqual(bytes);
+  const attachments = new AttachmentRepo();
+  // Include a document whose extracted text happens to be a valid base64 string.
+  conn.run("UPDATE files SET extracted_text = 'QUJD' WHERE id = ?1", [textbook.id]);
+  conn.run("UPDATE resources SET data = 'QUJD' WHERE source_id = ?1", [textbook.id]);
+  expect(attachments.getContent(conn, database.blobsDir(), textbook.id))
+    .toBe(Buffer.from(bytes).toString('base64'));
+
+  await host.invoke('textbooks_update_bookmarks', { id: textbook.id, bookmarks: [{ page: 1 }] });
+  fs.renameSync(stored!, path.join(root, 'original-backup.docx'));
+  const wrong = bytes.slice();
+  wrong[3] = wrong[3]! ^ 1;
+  const rejected = await host.invoke('textbooks_relink', { id: textbook.id, newPath: stage(wrong) })
+    .catch((error: unknown) => error);
+  expect(JSON.stringify(rejected)).toContain('所选文件与原文件内容不一致');
+  expect(fs.existsSync(stored!)).toBe(false);
+  expect(repos.blobs.getBlob(conn, textbook.sha256)?.refCount).toBe(1);
+  const restored = await host.invoke('textbooks_relink', { id: textbook.id, newPath: stage(bytes, 'renamed.docx') }) as Textbook;
+  expect(restored).toMatchObject({ id: textbook.id, file_name: name, bookmarks_json: '[{"page":1}]' });
+  expect(new Uint8Array(fs.readFileSync(stored!))).toEqual(bytes);
+  expect(repos.blobs.getBlob(conn, textbook.sha256)?.refCount).toBe(1);
+});
+
 it('answers UNSUPPORTED_ON_PLATFORM for desktop-only commands instead of an ACL error', async () => {
   for (const [name, args] of [
-    ['media_bilibili_auth_status', {}],
-    ['media_bilibili_create', { input: 'https://www.bilibili.com/video/BV1xx411c7mD' }],
-    ['media_transcribe_start', { resourceId: 'file_a' }],
+    ['media_bilibili_bridge_pair', {}],
     ['tts_speak', { text: 'hello' }],
-    ['parse_document_from_path', { filePath: '/tmp/a.pdf' }],
   ] as const) {
     const error = await host.invoke(name, args).catch((thrown: unknown) => thrown);
     expect(String(error)).toContain(UNSUPPORTED_ON_PLATFORM_PREFIX);

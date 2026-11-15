@@ -413,6 +413,7 @@ export { parsePdfPreviewJson as parsePdfPreview } from './pdf-preview-json.ts';
 
 export interface PreparedUpload {
   data: Uint8Array;
+  persistedPath?: string;
   contentHash: string;
   attachmentType: string;
   isPdf: boolean;

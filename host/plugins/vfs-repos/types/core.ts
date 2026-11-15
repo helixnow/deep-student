@@ -164,11 +164,14 @@ export interface ResourceLocation {
 export interface VfsBlob {
   hash: string; relativePath: string; size: number; mimeType?: string; refCount: number; createdAt: number;
 }
-export interface StagedBlob { readonly hash: string; readonly size: number; path: string | null }
+export interface StagedBlob { readonly hash: string; readonly size: number; path: string | null; dispose(): void }
 export interface BlobRepository {
-  storeBlob(conn: SqlExecutor, blobsDir: string, data: Uint8Array, mimeType?: string | null, extension?: string | null): VfsBlob;
+  /** Persist bytes before a synchronous transaction; desktop stores directly inside the transaction. */
+  persistBlob(conn: SqlExecutor, blobsDir: string, data: Uint8Array, extension?: string | null, expectedHash?: string): Promise<string | undefined>;
+  storeBlob(conn: SqlExecutor, blobsDir: string, data: Uint8Array, mimeType?: string | null, extension?: string | null, persistedPath?: string): VfsBlob;
   stageStream(blobsDir: string, chunks: Iterable<Uint8Array>, maxBytes: number): StagedBlob;
-  storeStagedBlob(conn: SqlExecutor, blobsDir: string, staged: StagedBlob, mimeType?: string | null, extension?: string | null): VfsBlob;
+  persistStagedBlob(conn: SqlExecutor, blobsDir: string, staged: StagedBlob, extension?: string | null): Promise<string | undefined>;
+  storeStagedBlob(conn: SqlExecutor, blobsDir: string, staged: StagedBlob, mimeType?: string | null, extension?: string | null, persistedPath?: string): VfsBlob;
   getBlob(conn: SqlExecutor, hash: string): VfsBlob | null;
   blobExists(conn: SqlExecutor, hash: string): boolean;
   getBlobPath(conn: SqlExecutor, blobsDir: string, hash: string): string | null;

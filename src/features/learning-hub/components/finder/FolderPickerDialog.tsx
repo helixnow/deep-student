@@ -264,7 +264,6 @@ export function FolderPickerDialog({
       onBack: () => onOpenChange(false),
       screen: 'center',
     },
-    [resolvedTitle, onOpenChange],
     inline && open,
   );
 

@@ -20,7 +20,7 @@
 
 export type HttpHeaders = Headers | Readonly<Record<string, string>> | ReadonlyArray<readonly [string, string]>;
 
-/** 请求体：与 fetch 的 `BodyInit` 中可移植的部分一致。流式请求体在移动端原生 HTTP 上会被整体缓冲。 */
+/** 请求体：与 fetch 的 `BodyInit` 中可移植的部分一致。Android 原生 HTTP 支持分块流式上传。 */
 export type HttpBody = string | Uint8Array | ArrayBuffer | Blob | FormData | URLSearchParams | ReadableStream<Uint8Array>;
 
 /**
@@ -29,7 +29,7 @@ export type HttpBody = string | Uint8Array | ArrayBuffer | Blob | FormData | URL
  * - `public-pinned`：同 `public` 的用途，但连接钉在已校验的 IP 上，并且不走任何代理（见 PINNED.md）。传输层
  *   自己解析主机名，全部地址都必须是公网地址（回环、私网、链路本地、元数据一律拒绝，`allowLoopback` 除外），
  *   然后直连第一个地址；TLS SNI、证书校验与 `Host` 头仍用原主机名。DNS rebinding 无法让连接落到别处。
- *   只有桌面实现；其他平台以 `HttpError('UnsupportedOnPlatform')` 拒绝。
+ *   桌面和 Android 原生外壳实现；其他外壳以 `HttpError('UnsupportedOnPlatform')` 拒绝。
  */
 export type HttpDestination = 'any' | 'public' | 'public-pinned';
 
@@ -88,7 +88,7 @@ export interface HttpBytesResponse {
  * - `BlockedDestination`：`public` / `public-pinned` 下目标是私网/链路本地/元数据地址（或不允许的回环），或 DNS 解析失败；
  * - `RedirectBlocked`：`public` 下非 GET/HEAD 请求遇到重定向，或重定向超过 10 跳；
  * - `TooLarge`：响应体超过 `maxBytes`；
- * - `UnsupportedOnPlatform`：当前平台没有该能力（`public-pinned` 目前只有桌面）。消息以
+ * - `UnsupportedOnPlatform`：当前平台没有该能力。消息以
  *   `UNSUPPORTED_ON_PLATFORM: ` 开头，`capability` / `platform` 字段与平台能力清单一致。
  */
 export type HttpErrorKind = 'InvalidUrl' | 'BlockedDestination' | 'RedirectBlocked' | 'TooLarge' | 'UnsupportedOnPlatform';

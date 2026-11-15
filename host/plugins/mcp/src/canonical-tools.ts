@@ -12,7 +12,9 @@ export function encodeToolNameForApi(name: string): string | null {
   if (isOpenAiCompatibleToolName(trimmed) && !trimmed.startsWith(CANONICAL_TOOL_NAME_PREFIX)) {
     return trimmed;
   }
-  return `${CANONICAL_TOOL_NAME_PREFIX}${Buffer.from(trimmed, 'utf8').toString('base64url')}`;
+  const bytes = new TextEncoder().encode(trimmed);
+  const binary = Array.from(bytes, byte => String.fromCharCode(byte)).join('');
+  return CANONICAL_TOOL_NAME_PREFIX + btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
 }
 
 export function decodeToolNameFromApi(name: string): string | null {
@@ -21,10 +23,12 @@ export function decodeToolNameFromApi(name: string): string | null {
   if (!trimmed.startsWith(CANONICAL_TOOL_NAME_PREFIX)) return trimmed;
   const encoded = trimmed.slice(CANONICAL_TOOL_NAME_PREFIX.length);
   if (!/^[A-Za-z0-9_-]*$/.test(encoded)) return null;
-  const bytes = Buffer.from(encoded, 'base64url');
-  const decoded = bytes.toString('utf8');
-  if (!Buffer.from(decoded, 'utf8').equals(bytes)) return null;
-  return decoded;
+  try {
+    const binary = atob(encoded.replaceAll('-', '+').replaceAll('_', '/'));
+    return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(Uint8Array.from(binary, char => char.charCodeAt(0)));
+  } catch {
+    return null;
+  }
 }
 
 /** `ToolRegistry::resolve_frontend_mcp_tool_name`. */

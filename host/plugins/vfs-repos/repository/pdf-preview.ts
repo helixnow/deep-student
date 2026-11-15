@@ -41,7 +41,7 @@ export interface PdfImageEncoder {
 }
 
 export interface PdfPreviewStoreBlob {
-  (conn: SqlExecutor, blobsDir: string, bytes: Uint8Array, mimeType: string, extension: string): { hash: string };
+  (conn: SqlExecutor, blobsDir: string, bytes: Uint8Array, mimeType: string, extension: string): { hash: string } | Promise<{ hash: string }>;
 }
 
 /** Lazily resolved F7/L18 capabilities used by the async PDF preview pipeline. */
@@ -143,7 +143,7 @@ async function renderSinglePage(
   );
   const mimeType = config.compressionEnabled ? 'image/jpeg' : 'image/png';
   const extension = config.compressionEnabled ? 'jpg' : 'png';
-  const blob = deps.storeBlob(conn, blobsDir, imageBytes, mimeType, extension);
+  const blob = await deps.storeBlob(conn, blobsDir, imageBytes, mimeType, extension);
   logDebug(`[PDF-Preview] Page ${pageIndex} rendered: ${rendered.width}x${rendered.height}, `
     + `size=${imageBytes.length} bytes, format=${mimeType}, hash=${blob.hash.slice(0, 16)}`);
   return {

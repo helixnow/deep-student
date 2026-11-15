@@ -3,9 +3,8 @@
  * resize (no enlargement) and JPEG re-encode. Pixel work runs in F7
  * `nativeImage`; this module keeps the Rust branch order and error strings.
  */
-import { readFile, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
 import { join } from '../../../platform/util/path.ts';
+import { toBase64 } from '../../../platform/crypto/encoding.ts';
 import type { NativeImage, RgbaImage } from '../../../platform/native/image/api.ts';
 import type { CompressImageResult } from '../../../../contracts/ipc/generated/L18-media-docs.ts';
 import { decodeBase64Standard } from './base64.ts';
@@ -34,18 +33,24 @@ export class CompressImageError extends Error {
 }
 
 type CompressImageService = Pick<NativeImage, 'decodeRgba' | 'resizeDimensions' | 'resizeRgba' | 'encode'>;
+export interface CompressImageFiles {
+  read(path: string): Promise<Uint8Array>;
+  write(path: string, data: Uint8Array): Promise<void>;
+  tempDir(): string;
+}
 
 /** `nativeImage` is resolved after the source checks, so argument errors come first as in Rust. */
 export async function compressImage(
   nativeImage: () => CompressImageService,
   args: CompressImageArgs,
+  files: CompressImageFiles,
 ): Promise<CompressImageResult> {
   const sourcePath = args.sourcePath ?? null;
   const bytesBase64 = args.bytesBase64 ?? null;
   // 1. 取源 bytes（同时提供时优先 sourcePath）
   let sourceBytes: Uint8Array;
   if (sourcePath !== null) {
-    try { sourceBytes = await readFile(sourcePath); }
+    try { sourceBytes = await files.read(sourcePath); }
     catch (error) { throw new CompressImageError(`读取源图片失败 (${sourcePath}): ${text(error)}`); }
   } else if (bytesBase64 !== null) {
     try { sourceBytes = decodeBase64Standard(bytesBase64); }
@@ -88,10 +93,10 @@ export async function compressImage(
   };
   // 5. 按输出模式返回
   if (args.outputMode === 'file') {
-    const filePath = join(tmpdir(), `dstu_compressed_${globalThis.crypto.randomUUID().replaceAll('-', '')}.jpg`);
-    try { await writeFile(filePath, encoded); }
+    const filePath = join(files.tempDir(), `dstu_compressed_${globalThis.crypto.randomUUID().replaceAll('-', '')}.jpg`);
+    try { await files.write(filePath, encoded); }
     catch (error) { throw new CompressImageError(`写入临时文件失败: ${text(error)}`); }
     return { bytesBase64: null, filePath, ...common };
   }
-  return { bytesBase64: Buffer.from(encoded).toString('base64'), filePath: null, ...common };
+  return { bytesBase64: toBase64(encoded), filePath: null, ...common };
 }

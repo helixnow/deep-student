@@ -1,3 +1,4 @@
+import { getImageAsBase64 } from './src/image-base64.ts';
 import { join } from '../../platform/util/path.ts';
 import { definePlugin } from '../../kernel/api.ts';
 import type {} from '../../platform/settings/api.ts';
@@ -110,7 +111,7 @@ export default definePlugin({
     registerMediaCommands(ctx, plugin);
     registerTextbookCommands(ctx, { docs, plugin });
     registerBilibiliCommands(ctx, plugin);
-    registerHandoutCommands(ctx);
+    registerHandoutCommands(ctx, src => getImageAsBase64(ctx.paths.appDataDir, src));
     registerMediaToolExecutors(ctx, {
       parser: createDocumentParser(ctx), recordVoiceUsage: plugin.recordVoiceUsage, asrFetch: plugin.asrFetch,
     });

@@ -17,7 +17,7 @@ function position(text: string, index: number): string {
   for (let i = 0; i < index; i += 1) {
     if (text.charCodeAt(i) === 10) { line += 1; lineStart = i + 1; }
   }
-  const column = Buffer.byteLength(text.slice(lineStart, index), 'utf8');
+  const column = new TextEncoder().encode(text.slice(lineStart, index)).length;
   return `at line ${line} column ${column}`;
 }
 

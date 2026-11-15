@@ -58,6 +58,7 @@ import { testDeepseekCapability } from './deepseek_capability_test.ts';
 import { setLlmLogger, logDebug, logError, logInfo } from './logging.ts';
 import type { LogService } from '../../../platform/log/api.ts';
 import type { FilesService } from '../../../platform/files/api.ts';
+import type { HttpRequestInit, HttpService } from '../../../platform/http/api.ts';
 import type {} from '../../agent-skills/api.ts';
 import type {} from '../../media/api.ts';
 import { SettingsModelsRuntimeExecutor } from './settings_models_tool_runtime.ts';
@@ -79,6 +80,24 @@ function createDirectHttpClient(): LlmHttpClient {
   };
 }
 
+function createMobileHttpClient(http: HttpService): LlmHttpClient {
+  return {
+    fetch(input, init) {
+      const request = input instanceof Request ? new Request(input, init) : undefined;
+      const options = init as (RequestInit & { requestTimeoutMs?: number | null }) | undefined;
+      return http.fetch(request?.url ?? input as string | URL, {
+        method: request?.method ?? init?.method,
+        headers: request?.headers ?? init?.headers,
+        body: (request ? request.body : init?.body) as HttpRequestInit['body'],
+        signal: request?.signal ?? init?.signal ?? undefined,
+        redirect: request?.redirect ?? init?.redirect,
+        timeoutMs: options?.requestTimeoutMs,
+      });
+    },
+    async close() {},
+  };
+}
+
 function throwAppError(error: unknown): never {
   if (error instanceof CommandError) throw error;
   if (error instanceof ConfigError) {
@@ -92,7 +111,7 @@ function throwAppError(error: unknown): never {
 }
 
 export function createLlmPlugin(options: LlmPluginOptions = {}): HostPlugin {
-  const createHttpClient = options.createHttpClient ?? createDirectHttpClient;
+  const mobile = options.platforms?.includes('mobile') === true;
   return definePlugin({
     meta: {
       id: 'dstu.llm', lane: 'L02-llm-manager',
@@ -107,8 +126,8 @@ export function createLlmPlugin(options: LlmPluginOptions = {}): HostPlugin {
       provides: ['llm', 'embedding@1', 'llmReranker', 'essayGrading', 'llmStreaming', 'llmAdapterInfos', 'llmEmbeddingModels', 'llmOcrModels', 'llmRag', 'llmOcrRegions', 'llmOcrHedge', 'llmQuestionParsing', 'llmModel2Messages', 'llmProviderRequests', 'llmStreamEvents', 'llmAnkiRouting', 'llmMcpTools', 'llmModel2Streaming', 'llmHttp', 'llmRawPrompt', 'llmQuestionAuthoring', 'llmOcrPages', 'llmFileOcr', 'llmContextCompiler'],
       ...(options.platforms === undefined ? {} : { platforms: options.platforms }),
     },
-    inject: options.platforms?.includes('mobile')
-      ? ['settings', 'secrets', 'vfsDatabase', 'vfsRepo', 'llmAdapters', 'injectionBudget', 'llmCodexAuth']
+    inject: mobile
+      ? ['settings', 'secrets', 'vfsDatabase', 'vfsRepo', 'llmAdapters', 'injectionBudget', 'llmCodexAuth', 'http']
       : ['settings', 'secrets', 'vfsDatabase', 'vfsRepo', 'llmAdapters', 'nativeTokenizer', 'nativeImage', 'injectionBudget', 'llmCodexAuth'],
     apply(ctx) {
       const nativeTokenizer: import('../../../platform/native/tokenizer/api.ts').NativeTokenizer =
@@ -126,10 +145,10 @@ export function createLlmPlugin(options: LlmPluginOptions = {}): HostPlugin {
       setDebugLogFiles(filesService);
       ctx.effect(() => () => setDebugLogFiles(null));
       const replay = () => ctx.reflect.get('llmReplay', false) as LlmReplayService | undefined;
-      const client = createHttpClient();
+      const client = options.createHttpClient?.() ?? (mobile ? createMobileHttpClient(ctx.http) : createDirectHttpClient());
       ctx.effect(() => () => client.close());
       const http = { fetch: withLlmReplay(client.fetch, replay) };
-      const directFetch = withLlmReplay((url, init) => fetch(url, init), replay);
+      const directFetch = mobile ? http.fetch : withLlmReplay((url, init) => fetch(url, init), replay);
       ctx.provide('llmHttp', { fetch: http.fetch });
       const control = new LlmControl(ctx.settings);
       const store = new LlmConfigStore({

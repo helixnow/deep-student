@@ -9,9 +9,9 @@
  *   return false for them;
  * - `skip_pdf_ocr_page` populates the skip set but no worker ever reads it.
  */
-import { createHash, randomUUID } from 'node:crypto';
-import { promises as fsp } from 'node:fs';
-import type { Dirent } from 'node:fs';
+import { toHex, utf8Decode } from '../../../platform/crypto/encoding.ts';
+import type { DirEntry, FilesService } from '../../../platform/files/api.ts';
+import { isFileNotFound } from '../../../platform/files/api.ts';
 import { isAbsolute, join, relative } from '../../../platform/util/path.ts';
 import { AppError, type JsonValue } from '../../../platform/errors/api.ts';
 import { CommandError } from '../../../kernel/api.ts';
@@ -24,7 +24,6 @@ import type {
   PdfOcrPageInput, PdfOcrRequest, PdfOcrResult, PdfOcrTextBlock,
 } from '../../../../contracts/ipc/generated/L18-media-docs.ts';
 import { Base64DecodeError, decodeBase64Standard } from './base64.ts';
-import { resolveImagePath } from './exam-sheet-service.ts';
 import { BoolWatch, BoundedChannel, OcrTaskSet, Semaphore } from './pdf-ocr-sync.ts';
 export { BoolWatch, BoundedChannel } from './pdf-ocr-sync.ts';
 
@@ -59,6 +58,10 @@ export interface PdfOcrLogger {
 }
 
 export interface PdfOcrDeps {
+  files(): Pick<FilesService, 'readBytes' | 'writeBytes' | 'writeText' | 'mkdir' | 'readDir' | 'stat' | 'rm'>;
+  /** Desktop resolves symlinks; OPFS has none. */
+  canonicalize(path: string): Promise<string>;
+
   /** FileManager::get_writable_app_data_dir */
   appDataDir(): string;
   /** FileManager images_dir */
@@ -193,8 +196,8 @@ function pageFile(cacheDir: string, pageIndex: number, ext: string): string {
 
 function isFiniteNumber(value: unknown): value is number { return typeof value === 'number' && Number.isFinite(value); }
 
-function parseCachedBlocks(bytes: Buffer): PdfOcrTextBlock[] {
-  const value: unknown = JSON.parse(bytes.toString('utf8'));
+function parseCachedBlocks(bytes: Uint8Array): PdfOcrTextBlock[] {
+  const value: unknown = JSON.parse(utf8Decode(bytes));
   if (!Array.isArray(value)) throw new Error('invalid type: expected a sequence');
   return value.map((item: unknown) => {
     const block = item as { text?: unknown; bbox?: { x?: unknown; y?: unknown; width?: unknown; height?: unknown } };
@@ -249,14 +252,14 @@ export class PdfOcrService {
 
   async startSession(pdfBase64: string, pdfName: string | null, totalPages: number):
     Promise<[string, PdfOcrSession]> {
-    const tempId = randomUUID();
+    const tempId = globalThis.crypto.randomUUID();
     const [, pdfAbsPath] = await this.savePdfFromBase64(pdfBase64, pdfName, tempId);
-    let pdfBytes: Buffer;
-    try { pdfBytes = await fsp.readFile(pdfAbsPath); }
+    let pdfBytes: Uint8Array;
+    try { pdfBytes = await this.deps.files().readBytes(pdfAbsPath, { maxBytes: 200 * 1024 * 1024 }); }
     catch (error) { fail(AppError.file_system(`读取PDF失败: ${messageOf(error)}`)); }
-    const pdfHash = createHash('sha256').update(pdfBytes).digest('hex');
+    const pdfHash = toHex(new Uint8Array(await globalThis.crypto.subtle.digest('SHA-256', Uint8Array.from(pdfBytes))));
     const cacheDir = join(this.deps.appDataDir(), 'pdf_ocr_cache', pdfHash);
-    try { await fsp.mkdir(cacheDir, { recursive: true }); }
+    try { await this.deps.files().mkdir(cacheDir, { recursive: true }); }
     catch (error) { this.deps.log.warn(`[PDF-OCR] 创建缓存目录失败: ${messageOf(error)}`); }
     await this.enforceCacheBudget([cacheDir]);
 
@@ -434,19 +437,19 @@ export class PdfOcrService {
 
   async startBackendSession(pdfPath: string, pdfName: string | null, renderDpi: number | null):
     Promise<[string, BoolWatch, BoolWatch]> {
-    const sessionId = randomUUID();
+    const sessionId = globalThis.crypto.randomUUID();
     const dpi = Math.min(renderDpi ?? DEFAULT_RENDER_DPI, MAX_RENDER_DPI);
-    let pdfBytes: Buffer;
-    try { pdfBytes = await fsp.readFile(pdfPath); }
+    let pdfBytes: Uint8Array;
+    try { pdfBytes = await this.deps.files().readBytes(pdfPath, { maxBytes: 200 * 1024 * 1024 }); }
     catch (error) { fail(AppError.file_system(`读取 PDF 文件失败: ${messageOf(error)}`)); }
-    const pdfHash = createHash('sha256').update(pdfBytes).digest('hex');
+    const pdfHash = toHex(new Uint8Array(await globalThis.crypto.subtle.digest('SHA-256', Uint8Array.from(pdfBytes))));
     const cacheDir = join(this.deps.appDataDir(), 'pdf_ocr_cache', pdfHash);
-    try { await fsp.mkdir(cacheDir, { recursive: true }); }
+    try { await this.deps.files().mkdir(cacheDir, { recursive: true }); }
     catch (error) { this.deps.log.warn(`[PDF-OCR] 创建缓存目录失败: ${messageOf(error)}`); }
     await this.enforceCacheBudget([cacheDir]);
 
     const sessionImagesDir = join(this.deps.appDataDir(), 'pdf_ocr_images', sessionId);
-    try { await fsp.mkdir(sessionImagesDir, { recursive: true }); }
+    try { await this.deps.files().mkdir(sessionImagesDir, { recursive: true }); }
     catch (error) { this.deps.log.warn(`[PDF-OCR] 创建图片目录失败: ${messageOf(error)}`); }
     await this.enforceDirBudget('pdf_ocr_images', [sessionImagesDir], PDF_OCR_IMAGES_MAX_BYTES, PDF_OCR_IMAGES_TARGET_BYTES);
 
@@ -464,7 +467,7 @@ export class PdfOcrService {
     const { log } = this.deps;
     log.info(`[PDF-OCR-Backend] Worker started: ${sessionId}`);
     const imagesDir = join(this.deps.appDataDir(), 'pdf_ocr_images', sessionId);
-    try { await fsp.mkdir(imagesDir, { recursive: true }); }
+    try { await this.deps.files().mkdir(imagesDir, { recursive: true }); }
     catch (error) { log.warn(`[PDF-OCR-Backend] 创建图片目录失败: ${messageOf(error)}`); }
 
     try { await this.getPdfOcrModelConfig(); }
@@ -563,13 +566,13 @@ export class PdfOcrService {
     if (pdfium === undefined) throw new Error('加载 Pdfium 库失败: Pdfium 服务不可用');
     const image = this.deps.image();
     let document: Awaited<ReturnType<NativePdfium['open']>>;
-    try { document = await pdfium.open(new Uint8Array(await fsp.readFile(pdfPath)), null); }
+    try { document = await pdfium.open(new Uint8Array(await this.deps.files().readBytes(pdfPath, { maxBytes: 200 * 1024 * 1024 })), null); }
     catch (error) { throw new Error(`加载 PDF 失败: ${messageOf(error)}`); }
     try {
       const totalPages = document.pageCount;
       totalPagesHolder.value = totalPages;
       log.info(`[PDF-OCR-Backend] PDF 加载成功: ${totalPages} 页`);
-      try { await fsp.mkdir(imagesDir, { recursive: true }); }
+      try { await this.deps.files().mkdir(imagesDir, { recursive: true }); }
       catch (error) { throw new Error(`创建图片目录失败: ${messageOf(error)}`); }
       this.emitProgress({ type: 'RenderStarted', session_id: sessionId, total_pages: totalPages });
 
@@ -595,7 +598,7 @@ export class PdfOcrService {
           const jpeg = await image.encode(
             { width: bitmap.width, height: bitmap.height, rgba: bitmap.rgba },
             { format: 'jpeg', quality: RUST_IMAGE_JPEG_QUALITY });
-          await fsp.writeFile(imagePath, jpeg);
+          await this.deps.files().writeBytes(imagePath, jpeg);
         } catch (error) { pageFailed(pageIndex, `保存图片失败: ${messageOf(error)}`); continue; }
 
         this.emitProgress({
@@ -633,24 +636,23 @@ export class PdfOcrService {
   async enforceDirBudget(rootName: string, keepDirs: string[], maxBytes: number, targetBytes: number): Promise<void> {
     const { log } = this.deps;
     const cacheRoot = join(this.deps.appDataDir(), rootName);
-    try { await fsp.stat(cacheRoot); } catch { return; }
+    try { await this.deps.files().stat(cacheRoot); } catch { return; }
     const keep = new Set<string>();
     for (const dir of keepDirs) {
-      try { keep.add(await fsp.realpath(dir)); }
+      try { keep.add(await this.deps.canonicalize(dir)); }
       catch (error) { log.warn(`[PdfOcrService] canonicalize error for "${dir}" (skipped): ${messageOf(error)}`); }
     }
     try {
       let totalBytes = 0;
       const entries: Array<[string, number, number]> = [];
-      for (const name of await fsp.readdir(cacheRoot)) {
-        const path = join(cacheRoot, name);
-        try { if (!(await fsp.stat(path)).isDirectory()) continue; } catch { continue; }
+      for (const { path, kind } of await this.deps.files().readDir(cacheRoot)) {
+        if (kind !== 'directory') continue;
         let canonical: string;
-        try { canonical = await fsp.realpath(path); } catch { continue; }
+        try { canonical = await this.deps.canonicalize(path); } catch { continue; }
         if (keep.has(canonical)) continue;
         const dirSize = await this.walkSize(path);
         let modified = 0;
-        try { modified = (await fsp.stat(path)).mtimeMs; } catch { modified = 0; }
+        try { modified = (await this.deps.files().stat(path)).modifiedMs; } catch { modified = 0; }
         totalBytes += dirSize;
         entries.push([path, dirSize, modified]);
       }
@@ -659,7 +661,7 @@ export class PdfOcrService {
       for (const [path, size] of entries) {
         if (totalBytes <= targetBytes) break;
         try {
-          await fsp.rm(path, { recursive: true });
+          await this.deps.files().rm(path, { recursive: true });
           totalBytes = Math.max(0, totalBytes - size);
         } catch (error) {
           log.warn(`[PDF-OCR] 清理缓存目录失败 ${path}: ${messageOf(error)}`);
@@ -672,16 +674,16 @@ export class PdfOcrService {
   /** WalkDir (no symlink following) summing regular-file sizes. */
   private async walkSize(dir: string): Promise<number> {
     let total = 0;
-    let entries: Dirent[];
-    try { entries = await fsp.readdir(dir, { withFileTypes: true }); }
+    let entries: DirEntry[];
+    try { entries = await this.deps.files().readDir(dir); }
     catch (error) { this.deps.log.warn(`[PdfOcrService] WalkDir entry error (skipped): ${messageOf(error)}`); return 0; }
     for (const entry of entries) {
-      const path = join(dir, entry.name);
-      if (entry.isDirectory()) total += await this.walkSize(path);
+      const path = entry.path;
+      if (entry.kind === 'directory') total += await this.walkSize(path);
       else {
         try {
-          const meta = await fsp.stat(path);
-          if (meta.isFile()) total += (await fsp.lstat(path)).size;
+          const meta = await this.deps.files().stat(path, { followSymlinks: false });
+          if (meta.kind === 'file') total += meta.size;
         } catch { // boundary-allow empty-catch: WalkDir metadata error is skipped like Rust
         }
       }
@@ -691,10 +693,10 @@ export class PdfOcrService {
 
   async loadCachedBlocks(cacheDir: string, pageIndex: number): Promise<PdfOcrTextBlock[] | null> {
     const path = pageFile(cacheDir, pageIndex, 'json');
-    let bytes: Buffer;
-    try { bytes = await fsp.readFile(path); }
+    let bytes: Uint8Array;
+    try { bytes = await this.deps.files().readBytes(path); }
     catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      if (!isFileNotFound(error) && (error as { code?: string }).code !== 'ENOENT') {
         this.deps.log.warn(`[PDF-OCR] 读取缓存失败 (${path}): ${messageOf(error)}`);
       }
       return null;
@@ -708,7 +710,7 @@ export class PdfOcrService {
 
   async saveCachedBlocks(cacheDir: string, pageIndex: number, blocks: PdfOcrTextBlock[]): Promise<void> {
     const path = pageFile(cacheDir, pageIndex, 'json');
-    try { await fsp.writeFile(path, JSON.stringify(blocks)); }
+    try { await this.deps.files().writeText(path, JSON.stringify(blocks)); }
     catch (error) { this.deps.log.warn(`[PDF-OCR] 写入缓存失败 (${path}): ${messageOf(error)}`); }
   }
 
@@ -716,7 +718,7 @@ export class PdfOcrService {
   async savePdfFromBase64(base64Data: string, fileNameHint: string | null, tempId: string): Promise<[string, string]> {
     const writable = this.deps.appDataDir();
     const baseDir = join(writable, 'pdf_ocr_sessions', tempId);
-    try { await fsp.mkdir(baseDir, { recursive: true }); }
+    try { await this.deps.files().mkdir(baseDir, { recursive: true }); }
     catch (error) { fail(AppError.file_system(`创建PDF目录失败: ${messageOf(error)}`)); }
     const trimmed = base64Data.trim();
     const idx = trimmed.indexOf('base64,');
@@ -726,7 +728,7 @@ export class PdfOcrService {
     catch (error) { fail(AppError.validation(`base64解码失败: ${base64Error(error)}`)); }
     const finalName = `${utcTimestamp()}_${sanitizePdfFileName(fileNameHint)}`;
     const filePath = join(baseDir, finalName);
-    try { await fsp.writeFile(filePath, bytes); }
+    try { await this.deps.files().writeBytes(filePath, bytes); }
     catch (error) { fail(AppError.file_system(`写入PDF文件失败: ${messageOf(error)}`)); }
     const rel = relative(writable, filePath);
     return [rel.startsWith('..') || isAbsolute(rel) ? filePath : rel, filePath];
@@ -738,7 +740,7 @@ export class PdfOcrService {
     const ext = extensionFromDataUrl(base64) ?? 'png';
     const fileName = `pdfocr_${tempId}_p${page.page_index}.${ext}`;
     const imagesDir = this.deps.imagesDir();
-    try { await fsp.mkdir(imagesDir, { recursive: true }); }
+    try { await this.deps.files().mkdir(imagesDir, { recursive: true }); }
     catch (error) { fail(AppError.file_system(`创建图片目录失败: ${messageOf(error)}`)); }
     let start = 0;
     if (base64.startsWith('data:image/')) {
@@ -749,7 +751,7 @@ export class PdfOcrService {
     let bytes: Uint8Array;
     try { bytes = decodeBase64Standard(base64.slice(start)); }
     catch (error) { fail(AppError.validation(`base64解码失败: ${base64Error(error)}`)); }
-    try { await fsp.writeFile(join(imagesDir, fileName), bytes); }
+    try { await this.deps.files().writeBytes(join(imagesDir, fileName), bytes); }
     catch (error) { fail(AppError.file_system(`保存图片文件失败: ${messageOf(error)}`)); }
     const imageRelPath = `images/${fileName}`;
 
@@ -759,11 +761,10 @@ export class PdfOcrService {
       width = page.width;
       height = page.height;
     } else {
-      const absPath = resolveImagePath(imagesDir, imageRelPath, this.deps.log);
       const image = this.deps.image();
       try {
         if (image === undefined) throw new Error('图像服务不可用');
-        ({ width, height } = await image.dimensions(new Uint8Array(await fsp.readFile(absPath))));
+        ({ width, height } = await image.dimensions(bytes));
       } catch (error) {
         fail(AppError.file_system(`读取图片尺寸失败: ${messageOf(error)}`));
       }

@@ -7,7 +7,6 @@
  * 迁移失败按桌面处理（startup.ts）：受阻核心库在业务插件装配前进入维护屏障，状态事件由启动 finalizer 发出。
  */
 import { definePlugin, CommandError } from '../../kernel/core.ts';
-import type { Context } from '@deepseek-ai/cordis';
 import type {
   DatabaseName,
   ExactInjectionBudgetService,
@@ -54,9 +53,11 @@ import {
 import { MobileStorageService } from './service.ts';
 import type { SqliteRuntime } from './sqlite-wasm.ts';
 import { MIGRATION_STATUS_EVENT } from './startup.ts';
-import { MobileBackupService } from './backup.ts';
+import { importLegacyNativeData } from './legacy.ts';
+import { MobileBackupCancelled, MobileBackupService, type MobileBackupSelection } from './backup.ts';
 import { beginMobileStagedUpload, appendMobileStagedUpload, abortMobileStagedUpload } from '../files/mobile-local-runtime.ts';
-import type { FilesService } from '../files/api.ts';
+import { catalog } from '../../plugins/backup/src/asset-catalog.ts';
+import { FileError } from '../files/api.ts';
 
 /** 桌面由 backup 插件的这个 finalizer 发迁移状态事件；它在场时移动端不重复发。 */
 const BACKUP_STATUS_FINALIZER = 'backup.restore-activation';
@@ -70,7 +71,7 @@ declare module '@deepseek-ai/cordis' {
 export { MobileStorageService } from './service.ts';
 export type { SqliteRuntime } from './sqlite-wasm.ts';
 
-export default definePlugin({
+export default definePlugin<{ recoveryOnly?: boolean }>({
   meta: {
     id: 'dstu.platform.storage',
     lane: 'W14-portable',
@@ -99,6 +100,14 @@ export default definePlugin({
       'data_governance_get_schema_registry',
       'data_governance_run_health_check',
       'data_governance_get_audit_logs',
+      'data_governance_cancel_backup',
+      'data_governance_delete_backup',
+      'data_governance_list_resumable_jobs',
+      'data_governance_auto_verify_latest_backup',
+      'data_governance_verify_backup',
+      'data_governance_verify_backup_with_assets',
+      'data_governance_get_asset_types',
+      'data_governance_scan_assets',
       'data_governance_get_backup_list',
       'data_governance_list_backup_jobs',
       'data_governance_get_backup_job',
@@ -109,12 +118,14 @@ export default definePlugin({
       'data_governance_import_zip',
       'data_governance_restore_backup',
       'data_governance_check_disk_space_for_restore',
+      'save_webview_settings',
+      'load_webview_settings',
       'get_backup_config',
       'set_backup_config',
     ],
   },
-  inject: ['sqliteRuntime'],
-  async apply(ctx) {
+  inject: ['sqliteRuntime', 'files', 'crypto'],
+  async apply(ctx, config) {
     const logger = ctx.logger('storage');
     const storage = new MobileStorageService({
       runtime: ctx.sqliteRuntime,
@@ -150,16 +161,28 @@ export default definePlugin({
     ctx.provide('virtualFilePolicy', virtualFilePolicy);
     // 0.15.x 原生 Android 把库放在应用私有 files/slots/<slot>/ 下；升级成 Capacitor/OPFS 后首次启动
     // 必须在迁移建库之前把旧库搬进 pool，否则迁移会在空库上建表，旧数据再也进不来。
-    await importLegacyNativeDatabases(ctx, storage, ctx.sqliteRuntime);
-    const report = await storage.migrations.runAll();
-    if (!report.success) logger.error(`startup migration failed: ${report.error}`);
-    const coreRecovery = await storage.enterCoreRecoveryBarrier();
+    let backup: MobileBackupService | null = null;
+    const backupService = (): MobileBackupService => (backup ??= new MobileBackupService({
+      ctx, storage, runtime: ctx.sqliteRuntime, files: ctx.files,
+    }));
+
+    const startupRecovery = config?.recoveryOnly ? await backupService().recoverPendingRestore() : null;
+    if (startupRecovery === null) await importLegacyNativeData(ctx, storage, ctx.sqliteRuntime);
+    const report = startupRecovery === null ? await storage.migrations.runAll() : {
+      databases: [], success: false, totalDurationMs: 0,
+      error: startupRecovery.reason ?? '数据恢复已完成，需要重启应用',
+    };
+    if (startupRecovery !== null && report.error !== null) {
+      for (const { component } of storage.componentHealth.components) storage.componentHealth.markBlocked(component, report.error);
+    }
+    if (startupRecovery === null && !report.success) logger.error(`startup migration failed: ${report.error}`);
+    const coreRecovery = startupRecovery === null ? await storage.enterCoreRecoveryBarrier() : null;
     if (coreRecovery !== null) {
       ctx.effect(() => () => coreRecovery.release());
       logger.warn(`核心数据域不可安全打开，进入治理恢复启动模式: blocked_components=${JSON.stringify(storage.componentHealth.blockedComponents())}`);
     }
     let usageCollector: UsageCollector | null = null;
-    if (!storage.componentHealth.isBlocked('llm_usage')) {
+    if (startupRecovery === null && !storage.componentHealth.isBlocked('llm_usage')) {
       const collector = new UsageCollector({ getConnSafe: () => storage.database('llm_usage') });
       usageCollector = collector;
       storage.beforeShutdown(() => {
@@ -208,14 +231,23 @@ export default definePlugin({
     }));
     ctx.commands.register('staged_upload_abort', ({ uploadId }) => guard(() => abortMobileStagedUpload(uploadId as string)));
 
-    ctx.commands.register('get_startup_recovery_status', () => guard(() => ({
-      recovery_required: false,
-      active_slot: 'slotA',
-      pending_slot: null,
-      healthy_candidates: ['slotA'],
-      incidents: [],
-    })));
-    ctx.commands.register('list_startup_recovery_incidents', () => guard(() => []));
+    const incident = startupRecovery && {
+      incident_id: startupRecovery.id,
+      created_at: new Date().toISOString(),
+      failed_operation: 'mobile_pending_restore',
+      recovery_error: startupRecovery.reason,
+      resolved: startupRecovery.reason === null,
+      retry_requires_restart: startupRecovery.reason === null,
+      legacy_entries: [],
+      candidates: startupRecovery.previousBackupId ? [{
+        id: startupRecovery.previousBackupId, exists: true, has_data: true, has_database: false,
+        size_bytes: startupRecovery.previousBackupBytes, latest_modified: null,
+        database_filenames: [], core_database_filenames: [], valid_core_database_filenames: [],
+        selectable: true, recommended: true, recommendation_reason: '恢复开始前保存的 ZIP 快照，激活前必须校验',
+      }] : [],
+    };
+    ctx.commands.register('get_startup_recovery_status', () => ({ recovery_required: incident !== null, incident }));
+    ctx.commands.register('list_startup_recovery_incidents', () => incident === null ? [] : [incident]);
     ctx.commands.register('get_data_space_info', () => guard(() => ({
       active_slot: 'slotA',
       inactive_slot: 'slotB',
@@ -261,7 +293,7 @@ export default definePlugin({
     ctx.commands.register('data_governance_get_maintenance_status', () => guard(() => {
       const blocked = storage.componentHealth.blockedComponents();
       return {
-        is_in_maintenance_mode: blocked.length > 0,
+        is_in_maintenance_mode: startupRecovery !== null || blocked.length > 0,
         blocked_components: blocked,
         current_operation: null,
         component_health: storage.componentHealth.toJSON(),
@@ -360,11 +392,11 @@ export default definePlugin({
     })));
     // `data_governance_run_backup` / `_backup_tiered` / `_export_zip` write `<backupRoot>/<id>.zip`
     // in OPFS. The list is the actual directory content, not an in-memory placeholder.
-    ctx.commands.register('data_governance_get_backup_list', () => guardAsync(async () => {
+    const listBackups = async () => {
       const root = backupService().backupRoot;
       let entries;
       try { entries = await ctx.files.readDir(root); }
-      catch { return []; }
+      catch (error) { if (error instanceof FileError && error.kind === 'NotFound') return []; throw error; }
       const backups: Array<Record<string, unknown>> = [];
       for (const entry of entries) {
         if (entry.kind !== 'file' || !entry.name.toLowerCase().endsWith('.zip')) continue;
@@ -374,14 +406,32 @@ export default definePlugin({
           path: entry.name.slice(0, -'.zip'.length),
           created_at: new Date(stat.modifiedMs > 0 ? stat.modifiedMs : Date.now()).toISOString(),
           size: stat.size,
-          backup_type: 'full',
-          recovery_kind: 'disaster_recovery',
-          restorable: true,
-          databases: [],
+          ...await backupService().describeBackup(entry.path).catch(() => ({
+            backup_type: 'unknown', recovery_kind: 'partial_archive', restorable: false, databases: [],
+          })),
         });
       }
       return backups.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+    };
+    ctx.commands.register('data_governance_get_backup_list', () => guardAsync(listBackups));
+    ctx.commands.register('data_governance_auto_verify_latest_backup', () => guardAsync(async () => {
+      const latest = (await listBackups())[0];
+      if (!latest) throw new CommandError('没有可校验的备份');
+      const started = performance.now();
+      const id = String(latest.path);
+      const result = (await backupService().verifyBackup(id)).base;
+      return { ...result, backup_id: id, verified_at: new Date().toISOString(), duration_ms: Math.trunc(performance.now() - started) };
     }));
+    ctx.commands.register('data_governance_cancel_backup', ({ jobId }) => guard(() => backupService().jobs.cancel(String(jobId))));
+    ctx.commands.register('data_governance_delete_backup', ({ backupId }) => guardAsync(() => backupService().removeBackup(String(backupId))));
+    // Mobile only exposes pending restore replay at startup; there are no user-resumable jobs.
+    ctx.commands.register('data_governance_list_resumable_jobs', () => []);
+    ctx.commands.register('data_governance_verify_backup', ({ backupId }) => guardAsync(async () => (await backupService().verifyBackup(String(backupId))).base));
+    ctx.commands.register('data_governance_verify_backup_with_assets', ({ backupId }) => guardAsync(async () => (await backupService().verifyBackup(String(backupId))).assets));
+    ctx.commands.register('data_governance_get_asset_types', () => catalog.map(([id, name, priority]) => ({ id, name, priority, relative_path: id })));
+    ctx.commands.register('data_governance_scan_assets', ({ assetTypes }) => guardAsync(() => backupService().scanAssets(
+      Array.isArray(assetTypes) ? assetTypes.filter((value): value is string => typeof value === 'string') : undefined,
+    )));
     ctx.commands.register('data_governance_list_backup_jobs', () => guard(() => backupService().jobs.list()));
 
     // ---------------------------------------------------------------- 数据迁移（ZIP 备份/恢复）
@@ -389,14 +439,26 @@ export default definePlugin({
     // 移动端没有可写的用户目录（也没有桌面 `plugin:dialog`），所以 backup/export 都落在
     // `<dataDir>/recovery/backups`，再由主线程 `mobile:save-backup` 交给系统分享/下载。导入接受
     // OPFS 路径或 `data:` URL；解出的库先暂存在 `imports/<id>/`，`restore_backup` 才覆盖活动槽并重载。
-    let backup: MobileBackupService | null = null;
-    const backupService = (): MobileBackupService => (backup ??= new MobileBackupService({
-      ctx, storage, runtime: ctx.sqliteRuntime, files: ctx.reflect.get('files', false) as FilesService,
-    }));
-
     ctx.commands.register('data_governance_get_backup_job', ({ jobId }) => guard(() => backupService().jobs.get(String(jobId))));
 
-    ctx.commands.register('data_governance_run_backup', () => guard(() => {
+    const selectedBackup = (args: Record<string, unknown>, tiered: boolean): MobileBackupSelection | undefined => {
+      if (!tiered && args.includeAssets !== false && !Array.isArray(args.assetTypes)) return undefined;
+      const tiers = Array.isArray(args.tiers) ? args.tiers : ['core'];
+      const includes = Array.isArray(args.includeDatabases) ? args.includeDatabases : [];
+      const excludes = Array.isArray(args.excludeDatabases) ? args.excludeDatabases : [];
+      const databases = (['vfs', 'chat_v2', 'mistakes', 'llm_usage'] as const).filter(db => !excludes.includes(db)
+        && (!tiered || includes.includes(db) || (db === 'llm_usage' ? tiers.includes('important') : tiers.includes('core'))));
+      const wantsAssets = tiered ? args.includeAssets === true : args.includeAssets !== false;
+      const assetRoots = catalog.filter(([root, , priority]) => wantsAssets
+        && (!Array.isArray(args.assetTypes) || args.assetTypes.length === 0 || args.assetTypes.includes(root))
+        && (!tiered || (priority === 0 ? tiers.includes('important') : tiers.includes('large_assets') || tiers.includes('largeassets'))))
+        .map(([root]) => root);
+      if (databases.length === 0 && assetRoots.length === 0) throw new CommandError('请选择要备份的数据库或资产');
+      return { databases, assetRoots, maxAssetSize: typeof args.maxAssetSize === 'number' ? args.maxAssetSize : undefined };
+    };
+    ctx.commands.register('data_governance_run_backup', (args) => guard(() => {
+      if (args.backupType === 'incremental') throw new CommandError('移动端不支持增量备份');
+      const selection = selectedBackup(args, false);
       const jobs = backupService().jobs;
       const job = jobs.create('export');
       const id = `backup-${ctx.crypto.randomUUID()}`;
@@ -404,7 +466,7 @@ export default definePlugin({
         job.update({ status: 'running', phase: 'scan', progress: 2, message: '正在导出 OPFS 数据库与附件' });
         const result = await backupService().exportBackup(id, null, (done, total, file) => {
           job.update({ phase: 'compress', progress: 3 + (done / Math.max(1, total)) * 95, processed_items: done, total_items: total, message: `正在写入 ${file}` });
-        });
+        }, selection, job.check, () => job.update({ cancellable: false }));
         job.complete({
           success: true,
           output_path: result.zipPath,
@@ -417,85 +479,118 @@ export default definePlugin({
             backup_id: result.backupId, file_count: result.fileCount, total_size: result.totalSize, compressed_size: result.compressedSize,
           },
         });
-      })().catch((error: unknown) => job.fail(`备份失败: ${error instanceof Error ? error.message : String(error)}`));
+      })().catch((error: unknown) => job.fail(`备份失败: ${error instanceof Error ? error.message : String(error)}`, error));
       return { job_id: job.id, kind: 'export', status: 'queued', message: '备份任务已启动，请通过 backup-job-progress 事件监听进度' };
     }));
 
-    ctx.commands.register('data_governance_backup_tiered', () => guard(() => {
+    ctx.commands.register('data_governance_backup_tiered', (args) => guard(() => {
+      const selection = selectedBackup(args, true);
       const jobs = backupService().jobs;
       const job = jobs.create('export');
       const id = `backup-${ctx.crypto.randomUUID()}`;
       void (async () => {
         job.update({ status: 'running', phase: 'scan', progress: 2, message: '正在导出 OPFS 数据库与附件' });
-        const result = await backupService().exportBackup(id);
+        const result = await backupService().exportBackup(id, undefined, undefined, selection, job.check, () => job.update({ cancellable: false }));
         job.complete({
           success: true, output_path: result.zipPath, resolved_path: result.zipPath,
           message: `备份完成: ${result.fileCount} 个文件`, error: null, duration_ms: null, requires_restart: false,
           stats: { backup_id: result.backupId, file_count: result.fileCount, total_size: result.totalSize, compressed_size: result.compressedSize },
         });
-      })().catch((error: unknown) => job.fail(`分层备份失败: ${error instanceof Error ? error.message : String(error)}`));
+      })().catch((error: unknown) => job.fail(`分层备份失败: ${error instanceof Error ? error.message : String(error)}`, error));
       return { job_id: job.id, kind: 'export', status: 'queued', message: '备份任务已启动，请通过 backup-job-progress 事件监听进度' };
     }));
 
     const startExport = (
       id: string,
       outputPath: string | null,
-      deliver: boolean,
+      createLocal: boolean,
+      keepLocal: boolean,
+      password: string | undefined,
+      selection?: MobileBackupSelection,
+      compressionLevel = 0,
     ) => {
-      const jobs = backupService().jobs;
-      const job = jobs.create('export');
+      if (!isSafeBackupId(id)) throw new CommandError('备份 ID 无效');
+      if (password && [...password.trim()].length < 8) throw new CommandError('备份密码至少需要 8 个字符');
+      if (!Number.isInteger(compressionLevel) || compressionLevel < 0 || compressionLevel > 9) throw new CommandError('压缩等级应介于 0 和 9 之间');
+      const service = backupService();
+      const job = service.jobs.create('export');
+      const exportedPath = outputPath ?? `${storage.locations.baseDir}/tmp/backups/${job.id}.zip`;
+      let createdPath: string | null = null;
       void (async () => {
-        job.update({ status: 'running', phase: 'scan', progress: 2, message: '正在扫描备份数据' });
-        const existing = outputPath === null ? await backupService().existingZip(id) : null;
-        const result = outputPath !== null
-          ? await backupService().exportBackup(id, outputPath, (done, total, file) => {
-            job.update({ phase: 'compress', progress: 3 + (done / Math.max(1, total)) * 90, processed_items: done, total_items: total, message: `正在写入 ${file}` });
-          })
-          : existing !== null
-            ? { zipPath: existing, fileCount: 0, totalSize: 0, compressedSize: 0, backupId: id }
-            : await backupService().exportBackup(id, null, (done, total, file) => {
-              job.update({ phase: 'compress', progress: 3 + (done / Math.max(1, total)) * 90, processed_items: done, total_items: total, message: `正在写入 ${file}` });
-            });
-        let method: string | null = null;
-        if (deliver) {
-          job.update({ phase: 'verify', progress: 96, message: '正在交给系统保存' });
-          method = await backupService().deliver(result.zipPath, `${result.backupId}.zip`);
+        try {
+          job.update({ status: 'running', phase: 'scan', progress: 2, message: '正在扫描备份数据' });
+          let local = await service.existingZip(id);
+          if (!local) {
+            if (!createLocal) throw new CommandError(`备份不存在：${id}`);
+            const result = await service.exportBackup(id, null, (done, total, file) => {
+              job.update({ phase: 'compress', progress: 3 + (done / Math.max(1, total)) * 70, processed_items: done, total_items: total, message: `正在写入 ${file}` });
+            }, selection, job.check);
+            local = createdPath = result.zipPath;
+          }
+          if (local === exportedPath) throw new CommandError('不能用便携 ZIP 覆盖应用内备份');
+          job.check();
+          job.update({ phase: 'compress', progress: 80, message: '正在生成便携 ZIP' });
+          const compressedSize = await service.exportPortable(local, exportedPath, password, compressionLevel, job.check);
+          job.check();
+          job.update({ cancellable: false });
+          let delivery: string | undefined;
+          if (outputPath === null) {
+            job.update({ phase: 'verify', progress: 96, message: '正在交给系统保存' });
+            try { delivery = await service.deliver(exportedPath, `${id}.zip`); }
+            catch (error) {
+              if (error instanceof Error && error.message.includes('已取消选择保存位置')) throw new MobileBackupCancelled('已取消选择保存位置');
+              throw error;
+            }
+          }
+          job.complete({
+            success: true, output_path: outputPath ?? `${id}.zip`, resolved_path: outputPath ?? `${id}.zip`,
+            message: `ZIP 导出完成: ${id}.zip`, error: null, duration_ms: null, requires_restart: false,
+            stats: { backup_id: id, compressed_size: compressedSize, delivery },
+          });
+        } finally {
+          if (outputPath === null) await ctx.files.rm(exportedPath, { force: true }).catch(() => undefined);
+          if (!keepLocal && createdPath !== null) await ctx.files.rm(createdPath, { force: true }).catch(() => undefined);
         }
-        job.complete({
-          success: true, output_path: result.zipPath, resolved_path: result.zipPath,
-          message: `ZIP 导出完成: ${result.zipPath}`, error: null, duration_ms: null, requires_restart: false,
-          stats: {
-            backup_id: result.backupId, file_count: result.fileCount, total_size: result.totalSize,
-            compressed_size: result.compressedSize, ...(method === null ? {} : { delivery: method }),
-          },
-        });
-      })().catch((error: unknown) => job.fail(`ZIP 导出失败: ${error instanceof Error ? error.message : String(error)}`));
+      })().catch((error: unknown) => job.fail(`ZIP 导出失败: ${error instanceof Error ? error.message : String(error)}`, error));
       return { job_id: job.id, kind: 'export', status: 'queued', message: 'ZIP 导出任务已启动，请通过 backup-job-progress 事件监听进度' };
     };
 
     ctx.commands.register('data_governance_export_zip', (args) => guard(() => {
+      if (args.useStoredCloudEncryptionPassword && !args.encryptionPassword) throw new CommandError('移动端无法读取已保存的云端备份密码，请显式输入密码');
       const outputPath = typeof args.outputPath === 'string' && args.outputPath.startsWith('/') ? args.outputPath : null;
-      return startExport(String(args.backupId), outputPath, outputPath === null);
+      return startExport(String(args.backupId), outputPath, false, true, typeof args.encryptionPassword === 'string' ? args.encryptionPassword : undefined,
+        undefined, typeof args.compressionLevel === 'number' ? args.compressionLevel : undefined);
     }));
 
     ctx.commands.register('data_governance_backup_and_export_zip', (args) => guard(() => {
       const outputPath = typeof args.outputPath === 'string' && args.outputPath.startsWith('/') ? args.outputPath : null;
-      return startExport(`backup-${ctx.crypto.randomUUID()}`, outputPath, outputPath === null);
+      return startExport(`backup-${ctx.crypto.randomUUID()}`, outputPath, true, args.addToBackupList === true, typeof args.encryptionPassword === 'string' ? args.encryptionPassword : undefined,
+        selectedBackup(args, args.useTiered === true), typeof args.compressionLevel === 'number' ? args.compressionLevel : undefined);
     }));
 
     ctx.commands.register('data_governance_import_zip', (args) => guard(() => {
+      if (args.useStoredCloudEncryptionPassword && !args.password) throw new CommandError('移动端无法读取已保存的云端备份密码，请显式输入密码');
       const jobs = backupService().jobs;
       const job = jobs.create('import');
       void (async () => {
-        job.update({ status: 'running', phase: 'scan', progress: 5, message: '正在解压 ZIP 备份' });
-        const result = await backupService().importArchive(String(args.zipPath), typeof args.backupId === 'string' ? args.backupId : null);
+        const picker = args.zipPath === 'mobile-picker:';
+        job.update({ status: 'running', phase: 'scan', progress: 5, message: '正在解压 ZIP 备份', cancellable: !picker });
+        let passedPicker = !picker;
+        const result = await backupService().importArchive(String(args.zipPath), typeof args.backupId === 'string' ? args.backupId : null,
+          typeof args.password === 'string' ? args.password : undefined, false, () => {
+            job.check();
+            if (!passedPicker) {
+              passedPicker = true;
+              job.update({ cancellable: true });
+            }
+          }, () => job.update({ cancellable: false }));
         job.update({ status: 'running', phase: 'verify', progress: 95, message: '正在验证数据库' });
         job.complete({
           success: true, output_path: result.stageDir, resolved_path: result.stageDir,
           message: `已导入备份 ${result.backupId}`, error: null, duration_ms: null, requires_restart: false,
-          stats: { backup_id: result.backupId, database_count: result.databaseCount, blob_count: result.blobCount, stage_dir: result.stageDir },
+          stats: { backup_id: result.backupId, database_count: result.databaseCount, blob_count: result.blobCount, stage_dir: result.stageDir, restorable: result.restorable, recovery_kind: result.restorable ? 'disaster_recovery' : 'partial_archive' },
         });
-      })().catch((error: unknown) => job.fail(`ZIP 导入失败: ${error instanceof Error ? error.message : String(error)}`));
+      })().catch((error: unknown) => job.fail(`ZIP 导入失败: ${error instanceof Error ? error.message : String(error)}`, error));
       return { job_id: job.id, kind: 'import', status: 'queued', message: 'ZIP 导入任务已启动，请通过 backup-job-progress 事件监听进度' };
     }));
 
@@ -507,28 +602,33 @@ export default definePlugin({
         const backupId = String(args.backupId);
         // A backup listed from `<backupRoot>/<id>.zip` has not been staged yet; unpacking it first
         // makes the list action self-contained (imports are idempotent — the stage dir is replaced).
-        if (isSafeBackupId(backupId)) {
+        if (startupRecovery === null && isSafeBackupId(backupId)) {
           const stageDir = `${backupService().backupRoot}/imports/${backupId}`;
           const zipPath = `${backupService().backupRoot}/${backupId}.zip`;
-          const staged = await ctx.files.exists(stageDir).catch(() => false);
+          const staged = await ctx.files.exists(`${stageDir}/manifest.json`);
           if (!staged && await ctx.files.exists(zipPath).catch(() => false)) {
             job.update({ phase: 'scan', progress: 8, message: '正在解压备份归档' });
-            await backupService().importArchive(zipPath, backupId);
+            await backupService().importArchive(zipPath, backupId, undefined, true, job.check);
           }
         }
-        const result = await backupService().restoreArchive(backupId);
+        job.check();
+        job.update({ cancellable: false });
+        if (startupRecovery !== null) {
+          if (startupRecovery.reason === null) throw new CommandError('数据恢复已经完成，请重启应用');
+          await backupService().replacePendingRestore(backupId, startupRecovery.previousBackupId, job.check);
+        }
+        const result = startupRecovery === null ? await backupService().restoreArchive(backupId) : null;
         job.update({ status: 'running', phase: 'verify', progress: 95, message: '恢复完成，正在重启应用' });
         job.complete({
-          success: true, output_path: result.preRestoreZip, resolved_path: result.preRestoreZip,
+          success: true, output_path: result?.preRestoreZip ?? null, resolved_path: result?.preRestoreZip ?? null,
           message: '恢复完成，应用即将重新加载', error: null, duration_ms: null, requires_restart: true,
-          stats: {
-            backup_id: String(args.backupId), database_count: result.databaseCount,
-            blob_count: result.blobCount, pre_restore_backup: result.preRestoreZip,
-          },
+          stats: { backup_id: backupId, ...(result ? {
+            database_count: result.databaseCount, blob_count: result.blobCount, pre_restore_backup: result.preRestoreZip,
+          } : {}) },
         });
         // 等事件送达到页面后再重载；数据已经落盘，重载只是让新连接读到恢复后的库。
         setTimeout(() => { void backupService().requestRestart(); }, 400);
-      })().catch((error: unknown) => job.fail(`恢复失败: ${error instanceof Error ? error.message : String(error)}`));
+      })().catch((error: unknown) => job.fail(`恢复失败: ${error instanceof Error ? error.message : String(error)}`, error));
       return { job_id: job.id, kind: 'import', status: 'queued', message: '恢复任务已启动，请通过 backup-job-progress 事件监听进度' };
     }));
 
@@ -553,7 +653,7 @@ export default definePlugin({
     // Backup settings must survive a reload: the previous in-memory object reset on every restart.
     // OPFS is the durable store (Host runs in a Worker, where `localStorage` is unavailable).
     const backupConfigPath = `${ctx.app.dataDir}/recovery/backup-config.json`;
-    const configFiles = ctx.reflect.get('files', false) as FilesService | undefined;
+    const configFiles = ctx.files;
     let backupConfig: Record<string, unknown> = {
       backupDirectory: null,
       autoBackupEnabled: false,
@@ -571,11 +671,27 @@ export default definePlugin({
     } catch (error) {
       logger.warn(`读取备份配置失败，使用默认值: ${error instanceof Error ? error.message : String(error)}`);
     }
+    const webviewSettingsPath = `${storage.locations.activeDir}/webview_settings.json`;
+    ctx.commands.register('save_webview_settings', ({ settings }) => guardAsync(async () => {
+      if (settings === null || typeof settings !== 'object' || Array.isArray(settings)
+        || Object.values(settings).some(value => typeof value !== 'string')) throw new CommandError('WebView 设置必须是字符串映射');
+      const json = JSON.stringify(settings);
+      const size = new TextEncoder().encode(json).byteLength;
+      await ctx.files.writeAtomic(webviewSettingsPath, json, { createParents: true });
+      return { success: true, path: webviewSettingsPath, size };
+    }));
+    ctx.commands.register('load_webview_settings', () => guardAsync(async () => {
+      if (!await ctx.files.exists(webviewSettingsPath)) return { exists: false, settings: null };
+      return { exists: true, settings: JSON.parse(await ctx.files.readText(webviewSettingsPath)) };
+    }));
     ctx.commands.register('get_backup_config', () => guard(() => backupConfig));
     ctx.commands.register('set_backup_config', ({ config }) => guardAsync(async () => {
-      if (config && typeof config === 'object') backupConfig = { ...backupConfig, ...(config as Record<string, unknown>) };
-      if (!configFiles) throw new Error('Mobile files service is unavailable');
-      await configFiles.writeAtomic(backupConfigPath, `${JSON.stringify(backupConfig, null, 2)}\n`, { createParents: true });
+      if (config && typeof config === 'object') {
+        const next = { ...backupConfig, ...(config as Record<string, unknown>) };
+        if (next.autoBackupEnabled) throw new CommandError('Android 不支持在后台自动备份，请手动创建备份');
+        await configFiles.writeAtomic(backupConfigPath, `${JSON.stringify(next, null, 2)}\n`, { createParents: true });
+        backupConfig = next;
+      }
       return null;
     }));
   },
@@ -585,67 +701,4 @@ export default definePlugin({
 function isSafeBackupId(value: string): boolean {
   return value.length > 0 && value.length <= 128 && !value.startsWith('.')
     && !value.includes('..') && /^[A-Za-z0-9._-]+$/.test(value);
-}
-
-/** 0.15.x 原生 Android 的库文件布局（`<files>/slots/<slot>/…`），按归档名映射到移动端注册库。 */
-const LEGACY_DATABASE_NAMES: Readonly<Record<string, DatabaseName>> = {
-  'vfs.db': 'vfs',
-  'chat_v2.db': 'chat_v2',
-  'mistakes.db': 'mistakes',
-  'llm_usage.db': 'llm_usage',
-  'audit.db': 'audit',
-};
-
-interface LegacyDatabaseAnswer {
-  readonly slot?: unknown;
-  readonly files?: unknown;
-}
-
-function legacyBytes(value: unknown): Uint8Array | null {
-  if (value instanceof Uint8Array) return value;
-  if (value instanceof ArrayBuffer) return new Uint8Array(value);
-  return null;
-}
-
-/**
- * 首次启动（OPFS 里四个核心库都还不存在）时，向主线程要旧版原生 Android 应用留下的 `.db` 字节。
- * 主线程读 `/data/user/0/com.deepstudent.app/files/slots/<slot>/`（含 slotB），这里在迁移建库之前
- * 写入 `opfs-sahpool`。读写失败只记 warn：没有旧数据的全新安装同样走这个分支。
- */
-async function importLegacyNativeDatabases(ctx: Context, storage: MobileStorageService, runtime: SqliteRuntime): Promise<void> {
-  const core: readonly DatabaseName[] = ['vfs', 'chat_v2', 'mistakes', 'llm_usage'];
-  if (core.some((name) => runtime.exists(storage.pathOf(name)))) return;
-  let answer: LegacyDatabaseAnswer | null;
-  try {
-    answer = await ctx.shell.request<LegacyDatabaseAnswer | null>('mobile:legacy-databases');
-  } catch (error) {
-    ctx.logger('storage').debug(`legacy native database check skipped: ${error instanceof Error ? error.message : String(error)}`);
-    return;
-  }
-  if (answer === null || typeof answer !== 'object' || !Array.isArray(answer.files)) return;
-  const importDb = runtime.importDb;
-  if (typeof importDb !== 'function') return;
-  let imported = 0;
-  for (const candidate of answer.files) {
-    if (typeof candidate !== 'object' || candidate === null) continue;
-    const name = (candidate as { name?: unknown }).name;
-    const bytes = legacyBytes((candidate as { bytes?: unknown }).bytes);
-    if (typeof name !== 'string' || bytes === null) continue;
-    const database = LEGACY_DATABASE_NAMES[name.split('/').pop() ?? name];
-    if (database === undefined) continue;
-    if (bytes.byteLength < 512 || new TextDecoder('ascii').decode(bytes.subarray(0, 16)) !== 'SQLite format 3\0') {
-      ctx.logger('storage').warn(`legacy native database ${name} is not an SQLite file; skipped`);
-      continue;
-    }
-    try {
-      await importDb.call(runtime, storage.pathOf(database), bytes);
-      imported += 1;
-    } catch (error) {
-      // 旧数据导入失败不能挡住启动：迁移会在空库上继续，用户仍可正常使用新版本。
-      ctx.logger('storage').warn(`importing legacy native database ${name} failed: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }
-  if (imported > 0) {
-    ctx.logger('storage').info(`imported ${imported} legacy native database file(s) from slot ${String(answer.slot ?? 'unknown')} before migrations`);
-  }
 }

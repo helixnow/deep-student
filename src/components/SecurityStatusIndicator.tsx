@@ -1,27 +1,21 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { DsButton } from '@/components/ui/DsButton';
-import { Shield, Warning, CheckCircle, ArrowClockwise, Gear } from '@phosphor-icons/react';
+import { Shield, Warning, CheckCircle, ArrowClockwise } from '@phosphor-icons/react';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from 'react-i18next';
 
 interface SecurityStatus {
   keychain_available: boolean;
-  migration_completed: boolean;
+  migration_completed: boolean | null;
   sensitive_keys_count: number;
-  last_migration_time?: string;
+  last_migration_time?: string | null;
+  storage_kind?: 'private_files';
   warnings?: string[];
 }
 
 interface SecurityStatusIndicatorProps {
   className?: string;
 }
-
-// 简单的状态缓存，避免频繁的后端调用
-const statusCache = {
-  data: null as SecurityStatus | null,
-  timestamp: 0,
-  isValid: () => Date.now() - statusCache.timestamp < 30000, // 30秒缓存
-};
 
 export const SecurityStatusIndicator: React.FC<SecurityStatusIndicatorProps> = ({
   className = '',
@@ -30,34 +24,21 @@ export const SecurityStatusIndicator: React.FC<SecurityStatusIndicatorProps> = (
   const [status, setStatus] = useState<SecurityStatus | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const loadSecurityStatus = async () => {
+  const loadSecurityStatus = useCallback(async () => {
+    setLoading(true);
     try {
-      setLoading(true);
-      
-      // 检查缓存
-      if (statusCache.isValid() && statusCache.data) {
-        setStatus(statusCache.data);
-        setLoading(false);
-        return;
-      }
-      
-      const result = await invoke<SecurityStatus>('get_security_status');
-      
-      // 更新缓存
-      statusCache.data = result;
-      statusCache.timestamp = Date.now();
-      
-      setStatus(result);
+      setStatus(await invoke<SecurityStatus>('get_security_status'));
     } catch (error: unknown) {
+      setStatus(null);
       console.error('Failed to load security status:', error);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    loadSecurityStatus();
-  }, []);
+    void loadSecurityStatus();
+  }, [loadSecurityStatus]);
 
   if (loading) {
     return (
@@ -72,11 +53,15 @@ export const SecurityStatusIndicator: React.FC<SecurityStatusIndicatorProps> = (
     return (
       <div className={`flex items-center space-x-2 p-3 bg-red-50 rounded-lg ${className}`}>
         <Warning size={16} className="text-red-500" />
-        <span className="text-sm text-red-600">{t('securityStatus.unavailable')}</span>
+        <span className="flex-1 text-sm text-red-600">{t('securityStatus.unavailable')}</span>
+        <DsButton variant="ghost" size="icon" iconOnly onClick={loadSecurityStatus} title={t('securityStatus.refresh')} aria-label={t('securityStatus.refresh')}>
+          <ArrowClockwise size={16} />
+        </DsButton>
       </div>
     );
   }
 
+  const usesPrivateFiles = status.storage_kind === 'private_files';
   const getStatusIcon = () => {
     if (!status.keychain_available) {
       return <Warning size={16} className="text-yellow-500" />;
@@ -128,15 +113,19 @@ export const SecurityStatusIndicator: React.FC<SecurityStatusIndicatorProps> = (
             <div className="flex items-center justify-between">
               <span>{t('securityStatus.data_migration')}</span>
               <span className="font-medium">
-                {status.migration_completed
-                  ? t('securityStatus.completed')
-                  : t('securityStatus.pending_migration')}
+                {status.migration_completed === null
+                  ? t('securityStatus.on_access_migration')
+                  : status.migration_completed
+                    ? t('securityStatus.completed')
+                    : t('securityStatus.pending_migration')}
               </span>
             </div>
             
-            {status.sensitive_keys_count > 0 && (
+            {(usesPrivateFiles || status.sensitive_keys_count > 0) && (
               <div className="flex items-center justify-between">
-                <span>{t('securityStatus.sensitive_keys')}</span>
+                <span>{usesPrivateFiles
+                  ? t('securityStatus.encrypted_settings_count')
+                  : t('securityStatus.sensitive_keys')}</span>
                 <span className="font-medium">{status.sensitive_keys_count}</span>
               </div>
             )}
@@ -163,9 +152,13 @@ export const SecurityStatusIndicator: React.FC<SecurityStatusIndicatorProps> = (
           
           {!status.keychain_available && (
             <div className="mt-3 text-xs text-yellow-700">
-              <div className="font-medium mb-1">{t('securityStatus.fallback_title')}</div>
-              <div>{t('securityStatus.fallback_line1')}</div>
-              <div>{t('securityStatus.fallback_line2')}</div>
+              {usesPrivateFiles ? t('securityStatus.private_files_storage') : (
+                <>
+                  <div className="font-medium mb-1">{t('securityStatus.fallback_title')}</div>
+                  <div>{t('securityStatus.fallback_line1')}</div>
+                  <div>{t('securityStatus.fallback_line2')}</div>
+                </>
+              )}
             </div>
           )}
         </div>
