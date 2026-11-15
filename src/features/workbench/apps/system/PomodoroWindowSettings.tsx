@@ -14,7 +14,7 @@ import { Switch } from '@/components/ui/shad/Switch';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { usePomodoroStore } from '@/features/pomodoro/stores/usePomodoroStore';
 import { NOISE_TYPES, type NoiseType } from '@/features/pomodoro/noiseEngine';
-import { setAndroidBackgroundCompletion } from '@/features/pomodoro/androidBackgroundAlarm';
+import { setAndroidBackgroundCompletion } from '@/features/pomodoro';
 import { isAndroidMobileShell } from '@/utils/platform';
 
 // ============================================================================

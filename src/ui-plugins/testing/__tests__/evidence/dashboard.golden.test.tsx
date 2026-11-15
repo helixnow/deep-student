@@ -206,6 +206,9 @@ describe('FE-B8 evidence: dashboard', () => {
     vi.stubGlobal('ResizeObserver', SizedResizeObserver);
     localStorage.clear();
     app = await bootAppUi();
+    // Drain app-wide template initialization before tracing individual dashboard clicks.
+    const { templateManager } = await import('@/data/ankiTemplates');
+    await templateManager.loadTemplates();
   });
   afterEach(() => {
     cleanup();

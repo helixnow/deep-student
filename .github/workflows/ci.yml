@@ -225,7 +225,8 @@ jobs:
         run: docker compose -f scripts/dev/docker-compose.sync-test.yml down --volumes --remove-orphans
 
   migration-gate:
-    name: Migration Gate (static + Host migration tests + fixtures)
+    # The public main ruleset requires this actual host migration check as Backend.
+    name: Backend
     needs: [build-config, changes]
     if: github.event_name != 'pull_request' || needs.changes.outputs.code != 'false'
     runs-on: ubuntu-22.04

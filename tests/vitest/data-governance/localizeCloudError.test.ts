@@ -183,8 +183,8 @@ describe('localizeCloudStorageError', () => {
       'utf-8',
     );
     const localImport = local.slice(
+      local.indexOf('const runImportZipBackup'),
       local.indexOf('const handleImportZipBackup'),
-      local.indexOf('const handleSaveBackup'),
     );
     for (const src of [cloudRestore, localImport]) {
       const importIdx = src.indexOf('importZip(');
