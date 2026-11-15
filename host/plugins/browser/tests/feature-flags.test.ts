@@ -1,19 +1,19 @@
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import Database from 'better-sqlite3';
 import { describe, expect, it } from 'vitest';
 import { createFeatureFlagCommands, featureFlagsResult, rustF64AsF32 } from '../../../platform/settings/feature-flag-commands.ts';
+import { openFileDatabase } from '../../../platform/storage/service.ts';
 import { f3FeatureFlags, loadF3Flags } from './support/f3-feature-flags.ts';
 
 function openFlags(file: string, readOnly = false) {
-  const db = new Database(file, { readonly: readOnly });
+  const db = openFileDatabase(file, { profile: { readonly: readOnly } });
   if (!readOnly) db.exec('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)');
   const commands = createFeatureFlagCommands({
     appVersion: '0.20.0', debug: false, featureFlags: f3FeatureFlags,
     settings: {
-      get: key => (db.prepare('SELECT value FROM settings WHERE key = ?').pluck().get(key) as string | undefined) ?? null,
-      save: (key, value) => { db.prepare('INSERT OR REPLACE INTO settings VALUES (?, ?)').run(key, value); },
+      get: key => db.pluck<string>('SELECT value FROM settings WHERE key = ?', [key]) ?? null,
+      save: (key, value) => { db.run('INSERT OR REPLACE INTO settings VALUES (?, ?)', [key, value]); },
     },
   });
   return { commands, close: () => db.close() };

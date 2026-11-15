@@ -131,6 +131,21 @@ describe('frontend-invoke gate: real tree', () => {
     for (const n of ['plugin:ui|manifest', 'plugin:host|call', 'plugin:host|status']) expect(c.has(n)).toBe(true);
   });
 
+  it('checks Android shell commands and the JSON form of mobile_save_document', () => {
+    const text = `${TAURI}
+invoke('mobile_save_document', bytes, { headers: { 'x-file-name': 'export.pdf' } });
+invoke('mobile_save_document', { path: stagedPath, fileName: 'export.srt' });
+invoke('mobile_save_document', { path: stagedPath, filename: 'export.srt' });
+invoke('plugin:notification|notify', { title, body, target });
+invoke('mobile_set_pomodoro_alarm', { title, body });`;
+    const sites = scanFile('src/android.ts', text);
+    expect(rules(judge(sites, loadCommandContracts(repo)))).toEqual([
+      ['unknown-arg', 'mobile_save_document', 'filename'],
+      ['missing-required', 'mobile_save_document', 'fileName'],
+      ['missing-required', 'mobile_set_pomodoro_alarm', 'deadline'],
+    ]);
+  });
+
   it('current src/ has no findings beyond the checked-in baseline, and a new bad call is caught', () => {
     const result = run({ root: repo });
     expect(result.summary.fresh).toBe(0);

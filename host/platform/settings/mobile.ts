@@ -111,7 +111,7 @@ export default definePlugin({
     ctx.commands.register('update_feature_flag', flagCommands.updateFeatureFlag);
     ctx.commands.register('is_feature_enabled', flagCommands.isFeatureEnabled);
     ctx.commands.register('set_android_immersive_mode', () => {
-      throw new Error('Immersive mode requires the Android app shell');
+      throw new CommandError(AppError.configuration('Immersive mode requires the Android app shell'));
     });
     ctx.commands.register('get_mcp_stdio_allow_unapproved', () => false);
     registerUnsupportedCommands(ctx, ['set_mcp_stdio_allow_unapproved'], () => 'mcp.stdio');

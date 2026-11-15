@@ -1,7 +1,6 @@
 /**
- * `platform/util/portable.ts`、`index.ts`、`api.ts` 与 `platform/errors/api.ts` 是可移植入口：运行时闭包
- * 不得触达 Node 专有依赖（`node:*`、`Buffer`、`process` 等；`import type` 不计）。ZIP、QR（`node:zlib`）与
- * 返回 `Buffer` 的 base64 解码器只从桌面入口 `util/node.ts` 导出。
+ * 工具与错误的可移植入口、独立 QR 编码器的运行时闭包不得触达 Node 专有依赖（`node:*`、`Buffer`、
+ * `process` 等；`import type` 不计）。同步 ZIP 与返回 `Buffer` 的 base64 解码器仍由桌面入口导出。
  */
 import { STATUS_CODES } from 'node:http';
 import { fileURLToPath } from 'node:url';
@@ -14,19 +13,19 @@ import * as desktop from '../node.ts';
 const ROOT = fileURLToPath(new URL('../../../../', import.meta.url));
 
 describe('platform/util portable entry', () => {
-  it('portable.ts, the util barrels and errors/api.ts never load Node modules at runtime', () => {
+  it('portable utilities, QR and errors never load Node modules at runtime', () => {
     expect(checkModulesClosure(ROOT, [
       'host/platform/util/portable.ts',
       'host/platform/util/index.ts',
       'host/platform/util/api.ts',
+      'host/platform/util/qr.ts',
       'host/platform/errors/api.ts',
     ])).toEqual([]);
   });
 
-  it('desktop-only submodules are the ones that still use node:zlib (scanner sanity check)', () => {
+  it('detects node:zlib in desktop ZIP and its barrel (scanner sanity check)', () => {
     const keys = (file: string) => checkModulesClosure(ROOT, [file]).map((violation) => violation.key);
     expect(keys('host/platform/util/zip.ts')).toContain('node-builtin:zlib');
-    expect(keys('host/platform/util/qr.ts')).toContain('node-builtin:zlib');
     expect(keys('host/platform/util/node.ts')).toContain('node-builtin:zlib');
   });
 
