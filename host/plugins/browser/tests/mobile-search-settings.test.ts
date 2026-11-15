@@ -1,25 +1,19 @@
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import Database from 'better-sqlite3';
 import { expect, it } from 'vitest';
 import { createTestHost } from '../../../kernel/testing.ts';
 import { createSettingsStore } from '../../../platform/settings/index.ts';
-import type { SqlExecutor } from '../../../platform/storage/api.ts';
+import { openFileDatabase } from '../../../platform/storage/service.ts';
 import mobileWebSearch from '../mobile-search.ts';
 
 it('reads provider strategies and custom whitelist from SQLite after reopening the mobile host', async () => {
   const dataDir = mkdtempSync(join(tmpdir(), 'dstu-mobile-search-'));
   const path = join(dataDir, 'settings.db');
   const open = async () => {
-    const db = new Database(path);
+    const db = openFileDatabase(path);
     db.exec('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL)');
-    const statement = (sql: string) => db.prepare(sql.replace(/\?\d+/g, '?'));
-    const executor = {
-      run: (sql: string, params: string[]) => statement(sql).run(...params),
-      pluck: (sql: string, params: string[]) => statement(sql).pluck().get(...params),
-    } as unknown as SqlExecutor;
-    const settings = createSettingsStore({ db: () => executor, secureStore: () => null, isSensitiveKey: () => false });
+    const settings = createSettingsStore({ db: () => db, secureStore: () => null, isSensitiveKey: () => false });
     const host = await createTestHost({
       app: { dataDir },
       plugins: [mobileWebSearch],

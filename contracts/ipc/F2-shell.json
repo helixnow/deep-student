@@ -740,6 +740,193 @@
       "frontend": "app"
     }
   ],
+  "shellNative": {
+    "platform": "android",
+    "source": "mobile/src/shell/android-native.ts",
+    "commands": [
+      {
+        "name": "mobile_set_pomodoro_alarm",
+        "args": [
+          {
+            "key": "deadline",
+            "optional": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          {
+            "key": "title",
+            "optional": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "key": "body",
+            "optional": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "result": {
+          "type": "null"
+        },
+        "description": "A zero deadline cancels the alarm. A positive deadline is epoch milliseconds and requires title and body."
+      },
+      {
+        "name": "mobile_save_document",
+        "args": [
+          {
+            "key": "path",
+            "optional": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "key": "fileName",
+            "optional": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "key": "mimeType",
+            "optional": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "result": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "method": {
+                  "const": "android-saf"
+                }
+              },
+              "required": [
+                "method"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "description": "Open the Android save dialog for a staged subtitle; null means the user cancelled.",
+        "rawBody": {
+          "contentType": "application/octet-stream",
+          "headers": {
+            "x-file-name": "Required; URI-encoded filename",
+            "x-file-mime": "Optional; defaults to application/octet-stream"
+          }
+        }
+      },
+      {
+        "name": "plugin:notification|is_permission_granted",
+        "args": [],
+        "result": {
+          "type": "boolean"
+        }
+      },
+      {
+        "name": "plugin:notification|start_action_listener",
+        "args": [],
+        "result": {
+          "type": "null"
+        }
+      },
+      {
+        "name": "plugin:notification|set_policy",
+        "args": [
+          {
+            "key": "policy",
+            "optional": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "background",
+                "always",
+                "never"
+              ]
+            }
+          }
+        ],
+        "result": {
+          "type": "null"
+        }
+      },
+      {
+        "name": "plugin:notification|permission_state",
+        "args": [],
+        "result": {
+          "type": "string",
+          "enum": [
+            "granted",
+            "denied",
+            "prompt"
+          ]
+        }
+      },
+      {
+        "name": "plugin:notification|request_permission",
+        "args": [],
+        "result": {
+          "type": "string",
+          "enum": [
+            "granted",
+            "denied",
+            "prompt"
+          ]
+        }
+      },
+      {
+        "name": "plugin:notification|notify",
+        "args": [
+          {
+            "key": "title",
+            "optional": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "key": "body",
+            "optional": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "key": "target",
+            "optional": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "key": "pomodoroDeadline",
+            "optional": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            }
+          }
+        ],
+        "result": {
+          "type": "boolean"
+        }
+      }
+    ]
+  },
   "events": [
     {
       "name": "backup-jobs-resumable",

@@ -69,7 +69,7 @@ async function extractEpub(bytes: Uint8Array): Promise<string[]> {
   if (header) pages.push(header);
   for (const href of spineHrefs) {
     let decoded = href;
-    try { decoded = decodeURIComponent(href); } catch { /* keep the original href */ }
+    try { decoded = decodeURIComponent(href); } catch { decoded = href; }
     const path = decoded.startsWith('/')
       ? posix.normalize(decoded).slice(1)
       : posix.join(posix.dirname(opfPath), decoded);

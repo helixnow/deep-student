@@ -146,7 +146,7 @@ jobs:
           exit 1
 
       - name: Record release asset provenance
-        if: ${{ inputs.source_sha != '' }}
+        if: ${{ inputs.source_sha != '' && inputs.frontend_dist_artifact != '' }}
         shell: bash
         env:
           RELEASE_TARGET: aarch64-linux-android
@@ -157,7 +157,7 @@ jobs:
           --output "$RUNNER_TEMP/release-provenance.json"
 
       - name: Upload release asset provenance
-        if: ${{ inputs.source_sha != '' }}
+        if: ${{ inputs.source_sha != '' && inputs.frontend_dist_artifact != '' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: release-provenance-aarch64-linux-android

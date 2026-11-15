@@ -58,6 +58,7 @@ import { MobileBackupCancelled, MobileBackupService, type MobileBackupSelection 
 import { beginMobileStagedUpload, appendMobileStagedUpload, abortMobileStagedUpload } from '../files/mobile-local-runtime.ts';
 import { catalog } from '../../plugins/backup/src/asset-catalog.ts';
 import { FileError } from '../files/api.ts';
+import { AppError } from '../errors/api.ts';
 
 /** 桌面由 backup 插件的这个 finalizer 发迁移状态事件；它在场时移动端不重复发。 */
 const BACKUP_STATUS_FINALIZER = 'backup.restore-activation';
@@ -220,6 +221,14 @@ export default definePlugin<{ recoveryOnly?: boolean }>({
       catch (error) { throw llmFail(error); }
     };
 
+    const guardFileCommand = async <T>(fn: () => Promise<T>): Promise<T> => {
+      try { return await fn(); }
+      catch (error) {
+        if (error instanceof CommandError) throw error;
+        throw new CommandError(AppError.file_system(error instanceof Error ? error.message : String(error)));
+      }
+    };
+
     ctx.commands.register('staged_upload_begin', ({ name, totalSize }) => guard(() =>
       beginMobileStagedUpload(name as string, totalSize as number)));
     ctx.commands.register('staged_upload_append', (args, call) => guard(() => {
@@ -255,12 +264,12 @@ export default definePlugin<{ recoveryOnly?: boolean }>({
       active_dir: storage.locations.activeDir,
       inactive_dir: `${storage.locations.baseDir}/slots/slotB`,
     })));
-    ctx.commands.register('get_slot_directory', ({ slotName }) => guard(() => {
+    ctx.commands.register('get_slot_directory', ({ slotName }) => {
       if (slotName !== 'slotA' && slotName !== 'slotB' && slotName !== 'slotC' && slotName !== 'slotD') {
-        throw new CommandError(`无效的插槽名称: ${String(slotName)}`);
+        throw new CommandError(AppError.validation(`无效的插槽名称: ${String(slotName)}`));
       }
       return `${storage.locations.baseDir}/slots/${slotName}`;
-    }));
+    });
     ctx.commands.register('get_database_info', () => guard(() => ({
       production_db_path: storage.pathOf('mistakes'),
       test_db_path: `${storage.locations.activeDir}/test_mistakes.db`,
@@ -672,23 +681,23 @@ export default definePlugin<{ recoveryOnly?: boolean }>({
       logger.warn(`读取备份配置失败，使用默认值: ${error instanceof Error ? error.message : String(error)}`);
     }
     const webviewSettingsPath = `${storage.locations.activeDir}/webview_settings.json`;
-    ctx.commands.register('save_webview_settings', ({ settings }) => guardAsync(async () => {
+    ctx.commands.register('save_webview_settings', ({ settings }) => guardFileCommand(async () => {
       if (settings === null || typeof settings !== 'object' || Array.isArray(settings)
-        || Object.values(settings).some(value => typeof value !== 'string')) throw new CommandError('WebView 设置必须是字符串映射');
+        || Object.values(settings).some(value => typeof value !== 'string')) throw new CommandError(AppError.validation('WebView 设置必须是字符串映射'));
       const json = JSON.stringify(settings);
       const size = new TextEncoder().encode(json).byteLength;
       await ctx.files.writeAtomic(webviewSettingsPath, json, { createParents: true });
       return { success: true, path: webviewSettingsPath, size };
     }));
-    ctx.commands.register('load_webview_settings', () => guardAsync(async () => {
+    ctx.commands.register('load_webview_settings', () => guardFileCommand(async () => {
       if (!await ctx.files.exists(webviewSettingsPath)) return { exists: false, settings: null };
       return { exists: true, settings: JSON.parse(await ctx.files.readText(webviewSettingsPath)) };
     }));
     ctx.commands.register('get_backup_config', () => guard(() => backupConfig));
-    ctx.commands.register('set_backup_config', ({ config }) => guardAsync(async () => {
+    ctx.commands.register('set_backup_config', ({ config }) => guardFileCommand(async () => {
       if (config && typeof config === 'object') {
         const next = { ...backupConfig, ...(config as Record<string, unknown>) };
-        if (next.autoBackupEnabled) throw new CommandError('Android 不支持在后台自动备份，请手动创建备份');
+        if (next.autoBackupEnabled) throw new CommandError(AppError.validation('Android 不支持在后台自动备份，请手动创建备份'));
         await configFiles.writeAtomic(backupConfigPath, `${JSON.stringify(next, null, 2)}\n`, { createParents: true });
         backupConfig = next;
       }

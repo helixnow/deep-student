@@ -10,6 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.20.3](https://github.com/helixnow/deep-student/compare/v0.20.2...v0.20.3) (2026-11-15)
+
+### Android
+
+- 随正式签名 ARM64 APK 交付旧版数据迁移、文件及 Markdown 导入、教材重新关联、附件校验和移动端设置修复。
+- 修复公开发布前发现的 Host 依赖、命令契约和附件处理检查问题。真机覆盖升级待验。
+
 ## [0.20.2](https://github.com/helixnow/deep-student/compare/v0.20.1...v0.20.2) (2026-11-15)
 
 ### Android

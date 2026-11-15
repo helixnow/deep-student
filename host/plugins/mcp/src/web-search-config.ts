@@ -174,11 +174,12 @@ export const CN_TRUSTED_SITES: readonly string[] = [
 ];
 export function parseCnCustomSites(raw: string | null): string[] {
   if (raw === null || raw.trim() === '') return [];
+  const parseLegacy = () => raw.split(',').map(item => item.trim()).filter(item => item !== '');
   try {
     const parsed: unknown = JSON.parse(raw);
     if (Array.isArray(parsed) && parsed.every(item => typeof item === 'string')) return parsed;
-  } catch { /* Legacy UI stores a comma-separated list. */ }
-  return raw.split(',').map(item => item.trim()).filter(item => item !== '');
+  } catch { return parseLegacy(); }
+  return parseLegacy();
 }
 export function mergedWhitelist(config: CnWhitelistConfig): string[] {
   const list: string[] = config.use_default_list ? [...CN_TRUSTED_SITES] : [];

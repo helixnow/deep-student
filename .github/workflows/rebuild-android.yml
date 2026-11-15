@@ -17,6 +17,11 @@ on:
         required: false
         default: false
         type: boolean
+      artifact_only:
+        description: 'Build a signed APK artifact without changing GitHub Releases or R2'
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: rebuild-android-${{ github.event.inputs.tag_name }}-${{ github.workflow_sha }}
@@ -49,10 +54,12 @@ jobs:
             exit 1
           fi
 
-          RELEASE_ID=$(gh api "repos/${GH_REPO}/releases/tags/${TAG}" --jq '.id' 2>/dev/null || echo "")
-          if [ -z "$RELEASE_ID" ]; then
-            echo "::error::Release '${TAG}' not found"
-            exit 1
+          if [[ "${{ inputs.artifact_only }}" != true ]]; then
+            RELEASE_ID=$(gh api "repos/${GH_REPO}/releases/tags/${TAG}" --jq '.id' 2>/dev/null || echo "")
+            if [ -z "$RELEASE_ID" ]; then
+              echo "::error::Release '${TAG}' not found"
+              exit 1
+            fi
           fi
 
           SOURCE_REF="${{ github.event.inputs.source_ref }}"
@@ -96,10 +103,12 @@ jobs:
     uses: ./.github/workflows/reusable-build-android.yml
     with:
       ref: ${{ needs.preflight.outputs.source_ref }}
+      source_sha: ${{ inputs.artifact_only && needs.preflight.outputs.source_ref || '' }}
       version: ${{ needs.preflight.outputs.version }}
     secrets: inherit
 
   publish:
+    if: ${{ !inputs.artifact_only }}
     concurrency:
       group: release-assets-${{ github.repository }}
       cancel-in-progress: false

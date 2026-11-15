@@ -3,8 +3,8 @@
  * 运行时不加载任何 Node 模块，桌面与移动端共用。
  *
  * 与 `index.ts` 的差异：
- * - 不含 ZIP（`zip.ts`，依赖 `node:zlib`/`Buffer`/`process`）与 QR PNG（`qr.ts`，依赖 `node:zlib`）；
- * - `decodeBase64Standard` 返回普通 `Uint8Array`（`index.ts` / `api.ts` 版本返回 `Buffer`）。
+ * - 同步 ZIP（`zip.ts`）依赖 Node；可移植的 QR PNG 编码器可直接从 `qr.ts` 导入；
+ * - `decodeBase64Standard` 返回普通 `Uint8Array`（`node.ts` 版本返回 `Buffer`）。
  * 其余导出与 `index.ts` 是同一个值。
  */
 export type { TruncateOptions } from './api.ts';

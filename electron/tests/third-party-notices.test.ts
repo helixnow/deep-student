@@ -30,7 +30,7 @@ describe('third-party notices list what ships, not what is a production dependen
   it('frontend libraries bundled into dist are listed although they are devDependencies; build tools are not', () => {
     const manifest = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { devDependencies: Record<string, string> };
     const ids = new Set(collectNpmRecords().map((record) => record.id.replace(/@[^@]+$/, '')));
-    for (const name of ['react', 'react-dom', 'mermaid', 'katex', 'pdfjs-dist']) {
+    for (const name of ['react', 'react-dom', 'mermaid', 'katex']) {
       expect(manifest.devDependencies[name], name).toBeDefined();
       expect(ids.has(name), name).toBe(true);
     }
@@ -40,7 +40,7 @@ describe('third-party notices list what ships, not what is a production dependen
     // esbuild now ships for the plugin workshop compiler, rather than only running at build time.
     expect(ids.has('esbuild')).toBe(true);
     // Electron 运行时依赖照旧在内，包括后端 Sentry 与它带进 app.asar 的 OpenTelemetry 依赖。
-    for (const name of ['better-sqlite3', 'undici', 'tar', '@deepseek-ai/schemastery', '@sentry/node', '@sentry/core', '@sentry/opentelemetry', '@opentelemetry/api', 'import-in-the-middle']) {
+    for (const name of ['better-sqlite3', 'undici', 'tar', 'pdfjs-dist', '@napi-rs/canvas', '@deepseek-ai/schemastery', '@sentry/node', '@sentry/core', '@sentry/opentelemetry', '@opentelemetry/api', 'import-in-the-middle']) {
       expect(ids.has(name), name).toBe(true);
     }
   });
@@ -99,6 +99,19 @@ describe('third-party notices list what ships, not what is a production dependen
     // 打包闭包按已安装的树计算，只能和本机平台（npm 按 os/cpu/libc 装了哪些可选原生包）对照。
     const { lock: realLock, shipped } = shippedNpmPackages(root);
     const rootDependencies = (JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { dependencies: Record<string, string> }).dependencies;
+    expect(shipped.get('node_modules/pdfjs-dist')).toEqual(new Set(['electron', 'frontend']));
+    // The release notices cover both Linux variants, but a single installation only resolves its own libc.
+    for (const arch of ['x64', 'arm64']) {
+      const glibcCanvas = `node_modules/@napi-rs/canvas-linux-${arch}-gnu`;
+      const muslCanvas = `node_modules/@napi-rs/canvas-linux-${arch}-musl`;
+      const glibc = electronRuntimeLockPaths(realLock, rootDependencies, [{ platform: 'linux', arch, libc: 'glibc' }]);
+      const musl = electronRuntimeLockPaths(realLock, rootDependencies, [{ platform: 'linux', arch, libc: 'musl' }]);
+      expect(glibc.has(glibcCanvas)).toBe(true);
+      expect(glibc.has(muslCanvas)).toBe(false);
+      expect(musl.has(muslCanvas)).toBe(true);
+      expect(musl.has(glibcCanvas)).toBe(false);
+      for (const lockPath of [glibcCanvas, muslCanvas]) expect(shipped.get(lockPath)?.has('electron'), lockPath).toBe(true);
+    }
     const fromLock = electronRuntimeLockPaths(realLock, rootDependencies, [hostTarget]);
     const installed = new Set([...collectProductionClosure(root, hostTarget).keys()].map((key) => `node_modules/${key}`));
     expect(fromLock.size).toBeGreaterThan(200);
