@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { rmSync } from 'node:fs';
 import { createTestHost } from '../../../kernel/testing.ts';
 import { officeText } from '../../../platform/native/office/text.ts';
@@ -16,6 +16,7 @@ import {
   type PdfPreviewDependencies,
 } from '../repository/pdf-preview.ts';
 import { NativeAttachmentProcessing, type AttachmentDocs } from '../src/attachment-processing.ts';
+import { BlobRepo } from '../repository/blobs.ts';
 import { setRepositoryLogger } from '../repository/logger.ts';
 import plugin from '../index.ts';
 
@@ -188,35 +189,33 @@ describe('NativeAttachmentProcessing production assembly', { timeout: 120_000 },
     },
   };
 
-  function adapter(): {
-    processing: NativeAttachmentProcessing;
-    stored: Array<{ mimeType: string; extension: string }>;
-    image: ReturnType<typeof fakeImage>;
-  } {
-    const stored: Array<{ mimeType: string; extension: string }> = [];
+  function adapter() {
     const image = fakeImage();
+    const blobs = new BlobRepo();
+    const persistedPath = '/blobs/rendered.jpg';
+    const persistBlob = vi.spyOn(blobs, 'persistBlob').mockResolvedValue(persistedPath);
+    const storeBlob = vi.spyOn(blobs, 'storeBlob').mockReturnValue({
+      hash: 'rendered', relativePath: 'rendered.jpg', mimeType: 'image/jpeg', size: 1, refCount: 1, createdAt: 0,
+    });
     const processing = new NativeAttachmentProcessing({
       pdfium: () => fakePdfium({ text: 'pdf text', pageCount: 1 }),
       image: () => image,
       docs: () => docs,
       officeText: () => officeText,
-      blobs: () => ({
-        storeBlob: (_conn: SqlExecutor, _dir: string, bytes: Uint8Array,
-          mimeType?: string | null, extension?: string | null) => {
-          stored.push({ mimeType: mimeType ?? '', extension: extension ?? '' });
-          return { hash: `hash_${bytes.length}`, mimeType, extension } as never;
-        },
-      } as never),
+      blobs: () => blobs,
     });
-    return { processing, stored, image };
+    return { processing, persistBlob, storeBlob, persistedPath };
   }
 
   it('delegates PDF rendering, encryption and document text to the owner services', async () => {
-    const { processing, stored } = adapter();
+    const { processing, persistBlob, storeBlob, persistedPath } = adapter();
     const rendered = await processing.renderPdf(conn, '/blobs', Buffer.from('%PDF-1.4'), DEFAULT_PDF_PREVIEW_CONFIG);
     expect(rendered.extractedText).toBe('pdf text');
     expect(rendered.pageCount).toBe(1);
-    expect(stored[0]).toMatchObject({ mimeType: 'image/jpeg', extension: 'jpg' });
+    const page = new Uint8Array([1]);
+    expect(persistBlob).toHaveBeenCalledWith(conn, '/blobs', page, 'jpg');
+    expect(storeBlob).toHaveBeenCalledWith(conn, '/blobs', page, 'image/jpeg', 'jpg', persistedPath);
+    expect(persistBlob).toHaveBeenCalledBefore(storeBlob);
 
     expect(() => processing.checkPdfEncryption(Buffer.from('%PDF-'), 'ok.pdf')).not.toThrow();
     expect(() => processing.checkPdfEncryption(Buffer.from('%PDF-'), 'encrypted.pdf')).toThrow('encrypted pdf');

@@ -182,17 +182,31 @@ it('unpacks native binaries from app.asar; .ts entries and .wasm stay inside', (
   expect(config.asarUnpack).toEqual(['**/*.{node,dylib,so,dll,exe}', '**/*.so.*', '**/node_modules/@esbuild/*/bin/*']);
 });
 
-it('does not ship frontend-only or build-only packages (vite bundles the renderer; images use the F7 WASI encoder)', () => {
+it('does not copy frontend-only or build-only packages into app.asar node_modules', () => {
   const manifest = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as {
     dependencies: Record<string, string>;
     devDependencies: Record<string, string>;
   };
   const mac = new Set(config.mac.files.map((set) => set.to));
-  for (const name of ['react', 'mermaid', 'echarts', '@tabler/icons-react', 'lucide-react', 'pdfjs-dist', 'typescript', 'sharp', '@napi-rs/canvas']) {
+  for (const name of ['react', 'mermaid', 'echarts', '@tabler/icons-react', 'lucide-react', 'typescript', 'sharp']) {
     expect(manifest.dependencies[name], name).toBeUndefined();
     expect(mac.has(`node_modules/${name}`), name).toBe(false);
   }
-  for (const name of ['react', 'mermaid', 'sharp', 'pdfjs-dist']) expect(manifest.devDependencies[name], name).toBeDefined();
+  for (const name of ['react', 'mermaid', 'sharp']) expect(manifest.devDependencies[name], name).toBeDefined();
+});
+
+it('ships the PDF.js entry imported by the Host PDF adapter on all desktop targets', () => {
+  const manifest = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as {
+    dependencies: Record<string, string>;
+  };
+  expect(manifest.dependencies['pdfjs-dist']).toBeDefined();
+  const entry = 'legacy/build/pdf.mjs';
+  for (const platform of ['mac', 'win', 'linux'] as const) {
+    const pdfjs = config[platform].files.find((set) => set.to === 'node_modules/pdfjs-dist');
+    expect(pdfjs, platform).toBeDefined();
+    expect(existsSync(join(pdfjs!.from, entry)), platform).toBe(true);
+    expect(builderFilter(pdfjs!.filter)(entry), platform).toBe(true);
+  }
 });
 
 it('the files patterns keep every asset the Host reads at runtime and drop tests, fixtures and work-package evidence', () => {

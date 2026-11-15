@@ -1,7 +1,6 @@
 /**
- * 平台通用工具中依赖 Node 的导出（仅桌面）：返回 `Buffer` 的 `decodeBase64Standard`、ZIP（`node:zlib`）、
- * QR PNG（`node:zlib`），以及 win32 退避的 rename 与目录 fsync（`node:fs`）。其余工具从 `portable.ts`
- * （或与它相同的 `index.ts` / `api.ts`）导入。
+ * 桌面工具：返回 `Buffer` 的 `decodeBase64Standard`、同步 ZIP（`node:zlib`）、win32 退避的
+ * rename 与目录 fsync（`node:fs`）。QR PNG 为兼容旧调用方也从这里导出，移动端可直接使用 `qr.ts`。
  */
 export { decodeBase64Standard, type Base64DecodeResult } from './base64.ts';
 export {

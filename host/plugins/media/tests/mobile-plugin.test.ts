@@ -15,21 +15,13 @@ import { createTestHost, type TestHost } from '../../../kernel/testing.ts';
 import { UNSUPPORTED_ON_PLATFORM_PREFIX } from '../../../platform/errors/unsupported-on-platform.ts';
 import type { VfsDatabase } from '../../vfs/api.ts';
 import type { VfsReposService } from '../../vfs-repos/api.ts';
-// boundary-allow cross-plugin-impl: 测试用 L11 真实仓储构造依赖；被测对象是本 lane 的命令
-import { FileRepo } from '../../vfs-repos/repository/files.ts';
-// boundary-allow cross-plugin-impl: 测试用 L11 真实仓储构造依赖；被测对象是本 lane 的命令
-import { MediaTranscriptRepo } from '../../vfs-repos/repository/media-transcripts.ts';
-import { BlobRepo } from '../../vfs-repos/repository/blobs.ts';
-import { TextbookRepo } from '../../vfs-repos/repository/textbooks.ts';
-import { AttachmentRepo } from '../../vfs-repos/repository/attachments.ts';
-import { FolderRepo } from '../../vfs-repos/repository/folders.ts';
-import { setVfsReposLocalRuntime } from '../../vfs-repos/src/local-runtime.ts';
+// boundary-allow cross-plugin-impl: install the VFS repository plugin from the real mobile profile in this integration test.
+import mobileVfsRepos from '../../vfs-repos/mobile.ts';
 import mobileCrypto from '../../../platform/crypto/mobile.ts';
 import { createNodeFiles } from '../../../platform/files/index.ts';
-import { appendMobileStagedUpload, beginMobileStagedUpload, mobileLocalRuntime, resetMobileLocalRuntime } from '../../../platform/files/mobile-local-runtime.ts';
+import { appendMobileStagedUpload, beginMobileStagedUpload, resetMobileLocalRuntime } from '../../../platform/files/mobile-local-runtime.ts';
 import type { Textbook } from '../../../../contracts/ipc/generated/L18-media-docs.ts';
 import mobileMedia from '../mobile.ts';
-import { unusedStorage } from './helpers/storage-double.ts';
 
 let template: string;
 let root: string;
@@ -64,33 +56,25 @@ beforeEach(async () => {
     getConnSafe: () => conn,
     blobsDir: () => path.join(root, 'vfs_blobs'),
   } as unknown as VfsDatabase;
-  repos = {
-    files: new FileRepo(),
-    mediaTranscripts: new MediaTranscriptRepo(),
-    blobs: new BlobRepo(),
-    textbooks: new TextbookRepo(),
-    folders: new FolderRepo(),
-  } as unknown as VfsReposService;
   host = await createTestHost({
-    plugins: [mobileCrypto, mobileMedia],
+    plugins: [mobileCrypto, mobileVfsRepos, mobileMedia],
     // 与发布版移动端一致（握手 `debug: false`）：占位命令抛的是字符串，各命令契约的 error schema
     // 既有 `string` 也有 `AppError`，debug 模式的结果校验会把它们改写成 contract violation。
     app: { debug: false, dataDir: root },
     provide: {
-      storage: unusedStorage(),
+      storage,
       settings: settings(),
       vfsDatabase: database,
-      vfsRepo: repos,
       secrets: { openStore: () => ({ getSecret: async () => null }) },
-      paths: { appDataDir: root },
+      paths: { appDataDir: root, dataSpaceDeviceId: async () => 'media-mobile-test' },
       files: createNodeFiles({ roots: [{ name: 'appData', path: root }] }),
       notes: { repository: { getNoteContent: () => null } },
     },
   });
+  repos = host.ctx.vfsRepo;
 }, 60_000);
 afterEach(async () => {
   await host?.dispose();
-  setVfsReposLocalRuntime(null);
   resetMobileLocalRuntime();
   storage?.dispose();
   fs.rmSync(root, { recursive: true, force: true });
@@ -157,7 +141,6 @@ it('has no disk blob paths on mobile', async () => {
 });
 
 it('imports actual DOCX bytes, preserves its identity and refuses unrelated bytes during relink', async () => {
-  setVfsReposLocalRuntime(mobileLocalRuntime(host.ctx).vfsRepos);
   const name = 'Android acceptance 文档.docx';
   const bytes = new Uint8Array(fs.readFileSync(new URL('../equivalence/fixtures/tiny.docx', import.meta.url)));
   const stage = (content = bytes, fileName = name) => {
@@ -173,11 +156,10 @@ it('imports actual DOCX bytes, preserves its identity and refuses unrelated byte
   const stored = repos.blobs.getBlobPath(conn, database.blobsDir(), textbook.sha256);
   expect(stored).not.toBeNull();
   expect(new Uint8Array(fs.readFileSync(stored!))).toEqual(bytes);
-  const attachments = new AttachmentRepo();
   // Include a document whose extracted text happens to be a valid base64 string.
   conn.run("UPDATE files SET extracted_text = 'QUJD' WHERE id = ?1", [textbook.id]);
   conn.run("UPDATE resources SET data = 'QUJD' WHERE source_id = ?1", [textbook.id]);
-  expect(attachments.getContent(conn, database.blobsDir(), textbook.id))
+  expect(repos.attachments.getContent(conn, database.blobsDir(), textbook.id))
     .toBe(Buffer.from(bytes).toString('base64'));
 
   await host.invoke('textbooks_update_bookmarks', { id: textbook.id, bookmarks: [{ page: 1 }] });

@@ -17,13 +17,16 @@ import { applyCountBaseline, countBaselineEntries } from './baseline.mjs';
 export const BASELINE_FILE = 'scripts/electron-migration/gate-checks/frontend-invoke-baseline.json';
 const SCRIPT = /\.(?:[cm]?[jt]sx?)$/;
 
-/** contracts/ipc/*.json 按命令名索引（含 F1 `hostNative` 段的内核自有命令）。 */
+/** 前端可调用的命令还包括 F1 内核自有命令和 F2 在 Host 之前由外壳处理的命令。 */
 export function loadCommandContracts(root = ROOT) {
   const dir = path.join(root, 'contracts/ipc');
   const commands = new Map();
   for (const f of fs.readdirSync(dir).filter((x) => x.endsWith('.json') && !x.startsWith('_')).sort()) {
     const doc = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
-    for (const c of [...(doc.commands ?? []), ...(doc.hostNative?.commands ?? [])]) commands.set(c.name, c);
+    const variants = [doc.commands, doc.hostNative?.commands, doc.shellNative?.commands];
+    for (const group of variants) {
+      for (const c of group ?? []) commands.set(c.name, c);
+    }
   }
   return commands;
 }
