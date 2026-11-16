@@ -15,8 +15,9 @@ import { ReviewPlanService } from '../src/review-plan.ts';
 import { createReviewPlanStore } from './vfs-repo-double.ts';
 import { getRecordData } from '../../sync/repository/record-data.ts'; // boundary-allow cross-plugin-impl: FSRS sync integration test
 import { ensureV5TargetDatabaseTables } from '../../sync/repository/v5-runtime-bridge.ts'; // boundary-allow cross-plugin-impl: FSRS sync integration test
-import { applyIncomingRowV5, mergeKnownRowWithUnknownVault } from '../../sync/src/v5-runtime-bridge.ts'; // boundary-allow cross-plugin-impl: FSRS sync integration test
+import { applyIncomingRowV5, mergeKnownRowWithUnknownVault, SyncV5RuntimeCoordinator } from '../../sync/src/v5-runtime-bridge.ts'; // boundary-allow cross-plugin-impl: FSRS sync integration test
 import { Hlc } from '../../sync/src/hlc.ts'; // boundary-allow cross-plugin-impl: FSRS sync integration test
+import { MemoryStorage } from '../../sync-providers/tests/memory_storage.ts'; // boundary-allow cross-plugin-impl: FSRS sync integration test
 
 const DAY = 86_400_000;
 // 固定在本地正午，避开 4 点日切与午夜的边界。
@@ -97,6 +98,7 @@ describe('ReviewPlanService with the real repository', () => {
   const cleanups: (() => void)[] = [];
   afterEach(() => {
     vi.useRealTimers();
+    vi.unstubAllEnvs();
     for (const cleanup of cleanups.splice(0)) cleanup();
   });
 
@@ -116,7 +118,7 @@ describe('ReviewPlanService with the real repository', () => {
       VALUES ('q1', 'e1', '2 + 2 = ?', '[]', '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00')`);
     const repo = new ReviewPlanRepo();
     const service = new ReviewPlanService(db, { questions: createReviewPlanStore().questions, reviewPlans: repo });
-    return { db, repo, service };
+    return { db, repo, service, storage };
   }
 
   it('lists a one-minute learning step only when due, including counts and explicit horizons', () => {
@@ -182,6 +184,72 @@ describe('ReviewPlanService with the real repository', () => {
     service.resumePlanIfUnchanged(created.id, suspended.updated_at);
     expect(repo.getFsrsStates(db, [created.id]).get(created.id)).toEqual({ ...state, due_at: null });
     expect(service.getDueReviews('e1', null).plans.map(item => item.id)).toEqual([created.id]);
+  });
+
+  it('uses the next local midnight after a spring-forward day', () => {
+    vi.stubEnv('TZ', 'America/Santiago');
+    expect(new Date('2026-09-06T00:00:00').getHours()).toBe(1);
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const { db, repo, service } = setup();
+    // First schedule a minute step just before the true end of the short day.
+    vi.setSystemTime(new Date('2026-09-06T23:58:00'));
+    const plan = service.createReviewPlan('q1', 'e1');
+    service.processReview(plan.id, 0, null, null);
+    vi.setSystemTime(new Date('2026-09-07T00:28:00'));
+    expect(service.getDueReviews('e1', '2026-09-06').total).toBe(1);
+
+    // A learning step at 00:29 on the next day must not leak into 09-06.
+    service.processReview(plan.id, 0, null, null);
+    expect(repo.getFsrsStates(db, [plan.id]).get(plan.id)?.due_at).toBe(new Date('2026-09-07T00:29:00').getTime());
+    expect(service.getDueReviews('e1', '2026-09-06').total).toBe(0);
+    vi.setSystemTime(new Date('2026-09-07T00:29:00'));
+    expect(service.getDueReviews('e1', null).total).toBe(1);
+  });
+
+  it('converges on one complete schedule after two devices rate offline', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+    const remote = new MemoryStorage();
+    const secrets = { kCid: new Uint8Array(32).fill(1), masterKeys: new Map([[0, new Uint8Array(32).fill(2)]]) };
+    function device(deviceId: string) {
+      const client = setup();
+      const sync = new SyncV5RuntimeCoordinator({ deviceId, repoId: 'review-plans', stateDb: client.storage.database('sync_state'),
+        databases: new Map([['vfs', client.db]]), storage: remote, secrets });
+      const publish = (id: string, operation: 'Insert' | 'Update') => sync.publishChangesToV5Cloud([{
+        table_name: 'review_plans', database_name: 'vfs', record_id: id, operation,
+        data: getRecordData(client.db, 'review_plans', id, 'id'), changed_at: new Date().toISOString(),
+      }]);
+      return { ...client, sync, publish };
+    }
+    const a = device('a');
+    const b = device('b');
+    const plan = a.service.createReviewPlan('q1', 'e1');
+    a.service.processReview(plan.id, 0, null, null);
+    await a.publish(plan.id, 'Insert');
+    await b.sync.pullAndApplyFromV5Cloud();
+    expect(b.repo.getFsrsStates(b.db, [plan.id]).get(plan.id)?.phase).toBe('learning');
+
+    // Neither device downloads the other's rating before publishing its own.
+    vi.setSystemTime(NOW + 1_000);
+    const earlier = a.service.processReview(plan.id, 5, null, null).plan;
+    expect(earlier.interval_days).toBeGreaterThan(0);
+    vi.setSystemTime(NOW + 2_000);
+    const later = b.service.processReview(plan.id, 0, null, null).plan;
+    const winner = b.repo.getFsrsStates(b.db, [plan.id]).get(plan.id)!;
+    expect(later.interval_days).toBe(0);
+    expect(winner.phase).toBe('learning');
+    await a.publish(plan.id, 'Update');
+    await b.publish(plan.id, 'Update');
+    await Promise.all([a.sync.pullAndApplyFromV5Cloud(), b.sync.pullAndApplyFromV5Cloud()]);
+
+    for (const device of [a, b]) {
+      expect(device.service.getPlan(plan.id)).toEqual(later);
+      expect(device.repo.getFsrsStates(device.db, [plan.id]).get(plan.id)).toEqual(winner);
+      vi.setSystemTime(winner.due_at! - 1);
+      expect(device.service.getDueReviews('e1', null).total).toBe(0);
+      vi.setSystemTime(winner.due_at!);
+      expect(device.service.getDueReviews('e1', null).plans.map(p => p.id)).toEqual([plan.id]);
+    }
   });
 
   it('uses the newer legacy review when an older V5 client relays opaque FSRS fields', () => {
