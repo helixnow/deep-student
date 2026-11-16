@@ -369,6 +369,31 @@ describe('ftp.rs', () => {
     expect(await fakeStorage(missing).get('missing.txt')).toBeNull();
   });
 
+  it.each([
+    { reply: 'No such file or directory.', errorType: 'NotFound' },
+    { reply: 'Permission denied.', errorType: 'FileSystem' },
+    { reply: 'File is not retrievable: access denied.', errorType: 'FileSystem' },
+    { reply: 'File not found or access denied.', errorType: 'FileSystem' },
+    { reply: 'File is not retrievable.', errorType: 'FileSystem' },
+  ])('classifies RETR 550 "$reply" after a successful SIZE', async ({ reply, errorType }) => {
+    let blockDownload = true;
+    const { server, host, port } = await spawnFakeFtp({
+      files: { '/deep-student-sync/pack.bin': 'abcd' },
+      intercept: command => blockDownload && command === 'RETR pack.bin' ? { code: 550, text: reply } : null,
+    });
+    ftpServers.push(server);
+    const storage = fakeStorage({ host, port });
+    const error = await failure(storage.getRange('pack.bin', 1, 2));
+    expect(error).toMatchObject({ value: { error_type: errorType } });
+    if (errorType === 'FileSystem') expect(error.message).toContain(reply);
+    const size = server.commands.indexOf('SIZE pack.bin');
+    expect(size).toBeGreaterThanOrEqual(0);
+    expect(server.commands.indexOf('RETR pack.bin')).toBeGreaterThan(size);
+
+    blockDownload = false;
+    expect(await storage.getRange('pack.bin', 1, 2)).toEqual(new Uint8Array([98, 99]));
+  });
+
   it('budget_is_rejected_before_the_data_channel_is_opened', async () => {
     const { server, host, port } = await spawnFakeFtp({
       files: { '/deep-student-sync/a.bin': '0123456789' },
