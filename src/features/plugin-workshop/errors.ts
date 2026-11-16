@@ -42,6 +42,9 @@ const rules: readonly (readonly [RegExp, string, WorkshopNextStep])[] = [
   [/^WORKSHOP_ONLY_MANAGED\b/m, 'onlyManaged', 'none'],
   // Module-level degraded reasons the kernel reports for an installed work that could not start.
   [/^(?:IMPORT_FAILED|APPLY_FAILED|SERVICE_MISSING|PERMISSION_UNDECLARED|KERNEL_API_FORBIDDEN|SERVICE_CONFLICT)\b|activation failed/im, 'activationFailed', 'repair'],
+  // The model's answer was cut off (too much at once) / a key ended up in the plan or the source.
+  [/WORKSHOP_TRUNCATED|Unexpected end of JSON|Unterminated string in JSON/i, 'truncated', 'repair'],
+  [/WORKSHOP_SECRET\b/, 'secret', 'repair'],
   [/^WORKSHOP_INVALID\b|Unsupported shared UI module|Transform failed|Build failed|ERROR:/m, 'invalid', 'repair'],
 ];
 
@@ -63,4 +66,9 @@ export function describeWorkshopError(raw: string, name = ''): WorkshopErrorDesc
     return { key, next, raw: text, ...(key === 'crashed' || key === 'activationFailed' || key === 'incompatible' ? { values: { name } } : {}) };
   }
   return { key: 'unknown', next: 'repair', raw: text };
+}
+
+/** Error keys about the environment (safe mode, a feature turned off, read-only profile): a smaller request will not help. */
+export function isEnvironmentErrorKey(key: string): boolean {
+  return ['safeMode', 'readOnly', 'servicesUnavailable', 'servicesDisabled', 'generationUnavailable', 'skillMissing'].includes(key);
 }

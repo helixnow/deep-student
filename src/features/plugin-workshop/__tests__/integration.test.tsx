@@ -22,18 +22,28 @@ function fixture(items: WorkshopItem[] = [item]) {
   return { adapter, sessions, reportError, unsubscribe, integration: createWorkshopIntegration({ adapter, sessions, reportError }) };
 }
 
-async function mountCard(f: ReturnType<typeof fixture>, sessionId = 'chat-a') {
+async function mountCard(f: ReturnType<typeof fixture>, sessionId = 'chat-a', extra: Record<string, unknown> = {}) {
   const kernel = new UiKernel();
   await kernel.install(defineUiPlugin({ meta: { id: 'example.workshop-ui' }, apply(ctx) {
     ctx.ui.contribute('chat.toolResults', { id: 'confirmation', key: 'dstu_plugin_propose_install', value: f.integration.toolResult });
   } }));
-  const block = { id: 'b1', type: 'mcp_tool', status: 'success', messageId: 'm1', toolName: 'builtin-dstu_plugin_propose_install', toolInput: {}, toolOutput: { result: { kind: 'dstu-plugin-workshop', id: 'work-1', title: '过期工具输出', state: 'pending-confirmation' } }, startedAt: 1, endedAt: 701 } as Block;
+  const block = { id: 'b1', type: 'mcp_tool', status: 'success', messageId: 'm1', toolName: 'builtin-dstu_plugin_propose_install', toolInput: {}, toolOutput: { result: { kind: 'dstu-plugin-workshop', id: 'work-1', title: '过期工具输出', state: 'pending-confirmation', ...extra } }, startedAt: 1, endedAt: 701 } as Block;
   const store = { getState: () => ({ sessionId }) } as never;
   const view = render(<UiKernelProvider kernel={kernel}><McpToolBlockComponent block={block} store={store} /></UiKernelProvider>);
   return { kernel, view };
 }
 
 describe('workshop composition (real UI slot, adapter doubles)', () => {
+  it('F19: a work of another conversation shows 「在这个对话里修改『X』」; the click binds it here and prefills the composer', async () => {
+    const f = fixture([{ ...item, phase: 'installed', sessionId: 'chat-a' }]);
+    const { kernel } = await mountCard(f, 'chat-b', { bindRequired: { sessionId: 'chat-b' } });
+    fireEvent.click(await screen.findByRole('button', { name: '在这个对话里修改『真实状态标题』' }));
+    await waitFor(() => expect(f.adapter.act).toHaveBeenCalledWith('bind', expect.objectContaining({ proposalId: 'work-1' }), { sessionId: 'chat-b' }));
+    await waitFor(() => expect(f.sessions.prefill).toHaveBeenCalledWith('chat-b', '把『真实状态标题』改成：'));
+    expect(screen.queryByRole('button', { name: '安装' })).toBeNull();
+    await act(async () => { await kernel.dispose(); });
+  });
+
   it('renders through the tool result slot, shows the workshop stage in the header, reconciles persisted output', async () => {
     const f = fixture();
     const { kernel, view } = await mountCard(f);

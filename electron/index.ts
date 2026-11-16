@@ -2,7 +2,7 @@ import { CommandError, definePlugin } from '../host/kernel/api.ts';
 import { toRfc3339 } from '../host/platform/time/index.ts';
 import { exportUnifiedBackupData, type BackupLlmManager, type BackupSettingsStore } from './backup-export.ts';
 import { BACKEND_SENTRY_SETTING, createBackendSentry, defaultSentryInit, installCrashCapture, type SentryLog } from './backend-sentry.ts';
-import { APP_ROOT, appBuildInfo, bundledSentryDsn, getAppVersion, sentryRelease } from './build-info.ts';
+import { APP_ROOT, bundledSentryDsn, getAppVersion, runtimeBuildInfo, sentryRelease } from './build-info.ts';
 import {
   copyFile,
   getFileSize,
@@ -35,7 +35,9 @@ export default definePlugin({
     commands: ['get_app_version', 'get_app_data_dir', 'install_apk', 'open_file_externally', 'set_android_immersive_mode', 'updater_install_supported', 'open_system_permission_settings', 'get_prevent_sleep', 'set_prevent_sleep', 'set_sidebar_vibrancy', 'copy_file', 'get_file_size', 'hash_file', 'read_file_bytes', 'read_file_text', 'save_text_to_file', 'set_window_appearance', 'sync_titlebar_sidebar_material', 'save_webview_settings', 'load_webview_settings', 'pdfstream_check_access', 'export_unified_backup_data', 'set_backend_sentry_enabled'],
   },
   apply(ctx) {
-    const build = appBuildInfo();
+    const build = runtimeBuildInfo((error) => {
+      ctx.logger('dstu.shell').warn(`Build number unavailable in this source checkout, reporting a development build: ${errorMessage(error)}`);
+    });
     const fullVersion = getAppVersion(build);
     // RUST-FIX(RF-W06-startup-recovery): 首次真实就绪经 Host 私有端口报告外壳。
     const gate = createStartupGate(() => {

@@ -15,6 +15,7 @@ import type { ManagedPlugin, PluginPlatform } from './types';
 import type { PluginUiStatusSnapshot } from './ui-status';
 import type { PluginManagerWork } from './workshop';
 import { permissionLines } from './permissions';
+import { PluginDataSection } from './PluginDataSection';
 import { pluginAdditions, pluginDescription, pluginName, pluginStatusKey, unsupportedPlatformKey } from './presentation';
 
 const COARSE_TOUCH = '[@media(pointer:coarse)]:!min-h-[var(--touch-target-size)]';
@@ -108,17 +109,17 @@ export function PluginDetail({
         {description ? <p className="min-w-0 text-sm leading-relaxed text-foreground/80 [overflow-wrap:anywhere]" data-testid="plugin-detail-description">{description}</p> : null}
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           {running && canOpen && onOpen ? (
-            <DsButton variant="outline" size="sm" className={cn('gap-1.5', COARSE_TOUCH)} onClick={onOpen}>
+            <DsButton variant="primary" size="sm" className={cn('gap-1.5', COARSE_TOUCH)} onClick={onOpen}>
               <ArrowSquareOut className="size-4" aria-hidden="true" />{t('card.open')}
             </DsButton>
           ) : null}
           {plugin.enabled && plugin.runtime !== 'running' && !consentRequired ? (
-            <DsButton variant="outline" size="sm" className={cn('gap-1.5', COARSE_TOUCH)} disabled={switchDisabled} onClick={() => onToggle(true)}>
+            <DsButton variant="primary" size="sm" className={cn('gap-1.5', COARSE_TOUCH)} disabled={switchDisabled} onClick={() => onToggle(true)}>
               <Play className="size-4" aria-hidden="true" />{t('manager.start')}
             </DsButton>
           ) : null}
           {consentRequired && onReviewConsent ? (
-            <DsButton variant="outline" size="sm" className={cn('gap-1.5', COARSE_TOUCH)} onClick={onReviewConsent}
+            <DsButton variant="primary" size="sm" className={cn('gap-1.5', COARSE_TOUCH)} onClick={onReviewConsent}
               disabled={busy || blockedBySafeMode} aria-label={t('row.reviewConsentA11y', { id: name })}>
               <ShieldCheck className="size-4" aria-hidden="true" />{t('card.allowAndEnable')}
             </DsButton>
@@ -195,6 +196,9 @@ export function PluginDetail({
       </Section>
 
       {settings ? <Section title={t('manager.settings')} testId="plugin-detail-settings">{settings}</Section> : null}
+
+      {/* A workshop plugin: what it stores and a way to clear it (its data stays when it is uninstalled or rolled back). */}
+      {work ? <Section title={t('workshop.dataLabel')} testId="plugin-detail-data-section"><PluginDataSection pluginId={plugin.id} name={name} /></Section> : null}
 
       <Section title={t('manager.version')} testId="plugin-detail-version">
         <p className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-sm">

@@ -190,23 +190,32 @@ export interface NotificationHooks {
     body: string;
     silent: boolean;
     icon?: string;
-  }): void;
+  }, onClick?: () => void): void;
 }
+
+/**
+ * Renderer event sent when the user clicks a notification that carried `extra.dsAction` (a plain JSON value, e.g. a
+ * plugin notification's `{ kind: 'plugin', pluginId, view }`): the main window is shown and focused first.
+ */
+export const NOTIFICATION_ACTION_EVENT = 'ds://notification-action';
 
 export const electronNotificationHooks: NotificationHooks = {
   isSupported: () => Notification.isSupported(),
-  show: (options) => {
-    new Notification({
+  show: (options, onClick) => {
+    const notification = new Notification({
       title: options.title,
       body: options.body,
       silent: options.silent,
       ...(options.id === undefined ? {} : { id: options.id }),
       ...(options.icon === undefined ? {} : { icon: options.icon }),
-    }).show();
+    });
+    if (onClick) notification.once('click', onClick);
+    notification.show();
   },
 };
 
-export function notificationPlugin(hooks: NotificationHooks = electronNotificationHooks): BuiltinPlugin {
+/** `onAction` receives `options.extra.dsAction` when a notification that carried one is clicked. */
+export function notificationPlugin(hooks: NotificationHooks = electronNotificationHooks, onAction?: (action: unknown) => void): BuiltinPlugin {
   return {
     // 桌面端 permission_state / request_permission 恒为 Granted（tauri-plugin-notification desktop.rs）。
     is_permission_granted: () => true,
@@ -214,7 +223,9 @@ export function notificationPlugin(hooks: NotificationHooks = electronNotificati
     notify: (input) => {
       const options = raw(input, 'options');
       if (options === undefined) throw missingKey(input.command, 'options');
-      const o = (options ?? {}) as { id?: unknown; title?: unknown; body?: unknown; silent?: unknown; icon?: unknown };
+      const o = (options ?? {}) as { id?: unknown; title?: unknown; body?: unknown; silent?: unknown; icon?: unknown; extra?: unknown };
+      const action = typeof o.extra === 'object' && o.extra !== null ? (o.extra as { dsAction?: unknown }).dsAction : undefined;
+      const onClick = action !== undefined && onAction ? () => onAction(action) : undefined;
       if (!hooks.isSupported()) throw new ShellCommandError('[electron-shell] notifications are not supported on this system');
       try {
         hooks.show({
@@ -223,7 +234,7 @@ export function notificationPlugin(hooks: NotificationHooks = electronNotificati
           body: typeof o.body === 'string' ? o.body : '',
           silent: o.silent === true,
           ...(typeof o.icon === 'string' ? { icon: o.icon } : {}),
-        });
+        }, onClick);
       } catch (error) {
         throw new ShellCommandError(
           `[electron-shell] notification failed: ${error instanceof Error ? error.message : String(error)}`,

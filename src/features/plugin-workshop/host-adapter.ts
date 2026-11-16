@@ -35,6 +35,12 @@ export interface WorkshopCard {
   usableVersion?: string | null;
   lastGoodPackageDir?: string | null;
   lastFault?: string | null;
+  boundSessions?: string[];
+  limits?: string[];
+  alternatives?: string[];
+  builtinDifference?: string;
+  estimate?: { minMinutes: number; maxMinutes: number };
+  generation?: { startedAt?: string; durationMs?: number; tokens?: number; attempts?: number } | null;
 }
 export interface WorkshopInstallation { state: 'installed' | 'failed' | 'revoked'; version: string; previousVersion?: string | null }
 
@@ -54,6 +60,8 @@ export interface WorkshopRemote {
   discard?(id: string, revision: number): Promise<unknown>;
   /** 「按新版重做」: a modification proposal with the original description. */
   redo?(id: string, revision: number): Promise<WorkshopCard>;
+  /** 「把需求砍成最小版再试」: a new proposal keeping only the core of the request. */
+  reduce?(id: string, revision: number): Promise<WorkshopCard>;
 }
 
 export interface WorkshopManagerPort {
@@ -164,6 +172,15 @@ export function workshopItem(card: WorkshopCard, enabled?: boolean, degradedReas
     ...(installed ? { installed } : {}),
     ...(proposalPhase ? { proposal: { phase: proposalPhase, ...(card.proposalRevision !== undefined ? { revision: card.proposalRevision } : {}) } } : {}),
     updatedAt: card.updatedAt,
+    ...(card.limits?.length ? { limits: [...card.limits] } : {}),
+    ...(card.alternatives?.length ? { alternatives: [...card.alternatives] } : {}),
+    ...(card.builtinDifference ? { builtinDifference: card.builtinDifference } : {}),
+    ...(card.estimate ? { estimate: { ...card.estimate } } : {}),
+    ...(card.generation && card.generation.durationMs !== undefined ? { generation: {
+      durationMs: card.generation.durationMs,
+      ...(card.generation.tokens !== undefined ? { tokens: card.generation.tokens } : {}),
+      ...(card.generation.attempts !== undefined ? { attempts: card.generation.attempts } : {}) } } : {}),
+    ...(card.boundSessions?.length ? { boundSessions: [...card.boundSessions] } : {}),
   };
 }
 
@@ -331,6 +348,14 @@ export class HostWorkshopAdapter implements WorkshopAdapter {
       case 'redo':
         if (!this.remote.redo) throw new Error('WORKSHOP_UNAVAILABLE: this Host cannot redo works');
         await this.remote.redo(id, item.revision);
+        break;
+      case 'reduce':
+        if (!this.remote.reduce) throw new Error('WORKSHOP_UNAVAILABLE: this Host cannot reduce works');
+        await this.remote.reduce(id, item.revision);
+        break;
+      case 'bind':
+        if (!input?.sessionId) throw new Error('WORKSHOP_INVALID: editing session is required');
+        await this.remote.bindSession(id, item.revision, input.sessionId);
         break;
       case 'undo': await this.remote.revoke(id, item.revision); break;
       case 'restore': await this.remote.restore(id, item.revision); break;

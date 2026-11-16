@@ -2,7 +2,7 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, readdir, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { WorkshopBrief, WorkshopCard, WorkshopInstallation, WorkshopPlace, WorkshopSetting } from '../api.ts';
+import type { WorkshopBrief, WorkshopCard, WorkshopEstimate, WorkshopFeasibility, WorkshopInstallation, WorkshopPlace, WorkshopSetting } from '../api.ts';
 import { recipeFor } from './resources.ts';
 
 const ID = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
@@ -38,6 +38,33 @@ export function proposalSettings(raw: unknown, previous: readonly WorkshopSettin
     const value = item.value?.trim() || previous.find(old => old.key === key && old.kind === item.kind)?.value;
     return { key, title, kind: item.kind, ...(value ? { value } : {}) };
   });
+}
+
+/** Short plain lines (「做不到的部分」 / 「改成这样」); anything else the Agent passed is dropped, not an error. */
+function lines(raw: unknown): string[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const items = raw.filter((item): item is string => typeof item === 'string').map(item => item.trim()).filter(Boolean)
+    .slice(0, 6).map(item => item.slice(0, 200));
+  return items.length ? items : undefined;
+}
+/** What the Agent found out before proposing (WorkshopFeasibility), cleaned up for the card. */
+export function proposalFeasibility(brief: Partial<WorkshopFeasibility>): WorkshopFeasibility {
+  const limits = lines(brief.limits), alternatives = lines(brief.alternatives);
+  const difference = typeof brief.builtinDifference === 'string' ? brief.builtinDifference.trim().slice(0, 240) : '';
+  return { ...(limits ? { limits } : {}), ...(alternatives ? { alternatives } : {}), ...(difference ? { builtinDifference: difference } : {}) };
+}
+/**
+ * A rough generation time for the card (「预计 1–3 分钟」): one model answer plus checks for a small recipe; more for an
+ * app view, a request with many acceptance items or settings to read, and a Host-only tool is the quickest.
+ */
+export function proposalEstimate(brief: Pick<WorkshopCard, 'template' | 'title' | 'description' | 'changes' | 'settings'>): WorkshopEstimate {
+  const recipe = recipeFor(brief);
+  const size = brief.description.length + brief.changes.join('').length;
+  let min = recipe === 'agent-tool' ? 1 : recipe === 'reference-app' || recipe === 'nightly-summary' ? 2 : 1;
+  let max = recipe === 'agent-tool' ? 2 : recipe === 'reference-app' || recipe === 'nightly-summary' ? 4 : 3;
+  if (size > 400 || brief.changes.length > 5) { min += 1; max += 2; }
+  if (brief.settings?.some(setting => setting.kind === 'ics-url')) max += 1;
+  return { minMinutes: min, maxMinutes: max };
 }
 
 /**
@@ -159,6 +186,7 @@ export class WorkshopStore {
     // Editing binds to the existing managed identity; never overwrite another package.
     const existing = brief.pluginId === undefined ? undefined : (await this.list()).find(card => card.pluginId === brief.pluginId);
     const settings = proposalSettings(brief.settings, existing?.settings);
+    const feasibility = proposalFeasibility(brief);
     if (brief.pluginId !== undefined && !existing) throw new Error('WORKSHOP_INVALID: only managed works can be edited (omit pluginId when creating a new plugin, or pass an existing workshop.plugin-... pluginId)');
     if (existing && !ownsSession(existing, brief.sessionId)) throw new Error('WORKSHOP_INVALID: work belongs to another conversation; user must bind the editing session first');
     if (existing && ['generating', 'pending-confirmation'].includes(existing.state)) throw new Error('WORKSHOP_STATE: existing work is busy');
@@ -169,7 +197,8 @@ export class WorkshopStore {
     return this.write({ kind: 'dstu-plugin-workshop', id, pluginId: existing?.pluginId ?? `workshop.plugin-${id}`,
       sessionId: brief.sessionId, ...(existing ? { boundSessions: withBoundSession(existing, brief.sessionId) } : {}),
       ...(existing?.places ? { places: existing.places } : {}), expectedPlaces: expectedPlaces(brief), title: brief.title, description: brief.description, template: brief.template,
-      changes: [...brief.changes], capabilities: [...brief.capabilities], ...(settings.length ? { settings } : {}),
+      changes: [...brief.changes], capabilities: [...brief.capabilities], ...(settings.length ? { settings } : {}), ...feasibility,
+      estimate: proposalEstimate({ ...brief, settings }), generation: null,
       generationApproved: false, agentEditing: null, state: 'draft', revision, proposalRevision: revision,
       installation: existing?.installation ?? null,
       version: null, usableVersion: existing?.usableVersion ?? null,
@@ -182,7 +211,7 @@ export class WorkshopStore {
   async update(id: string, revision: number, patch: Partial<Pick<WorkshopCard,
     'state' | 'version' | 'previousVersion' | 'usableVersion' | 'lastGoodPackageDir' | 'buildAttempt' | 'buildStage' | 'buildFiles' | 'buildStep'
     | 'settings' | 'generationApproved' | 'agentEditing' | 'lastFault' | 'sessionId' | 'boundSessions' | 'check' | 'error' | 'rollback' | 'declared' | 'places'
-    | 'installation'>>): Promise<WorkshopCard> {
+    | 'installation' | 'generation'>>): Promise<WorkshopCard> {
     const card = await this.read(id);
     if (revision !== card.revision) throw new Error('WORKSHOP_CONFLICT: confirmation is stale; refresh status');
     return this.write({ ...card, ...patch, revision: card.revision + 1, updatedAt: new Date().toISOString() });

@@ -76,6 +76,8 @@ interface ToolHeaderProps {
   duration?: number;
   isStreaming?: boolean;
   isStarted?: boolean;
+  /** A dedicated result view's own stage (`chat.toolResults` `status`); replaces the generic done text and duration. */
+  stage?: React.ReactNode;
 }
 
 const ToolHeader: React.FC<ToolHeaderProps> = ({
@@ -85,6 +87,7 @@ const ToolHeader: React.FC<ToolHeaderProps> = ({
   duration,
   isStreaming,
   isStarted,
+  stage,
 }) => {
   const { t } = useTranslation(['chatV2', 'common']);
 
@@ -132,7 +135,9 @@ const ToolHeader: React.FC<ToolHeaderProps> = ({
           <ToolActivitySweep active={isActive} className="max-w-full leading-4">
             <span className="block truncate text-xs font-medium leading-4 text-muted-foreground">{displayName}</span>
           </ToolActivitySweep>
-          {status === 'running' ? (
+          {stage ? (
+            <span className="text-xs leading-4 text-muted-foreground">{stage}</span>
+          ) : status === 'running' ? (
             <TextShimmer
               className="text-xs leading-4 text-muted-foreground"
               duration={1.5}
@@ -151,14 +156,14 @@ const ToolHeader: React.FC<ToolHeaderProps> = ({
       {/* 状态指示 */}
       <div className="flex shrink-0 items-center gap-2">
         {/* 耗时：成功/失败终态均展示，便于定位慢工具 */}
-        {duration !== undefined && (status === 'success' || status === 'error') && (
+        {!stage && duration !== undefined && (status === 'success' || status === 'error') && (
           <span className="text-xs text-muted-foreground tabular-nums">
             {formatToolDurationShort(duration)}
           </span>
         )}
 
         {/* 终态图标（成功/失败），不做旋转动画 */}
-        {StatusIcon && (
+        {!stage && StatusIcon && (
           <StatusIcon
             weight={status === 'success' ? 'fill' : 'regular'}
             className={cn('w-4 h-4', statusColor)}
@@ -488,6 +493,7 @@ const McpToolBlockComponent: React.FC<BlockComponentProps> = React.memo(({
   const toolResultProps: ChatToolResultProps = { block, isStreaming, store, toolName, toolInput, toolOutput };
   const toolResult = resolveToolResult([toolResultEntries, officialToolResultEntries], toolResultProps);
   const ToolResultView = toolResult?.component;
+  const StageView = toolResult?.status;
 
   if (ToolResultView && toolResult.placement === 'block') {
     return <ToolResultView {...toolResultProps} />;
@@ -525,6 +531,7 @@ const McpToolBlockComponent: React.FC<BlockComponentProps> = React.memo(({
         duration={duration}
         isStreaming={isStreaming}
         isStarted={isStarted}
+        stage={StageView && block.status === 'success' ? <StageView {...toolResultProps} /> : undefined}
       />
 
       {/* 输入参数 */}

@@ -74,6 +74,7 @@ export {
 } from './src/tools/injector.ts';
 export type { ToolSchemaRegistry } from './src/tools/injector.ts';
 export { AgentToolExecutorRegistry } from './src/tools/executor-registry.ts';
+export { externalPluginDataSource, markExternalPluginData } from './src/tools/external-data-taint.ts';
 export type {
   AgentSchemaTool, AgentToolConcurrency, AgentToolExecutor, AgentToolSensitivity,
 } from './src/tools/executor-registry.ts';

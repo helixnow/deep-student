@@ -16,6 +16,8 @@
  * - navigateToNote / navigateToTranslation / navigateToEssay → launch 内容窗
  * - navigateToExamSheet      → launch 题目集窗
  * - NAVIGATE_TO_VIEW{openResource} → launch 对应资源窗（聊天「在学习中心打开」、导图嵌入、快捷助手资源）
+ * - NAVIGATE_TO_VIEW{view=社区插件视图 key} → launch plugin-view.<key> 应用（插件管理 / 工坊卡片「打开」）
+ * - OPEN_NOTES               → launch/聚焦笔记工作区
  * - DSTU_NAVIGATE_TO_KNOWLEDGE_BASE → 知识库来源：打开该文档；记忆来源：文件应用 › 记忆视图
  *   （这三类在经典壳由 App 视图切换消费；工作台下无人处理，点击毫无反应）
  *
@@ -24,7 +26,9 @@
 import React, { useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import i18n from 'i18next';
+import { APP_EVENTS, addAppEventListener } from '@/events/app';
 import { workbenchBus } from '../core/workbenchBus';
+import type { LaunchPlacement } from '../core/types';
 import { useWindowStore } from '../core/windowStore';
 import {
   isNotesWorkspaceResourceType,
@@ -33,6 +37,7 @@ import {
 import { requestWorkspaceResource } from '../apps/notes/workspaceRegistry';
 import { launchNewChatSession } from '../apps/chat/newSession';
 import { CHAT_APP_TYPE_ID } from '../apps/chat/register';
+import { resolvePluginViewAppTypeId } from '../apps/plugin-views/register';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { sessionManager } from '@/features/chat/core/session/sessionManager';
 import { announceWorkbench } from '../hooks/useWorkbenchA11y';
@@ -47,6 +52,9 @@ import {
   requestMediaFocusUntilHandled,
   type MediaRefOpenDetail,
 } from '@/features/learning-hub/apps/views/media/mediaRefEvents';
+
+/** 笔记工作区应用 typeId（同 apps/notes/register 的 NOTES_APP_TYPE_ID；不引入该注册模块以免拉起整个工作区依赖）。 */
+const NOTES_WORKSPACE_APP_TYPE_ID = 'notes';
 
 /** 失败路径：可见 toast + assertive 公告（勿仅 console.warn） */
 function announceBridgeFailure(message: string): void {
@@ -83,7 +91,17 @@ function resourceIdToResourceType(resourceId: string): string {
   return 'file';
 }
 
-function launchResourceWindow(resourceId: string, preferredType?: string, title?: string): void {
+/** 带已知资源前缀（tb_ / file_ / note_ …）的 id；附件 hash 等旧引用不算 */
+function isKnownResourceId(id: string): boolean {
+  return Object.keys(RESOURCE_ID_PREFIX_MAP).some((prefix) => id.startsWith(prefix));
+}
+
+function launchResourceWindow(
+  resourceId: string,
+  preferredType?: string,
+  title?: string,
+  placement?: LaunchPlacement,
+): void {
   const resourceType = preferredType || resourceIdToResourceType(resourceId);
   const typeId = resourceTypeToAppTypeId(resourceType) ?? 'file';
   const opensInWorkspace = isNotesWorkspaceResourceType(resourceType);
@@ -98,8 +116,17 @@ function launchResourceWindow(resourceId: string, preferredType?: string, title?
       : title
         ? { title }
         : undefined,
+    ...(placement ? { placement } : {}),
     reason: 'api',
   });
+}
+
+/** 引用跳转（L1）：阅读器开在来源窗（点击所在窗口）旁边，不盖住刚点的回答 */
+function besidePlacement(sourceWindowId: unknown): LaunchPlacement {
+  return {
+    mode: 'beside',
+    anchorWindowId: typeof sourceWindowId === 'string' && sourceWindowId ? sourceWindowId : null,
+  };
 }
 
 function dispatchPdfFocus(sourceId: string, pageNumber: number, quote?: string): void {
@@ -113,6 +140,36 @@ function dispatchPdfFocus(sourceId: string, pageNumber: number, quote?: string):
   fire();
   window.setTimeout(fire, 250);
   window.setTimeout(fire, 800);
+}
+
+/** 与对话页右侧面板同一套重发节奏（features/chat/pages/chatPdfFocus.ts） */
+const PDF_FOCUS_RETRY_DELAYS_MS = [0, 250, 800, 1600, 3000, 5000];
+
+/**
+ * 带回执重发 pdf-ref:focus，直到有阅读器确认已跳页。
+ * 资源窗冷开时监听还没挂上，固定三连发（dispatchPdfFocus）会全部落空、停在第 1 页。
+ */
+function dispatchPdfFocusUntilHandled(sourceId: string, pageNumber: number, quote?: string): void {
+  const path = sourceId.startsWith('/') ? sourceId : `/${sourceId}`;
+  let handled = false;
+  for (const delay of PDF_FOCUS_RETRY_DELAYS_MS) {
+    window.setTimeout(() => {
+      if (handled) return;
+      document.dispatchEvent(
+        new CustomEvent('pdf-ref:focus', {
+          detail: {
+            sourceId,
+            pageNumber,
+            quote,
+            path,
+            acknowledge: (ok: boolean) => {
+              if (ok) handled = true;
+            },
+          },
+        }),
+      );
+    }, delay);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -234,28 +291,30 @@ export const WorkbenchEventBridge: React.FC = () => {
     };
 
     const onPdfRefOpen = (e: Event) => {
-      const { sourceId, pageNumber, quote } = (e as CustomEvent<{ sourceId?: string; pageNumber?: number; quote?: string }>)
-        .detail ?? {};
-      if (!sourceId || !Number.isFinite(pageNumber) || (pageNumber as number) <= 0) {
-        // 无显式 sourceId 的引用需要扫描会话附件（legacy 深度解析），workbench 下暂不支持
-        if (!sourceId) {
-          console.warn('[workbench] pdf-ref:open without sourceId ignored');
-          announceBridgeFailure(
-            i18n.t('workbench:a11y.pdfRefOpenFailed'),
-          );
-        }
-        return;
-      }
-      launchResourceWindow(sourceId);
-      dispatchPdfFocus(sourceId, pageNumber as number, quote);
+      const { sourceId, pageNumber, quote, sourceWindowId } = (e as CustomEvent<{
+        sourceId?: string;
+        pageNumber?: number;
+        quote?: string;
+        sourceWindowId?: string;
+      }>).detail ?? {};
+      if (!Number.isFinite(pageNumber) || (pageNumber as number) <= 0) return;
+      // 只认带资源 id 前缀的引用（与 useChatPageEvents 的分工对称）：没有 sourceId 或
+      // 不是资源 id 的旧引用要扫描会话附件解析，由对话页处理（解析失败它自己提示）。
+      // 这里再开一扇 'file' 窗会和对话页的右侧面板各开一份，或开出打不开的窗。
+      if (!sourceId || !isKnownResourceId(sourceId)) return;
+      launchResourceWindow(sourceId, undefined, undefined, besidePlacement(sourceWindowId));
+      // 带回执重发直到阅读器真的跳了页：资源窗冷开要先加载 chunk 与 PDF，常超过 800ms，
+      // 固定三连发会全部落空。学习桌面里对话页不再为这类引用另开右侧面板（见
+      // useChatPageEvents 的 pdf-ref:open），这扇窗是唯一的阅读器，不能停在第 1 页。
+      dispatchPdfFocusUntilHandled(sourceId, pageNumber as number, quote);
     };
 
     const onMediaRefOpen = (e: Event) => {
-      const { resourceId, seconds } = (e as CustomEvent<MediaRefOpenDetail>).detail ?? {};
+      const { resourceId, seconds, sourceWindowId } = (e as CustomEvent<MediaRefOpenDetail>).detail ?? {};
       if (!resourceId || typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds < 0) {
         return;
       }
-      launchResourceWindow(resourceId, 'file');
+      launchResourceWindow(resourceId, 'file', undefined, besidePlacement(sourceWindowId));
       requestMediaFocusUntilHandled({ resourceId, seconds });
     };
 
@@ -287,10 +346,21 @@ export const WorkbenchEventBridge: React.FC = () => {
     };
 
     const onNavigateToView = (e: Event) => {
-      const openResource = (e as CustomEvent<{ openResource?: string }>).detail?.openResource;
-      if (typeof openResource !== 'string' || !openResource.trim()) return;
+      const detail = (e as CustomEvent<{ view?: string; openResource?: string }>).detail;
+      const openResource = detail?.openResource;
+      if (typeof openResource !== 'string' || !openResource.trim()) {
+        // 社区插件视图（ctx.ui.navigate / kernel.navigation.navigate(viewKey)）→ 对应插件应用窗口
+        const pluginAppTypeId = resolvePluginViewAppTypeId(detail?.view);
+        if (pluginAppTypeId) workbenchBus.launch({ typeId: pluginAppTypeId, reason: 'api' });
+        return;
+      }
       const resourceId = openResource.trim().replace(/^\/+/, '');
       if (resourceId) launchResourceWindow(resourceId);
+    };
+
+    // OPEN_NOTES（如插件卡片「去笔记里试试」）：经典壳切到资源库，学习桌面打开/聚焦笔记工作区
+    const onOpenNotes = () => {
+      workbenchBus.launch({ typeId: NOTES_WORKSPACE_APP_TYPE_ID, reason: 'api' });
     };
 
     const onNavigateToKnowledgeBase = (e: Event) => {
@@ -330,6 +400,7 @@ export const WorkbenchEventBridge: React.FC = () => {
     window.addEventListener('navigateToEssay', onNavigateToEssay);
     window.addEventListener('navigateToExamSheet', onNavigateToExamSheet);
     window.addEventListener('NAVIGATE_TO_VIEW', onNavigateToView);
+    const disposeOpenNotes = addAppEventListener(APP_EVENTS.OPEN_NOTES, onOpenNotes);
     window.addEventListener('DSTU_NAVIGATE_TO_KNOWLEDGE_BASE', onNavigateToKnowledgeBase);
     return () => {
       window.removeEventListener('navigate-to-session', onNavigateToSession);
@@ -345,6 +416,7 @@ export const WorkbenchEventBridge: React.FC = () => {
       window.removeEventListener('navigateToEssay', onNavigateToEssay);
       window.removeEventListener('navigateToExamSheet', onNavigateToExamSheet);
       window.removeEventListener('NAVIGATE_TO_VIEW', onNavigateToView);
+      disposeOpenNotes();
       window.removeEventListener('DSTU_NAVIGATE_TO_KNOWLEDGE_BASE', onNavigateToKnowledgeBase);
     };
   }, []);

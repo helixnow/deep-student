@@ -20,7 +20,21 @@ describe('plugin:notification|notify', () => {
       title: '自动化完成',
       body: 'done',
       silent: true,
-    });
+    }, undefined);
+  });
+
+  it('hands extra.dsAction back on click (plugin notifications open the plugin view)', () => {
+    const show = vi.fn();
+    const onAction = vi.fn();
+    const plugin = notificationPlugin({ isSupported: () => true, show }, onAction);
+    const action = { kind: 'plugin', pluginId: 'alice.one', view: 'alice.one/today' };
+    plugin.notify!(invoke({ title: '总结', body: '好了', extra: { dsAction: action } }), ctx);
+    const onClick = show.mock.calls[0]![1] as () => void;
+    expect(onAction).not.toHaveBeenCalled();
+    onClick();
+    expect(onAction).toHaveBeenCalledWith(action);
+    plugin.notify!(invoke({ title: 'plain' }), ctx);
+    expect(show.mock.calls[1]![1]).toBeUndefined();
   });
 
   it('rejects when the platform has no notification API or show throws', () => {
