@@ -350,7 +350,7 @@ export class ReviewPlanService {
   }
 
   private processReviewImpl(
-    planId: string,
+    requestedPlanId: string,
     qualityInput: number,
     userAnswer: string | null,
     timeSpentSeconds: number | null,
@@ -360,10 +360,12 @@ export class ReviewPlanService {
   ): ProcessReviewResult {
     const quality = Math.min(5, qualityInput);
     const plan = withContext(
-      `Failed to get review plan: ${planId}`,
-      () => this.repos.reviewPlans.getPlan(this.db, planId),
+      `Failed to get review plan: ${requestedPlanId}`,
+      () => this.repos.reviewPlans.getPlan(this.db, requestedPlanId),
     );
-    if (plan === null) throw new Error(`Review plan not found: ${planId}`);
+    if (plan === null) throw new Error(`Review plan not found: ${requestedPlanId}`);
+    // Open review queues can still carry the ID that preceded a sync merge.
+    const planId = plan.id;
     if (expectedUpdatedAt !== null && plan.updated_at !== expectedUpdatedAt) {
       throw new Error(`CONFLICT(review_plan.updated_at): REVIEW_CONFLICT: review plan ${planId} changed after revision ${expectedUpdatedAt} was read`);
     }

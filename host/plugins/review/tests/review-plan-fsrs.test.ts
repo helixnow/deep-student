@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createStorageService } from '../../../platform/storage/service.ts';
-import { ReviewPlanRepo } from '../../vfs-repos/repository/review-plans.ts';
+import { ReviewPlanRepo } from '../../vfs-repos/repository/review-plans.ts'; // boundary-allow cross-plugin-impl: exercise the SQLite repository in review and sync integration
 import type { ReviewPlan } from '../../vfs-repos/api.ts';
 import { localDateKey } from '../src/local-date.ts';
 import {
@@ -119,6 +119,27 @@ describe('ReviewPlanService with the real repository', () => {
     const repo = new ReviewPlanRepo();
     const service = new ReviewPlanService(db, { questions: createReviewPlanStore().questions, reviewPlans: repo });
     return { db, repo, service, storage };
+  }
+
+  function syncFixture() {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    let time = NOW;
+    vi.setSystemTime(time);
+    const remote = new MemoryStorage();
+    const secrets = { kCid: new Uint8Array(32).fill(1), masterKeys: new Map([[0, new Uint8Array(32).fill(2)]]) };
+    const device = (deviceId: string) => {
+      const client = setup();
+      client.db.exec('PRAGMA foreign_keys = ON');
+      const sync = new SyncV5RuntimeCoordinator({ deviceId, repoId: 'review-plans', stateDb: client.storage.database('sync_state'),
+        databases: new Map([['vfs', client.db]]), storage: remote, secrets });
+      return { ...client, sync, pull: () => sync.pullAndApplyFromV5Cloud(), push() {
+        sync.captureUnboundLocalChangeLogs();
+        return sync.publishChangesToV5Cloud([]);
+      } };
+    };
+    const [a, b] = ['a', 'b'].map(device).map(client => ({ ...client, id: client.service.createReviewPlan('q1', 'e1').id }))
+      .sort((a, b) => a.id < b.id ? -1 : 1);
+    return { a: a!, b: b!, device, remote, advance: () => vi.setSystemTime(time += 1_000) };
   }
 
   it('lists a one-minute learning step only when due, including counts and explicit horizons', () => {
@@ -253,48 +274,157 @@ describe('ReviewPlanService with the real repository', () => {
   });
 
   it('merges independently created plans without losing either device’s review history', async () => {
-    vi.useFakeTimers({ toFake: ['Date'] });
-    vi.setSystemTime(NOW);
-    const remote = new MemoryStorage();
-    const secrets = { kCid: new Uint8Array(32).fill(1), masterKeys: new Map([[0, new Uint8Array(32).fill(2)]]) };
-    const clients = ['a', 'b'].map(deviceId => {
-      const client = setup();
-      client.db.exec('PRAGMA foreign_keys = ON');
-      const sync = new SyncV5RuntimeCoordinator({ deviceId, repoId: 'review-plans', stateDb: client.storage.database('sync_state'),
-        databases: new Map([['vfs', client.db]]), storage: remote, secrets });
-      const plan = client.service.createReviewPlan('q1', 'e1');
-      return { ...client, sync, id: plan.id, publish() {
-        sync.captureUnboundLocalChangeLogs();
-        return sync.publishChangesToV5Cloud([]);
-      } };
-    });
-    clients.sort((a, b) => a.id < b.id ? -1 : 1);
-    const [a, b] = [clients[0]!, clients[1]!];
+    const { a, b, advance } = syncFixture();
     expect(a.id).not.toBe(b.id);
 
     const earlier = a.service.processReview(a.id, 5, 'answer on A', 10);
-    await a.publish();
-    vi.setSystemTime(NOW + 1_000);
+    await a.push();
+    advance();
     const later = b.service.processReview(b.id, 0, 'answer on B', 20);
     const winningFsrs = b.repo.getFsrsStates(b.db, [b.id]).get(b.id)!;
-    await b.publish();
-    await Promise.all(clients.map(client => client.sync.pullAndApplyFromV5Cloud()));
+    await b.push();
+    await Promise.all([a.pull(), b.pull()]);
 
     for (const [client, review] of [[a, earlier], [b, later]] as const) {
       expect(client.service.listPlansByExam('e1', null, null).plans).toEqual([{ ...later.plan, id: a.id }]);
       expect(client.repo.getFsrsStates(client.db, [a.id]).get(a.id)).toEqual(winningFsrs);
       expect(client.service.getReviewHistory(a.id, null)).toEqual([{ ...review.history, plan_id: a.id }]);
       expect(client.db.all('PRAGMA foreign_key_check')).toEqual([]);
-      expect(await client.publish()).toEqual({ published: 0 });
+      expect(await client.push()).toEqual({ published: 0 });
     }
 
-    vi.setSystemTime(NOW + 2_000);
+    advance();
     const followUp = b.service.processReview(a.id, 4, 'after sync', 30);
-    await b.publish();
-    await a.sync.pullAndApplyFromV5Cloud();
+    await b.push();
+    await a.pull();
     expect(a.service.listPlansByExam('e1', null, null).plans).toEqual([followUp.plan]);
     expect(a.service.getReviewHistory(a.id, null)).toEqual([earlier.history]);
     expect(b.service.getReviewHistory(a.id, null)).toEqual([followUp.history, { ...later.history, plan_id: a.id }]);
+  });
+
+  it('captures a rating made during download before retiring its local plan ID', async () => {
+    const { a, b, remote, advance } = syncFixture();
+    await b.push();
+    advance();
+    const older = a.service.processReview(a.id, 5, null, null);
+    await a.push();
+
+    let entered!: () => void, resume!: () => void;
+    const waiting = new Promise<void>(resolve => { entered = resolve; });
+    const release = new Promise<void>(resolve => { resume = resolve; });
+    const originalList = remote.list.bind(remote);
+    const listing = vi.spyOn(remote, 'list').mockImplementationOnce(async prefix => {
+      entered();
+      await release;
+      return originalList(prefix);
+    });
+    const pulling = b.pull();
+    await waiting;
+    advance();
+    const local = b.service.processReview(b.id, 0, 'while downloading', 5);
+    const schedule = b.repo.getFsrsStates(b.db, [b.id]).get(b.id);
+    resume();
+    await pulling;
+    listing.mockRestore();
+    // The immutable creation register is merged separately from the rating.
+    const expected = { ...local.plan, id: a.id, created_at: older.plan.created_at };
+    expect(b.service.getPlanByQuestion('q1')).toEqual(expected);
+    expect((await b.push()).published).toBeGreaterThan(0);
+    await a.pull();
+    for (const client of [a, b]) {
+      expect(client.service.getPlanByQuestion('q1')).toEqual(expected);
+      expect(client.repo.getFsrsStates(client.db, [a.id]).get(a.id)).toEqual(schedule);
+    }
+    expect(b.service.getReviewHistory(a.id, null)).toEqual([{ ...local.history, plan_id: a.id }]);
+  });
+
+  async function withOldId() {
+    const f = syncFixture();
+    const offline = f.device('offline');
+    await f.b.push();
+    await offline.pull();
+    expect(offline.service.getPlanByQuestion('q1')?.id).toBe(f.b.id);
+    f.advance();
+    await f.a.push();
+    await Promise.all([f.a.pull(), f.b.pull()]);
+    return { ...f, offline };
+  }
+
+  it('accepts a late delete of an old ID without erasing an independent newer review', async () => {
+    const { a, b, offline, advance, device } = await withOldId();
+    advance();
+    offline.service.deletePlan(b.id);
+    offline.sync.captureUnboundLocalChangeLogs();
+    advance();
+    const recent = a.service.processReview(a.id, 4, 'newer rating', 7);
+    await a.push();
+    await offline.push();
+    const fresh = device('fresh');
+    await Promise.all([a.pull(), b.pull(), offline.pull(), fresh.pull()]);
+    for (const client of [a, b, offline, fresh]) expect(client.service.getPlanByQuestion('q1')).toEqual(recent.plan);
+    expect(a.service.getReviewHistory(a.id, null)).toEqual([recent.history]);
+  });
+
+  it('does not revive a deleted group from a late old-ID rating or block the replacement', async () => {
+    const { a, b, offline, advance, device } = await withOldId();
+    advance();
+    a.service.deletePlan(a.id);
+    await a.push();
+    advance();
+    offline.service.processReview(b.id, 4, 'rating on deleted group', 6);
+    await offline.push();
+    await a.pull();
+    expect(a.service.getPlanByQuestion('q1')).toBeNull();
+
+    advance();
+    const replacement = a.service.createReviewPlan('q1', 'e1');
+    const reviewed = a.service.processReview(replacement.id, 0, 'replacement rating', 6);
+    await a.push();
+    const fresh = device('fresh');
+    await Promise.all([b.pull(), offline.pull(), fresh.pull()]);
+    for (const client of [a, b, offline, fresh]) {
+      expect(client.service.listPlansByExam('e1', null, null).plans).toEqual([reviewed.plan]);
+      expect(client.db.all('PRAGMA foreign_key_check')).toEqual([]);
+    }
+  });
+
+  it.each(['a', 'b'] as const)('converges when the %s plan is explicitly deleted before its device sees the duplicate', async retired => {
+    const { a, b, advance, device } = syncFixture();
+    const [survivor, deleting] = retired === 'a' ? [b, a] : [a, b];
+    const original = survivor.service.processReview(survivor.id, 5, 'keep my history', 8);
+    await survivor.push();
+    advance();
+    deleting.service.processReview(deleting.id, 0, 'deleted independently', 8);
+    await deleting.push();
+    // The survivor sees the merge before the deletion arrives, even if the
+    // lowest ID initially belonged to the device that later deletes its plan.
+    await survivor.pull();
+    advance();
+    deleting.service.deletePlan(deleting.id);
+    await deleting.push();
+    await Promise.all([survivor.pull(), deleting.pull()]);
+    const fresh = device('fresh');
+    await fresh.pull();
+    for (const client of [survivor, deleting, fresh]) {
+      expect(client.service.listPlansByExam('e1', null, null).plans).toEqual([original.plan]);
+      expect(await client.pull()).toEqual({ applied: 0, downloadedEntries: 0 });
+    }
+    expect(survivor.service.getReviewHistory(survivor.id, null)).toEqual([original.history]);
+  });
+
+  it('submits a queued review using the plan ID that was displayed before the merge', async () => {
+    const { a, b, advance } = syncFixture();
+    const queuedPlanId = b.id;
+    await a.push();
+    await b.pull();
+    advance();
+    const submitted = b.service.processReview(queuedPlanId, 4, 'answer from open session', 12);
+    expect(submitted.plan.id).toBe(a.id);
+    expect(submitted.history.plan_id).toBe(a.id);
+    expect(b.service.getReviewHistory(queuedPlanId, null)).toEqual([submitted.history]);
+    await b.push();
+    await a.pull();
+    expect(a.service.getPlanByQuestion('q1')).toEqual(submitted.plan);
   });
 
   it('uses the newer legacy review when an older V5 client relays opaque FSRS fields', () => {
