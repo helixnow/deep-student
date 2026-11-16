@@ -62,10 +62,16 @@ export function isNotFoundError(error: unknown, { explicitOnly = false } = {}): 
   const message = (error instanceof Error ? error.message : String(error)).toLowerCase();
   const code = extractStatusCode(message);
   if (code !== 550 && code !== 501) return false;
-  if (explicitOnly && /\b(?:permission|access) denied\b/.test(message)) return false;
+  if (explicitOnly) {
+    // Accept a complete missing reply, not an example or one of several
+    // possible causes (such as "file not found, no access").
+    const reason = message.replace(/^.*?\[(?:550|501)\]\s*/, '').replace(/^(?:550|501)[ -]\s*/, '').trim();
+    if (/\b(?:(?:permission|access) denied|no access)\b/.test(reason)) return false;
+    return /^(?:\/[^:\r\n]+:\s*)?(?:no such (?:file(?: or directory)?|directory)|(?:the )?(?:requested )?(?:file|directory) (?:not found|does not exist))\.?$/.test(reason);
+  }
   return message.includes('no such file')
     || message.includes('no such directory')
-    || (!explicitOnly && message.includes('not retrievable'))
+    || message.includes('not retrievable')
     || message.includes('does not exist')
     || message.includes('file not found')
     || message.includes('directory not found');
