@@ -4,7 +4,7 @@
  * 笔记的复习日期则只是装饰。
  *
  * - cards：FSRS 到期卡片（fsrs_get_stats.due）
- * - mistakes：SM-2 错题复习（review_plan_get_stats.due_today，后端口径为 next_review_date ≤ 今天，已含逾期）
+ * - mistakes：错题复习（review_plan_get_stats.due_today，包含已到期的分钟级学习步和逾期计划）
  * - notes：study_review_date ≤ 今天 的笔记
  */
 import { invoke } from '@tauri-apps/api/core';

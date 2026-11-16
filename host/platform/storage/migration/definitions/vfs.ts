@@ -764,6 +764,13 @@ export const V20261115_REVIEW_PLANS_FSRS: MigrationDefSpec = {
   ],
 };
 
+export const V20261116_REVIEW_PLAN_FSRS_REVISION: MigrationDefSpec = {
+  refineryVersion: 20261116,
+  name: 'review_plan_fsrs_revision',
+  file: 'vfs/V20261116__review_plan_fsrs_revision.sql',
+  expectedColumns: [['review_plans', 'fsrs_plan_revision']],
+};
+
 export const VFS_MIGRATIONS: readonly MigrationDefSpec[] = [
   V20260130_INIT,
   V20260131_CHANGE_LOG,
@@ -838,6 +845,7 @@ export const VFS_MIGRATIONS: readonly MigrationDefSpec[] = [
   V20261027_PRACTICE_SESSIONS,
   V20261111_STUDY_SPACE_PROFILES_AND_MOUNTS,
   V20261115_REVIEW_PLANS_FSRS,
+  V20261116_REVIEW_PLAN_FSRS_REVISION,
 ];
 
 export const VFS_SCHEMA_VERSION: number = VFS_MIGRATIONS[VFS_MIGRATIONS.length - 1]!.refineryVersion;

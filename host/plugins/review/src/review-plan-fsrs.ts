@@ -8,7 +8,7 @@
  * 评分口径沿用 0-5 的 quality（命令 / 智能体工具 / 每日冲刺都按它传）：
  *   0-2 → 重来（Again） · 3 → 困难（Hard，算答对） · 4 → 良好（Good） · 5 → 简单（Easy）
  *
- * SM-2 遗留行（fsrs_phase 为 NULL）的迁移：下一次评分 / 预演时惰性换算，不改写 next_review_date——
+ * 没有当前版本 FSRS 状态的计划：下一次评分 / 预演时按 SM-2 列惰性换算，不改写 next_review_date——
  *   - 从没复习过（total_reviews = 0 且 repetitions = 0）→ new，记忆为空；
  *   - repetitions > 0 → review 态：稳定度 S = max(1, interval_days)（期望保持率 0.9 时 FSRS 间隔≈S），
  *     难度 D 由易度因子线性映射（EF 1.3 → 10、2.5 → 5，夹在 [1, 10]）；

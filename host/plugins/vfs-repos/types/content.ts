@@ -514,7 +514,7 @@ export interface ReviewPlanRepository {
   listDueReviews(conn: SqlExecutor, filter: DueReviewsFilter): DueReviewsResult;
   listPlansByExam(conn: SqlExecutor, examId: string, limit?: number | null, offset?: number | null): DueReviewsResult;
   updatePlan(conn: SqlExecutor, planId: string, params: UpdateReviewPlanParams): ReviewPlan;
-  /** 批量读取 FSRS 状态（不存在的 id 不出现在结果里）。旧的测试替身可以不实现。 */
+  /** 批量读取当前计划版本的 FSRS 状态；旧客户端改过计划后按兼容列重新换算。 */
   getFsrsStates?(conn: SqlExecutor, planIds: readonly string[]): Map<string, ReviewPlanFsrsState>;
   suspendPlan(conn: SqlExecutor, planId: string): ReviewPlan;
   suspendPlanIfUnchanged(conn: SqlExecutor, planId: string, expectedUpdatedAt: string): ReviewPlan;
