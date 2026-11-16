@@ -252,6 +252,51 @@ describe('ReviewPlanService with the real repository', () => {
     }
   });
 
+  it('merges independently created plans without losing either device’s review history', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+    const remote = new MemoryStorage();
+    const secrets = { kCid: new Uint8Array(32).fill(1), masterKeys: new Map([[0, new Uint8Array(32).fill(2)]]) };
+    const clients = ['a', 'b'].map(deviceId => {
+      const client = setup();
+      client.db.exec('PRAGMA foreign_keys = ON');
+      const sync = new SyncV5RuntimeCoordinator({ deviceId, repoId: 'review-plans', stateDb: client.storage.database('sync_state'),
+        databases: new Map([['vfs', client.db]]), storage: remote, secrets });
+      const plan = client.service.createReviewPlan('q1', 'e1');
+      return { ...client, sync, id: plan.id, publish() {
+        sync.captureUnboundLocalChangeLogs();
+        return sync.publishChangesToV5Cloud([]);
+      } };
+    });
+    clients.sort((a, b) => a.id < b.id ? -1 : 1);
+    const [a, b] = [clients[0]!, clients[1]!];
+    expect(a.id).not.toBe(b.id);
+
+    const earlier = a.service.processReview(a.id, 5, 'answer on A', 10);
+    await a.publish();
+    vi.setSystemTime(NOW + 1_000);
+    const later = b.service.processReview(b.id, 0, 'answer on B', 20);
+    const winningFsrs = b.repo.getFsrsStates(b.db, [b.id]).get(b.id)!;
+    await b.publish();
+    await Promise.all(clients.map(client => client.sync.pullAndApplyFromV5Cloud()));
+
+    for (const [client, review] of [[a, earlier], [b, later]] as const) {
+      expect(client.service.listPlansByExam('e1', null, null).plans).toEqual([{ ...later.plan, id: a.id }]);
+      expect(client.repo.getFsrsStates(client.db, [a.id]).get(a.id)).toEqual(winningFsrs);
+      expect(client.service.getReviewHistory(a.id, null)).toEqual([{ ...review.history, plan_id: a.id }]);
+      expect(client.db.all('PRAGMA foreign_key_check')).toEqual([]);
+      expect(await client.publish()).toEqual({ published: 0 });
+    }
+
+    vi.setSystemTime(NOW + 2_000);
+    const followUp = b.service.processReview(a.id, 4, 'after sync', 30);
+    await b.publish();
+    await a.sync.pullAndApplyFromV5Cloud();
+    expect(a.service.listPlansByExam('e1', null, null).plans).toEqual([followUp.plan]);
+    expect(a.service.getReviewHistory(a.id, null)).toEqual([earlier.history]);
+    expect(b.service.getReviewHistory(a.id, null)).toEqual([followUp.history, { ...later.history, plan_id: a.id }]);
+  });
+
   it('uses the newer legacy review when an older V5 client relays opaque FSRS fields', () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(NOW);
