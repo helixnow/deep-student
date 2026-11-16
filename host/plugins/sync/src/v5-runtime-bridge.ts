@@ -1,5 +1,6 @@
 import { fromBase64, fromHex, toBase64, toHex, utf8Decode, utf8Encode } from '../../../platform/crypto/encoding.ts';
 import { sha256HexSync } from '../../../platform/crypto/sync.ts';
+import { CommandError, isAppErrorValue } from '../../../platform/errors/api.ts';
 import { concatBytes } from '../../../platform/util/bytes.ts';
 import { utf8ByteLength } from '../../../platform/util/utf8.ts';
 import type { DatabaseHandle, SqlExecutor } from '../../../platform/storage/api.ts';
@@ -130,6 +131,10 @@ interface ChunkReference {
 interface RemoteHead { chain: IndexChainState; refs?: ChunkReference[]; incarnationId: string; retired?: string[][]; pendingGc?: string[] }
 interface RestoredHead extends RemoteHead { refs: ChunkReference[] }
 class MissingCommittedIndex extends Error {}
+
+class MissingV5Pack extends Error {
+  constructor(key: string) { super(`Missing V5 pack: ${key}`); }
+}
 interface SealedObject { context: PackContext; location: PackEntryLocation; bytes: string }
 
 /** A sparse, merged interval set; holes never advance a contiguous watermark. */
@@ -670,6 +675,7 @@ export class SyncV5RuntimeCoordinator {
         for (const row of listV5UnknownFieldTables(db)) rehydrateUnknownFieldsV5(db, row.table_name, databaseName);
       }
       let applied = 0, downloadedEntries = 0;
+      const unavailablePacks = new Set<string>();
       for (const info of await this.options.storage.list(`${this.root()}heads/`)) {
         let head: RestoredHead | undefined;
         for (let attempt = 0; attempt <= 3; attempt++) {
@@ -685,15 +691,30 @@ export class SyncV5RuntimeCoordinator {
           const neededForRecovery = missingHistory.has(key);
           if (observed && !neededForRecovery) continue;
           if (pending.has(key) || reviewed.has(key)) continue;
-          let header = headers.get(ref.packKey);
-          if (!header) {
-            const stat = await this.options.storage.stat(ref.packKey);
-            if (!stat) throw new Error(`Missing V5 pack: ${ref.packKey}`);
-            header = { bytes: await this.options.storage.getRange(ref.packKey, 0, 64), size: stat.size };
-            headers.set(ref.packKey, header);
+          if (unavailablePacks.has(ref.packKey)) {
+            if (neededForRecovery) continue;
+            throw new MissingV5Pack(ref.packKey);
           }
-          const plain = await readPackEntryRange(this.options.storage, ref.packKey, header.bytes, header.size, ref.location,
-            this.key(ref.context.contentEpoch), this.options.secrets.kCid, ref.context, { actual: cdc, pinned: cdc });
+          let plain: Uint8Array;
+          try {
+            let header = headers.get(ref.packKey);
+            if (!header) {
+              const stat = await this.options.storage.stat(ref.packKey);
+              if (!stat) throw new MissingV5Pack(ref.packKey);
+              header = { bytes: await this.options.storage.getRange(ref.packKey, 0, 64), size: stat.size };
+              headers.set(ref.packKey, header);
+            }
+            plain = await readPackEntryRange(this.options.storage, ref.packKey, header.bytes, header.size, ref.location,
+              this.key(ref.context.contentEpoch), this.options.secrets.kCid, ref.context, { actual: cdc, pinned: cdc });
+          } catch (error) {
+            // A missing replay-only frame keeps its receipt in missingHistory.
+            // Unread new operations and integrity failures still fail the pull.
+            const missing = error instanceof MissingV5Pack || (error instanceof CommandError
+              && isAppErrorValue(error.value) && error.value.error_type === 'NotFound');
+            if (!neededForRecovery || !missing) throw error;
+            unavailablePacks.add(ref.packKey);
+            continue;
+          }
           downloadedEntries++;
           const op = decode<V5RuntimeOperation>(utf8Decode(plain)); op.seq = BigInt(op.seq);
           const change = parseSyncChange(op.change);
@@ -784,7 +805,7 @@ export function storageWithV5Ranges(storage: CloudStorage): CloudStorage & Range
   return new Proxy(storage, { get(target, property) {
     if (property === 'getRange') return async (key: string, offset: number, length: number) => {
       const bytes = await target.get(key);
-      if (!bytes) throw new Error(`Missing V5 pack: ${key}`);
+      if (!bytes) throw new MissingV5Pack(key);
       return bytes.subarray(offset, offset + length);
     };
     const value = Reflect.get(target, property, target);

@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { AppError, CommandError } from '../../../platform/errors/api.ts';
 import { createStorageService } from '../../../platform/storage/service.ts';
 import { ReviewPlanRepo } from '../../vfs-repos/repository/review-plans.ts'; // boundary-allow cross-plugin-impl: exercise the SQLite repository in review and sync integration
 import type { ReviewPlan } from '../../vfs-repos/api.ts';
@@ -504,6 +505,81 @@ describe('ReviewPlanService with the real repository', () => {
       expect(await client.pull()).toEqual({ applied: 0, downloadedEntries: 0 });
     }
     expect(a.service.getReviewHistory(a.id, null)).toEqual([history]);
+  });
+
+  it.each(['stat', 'range'] as const)('accepts new operations while a legacy pack is missing at %s', async unavailableAt => {
+    const { a, b, device, remote, advance } = syncFixture();
+    const original = a.service.processReview(a.id, 4, 'keep this history', 10).history;
+    await a.push();
+    const deleter = device('deleter');
+    await deleter.pull();
+    await deleter.push(); // Publish the seeded exam and question before the upgrade.
+    await b.push();
+    const archive = device('archive');
+    const survivorHeads = (await remote.list('sync-v5/review-plans/heads/')).filter(
+      info => info.key.includes(`/heads/${b.deviceId}_`));
+    const onlySurvivor = vi.spyOn(remote, 'list').mockResolvedValueOnce(survivorHeads);
+    await archive.pull();
+    onlySurvivor.mockRestore();
+    advance();
+    const archived = archive.service.processReview(b.id, 0, 'rating in the missing pack', 12);
+    await archive.push();
+    await a.pull();
+    const frozen = a.service.getPlanByQuestion('q1');
+    expect(frozen).toMatchObject({ id: a.id, updated_at: archived.plan.updated_at });
+
+    // Simulate 981c8fe73's persisted view and receipts with no per-ID members.
+    a.db.exec('DROP TABLE __sync_v5_review_plan_members');
+    ensureV5TargetDatabaseTables(a.db);
+    advance();
+    deleter.service.deletePlan(a.id);
+    await deleter.push();
+    advance();
+    const rating = b.service.processReview(b.id, 5, 'new rating during recovery', 14);
+    const expected = b.repo.getFsrsStates(b.db, [b.id]).get(b.id);
+    await b.push();
+
+    const [pack] = await remote.list(`sync-v5/review-plans/packs/${archive.deviceId}/`);
+    const stat = remote.stat.bind(remote);
+    const range = remote.getRange.bind(remote);
+    const missing = unavailableAt === 'stat'
+      ? vi.spyOn(remote, 'stat').mockImplementation(key => key === pack!.key ? Promise.resolve(null) : stat(key))
+      : vi.spyOn(remote, 'getRange').mockImplementation(async (key, offset, length) => {
+        if (key === pack!.key && offset !== 0) throw new CommandError(AppError.not_found('Missing test pack'));
+        return range(key, offset, length);
+      });
+    // The VFS transaction can commit before the runtime receipt is saved.
+    const hasReceipt = a.sync.intervals.has.bind(a.sync.intervals);
+    const delayedReceipt = unavailableAt === 'range' && vi.spyOn(a.sync.intervals, 'has').mockImplementation(
+      (writer, seq) => writer !== `${archive.deviceId}@${archive.sync.incarnationId}` && hasReceipt(writer, seq));
+    const fresh = device('fresh');
+    try {
+      // For a new device the very same pack is required for ordinary sync.
+      await expect(fresh.pull()).rejects.toThrow(/Missing (V5|test) pack/);
+      expect((await a.pull()).applied).toBe(2);
+    } finally {
+      missing.mockRestore();
+      if (delayedReceipt) delayedReceipt.mockRestore();
+    }
+    expect(a.service.getPlanByQuestion('q1')).toEqual(frozen);
+    expect(() => a.service.processReview(a.id, 0, 'stale submission', 5)).toThrow(`Review plan not found: ${a.id}`);
+    expect(a.service.getPlanByQuestion('q1')).toEqual(frozen);
+    expect(a.service.getReviewHistory(a.id, null)).toEqual([original]);
+
+    for (const client of [a, b, fresh]) {
+      await client.pull();
+      expect(client.service.getPlanByQuestion('q1')).toEqual(rating.plan);
+      expect(client.repo.getFsrsStates(client.db, [b.id]).get(b.id)).toEqual(expected);
+    }
+    expect(a.service.getReviewHistory(b.id, null)).toEqual([{ ...original, plan_id: b.id }]);
+    expect(b.service.getReviewHistory(b.id, null)).toEqual([rating.history]);
+    advance();
+    const resumed = a.service.processReview(b.id, 0, 'valid score after recovery', 8);
+    expect(resumed.history.plan_id).toBe(b.id);
+    await a.push();
+    await fresh.pull();
+    expect(fresh.service.getPlanByQuestion('q1')).toEqual(resumed.plan);
+    expect(fresh.repo.getFsrsStates(fresh.db, [b.id]).get(b.id)).toEqual(a.repo.getFsrsStates(a.db, [b.id]).get(b.id));
   });
 
   it('uses the newer legacy review when an older V5 client relays opaque FSRS fields', () => {
