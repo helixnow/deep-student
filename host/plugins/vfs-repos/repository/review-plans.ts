@@ -18,6 +18,7 @@ import {
   type UpdateReviewPlanParams,
 } from '../api.ts';
 import { databaseResult } from './errors.ts';
+import { resolvePersistedIdAlias } from './id-alias.ts';
 import { utcNow } from './timestamps.ts';
 
 const DEFAULT_EASE_FACTOR = 2.5;
@@ -166,7 +167,8 @@ export class ReviewPlanRepo implements ReviewPlanRepository {
 
   getPlan(conn: SqlExecutor, planId: string): ReviewPlan | null {
     return databaseResult(() => {
-      const row = conn.get<Row>(`SELECT ${PLAN_COLUMNS} FROM review_plans WHERE id = ?1`, [planId]);
+      const id = resolvePersistedIdAlias(conn, 'review_plans', planId);
+      const row = conn.get<Row>(`SELECT ${PLAN_COLUMNS} FROM review_plans WHERE id = ?1`, [id]);
       return row === undefined ? null : rowToPlan(row);
     });
   }
@@ -343,7 +345,7 @@ export class ReviewPlanRepo implements ReviewPlanRepository {
       conn.run(
         `UPDATE review_plans SET status = ?1, next_review_date = ?2, updated_at = ?3, fsrs_due_at = NULL,
           fsrs_plan_revision = CASE WHEN ${CURRENT_FSRS} THEN ?3 ELSE fsrs_plan_revision END WHERE id = ?4`,
-        [newStatus, today, now, planId]);
+        [newStatus, today, now, plan.id]);
       const updated = this.getPlan(conn, planId);
       if (updated === null) throw notFound('review_plan', planId);
       return updated;
@@ -361,7 +363,7 @@ export class ReviewPlanRepo implements ReviewPlanRepository {
         `UPDATE review_plans SET status = ?1, next_review_date = ?2, updated_at = ?3, fsrs_due_at = NULL,
           fsrs_plan_revision = CASE WHEN ${CURRENT_FSRS} THEN ?3 ELSE fsrs_plan_revision END
           WHERE id = ?4 AND updated_at = ?5`,
-        [newStatus, today, now, planId, expectedUpdatedAt]).changes;
+        [newStatus, today, now, plan.id, expectedUpdatedAt]).changes;
       if (affected === 0) throw revisionConflict(planId, expectedUpdatedAt);
       const updated = this.getPlan(conn, planId);
       if (updated === null) throw notFound('review_plan', planId);
@@ -425,6 +427,7 @@ export class ReviewPlanRepo implements ReviewPlanRepository {
   getHistory(conn: SqlExecutor, planId: string, limit?: number | null): ReviewHistory[] {
     return databaseResult(() => {
       const boundedLimit = limit ?? 100;
+      const id = resolvePersistedIdAlias(conn, 'review_plans', planId);
       const rows = conn.all<Row>(`
         SELECT id, plan_id, question_id, quality, passed,
                ease_factor_before, ease_factor_after, interval_before, interval_after,
@@ -432,7 +435,7 @@ export class ReviewPlanRepo implements ReviewPlanRepository {
         FROM review_history
         WHERE plan_id = ?1
         ORDER BY reviewed_at DESC
-        LIMIT ?2`, [planId, boundedLimit]);
+        LIMIT ?2`, [id, boundedLimit]);
       return mapRows(rows, rowToHistory);
     });
   }

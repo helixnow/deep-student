@@ -371,10 +371,11 @@ export function markV5OpLocalCaptured(
 }
 
 export function listV5PendingChangeLogRows(
-  db: SqlExecutor,
+  db: SqlExecutor, table?: string,
 ): Array<{ id: number; table_name: string; record_id: string; operation: string; changed_at: string }> {
   return db.all<{ id: number; table_name: string; record_id: string; operation: string; changed_at: string }>(
-    'SELECT * FROM __change_log WHERE sync_version=0 ORDER BY id ASC',
+    'SELECT * FROM __change_log WHERE sync_version=0' + (table === undefined ? '' : ' AND table_name=?') + ' ORDER BY id ASC',
+    table === undefined ? [] : [table],
   );
 }
 
