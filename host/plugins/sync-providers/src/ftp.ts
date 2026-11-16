@@ -721,8 +721,16 @@ export class FtpStorage extends CloudStorageBase {
         }
 
         const tempPath = join(tmpdir(), `ftp-get-${randomHex(8)}`);
+        let retrieval: Retrieval;
         try {
-          const retrieval = await client.retr(filename);
+          retrieval = await client.retr(filename);
+        } catch (error) {
+          // The object can disappear after SIZE. A generic RETR refusal can
+          // also mean it exists but is unreadable, so require explicit absence.
+          if (isNotFoundError(error, { explicitOnly: true })) return null;
+          throw error;
+        }
+        try {
           const checksum = await streamToFile(retrieval.stream, tempPath, size, null);
           await retrieval.finalize();
           void checksum;
