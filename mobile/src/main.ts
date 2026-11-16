@@ -26,8 +26,10 @@ import { createAndroidInvokeHandler, isNativeAndroid, pickAndroidBackup, postAnd
 import { closeLegacyData, readLegacyData, readLegacyFileChunk } from './shell/legacy-data.ts';
 import { decodeMobileAudio } from './shell/media-audio.ts';
 import { fetchWithTimeout } from './shell/http-fetch.ts';
-import mobilePackage from '../package.json';
 import { androidHttpRequest } from './shell/android-http.ts';
+import { createMobileDialogHandler } from './shell/dialog.ts';
+import { inferMimeType, opfsEnsureDir, opfsReadFile as readSandboxFile, opfsWriteFile as writeSandboxFile, saveOpfsFileToSystem } from './shell/opfs.ts';
+import mobilePackage from '../package.json';
 
 /**
  * `src/version.ts` is generated (gitignored). App builds generate it before Vite starts; other builds
@@ -75,6 +77,7 @@ interface ShellHttpRequest {
   readonly body?: unknown;
   readonly timeoutMs?: number | null;
   readonly redirect?: 'follow' | 'manual' | 'error';
+  readonly signal?: AbortSignal;
 }
 
 interface ShellHttpResponse {
@@ -119,6 +122,9 @@ function bytesToBase64(bytes: Uint8Array): string {
 }
 
 async function shellHttpFetch(request: ShellHttpRequest): Promise<ShellHttpResponse> {
+  if (request.signal?.aborted) {
+    throw request.signal.reason instanceof Error ? request.signal.reason : new DOMException('Request aborted', 'AbortError');
+  }
   const headers = { ...(request.headers ?? {}) };
   const timeout = request.timeoutMs;
   const bytes = request.body instanceof Uint8Array ? request.body
@@ -136,6 +142,9 @@ async function shellHttpFetch(request: ShellHttpRequest): Promise<ShellHttpRespo
         disableRedirects: request.redirect === 'manual' || request.redirect === 'error',
         ...(typeof timeout === 'number' && timeout > 0 ? { connectTimeout: timeout, readTimeout: timeout } : {}),
       });
+      if (request.signal?.aborted) {
+        throw request.signal.reason instanceof Error ? request.signal.reason : new DOMException('Request aborted', 'AbortError');
+      }
       const responseHeaders: Record<string, string> = {};
       for (const [name, value] of Object.entries(response.headers ?? {})) responseHeaders[name.toLowerCase()] = String(value);
       return {
@@ -146,6 +155,7 @@ async function shellHttpFetch(request: ShellHttpRequest): Promise<ShellHttpRespo
         body: capacitorResponseBytes(response.data, responseHeaders['content-type'] ?? '', response.status),
       };
     } catch (error) {
+      if (request.signal?.aborted) throw error;
       // CapacitorHttp disabled/missing on this platform → fall through to the patched fetch.
       console.warn('[mobile] CapacitorHttp.request failed, retrying with fetch:', error);
     }
@@ -155,6 +165,7 @@ async function shellHttpFetch(request: ShellHttpRequest): Promise<ShellHttpRespo
     headers,
     ...(request.body === undefined || request.body === null ? {} : { body: request.body as BodyInit }),
     ...(request.redirect === undefined ? {} : { redirect: request.redirect }),
+    ...(request.signal === undefined ? {} : { signal: request.signal }),
   }, timeout);
   const responseHeaders: Record<string, string> = {};
   response.headers.forEach((value, name) => { responseHeaders[name] = value; });
@@ -337,6 +348,17 @@ async function bootMobileShell(): Promise<MobileApp> {
     },
     log: message => console.warn(message),
     onShellRequest,
+    onHttpFetch: shellHttpFetch,
+    // Opener exports from the OPFS sandbox: Android uses the native document picker like upstream's save-document path.
+    onExportFile: async (path, fileName) => {
+      if (!isNativeAndroid()) return saveOpfsFileToSystem(path, fileName);
+      const result = await saveAndroidDocument(await readSandboxFile(path), fileName, inferMimeType(fileName));
+      return result ?? { method: 'cancelled' };
+    },
+    onDialogCommand: createMobileDialogHandler(
+      (targetPath, data) => writeSandboxFile(targetPath, data),
+      async (dirPath) => { await opfsEnsureDir(dirPath); },
+    ),
     onNativeInvoke: isNativeAndroid()
       ? createAndroidInvokeHandler(target => shell.emitNativeEvent('deepstudent://notification-action', { target }))
       : undefined,
