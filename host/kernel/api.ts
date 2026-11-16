@@ -54,3 +54,5 @@ export type { PluginManagerOptions } from './plugin-manager.ts';
 export { STATE_CHANGED, QRCODE, ACTIVITY, createPluginEventSink } from './plugin-events.ts';
 export type { StateChangedPayload, QrcodePayload, ActivityPayload, PluginEventSink } from './plugin-events.ts';
 export { isBoundUser, RateLimiter } from './plugin-guard.ts';
+/** 社区插件智能体工具处理方法的上下文（清单 `agentTools`，`docs/plugins/SDK.md` §3.4）。 */
+export type { PluginAgentToolContext, PluginAgentToolFetchResult } from './plugin-agent-tool-context.ts';

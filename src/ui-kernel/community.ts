@@ -7,11 +7,16 @@
 import type { UiKernel } from './kernel';
 import { UiPluginLoader, type LoaderDeps, type UiManifestEntry } from './loader';
 import type { HostDegradedPlugin } from './services/host-status';
+import { recordPluginAgentTools } from './services/plugin-tools';
 
 /** `UiManifestV2` (`host/kernel/core.ts`) as read by the renderer. */
 export interface UiHostManifest {
   version: 2;
-  plugins: { id: string; origin: 'builtin' | 'community'; platforms: readonly string[]; version?: string; file?: string }[];
+  plugins: {
+    id: string; origin: 'builtin' | 'community'; platforms: readonly string[]; version?: string; file?: string;
+    /** Agent tools the plugin declares: chat tool name and the title to show for it. */
+    agentTools?: readonly { name: string; title: string }[];
+  }[];
   degraded: HostDegradedPlugin[];
   /** W06/W01 safe-mode session. `true` means: shipped official UI only, never load community UI. */
   safeMode?: boolean;
@@ -43,6 +48,35 @@ function tauriBridge(): Required<CommunityUiBridge> {
     status: () => core().then(({ invoke }) => invoke<HostDegradedPlugin[]>('plugin:host|status')),
     listenStatus: (callback) => events().then(({ listen }) => listen<HostDegradedPlugin[]>('host://plugins-degraded', (event) => callback(event.payload))),
   };
+}
+
+/** Renderer event the shell sends when a notification with `extra.dsAction` is clicked (electron/shell/plugins/system.ts). */
+export const NOTIFICATION_ACTION_EVENT = 'ds://notification-action';
+
+/** `dsAction` of a plugin notification (`pluginNotify.notify`, host/plugins/plugin-services). */
+export interface PluginNotificationAction {
+  kind: 'plugin';
+  pluginId: string;
+  /** A view id in the `views` slot; omitted = the plugin's first registered view. */
+  view?: string;
+  params?: Record<string, unknown>;
+}
+
+/**
+ * Opens the plugin view a clicked plugin notification points at. Without a matching view (the plugin registers none,
+ * or it is not loaded) the click only brought the app forward, which the shell already did.
+ */
+export function openPluginNotificationTarget(kernel: Pick<UiKernel, 'slots' | 'navigation'>, action: unknown): boolean {
+  const value = action as Partial<PluginNotificationAction> | null;
+  if (!value || typeof value !== 'object' || value.kind !== 'plugin' || typeof value.pluginId !== 'string') return false;
+  const views = kernel.slots.list('views');
+  const target = typeof value.view === 'string' && views.some((entry) => entry.key === value.view)
+    ? value.view
+    : views.find((entry) => entry.owner === value.pluginId)?.key;
+  if (!target || !kernel.navigation.canNavigate(target)) return false;
+  const params = value.params && typeof value.params === 'object' ? value.params : undefined;
+  kernel.navigation.navigate(value.pluginId, target, params);
+  return true;
 }
 
 function isHostManifest(value: unknown): value is UiHostManifest {
@@ -136,12 +170,20 @@ export async function startCommunityUiPlugins(
     // RUST-FIX(RF-W17-safe-mode-community-ui): safe-mode 会话只保留官方 UI，社区条目不装、已装的卸载
     safeMode = manifest.safeMode === true;
     kernel.hostStatus.update({ plugins: manifest.plugins, degraded: manifest.degraded, safeMode });
+    recordPluginAgentTools(manifest.plugins.filter(plugin => plugin.origin === 'community'));
     // In safe mode this is an empty list, so an already loaded community UI is unloaded as well.
     sync(communityEntries(manifest));
   };
   const applyStatus = (degraded: HostDegradedPlugin[]) => {
     if (!stopped && Array.isArray(degraded)) kernel.hostStatus.updateDegraded(degraded);
   };
+  if (!bridge) {
+    // Plugin notifications (pluginNotify) open the plugin's view when clicked.
+    void import('@tauri-apps/api/event')
+      .then(({ listen }) => listen<unknown>(NOTIFICATION_ACTION_EVENT, (event) => { openPluginNotificationTarget(kernel, event.payload); }))
+      .then((off) => { if (stopped) off(); else unlisteners.push(off); })
+      .catch((error) => console.error('[ui-plugins] notification action listener failed', error));
+  }
   let manifestRevision = 0;
   let statusRevision = 0;
   const [offManifest, offStatus, offWebReload] = await Promise.all([
@@ -182,13 +224,55 @@ export async function startCommunityUiPlugins(
   return stop;
 }
 
+/**
+ * Bare module names a community UI bundle may import (kept external by the plugin build). Besides React, the SDK and
+ * i18next, the Milkdown kit entries are shared so `editor.extensions` contributions build ProseMirror plugins against
+ * the editor's own instance (a second copy would not recognise the editor's schema, plugin keys or ctx slices).
+ */
+export const COMMUNITY_SHARED_MODULES = [
+  'react', 'react-dom', '@deepstudent/ui', 'i18next',
+  '@milkdown/kit/core', '@milkdown/kit/ctx', '@milkdown/kit/utils', '@milkdown/kit/transformer',
+  '@milkdown/kit/prose', '@milkdown/kit/prose/state', '@milkdown/kit/prose/view', '@milkdown/kit/prose/model',
+  '@milkdown/kit/prose/transform', '@milkdown/kit/prose/commands', '@milkdown/kit/prose/inputrules', '@milkdown/kit/prose/keymap',
+] as const;
+
 async function installCommunitySharedModules(): Promise<void> {
-  const [react, reactDom, sdk, i18next, { installSharedModules }] = await Promise.all([
+  const [react, reactDom, sdk, i18next, { installSharedModules }, milkdown] = await Promise.all([
     import('react'),
     import('react-dom'),
     import('../ui-sdk'),
     import('i18next'),
     import('./shared'),
+    loadMilkdownSharedModules(),
   ]);
-  installSharedModules({ react, 'react-dom': reactDom, '@deepstudent/ui': sdk, i18next });
+  installSharedModules({ react, 'react-dom': reactDom, '@deepstudent/ui': sdk, i18next, ...milkdown });
+}
+
+/** The editor chunk is already loaded in a normal session; a failure here must not block community UI that ignores it. */
+async function loadMilkdownSharedModules(): Promise<Record<string, object>> {
+  try {
+    const [core, ctx, utils, transformer, prose, state, view, model, transform, commands, inputrules, keymap] = await Promise.all([
+      import('@milkdown/kit/core'),
+      import('@milkdown/kit/ctx'),
+      import('@milkdown/kit/utils'),
+      import('@milkdown/kit/transformer'),
+      import('@milkdown/kit/prose'),
+      import('@milkdown/kit/prose/state'),
+      import('@milkdown/kit/prose/view'),
+      import('@milkdown/kit/prose/model'),
+      import('@milkdown/kit/prose/transform'),
+      import('@milkdown/kit/prose/commands'),
+      import('@milkdown/kit/prose/inputrules'),
+      import('@milkdown/kit/prose/keymap'),
+    ]);
+    return {
+      '@milkdown/kit/core': core, '@milkdown/kit/ctx': ctx, '@milkdown/kit/utils': utils, '@milkdown/kit/transformer': transformer,
+      '@milkdown/kit/prose': prose, '@milkdown/kit/prose/state': state, '@milkdown/kit/prose/view': view,
+      '@milkdown/kit/prose/model': model, '@milkdown/kit/prose/transform': transform, '@milkdown/kit/prose/commands': commands,
+      '@milkdown/kit/prose/inputrules': inputrules, '@milkdown/kit/prose/keymap': keymap,
+    };
+  } catch (error) {
+    console.error('[ui-plugins] Milkdown shared modules unavailable', error);
+    return {};
+  }
 }

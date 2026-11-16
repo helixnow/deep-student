@@ -10,25 +10,22 @@ vi.mock('react-i18next', async () => (await import('./i18nMock')).i18nMock());
 
 const longDescription = 'agentApproval, agentWorkspace, agentWorkspaceTools, agentSkillProviders, agentSkillExecution';
 
-function renderRow(compact: boolean, description = longDescription) {
+function renderRow(description = longDescription) {
   return render(
     <PluginRow
-      compact={compact}
       plugin={managedPlugin({ id: 'dstu.agent-workspace', displayName: 'Agent Workspace', author: 'Deep Student', description })}
       platform="desktop"
       busy={false}
-      errorBudget={null}
       autoUninstalled={null}
+      onSelect={() => {}}
       onToggle={() => {}}
-      onConfigure={() => {}}
-      onUninstall={() => {}}
     />,
   );
 }
 
 describe('plugin row wrapping', () => {
-  it('overrides the DsButton nowrap primitives in compact rows so long descriptions wrap', () => {
-    renderRow(true);
+  it('overrides the DsButton nowrap primitives in built-in rows so long descriptions wrap', () => {
+    renderRow();
 
     const button = screen.getByRole('button', { name: /查看/ });
     // `cn()` is plain concatenation: the primitive emits its own `whitespace-nowrap`, and only an
@@ -52,12 +49,12 @@ describe('plugin row wrapping', () => {
     expect(screen.getByRole('switch').className).toContain('shrink-0');
   });
 
-  it('wraps multi-line plugin names and descriptions in the non-compact row', () => {
-    renderRow(false);
+  it('wraps multi-line plugin names and descriptions', () => {
+    renderRow();
 
-    const heading = screen.getByRole('heading', { name: 'Agent Workspace' });
-    expect(heading).toHaveClass('min-w-0', 'whitespace-normal', 'break-words');
-    expect(heading.className).not.toContain('break-all');
+    const name = screen.getByText('Agent Workspace');
+    expect(name).toHaveClass('min-w-0', 'whitespace-normal', 'break-words');
+    expect(name.className).not.toContain('break-all');
 
     const description = screen.getByTestId('plugin-row-description');
     expect(description).toHaveClass('min-w-0', 'whitespace-normal', 'break-words');

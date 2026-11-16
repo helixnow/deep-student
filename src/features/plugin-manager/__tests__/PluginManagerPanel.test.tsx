@@ -51,8 +51,8 @@ describe('PluginManagerPanel', () => {
     const { user, adapter } = setup([
       managedPlugin({ id: 'community.waiting', origin: 'community', consent: 'required' }),
     ], { uiStatus });
-    await openDetails('community.waiting');
-    const button = await screen.findByRole('button', { name: '处理 community.waiting 的权限同意' });
+    const detail = await openDetails('community.waiting');
+    const button = await within(detail).findByRole('button', { name: '查看 community.waiting 需要的权限并允许' });
     expect(button).toBeDisabled();
     await user.click(button);
     expect(adapter.calls.setEnabled).toEqual([]);
@@ -125,10 +125,11 @@ describe('PluginManagerPanel', () => {
     expect(screen.getByTestId('plugin-count-builtin')).toHaveTextContent('1');
     expect(screen.getByTestId('plugin-count-community')).toHaveTextContent('1');
     const dialog = await openDetails('dstu.ui.chat');
-    const officialRow = within(dialog).getByTestId('plugin-row');
+    const officialRow = within(dialog).getByTestId('plugin-detail');
     expect(officialRow).toHaveAttribute('data-origin', 'builtin');
     expect(within(officialRow).getByText('0.11.0')).toBeInTheDocument();
-    expect(within(officialRow).getByText('桌面')).toBeInTheDocument();
+    // The platform is not shown next to the version unless it matters (unsupported here).
+    expect(within(officialRow).queryByText('桌面')).toBeNull();
     expect(within(officialRow).getByText('官方')).toBeInTheDocument();
     expect(within(officialRow).getByTestId('plugin-summary-state')).toHaveTextContent('运行中');
     expect(within(officialRow).queryByTestId('plugin-host-enabled')).toBeNull();
@@ -137,11 +138,12 @@ describe('PluginManagerPanel', () => {
     await userEvent.keyboard('{Escape}');
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     const communityDialog = await openDetails('community.exporter');
-    const community = within(communityDialog).getByTestId('plugin-row');
+    const community = within(communityDialog).getByTestId('plugin-detail');
     expect(community).toHaveAttribute('data-origin', 'community');
     expect(community).toHaveAttribute('data-runtime', 'stopped');
     expect(within(community).getByTestId('plugin-summary-state')).toHaveTextContent('已停用');
-    expect(within(community).getByText('移动')).toBeInTheDocument();
+    expect(within(community).queryByText('移动')).toBeNull();
+    expect(within(community).getByTestId('plugin-version')).toHaveTextContent('1.4.0');
   });
 
   it('flags a plugin whose declared platforms do not include the current one', async () => {
@@ -168,7 +170,7 @@ describe('PluginManagerPanel', () => {
     await openDetails('community.broken');
     const reason = await screen.findByTestId('plugin-degraded');
     expect(reason).toHaveAttribute('data-code', 'MANIFEST_MISSING');
-    expect(reason).toHaveTextContent('找不到插件清单（package.json）');
+    expect(reason).toHaveTextContent('插件文件不完整，缺少说明文件');
     expect(reason).toHaveTextContent('no package.json next to the module');
   });
 
@@ -197,9 +199,9 @@ describe('PluginManagerPanel', () => {
       budget.report({ pluginId: 'community.wobbly', origin: 'community', phase: 'render', error: new Error(`boom ${index}`) });
     }
 
-    const row = within(dialog).getByTestId('plugin-row');
+    const row = within(dialog).getByTestId('plugin-detail');
     await waitFor(() => expect(within(row).getByTestId('plugin-auto-uninstalled')).toBeInTheDocument());
-    expect(within(row).getByTestId('plugin-auto-uninstalled')).toHaveTextContent('渲染错误 3 次（预算 3 次）');
+    expect(within(row).getByTestId('plugin-auto-uninstalled')).toHaveTextContent('出错 3 次后已经先关掉了');
     expect(row).toHaveAttribute('data-auto-uninstalled', 'true');
 
     const official = screen.getByText('dstu.ui.chat').closest('[data-testid="plugin-row"]') as HTMLElement;
@@ -215,7 +217,7 @@ describe('PluginManagerPanel', () => {
 
     expect(adapter.calls.setEnabled).toEqual([{ id: 'community.exporter', enabled: true }]);
     await waitFor(() =>
-      expect(screen.getByText('community.exporter').closest('[data-testid="plugin-row"]')).toHaveAttribute('data-enabled', 'true'),
+      expect(screen.getByText('community.exporter').closest('[data-testid="plugin-card"]')).toHaveAttribute('data-enabled', 'true'),
     );
   });
 
@@ -242,7 +244,7 @@ describe('PluginManagerPanel', () => {
     expect(adapter.calls.grantConsent).toEqual([]);
     expect(adapter.calls.reload).toBe(0);
 
-    await user.click(within(dialog).getByRole('button', { name: '同意并重载' }));
+    await user.click(within(dialog).getByRole('button', { name: '允许并启用' }));
 
     await waitFor(() => expect(adapter.calls.grantConsent).toHaveLength(1));
     expect(adapter.calls.grantConsent[0]).toEqual({
@@ -304,7 +306,7 @@ describe('PluginManagerPanel', () => {
       reason: 'PLUGIN_PACKAGE_INVALID: checksum mismatch',
     };
 
-    await user.click(screen.getByRole('button', { name: '安装离线插件' }));
+    await user.click(screen.getByRole('button', { name: '从文件导入' }));
 
     const feedback = await screen.findByTestId('plugin-install-feedback');
     expect(feedback).toHaveAttribute('data-status', 'rolled-back');
@@ -342,7 +344,7 @@ describe('PluginManagerPanel', () => {
     await userEvent.click(officialButton.closest('details')!.querySelector('summary')!);
     expect(screen.getByRole('switch', { name: '启用 dstu.ui.chat' })).toBeEnabled();
     const dialog = await openDetails('community.exporter');
-    const community = within(dialog).getByTestId('plugin-row');
+    const community = within(dialog).getByTestId('plugin-detail');
     expect(within(community).getByTestId('plugin-safe-mode-hint')).toBeInTheDocument();
     expect(within(community).getAllByTestId('plugin-summary-state')).toHaveLength(1);
     expect(within(community).getByTestId('plugin-summary-state')).toHaveTextContent('已停用');
@@ -378,7 +380,7 @@ describe('PluginManagerPanel', () => {
 
     const reason = screen.getByTestId('plugin-degraded');
     expect(reason).toHaveAttribute('data-code', 'CONFIG_INVALID');
-    expect(reason).toHaveTextContent('插件配置不满足它的 schema');
+    expect(reason).toHaveTextContent('它的设置不对');
     expect(reason).toHaveTextContent('enabled must be a boolean');
   });
 
@@ -396,10 +398,10 @@ describe('PluginManagerPanel', () => {
     await screen.findByText('community.exporter');
 
     const detailDialog = await openDetails('community.exporter');
-    const row = within(detailDialog).getByTestId('plugin-row');
+    const row = within(detailDialog).getByTestId('plugin-detail');
     expect(within(row).getByTestId('plugin-consent-required')).toBeInTheDocument();
     expect(within(row).getByTestId('plugin-degraded')).toHaveAttribute('data-consent-required', 'true');
-    expect(within(row).getByTestId('plugin-degraded')).toHaveTextContent('需要同意插件的服务权限');
+    expect(within(row).getByTestId('plugin-degraded')).toHaveTextContent('需要你允许它用这些能力');
 
     adapter.setEnabledResult = {
       ok: false,
@@ -411,7 +413,7 @@ describe('PluginManagerPanel', () => {
       },
     };
 
-    await user.click(within(row).getByRole('button', { name: '处理 community.exporter 的权限同意' }));
+    await user.click(within(row).getByRole('button', { name: '查看 community.exporter 需要的权限并允许' }));
 
     expect(adapter.calls.setEnabled).toEqual([{ id: 'community.exporter', enabled: true }]);
     const consentId = await screen.findByTestId('plugin-consent-id');

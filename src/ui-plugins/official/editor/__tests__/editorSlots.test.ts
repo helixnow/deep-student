@@ -8,7 +8,10 @@ import { officialSlashMenuEntries } from '@/components/crepe/commandMenus';
 import { installOfficialUiPlugins } from '../../install';
 import { memoryRegistryAdapters } from '../../../testing/registries';
 import {
+  buildEditorSelectionToolbar,
   buildEditorSlashMenu,
+  collectEditorBlockMenuRows,
+  type EditorSelectionToolbarContribution,
   resolveEditorExtensionGroups,
   resolveEditorExtensions,
   type EditorExtensionContribution,
@@ -174,12 +177,79 @@ describe('buildEditorSlashMenu', () => {
       })),
     ], menu, editor, onError);
     expect(menu.build().map((group) => [group.key, group.items.map((item) => item.key)])).toEqual([
-      ['text', ['h1', 'stamp']],
+      // A community item lives in its plugin's namespace, even inside an official group.
+      ['text', ['h1', 'example.editor:stamp']],
       ['official', ['o']],
     ]);
     expect(onError).toHaveBeenCalledTimes(1);
     expect(onError.mock.calls[0][0]).toBe(missingGroup);
     expect(() => buildEditorSlashMenu([entry('official', slash(() => { throw new Error('official menu'); }), 'builtin')], builder(), editor, onError))
       .toThrow('official menu');
+  });
+});
+
+describe('community editor keys (F12)', () => {
+  type Item = { key: string; label?: unknown };
+  function toolbar() {
+    const groups: { key: string; label: string; items: Item[] }[] = [{ key: 'formatting', label: 'Formatting', items: [{ key: 'bold' }] }];
+    const handle = (group: { items: Item[] }) => ({ addItem: (key: string, item: object) => {
+      if (group.items.some(existing => existing.key === key)) throw new Error(`duplicate key ${key}`);
+      group.items.push({ ...item, key });
+    } });
+    return {
+      groups,
+      builder: {
+        addGroup: (key: string, label: string) => {
+          if (groups.some(group => group.key === key)) throw new Error(`duplicate group ${key}`);
+          const group = { key, label, items: [] as Item[] }; groups.push(group); return handle(group);
+        },
+        getGroup: (key: string) => handle(groups.find(group => group.key === key)!),
+        build: () => groups as never,
+      },
+    };
+  }
+  const button = (owner: string, build: EditorSelectionToolbarContribution['build']): SlotEntry<EditorSelectionToolbarContribution> =>
+    ({ id: owner, order: 0, owner, origin: 'community', value: { build } });
+  const mnemonic = (target: Parameters<EditorSelectionToolbarContribution['build']>[0]) => {
+    target.addGroup('my-group', '口诀').addItem('mnemonic', { label: '编成口诀', icon: '', onRun: () => {} });
+  };
+
+  it('two plugins with the same group and item keys both get their button; official keys stay plain', () => {
+    const { groups, builder } = toolbar();
+    const onError = vi.fn();
+    buildEditorSelectionToolbar([button('workshop.plugin-a', mnemonic), button('workshop.plugin-b', mnemonic),
+      button('workshop.plugin-c', target => { target.getGroup('formatting').addItem('bold', { label: 'B', icon: '' }); })], builder, editor, onError);
+    expect(onError).not.toHaveBeenCalled();
+    expect(groups.map(group => [group.key, group.items.map(item => item.key)])).toEqual([
+      ['formatting', ['bold', 'workshop.plugin-c:bold']],
+      ['workshop.plugin-a:my-group', ['workshop.plugin-a:mnemonic']],
+      ['workshop.plugin-b:my-group', ['workshop.plugin-b:mnemonic']],
+    ]);
+  });
+
+  it('a key one plugin uses twice is skipped with a clear message and does not count as an error', () => {
+    const { groups, builder } = toolbar();
+    const onError = vi.fn();
+    const onConflict = vi.fn();
+    const twice = button('workshop.plugin-a', target => {
+      const group = target.addGroup('my-group', '口诀');
+      group.addItem('mnemonic', { label: '编成口诀', icon: '' });
+      group.addItem('mnemonic', { label: '再来一个', icon: '' });
+    });
+    buildEditorSelectionToolbar([twice], builder, editor, onError, onConflict);
+    expect(onError).not.toHaveBeenCalled();
+    expect(onConflict).toHaveBeenCalledTimes(1);
+    expect(onConflict.mock.calls[0][1]).toContain('"mnemonic" twice');
+    expect(groups.at(-1)!.items.map(item => item.key)).toEqual(['workshop.plugin-a:mnemonic']);
+  });
+
+  it('block menu rows: a row id a plugin repeats is skipped; two plugins may use the same id (keyed by owner)', () => {
+    const onConflict = vi.fn();
+    const rows = collectEditorBlockMenuRows([
+      { id: 'a', order: 0, owner: 'workshop.plugin-a', origin: 'community', value: { rows: () => [{ id: 'mnemonic', label: 'A', run: () => {} }, { id: 'mnemonic', label: 'A2', run: () => {} }] } },
+      { id: 'b', order: 0, owner: 'workshop.plugin-b', origin: 'community', value: { rows: () => [{ id: 'mnemonic', label: 'B', run: () => {} }] } },
+    ] as never, {} as never, editor, vi.fn(), onConflict);
+    expect(rows.map(({ entry, row }) => `${entry.owner}/${row.id}`)).toEqual(['workshop.plugin-a/mnemonic', 'workshop.plugin-b/mnemonic']);
+    expect(onConflict).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,10 +1,12 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { DsButton } from '@/components/ui/DsButton';
 import { PluginManagerPanel, type PluginManagerPanelProps } from './PluginManagerPanel';
 import { usePluginManagerState } from './controller';
 import { usePluginErrorBudget } from './use-error-budget';
 import { usePluginUiHostStatus } from './use-ui-status';
 import { usePluginManagerWorkshop } from './workshop';
+import { pluginName } from './presentation';
 
 export interface PluginsSectionProps extends PluginManagerPanelProps {
   /** Restore is supplied by the version owner; no invented Host command or optimistic success. */
@@ -13,6 +15,7 @@ export interface PluginsSectionProps extends PluginManagerPanelProps {
 
 /** Settings mount point with live Host/UI-budget isolation notices above the manager. */
 export function PluginsSection({ onRollback, ...props }: PluginsSectionProps) {
+  const { t } = useTranslation('plugin_manager');
   const state = usePluginManagerState(props.controller);
   const disabled = usePluginErrorBudget(props.errorBudget);
   const status = usePluginUiHostStatus(props.uiStatus);
@@ -21,12 +24,22 @@ export function PluginsSection({ onRollback, ...props }: PluginsSectionProps) {
   const rollback = onRollback ?? workshop?.onRollback;
   const [busy, setBusy] = useState<string>();
   const [error, setError] = useState<string>();
+  const [goBack, setGoBack] = useState<ReadonlySet<string>>(new Set());
   const running = useRef(false);
   const isolated = state.plugins.filter(plugin => plugin.origin === 'community' && (
     disabled.some(entry => entry.pluginId === plugin.id)
     || plugin.degraded && plugin.consent !== 'required' && !plugin.degraded.reason.startsWith('CONSENT_REQUIRED:')
     || status?.state(plugin.id) === 'degraded' && !status.consentRequired(plugin.id)
   ));
+  // 「回到上一版」只在工坊真的留着上一版时出现，不给一个点了才报错的按钮。
+  const isolatedSignature = isolated.map(plugin => plugin.id).join('|');
+  useEffect(() => {
+    if (!isolatedSignature || !workshop?.works) { setGoBack(new Set()); return undefined; }
+    let live = true;
+    workshop.works().then(list => { if (live) setGoBack(new Set(list.filter(work => work.previousVersion).map(work => work.pluginId))); })
+      .catch(() => { if (live) setGoBack(new Set()); });
+    return () => { live = false; };
+  }, [isolatedSignature, workshop]);
   const recover = async (id: string, repair: boolean) => {
     if (running.current) return;
     running.current = true;
@@ -37,28 +50,39 @@ export function PluginsSection({ onRollback, ...props }: PluginsSectionProps) {
         await props.controller.setEnabled(id, false);
         const current = props.controller.getSnapshot();
         if (current.error) throw new Error(current.error.detail ?? current.error.code);
-        if (current.plugins.find(plugin => plugin.id === id)?.enabled !== false) throw new Error('未能确认插件已停用，请刷新后重试');
+        if (current.plugins.find(plugin => plugin.id === id)?.enabled !== false) throw new Error(t('isolation.disableUnconfirmed'));
         workshop?.onModify(id);
       } else {
         await rollback?.(id);
         await props.controller.refresh();
       }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
+      const raw = cause instanceof Error ? cause.message : String(cause);
+      setError(workshop?.describeError?.(raw) ?? raw);
     } finally {
       running.current = false;
       setBusy(undefined);
     }
   };
   return <div className="space-y-3">
-    {isolated.map(plugin => <div key={plugin.id} role="alert" className="space-y-2 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm">
-      <p className="font-medium">检测到插件异常，系统已自动隔离该插件以保护主程序稳定运行</p>
-      <p className="break-words text-muted-foreground">{plugin.displayName ?? plugin.id} · {plugin.degraded?.reason ?? status?.reason(plugin.id) ?? 'UI 错误预算已耗尽'}</p>
-      <div className="flex flex-wrap gap-2">
-        <DsButton size="sm" variant="outline" disabled={!!busy || !rollback} title={!rollback ? '此插件尚无可用的版本回退入口' : undefined} onClick={() => { void recover(plugin.id, false); }}>一键回退上一可用版本</DsButton>
-        <DsButton size="sm" variant="outline" disabled={!!busy || !workshop || plugin.source !== 'workshop'} title={plugin.source !== 'workshop' ? 'AI 修复仅适用于插件工坊托管的作品' : undefined} onClick={() => { void recover(plugin.id, true); }}>停用并让 AI 修复</DsButton>
-      </div>
-    </div>)}
+    {isolated.map(plugin => {
+      const crashed = disabled.some(entry => entry.pluginId === plugin.id);
+      const raw = plugin.degraded?.reason ?? status?.reason(plugin.id) ?? (crashed ? t('isolation.budgetExhausted') : undefined);
+      // An explicit version owner (onRollback) knows its versions; otherwise ask the workshop whether one is retained.
+      const canGoBack = Boolean(rollback) && (onRollback !== undefined || goBack.has(plugin.id));
+      const canRepair = Boolean(workshop) && plugin.source === 'workshop';
+      return <div key={plugin.id} role="alert" data-testid="plugin-isolation" data-plugin-id={plugin.id} className="space-y-2 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm">
+        <p className="font-medium">{t(crashed ? 'isolation.crashed' : 'isolation.failedStart', { name: pluginName(plugin, t) })}</p>
+        {canGoBack || canRepair ? <div className="flex flex-wrap gap-2">
+          {canGoBack ? <DsButton size="sm" variant="outline" disabled={!!busy} onClick={() => { void recover(plugin.id, false); }}>{t('isolation.rollback')}</DsButton> : null}
+          {canRepair ? <DsButton size="sm" variant="outline" disabled={!!busy} onClick={() => { void recover(plugin.id, true); }}>{t('isolation.repair')}</DsButton> : null}
+        </div> : null}
+        {raw ? <details className="text-xs text-muted-foreground">
+          <summary className="cursor-pointer rounded outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('manager.technical')}</summary>
+          <p className="mt-1 break-words font-mono">{raw}</p>
+        </details> : null}
+      </div>;
+    })}
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
     <PluginManagerPanel {...props} />
   </div>;

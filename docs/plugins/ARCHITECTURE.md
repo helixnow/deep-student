@@ -29,7 +29,7 @@ Host 内核（host/kernel/）        Cordis 运行时：命令路由与契约校
 | **命令** | `ctx.commands.register(name, handler)`，按 `contracts/ipc` 校验 | 官方前端可调用的能力；名称和形状受契约约束，只给官方插件 |
 | **远程方法** | `meta.remote` 列出服务方法，UI 半经 `plugin:host\|call` 调用 | 社区插件的 UI 半调用自己的 Host 半 |
 | **事件** | `ctx.backendEvents.emit/listen`；插件间使用 Cordis 事件 | 前端通知、跨插件解耦的业务事实；`ctx.backendEvents` 只给官方插件（社区插件 `KERNEL_API_FORBIDDEN`） |
-| **工具** | 智能体工具注册表（`agentTools`） | 官方插件给 AI 增加能力，无需改对话管线；目前不给社区插件用（`docs/plugins/SDK.md` §3.4） |
+| **工具** | 官方插件：智能体工具注册表（`agentTools` 服务）；社区 / 工坊插件：清单 `agentTools` + 权限 `agent:tools` | 给 AI 增加能力，无需改对话管线。社区插件的工具静态声明、安装确认时展示，模型看到的名字带宿主生成的 `plugin_<id 摘要>_` 前缀，调用照常过工具审批，联网只限 `net:<主机名>` 声明的主机（`docs/plugins/SDK.md` §3.4） |
 | **协议** | `ctx.protocols.register(scheme, handler)` | 流式文件、媒体 |
 
 新增能力时，先问它属于哪个扩展点，再按下面的约定实现。**不要为了一个功能去修改另一个插件的实现文件。**

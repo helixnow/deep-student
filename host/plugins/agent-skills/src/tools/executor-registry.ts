@@ -46,6 +46,12 @@ export interface AgentToolExecutor {
    * (Rust `SchemaToolRegistry::new_with_builtin_tools`: attempt_completion, todo_*, goal_*).
    */
   schemaTools?(): readonly AgentSchemaTool[];
+  /**
+   * Ids from `schemaTools()` that are offered in every turn without the front end listing them in
+   * `schema_tool_ids` (tools of user plugins, which the front end's skill catalogue does not know).
+   * The turn's execution allowlist still applies. No Rust counterpart.
+   */
+  ambientSchemaToolIds?(): readonly string[];
 }
 
 /** Registration order is preserved; lookup is the dispatcher's responsibility. */

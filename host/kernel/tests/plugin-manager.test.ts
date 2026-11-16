@@ -277,7 +277,7 @@ describe('RF-W01-trusted-plugin-admin: plugin manager commands', () => {
       await h.runtime.install({ name: 'forwarder', meta: { id: 'dstu.forwarder', provides: ['auditForward'] }, inject: ['dstuPluginInstaller'], apply(ctx) {
         ctx.provide('auditForward', { installer: ctx.dstuPluginInstaller });
       } });
-      await h.runtime.installEntry({ packageRoot: join(root, trust), manifest: { id: `alice.${trust}`, packageName: 'audit', version: '1.0.0', engines: '^0.11', platforms: ['desktop'], permissions: [], requires: {}, trust },
+      await h.runtime.installEntry({ packageRoot: join(root, trust), manifest: { id: `alice.${trust}`, packageName: 'audit', version: '1.0.0', engines: '^0.11', platforms: ['desktop'], permissions: ['service:auditForward'], requires: {}, trust },
         plugin: { name: trust, meta: { id: `alice.${trust}` }, async apply(ctx) {
           await Promise.resolve();
           const forwarded = ctx.get('auditForward').installer as DstuPluginInstaller;
@@ -410,7 +410,9 @@ describe('RF-W01-trusted-plugin-admin: plugin manager commands', () => {
       expect((await h.packages.list())[0]).toEqual(previous);
       expect(h.runtime.get(demo.id)?.manifest?.version).toBe('1.0.0');
       expect((await h.store.read()).file.plugins).toContainEqual({ id: 'alice.unrelated', module: './unrelated.mjs', disabled: true });
-      expect(await h.consent.evaluate({ id: demo.id, version: '1.0.0', permissions: [] })).toMatchObject({ matched: true, trust: 'full', source: 'workshop' });
+      // The rollback puts back the consent for the restored 1.0.0 release (bound to its content), so it still matches.
+      expect((await h.consent.read()).find(record => record.id === demo.id)).toMatchObject({ version: '1.0.0', permissions: [], trust: 'full', source: 'workshop' });
+      expect((await ok<PluginManagerInventory>(h, PLUGIN_MANAGER_LIST_COMMAND)).plugins.find(p => p.id === demo.id)).toMatchObject({ trust: 'full', source: 'workshop', consent: { matched: true } });
       const installer = await builtinInstaller(h);
       const undone = await installer.uninstall(demo.id, (await installer.inventory()).revision!) as {revision:string};
       expect(await h.packages.list()).toEqual([]);
@@ -608,6 +610,25 @@ describe('RF-W01-trusted-plugin-admin: plugin manager commands', () => {
     }
   });
 
+  // RUST-FIX(RF-P6-manager-cards): the manager locks a base service from the Host's own dependency data.
+  it('reports which installed plugins use a service (requiredBy) with the same rule that blocks disabling it', async () => {
+    const h = await harness();
+    try {
+      await loadStartupProfile(h.runtime, { official: h.officeProfile, userProfile: h.userProfile, platform: 'desktop' });
+      await h.runtime.install({ name: 'base', meta: { id: 'dstu.base-svc', provides: ['baseSvc'] }, apply(ctx) { ctx.provide('baseSvc', { ok: true }); } });
+      await h.runtime.install({ name: 'user', meta: { id: 'dstu.base-user' }, inject: ['baseSvc'], apply() {} });
+      const inventory = await ok<PluginManagerInventory>(h, PLUGIN_MANAGER_LIST_COMMAND);
+      const byId = new Map(inventory.plugins.map((plugin) => [plugin.id, plugin]));
+      expect(byId.get('dstu.base-svc')).toEqual(expect.objectContaining({ requiredBy: ['dstu.base-user'], contributes: [], agentTools: [], hasUi: false }));
+      expect(byId.get('dstu.base-user')?.requiredBy).toEqual([]);
+      const message = await err(h, PLUGIN_MANAGER_SET_ENABLED_COMMAND, { id: 'dstu.base-svc', enabled: false, revision: inventory.revision });
+      expect(message).toContain('PLUGIN_UNLOAD_BLOCKED');
+      expect(h.runtime.get('dstu.base-svc')).toBeDefined();
+    } finally {
+      await h.runtime.dispose();
+    }
+  });
+
   it('requires the main window local page for every command', async () => {
     const h = await harness();
     try {
@@ -790,5 +811,133 @@ describe('RF-W01-trusted-plugin-admin: plugin manager commands', () => {
     } finally {
       await h.runtime.dispose();
     }
+  });
+});
+
+describe('consent is given once per approved content (id + version + permissions + release digest)', () => {
+  const WORK = 'alice.workshop';
+  const pkg = (version: string, permissions: string[] = []) => JSON.stringify({
+    name: 'deepstudent-plugin-alice-workshop', version, type: 'module', engines: { deepStudent: '^0.11' },
+    deepStudent: { manifestVersion: 1, id: WORK, platforms: ['desktop'], host: './index.mjs', ...(permissions.length ? { permissions } : {}) },
+  }, null, 2);
+  const entry = (version: string, note = '') => [
+    `globalThis.__w01ManagerApplied?.push(${JSON.stringify(`${WORK}@${version}${note}`)});`,
+    `export default { name: '${WORK}', meta: { id: '${WORK}', version: '${version}' }, apply() {} };`,
+  ].join('\n');
+
+  /** The workshop path: the user confirmed the card, the Host installs the managed directory. */
+  async function installFromWorkshop(h: Harness): Promise<PluginManagerInstallResult> {
+    const directory = join(h.dataDir, 'dstu-workshop', WORK, 'build');
+    await mkdir(directory, { recursive: true });
+    await writeFile(join(directory, 'package.json'), pkg('1.0.0'));
+    await writeFile(join(directory, 'index.mjs'), entry('1.0.0'));
+    return h.admin.installManagedDirectory({
+      id: WORK, directory, version: '1.0.0', permissions: [], revision: (await h.store.read()).revision, confirmed: true,
+    });
+  }
+
+  /** The file path: a `.dstuplugin` somebody handed over, imported through the manager. */
+  async function importFile(h: Harness, name: string, files: Record<string, string>): Promise<PluginManagerInstallResult> {
+    const sink = new MemoryZipSink();
+    const zip = new ZipWriter(sink, { codec: nodeZipCodec });
+    for (const [file, text] of Object.entries(files)) await zip.addBytes(file, text);
+    await zip.finish();
+    const path = join(root, name);
+    await writeFile(path, sink.bytes());
+    return ok<PluginManagerInstallResult>(h, PLUGIN_MANAGER_INSTALL_COMMAND, { path, revision: (await h.store.read()).revision });
+  }
+
+  const setEnabled = async (h: Harness, enabled: boolean) =>
+    invoke(h, PLUGIN_MANAGER_SET_ENABLED_COMMAND, { id: WORK, enabled, revision: (await h.store.read()).revision });
+  const listed = async (h: Harness) => (await ok<PluginManagerInventory>(h, PLUGIN_MANAGER_LIST_COMMAND)).plugins.find(p => p.id === WORK)!;
+
+  it('re-enables the same workshop release without asking again, across a new ledger instance', async () => {
+    const h = await harness();
+    try {
+      await installFromWorkshop(h);
+      const record = (await h.consent.read()).find(item => item.id === WORK)!;
+      expect(record).toMatchObject({ version: '1.0.0', permissions: [], trust: 'full', source: 'workshop', contentDigest: expect.stringMatching(/^[0-9a-f]{64}$/) });
+
+      expect(await setEnabled(h, true)).toMatchObject({ kind: 'ok' });
+      expect(await setEnabled(h, false)).toMatchObject({ kind: 'ok' });
+      expect(h.runtime.get(WORK)).toBeUndefined();
+      expect(await listed(h)).toMatchObject({ enabled: false, state: 'disabled', trust: 'full', source: 'workshop', consent: { matched: true, reason: null } });
+      // No consent/set-trust command in between: the stored consent is the only thing that lets this through.
+      expect(await setEnabled(h, true)).toMatchObject({ kind: 'ok' });
+      expect(h.runtime.get(WORK)).toBeDefined();
+      expect(await listed(h)).toMatchObject({ enabled: true, state: 'running', consent: { matched: true } });
+      // Persisted on disk, not remembered in memory.
+      expect((await new CommunityConsentLedger(h.dataDir).read()).find(item => item.id === WORK)).toEqual(record);
+    } finally { await h.runtime.dispose(); }
+  });
+
+  it('asks again when a file with the same id, version and permissions carries different content', async () => {
+    const h = await harness();
+    try {
+      await installFromWorkshop(h);
+      expect(await setEnabled(h, true)).toMatchObject({ kind: 'ok' });
+
+      await importFile(h, 'same-version.dstuplugin', { 'package.json': pkg('1.0.0'), 'index.mjs': entry('1.0.0', '-from-file') });
+      expect(h.runtime.get(WORK)).toBeUndefined();
+      // The file import never inherits the workshop's trust tier, and the old consent stays with the old bytes.
+      expect(await listed(h)).toMatchObject({ enabled: false, trust: 'restricted', source: 'package', consent: { matched: false, code: 'CONSENT_REQUIRED', reason: 'content' } });
+      const before = (await h.store.read()).revision;
+      expect(await setEnabled(h, true)).toMatchObject({ kind: 'err', error: { details: { code: 'CONSENT_REQUIRED', id: WORK, version: '1.0.0', permissions: [] } } });
+      expect((await h.store.read()).revision).toBe(before);
+      expect(applied()).toEqual([`${WORK}@1.0.0`]);
+
+      // The explicit confirmation binds the new content; from then on it toggles freely too.
+      await ok(h, PLUGIN_MANAGER_CONSENT_COMMAND, { id: WORK, version: '1.0.0', permissions: [] });
+      expect(await setEnabled(h, true)).toMatchObject({ kind: 'ok' });
+      expect(await setEnabled(h, false)).toMatchObject({ kind: 'ok' });
+      expect(await setEnabled(h, true)).toMatchObject({ kind: 'ok' });
+      expect(await listed(h)).toMatchObject({ state: 'running', trust: 'restricted', source: 'package', consent: { matched: true } });
+    } finally { await h.runtime.dispose(); }
+  });
+
+  it('asks again for a changed version and for changed permissions', async () => {
+    const h = await harness();
+    try {
+      await installFromWorkshop(h);
+      await importFile(h, 'next-version.dstuplugin', { 'package.json': pkg('1.1.0'), 'index.mjs': entry('1.1.0') });
+      expect(await listed(h)).toMatchObject({ version: '1.1.0', consent: { matched: false, reason: 'version' } });
+      expect(await setEnabled(h, true)).toMatchObject({ kind: 'err', error: { details: { code: 'CONSENT_REQUIRED', version: '1.1.0' } } });
+      await ok(h, PLUGIN_MANAGER_CONSENT_COMMAND, { id: WORK, version: '1.1.0', permissions: [] });
+      expect(await setEnabled(h, true)).toMatchObject({ kind: 'ok' });
+
+      await importFile(h, 'more-permissions.dstuplugin', { 'package.json': pkg('1.1.0', ['service:log']), 'index.mjs': entry('1.1.0') });
+      expect(await listed(h)).toMatchObject({ permissions: ['service:log'], consent: { matched: false, reason: 'permissions' } });
+      expect(await setEnabled(h, true)).toMatchObject({ kind: 'err', error: { details: { code: 'CONSENT_REQUIRED', permissions: ['service:log'] } } });
+      expect(applied()).toEqual([`${WORK}@1.1.0`]);
+    } finally { await h.runtime.dispose(); }
+  });
+
+  it('binds a consent written before content binding to the release it was given for when a file replaces it', async () => {
+    const h = await harness();
+    try {
+      await installFromWorkshop(h);
+      // A ledger written by an older build: same subject, no content digest.
+      await h.consent.grant({ id: WORK, version: '1.0.0', permissions: [] }, { trust: 'full', source: 'workshop' });
+      expect((await h.consent.read())[0]).not.toHaveProperty('contentDigest');
+      expect(await setEnabled(h, true)).toMatchObject({ kind: 'ok' });
+
+      await importFile(h, 'replacement.dstuplugin', { 'package.json': pkg('1.0.0'), 'index.mjs': entry('1.0.0', '-from-file') });
+      expect(await listed(h)).toMatchObject({ trust: 'restricted', source: 'package', consent: { matched: false, reason: 'content' } });
+      expect(await setEnabled(h, true)).toMatchObject({ kind: 'err', error: { details: { code: 'CONSENT_REQUIRED' } } });
+    } finally { await h.runtime.dispose(); }
+  });
+
+  it('keeps the consent when the very same file is imported again', async () => {
+    const h = await harness();
+    try {
+      const files = { 'package.json': pkg('1.0.0'), 'index.mjs': entry('1.0.0') };
+      await importFile(h, 'first.dstuplugin', files);
+      expect(await setEnabled(h, true)).toMatchObject({ kind: 'err', error: { details: { code: 'CONSENT_REQUIRED' } } });
+      await ok(h, PLUGIN_MANAGER_CONSENT_COMMAND, { id: WORK, version: '1.0.0', permissions: [] });
+      expect(await setEnabled(h, true)).toMatchObject({ kind: 'ok' });
+      await importFile(h, 'again.dstuplugin', files);
+      expect(await listed(h)).toMatchObject({ consent: { matched: true } });
+      expect(await setEnabled(h, true)).toMatchObject({ kind: 'ok' });
+    } finally { await h.runtime.dispose(); }
   });
 });

@@ -32,7 +32,8 @@ it('discovers actual registered metadata and source contracts, exposes fourteen 
   expect(tools.sensitivityLevel('dstu_plugin_configure')).toBe('high');
   expect(tools.sensitivityLevel('dstu_plugin_set_enabled')).toBe('high');
   expect(tools.sensitivityLevel('dstu_plugin_app_restart')).toBe('high');
-  expect(tools.sensitivityLevel('dstu_plugin_propose_install')).toBe('high');
+  // A proposal only records a card; the consent to generate is the card's 开始做, to install its 安装.
+  expect(tools.sensitivityLevel('dstu_plugin_propose_install')).toBe('medium');
   expect(tools.sensitivityLevel('dstu_plugin_write_source')).toBe('medium');
   expect(tools.sensitivityLevel('dstu_plugin_validate')).toBe('medium');
   const card = await tools.invoke('dstu_plugin_propose_install', { title: 'Test', description: 'Test', template: 'host-tool', changes: [], capabilities: [], sessionId: 'spoof' }, 'real') as { id: string; sessionId: string };
@@ -93,7 +94,8 @@ it('ignores blank, null, or hallucinated new-work pluginId slugs while rejecting
 
   const edited = await tools.invoke('dstu_plugin_propose_install', { ...baseArgs, title: 'Updated', pluginId: `  ${fromEmpty.pluginId}  ` }, 'session-a') as { pluginId: string; revision: number };
   expect(edited.pluginId).toBe(fromEmpty.pluginId);
-  expect(edited.revision).toBe(2);
+  // fromSlug superseded the un-started fromEmpty draft of the same conversation (one revision), then the edit.
+  expect(edited.revision).toBe(3);
 
   // Also accept workshop.plugin-<uuid> when model passes pluginId as id to diagnose/status
   const statusByPrefixed = await tools.invoke('dstu_plugin_status', { id: fromEmpty.pluginId }, 'session-a') as { works: Array<{ id: string }> };

@@ -76,6 +76,47 @@ ctx.ui.contribute('chat.toolResults', {
 `ctx.ui.chat.registerBlock(type, { type, component, onAbort? })`、`registerEvent(type, handler)`、`registerMode(name, mode)`。
 与已登记的类型冲突时报错；卸载即撤销。
 
+### 应用界面槽位（`contracts/surfaces.ts`）
+
+七个面向社区插件的界面扩展点，值类型都随 SDK 导出。文案由插件传已翻译的字符串（`ctx.ui.i18n`）；`run(ctx)` 回调由宿主在
+点击时现算上下文调用，抛错或返回被拒绝的 Promise 计入插件的错误预算（不会打断宿主界面）；组件型贡献走 `<SlotOutlet>`，
+有插件作用域（`useT` 等可用）和独立错误边界。所有贡献随插件卸载撤销。
+
+| 槽位 | 值类型 | 声明方 | 出现位置 / 回调上下文 |
+|---|---|---|---|
+| `pdf.selectionToolbar` | `PdfSelectionToolbarContribution`：`label`、`icon?`、`kinds?`、`run(PdfSelectionContext)` | `dstu.ui.learning-hub` | PDF / EPUB / 富文档阅读器的划词工具条，排在内置动作之后；上下文 `text`、`contextBefore/After`、`page?`、`resourceId?`、`documentTitle?`、`kind` |
+| `chat.composer.commands` | `ChatComposerCommandContribution`：`name`、`label`、`description?`、`icon?`、`run(ChatComposerCommandContext)` | `dstu.ui.chat` | 聊天输入开头输入 `/` 时与技能命令一起列出；选中后去掉 `/name`，上下文 `input`、`sessionId?`、`getInput()`、`setInput()`、`insertText()`、`send(text?)`（走正常发送路径） |
+| `chat.message.actions` | `ChatMessageActionContribution`：`label`、`icon?`、`roles?`、`run(ChatMessageActionContext)` | `dstu.ui.chat` | 消息「更多」菜单（桌面与移动端）；上下文 `messageId`、`role`、`sessionId?`、`content`（Markdown） |
+| `review.cardActions` | `ReviewCardActionContribution`：`label`、`icon?`、`run(ReviewCardContext)` | `dstu.ui.anki` | 闪卡复习界面卡片工具条（移动端在「更多」菜单）；上下文 `cardId`、`noteCardId?`、`front`、`back`、`tags`、`flipped` |
+| `statusbar.items` | `StatusBarItemContribution`：`component(StatusBarItemProps)` | `dstu.ui.workbench` | 工作台桌面顶部状态栏（菜单栏）右侧、内置学习信号之后；`className` 是内置状态项的样式类 |
+| `desktop.widgets` | `DesktopWidgetContribution`：`title`、`size?: 'sm' \| 'md' \| 'lg'`、`component(DesktopWidgetProps)` | `dstu.ui.workbench` | 工作台桌面右上角小组件栏、内置日程 / 简报之后；宿主画卡片外框，高度按 size 提示 |
+| `theme.variants` | `ThemeVariantContribution`：`label`、`description?`、`light?`、`dark?`（CSS 变量表，名字须以 `--` 开头） | `dstu.ui.settings` | 设置 → 外观「插件主题」里由用户选择；按当前明暗模式写到 `<html>` 的内联样式，切换 / 选回默认 / 插件卸载时移除 |
+
+```ts
+ctx.ui.contribute('pdf.selectionToolbar', { id: 'define', value: {
+  label: t('define'), icon: BookOpen, run: ({ text, page }) => lookUp(text, page),
+} });
+ctx.ui.contribute('chat.composer.commands', { id: 'today', value: {
+  name: 'today', label: t('today'), description: t('today_desc'),
+  run: (c) => c.send(`${t('today_prompt')} ${c.input}`),
+} });
+ctx.ui.contribute('chat.message.actions', { id: 'to-card', value: {
+  label: t('make_card'), icon: Cards, roles: ['assistant'], run: ({ content }) => makeCard(content),
+} });
+ctx.ui.contribute('review.cardActions', { id: 'speak', value: {
+  label: t('read_aloud'), icon: SpeakerHigh, run: ({ front }) => speak(front),
+} });
+ctx.ui.contribute('statusbar.items', { id: 'streak', value: {
+  component: ({ className }) => <button className={className} title={t('streak')}>🔥 7</button>,
+} });
+ctx.ui.contribute('desktop.widgets', { id: 'quote', value: { title: t('quote'), size: 'sm', component: QuoteWidget } });
+ctx.ui.contribute('theme.variants', { id: 'sepia', value: {
+  label: t('sepia'), light: { '--background': '40 40% 94%' }, dark: { '--background': '30 15% 12%' },
+} });
+```
+
+`statusbar.items` 与 `desktop.widgets` 只在桌面工作台存在：移动端跳过 `dstu.ui.workbench` 时，往这两个槽位的贡献被静默丢弃（不报错）。
+
 ## 3. 内核服务（`ctx.ui.*`，在 `apply` 中使用）
 
 | 服务 | API | 卸载时 |
@@ -128,6 +169,14 @@ Host 插件回来后自动装回；降级 ⇄ 可用切换时按原参数重装�
 ## 5. 设计系统
 
 `DsButton`、`DsDialog`、`SegmentedControl`；样式只用 `--ds-*` 变量。
+
+| 组件 | 属性 |
+|---|---|
+| `DsSearchInput` | `value`、`onChange(value: string)`、`placeholder`，其余同 `<input>`；组字（IME）期间不派发 |
+| `DsCard` | `<div>` 属性；`flush` 去掉默认内边距 |
+| `DsListItem` | `title`、`description?`、`leading?`、`trailing?`、`children?`、`onClick?`（有才渲染成按钮）、`selected?`、`disabled?` |
+| `DsBadge` | `variant?`：`default`（主题色）、`secondary`（默认，灰色）、`destructive`、`outline` |
+| `MathText` | `tex` + `display?`：一个 LaTeX 公式；或 `text`：夹带 `$…$` / `$$…$$` 的文字（`\$` 是美元符）。KaTeX 按需加载、`trust: false`，只把 KaTeX 的输出写进 DOM，加载中与解析失败显示原文 |
 
 ## 6. 撤销句柄、懒加载贡献点、构建与平台
 

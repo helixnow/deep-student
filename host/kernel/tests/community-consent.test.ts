@@ -2,7 +2,7 @@ import { chmod, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'n
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { canonicalPermissions, CommunityConsentLedger, permissionsDigest } from '../community-consent.ts';
+import { canonicalPermissions, CommunityConsentLedger, permissionsDigest, releaseContentDigest } from '../community-consent.ts';
 
 describe('RF-W32-community-consent-ledger: K3 Host-owned community consent ledger', () => {
   let dir: string;
@@ -109,5 +109,56 @@ describe('RF-W32-community-consent-ledger: K3 Host-owned community consent ledge
     await ledger.grant({ ...subject, version: '2.0.0' });
     expect((await ledger.evaluate({ ...subject, version: '2.0.0' })).matched).toBe(true);
     expect(await readdir(dir)).toEqual(['community-consent.json']);
+  });
+});
+
+describe('consent bound to release content', () => {
+  let dir: string;
+  let ledger: CommunityConsentLedger;
+  const subject = { id: 'community.example', version: '1.0.0', permissions: ['service:log'] };
+  const a = releaseContentDigest({ 'package.json': '1'.repeat(64), 'index.mjs': '2'.repeat(64) });
+  const b = releaseContentDigest({ 'package.json': '1'.repeat(64), 'index.mjs': '3'.repeat(64) });
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'community-consent-content-'));
+    ledger = new CommunityConsentLedger(dir);
+  });
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it('digests a release by its locked files, independent of key order', () => {
+    expect(a).toMatch(/^[0-9a-f]{64}$/);
+    expect(releaseContentDigest({ 'index.mjs': '2'.repeat(64), 'package.json': '1'.repeat(64) })).toBe(a);
+    expect(b).not.toBe(a);
+    expect(releaseContentDigest({ 'package.json': '1'.repeat(64) })).not.toBe(a);
+  });
+
+  it('matches the approved content after reopening and rejects any other content', async () => {
+    const record = await ledger.grant({ ...subject, contentDigest: a }, { trust: 'full', source: 'workshop' });
+    expect(record.contentDigest).toBe(a);
+    const reopened = new CommunityConsentLedger(dir);
+    expect(await reopened.evaluate({ ...subject, contentDigest: a })).toMatchObject({ matched: true, reason: null, trust: 'full', source: 'workshop' });
+    expect(await reopened.evaluate({ ...subject, contentDigest: b })).toMatchObject({ matched: false, code: 'CONSENT_REQUIRED', reason: 'content' });
+    // A subject whose content cannot be identified is not covered by a content-bound consent.
+    expect(await reopened.evaluate(subject)).toMatchObject({ matched: false, code: 'CONSENT_REQUIRED', reason: 'content' });
+  });
+
+  it('reports version and permission changes before content, and keeps unbound records matching as before', async () => {
+    await ledger.grant({ ...subject, contentDigest: a });
+    expect(await ledger.evaluate({ ...subject, version: '1.0.1', contentDigest: a })).toMatchObject({ matched: false, reason: 'version' });
+    expect(await ledger.evaluate({ ...subject, permissions: ['service:log', 'service:network'], contentDigest: a })).toMatchObject({ matched: false, reason: 'permissions' });
+    await ledger.grant(subject);
+    expect((await ledger.read())[0]).not.toHaveProperty('contentDigest');
+    expect(await ledger.evaluate({ ...subject, contentDigest: b })).toMatchObject({ matched: true });
+  });
+
+  it('restores a bound record unchanged and refuses a malformed digest', async () => {
+    const record = await ledger.grant({ ...subject, contentDigest: a }, { trust: 'full', source: 'workshop' });
+    await ledger.grant({ ...subject, contentDigest: b });
+    await ledger.restore(subject.id, record);
+    expect(await ledger.read()).toEqual([record]);
+    await expect(ledger.grant({ ...subject, contentDigest: 'not-a-digest' })).rejects.toThrow('invalid consent content digest');
+    await writeFile(ledger.path, JSON.stringify({ schemaVersion: 1, records: [{ ...record, contentDigest: 'ABC' }] }));
+    await expect(ledger.read()).rejects.toThrow('invalid consent content digest');
   });
 });

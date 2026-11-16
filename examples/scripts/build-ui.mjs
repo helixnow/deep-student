@@ -3,7 +3,7 @@
  * 社区插件 UI 半的构建：在插件目录里运行（插件的 `npm run build:ui` 就是 `node <应用仓库>/examples/scripts/build-ui.mjs`），
  * 把 `ui.tsx` 打成 `package.json#deepStudent.ui` 指向的单个 ESM 文件。
  *
- * - 宿主经 import map 只共享四个模块（src/ui-kernel/community.ts installCommunitySharedModules），它们设为 external，
+ * - 宿主经 import map 共享 React、SDK、i18next 与 Milkdown kit 的若干入口（src/ui-kernel/community.ts installCommunitySharedModules），它们设为 external，
  *   其余依赖打进产物。
  * - 宿主不提供 react/jsx-runtime：按经典 JSX 编译成 React.createElement；tsconfigRaw 为空，不读外层 tsconfig
  *   （应用仓库根 tsconfig 的 "jsx": "react-jsx" 会盖过 jsx 设置）。
@@ -14,8 +14,13 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 
-/** 宿主共享给社区 UI 模块的裸模块名。 */
-export const SHARED_MODULES = ['react', 'react-dom', '@deepstudent/ui', 'i18next'];
+/** 宿主共享给社区 UI 模块的裸模块名（与 src/ui-kernel/community.ts COMMUNITY_SHARED_MODULES 一致）。 */
+export const SHARED_MODULES = [
+  'react', 'react-dom', '@deepstudent/ui', 'i18next',
+  '@milkdown/kit/core', '@milkdown/kit/ctx', '@milkdown/kit/utils', '@milkdown/kit/transformer',
+  '@milkdown/kit/prose', '@milkdown/kit/prose/state', '@milkdown/kit/prose/view', '@milkdown/kit/prose/model',
+  '@milkdown/kit/prose/transform', '@milkdown/kit/prose/commands', '@milkdown/kit/prose/inputrules', '@milkdown/kit/prose/keymap',
+];
 export const UI_ENTRY = 'ui.tsx';
 export const BUILD_UI_SCRIPT = fileURLToPath(import.meta.url);
 

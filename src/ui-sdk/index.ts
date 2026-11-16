@@ -7,8 +7,8 @@
 
 // 插件定义
 export { defineUiPlugin, BUILTIN_SLOTS } from '../ui-kernel/kernel';
-export { definePlugin, defineSlot, contribution, contributeAll, createPluginStore, withPluginScope } from './plugin';
-export type { PluginSpec, SlotContributionOf } from './plugin';
+export { definePlugin, defineSlot, contribution, contributeAll, createPluginStore, createPluginOverlay, withPluginScope } from './plugin';
+export type { PluginOverlay, PluginSpec, SlotContributionOf } from './plugin';
 export { UI_KERNEL_API_VERSION, UI_PLATFORMS } from '../ui-kernel/meta';
 export type {
   UiPlugin, UiPluginMeta, NormalizedUiPluginMeta, UiPluginOrigin, UiPluginInstallOptions, UiService, UiPlatformKind,
@@ -60,6 +60,23 @@ export type {
   NotesTreeMenuActions, NotesTreeMenuContext, NotesTreeMenuItem, ResourceMenuContribution, ResourceMenuScope, ResourceOperation,
   ResourceTypeDefinition, ScopedResourceMenuContribution,
 } from '../ui-kernel/contracts/content';
+export type {
+  CodeBlockLanguageContribution, ContentCodeBlockContribution, MarkdownCodeBlockContribution, MarkdownCodeBlockProps,
+} from '../ui-kernel/contracts/content';
+// 仪表盘（`dashboard.widgets` / `dashboard.stats` / `dashboard.charts`，由 dstu.ui.dashboard 声明）
+export type {
+  DashboardChart, DashboardChartProps, DashboardStat, DashboardStatistics, DashboardStatProps, DashboardView, DashboardWidget,
+  DashboardWidgetProps, TodayCounts,
+} from '../ui-plugins/official/dashboard/api';
+// 编辑器写接口：在选区工具栏 / 斜杠菜单的 onRun(ctx) 或块菜单的 run(view) 里读写正文。
+export { editorApi } from './editor';
+export type { EditorApi } from './editor';
+// 让用户选文件 / 存文件（系统对话框），选中的路径随之放行。
+export { pluginFiles } from './files';
+export type { PluginFileFilter, PluginFiles, PluginPickOptions, PluginSaveOptions } from './files';
+
+// 应用界面扩展位置（PDF 选区、聊天输入框斜杠命令、消息操作、复习、状态栏、桌面小组件、主题变体）
+export type * from '../ui-kernel/contracts/surfaces';
 
 // 跨插件互操作协议 v1（语义锚点 URI、子资源摘录拖拽与反向链接图）
 export {
@@ -111,3 +128,12 @@ export type {
 export { DsButton } from '../components/ui/DsButton';
 export { DsDialog } from '../components/ui/DsDialog';
 export { SegmentedControl } from '../components/ui/SegmentedControl';
+export { DsSearchInput } from '../components/ui/DsSearchInput';
+export type { DsSearchInputProps } from '../components/ui/DsSearchInput';
+export { DsCard, DsListItem } from '../components/ui/DsCard';
+export type { DsCardProps, DsListItemProps } from '../components/ui/DsCard';
+export { DsBadge } from '../components/ui/DsBadge';
+export type { DsBadgeProps, DsBadgeVariant } from '../components/ui/DsBadge';
+// 数学公式：KaTeX 按需加载，只渲染 KaTeX 自己的输出（trust: false），解析失败显示原文。
+export { MathText } from '../components/ui/MathText';
+export type { MathTextProps } from '../components/ui/MathText';

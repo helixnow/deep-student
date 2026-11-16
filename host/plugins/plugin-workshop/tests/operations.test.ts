@@ -42,10 +42,8 @@ describe('workshop user operations', () => {
     const ready = await terminal(ops, card.id);
     expect(ready.state, ready.error ?? '').toBe('pending-confirmation');
     await expect(ops.install(card.id, ready.revision)).rejects.toThrow('INSTALL_UNAVAILABLE');
-    const exported = await ops.export(card.id);
-    const zip = await JSZip.loadAsync(await readFile(exported.path));
-    expect(Object.keys(zip.files)).toContain('dist/host.js');
-    expect(Object.keys(zip.files)).not.toContain('index.ts');
+    // Nothing installed yet: an unapproved candidate is never exported.
+    await expect(ops.export(card.id)).rejects.toThrow('WORKSHOP_STATE: no installed version');
     const installs: string[] = [];
     const admin: WorkshopAdmin = {
       inventory: async () => ({ revision: 'test-revision', safeMode: false, plugins: [] }),
@@ -61,6 +59,11 @@ describe('workshop user operations', () => {
     const installed = await ops.install(card.id, ready.revision);
     expect(installed.state).toBe('installed');
     expect(installs[0]).toContain('review');
+    const exported = await ops.export(card.id);
+    expect(exported.fileName).toBe('Recall-v1.0.0.dstuplugin');
+    const zip = await JSZip.loadAsync(await readFile(exported.path));
+    expect(Object.keys(zip.files)).toContain('dist/host.js');
+    expect(Object.keys(zip.files)).not.toContain('index.ts');
     const revoked = await ops.revoke(card.id, installed.revision);
     expect(revoked.state).toBe('revoked');
     const restored = await ops.restore(card.id, revoked.revision);
@@ -75,5 +78,38 @@ describe('workshop user operations', () => {
     const controller = new AbortController(); controller.abort();
     await materializeGeneratedFiles(source, '{"files":[{"path":"index.ts","content":"never"}]}', controller.signal);
     await expect(readFile(join(source, 'index.ts'))).rejects.toThrow();
+  });
+  it('turns down a ready candidate (不要了) without installing, and removes failed or externally removed works through the workshop', async () => {
+    const ops = await operations();
+    ops.bindGeneration({ generate: async (card, source) => { await seedTemplate(source, card); } });
+    const card = await ops.propose(brief);
+    await ops.create(card.id, card.revision);
+    const ready = await terminal(ops, card.id);
+    expect(ready.state, ready.error ?? '').toBe('pending-confirmation');
+    // Progress ticks during generation did not invalidate the card: one revision for create, one for the result.
+    expect(ready.revision).toBe(card.revision + 2);
+    const declined = await ops.cancel(card.id, ready.revision);
+    expect(declined.state).toBe('cancelled');
+    await expect(ops.install(card.id, declined.revision)).rejects.toThrow('WORKSHOP_STATE');
+
+    let present = true;
+    const uninstall = vi.fn(async () => { present = false; return null; });
+    const installManagedDirectory = vi.fn(async (request: { id: string; version: string }) => {
+      present = true;
+      return { id: request.id, version: request.version, enabled: true, revision: 'next', rollback: 'not-needed' as const };
+    });
+    ops.bindAdmin({
+      inventory: async () => ({ revision: 'r', safeMode: false, plugins: present ? [{ id: card.pluginId, enabled: true, state: 'running' }] : [] }),
+      installManagedDirectory, uninstall,
+    } as unknown as WorkshopAdmin);
+    // A failed (isolated) work that is still installed is uninstalled, not left behind.
+    const failed = await ops.store.update(card.id, declined.revision, { state: 'failed', version: '1.0.0', usableVersion: '1.0.0', error: 'UI_ERROR_BUDGET: x' });
+    const revoked = await ops.revoke(card.id, failed.revision);
+    expect(revoked.state).toBe('revoked');
+    expect(uninstall).toHaveBeenCalledTimes(1);
+    // Removed outside the workshop while the record still says installed: marked, nothing to uninstall.
+    const stale = await ops.store.update(card.id, revoked.revision, { state: 'installed' });
+    expect((await ops.revoke(card.id, stale.revision)).state).toBe('revoked');
+    expect(uninstall).toHaveBeenCalledTimes(1);
   });
 });

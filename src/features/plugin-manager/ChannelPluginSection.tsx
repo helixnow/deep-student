@@ -154,13 +154,19 @@ export function ChannelPluginSection({ channel, onConfigure, onBind, className }
   const { t } = useTranslation('plugin_manager');
   const { plugins, loading, busyId } = channel;
 
+  // 没有渠道（或还在读取）时只占一行安静的说明，不在页面上立一个空分组。
+  if (loading || plugins.length === 0) return (
+    <div data-testid="channel-empty-row" role={loading ? 'status' : undefined}
+      className={cn('flex min-w-0 items-center gap-3 rounded-2xl px-4 py-3 text-sm text-muted-foreground', className)}>
+      <Plug className="size-4 shrink-0" aria-hidden="true" />
+      <span className="shrink-0 text-foreground/80">{t('channel.title')}</span>
+      <span className="min-w-0 text-xs text-muted-foreground/80">{t(loading ? 'channel.loading' : 'channel.empty')}</span>
+    </div>
+  );
+
   return (
     <SettingsGroup title={t('channel.title')} description={t('channel.description')} className={className}>
-      {loading ? (
-        <p className="px-1 py-2.5 text-sm text-muted-foreground">{t('channel.loading')}</p>
-      ) : plugins.length === 0 ? (
-        <p className="px-1 py-2.5 text-sm text-muted-foreground">{t('channel.empty')}</p>
-      ) : plugins.map((plugin) => {
+      {plugins.map((plugin) => {
         const busy = busyId === plugin.id;
         const unbound = !plugin.bound;
         return (

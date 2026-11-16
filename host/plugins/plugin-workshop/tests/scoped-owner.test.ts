@@ -58,13 +58,15 @@ it('P1 scope composition: paired UI background generation, Agent validation/expo
           } as unknown as ExecutionContext);
         } });
       } }));
-    for (const name of ['dstu_plugin_validate', 'dstu_plugin_export']) {
-      const result = await host.invoke<{ success: boolean; error?: string }>('plugin:host|call', {
-        caller: 'dstu.tool-dispatch-test', service: 'testDispatch', method: 'run', args: [name, card.id],
-      });
-      expect(result.success, result.error).toBe(true);
-    }
+    const run = (name: string) => host.invoke<{ success: boolean; error?: string }>('plugin:host|call', {
+      caller: 'dstu.tool-dispatch-test', service: 'testDispatch', method: 'run', args: [name, card.id],
+    });
+    const validated = await run('dstu_plugin_validate');
+    expect(validated.success, validated.error).toBe(true);
     card = await ui<WorkshopCard>('install', [card.id, card.revision]);
+    // Export packs the installed version, so it works once something is installed.
+    const exported = await run('dstu_plugin_export');
+    expect(exported.success, exported.error).toBe(true);
     card = await ui<WorkshopCard>('revoke', [card.id, card.revision]);
     card = await ui<WorkshopCard>('restore', [card.id, card.revision]);
     expect(card.state).toBe('installed');

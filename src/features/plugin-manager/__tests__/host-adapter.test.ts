@@ -30,6 +30,24 @@ function setup() {
 }
 
 describe('HostPluginManagerAdapter', () => {
+  it('RF-P6-manager-cards: maps dependency, contribution, agent-tool and consent-reason fields from the Host list', async () => {
+    const invoke = vi.fn(async () => ({ revision: 'r', safeMode: false, plugins: [
+      { id: 'dstu.platform.storage', origin: 'builtin', platforms: ['desktop'], enabled: true, state: 'running', hasConfig: false,
+        permissions: [], services: ['storage'], requiredBy: ['dstu.notes'], contributes: [], agentTools: [] },
+      { id: 'workshop.timetable', origin: 'community', version: '1.1.0', platforms: ['desktop'], enabled: true, state: 'disabled', hasConfig: false,
+        permissions: ['agent:tools'], services: [], contributes: ['agent.tools'], agentTools: [{ name: 'today', title: '查课表' }],
+        consent: { matched: false, code: 'CONSENT_REQUIRED', reason: 'content', grantedPermissions: [] } },
+      { id: 'legacy.entry', origin: 'community', platforms: [], enabled: false, state: 'disabled', hasConfig: false, permissions: [], services: [] },
+    ] }));
+    const adapter = new HostPluginManagerAdapter({ platform: 'desktop', invoke: invoke as never, choosePackage: vi.fn() });
+    const [storage, timetable, legacy] = (await adapter.list()).plugins;
+    expect(storage).toMatchObject({ requiredBy: ['dstu.notes'], contributes: [], agentTools: [] });
+    expect(timetable).toMatchObject({ consent: 'required', consentReason: 'content', contributes: ['agent.tools'], agentTools: [{ name: 'today', title: '查课表' }] });
+    // Older Hosts without the fields still list cleanly.
+    expect(legacy).toMatchObject({ requiredBy: [], contributes: [], agentTools: [] });
+    expect(legacy).not.toHaveProperty('consentReason');
+  });
+
   it('uses the native file picker filter and the statically named production invoke bridge', async () => {
     const { invoke } = await import('@tauri-apps/api/core');
     const { open } = await import('@tauri-apps/plugin-dialog');

@@ -36,6 +36,8 @@ export function editorAssertions(): void {
     build: (builder) => {
       builder.addGroup('host-actions', 'More').addItem('open', { label: 'Open', icon: 'ArrowSquareOut' });
       builder.getGroup('host-actions').addItem('active', { label: 'Active', icon: 'Star', active: () => true });
+      // 带文字的按钮：宿主渲染图标 + label 文字。
+      builder.getGroup('host-actions').addItem('labelled', { label: '编成口诀', icon: '<svg/>', showLabel: true, onRun: () => {} });
     },
   };
   ctx.ui.contribute('editor.selectionToolbar', { id: 'toolbar', value: toolbar });
@@ -43,6 +45,8 @@ export function editorAssertions(): void {
     build: (builder) => {
       // @ts-expect-error [toolbar-item-icon]
       builder.addGroup('g', 'G').addItem('b', { label: 'Bold' });
+      // @ts-expect-error [toolbar-item-show-label]
+      builder.addGroup('g2', 'G').addItem('c', { label: 'Copy', icon: '', showLabel: 'yes' });
     },
   };
   void badToolbar;

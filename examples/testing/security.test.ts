@@ -62,7 +62,9 @@ async function community(spec: Spec): Promise<{ id: string; module: string }> {
     'export default {',
     `  name: meta.id, meta, inject: ${JSON.stringify(spec.inject ?? [])},`,
     '  apply(ctx) {',
-    '    record(`applied:${meta.id}`, { settingsMarker: ctx.get("settings").marker, execFileSync: typeof execFileSync, readFileSync: typeof readFileSync });',
+    '    let settingsMarker;',
+    '    try { settingsMarker = ctx.get("settings").marker; } catch (error) { settingsMarker = String(error.message).split(":")[0]; }',
+    '    record(`applied:${meta.id}`, { settingsMarker, execFileSync: typeof execFileSync, readFileSync: typeof readFileSync });',
     '  },',
     '};',
   ].join('\n'));
@@ -98,16 +100,18 @@ describe('community Host half: what the manifest and permission checks do and do
     }
   });
 
-  it('once installed, a plugin that declares no permissions still gets official services via ctx.get and Node built-ins via import', async () => {
-    const { host, result } = await load([await community({ id: 'alice.no-permissions' })]);
+  it('once installed, ctx.get honours the declaration (inject + service:*), but Node built-ins are still one import away', async () => {
+    const { host, result } = await load([
+      await community({ id: 'alice.no-permissions' }),
+      await community({ id: 'alice.declared', inject: ['settings'], pkg: { deepStudent: { manifestVersion: 1, id: 'alice.declared', platforms: ['desktop'], host: './index.mjs', permissions: ['service:settings'] } } }),
+    ]);
     try {
       expect(result.degraded).toEqual([]);
-      expect(result.installed.map((p) => p.id)).toContain('alice.no-permissions');
-      expect(g.__w27Security).toEqual([
-        'evaluated:alice.no-permissions',
-        'applied:alice.no-permissions',
+      expect(result.installed.map((p) => p.id)).toEqual(expect.arrayContaining(['alice.no-permissions', 'alice.declared']));
+      expect(g.__w27Security).toEqual(expect.arrayContaining([
+        { settingsMarker: 'PERMISSION_UNDECLARED', execFileSync: 'function', readFileSync: 'function' },
         { settingsMarker: SETTINGS.marker, execFileSync: 'function', readFileSync: 'function' },
-      ]);
+      ]));
     } finally {
       await host.dispose();
     }

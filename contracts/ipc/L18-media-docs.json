@@ -1465,6 +1465,99 @@
       "frontend": "app"
     },
     {
+      "name": "media_companion_ask",
+      "lane": "L18-media-docs",
+      "source": "host/plugins/media/src/register-companion.ts",
+      "async": true,
+      "args": [
+        {
+          "key": "resourceId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "question",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "requestId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "history",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/MediaCompanionTurn"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "positionSec",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [],
+      "result": {
+        "$ref": "#/$defs/MediaCompanionAnswer"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "media_companion_cancel",
+      "lane": "L18-media-docs",
+      "source": "host/plugins/media/src/register-companion.ts",
+      "async": false,
+      "args": [
+        {
+          "key": "requestId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        }
+      ],
+      "injected": [],
+      "result": {
+        "type": "null"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
       "name": "media_library_list",
       "lane": "L18-media-docs",
       "rust": {
@@ -1686,6 +1779,59 @@
         "items": {
           "$ref": "#/$defs/MediaRelatedNote"
         }
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "media_study_cards",
+      "lane": "L18-media-docs",
+      "source": "host/plugins/media/src/register-companion.ts",
+      "async": false,
+      "args": [
+        {
+          "key": "resourceId",
+          "schema": {
+            "type": "string"
+          },
+          "optional": false
+        },
+        {
+          "key": "limit",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "offset",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [],
+      "result": {
+        "$ref": "#/$defs/MediaStudyCardList"
       },
       "error": {
         "type": "string"
@@ -3254,6 +3400,22 @@
       ]
     },
     {
+      "name": "media_companion_ask_delta",
+      "dynamic": false,
+      "payload": {
+        "$ref": "#/$defs/MediaCompanionAskDelta"
+      },
+      "emitters": [
+        {
+          "file": "host/plugins/media/src/companion-ask.ts",
+          "line": 393,
+          "fn": "runCompanionAsk",
+          "lane": "L18-media-docs",
+          "method": "emit"
+        }
+      ]
+    },
+    {
       "name": "pdf-annotations:changed",
       "dynamic": false,
       "payload": {
@@ -4482,6 +4644,105 @@
       "additionalProperties": false,
       "x-rust": "dstu_media::media::ledger::MediaCheckpoint"
     },
+    "MediaCompanionAnswer": {
+      "type": "object",
+      "properties": {
+        "requestId": {
+          "type": "string"
+        },
+        "resourceId": {
+          "type": "string"
+        },
+        "answer": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "coverage": {
+          "type": "string",
+          "enum": [
+            "full",
+            "excerpt"
+          ]
+        },
+        "usedSegments": {
+          "type": "integer"
+        },
+        "totalSegments": {
+          "type": "integer"
+        },
+        "finishReason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "interrupted": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "requestId",
+        "resourceId",
+        "answer",
+        "model",
+        "coverage",
+        "usedSegments",
+        "totalSegments",
+        "finishReason",
+        "interrupted"
+      ],
+      "additionalProperties": false
+    },
+    "MediaCompanionAskDelta": {
+      "type": "object",
+      "properties": {
+        "requestId": {
+          "type": "string"
+        },
+        "resourceId": {
+          "type": "string"
+        },
+        "seq": {
+          "type": "integer"
+        },
+        "delta": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "requestId",
+        "resourceId",
+        "seq",
+        "delta"
+      ],
+      "additionalProperties": false
+    },
+    "MediaCompanionTurn": {
+      "type": "object",
+      "properties": {
+        "role": {
+          "type": "string",
+          "enum": [
+            "user",
+            "assistant"
+          ]
+        },
+        "content": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "role",
+        "content"
+      ],
+      "additionalProperties": false
+    },
     "MediaLibraryItem": {
       "type": "object",
       "properties": {
@@ -4759,6 +5020,64 @@
       ],
       "additionalProperties": false,
       "x-rust": "dstu_media::media::library::MediaRelatedNote"
+    },
+    "MediaStudyCard": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "front": {
+          "type": "string"
+        },
+        "back": {
+          "type": "string"
+        },
+        "seconds": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "createdAt": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "front",
+        "back",
+        "seconds",
+        "createdAt"
+      ],
+      "additionalProperties": false
+    },
+    "MediaStudyCardList": {
+      "type": "object",
+      "properties": {
+        "resourceId": {
+          "type": "string"
+        },
+        "total": {
+          "type": "integer"
+        },
+        "cards": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/MediaStudyCard"
+          }
+        }
+      },
+      "required": [
+        "resourceId",
+        "total",
+        "cards"
+      ],
+      "additionalProperties": false
     },
     "MediaStudyLedger": {
       "type": "object",

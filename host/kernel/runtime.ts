@@ -35,17 +35,22 @@ import type { ContractSet } from './contract-set.ts';
 import { checkCoverage, type CoverageReport } from './coverage.ts';
 import { BackendEventService, UiEventService } from './events.ts';
 import { findNonJson, toWireJson } from './json.ts';
-import { FIBER_ACTIVE, isWithin, type HostOutbound, type InstalledPlugin, type KernelState } from './kernel.ts';
+import { FIBER_ACTIVE, isWithin, KERNEL_ONLY_SERVICES, type HostOutbound, type InstalledPlugin, type KernelState } from './kernel.ts';
 import type { EventTarget, ProtocolChunk, ProtocolRequest, ProtocolResponse, ShellResponse, WindowLifecycle } from './protocol.ts';
 import { ProtocolService } from './protocols.ts';
-import { resolvePluginConfig } from './plugin-config.ts';
+import { resolvePluginConfig, withDeclaredSettings } from './plugin-config.ts';
 import { parseDegradedReason, PluginLoadError } from './plugin-load-error.ts';
 import type { PluginManifest } from './manifest.ts';
 import type { DstuPluginInstaller } from './plugin-admin.ts';
 import { BuiltinPluginInstaller } from './plugin-installer.ts';
 import { communityContext } from './community-context.ts';
+
+/** Workshop work ids, assigned by the Host (`workshop.plugin-<uuid v4>`). */
+const WORKSHOP_PLUGIN_ID = /^workshop\.plugin-[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 import { CORE_SERVICES } from './profile-install.ts';
 import { ShellService } from './shell.ts';
+import { PluginAgentToolsService, pluginAgentToolName } from './plugin-agent-tools.ts';
+import { PluginCallerService } from './plugin-caller.ts';
 import { StartupTimeline } from './startup-timing.ts';
 import type { CapabilityAcl } from './acl.ts';
 import { workshopUiReceipt, releaseWorkshopUiReceipt } from './workshop-ui-authority.ts';
@@ -203,6 +208,10 @@ export class HostRuntime {
     new UiEventService(root, this.kernel, this.backendEvents);
     this.protocols = new ProtocolService(root, this.kernel);
     this.shell = new ShellService(root, this.kernel);
+    // 社区插件清单声明的智能体工具：按已安装插件现算，只给官方插件读取与调用（docs/plugins/SDK.md §3.4）。
+    new PluginAgentToolsService(root, this.kernel, () => this.installed);
+    // 插件专属服务（密钥、通知、定时、文件）按调用方插件 id 划分数据，归属由这里查询。
+    new PluginCallerService(root, this.kernel);
     // `docs/plugins/FRONTEND.md` §3/§5：内核自有的 UI 引导通道。不属于 Rust 命令，不在 IPC 契约的 `commands` 段
     // （kernel 不按契约校验其参数与结果），只登记在 `contracts/ipc/F1-kernel.json` 的 `hostNative` 段。
     this.commands._registerKernel(UI_MANIFEST_COMMAND, (args) => (manifestVersion(args) === UI_MANIFEST_VERSION ? this.requestUiManifestV2() : this.uiManifest()));
@@ -308,12 +317,16 @@ export class HostRuntime {
     const plugins = this.installed.map((entry): UiManifestV2Plugin => {
       const { meta } = entry.plugin;
       const file = this.communityUiFile(entry, false);
+      // 工具块要显示清单里的标题；只列声明，不代表处理方法一定存在（调用时由 pluginAgentTools 核对）。
+      const agentTools = entry.packageRoot === undefined ? [] : (entry.manifest?.agentTools ?? [])
+        .map(tool => ({ name: pluginAgentToolName(entry.id, tool.name), title: tool.title }));
       return {
         id: entry.id,
         origin: this.originOf(entry),
         platforms: [...(meta.platforms ?? ['desktop'])],
         ...(meta.version !== undefined ? { version: meta.version } : {}),
         ...(file !== undefined ? { file } : {}),
+        ...(agentTools.length ? { agentTools } : {}),
       };
     });
     return { version: UI_MANIFEST_VERSION, plugins, degraded: this.degradedPlugins(), safeMode: this.safeMode };
@@ -361,6 +374,21 @@ export class HostRuntime {
   /** 该条目是否是社区插件（模块在应用内之外，或由 profile 筛查出 packageRoot）。 */
   private isCommunity(entry: { readonly source?: string; readonly packageRoot?: string }): boolean {
     return entry.packageRoot !== undefined || this.originOf(entry) === 'community';
+  }
+
+  /**
+   * Which names `ctx.get` returns to a community plugin. Workshop works (Host-assigned `workshop.plugin-<uuid>` id,
+   * installed with the user's full trust) may look up any service; every other community plugin only what it
+   * injects, declares as `service:*` or provides itself (plus the implicit `log`). Kernel-owned services pass the
+   * lookup and are refused at their methods (`assertKernelSurface`, KERNEL_API_FORBIDDEN) for every community plugin.
+   */
+  private lookupPolicy(entry: PluginInstall): ((name: string) => boolean) | undefined {
+    const { plugin, manifest } = entry;
+    // Only screened community packages (they carry a manifest); official modules loaded from elsewhere keep ctx.get.
+    if (!manifest || WORKSHOP_PLUGIN_ID.test(plugin.meta.id)) return undefined;
+    const allowed = new Set(['log', ...KERNEL_ONLY_SERVICES, ...injectNames(plugin), ...(plugin.meta.provides ?? []),
+      ...(manifest?.permissions ?? []).filter(permission => permission.startsWith('service:')).map(permission => permission.slice('service:'.length))]);
+    return name => allowed.has(name);
   }
 
   /**
@@ -569,6 +597,28 @@ export class HostRuntime {
     if (failures.length) throw new CommandError(AppError.configuration(`${reason}; cleanup failed: ${failures.join('; ')}`));
   }
 
+  /**
+   * 每个已安装插件 → 正在 `inject` 它所提供服务的其他已安装插件 id（没有依赖者的插件不出现）。
+   * 与 {@link unload} 的拒绝条件同一判据：出现在这里的插件此刻不能单独卸载/停用。只读，一次遍历算完全部插件。
+   */
+  dependents(): Map<string, string[]> {
+    const provider = new Map<string, string>();
+    for (const entry of this.installed) {
+      for (const name of this.providedBy(entry.fiber)) if (!provider.has(name)) provider.set(name, entry.id);
+    }
+    const result = new Map<string, string[]>();
+    for (const other of this.installed) {
+      for (const name of injectNames(other.plugin)) {
+        const id = provider.get(name);
+        if (id === undefined || id === other.id) continue;
+        const list = result.get(id) ?? [];
+        if (!list.includes(other.id)) list.push(other.id);
+        result.set(id, list);
+      }
+    }
+    return result;
+  }
+
   /** 卸载插件。仍有其他插件依赖其服务时拒绝。 */
   async unload(id: string): Promise<void> {
     const entry = this.get(id);
@@ -674,7 +724,8 @@ export class HostRuntime {
   private async start(entry: PluginInstall): Promise<InstalledPlugin> {
     if (this.disposed) throw new PluginLifecycleError('Host runtime is disposed');
     assertHostPlugin(entry.plugin, entry.source ?? 'install');
-    const { plugin } = entry;
+    // Manifest-declared settings become the Config of a community plugin that has none (plugin-config.ts).
+    const plugin = this.isCommunity(entry) ? withDeclaredSettings(entry.plugin, entry.manifest) : entry.plugin;
     const id = plugin.meta.id;
     if (this.get(id)) throw new PluginLifecycleError(`plugin "${id}" is already installed`);
     // RUST-FIX(RF-W01-safe-mode-official-only): 安全模式只装载官方插件（W06 `--safe-mode`），
@@ -695,7 +746,7 @@ export class HostRuntime {
     const runtimePlugin = this.isCommunity(entry) || this.kernel.execution ? {
       ...plugin,
       apply: (ctx: Context, config: unknown) => {
-        const apply = () => plugin.apply(this.isCommunity(entry) ? communityContext(ctx, this.kernel, id) : ctx, config);
+        const apply = () => plugin.apply(this.isCommunity(entry) ? communityContext(ctx, this.kernel, id, this.lookupPolicy(entry)) : ctx, config);
         return this.kernel.execution ? this.kernel.execution.run(ctx.fiber, apply) : apply();
       },
     } : plugin;

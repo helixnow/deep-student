@@ -56,7 +56,7 @@ export interface KernelState {
 
 /** 插件 API v1 不开放给社区插件的 kernel 服务（API.md §16.7 第 2 项）。 */
 // RUST-FIX(RF-P1-managed-plugin-install): Community code cannot inject the builtin installer capability.
-export const KERNEL_ONLY_SERVICES: readonly string[] = Object.freeze(['commands', 'protocols', 'backendEvents', 'shell', 'dstuPluginInstaller']);
+export const KERNEL_ONLY_SERVICES: readonly string[] = Object.freeze(['commands', 'protocols', 'backendEvents', 'shell', 'dstuPluginInstaller', 'pluginAgentTools']);
 
 /**
  * kernel 服务方法的入口检查：调用方 fiber 属于社区插件（profile 筛查过清单、带 `packageRoot`）时抛

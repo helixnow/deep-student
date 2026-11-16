@@ -80,16 +80,54 @@
           "additionalProperties": { "$ref": "#/$defs/range" }
         },
         "permissions": {
-          "description": "权限，每项 <kind>:<target>。kind 是封闭集合，v1 只有 service；未知 kind 拒绝装载（不能忽略，否则旧应用会把新权限当成没有）。service:<服务名> 允许 Host 半注入该服务、或 UI 半经 ctx.ui.host 调用该服务 meta.remote 声明的方法；声明之外的服务一律不注入；平台核心服务中只有 log 隐式授予、无需声明；按插件隔离的存储也要声明 service:storage（host/kernel/API.md §16.4）。服务名为 lowerCamelCase。权限只在版本增加时随之重新征得用户同意。进程隔离落地前，权限对同进程的 Host 半只是“声明加审查”，对 sandboxed UI 才是强制的。",
+          "description": "权限，每项 <kind>:<target>。kind 是封闭集合：service、net、agent；未知 kind 拒绝装载（不能忽略，否则旧应用会把新权限当成没有）。service:<服务名> 允许 Host 半注入该服务、或 UI 半经 ctx.ui.host 调用该服务 meta.remote 声明的方法；声明之外的服务一律不注入；平台核心服务中只有 log 隐式授予、无需声明；按插件隔离的存储也要声明 service:storage（host/kernel/API.md §16.4）。服务名为 lowerCamelCase。net:<主机名> 允许本插件的智能体工具经工具上下文的 fetch 以 HTTPS GET 读取该主机（精确主机名，小写，不含通配、端口、IP 字面量与 localhost）；没有声明的主机一律拒绝。agent:tools 允许本插件按 agentTools 字段给智能体新增工具，两者必须同时出现。权限只在版本增加时随之重新征得用户同意。进程隔离落地前，权限对同进程的 Host 半只是“声明加审查”，对 sandboxed UI 才是强制的。",
           "type": "array",
           "uniqueItems": true,
           "items": {
             "type": "string",
             "allOf": [
               { "description": "语法：<kind>:<target>", "pattern": "^[a-z][a-z0-9-]*:\\S+$" },
-              { "description": "kind 封闭集合：v1 只有 service", "pattern": "^service:" },
-              { "description": "service 的 target 是 lowerCamelCase 服务名", "pattern": "^service:[a-z][A-Za-z0-9]*$" }
+              { "description": "kind 封闭集合：service、net、agent", "pattern": "^(?:service|net|agent):" },
+              { "description": "service 的 target 是 lowerCamelCase 服务名；net 的 target 是小写主机名；agent 的 target 只有 tools", "pattern": "^(?:service:[a-z][A-Za-z0-9]*|net:(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]|agent:tools)$" }
             ]
+          }
+        },
+        "agentTools": {
+          "description": "本插件给智能体新增的工具（需要 Host 半与权限 agent:tools）。声明是静态的：名称、标题、说明与参数 schema 在安装确认时展示给用户，运行时不能修改。模型看到的工具名由宿主按插件 id 加前缀生成（plugin_<id 摘要>_<name>），不会与内置工具或 MCP 工具同名。执行方是插件主服务（由 id 派生的服务名）上与 name 同名的方法，签名 (args, tool) => JSON；tool 只有 signal 与受 net:<主机名> 权限约束的 fetch。调用照常经过工具审批：sensitivity 缺省 medium，可声明 high，不接受 low。",
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "title", "description"],
+            "properties": {
+              "name": { "description": "插件内的工具名，也是主服务上执行方法的名字。", "type": "string", "pattern": "^[a-z][a-z0-9_]{1,31}$" },
+              "title": { "description": "给用户看的名称（确认卡片、对话里的工具块）。", "type": "string", "minLength": 1, "maxLength": 24, "pattern": "^\\S(?:.*\\S)?$" },
+              "description": { "description": "给模型看的说明：什么时候调用、返回什么。", "type": "string", "minLength": 1, "maxLength": 600 },
+              "parameters": {
+                "description": "参数的 JSON Schema，顶层必须是 object；缺省为不接受任何参数。",
+                "type": "object",
+                "required": ["type"],
+                "properties": { "type": { "const": "object" } }
+              },
+              "sensitivity": { "description": "审批敏感度，缺省 medium。", "enum": ["medium", "high"] }
+            }
+          }
+        },
+        "settings": {
+          "description": "插件需要用户填写的配置项（插件工坊卡片上问过的值）。插件自己没有导出 Config 时，宿主按这里生成 Schemastery Config（每项一个可选字符串字段），插件管理的详情里即可查看和修改；值经 apply(ctx, config) 的 config[key] 读到。凭据不进配置：密钥类键名会被拒绝装载。",
+          "type": "array",
+          "maxItems": 4,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["key", "title", "kind"],
+            "properties": {
+              "key": { "description": "配置键。", "type": "string", "pattern": "^[a-zA-Z][a-zA-Z0-9_]{0,39}$" },
+              "title": { "description": "给用户看的名称。", "type": "string", "minLength": 1, "maxLength": 60 },
+              "kind": { "description": "ics-url / https-url：https 地址；text：文字。", "enum": ["ics-url", "https-url", "text"] }
+            }
           }
         }
       }

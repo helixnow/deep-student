@@ -8,7 +8,7 @@ import { render, waitFor, within, fireEvent } from '@testing-library/react';
 import { createTestHost } from '../../../../host/kernel/testing';
 import { loadStartupProfile } from '../../../../host/kernel/profile';
 import { UserProfileStore } from '../../../../host/kernel/profile-store';
-import { CommunityConsentLedger } from '../../../../host/kernel/community-consent';
+import { CommunityConsentLedger, releaseContentDigest } from '../../../../host/kernel/community-consent';
 import { PluginAdmin } from '../../../../host/kernel/plugin-admin';
 import { PluginPackages } from '../../../../host/kernel/plugin-packages';
 import { createNodeFiles } from '../../../../host/platform/files';
@@ -82,7 +82,11 @@ describe('plugin manager UI with a real Host', () => {
         calls.push(command);
         const result = await host.invoke<T>(command, args);
         if (command === MANAGER_COMMANDS.consent) {
-          expect((await ledger.evaluate({ id: ID, version: '1.0.0', permissions: [] })).matched).toBe(true);
+          // The consent is written for the installed release itself (id + version + permissions + content digest).
+          const contentDigest = releaseContentDigest((await packages.list())[0]!.files);
+          expect((await ledger.read())[0]).toMatchObject({ id: ID, version: '1.0.0', permissions: [], contentDigest });
+          expect((await ledger.evaluate({ id: ID, version: '1.0.0', permissions: [], contentDigest })).matched).toBe(true);
+          expect((await ledger.evaluate({ id: ID, version: '1.0.0', permissions: [], contentDigest: '0'.repeat(64) })).matched).toBe(false);
           expect(host.runtime.get(ID)).toBeUndefined(); // consent alone never imports/enables code
         }
         ui.hostStatus.update(host.runtime.uiManifestV2());
@@ -106,7 +110,7 @@ describe('plugin manager UI with a real Host', () => {
       };
       expect(await screen.findByTestId('plugin-manager-empty')).toBeInTheDocument();
 
-      await user.click(screen.getByRole('button', { name: '安装离线插件' }));
+      await user.click(screen.getByRole('button', { name: '从文件导入' }));
       const consentDialog = await screen.findByRole('dialog');
       expect(within(consentDialog).getByTestId('plugin-consent-id')).toHaveTextContent(ID);
       expect(within(consentDialog).getByTestId('plugin-consent-version')).toHaveTextContent('1.0.0');
@@ -115,7 +119,7 @@ describe('plugin manager UI with a real Host', () => {
       expect((await store.read()).file.plugins[0]).toMatchObject({ id: ID, disabled: true });
       expect((await ledger.evaluate({ id: ID, version: '1.0.0', permissions: [] })).matched).toBe(false);
 
-      await user.click(within(consentDialog).getByRole('button', { name: '同意并重载' }));
+      await user.click(within(consentDialog).getByRole('button', { name: '允许并启用' }));
       await waitFor(() => expect(screen.queryByTestId('plugin-consent-id')).toBeNull());
       await waitFor(() => expect(host.runtime.get(ID)).toBeDefined());
       await waitFor(() => expect(screen.getByRole('switch', { name: `启用 ${ID}` })).toBeChecked());
@@ -124,8 +128,11 @@ describe('plugin manager UI with a real Host', () => {
       expect((await store.read()).file.plugins[0].disabled).toBeUndefined();
 
       await user.click(screen.getByRole('button', { name: `查看 ${ID} 的详情` }));
-      await user.click(screen.getByRole('button', { name: '更改信任档位' }));
-      const trustConfirmation = screen.getByRole('alertdialog');
+      // The trust action waits for any in-flight request on this plugin (e.g. the enable that followed consent).
+      const changeTrust = await screen.findByRole('button', { name: '更改信任档位' });
+      await waitFor(() => expect(changeTrust).toBeEnabled());
+      await user.click(changeTrust);
+      const trustConfirmation = await screen.findByRole('alertdialog');
       expect(trustConfirmation).toHaveTextContent('与应用同进程执行');
       expect((await ledger.evaluate({ id: ID, version: '1.0.0', permissions: [] })).trust).toBe('restricted');
       await user.click(within(trustConfirmation).getByRole('button', { name: '确认' }));
@@ -133,14 +140,13 @@ describe('plugin manager UI with a real Host', () => {
       await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
       expect((await ledger.evaluate({ id: ID, version: '1.0.0', permissions: [] })).trust).toBe('full');
       const details = screen.getByRole('dialog');
+      // The risk of full trust was just confirmed for exactly this installed release, and the Host has it on
+      // record: starting it again does not ask a second time.
       await user.click(within(details).getByRole('button', { name: '启动插件' }));
-      const enableConfirmation = screen.getByRole('alertdialog');
-      expect(host.runtime.get(ID)).toBeUndefined();
-      await user.click(within(enableConfirmation).getByRole('button', { name: '确认' }));
+      expect(screen.queryByRole('alertdialog')).toBeNull();
       await waitFor(() => expect(host.runtime.get(ID)).toBeDefined());
-      await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
-      await user.click(within(details).getByRole('button', { name: `配置 ${ID}` }));
-      const form = await screen.findByTestId('plugin-config-form');
+      // Settings live inside the detail sheet; they appear as soon as the Host reports the running plugin as configurable.
+      const form = await within(details).findByTestId('plugin-config-form');
       const label = within(form).getByLabelText('写进 result.provider 与 usage.provider');
       await user.clear(label);
       await user.type(label, 'configured-through-ui');

@@ -18,33 +18,49 @@ describe('plugin manager redesign', () => {
     const official = await screen.findByRole('button', { name: '查看 会话 的详情', hidden: true });
     expect(official.closest('details')).not.toHaveAttribute('open');
     expect(official.closest('details')?.querySelector('summary')).toHaveTextContent('对话与 AI');
-    expect(screen.getAllByTestId('plugin-summary-state')).toHaveLength(3);
+    // Cards always show their state; a quiet official row only speaks up when it is not simply running.
+    expect(screen.getAllByTestId('plugin-card')).toHaveLength(2);
+    expect(screen.getAllByTestId('plugin-summary-state')).toHaveLength(2);
     const user = userEvent.setup();
-    await user.type(screen.getByRole('textbox', { name: '搜索名称、作者或插件 ID' }), '小明');
-    expect(screen.getAllByTestId('plugin-row')).toHaveLength(1);
+    await user.type(screen.getByRole('textbox', { name: '搜索名称或作者' }), '小明');
+    expect(screen.getAllByTestId('plugin-card')).toHaveLength(1);
+    expect(screen.queryByTestId('plugin-section-builtin')).toBeNull();
+    expect(screen.queryByTestId('plugin-starters')).toBeNull();
     expect(screen.getByText('学习笔记')).toBeInTheDocument();
     await user.clear(screen.getByRole('textbox'));
     await user.click(screen.getByRole('radio', { name: '有问题' }));
-    expect(screen.getAllByTestId('plugin-row')).toHaveLength(1);
+    expect(screen.getAllByTestId('plugin-card')).toHaveLength(1);
     expect(screen.getByText('导出')).toBeInTheDocument();
-    await user.click(screen.getByRole('radio', { name: '可更新' }));
-    expect(screen.getByText(/尚未接入更新索引/)).toBeInTheDocument();
+    await user.click(screen.getByRole('radio', { name: '内置' }));
+    expect(screen.queryByTestId('plugin-section-mine')).toBeNull();
+    expect(screen.getAllByTestId('plugin-row')).toHaveLength(1);
+    await user.click(screen.getByRole('radio', { name: '已停用' }));
+    expect(screen.getAllByTestId('plugin-card').map((card) => card.getAttribute('data-plugin-id'))).toEqual(['community.notes']);
+    // No update index exists yet: the toolbar does not offer an 可更新 scope it cannot fill.
+    expect(screen.queryByRole('radio', { name: '可更新' })).toBeNull();
   });
 
-  it('provides local discovery and mounts the supplied workshop actions and creations', async () => {
-    const adapter = new FakePluginManagerAdapter([managedPlugin({ id: 'community.notes', origin: 'community' })]);
+  it('opens the workshop from starters, the blank starter, the creations list and a card menu', async () => {
+    const adapter = new FakePluginManagerAdapter([managedPlugin({ id: 'community.notes', origin: 'community', source: 'workshop' })]);
     const onCreate = vi.fn(); const onModify = vi.fn();
     render(<PluginManagerPanel controller={new PluginManagerController(adapter)} workshop={{ onCreate, onModify, creations: <p>作品进度</p> }} />);
     const user = userEvent.setup();
-    await user.click(await screen.findByRole('button', { name: '用 AI 创作插件' }));
-    expect(onCreate).toHaveBeenCalledOnce();
-    await user.click(screen.getByRole('radio', { name: '发现' }));
-    expect(screen.getByText(/第一版仅支持本地来源/)).toBeInTheDocument();
-    await user.click(screen.getByRole('radio', { name: '我的创作' }));
+    const starters = await screen.findAllByTestId('plugin-starter');
+    expect(starters.map((starter) => starter.textContent)).toEqual([
+      '做个公式速查的小应用', '选中一段话时，多一个「编成口诀」按钮', '教它一项新本事：说一句「查课表」就列出今天的课',
+    ]);
+    await user.click(starters[0]!);
+    expect(onCreate).toHaveBeenLastCalledWith('做个公式速查的小应用');
+    await user.click(screen.getByTestId('plugin-create'));
+    expect(onCreate).toHaveBeenLastCalledWith();
+    expect(screen.queryByText('作品进度')).toBeNull();
+    const toggle = screen.getByTestId('plugin-creations-toggle');
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByText('作品进度')).toBeInTheDocument();
-    await user.click(screen.getByRole('radio', { name: '已安装' }));
-    await user.click(screen.getByRole('button', { name: '查看 community.notes 的详情' }));
-    await user.click(screen.getByRole('button', { name: '让 AI 修改' }));
+    await user.click(screen.getByRole('button', { name: 'community.notes 的更多操作' }));
+    await user.click(screen.getByRole('menuitem', { name: '让 AI 改' }));
     expect(onModify).toHaveBeenCalledWith('community.notes');
   });
 
@@ -52,13 +68,15 @@ describe('plugin manager redesign', () => {
     const adapter = new FakePluginManagerAdapter([managedPlugin({ id: 'community.notes', origin: 'community', enabled: false, trust: 'full', permissions: ['service:notes'] })]);
     render(<PluginManagerPanel controller={new PluginManagerController(adapter)} />);
     const user = userEvent.setup();
-    expect(await screen.findByTestId('plugin-trust-badge')).toHaveTextContent('完全信任');
+    expect(await screen.findByRole('switch', { name: '启用 community.notes' })).toBeInTheDocument();
+    expect(screen.queryByTestId('plugin-trust-badge')).toBeNull();
     await user.click(await screen.findByRole('switch', { name: '启用 community.notes' }));
     const dialog = screen.getByRole('alertdialog');
-    expect(dialog).toHaveTextContent('与应用同进程执行');
-    expect(dialog).toHaveTextContent('service:notes');
+    expect(dialog).toHaveTextContent('它和 DeepStudent 一起运行');
+    expect(dialog).toHaveTextContent('使用应用服务「笔记」');
+    expect(dialog).not.toHaveTextContent('service:notes');
     expect(adapter.calls.setEnabled).toEqual([]);
-    await user.click(within(dialog).getByRole('button', { name: '确认' }));
+    await user.click(within(dialog).getByRole('button', { name: '允许并启用' }));
     await waitFor(() => expect(adapter.calls.setEnabled).toEqual([{ id: 'community.notes', enabled: true }]));
   });
 

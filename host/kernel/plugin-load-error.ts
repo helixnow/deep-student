@@ -34,7 +34,7 @@ export const PLUGIN_LOAD_CODES = [
   'REQUIRES_MISSING',
   /** requires 中的插件版本不在范围内。 */
   'REQUIRES_INCOMPATIBLE',
-  /** permissions 含未知 kind（v1 只有 `service`）。 */
+  /** permissions 含未知 kind（v1 只有 `service`、`net`、`agent`）。 */
   'PERMISSION_UNKNOWN_KIND',
   /** inject 了未在 permissions 中声明、也不是隐式授予的服务。 */
   'PERMISSION_UNDECLARED',

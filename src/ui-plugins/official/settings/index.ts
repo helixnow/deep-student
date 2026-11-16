@@ -8,6 +8,7 @@ import { components } from './sections';
 import { searchDetailsFor } from './search';
 import type { Context } from '@deepseek-ai/cordis';
 import { createLazyContributionPoint } from '@/ui-sdk/lazy';
+import { startThemeVariantController, THEME_VARIANT_SLOT } from '@/features/settings/themeVariants';
 
 /** Settings-owned contributions from feature chunks, with the owner's real ctx.ui handles. */
 export const settingsFeatureContributions = createLazyContributionPoint<(ctx: Context) => void>('settings.feature');
@@ -76,5 +77,8 @@ export default Object.assign(defineUiPlugin({
       ctx.ui.settings.register(section);
     }
     ctx.ui.attach(settingsFeatureContributions, (mount) => mount(ctx));
+    // theme.variants: picked under Appearance, written onto <html> (themeVariants.ts); unloading this plugin removes it.
+    ctx.ui.declareSlot({ name: THEME_VARIANT_SLOT, cardinality: 'list', description: '主题变体：label + light / dark 两组 CSS 变量，用户在外观设置里选择，应用到 <html>' });
+    ctx.effect(() => startThemeVariantController(ctx.ui.slots));
   },
 }), { order: 30 });

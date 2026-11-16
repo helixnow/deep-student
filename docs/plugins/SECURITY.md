@@ -30,7 +30,8 @@ Host 启动时先读社区条目旁边的 `package.json#deepStudent`（`host/ker
 | 不能用 `dstu.*` 和禁用的 publisher，profile 条目 id 与清单 id 一致：社区插件替换不了官方插件 | `ID_RESERVED`、`ID_MISMATCH` | `host/kernel/tests/plugin-manifest-load.test.ts`、`examples/testing/security.test.ts`、`examples/plugins/community-web-search/__tests__/web-search.test.ts` |
 | `platforms` 包含当前平台 | `UNSUPPORTED_ON_PLATFORM` | `host/kernel/tests/plugin-manifest-load.test.ts` |
 | profile 只能装 Host 半，模块必须是清单的 `host` 入口 | `HOST_ENTRY_MISMATCH` | `host/kernel/tests/plugin-manifest-load.test.ts` |
-| 权限只有 `service:<服务名>` 一种 | `PERMISSION_UNKNOWN_KIND` | `host/kernel/tests/plugin-manifest-load.test.ts` |
+| 权限的 kind 只有 `service:<服务名>`、`net:<主机名>`、`agent:tools` 三种 | `PERMISSION_UNKNOWN_KIND` | `host/kernel/tests/plugin-manifest-load.test.ts` |
+| `agentTools` 与 `agent:tools` 同时出现且有 Host 半；`net:<主机名>` 只能和智能体工具一起声明；工具名不能重复或用保留名 | `MANIFEST_INVALID` | `host/kernel/tests/plugin-agent-tools.test.ts` |
 
 ## 3. Host 半：导入之后、`apply` 之前的检查
 
@@ -42,6 +43,8 @@ Host 启动时先读社区条目旁边的 `package.json#deepStudent`（`host/ker
 | 提供 id 派生命名空间之外的服务（例如 `settings`），也不能顶替其他插件已提供的服务 | `SERVICE_NAME_INVALID`、`SERVICE_CONFLICT` | `host/kernel/tests/plugin-manifest-load.test.ts`、`examples/testing/security.test.ts` |
 | `inject` 没在 `permissions` 里声明的服务（`log` 隐式授予，`storage` 不隐式授予） | `PERMISSION_UNDECLARED` | `host/kernel/tests/plugin-manifest-load.test.ts`、`examples/testing/security.test.ts` |
 | 声明 `meta.commands`（应用命令），或注入 kernel 专有服务（`commands`、`protocols`、`backendEvents`、`shell`、`dstuPluginInstaller`） | `KERNEL_API_FORBIDDEN` | `host/kernel/tests/community-kernel-surface.test.ts` |
+| 读取或调用智能体工具表（`pluginAgentTools`，只给注册执行器的官方插件） | `KERNEL_API_FORBIDDEN` | `host/kernel/tests/plugin-agent-tools.test.ts` |
+| 声明了 `agentTools` 时注入没声明的服务：完全信任的工坊作品也不例外，工具由模型触发，用到的服务必须是用户在确认卡片上看到的 | `PERMISSION_UNDECLARED` | `host/kernel/tests/plugin-agent-tools.test.ts` |
 | 调用 `ctx.commands.register`、`ctx.protocols.register`、`ctx.backendEvents` 的收发、`ctx.shell.request`（在 `apply` 里调用即降级；只读的 `ctx.commands.has()` 不限制） | `KERNEL_API_FORBIDDEN` | `host/kernel/tests/community-kernel-surface.test.ts` |
 | 在 `Config` 里声明凭据字段（`role: 'secret'` 或像凭据的键名；密钥走 `ctx.settings.saveSecret`，`docs/plugins/SDK.md` §7.1） | `CONFIG_CREDENTIAL` | `host/kernel/tests/plugin-config.test.ts` |
 | 配置不符合 `Config` | `CONFIG_INVALID` | `examples/plugins/community-web-search/__tests__/web-search.test.ts` |
@@ -63,6 +66,20 @@ installer 的四个方法每次调用都同时核对注入授权及当前执行 
 实现：`host/kernel/community-context.ts`、`host/kernel/plugin-execution.ts`、`host/kernel/plugin-installer.ts`。
 回归：`host/kernel/tests/plugin-manager.test.ts`（审计 registry 遍历、普通对象转发及 async/remote/事件调用）、
 `host/kernel/tests/community-kernel-surface.test.ts`（K1 及官方路径）。这些用例不是物理隔离证明。
+
+### 3.2 工坊的两次同意（卡片上的「开始做」与「安装」）
+
+模型写的代码会在宿主里运行两次：生成后的自检（试装载/卸载）和安装后。两次都只由用户在确认卡片上点击授权，智能体工具没有这两种权限：
+
+| 步骤 | 谁触发 | 同意在哪里 |
+|---|---|---|
+| `dstu_plugin_propose_install`：只记录一张草稿卡片，不写也不运行代码 | 智能体（敏感度 medium） | 无需审批条：默认 relaxed 预设直接放行；「问一问」模式拦下；「想一想」走计划确认；cautious 预设逐次询问 |
+| 生成 + 自检（`create`） | 只有配对的工坊 UI（回执校验） | 卡片上的「开始做」，旁边写明“同意 AI 写出代码并在应用里试装上、卸下”；安全模式下拒绝 |
+| 智能体自己改源码（`write_source` / `validate`） | 智能体（medium） | 只接受用户点过「开始做」的作品；宿主生成期间拒绝，不再中断它 |
+| 安装（`install`） | 只有配对的工坊 UI | 卡片上的「安装」，绑定显示的候选版本 |
+
+实现：`host/plugins/plugin-workshop/src/tools.ts`（`needsUserStart`）、`src/operations.ts`（`create`）。回归：
+`host/plugins/plugin-workshop/tests/card-consent-settings.test.ts`、`tests/autonomous.test.ts`、`tests/tools.test.ts`。
 
 ## 4. UI 半
 
@@ -86,7 +103,7 @@ UI 半由 Host 半的 `meta.ui` 带进来（没有单独装 UI 半的入口）�
 | 现状 | 原因 | 测试 / 出处 |
 |---|---|---|
 | 被模块检查拒绝的插件，顶层代码已经执行过 | 第 3 节的检查需要模块导出的 `meta`，只能在导入之后做 | `examples/testing/security.test.ts` |
-| Host 半没声明权限，也能用 `ctx.get('<服务名>')` 拿到官方服务，能 `import` `node:fs`、`node:child_process` | 与应用同进程（`host/kernel/API.md` §16.4：`service:` 权限防误用，不是安全边界） | `examples/testing/security.test.ts` |
+| Host 半没声明权限也能 `import` `node:fs`、`node:child_process`。`ctx.get('<服务名>')` 已按声明拦截：社区包只能按名字拿到自己 `inject`、声明为 `service:*` 或自己提供的服务（加隐式的 `log`），其余抛 `PERMISSION_UNDECLARED`；kernel 专有服务照旧在方法入口拒绝（KERNEL_API_FORBIDDEN）；工坊作品（宿主分配的 `workshop.plugin-<uuid>` id）不做这层名字过滤 | 与应用同进程（`host/kernel/API.md` §16.4：`service:` 权限防误用，不是安全边界）；名字过滤在 `host/kernel/community-context.ts` `mayGet`、`host/kernel/runtime.ts` `lookupPolicy` | `examples/testing/security.test.ts` |
 | UI 半能拿到应用的 IPC 桥、主窗口 DOM 和 `localStorage`，能调用主窗口能调的任何命令 | 在主窗口主世界里 `import()`（`src/ui-kernel/community.ts` `startCommunityUiPlugins`） | `src/ui-kernel/SEC-E06-SANDBOX-DESIGN.md` 第 1 节 |
 | `plugin:host\|call` 的 `caller` 由调用方自己填，Host 不核实：UI 半直接调用这个命令、填别的插件 id，就能调到那个插件 `meta.remote` 里的方法 | 所有 UI 半在同一个主世界里运行（上一行），Host 分不出调用来自哪个插件；不填 `caller` 的调用已经拒绝（K2） | `host/kernel/tests/ui-bridge.test.ts` |
 | 原生对象、闭包和原型仍处在共享进程中；内置插件主动暴露的高权限闭包也可能成为绕过路径 | 社区 `ctx.root`/注册表的直接遍历已按第 3.1 节拒绝，但收窄上下文不是物理沙箱，第三批 K4–K6 才实现独立进程 | `host/kernel/tests/community-kernel-surface.test.ts`、`host/kernel/SEC-E06-HOST-ISOLATION-PLAN.md` |
