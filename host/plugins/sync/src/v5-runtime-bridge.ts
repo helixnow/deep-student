@@ -71,6 +71,40 @@ import { readUnknownFieldsForRoundTrip, type UnknownFieldVersion } from './unkno
 import { computeCanonicalOpHash, MultiIncarnationVersionVector, type WriterKey } from './version-vector.ts';
 
 type Versions = Record<string, UnknownFieldVersion>;
+
+// The result of a review is one schedule. A value that happens to be unchanged
+// (for example the learning phase on a second Again) still belongs to this revision.
+const REVIEW_SCHEDULE_COLUMNS = [
+  'ease_factor', 'interval_days', 'repetitions', 'next_review_date', 'last_review_date', 'status',
+  'total_reviews', 'total_correct', 'consecutive_failures', 'is_difficult',
+];
+const FSRS_SCHEDULE_COLUMNS = [
+  'fsrs_stability', 'fsrs_difficulty', 'fsrs_phase', 'fsrs_learning_step', 'fsrs_lapses',
+  'fsrs_due_at', 'fsrs_last_review_at', 'fsrs_plan_revision',
+];
+
+function sameWriterVersion(a: UnknownFieldVersion | undefined, b: UnknownFieldVersion): boolean {
+  return a?.hlc === b.hlc && a.dev === b.dev;
+}
+
+function reviewScheduleVersions(table: string, data: DbJson, versions: Versions, writer: UnknownFieldVersion): Versions {
+  if (table !== 'review_plans' || !isJsonObject(data) || typeof data.updated_at !== 'string') return versions;
+  const revision = versions.updated_at;
+  // A replay of an unchanged row retains its original versions.
+  if (!revision || !sameWriterVersion(revision, writer)) return versions;
+  const hasColumn = (col: string) => Object.hasOwn(data, col) && Object.hasOwn(versions, col);
+  if (!REVIEW_SCHEDULE_COLUMNS.every(hasColumn)) return versions;
+  const grouped = { ...versions };
+  for (const col of REVIEW_SCHEDULE_COLUMNS) grouped[col] = revision;
+  // Old clients relay opaque FSRS values. Only the writer of the matching
+  // plan revision can advance the FSRS columns along with the legacy columns.
+  if (data.fsrs_plan_revision === data.updated_at && sameWriterVersion(versions.fsrs_plan_revision, revision)
+      && FSRS_SCHEDULE_COLUMNS.every(hasColumn)) {
+    for (const col of FSRS_SCHEDULE_COLUMNS) grouped[col] = revision;
+  }
+  return grouped;
+}
+
 export interface V5RuntimeOperation {
   deviceId: string; incarnationId: string; seq: bigint; change: string; versions: Versions;
 }
@@ -130,7 +164,7 @@ export function mergeKnownRowWithUnknownVault(db: SqlExecutor, change: EngineCha
     if (!opaque.fieldDeltas[key]) throw new Error(`Opaque column lacks original version: ${key}`);
     versions[key] = opaque.fieldDeltas[key]!;
   }
-  return { data, versions };
+  return { data, versions: reviewScheduleVersions(change.table_name, data, versions, version) };
 }
 
 export function applyIncomingRowV5(db: SqlExecutor, change: EngineChange, versions: Versions): boolean {
@@ -296,9 +330,10 @@ export class SyncV5RuntimeCoordinator {
     } else if (isJsonObject(change.data)) {
       const known = new Set(tableColumnNames(tx, change.table_name));
       const pk = new Set(primaryKeyColumns(tx, change.table_name));
+      const incoming = reviewScheduleVersions(change.table_name, change.data, op.versions, { hlc: change.changed_at, dev: op.deviceId });
       for (const [col, value] of Object.entries(change.data)) {
         if (pk.has(col)) continue;
-        const v = op.versions[col]!;
+        const v = incoming[col]!;
         if ((versions[col] && compareLwwTimestamps(v.hlc, v.dev, '', versions[col]!.hlc, versions[col]!.dev, '') < 0)
           || (floor && compareLwwTimestamps(v.hlc, v.dev, '', floor, floorDev ?? '', '') <= 0)) continue;
         versions[col] = v;
@@ -329,6 +364,9 @@ export class SyncV5RuntimeCoordinator {
     if (!db) throw new Error(`No database route: ${change.database_name}`);
     const identity = { source_device_id: op.deviceId, incarnation_id: op.incarnationId, source_seq: op.seq };
     const opHash = this.opHash(op, change);
+    // Older senders still stamp by column. Materialize their schedule as a unit
+    // without changing the persisted operation or opaque field versions.
+    const incoming = reviewScheduleVersions(change.table_name, change.data, op.versions, { hlc: change.changed_at, dev: op.deviceId });
     try { db.transaction(tx => {
       const received = recordReceivedOp(tx, { ...identity, op_hash: opHash });
       if (!received.shouldMaterialize) return;
@@ -339,7 +377,7 @@ export class SyncV5RuntimeCoordinator {
       }
       const preLogMax = changeLogMaxId(tx);
       if (change.operation === 'Delete') applyIncomingTombstoneV5(tx, change);
-      else applyIncomingRowV5(tx, change, op.versions);
+      else applyIncomingRowV5(tx, change, incoming);
       if (preLogMax !== null) suppressEchoChangeLog(tx, Math.floor(this.now() / 1000), preLogMax);
       // Only persist registers accepted by the lifecycle LWW merge (not stale input).
       const meta = getV5RowMetaRow(tx, change.table_name, change.record_id);
@@ -353,8 +391,8 @@ export class SyncV5RuntimeCoordinator {
       }
       const known = new Set(tableColumnNames(tx, change.table_name));
       if (isJsonObject(change.data)) for (const [col, value] of Object.entries(change.data)) {
-        if (!known.has(col) || !accepted[col] || !op.versions[col]) continue;
-        const a = accepted[col]!, b = op.versions[col]!;
+        if (!known.has(col) || !accepted[col] || !incoming[col]) continue;
+        const a = accepted[col]!, b = incoming[col]!;
         if (compareLwwTimestamps(a.hlc, a.dev, '', b.hlc, b.dev, '') !== 0) continue;
         upsertV5ColumnVersion(tx, change.database_name ?? 'vfs', change.table_name, change.record_id, col, a.hlc, valueHash(value), a.dev);
       }

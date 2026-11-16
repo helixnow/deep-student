@@ -34,8 +34,9 @@ function todayLocal(now: Date = new Date()): string {
 function endOfLocalDay(date: string): number | null {
   const start = new Date(`${date}T00:00:00`);
   if (!Number.isFinite(start.getTime()) || todayLocal(start) !== date) return null;
-  start.setDate(start.getDate() + 1);
-  return start.getTime() - 1;
+  // Set the next day's midnight directly. The current day's midnight may
+  // have been shifted to 01:00 by a daylight-saving transition.
+  return start.setHours(24, 0, 0, 0) - 1;
 }
 
 function notFound(resourceType: string, id: string): VfsRepositoryError {
