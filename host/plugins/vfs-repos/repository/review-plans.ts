@@ -24,10 +24,18 @@ const DEFAULT_EASE_FACTOR = 2.5;
 const PLAN_COLUMNS = `id, question_id, exam_id, ease_factor, interval_days, repetitions,
   next_review_date, last_review_date, status, total_reviews, total_correct,
   consecutive_failures, is_difficult, created_at, updated_at`;
+const CURRENT_FSRS = 'fsrs_plan_revision = updated_at';
+const HAS_TIMED_DUE = `(${CURRENT_FSRS} AND fsrs_phase IN ('learning', 'relearning') AND fsrs_due_at IS NOT NULL)`;
 
-function todayLocal(): string {
-  const now = new Date();
+function todayLocal(now: Date = new Date()): string {
   return `${String(now.getFullYear()).padStart(4, '0')}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+}
+
+function endOfLocalDay(date: string): number | null {
+  const start = new Date(`${date}T00:00:00`);
+  if (!Number.isFinite(start.getTime()) || todayLocal(start) !== date) return null;
+  start.setDate(start.getDate() + 1);
+  return start.getTime() - 1;
 }
 
 function notFound(resourceType: string, id: string): VfsRepositoryError {
@@ -172,14 +180,19 @@ export class ReviewPlanRepo implements ReviewPlanRepository {
 
   listDueReviews(conn: SqlExecutor, filter: DueReviewsFilter): DueReviewsResult {
     return databaseResult(() => {
-      const today = todayLocal();
+      const now = new Date();
+      const today = todayLocal(now);
       const untilDate = filter.until_date ?? today;
+      const untilMs = untilDate === today ? now.getTime() : endOfLocalDay(untilDate);
       const limit = filter.limit ?? 50;
       const offset = filter.offset ?? 0;
 
-      const conditions = ['next_review_date <= ?1'];
-      const params: (string | number)[] = [untilDate];
-      let paramIndex = 2;
+      // Only learning steps have minute precision. Date-based plans and old
+      // client schedules still use the calendar date; future horizons include the full day.
+      const conditions = [`CASE WHEN ${HAS_TIMED_DUE} AND ?2 IS NOT NULL
+        THEN fsrs_due_at <= ?2 ELSE next_review_date <= ?1 END`];
+      const params: (string | number | null)[] = [untilDate, untilMs];
+      let paramIndex = 3;
       conditions.push("status != 'suspended'");
 
       if (filter.exam_id !== undefined && filter.exam_id !== null) {
@@ -245,7 +258,7 @@ export class ReviewPlanRepo implements ReviewPlanRepository {
         const marks = chunk.map((_, index) => `?${index + 1}`).join(', ');
         const rows = conn.all<Row>(`SELECT id, fsrs_stability, fsrs_difficulty, fsrs_phase, fsrs_learning_step,
             fsrs_lapses, fsrs_due_at, fsrs_last_review_at
-          FROM review_plans WHERE id IN (${marks})`, chunk);
+          FROM review_plans WHERE id IN (${marks}) AND ${CURRENT_FSRS}`, chunk);
         for (const row of rows) states.set(String(row.id), rowToFsrsState(row));
       }
       return states;
@@ -274,7 +287,8 @@ export class ReviewPlanRepo implements ReviewPlanRepository {
           fsrs_learning_step = ?17,
           fsrs_lapses = ?18,
           fsrs_due_at = ?19,
-          fsrs_last_review_at = ?20`}
+          fsrs_last_review_at = ?20,
+          fsrs_plan_revision = ?11`}
         WHERE id = ?12 AND updated_at = ?13`,
       [params.ease_factor, params.interval_days, params.repetitions,
         params.next_review_date, params.last_review_date, params.status,
@@ -293,7 +307,8 @@ export class ReviewPlanRepo implements ReviewPlanRepository {
     return databaseResult(() => {
       const now = utcNow();
       const affected = conn.run(
-        "UPDATE review_plans SET status = 'suspended', updated_at = ?1 WHERE id = ?2",
+        `UPDATE review_plans SET status = 'suspended', updated_at = ?1,
+          fsrs_plan_revision = CASE WHEN ${CURRENT_FSRS} THEN ?1 ELSE fsrs_plan_revision END WHERE id = ?2`,
         [now, planId]).changes;
       if (affected === 0) throw notFound('review_plan', planId);
       const plan = this.getPlan(conn, planId);
@@ -306,7 +321,9 @@ export class ReviewPlanRepo implements ReviewPlanRepository {
     return databaseResult(() => {
       const now = utcNow();
       const affected = conn.run(
-        "UPDATE review_plans SET status = 'suspended', updated_at = ?1 WHERE id = ?2 AND updated_at = ?3",
+        `UPDATE review_plans SET status = 'suspended', updated_at = ?1,
+          fsrs_plan_revision = CASE WHEN ${CURRENT_FSRS} THEN ?1 ELSE fsrs_plan_revision END
+          WHERE id = ?2 AND updated_at = ?3`,
         [now, planId, expectedUpdatedAt]).changes;
       if (affected === 0) throw revisionConflict(planId, expectedUpdatedAt);
       const plan = this.getPlan(conn, planId);
@@ -323,7 +340,8 @@ export class ReviewPlanRepo implements ReviewPlanRepository {
       const today = todayLocal();
       const newStatus = resumedStatus(plan);
       conn.run(
-        'UPDATE review_plans SET status = ?1, next_review_date = ?2, updated_at = ?3 WHERE id = ?4',
+        `UPDATE review_plans SET status = ?1, next_review_date = ?2, updated_at = ?3, fsrs_due_at = NULL,
+          fsrs_plan_revision = CASE WHEN ${CURRENT_FSRS} THEN ?3 ELSE fsrs_plan_revision END WHERE id = ?4`,
         [newStatus, today, now, planId]);
       const updated = this.getPlan(conn, planId);
       if (updated === null) throw notFound('review_plan', planId);
@@ -339,7 +357,9 @@ export class ReviewPlanRepo implements ReviewPlanRepository {
       const today = todayLocal();
       const newStatus = resumedStatus(plan);
       const affected = conn.run(
-        'UPDATE review_plans SET status = ?1, next_review_date = ?2, updated_at = ?3 WHERE id = ?4 AND updated_at = ?5',
+        `UPDATE review_plans SET status = ?1, next_review_date = ?2, updated_at = ?3, fsrs_due_at = NULL,
+          fsrs_plan_revision = CASE WHEN ${CURRENT_FSRS} THEN ?3 ELSE fsrs_plan_revision END
+          WHERE id = ?4 AND updated_at = ?5`,
         [newStatus, today, now, planId, expectedUpdatedAt]).changes;
       if (affected === 0) throw revisionConflict(planId, expectedUpdatedAt);
       const updated = this.getPlan(conn, planId);
@@ -418,11 +438,13 @@ export class ReviewPlanRepo implements ReviewPlanRepository {
 
   getStats(conn: SqlExecutor, examId: string | null): ReviewStats {
     return databaseResult(() => {
-      const today = todayLocal();
+      const instant = new Date();
+      const today = todayLocal(instant);
+      const startOfToday = new Date(instant);
+      startOfToday.setHours(0, 0, 0, 0);
       const now = utcNow();
-      const whereClause = examId === null ? '' : 'WHERE exam_id = ?1';
-      const todayParamIndex = examId === null ? 1 : 2;
-      const params: string[] = examId === null ? [today] : [examId, today];
+      const whereClause = examId === null ? '' : 'WHERE exam_id = ?4';
+      const params = [today, instant.getTime(), startOfToday.getTime(), ...(examId === null ? [] : [examId])];
       const sql = `
         SELECT
             COUNT(*) as total_plans,
@@ -431,8 +453,10 @@ export class ReviewPlanRepo implements ReviewPlanRepository {
             SUM(CASE WHEN status = 'reviewing' THEN 1 ELSE 0 END) as reviewing_count,
             SUM(CASE WHEN status = 'graduated' THEN 1 ELSE 0 END) as graduated_count,
             SUM(CASE WHEN status = 'suspended' THEN 1 ELSE 0 END) as suspended_count,
-            SUM(CASE WHEN next_review_date <= ?${todayParamIndex} AND status != 'suspended' THEN 1 ELSE 0 END) as due_today,
-            SUM(CASE WHEN next_review_date < ?${todayParamIndex} AND status != 'suspended' THEN 1 ELSE 0 END) as overdue_count,
+            SUM(CASE WHEN status != 'suspended' AND (CASE WHEN ${HAS_TIMED_DUE}
+              THEN fsrs_due_at <= ?2 ELSE next_review_date <= ?1 END) THEN 1 ELSE 0 END) as due_today,
+            SUM(CASE WHEN status != 'suspended' AND (CASE WHEN ${HAS_TIMED_DUE}
+              THEN fsrs_due_at < ?3 ELSE next_review_date < ?1 END) THEN 1 ELSE 0 END) as overdue_count,
             SUM(CASE WHEN is_difficult = 1 THEN 1 ELSE 0 END) as difficult_count,
             SUM(total_reviews) as total_reviews,
             SUM(total_correct) as total_correct,
