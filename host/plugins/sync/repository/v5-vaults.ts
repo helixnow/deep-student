@@ -4,6 +4,7 @@ import { compareUtf8 } from '../../../platform/util/portable.ts';
 import type { ChangeOperation, EngineChange } from '../src/change-payload.ts';
 import { serializeSyncChange } from '../src/change-payload.ts';
 import { compareLwwTimestamps, timestampValueToLwwString } from '../src/lww.ts';
+import { persistIdAlias, resolvePersistedIdAlias } from './apply-id-aliases.ts';
 import { readUnknownFieldsForRoundTrip, vaultUnknownFieldsWithVersion, type UnknownFieldVersion, type VersionedUnknownField } from './unknown-fields.ts';
 import { buildPrimaryKeyPredicate, ensureTableAllowedAndExists, getSafe, jsonValueToSqlParam, parseRecordKeyValues, primaryKeyColumns, quoteIdentifier, rowToJson, selectWithTypes, tableColumnNames } from './sqlite-values.ts';
 
@@ -113,6 +114,49 @@ export function recordOrphanRetryFailure(db: SqlExecutor, op: OpIdentity, error:
 
 const BOOTSTRAP_HLC = '000000000000000-00000';
 type ColVersions = Record<string, UnknownFieldVersion>;
+
+export function resolveV5RecordId(db: SqlExecutor, change: Pick<EngineChange, 'table_name' | 'record_id'>): string {
+  return change.table_name === 'review_plans' ? resolvePersistedIdAlias(db, change.table_name, change.record_id) : change.record_id;
+}
+
+/** Runs inside V5 materialization's transaction, before applying the incoming registers. */
+export function reconcileV5ReviewPlanId(db: SqlExecutor, change: EngineChange): string | null {
+  const id = resolveV5RecordId(db, change);
+  if (change.table_name !== 'review_plans' || change.operation === 'Delete'
+      || !isJsonObject(change.data) || typeof change.data.question_id !== 'string') return id;
+  const local = db.get<{ id: string; updated_at: string }>(
+    'SELECT id, updated_at FROM review_plans WHERE question_id=?', [change.data.question_id]);
+  if (!local || local.id === id) return id;
+
+  // IDs are never reused when creating a plan. A late update for a deleted
+  // plan must not become a write to an independently recreated plan.
+  if (db.get('SELECT 1 FROM __sync_row_meta WHERE table_name=? AND record_id=? AND floor_deleted_hlc IS NOT NULL',
+    ['review_plans', id])) return null;
+
+  // Identity is independent of which device has the latest schedule.
+  if (compareUtf8(local.id, id) < 0) {
+    persistIdAlias(db, 'review_plans', id, local.id);
+    return local.id;
+  }
+
+  // Move the row in place so the FK's ON DELETE CASCADE cannot erase history.
+  db.exec('PRAGMA defer_foreign_keys = ON');
+  db.run('UPDATE review_plans SET id=? WHERE id=?', [id, local.id]);
+  db.run('UPDATE review_history SET plan_id=? WHERE plan_id=?', [id, local.id]);
+  restoreReviewPlanRevision(db, id, local.updated_at);
+  for (const table of ['__sync_row_meta', '__sync_unknown_fields', '__sync_v5_column_versions']) {
+    db.run(`UPDATE ${table} SET record_id=? WHERE table_name='review_plans' AND record_id=?`, [id, local.id]);
+  }
+  persistIdAlias(db, 'review_plans', local.id, id);
+  return id;
+}
+
+// The SQLite trigger bumps updated_at when an UPDATE leaves it unchanged.
+// Sync must preserve the winning revision, including the FSRS revision match.
+function restoreReviewPlanRevision(db: SqlExecutor, id: string, revision: string): void {
+  db.run('UPDATE review_plans SET updated_at=?1 WHERE id=?2 AND updated_at IS NOT ?1', [revision, id]);
+}
+
 function compareVersion(a: UnknownFieldVersion, b: UnknownFieldVersion): number {
   return compareLwwTimestamps(a.hlc, a.dev, '', b.hlc, b.dev, '');
 }
@@ -218,6 +262,10 @@ function applyLifecycle(db: SqlExecutor, table: string, id: string, op: ChangeOp
       });
       if (local) {
         changed = db.run(`UPDATE ${ident} SET ${names.map((col, i) => `${quoteIdentifier(col)}=?${i + 1}`).join(',')} WHERE ${buildPrimaryKeyPredicate(pk, names.length + 1)}`, [...params, ...keys]).changes > 0;
+        if (table === 'review_plans' && typeof local.updated_at === 'string'
+            && (!Object.hasOwn(winners, 'updated_at') || winners.updated_at === local.updated_at)) {
+          restoreReviewPlanRevision(db, id, local.updated_at);
+        }
       } else {
         const insertCols = [...pk, ...names];
         changed = db.run(`INSERT INTO ${ident} (${insertCols.map(quoteIdentifier).join(',')}) VALUES(${insertCols.map((_, i) => `?${i + 1}`).join(',')})`, [...keys, ...params]).changes > 0;
