@@ -22,6 +22,10 @@ on:
         description: Build verified macOS and Windows assets without modifying a published release
         default: false
         type: boolean
+      desktop_upload_run:
+        description: Successful macOS and Windows staging run to add to an existing prerelease
+        default: ''
+        type: string
       allow_missing_migration_fixtures:
         description: 'Explicit recovery override: production migration tests only'
         default: false
@@ -34,6 +38,7 @@ permissions:
   actions: write
 jobs:
   release:
+    if: inputs.desktop_upload_run == ''
     uses: ./.github/workflows/reusable-release-pipeline.yml
     with:
       tag_name: ${{ inputs.tag_name }}
@@ -43,3 +48,42 @@ jobs:
       desktop_assets_only: ${{ inputs.desktop_assets_only }}
       allow_missing_migration_fixtures: ${{ inputs.allow_missing_migration_fixtures }}
     secrets: inherit
+  append-verified-desktop:
+    if: inputs.desktop_upload_run != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - name: Require the exact approved version and successful staging run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          REQUESTED_TAG: ${{ inputs.tag_name }}
+          STAGING_RUN: ${{ inputs.desktop_upload_run }}
+        run: |
+          set -euo pipefail
+          test "$REQUESTED_TAG" = v0.20.4
+          test "$STAGING_RUN" = 43873108998
+          gh api "repos/$GH_REPO/actions/runs/$STAGING_RUN" |
+            jq -e '.head_sha == "1a219c2a21e38ae1c40eaa03b51894ecf9773bf0" and .conclusion == "success"'
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts --legacy-peer-deps
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.desktop_upload_run }}
+          path: ${{ runner.temp }}/desktop-assets
+          pattern: '{macos-*,windows-x86_64,release-provenance-*}'
+      - name: Verify source, artifact hashes, and updater signatures
+        run: node scripts/ci/verify-desktop-artifacts-0204.mjs "$RUNNER_TEMP/desktop-assets"
+      - name: Append only verified desktop assets to the existing prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/ci/append-desktop-artifacts-0204.py "$RUNNER_TEMP/desktop-assets" .github/release-notes-0204-desktop.md
