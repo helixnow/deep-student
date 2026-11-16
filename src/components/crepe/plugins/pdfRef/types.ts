@@ -16,12 +16,13 @@ export interface PdfRefOpenDetail {
   sourceId: string;
   pageNumber: number;
   quote?: string;
+  sourceWindowId?: string;
 }
 
-export function dispatchOpenPdfRef(sourceId: string, pageNumber: number, quote?: string): void {
+export function dispatchOpenPdfRef(sourceId: string, pageNumber: number, quote?: string, sourceWindowId?: string): void {
   document.dispatchEvent(
     new CustomEvent<PdfRefOpenDetail>(PDF_REF_EVENTS.OPEN_PDF_REF, {
-      detail: { sourceId, pageNumber, quote },
+      detail: sourceWindowId ? { sourceId, pageNumber, quote, sourceWindowId } : { sourceId, pageNumber, quote },
     }),
   );
 }

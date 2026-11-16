@@ -4,6 +4,7 @@
  * - 装饰插件包裹的 `[媒体@id:mm:ss]` 纯文本标记（data-media-ref-id）
  */
 
+import { resolveSourceWindowId } from '@/utils/sourceWindowId';
 import type { EditorView } from '@milkdown/prose/view';
 
 import { dispatchOpenMediaRef } from '@/features/learning-hub/apps/views/media/mediaRefEvents';
@@ -22,7 +23,7 @@ export function handleMediaRefClick(view: EditorView, event: MouseEvent): boolea
     if (ref) {
       event.preventDefault();
       event.stopPropagation();
-      dispatchOpenMediaRef(ref.resourceId, ref.seconds);
+      dispatchOpenMediaRef(ref.resourceId, ref.seconds, resolveSourceWindowId(anchor));
       return true;
     }
   }
@@ -34,7 +35,7 @@ export function handleMediaRefClick(view: EditorView, event: MouseEvent): boolea
     if (resourceId && Number.isFinite(seconds) && seconds >= 0) {
       event.preventDefault();
       event.stopPropagation();
-      dispatchOpenMediaRef(resourceId, seconds);
+      dispatchOpenMediaRef(resourceId, seconds, resolveSourceWindowId(marker));
       return true;
     }
   }

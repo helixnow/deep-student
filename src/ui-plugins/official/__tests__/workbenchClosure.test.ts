@@ -21,7 +21,7 @@ describe('Workbench chunk vs startup closure (FE-B4)', () => {
   const boot = relative(staticClosure(BOOT));
   const startup = new Set([...entry, ...boot]);
 
-  it('adds no Workbench module to the entry or boot closure except the contribution bridge', () => {
+  it('adds no Workbench module to the entry or boot closure except the contribution bridge and pure window placement', () => {
     const current = { entry: workbench(entry), boot: workbench(boot) };
     if (process.env.FE_B4_CAPTURE_GOLDEN === '1') {
       fs.mkdirSync('src/ui-plugins/official/__tests__/__golden__', { recursive: true });
@@ -29,8 +29,9 @@ describe('Workbench chunk vs startup closure (FE-B4)', () => {
     }
     const golden = JSON.parse(fs.readFileSync(GOLDEN, 'utf8')) as typeof current;
     const bridge = 'src/features/workbench/core/appContributions.ts';
-    expect(current.entry.filter((file) => !golden.entry.includes(file) && file !== bridge)).toEqual([]);
-    expect(current.boot.filter((file) => !golden.entry.includes(file) && !golden.boot.includes(file) && file !== bridge)).toEqual([]);
+    const smallStartupModules = new Set([bridge, 'src/features/workbench/core/besidePlacement.ts']);
+    expect(current.entry.filter((file) => !golden.entry.includes(file) && !smallStartupModules.has(file))).toEqual([]);
+    expect(current.boot.filter((file) => !golden.entry.includes(file) && !golden.boot.includes(file) && !smallStartupModules.has(file))).toEqual([]);
     // The bridge is how the startup plugin reaches the lazy app modules; it must not drag anything in itself.
     expect(relative(staticClosure([bridge]))).toEqual([
       bridge,

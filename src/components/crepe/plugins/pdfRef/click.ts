@@ -7,6 +7,7 @@
  * - legacy 模式：ChatV2Page（useChatPageEvents）监听同名事件。
  */
 
+import { resolveSourceWindowId } from '@/utils/sourceWindowId';
 import type { EditorView } from '@milkdown/prose/view';
 
 import { parsePdfRefHref } from './protocol';
@@ -33,6 +34,6 @@ export function handlePdfRefLinkClick(
 
   event.preventDefault();
   event.stopPropagation();
-  dispatchOpenPdfRef(refTarget.sourceId, refTarget.page, refTarget.quote);
+  dispatchOpenPdfRef(refTarget.sourceId, refTarget.page, refTarget.quote, resolveSourceWindowId(anchor));
   return true;
 }

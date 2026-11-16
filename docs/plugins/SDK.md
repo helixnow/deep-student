@@ -359,7 +359,7 @@ export default definePlugin({
 | 处理方法拿到的 `tool` 只有 `signal` 和 `fetch`：没有会话、执行上下文、事件发射器或其他宿主对象。要用应用服务，照常在 `permissions` 里声明 `service:<服务名>` 并 `inject`；声明了工具的插件即使是完全信任，也不能注入没声明的服务 | `host/kernel/plugin-agent-tools.ts` `PluginAgentToolContext`、`host/kernel/manifest.ts` `checkPluginModule` |
 | `tool.fetch(url)` 只做 HTTPS GET，只放行清单里 `net:<主机名>` 精确列出的主机（小写，不含通配、端口、IP、`localhost`）；每一跳重定向重新核对，解析到私网或回环地址的请求被传输层拒绝；不带 cookie；响应体上限 1 MiB，一次调用最多 8 个请求。返回 `{ status, ok, contentType, text }` | `host/plugins/agent-skills/src/tools/plugin-tool-executor.ts` `pluginToolFetch`、`host/platform/http/api.ts` |
 | 工具随插件存在：停用、卸载、降级后立即从工具面消失，启用或重启后只要插件被装载就回来，不需要另行登记 | `host/kernel/plugin-agent-tools.ts`、`host/kernel/tests/plugin-agent-tools.test.ts` |
-| 工具在所有普通对话里自动提供，不需要前端或技能列出；带执行白名单的回合（子代理、工坊自己的生成会话）和关闭工具的回合不提供。多模型并行回答暂不提供 | `host/plugins/chat-pipeline/src/ambient-tools.ts` `admittedAmbientSchemaToolIds` |
+| 工具在所有普通对话里自动提供，不需要前端或技能列出；带执行白名单的回合（子代理、工坊自己的生成会话）和关闭工具的回合不提供。多模型并行回答暂不提供 | `host/plugins/agent-skills/src/tools/plugin-tool-executor.ts` `ambientSchemaToolIds` |
 | 对话里的工具块和审批卡片显示清单里的 `title` | `src/ui-kernel/services/plugin-tools.ts`、`src/features/chat/utils/toolDisplayName.ts` `getReadableToolName` |
 
 工坊生成这类插件时另有一层检查（`host/plugins/plugin-workshop/src/compiler.ts` `sealedHostGlobals`）：Host 半不能 `import` 任何模块，
