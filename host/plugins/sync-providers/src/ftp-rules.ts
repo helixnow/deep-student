@@ -58,13 +58,14 @@ export function extractStatusCode(message: string): number | null {
 }
 
 /** ftp.rs:306: only an explicit 550/501 "missing" reply is not-found. */
-export function isNotFoundError(error: unknown): boolean {
+export function isNotFoundError(error: unknown, { explicitOnly = false } = {}): boolean {
   const message = (error instanceof Error ? error.message : String(error)).toLowerCase();
   const code = extractStatusCode(message);
   if (code !== 550 && code !== 501) return false;
+  if (explicitOnly && /\b(?:permission|access) denied\b/.test(message)) return false;
   return message.includes('no such file')
     || message.includes('no such directory')
-    || message.includes('not retrievable')
+    || (!explicitOnly && message.includes('not retrievable'))
     || message.includes('does not exist')
     || message.includes('file not found')
     || message.includes('directory not found');
