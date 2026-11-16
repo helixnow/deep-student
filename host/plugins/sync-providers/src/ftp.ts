@@ -409,9 +409,19 @@ class FtpSession {
       new CloudStorageError('FileSystem', `FTP RENAME 失败：Invalid response: [${reply.code}] ${reply.text}`));
   }
 
-  async size(path: string): Promise<number> {
-    const reply = await this.expect(`SIZE ${path}`, [213], reply =>
-      new CloudStorageError('FileSystem', `FTP SIZE 失败：Invalid response: [${reply.code}] ${reply.text}`));
+  async sizeOrMissing(path: string): Promise<number | null> {
+    const reply = await this.control.command(`SIZE ${path}`);
+    if (reply.code !== 213) {
+      const error = new CloudStorageError('FileSystem', `FTP SIZE 失败：Invalid response: [${reply.code}] ${reply.text}`);
+      if (isNotFoundError(error, { explicitOnly: true })) return null;
+      if (reply.code === 550 && /^550 \/[^\r\n]+ is not retrievable\.$/i.test(reply.text)) {
+        // pyftpdlib uses this wording for missing files and other failures.
+        // Only an independent, explicit absence reply lets us skip the object.
+        const metadata = await this.commandWithTimeout(`MLST ${path}`, 'FTP MLST 等待文件状态超时');
+        if (metadata.code === 550 && isNotFoundError(metadata.text, { explicitOnly: true })) return null;
+      }
+      throw error;
+    }
     const payload = reply.text.replace(/^\d{3}[ -]/, '');
     const match = /(\d+)/.exec(payload);
     if (match === null) throw new CloudStorageError('FileSystem', `FTP SIZE 失败：无法解析大小（${reply.text}）`);
@@ -445,6 +455,16 @@ class FtpSession {
 
   close(): void { this.control.destroy(); }
 
+  private async commandWithTimeout(command: string, message: string): Promise<FtpReply> {
+    try {
+      return await withTimeout(this.control.command(command), FTP_DATA_TIMEOUT_MS, message);
+    } catch (error) {
+      // A pending reply makes this control session unsafe to reuse.
+      this.control.destroy(error instanceof Error ? error : undefined);
+      throw error;
+    }
+  }
+
   private async beginData(command: string): Promise<Retrieval> {
     let awaitingReply = false;
     const data: { error?: Error } = {};
@@ -458,15 +478,9 @@ class FtpSession {
       if (data.error) throw data.error;
       awaitingReply = true;
       const verb = command.split(' ')[0];
-      const reply = await withTimeout(
-        this.control.command(command),
-        FTP_DATA_TIMEOUT_MS,
-        `FTP ${verb} 等待传输初始响应超时（${Math.round(FTP_DATA_TIMEOUT_MS / 1000)} 秒）`,
-      ).catch((error: unknown) => {
-        // A pending transfer reply makes this control session unsafe to reuse.
-        this.control.destroy(error instanceof Error ? error : undefined);
-        throw error;
-      });
+      const reply = await this.commandWithTimeout(
+        command, `FTP ${verb} 等待传输初始响应超时（${Math.round(FTP_DATA_TIMEOUT_MS / 1000)} 秒）`,
+      );
       if (data.error) throw data.error;
       if (reply.code !== 125 && reply.code !== 150) {
         throw new CloudStorageError('FileSystem', `FTP ${verb} 失败：Invalid response: [${reply.code}] ${reply.text}`);
@@ -731,13 +745,8 @@ export class FtpStorage extends CloudStorageBase {
           throw error;
         }
 
-        let size: number;
-        try {
-          size = await client.size(filename);
-        } catch (error) {
-          if (isNotFoundError(error, { explicitOnly: true })) return null;
-          throw error;
-        }
+        const size = await client.sizeOrMissing(filename);
+        if (size === null) return null;
 
         // The declared length is rejected before RETR: no data bytes are read.
         ensureDeclaredLenWithinBudget('FTP', key, size, maxBytes);
@@ -888,13 +897,8 @@ export class FtpStorage extends CloudStorageBase {
           throw error;
         }
 
-        let size: number;
-        try {
-          size = await client.size(filename);
-        } catch (error) {
-          if (isNotFoundError(error, { explicitOnly: true })) return null;
-          throw error;
-        }
+        const size = await client.sizeOrMissing(filename);
+        if (size === null) return null;
 
         let modified: number;
         try {

@@ -452,6 +452,32 @@ describe('ftp.rs', () => {
       expect((await storage.list('')).map(file => file.key)).toEqual(['pack.bin']);
     });
 
+  it.each([
+    { metadata: { code: 550, text: 'No such file or directory.' }, missing: true },
+    { metadata: { code: 550, text: 'Permission denied.' }, missing: false },
+    { metadata: { code: 502, text: 'Command not implemented.' }, missing: false },
+  ])('checks ambiguous SIZE with MLST: $metadata.text', async ({ metadata, missing }) => {
+    const { server, host, port } = await spawnFakeFtp({
+      dirs: ['/deep-student-sync'],
+      intercept: command => {
+        if (command === 'SIZE pack.bin') return { code: 550, text: '/deep-student-sync/pack.bin is not retrievable.' };
+        if (command === 'MLST pack.bin') return metadata;
+        return null;
+      },
+    });
+    ftpServers.push(server);
+    const storage = fakeStorage({ host, port });
+    if (missing) {
+      expect(await storage.stat('pack.bin')).toBeNull();
+      expect(await storage.getBounded('pack.bin', 4)).toBeNull();
+    } else {
+      const error = await failure(storage.getBounded('pack.bin', 4));
+      expect(error).toMatchObject({ value: { error_type: 'FileSystem' } });
+      expect(error.message).toContain('is not retrievable.');
+    }
+    expect(server.commands).toContain('MLST pack.bin');
+  });
+
   it('retries on a fresh session when data ends without a transfer reply', async () => {
     const command = 'RETR pack.bin';
     let notifyDataEnd!: () => void;
