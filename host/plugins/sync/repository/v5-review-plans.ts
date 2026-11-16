@@ -9,6 +9,7 @@ import { getRecordData } from './record-data.ts';
 import { jsonValueToSqlParam, quoteIdentifier, tableExists } from './sqlite-values.ts';
 import { readUnknownFieldsForRoundTrip, vaultUnknownFieldsWithVersion, type UnknownFieldVersion, type VersionedUnknownField } from './unknown-fields.ts';
 import { getV5RowMetaRow, upsertV5ColumnVersion, upsertV5RowMeta } from './v5-runtime-bridge.ts';
+import { attachV5ReviewHistory, detachV5ReviewHistory } from './v5-review-history.ts';
 import { restoreReviewPlanRevision } from './v5-vaults.ts';
 
 const TABLE = 'review_plans';
@@ -16,6 +17,8 @@ type Fields = Record<string, VersionedUnknownField>;
 type Versions = Record<string, UnknownFieldVersion>;
 interface Member { record_id: string; question_id: string | null; fields_json: string | null }
 interface PlanKey { id: string; question_id: string; updated_at: string }
+interface RecoveryTarget { record_id: string; question_id: string }
+interface RecordedReview { change: EngineChange; versions: Versions }
 
 const compare = (a: UnknownFieldVersion, b: UnknownFieldVersion) => compareLwwTimestamps(a.hlc, a.dev, '', b.hlc, b.dev, '');
 const decodeFields = (json: string) => parseJsonLossless(json) as unknown as Fields;
@@ -45,6 +48,11 @@ export function v5ReviewPlanDeleteData(db: SqlExecutor, id: string): DbJson {
   return ids.length > 1 ? { review_plan_ids: ids } : null;
 }
 
+function deletedIds(change: EngineChange): Set<string> {
+  const supplied = isJsonObject(change.data) ? change.data.review_plan_ids : null;
+  return new Set([change.record_id, ...(Array.isArray(supplied) ? supplied.filter((value): value is string => typeof value === 'string') : [])]);
+}
+
 function seedExistingPlan(db: SqlExecutor, plan: PlanKey | undefined): void {
   if (!plan || member(db, plan.id)) return;
   const data = getRecordData(db, TABLE, plan.id, 'id');
@@ -58,22 +66,73 @@ function seedExistingPlan(db: SqlExecutor, plan: PlanKey | undefined): void {
   for (const [col, value] of Object.entries(opaque.values)) {
     if (!Object.hasOwn(data, col)) fields[col] = { value, ...(opaque.fieldDeltas[col] ?? versions[col] ?? bootstrap) };
   }
-  // Preserve an installed client's current view when upgrading from the old
-  // bridge, which kept these IDs but no longer has their separate snapshots.
-  const json = stringifyJsonLossless(fields as unknown as DbJson);
-  for (const id of knownIds(db, plan.id)) {
-    db.run('INSERT OR IGNORE INTO __sync_v5_review_plan_members VALUES(?,?,?)', [id, plan.question_id, json]);
+  writeMember(db, plan.id, plan.question_id, fields);
+}
+
+function writeMember(db: SqlExecutor, id: string, questionId: string, fields: Fields | null): void {
+  db.run(`INSERT INTO __sync_v5_review_plan_members VALUES(?,?,?)
+    ON CONFLICT(record_id) DO UPDATE SET question_id=excluded.question_id,fields_json=excluded.fields_json`,
+  [id, questionId, fields && stringifyJsonLossless(fields as unknown as DbJson)]);
+}
+
+function mergeFields(fields: Fields, data: Record<string, DbJson>, versions: Versions): boolean {
+  let changed = false;
+  for (const [col, value] of Object.entries(data)) {
+    if (col === 'id') continue;
+    const version = versions[col];
+    if (!version) throw new TypeError(`列缺少原始版本: ${col}`);
+    if (!fields[col] || compare(version, fields[col]!) > 0) {
+      fields[col] = { value, ...version };
+      changed = true;
+    }
   }
+  return changed;
+}
+
+export function listV5ReviewRecoveryTargets(db: SqlExecutor): RecoveryTarget[] {
+  return tableExists(db, '__sync_v5_review_plan_recovery')
+    ? db.all<RecoveryTarget>('SELECT record_id,question_id FROM __sync_v5_review_plan_recovery')
+    : [];
+}
+
+/** Rebuild old aliases from the original operations, without replaying their intermediate business states. */
+export function restoreV5ReviewMembers(
+  db: SqlExecutor, targets: readonly RecoveryTarget[], recorded: readonly RecordedReview[],
+): string[] {
+  const questionById = new Map(targets.map(t => [t.record_id, t.question_id]));
+  const originals = new Map<string, Fields | null>();
+  for (const { change, versions } of recorded) {
+    if (change.operation === 'Delete') {
+      for (const id of deletedIds(change)) if (questionById.has(id)) originals.set(id, null);
+      continue;
+    }
+    const id = change.record_id;
+    const questionId = questionById.get(id);
+    if (questionId === undefined || originals.get(id) === null || !isJsonObject(change.data)
+        || change.data.question_id !== questionId) continue;
+    const fields: Fields = originals.get(id) ?? Object.create(null);
+    mergeFields(fields, change.data, versions);
+    originals.set(id, fields);
+  }
+  const completed = new Set(questionById.values());
+  for (const [id, questionId] of questionById) {
+    const fields = originals.get(id);
+    if (fields === undefined || (fields !== null && !['question_id', 'exam_id', 'created_at', 'updated_at', 'next_review_date']
+      .every(col => typeof fields[col]?.value === 'string'))) completed.delete(questionId);
+  }
+  for (const [id, questionId] of questionById) {
+    if (completed.has(questionId)) writeMember(db, id, questionId, originals.get(id)!);
+  }
+  for (const questionId of completed) db.run('DELETE FROM __sync_v5_review_plan_recovery WHERE question_id=?', [questionId]);
+  return [...completed];
 }
 
 /** Record wire IDs separately from the displayed ID. NULL fields mark a retired ID, which a rating cannot revive. */
 export function recordV5ReviewPlanChange(db: SqlExecutor, change: EngineChange, versions: Versions): string[] {
   const id = change.record_id;
   if (change.operation === 'Delete') {
-    const supplied = isJsonObject(change.data) ? change.data.review_plan_ids : null;
-    const ids = new Set([id, ...(Array.isArray(supplied) ? supplied.filter((value): value is string => typeof value === 'string') : [])]);
     const questions = new Set<string>();
-    for (const target of ids) {
+    for (const target of deletedIds(change)) {
       if (!member(db, target)) {
         seedExistingPlan(db, db.get<PlanKey>('SELECT id, question_id, updated_at FROM review_plans WHERE id=?',
           [resolvePersistedIdAlias(db, TABLE, target)]));
@@ -102,20 +161,8 @@ export function recordV5ReviewPlanChange(db: SqlExecutor, change: EngineChange, 
     }
   }
   const fields: Fields = Object.assign(Object.create(null), previous ? decodeFields(previous.fields_json!) : {});
-  let changed = false;
-  for (const [col, value] of Object.entries(change.data)) {
-    if (col === 'id') continue;
-    const version = versions[col];
-    if (!version) throw new TypeError(`列缺少原始版本: ${col}`);
-    if (!fields[col] || compare(version, fields[col]!) > 0) {
-      fields[col] = { value, ...version };
-      changed = true;
-    }
-  }
-  if (!changed) return [];
-  db.run(`INSERT INTO __sync_v5_review_plan_members VALUES(?,?,?)
-    ON CONFLICT(record_id) DO UPDATE SET fields_json=excluded.fields_json`,
-  [id, questionId, stringifyJsonLossless(fields as unknown as DbJson)]);
+  if (!mergeFields(fields, change.data, versions)) return [];
+  writeMember(db, id, questionId, fields);
   return [questionId];
 }
 
@@ -127,11 +174,16 @@ function clearProjectedRegisters(db: SqlExecutor, id: string): void {
 
 /** Materialize the live members as one row. If a member is deleted, another member's schedule can win again. */
 export function projectV5ReviewPlan(db: SqlExecutor, databaseName: string, questionId: string): void {
+  // If a writer's history is temporarily unavailable, leave the old view
+  // intact and finish this question on a later pull. Other questions proceed.
+  if (tableExists(db, '__sync_v5_review_plan_recovery')
+      && db.get('SELECT 1 FROM __sync_v5_review_plan_recovery WHERE question_id=? LIMIT 1', [questionId])) return;
   const existing = localPlan(db, questionId);
   const members = db.all<{ record_id: string; fields_json: string }>(`SELECT record_id, fields_json FROM __sync_v5_review_plan_members
     WHERE question_id=? AND fields_json IS NOT NULL ORDER BY record_id COLLATE BINARY`, [questionId]);
   if (!members.length) {
     if (existing) {
+      detachV5ReviewHistory(db, existing.id);
       db.run('DELETE FROM review_plans WHERE id=?', [existing.id]);
       clearProjectedRegisters(db, existing.id);
     }
@@ -169,6 +221,7 @@ export function projectV5ReviewPlan(db: SqlExecutor, databaseName: string, quest
     const columns = selected.map(([col]) => quoteIdentifier(col));
     db.run(`INSERT INTO review_plans (id,${columns.join(',')}) VALUES (?,${params.map(() => '?').join(',')})`, [id, ...params]);
   }
+  attachV5ReviewHistory(db, questionId, id);
 
   clearProjectedRegisters(db, id);
   const registers: Versions = Object.create(null);

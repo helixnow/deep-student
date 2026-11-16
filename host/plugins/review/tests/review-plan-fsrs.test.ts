@@ -132,7 +132,7 @@ describe('ReviewPlanService with the real repository', () => {
       client.db.exec('PRAGMA foreign_keys = ON');
       const sync = new SyncV5RuntimeCoordinator({ deviceId, repoId: 'review-plans', stateDb: client.storage.database('sync_state'),
         databases: new Map([['vfs', client.db]]), storage: remote, secrets });
-      return { ...client, sync, pull: () => sync.pullAndApplyFromV5Cloud(), push() {
+      return { ...client, deviceId, sync, pull: () => sync.pullAndApplyFromV5Cloud(), push() {
         sync.captureUnboundLocalChangeLogs();
         return sync.publishChangesToV5Cloud([]);
       } };
@@ -425,6 +425,85 @@ describe('ReviewPlanService with the real repository', () => {
     await b.push();
     await a.pull();
     expect(a.service.getPlanByQuestion('q1')).toEqual(submitted.plan);
+  });
+
+  it.each(['delete first', 'rating first', 'same pull'])('keeps another device’s local history when operations arrive: %s', async order => {
+    const { a, b, device, remote, advance } = syncFixture();
+    await a.push();
+    const observer = device('observer');
+    await observer.pull();
+    const history = observer.service.processReview(a.id, 4, 'keep this original history', 15).history;
+
+    advance();
+    a.service.deletePlan(a.id);
+    await a.push();
+    advance();
+    const rating = b.service.processReview(b.id, 5, 'surviving independent plan', 10);
+    const expected = b.repo.getFsrsStates(b.db, [b.id]).get(b.id);
+    await b.push();
+
+    if (order !== 'same pull') {
+      const writer = order === 'delete first' ? a : b;
+      const heads = (await remote.list('sync-v5/review-plans/heads/')).filter(
+        info => info.key.includes(`/heads/${writer.deviceId}_`));
+      const selective = vi.spyOn(remote, 'list').mockResolvedValueOnce(heads);
+      await observer.pull();
+      selective.mockRestore();
+    }
+    await observer.pull();
+    const fresh = device('fresh');
+    await Promise.all([a.pull(), b.pull(), fresh.pull()]);
+    for (const client of [a, b, observer, fresh]) {
+      expect(client.service.listPlansByExam('e1', null, null).plans).toEqual([rating.plan]);
+      expect(client.repo.getFsrsStates(client.db, [b.id]).get(b.id)).toEqual(expected);
+      expect(client.db.all('PRAGMA foreign_key_check')).toEqual([]);
+    }
+    expect(observer.service.getReviewHistory(b.id, null)).toEqual([{ ...history, plan_id: b.id }]);
+    expect(await observer.pull()).toEqual({ applied: 0, downloadedEntries: 0 });
+    expect(observer.service.getReviewHistory(b.id, null)).toHaveLength(1);
+  });
+
+  it('replays acknowledged originals on upgrade rather than copying the former winning schedule', async () => {
+    const { a, b, device, remote, advance } = syncFixture();
+    const history = a.service.processReview(a.id, 5, 'keep the original history', 10).history;
+    await a.push();
+    const scorer = device('scorer');
+    await scorer.pull();
+    advance();
+    const retained = scorer.service.processReview(a.id, 4, 'the surviving schedule', 14);
+    const expected = scorer.repo.getFsrsStates(scorer.db, [a.id]).get(a.id);
+    await scorer.push();
+    advance();
+    const deleted = b.service.processReview(b.id, 0, 'former winning schedule', 12);
+    await b.push();
+    await a.pull();
+    expect(a.service.getPlanByQuestion('q1')?.updated_at).toBe(deleted.plan.updated_at);
+
+    // 981c8fe73 persisted the visible winner, aliases and receipts, but not
+    // the original members. Keep those old-format artifacts for the upgrade.
+    a.db.exec('DROP TABLE __sync_v5_review_plan_members');
+    ensureV5TargetDatabaseTables(a.db);
+    advance();
+    b.service.deletePlan(b.id);
+    await b.push();
+    // Both old IDs are present, but a third writer's acknowledged rating is not.
+    // Completing the upgrade from these heads alone would persist a stale schedule.
+    const heads = (await remote.list('sync-v5/review-plans/heads/')).filter(
+      info => !info.key.includes(`/heads/${scorer.deviceId}_`));
+    const selective = vi.spyOn(remote, 'list').mockResolvedValueOnce(heads);
+    await a.pull();
+    selective.mockRestore();
+    expect(a.service.getPlanByQuestion('q1')?.updated_at).toBe(deleted.plan.updated_at);
+
+    const fresh = device('fresh');
+    await Promise.all([a.pull(), b.pull(), fresh.pull()]);
+
+    for (const client of [a, b, fresh]) {
+      expect(client.service.listPlansByExam('e1', null, null).plans).toEqual([retained.plan]);
+      expect(client.repo.getFsrsStates(client.db, [a.id]).get(a.id)).toEqual(expected);
+      expect(await client.pull()).toEqual({ applied: 0, downloadedEntries: 0 });
+    }
+    expect(a.service.getReviewHistory(a.id, null)).toEqual([history]);
   });
 
   it('uses the newer legacy review when an older V5 client relays opaque FSRS fields', () => {
