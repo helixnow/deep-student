@@ -46,6 +46,20 @@ export interface ReviewPlan {
   is_difficult: boolean;
   created_at: string;
   updated_at: string;
+  /** 四档评分的 FSRS 间隔预演（读取类命令附上；D2 起题目集复习走 FSRS） */
+  rating_previews?: ReviewPlanRatingPreviews;
+}
+
+export interface ReviewPlanRatingPreview {
+  interval_minutes: number;
+  next_review_date: string;
+}
+
+export interface ReviewPlanRatingPreviews {
+  again: ReviewPlanRatingPreview;
+  hard: ReviewPlanRatingPreview;
+  good: ReviewPlanRatingPreview;
+  easy: ReviewPlanRatingPreview;
 }
 
 /** 复习历史记录 */

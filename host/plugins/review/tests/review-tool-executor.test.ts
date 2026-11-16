@@ -212,9 +212,11 @@ describe('ReviewToolExecutor through the review plugin', () => {
       { plan_id: first.plan_id, quality: 5, expected_updated_at: first.updatedAt, user_answer: "2x" });
     expect(submitted.result.success).toBe(true);
     expect(submitted.result.output).toMatchObject({
-      success: true, plan_id: first.plan_id, question_id: 'q_1', passed: true, new_interval_days: 1,
-      status: 'learning', repetitions: 1,
+      success: true, plan_id: first.plan_id, question_id: 'q_1', passed: true,
+      // D2：FSRS 下新题评「简单」直接毕业到按日间隔（SM-2 时是固定 1 天 + learning）。
+      status: 'reviewing', repetitions: 1,
     });
+    expect((submitted.result.output as { new_interval_days: number }).new_interval_days).toBeGreaterThan(1);
     expect(host.eventsNamed('review://changed')).toEqual([{ action: 'submit', planId: first.plan_id, runId: 'call_1' }]);
 
     host.events.length = 0;

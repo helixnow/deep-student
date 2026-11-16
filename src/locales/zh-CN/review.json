@@ -67,6 +67,8 @@
   },
 
   "estimate": {
+    "minutes": "{{count}}分钟",
+    "hours": "{{count}}小时",
     "days": "{{count}}天",
     "weeks": "{{count}}周",
     "months": "{{count}}个月",

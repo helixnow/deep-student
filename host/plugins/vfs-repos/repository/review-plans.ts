@@ -11,6 +11,7 @@ import {
   type RecordReviewHistoryParams,
   type ReviewHistory,
   type ReviewPlan,
+  type ReviewPlanFsrsState,
   type ReviewPlanRepository,
   type ReviewPlanStatus,
   type ReviewStats,
@@ -79,6 +80,21 @@ function rowToPlan(row: Row): ReviewPlan {
     is_difficult: toNumber(row.is_difficult) !== 0,
     created_at: String(row.created_at),
     updated_at: String(row.updated_at),
+  };
+}
+
+const FSRS_PHASES = new Set(['new', 'learning', 'review', 'relearning']);
+
+function rowToFsrsState(row: Row): ReviewPlanFsrsState {
+  const phase = optionalText(row.fsrs_phase);
+  return {
+    stability: optionalNumber(row.fsrs_stability),
+    difficulty: optionalNumber(row.fsrs_difficulty),
+    phase: phase !== null && FSRS_PHASES.has(phase) ? phase as ReviewPlanFsrsState['phase'] : null,
+    learning_step: optionalNumber(row.fsrs_learning_step) ?? 0,
+    lapses: optionalNumber(row.fsrs_lapses) ?? 0,
+    due_at: optionalNumber(row.fsrs_due_at),
+    last_review_at: optionalNumber(row.fsrs_last_review_at),
   };
 }
 
@@ -219,9 +235,27 @@ export class ReviewPlanRepo implements ReviewPlanRepository {
     });
   }
 
+  getFsrsStates(conn: SqlExecutor, planIds: readonly string[]): Map<string, ReviewPlanFsrsState> {
+    return databaseResult(() => {
+      const states = new Map<string, ReviewPlanFsrsState>();
+      const unique = [...new Set(planIds)];
+      // SQLite 绑定参数上限保守取 500 一批（listDueReviews 单页最多 500 行）。
+      for (let start = 0; start < unique.length; start += 500) {
+        const chunk = unique.slice(start, start + 500);
+        const marks = chunk.map((_, index) => `?${index + 1}`).join(', ');
+        const rows = conn.all<Row>(`SELECT id, fsrs_stability, fsrs_difficulty, fsrs_phase, fsrs_learning_step,
+            fsrs_lapses, fsrs_due_at, fsrs_last_review_at
+          FROM review_plans WHERE id IN (${marks})`, chunk);
+        for (const row of rows) states.set(String(row.id), rowToFsrsState(row));
+      }
+      return states;
+    });
+  }
+
   updatePlan(conn: SqlExecutor, planId: string, params: UpdateReviewPlanParams): ReviewPlan {
     return databaseResult(() => {
       const now = utcNow();
+      const fsrs = params.fsrs;
       const affected = conn.run(`UPDATE review_plans SET
           ease_factor = ?1,
           interval_days = ?2,
@@ -233,12 +267,21 @@ export class ReviewPlanRepo implements ReviewPlanRepository {
           total_correct = ?8,
           consecutive_failures = ?9,
           is_difficult = ?10,
-          updated_at = ?11
+          updated_at = ?11${fsrs === undefined ? '' : `,
+          fsrs_stability = ?14,
+          fsrs_difficulty = ?15,
+          fsrs_phase = ?16,
+          fsrs_learning_step = ?17,
+          fsrs_lapses = ?18,
+          fsrs_due_at = ?19,
+          fsrs_last_review_at = ?20`}
         WHERE id = ?12 AND updated_at = ?13`,
       [params.ease_factor, params.interval_days, params.repetitions,
         params.next_review_date, params.last_review_date, params.status,
         params.total_reviews, params.total_correct, params.consecutive_failures,
-        params.is_difficult ? 1 : 0, now, planId, params.expected_updated_at]).changes;
+        params.is_difficult ? 1 : 0, now, planId, params.expected_updated_at,
+        ...(fsrs === undefined ? [] : [fsrs.stability, fsrs.difficulty, fsrs.phase, fsrs.learning_step,
+          fsrs.lapses, fsrs.due_at, fsrs.last_review_at])]).changes;
       if (affected === 0) throw revisionConflict(planId, params.expected_updated_at);
       const plan = this.getPlan(conn, planId);
       if (plan === null) throw notFound('review_plan', planId);

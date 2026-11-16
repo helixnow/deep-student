@@ -79,9 +79,9 @@ describe('migration/vfs.rs', () => {
     expect(m.expectedQueries.length).toBe(2);
   });
   it('test_note_history_is_registered_as_vfs_schema_head', () => {
-    expect(vfs.VFS_SCHEMA_VERSION).toBe(20261111);
+    expect(vfs.VFS_SCHEMA_VERSION).toBe(20261115);
     expect(vfs.V20260912_QBANK_GENERATION_TASKS.expectedTables).toEqual(['qbank_generation_tasks']);
-    expect(vfs.VFS_MIGRATIONS[vfs.VFS_MIGRATIONS.length - 1]!.name).toBe('study_space_profiles_and_mounts');
+    expect(vfs.VFS_MIGRATIONS[vfs.VFS_MIGRATIONS.length - 1]!.name).toBe('review_plans_fsrs');
     expect(vfs.V20261006_STUDY_TIME.expectedTables).toEqual(['study_time_daily']);
     expect(vfs.V20261023_QUESTION_AUTHORING_V2.expectedTables).toEqual([
       'qbank_sources',
