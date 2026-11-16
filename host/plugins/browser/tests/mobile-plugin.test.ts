@@ -2,10 +2,9 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createTestHost, type TestHost } from '../../../kernel/testing.ts';
 import { checkModulesClosure } from '../../../../scripts/portability/lib/portability.mjs';
-import browserMobile, {
-  BROWSER_PORTABLE_COMMANDS,
-  BROWSER_UNSUPPORTED_COMMANDS,
-} from '../mobile.ts';
+import browserMobile, { BROWSER_PORTABLE_COMMANDS } from '../mobile.ts';
+import mobileCompat from '../../mobile-compat/index.ts';
+import { COMPAT_COMMANDS } from '../../mobile-compat/commands.ts';
 
 const ROOT = fileURLToPath(new URL('../../../../', import.meta.url));
 const hosts: TestHost[] = [];
@@ -28,7 +27,7 @@ async function setupMobileBrowser(options: {
 } = {}) {
   const values = new Map(Object.entries(options.settings ?? {}));
   const host = await createTestHost({
-    plugins: [browserMobile],
+    plugins: [browserMobile, mobileCompat],
     provide: {
       settings: {
         get: (key: string) => values.get(key) ?? null,
@@ -53,7 +52,7 @@ describe('dstu.browser mobile plugin', () => {
       'browserToolPolicy',
       'webpageToolPolicy',
     ]);
-    expect(browserMobile.meta.commands).toEqual([...BROWSER_PORTABLE_COMMANDS, ...BROWSER_UNSUPPORTED_COMMANDS]);
+    expect(browserMobile.meta.commands).toEqual([...BROWSER_PORTABLE_COMMANDS]);
     expect(checkModulesClosure(ROOT, ['host/plugins/browser/mobile.ts'])).toEqual([]);
   });
 
@@ -131,7 +130,7 @@ describe('dstu.browser mobile plugin', () => {
       browser_list_task_downloads: { chatSessionId: 'c1' },
       browser_scroll: { sessionId: 's1' },
     };
-    for (const cmd of BROWSER_UNSUPPORTED_COMMANDS) {
+    for (const cmd of COMPAT_COMMANDS.filter(name => name.startsWith('browser_'))) {
       await expect(host.invoke(cmd, sampleArgs[cmd] ?? {})).rejects.toMatch(/^UNSUPPORTED_ON_PLATFORM:/);
     }
   });
