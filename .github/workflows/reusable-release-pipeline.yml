@@ -14,6 +14,9 @@ on:
       allow_unsigned_desktop:
         default: false
         type: boolean
+      desktop_assets_only:
+        default: false
+        type: boolean
       allow_missing_migration_fixtures:
         default: false
         type: boolean
@@ -113,6 +116,7 @@ jobs:
       allow_unsigned: ${{ inputs.allow_unsigned_desktop }}
     secrets: inherit
   linux:
+    if: ${{ !inputs.desktop_assets_only }}
     needs: [verify, plan, frontend, migration]
     uses: ./.github/workflows/reusable-release-stage.yml
     with:
@@ -123,6 +127,7 @@ jobs:
       reuse_run_id: ${{ needs.plan.outputs.linux }}
     secrets: inherit
   android:
+    if: ${{ !inputs.desktop_assets_only }}
     needs: [verify, frontend]
     uses: ./.github/workflows/reusable-build-android.yml
     with:
@@ -134,6 +139,7 @@ jobs:
   publish:
     needs: [verify, macos-arm, macos-intel, windows, linux, android]
     if: >-
+      !inputs.desktop_assets_only &&
       !cancelled() &&
       needs.verify.result == 'success' &&
       needs.macos-arm.result == 'success' &&

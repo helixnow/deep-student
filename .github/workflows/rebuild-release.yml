@@ -18,6 +18,10 @@ on:
         description: 'No platform certificates (updater signatures remain required)'
         default: false
         type: boolean
+      desktop_assets_only:
+        description: Build verified macOS and Windows assets without modifying a published release
+        default: false
+        type: boolean
       allow_missing_migration_fixtures:
         description: 'Explicit recovery override: production migration tests only'
         default: false
@@ -36,5 +40,6 @@ jobs:
       resume_run_id: ${{ inputs.resume_run_id }}
       force_rebuild: ${{ inputs.force_rebuild }}
       allow_unsigned_desktop: ${{ inputs.allow_unsigned_desktop }}
+      desktop_assets_only: ${{ inputs.desktop_assets_only }}
       allow_missing_migration_fixtures: ${{ inputs.allow_missing_migration_fixtures }}
     secrets: inherit
