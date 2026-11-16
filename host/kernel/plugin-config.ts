@@ -8,9 +8,9 @@
  * 交给 Cordis 的已是补齐默认值后的配置（Schemastery 校验幂等），`fiber.update` 热更新仍由 Cordis 校验。
  * 可移植：不依赖 Node 内建模块。
  */
-import type Schema from '@deepseek-ai/schemastery';
+import Schema from '@deepseek-ai/schemastery';
 import type { HostPlugin } from './api.ts';
-import { PluginLoadError } from './manifest.ts';
+import { PluginLoadError, type PluginManifest } from './manifest.ts';
 
 /** 凭据类字段名（大小写、`-`/`_` 不敏感）。 */
 const CREDENTIAL_KEY = /^(?:api[-_]?key|secret|client[-_]?secret|password|passwd|pass[-_]?phrase|token|access[-_]?token|refresh[-_]?token|bearer[-_]?token|private[-_]?key|credentials?)$/i;
@@ -68,4 +68,16 @@ export function resolvePluginConfig(plugin: HostPlugin<any>, config: unknown): u
     throw new PluginLoadError('CONFIG_INVALID', id, `invalid config: ${issues}`);
   }
   return result.value;
+}
+
+/**
+ * A community plugin that declares `settings` in its manifest but exports no `Config` (a sealed workshop Host half
+ * cannot import Schemastery) gets one built from the declaration: one optional string per setting, titled as the
+ * card asked for it. The plugin manager then shows and edits those values like any other plugin config.
+ */
+export function withDeclaredSettings<T extends HostPlugin<any>>(plugin: T, manifest: Pick<PluginManifest, 'settings'> | undefined): T {
+  const settings = manifest?.settings ?? [];
+  if (plugin.Config !== undefined || !settings.length) return plugin;
+  const fields = Object.fromEntries(settings.map(setting => [setting.key, Schema.string().description(setting.title)]));
+  return { ...plugin, Config: Schema.object(fields) };
 }

@@ -62,6 +62,8 @@
     }
    }
   ],
+  "chat.composer.commands": [],
+  "chat.message.actions": [],
   "chat.toolResults": [
    {
     "id": "dstu.ui.chat/tool-result/completion/attempt_completion",
@@ -435,6 +437,7 @@
   "dashboard.stats": [],
   "dashboard.widgets": [],
   "debug.panels": [],
+  "desktop.widgets": [],
   "editor.blockMenu": [],
   "editor.extensions": [],
   "editor.selectionToolbar": [],
@@ -1705,6 +1708,7 @@
     }
    }
   ],
+  "pdf.selectionToolbar": [],
   "resource.contextMenu": [
    {
     "id": "empty:1",
@@ -2537,6 +2541,7 @@
     }
    }
   ],
+  "review.cardActions": [],
   "settings.sections": [
    {
     "id": "apis",
@@ -3494,6 +3499,8 @@
     }
    }
   ],
+  "statusbar.items": [],
+  "theme.variants": [],
   "views": [
    {
     "id": "dashboard",

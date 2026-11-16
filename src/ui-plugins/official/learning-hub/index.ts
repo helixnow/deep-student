@@ -14,12 +14,20 @@ export const RESOURCE_TYPES_SLOT = {
   description: '资源类型：key = 类型 id；声明单数名称、预览与支持的操作（W17 ui-runtime §4）',
 } as const;
 
-/** Learning Hub commands (translation and essay grading) + the official resource type table. */
+/** 阅读器（PDF / EPUB / 富文档）划词工具条上的社区按钮（contracts/surfaces.ts）。 */
+export const PDF_SELECTION_TOOLBAR_SLOT = {
+  name: 'pdf.selectionToolbar',
+  cardinality: 'list',
+  description: '阅读器划词工具条按钮：label + icon，run 收到选中文本、页码、资源 id（PDF / EPUB / 富文档共用）',
+} as const;
+
+/** Learning Hub commands (translation and essay grading) + the official resource type table + the reader selection toolbar slot. */
 export default Object.assign(defineUiPlugin({
-  meta: { id: 'dstu.ui.learning-hub', slots: ['resource.types'] },
+  meta: { id: 'dstu.ui.learning-hub', slots: ['resource.types', 'pdf.selectionToolbar'] },
   apply(ctx) {
     contributeCommands(ctx, () => learningCommands);
     ctx.ui.declareSlot(RESOURCE_TYPES_SLOT);
+    ctx.ui.declareSlot(PDF_SELECTION_TOOLBAR_SLOT);
     for (const type of OFFICIAL_RESOURCE_TYPE_IDS) {
       const definition = OFFICIAL_RESOURCE_TYPES[type];
       ctx.ui.contribute('resource.types', {

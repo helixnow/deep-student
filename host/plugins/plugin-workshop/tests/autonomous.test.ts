@@ -33,7 +33,12 @@ it('autonomously repairs compiler then apply errors and stages one frozen confir
       await writeFile(join(source, 'index.ts'), original.replace('ctx.provide(', "throw new Error('exact-apply-failure'); ctx.provide("));
     } else await writeFile(join(source, 'index.ts'), original);
   } });
-  const card = await tools.invoke('dstu_plugin_propose_install', { ...brief, autoGenerate: true }, 'owner') as { id: string };
+  // The proposal only shows the card (autoGenerate from older prompts is ignored); the user's 开始做 starts generation.
+  const card = await tools.invoke('dstu_plugin_propose_install', { ...brief, autoGenerate: true }, 'owner') as { id: string; revision: number; state: string; note: string };
+  expect(card.state).toBe('draft');
+  expect(card.note).toContain('开始做');
+  expect(diagnostics).toEqual([]);
+  await ops.create(card.id, card.revision);
   const ready = await terminal(ops, card.id);
   expect(ready.state).toBe('pending-confirmation');
   expect(ready.buildAttempt).toBe(3);
@@ -60,7 +65,12 @@ it('scopes source edits and diagnostics to conversation and rejects links/traver
   let card = await ops.propose(brief);
   const args = { id: card.id, revision: card.revision, files: [{ path: 'index.ts', content: 'hello' }] };
   await expect(tools.invoke('dstu_plugin_write_source', args, 'other')).rejects.toThrow('another conversation');
+  // Before the user's 开始做 the Agent may not write or run code for the work.
+  await expect(tools.invoke('dstu_plugin_write_source', args, 'owner')).rejects.toThrow('WORKSHOP_NOT_STARTED');
+  await expect(tools.invoke('dstu_plugin_validate', { id: card.id }, 'owner')).rejects.toThrow('WORKSHOP_NOT_STARTED');
+  card = await ops.store.write({ ...card, state: 'failed', generationApproved: true });
   card = await tools.invoke('dstu_plugin_write_source', args, 'owner') as typeof card;
+  expect(card.agentEditing).toEqual(expect.any(String));
   await expect(tools.invoke('dstu_plugin_diagnose', { id: card.id }, 'other')).rejects.toThrow('another conversation');
   expect(await tools.invoke('dstu_plugin_diagnose', { id: card.id }, 'owner')).toMatchObject({ files: [{ path: 'index.ts', content: 'hello' }] });
   const source = join(ops.store.directory(card.id), 'source');

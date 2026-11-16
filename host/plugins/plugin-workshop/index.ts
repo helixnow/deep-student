@@ -14,10 +14,37 @@ import { consumeWorkshopUiReceipt } from '../../kernel/workshop-ui-authority.ts'
 import { pluginExecution } from '../../kernel/plugin-execution.ts';
 import type { AgentToolExecutor } from '../agent-skills/api.ts';
 import type { ToolCall, ExecutionContext } from '../chat/api.ts';
+import type { HttpService } from '../../platform/http/api.ts';
+import { settingUrlProblem, type WorkshopLinkReader } from './src/settings.ts';
+import { pluginSecretSettingsKey } from '../plugin-services/api.ts';
+
+/** Calendar-address check: one HTTPS GET through the pinned public transport, redirects only within the same host. */
+function linkReader(http: () => HttpService | null): WorkshopLinkReader {
+  return async (raw, signal) => {
+    const service = http();
+    if (!service) throw new Error('this Host has no HTTP service');
+    const host = new URL(raw).hostname;
+    let current = raw;
+    for (let hop = 0; ; hop++) {
+      const problem = settingUrlProblem(current);
+      if (problem) throw new Error(problem);
+      if (new URL(current).hostname !== host) throw new Error(`it redirects to another site (${new URL(current).hostname})`);
+      const response = await service.fetchBytes(current, { method: 'GET', destination: 'public-pinned', redirect: 'manual', signal,
+        timeoutMs: 20_000, maxBytes: 1024 * 1024, headers: { accept: 'text/calendar, text/*;q=0.8, */*;q=0.1' } });
+      const location = response.headers.location;
+      if (response.status >= 300 && response.status < 400 && location !== undefined) {
+        if (hop >= 3) throw new Error('too many redirects');
+        current = new URL(location, current).href;
+        continue;
+      }
+      return { status: response.status, ok: response.ok, text: new TextDecoder('utf-8').decode(response.bytes) };
+    }
+  };
+}
 
 export default definePlugin({
   meta: { id: 'dstu.plugin-workshop', version: '1.0.0', platforms: ['desktop'], provides: ['pluginWorkshop'],
-    remote: { pluginWorkshop: ['developmentSkill', 'bindSession', 'propose', 'list', 'status', 'create', 'cancel', 'validate', 'install', 'revoke', 'restore', 'export', 'reportFault'] } },
+    remote: { pluginWorkshop: ['developmentSkill', 'bindSession', 'propose', 'list', 'status', 'create', 'cancel', 'validate', 'install', 'revoke', 'restore', 'export', 'reportFault', 'discard', 'redo'] } },
   inject: ['paths', 'agentTools', 'chatSession', 'chatPipeline', 'dstuPluginInstaller'],
   async apply(ctx) {
     const operations = new WorkshopOperations({ ...ctx.app, dataDir: ctx.paths.appDataDir });
@@ -26,10 +53,17 @@ export default definePlugin({
     // App process lifecycle belongs to the shell; plugin install/config never needs a restart.
     operations.bindRestart(() => ctx.shell.request('plugin:process|restart'));
     await operations.ready();
-    const catalog = new WorkshopCatalog(() => installer.plugins());
+    const catalog = new WorkshopCatalog(() => installer.plugins(), undefined, name => ctx.get(name) !== undefined);
     // Registration is owned by this builtin. Agent dispatch may run in chat's fiber, not this one.
     const executor = new WorkshopToolExecutor(operations, catalog);
-    operations.bindGeneration(new PipelineWorkshopGeneration(ctx.chatSession, ctx.chatPipeline, executor));
+    operations.bindGeneration(new PipelineWorkshopGeneration(ctx.chatSession, ctx.chatPipeline, executor, ctx.backendEvents));
+    operations.bindLinkReader(linkReader(() => (ctx.get('http') as HttpService | undefined) ?? null));
+    // Card secrets: the same secure-store key pluginSecrets.get(key) reads for that plugin.
+    operations.bindSecretStore(async (pluginId, key, value) => {
+      const settings = ctx.get('settings') as { saveSecret(key: string, value: string): Promise<unknown> } | undefined;
+      if (!settings) throw new Error('WORKSHOP_SETTING_INVALID: the settings service is not available');
+      await settings.saveSecret(pluginSecretSettingsKey(pluginId, key), value);
+    });
     // Publish only a frozen dispatcher, not the private operations or a transferable owner-run function.
     const dispatcher: AgentToolExecutor = Object.freeze({
       name: Object.freeze(() => executor.name()), canHandle: Object.freeze((name: string) => executor.canHandle(name)),
@@ -45,7 +79,7 @@ export default definePlugin({
       consumeWorkshopUiReceipt(args.pop(), 'pluginWorkshop', 'developmentSkill');
       return { ...await developmentSkillResource(args[0] === true), schemaToolIds: executor.schemaTools().map(tool => tool.id) };
     });
-    for (const method of ['bindSession', 'propose', 'list', 'status', 'create', 'cancel', 'validate', 'install', 'revoke', 'restore', 'export', 'reportFault'] as const) {
+    for (const method of ['bindSession', 'propose', 'list', 'status', 'create', 'cancel', 'validate', 'install', 'revoke', 'restore', 'export', 'reportFault', 'discard', 'redo'] as const) {
       facade[method] = Object.freeze(async (...args: unknown[]) => {
         const context = consumeWorkshopUiReceipt(args.pop(), 'pluginWorkshop', method);
         return (operations[method] as (...params: unknown[]) => Promise<unknown>).apply(operations, [...args, context]);

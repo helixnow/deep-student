@@ -164,6 +164,28 @@ export function manifestSchemaProblems(pkg: unknown): string[] {
 
 // ------------------------------------------------------------------ 清单
 
+/** v1 权限的 kind（契约 `deepStudent.permissions` 的封闭集合）。 */
+export const PERMISSION_KINDS: readonly string[] = Object.freeze(['service', 'net', 'agent']);
+/** 声明智能体工具所需的权限（与清单 `agentTools` 必须同时出现）。 */
+export const AGENT_TOOLS_PERMISSION = 'agent:tools';
+/** `agentTools[].name` 不得使用的名字：会与对象自带成员或 thenable 探测混淆。 */
+const RESERVED_AGENT_TOOL_NAMES = new Set(['constructor', 'then']);
+/** 单个工具参数 schema 的序列化上限（字符）。工具面进入每一轮模型请求，不能无限增长。 */
+export const AGENT_TOOL_PARAMETERS_MAX_CHARS = 4096;
+
+/** 清单 `agentTools` 的一项（已通过契约校验并补齐缺省值）。 */
+export interface PluginAgentToolDeclaration {
+  /** 插件内的工具名，也是主服务上执行方法的名字。 */
+  readonly name: string;
+  /** 给用户看的名称。 */
+  readonly title: string;
+  /** 给模型看的说明。 */
+  readonly description: string;
+  /** 参数 JSON Schema（顶层 object）。 */
+  readonly parameters: Readonly<Record<string, unknown>>;
+  readonly sensitivity: 'medium' | 'high';
+}
+
 /** 校验通过后的清单（只保留装载方使用的字段）。 */
 export interface PluginManifest {
   // RUST-FIX(RF-P1-plugin-display): Validated, non-executable package presentation.
@@ -186,6 +208,17 @@ export interface PluginManifest {
   ui?: string;
   requires: Readonly<Record<string, string>>;
   permissions: readonly string[];
+  /** 声明的智能体工具；没有声明时为空数组或缺省。 */
+  agentTools?: readonly PluginAgentToolDeclaration[];
+  /** 用户填写的配置项（插件工坊卡片上问过的值）；插件没有 Config 时宿主据此生成（runtime.ts）。 */
+  settings?: readonly PluginSettingDeclaration[];
+}
+
+/** 清单 `settings` 的一项。 */
+export interface PluginSettingDeclaration {
+  readonly key: string;
+  readonly title: string;
+  readonly kind: 'ics-url' | 'https-url' | 'text';
 }
 
 export interface ManifestCheckOptions {
@@ -233,8 +266,8 @@ export function checkManifest(pkg: unknown, options: ManifestCheckOptions, fallb
   }
 
   if (Array.isArray(ds.permissions)) {
-    const unknown = ds.permissions.filter((p): p is string => typeof p === 'string' && /^[a-z][a-z0-9-]*:\S+$/.test(p) && !p.startsWith('service:'));
-    if (unknown.length) return fail('PERMISSION_UNKNOWN_KIND', `unknown permission kind in ${unknown.map(p => JSON.stringify(p)).join(', ')} (v1 only knows "service")`);
+    const unknown = ds.permissions.filter((p): p is string => typeof p === 'string' && /^[a-z][a-z0-9-]*:\S+$/.test(p) && !PERMISSION_KINDS.includes(p.slice(0, p.indexOf(':'))));
+    if (unknown.length) return fail('PERMISSION_UNKNOWN_KIND', `unknown permission kind in ${unknown.map(p => JSON.stringify(p)).join(', ')} (v1 knows ${PERMISSION_KINDS.map(kind => JSON.stringify(kind)).join(', ')})`);
   }
 
   const problems = manifestSchemaProblems(pkg);
@@ -245,6 +278,29 @@ export function checkManifest(pkg: unknown, options: ManifestCheckOptions, fallb
       if (dep === id) problems.push(`/deepStudent/requires must not require the plugin itself (${dep})`);
       else if (rangeIsEmpty(parseRange(range)!)) problems.push(`/deepStudent/requires/${dep} is an empty range: ${range}`);
     }
+  }
+  const agentTools: PluginAgentToolDeclaration[] = [];
+  if (!problems.length) {
+    const permissions = (ds.permissions as string[] | undefined) ?? [];
+    const declared = (ds.agentTools as { name: string; title: string; description: string; parameters?: Record<string, unknown>; sensitivity?: 'medium' | 'high' }[] | undefined) ?? [];
+    const grantsTools = permissions.includes(AGENT_TOOLS_PERMISSION);
+    if (declared.length && !grantsTools) problems.push(`/deepStudent/agentTools requires the "${AGENT_TOOLS_PERMISSION}" permission`);
+    if (!declared.length && grantsTools) problems.push(`/deepStudent/permissions declares "${AGENT_TOOLS_PERMISSION}" without /deepStudent/agentTools`);
+    if (declared.length && typeof ds.host !== 'string') problems.push('/deepStudent/agentTools requires a "host" entry (tools run in the Host half)');
+    if (!declared.length && permissions.some(permission => permission.startsWith('net:'))) {
+      problems.push('/deepStudent/permissions declares "net:" hosts without /deepStudent/agentTools (network access is only available to agent tools)');
+    }
+    const names = new Set<string>();
+    declared.forEach((tool, index) => {
+      const at = `/deepStudent/agentTools/${index}`;
+      if (names.has(tool.name)) problems.push(`${at}/name duplicates "${tool.name}"`);
+      names.add(tool.name);
+      if (RESERVED_AGENT_TOOL_NAMES.has(tool.name)) problems.push(`${at}/name "${tool.name}" is reserved`);
+      const parameters = tool.parameters ?? { type: 'object', properties: {}, additionalProperties: false };
+      if (JSON.stringify(parameters).length > AGENT_TOOL_PARAMETERS_MAX_CHARS) problems.push(`${at}/parameters exceeds ${AGENT_TOOL_PARAMETERS_MAX_CHARS} characters`);
+      agentTools.push(Object.freeze({ name: tool.name, title: tool.title, description: tool.description,
+        parameters: Object.freeze(structuredClone(parameters)), sensitivity: tool.sensitivity ?? 'medium' }));
+    });
   }
   if (problems.length) return fail('MANIFEST_INVALID', problems.join('; '));
 
@@ -271,6 +327,9 @@ export function checkManifest(pkg: unknown, options: ManifestCheckOptions, fallb
       ...(typeof ds.ui === 'string' ? { ui: ds.ui } : {}),
       requires: Object.freeze({ ...requires }),
       permissions: Object.freeze([...((ds.permissions as string[] | undefined) ?? [])]),
+      agentTools: Object.freeze(agentTools),
+      ...(Array.isArray(ds.settings) && ds.settings.length ? { settings: Object.freeze((ds.settings as PluginSettingDeclaration[])
+        .map(({ key, title, kind }) => Object.freeze({ key, title, kind }))) } : {}),
     }),
   };
 }
@@ -283,6 +342,11 @@ export function grantedServices(manifest: Pick<PluginManifest, 'permissions'>): 
   const granted = new Set(IMPLICIT_SERVICE_GRANTS);
   for (const permission of manifest.permissions) if (permission.startsWith('service:')) granted.add(permission.slice('service:'.length));
   return granted;
+}
+
+/** permissions 授予智能体工具联网读取的主机名（`net:<主机名>`，小写精确匹配）。 */
+export function grantedNetHosts(manifest: Pick<PluginManifest, 'permissions'>): string[] {
+  return manifest.permissions.filter(permission => permission.startsWith('net:')).map(permission => permission.slice('net:'.length));
 }
 
 function injectNames(plugin: HostPlugin<any>): string[] {
@@ -314,7 +378,10 @@ export function checkPluginModule(manifest: PluginManifest, plugin: HostPlugin<a
   }
   const granted = grantedServices(manifest);
   // RUST-FIX(RF-P1-plugin-trust): Explicit full trust bypasses declarations only, after K7 above.
-  const undeclared = manifest.trust === 'full' ? [] : injectNames(plugin).filter(name => !granted.has(name));
+  // A plugin that gives the Agent tools runs on the model's initiative, so the services it uses must be exactly
+  // the ones the user saw at confirmation: the full-trust bypass does not apply to it.
+  const declaresTools = (manifest.agentTools?.length ?? 0) > 0;
+  const undeclared = manifest.trust === 'full' && !declaresTools ? [] : injectNames(plugin).filter(name => !granted.has(name));
   if (undeclared.length) {
     return new PluginLoadError('PERMISSION_UNDECLARED', id, `injects ${undeclared.map(n => `"${n}"`).join(', ')} without declaring ${undeclared.map(n => `"service:${n}"`).join(', ')} in deepStudent.permissions`);
   }

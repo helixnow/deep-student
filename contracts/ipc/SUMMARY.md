@@ -4,7 +4,7 @@
 
 源文件：`contracts/ipc/*.json`。生成与校验不读取实现源码，不依赖 Rust 工具链。
 
-命令 1061；事件 127（按所属契约计）；类型定义 978。
+命令 1064；事件 128（按所属契约计）；类型定义 984。
 
 | 契约 | 命令 | 事件 | 类型 |
 |---|---:|---:|---:|
@@ -22,10 +22,10 @@
 | L12-vfs-index | 3 | 7 | 5 |
 | L13-vfs-api | 214 | 6 | 151 |
 | L14-qbank | 88 | 10 | 164 |
-| L15-review-analytics | 70 | 1 | 74 |
+| L15-review-analytics | 70 | 1 | 75 |
 | L16-anki | 61 | 2 | 44 |
 | L17-memory-research | 34 | 3 | 14 |
-| L18-media-docs | 75 | 6 | 54 |
+| L18-media-docs | 78 | 7 | 59 |
 | L19-mcp-browser | 62 | 13 | 33 |
 | L20-sync | 24 | 1 | 27 |
 | L21-backup-governance | 33 | 2 | 34 |

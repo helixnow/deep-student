@@ -347,13 +347,27 @@ export interface PluginManagerEntry {
   permissions: readonly string[];
   /** 插件声明的服务（`meta.provides`）。 */
   services: readonly string[];
+  /**
+   * 正在使用本插件服务的其他已安装插件 id（`runtime.dependents()`）。非空时停用/卸载会被
+   * `PLUGIN_UNLOAD_BLOCKED` 拒绝，管理页据此把它显示为锁定的基础服务；未运行的插件为空数组。
+   */
+  requiredBy?: readonly string[];
+  /**
+   * 从清单静态可知的贡献点名称（目前只有 `agent.tools`）。UI 半在渲染进程里登记的槽位 Host 不知道，
+   * 由管理页按 UI 内核的槽位归属补全。
+   */
+  contributes?: readonly string[];
+  /** 清单声明的智能体工具（名称与给用户看的标题）；没有声明时为空数组。 */
+  agentTools?: readonly { name: string; title: string }[];
+  /** 清单是否带 UI 半（`deepStudent.ui`）；官方插件不走清单，恒为 `false`。 */
+  hasUi?: boolean;
   /** 有 `Config`（Schemastery）可配置。 */
   hasConfig: boolean;
   /** 社区插件的同意状态（K3）；官方插件没有此字段。 */
   consent?: {
     matched: boolean;
     code: 'CONSENT_REQUIRED' | null;
-    reason: 'missing' | 'version' | 'permissions' | null;
+    reason: 'missing' | 'version' | 'permissions' | 'content' | null;
     grantedPermissions: readonly string[];
   };
 }
@@ -429,6 +443,8 @@ export interface UiManifestV2Plugin {
   version?: string;
   /** 社区插件 UI 半模块的绝对路径（与 v1 的 `file` 相同）；官方插件的 UI 半打包在前端，没有此字段。 */
   file?: string;
+  /** 社区插件清单声明的智能体工具：`name` 是对话工具块里的工具名（`plugin_<id 摘要>_<name>`），`title` 是给用户看的名称。 */
+  agentTools?: readonly { name: string; title: string }[];
 }
 
 /** UI 清单 v2：全部已安装插件（安装顺序）与本次 profile 装载中未安装的插件（同 `plugin:host|status`）。 */

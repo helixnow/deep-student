@@ -9,6 +9,7 @@ export function useWorkshop(adapter: WorkshopAdapter) {
   const [error, setError] = useState<string>();
   const [busyId, setBusyId] = useState<string>();
   const [exportPath, setExportPath] = useState<string>();
+  const [exportName, setExportName] = useState<string>();
   const busy = useRef(false);
   const refreshSequence = useRef(0);
   const mounted = useRef(false);
@@ -33,19 +34,23 @@ export function useWorkshop(adapter: WorkshopAdapter) {
     return () => { mounted.current = false; ++refreshSequence.current; unsubscribe(); };
   }, [adapter, refresh]);
 
-  const act = useCallback(async (action: WorkshopAction, item: WorkshopItem) => {
+  const act = useCallback(async (action: WorkshopAction, item: WorkshopItem, input?: Record<string, string>) => {
     if (busy.current || !workshopActions(item.phase).includes(action)) return;
     busy.current = true;
     setBusyId(item.id);
     setError(undefined);
     setExportPath(undefined);
+    setExportName(undefined);
     ++refreshSequence.current;
     try {
-      const result = await adapter.act(action, item);
+      const result = await (input ? adapter.act(action, item, input) : adapter.act(action, item));
       if (mounted.current) {
         ++refreshSequence.current;
-        setItems(current => current.map(entry => entry.id === item.id ? result.item : entry));
+        const next = result.item;
+        setItems(current => result.removed ? current.filter(entry => entry.proposalId !== item.proposalId)
+          : next ? current.map(entry => entry.proposalId === item.proposalId ? next : entry) : current);
         setExportPath(result.exportPath);
+        setExportName(result.exportName);
       }
     } catch (cause) {
       // Unknown result: refresh before allowing another user action.
@@ -56,5 +61,5 @@ export function useWorkshop(adapter: WorkshopAdapter) {
       if (mounted.current) setBusyId(undefined);
     }
   }, [adapter, refresh]);
-  return { items, loading, error, busyId, exportPath, refresh, act };
+  return { items, loading, error, busyId, exportPath, exportName, refresh, act };
 }

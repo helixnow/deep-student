@@ -167,3 +167,37 @@ export function SlotOutlet<K extends string>(outlet: SlotOutletProps<K>): ReactN
     );
   });
 }
+
+/**
+ * One slot entry rendered outside `<SlotOutlet>` (e.g. a contributed icon handed to a host toolbar as a ReactNode):
+ * the same plugin scope, community style scope and error boundary as an outlet entry.
+ */
+export function SlotEntryScope({ slot, entry, fallback, children }: {
+  slot: string;
+  entry: SlotEntry<unknown>;
+  fallback?: ReactNode;
+  children: ReactNode;
+}): ReactNode {
+  const kernel = useOptionalUiKernel();
+  let node: ReactNode = <ContributionBoundary slot={slot} entry={entry} kernel={kernel} fallback={fallback}>{children}</ContributionBoundary>;
+  if (entry.origin !== 'builtin') node = <span data-ds-plugin={entry.owner} data-ds-slot={slot} style={COMMUNITY_SCOPE_STYLE}>{node}</span>;
+  return <UiPluginScopeProvider value={scopeValueOf(entry)}>{node}</UiPluginScopeProvider>;
+}
+
+/**
+ * Calls a contributed callback (`run(ctx)` of a menu row, toolbar button, slash command…). A throw or a rejected
+ * promise is reported against the contributing plugin's error budget (phase `report`) instead of escaping into the
+ * host surface.
+ */
+export function runSlotCallback(kernel: UiKernel | null, slot: string, entry: SlotEntry<unknown>, call: () => unknown): void {
+  const fail = (error: unknown) => {
+    if (kernel) kernel.errors.report({ pluginId: entry.owner, origin: entry.origin, phase: 'report', slot, entryId: entry.id, error });
+    else console.error(`[ui-plugins] ${entry.owner} failed (${slot}):`, error);
+  };
+  try {
+    const result = call();
+    if (result && typeof (result as PromiseLike<unknown>).then === 'function') (result as PromiseLike<unknown>).then(undefined, fail);
+  } catch (error) {
+    fail(error);
+  }
+}

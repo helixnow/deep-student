@@ -313,6 +313,16 @@ const PLUGIN_PLATFORMS: readonly ["desktop", "mobile"]  @stable
 
 type PipelineTailExecutorName = (typeof PIPELINE_EXECUTOR_TAIL)[number]
 
+interface PluginAgentToolContext
+  readonly signal: AbortSignal
+  fetch(url: string) => Promise<PluginAgentToolFetchResult>
+
+interface PluginAgentToolFetchResult
+  readonly status: number
+  readonly ok: boolean
+  readonly contentType: string | null
+  readonly text: string
+
 interface PluginDescriptor
   readonly id: string
   readonly label: string
@@ -392,8 +402,12 @@ interface PluginManagerEntry
   reason?: string | undefined
   permissions: readonly string[]
   services: readonly string[]
+  requiredBy?: readonly string[] | undefined
+  contributes?: readonly string[] | undefined
+  agentTools?: readonly { name: string; title: string; }[] | undefined
+  hasUi?: boolean | undefined
   hasConfig: boolean
-  consent?: { matched: boolean; code: "CONSENT_REQUIRED" | null; reason: "missing" | "version" | "permissions" | null; grantedPermissions: readonly string[]; } | undefined
+  consent?: { matched: boolean; code: "CONSENT_REQUIRED" | null; reason: "missing" | "version" | "permissions" | "content" | null; grantedPermissions: readonly string[]; } | undefined
 
 interface PluginManagerInstallResult
   id: string
@@ -702,6 +716,7 @@ interface UiManifestV2Plugin
   platforms: readonly ("desktop" | "mobile")[]
   version?: string | undefined
   file?: string | undefined
+  agentTools?: readonly { name: string; title: string; }[] | undefined
 
 const WORKSPACE_COORDINATOR_GROUP: readonly ["WorkspaceToolExecutor", "SubagentExecutor", "SuperSessionExecutor", "CustomAgentExecutor", "CoordinatorSleepExecutor"]
 

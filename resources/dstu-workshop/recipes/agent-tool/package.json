@@ -1,0 +1,20 @@
+{
+  "name": "dstu-workshop-agent-tool", "version": "1.0.0", "type": "module",
+  "engines": { "deepStudent": ">=0.20.0 <1.0.0", "deepStudentPluginApi": "1" },
+  "deepStudent": {
+    "manifestVersion": 1, "id": "__PLUGIN_ID__", "displayName": "查课表", "platforms": ["desktop"], "host": "./index.ts",
+    "permissions": ["agent:tools", "net:calendar.example.edu.cn"],
+    "agentTools": [
+      {
+        "name": "lookup_timetable",
+        "title": "查课表",
+        "description": "用户说「查课表」，或问今天、某一天有什么课时调用。读取学校的教务日历，返回那一天的课程：时间、课程、教室、老师。",
+        "parameters": {
+          "type": "object",
+          "properties": { "date": { "type": "string", "description": "要查的日期，格式 YYYY-MM-DD；不传就是今天" } },
+          "additionalProperties": false
+        }
+      }
+    ]
+  }
+}

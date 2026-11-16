@@ -1,6 +1,6 @@
 import { Suspense } from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import { UiKernel } from '@/ui-kernel/kernel';
 import { UiKernelProvider } from '@/ui-kernel/react';
 import settingsPlugin from '@/ui-plugins/official/settings';
@@ -32,7 +32,7 @@ describe('production settings registration', () => {
     // Wait for the real lazy section, not merely its Suspense fallback.
     expect(await screen.findByTestId('plugin-safe-mode', {}, { timeout: 10_000 })).toBeInTheDocument();
     fireEvent.click(await screen.findByRole('button', { name: '查看 community.example 的详情' }));
-    expect(await screen.findByRole('button', { name: '处理 community.example 的权限同意' })).toBeDisabled();
+    expect(await within(await screen.findByRole('dialog')).findByRole('button', { name: '查看 community.example 需要的权限并允许' })).toBeDisabled();
     view.unmount();
     await kernel.unload('dstu.ui.settings');
     expect(kernel.slots.list('settings.sections').some((entry) => entry.key === 'plugin-manager')).toBe(false);

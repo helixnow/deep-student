@@ -14,6 +14,7 @@ describe('W17 plugin contracts', () => {
     expect(result.clean).toEqual([]);
     expect(result.tags).toEqual([
       'toolbar-item-icon',
+      'toolbar-item-show-label',
       'editor-purpose',
       'block-menu-row',
       'block-menu-run',
@@ -26,6 +27,7 @@ describe('W17 plugin contracts', () => {
     expect(result.unexpected).toEqual([]);
     expect(result.missing).toEqual([]);
     expect(result.errors['toolbar-item-icon']).toMatch(/icon/);
+    expect(result.errors['toolbar-item-show-label']).toMatch(/boolean/);
     expect(result.errors['editor-purpose']).toMatch(/"preview"/);
     expect(result.errors['block-menu-row']).toMatch(/id/);
     expect(result.errors['block-menu-run']).toMatch(/EditorView|not assignable/);

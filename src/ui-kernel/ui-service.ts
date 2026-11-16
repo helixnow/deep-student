@@ -2,12 +2,13 @@
  * `ctx.ui`：插件在 `apply` 里拿到的内核服务（`UiService`）与 v1 领域快捷方式的适配。UiKernel 构造它并传入运行时；
  * 对外经 kernel.ts 导出。
  */
-import type { ComponentType } from 'react';
+import { createElement, type ComponentType, type ReactElement, type ReactNode } from 'react';
 import { Service, type Context } from '@deepseek-ai/cordis';
 import { SlotError, type SlotContribution, type SlotDefinition, type SlotStore, type UiPluginOrigin } from './slots';
 import type { OpenSlotName, SlotMap, SlotName } from './slot-map';
 import { pluginNamespace, type NormalizedUiPluginMeta } from './meta';
 import { UiPluginDisposedError, type UiPluginScope } from './scope';
+import { UiPluginScopeProvider } from './react';
 import type { UiPlatformService } from './services/platform';
 import type { UiNavigationService, UiNavigator } from './services/navigation';
 import type { PluginStorage, UiStorageService } from './services/storage';
@@ -71,6 +72,8 @@ export interface UiRuntime {
   /** 发起 Host 调用的 UI 半：配对半内是该半的 id，否则是所属插件的 id；根 context 为 undefined。 */
   callerOf(ctx: Context): string | undefined;
   pair(ctx: Context, half: UiPlugin): Promise<void>;
+  /** Wrap a React tree mounted outside the app root in this kernel's provider. */
+  provide(children: ReactNode): ReactElement;
   /** The skipped plugin whose `meta.slots` lists `slot`, if any. */
   skippedSlotOwner(slot: string): string | undefined;
   /** A contribution dropped because its slot belongs to a skipped plugin (development builds warn once per contributor and slot). */
@@ -264,6 +267,15 @@ export class UiService extends Service {
    */
   pair(half: UiPlugin): Promise<void> {
     return this._runtime.pair(this.ctx, half);
+  }
+
+  /**
+   * 把挂在应用根之外的 React 树（插件自己的浮层，`createPluginOverlay`）接到本内核与调用方插件的作用域上：
+   * 其中的 `useT`、`usePluginStorage` 等 hook 与槽位里渲染的组件一样可用。只在运行中的插件里可用。
+   */
+  scoped(children: ReactNode): ReactElement {
+    const scope = this._pluginScope('scoped');
+    return this._runtime.provide(createElement(UiPluginScopeProvider, { value: { id: scope.id, origin: scope.origin }, children }));
   }
 
   /** 插件自报错误（例如后台同步失败），计入该插件的错误预算。 */

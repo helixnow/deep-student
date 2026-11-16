@@ -84,7 +84,9 @@ export class HostPluginManagerAdapter implements PluginManagerAdapter {
       runtime: entry.state === 'running' ? 'running' as const : entry.state === 'degraded' ? 'error' as const : 'stopped' as const,
       ...(entry.reason ? { degraded: { reason: entry.reason } } : {}),
       consent: entry.consent ? entry.consent.matched ? 'granted' as const : 'required' as const : 'unknown' as const,
+      ...(entry.consent && !entry.consent.matched && entry.consent.reason ? { consentReason: entry.consent.reason } : {}),
       configurable: entry.hasConfig,
+      requiredBy: entry.requiredBy ?? [], contributes: entry.contributes ?? [], agentTools: entry.agentTools ?? [],
     }); }) };
   }
 

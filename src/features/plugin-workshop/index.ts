@@ -1,9 +1,12 @@
 export { WorkshopConfirmationCard } from './WorkshopConfirmationCard';
 export { WorkshopCreations } from './WorkshopCreations';
-export { HostWorkshopAdapter } from './host-adapter';
-export type { WorkshopRemote, WorkshopCard, WorkshopManagerPort } from './host-adapter';
+export { HostWorkshopAdapter, workshopInstallation } from './host-adapter';
+export type { WorkshopRemote, WorkshopCard, WorkshopManagerPort, WorkshopFilesPort } from './host-adapter';
 export { createWorkshopIntegration } from './integration';
 export type { WorkshopIntegrationOptions } from './integration';
 export { openWorkshopSession } from './session';
 export type { WorkshopSessionPort, WorkshopSessionTarget } from './session';
-export type { WorkshopAdapter, WorkshopItem, WorkshopAction, WorkshopPhase } from './types';
+export type { WorkshopAdapter, WorkshopItem, WorkshopAction, WorkshopPhase, WorkshopPlace, WorkshopProgress, WorkshopSetting } from './types';
+export { primaryPlace } from './types';
+export { describeWorkshopError } from './errors';
+export type { WorkshopErrorDescription, WorkshopNextStep } from './errors';

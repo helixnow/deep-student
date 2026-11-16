@@ -40,7 +40,10 @@ import {
   type PluginManagerInventory,
   type PluginManagerInstallResult,
 } from './core.ts';
-import { canonicalPermissions, type CommunityConsentLedger, type CommunityConsentRecord, type ConsentDecision } from './community-consent.ts';
+import {
+  canonicalPermissions, releaseContentDigest,
+  type CommunityConsentLedger, type CommunityConsentRecord, type ConsentDecision, type ConsentSubject,
+} from './community-consent.ts';
 import { projectConfigSchema } from './config-schema.ts';
 import { AppError, CommandError } from './error-model.ts';
 import { toWireJson } from './json.ts';
@@ -155,8 +158,16 @@ const samePermissions = (left: readonly string[], right: readonly string[]): boo
   return a.length === b.length && a.every((permission, index) => permission === b[index]);
 };
 
-/** 社区清单 → 同意 subject（ID/版本精确匹配；权限用 W32 的规范化规则）。 */
-const subjectOf = (manifest: PluginManifest) => ({ id: manifest.id, version: manifest.version, permissions: manifest.permissions });
+/**
+ * 社区清单 → 同意 subject（ID/版本精确匹配；权限用 W32 的规范化规则）。
+ *
+ * 有安装包时再绑定这份发布内容的摘要：用户在安装时点过头的是**这些字节**，所以同一 ID/版本/权限但内容不同的包
+ * （例如别人给的同名同版本文件）不沿用这次同意；内容没变时停用再启用不必再问一遍。
+ */
+const subjectOf = (manifest: PluginManifest, release?: Pick<PackageRecord, 'files'>): ConsentSubject => ({
+  id: manifest.id, version: manifest.version, permissions: manifest.permissions,
+  ...(release ? { contentDigest: releaseContentDigest(release.files) } : {}),
+});
 
 const WORKSHOP_WORK_ID = /^workshop\.plugin-[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 
@@ -175,10 +186,12 @@ async function readWorkshopFallbackMeta(dataDir: string, id: string): Promise<{ 
   }
 }
 
-async function evaluateConsent(ledger: CommunityConsentLedger | undefined, manifest: PluginManifest): Promise<ConsentDecision | undefined> {
+async function evaluateConsent(
+  ledger: CommunityConsentLedger | undefined, manifest: PluginManifest, release?: Pick<PackageRecord, 'files'>,
+): Promise<ConsentDecision | undefined> {
   if (!ledger) return undefined;
   try {
-    return await ledger.evaluate(subjectOf(manifest));
+    return await ledger.evaluate(subjectOf(manifest, release));
   } catch (error) {
     // fail closed：账本不可读按未同意处理。
     void error;
@@ -186,10 +199,15 @@ async function evaluateConsent(ledger: CommunityConsentLedger | undefined, manif
   }
 }
 
-/** K3 装载前门：账本不可读也给出原因（fail closed），由 profile 装载记为 CONSENT_REQUIRED。 */
-export async function consentProblem(ledger: CommunityConsentLedger, manifest: PluginManifest): Promise<string | { trust: 'full' | 'restricted' }> {
+/**
+ * K3 装载前门：账本不可读也给出原因（fail closed），由 profile 装载记为 CONSENT_REQUIRED。
+ * `release` 是这个插件当前的安装包记录（没有安装包的 profile 条目不传）；绑定了内容的同意只对同一份内容成立。
+ */
+export async function consentProblem(
+  ledger: CommunityConsentLedger, manifest: PluginManifest, release?: Pick<PackageRecord, 'files'>,
+): Promise<string | { trust: 'full' | 'restricted' }> {
   try {
-    const decision = await ledger.evaluate(subjectOf(manifest));
+    const decision = await ledger.evaluate(subjectOf(manifest, release));
     if (decision.matched) return { trust: decision.trust ?? 'restricted' };
     return `community plugin "${manifest.id}" ${manifest.version} has no matching consent record (${decision.reason ?? 'missing'}); confirm it in the plugin manager`;
   } catch (error) {
@@ -381,9 +399,14 @@ export class PluginAdmin {
     for (const entry of this.runtime.degradedPlugins()) ids.add(entry.id);
     for (const id of disabled) ids.add(id);
 
+    const releases = await this.releases();
+    // 依赖关系一次算完：谁的服务正被别的已安装插件注入（停用它会被 PLUGIN_UNLOAD_BLOCKED 拒绝）。
+    const dependents = this.runtime.dependents();
     const plugins: PluginManagerEntry[] = [];
     for (const id of [...ids].sort()) {
       plugins.push(await this.describe(id, {
+        requiredBy: dependents.get(id) ?? [],
+        release: releases.find((entry) => entry.id === id),
         installed: this.runtime.get(id),
         effective: effective.find((entry) => entry.id === id) ?? await this.declaredEntry(id),
         disabled: disabled.has(id),
@@ -398,14 +421,16 @@ export class PluginAdmin {
     effective: ResolvedEntry | undefined;
     disabled: boolean;
     reason: string | undefined;
+    release?: PackageRecord | undefined;
+    requiredBy?: readonly string[];
   }): Promise<PluginManagerEntry> {
-    const { installed, effective, disabled, reason } = state;
+    const { installed, effective, disabled, reason, release } = state;
     const manifest = installed?.manifest ?? await this.manifestOf(id, effective);
     const meta = installed?.plugin.meta;
     const origin = installed
       ? (installed.manifest ? 'community' : moduleOrigin(installed.source ?? null))
       : effective ? moduleOrigin(effective.specifier) : (parsePluginId(id)?.official ? 'builtin' : 'community');
-    const consent = manifest ? await evaluateConsent(this.consent, manifest) : undefined;
+    const consent = manifest ? await evaluateConsent(this.consent, manifest, release) : undefined;
     const workshopFallback = origin !== 'builtin' && (!manifest?.displayName || manifest.description === undefined)
       ? await readWorkshopFallbackMeta(this.runtime.app.dataDir, id)
       : undefined;
@@ -438,6 +463,11 @@ export class PluginAdmin {
       ...(reason !== undefined && !installed ? { reason } : {}),
       permissions: [...(manifest?.permissions ?? [])],
       services: [...(meta?.provides ?? [])],
+      // 管理页的呈现依据：依赖者（锁定基础服务）、清单静态可知的贡献（"它增加了什么"）。
+      requiredBy: [...(state.requiredBy ?? [])].sort(),
+      contributes: manifest?.agentTools?.length ? ['agent.tools'] : [],
+      agentTools: (manifest?.agentTools ?? []).map((tool) => ({ name: tool.name, title: tool.title })),
+      hasUi: manifest?.ui !== undefined,
       hasConfig: installed?.plugin.Config !== undefined,
       ...(consent ? { consent: { matched: consent.matched, code: consent.code, reason: consent.reason, grantedPermissions: [...consent.grantedPermissions] } } : {}),
     };
@@ -579,7 +609,8 @@ export class PluginAdmin {
     if (packageRecord) await this.packages!.verify(id);
     const screened = await screenProfileEntry(declared, this.runtime.app.version, 'desktop');
     if (screened) {
-      const decision = await evaluateConsent(this.consent, screened.manifest);
+      // 同一份已同意的内容（ID/版本/权限/内容摘要都没变）直接放行；任何一项变了都回到确认。
+      const decision = await evaluateConsent(this.consent, screened.manifest, packageRecord);
       if (!decision?.matched) throw new CommandError(AppError.with_details('Configuration',
         `CONSENT_REQUIRED: plugin "${id}" ${screened.manifest.version} needs consent`,
         { code: 'CONSENT_REQUIRED', id, version: screened.manifest.version, permissions: [...screened.manifest.permissions] }));
@@ -630,9 +661,10 @@ export class PluginAdmin {
   private async installEnabled(id: string, target: ResolvedEntry, revision: string): Promise<{ id: string; enabled: boolean; revision: string }> {
     if (this.runtime.get(id)) return { id, enabled: true, revision };
     try {
+      const releases = await this.releases();
       const prepared = await prepareProfile(this.runtime, [target], {
         platform: 'desktop',
-        ...(this.consent ? { communityGate: (manifest) => consentProblem(this.consent!, manifest) } : {}),
+        ...(this.consent ? { communityGate: (manifest) => consentProblem(this.consent!, manifest, releases.find((entry) => entry.id === manifest.id)) } : {}),
       });
       const install = prepared.installs.find((entry) => entry.plugin.meta.id === id);
       if (!install) {
@@ -709,7 +741,8 @@ export class PluginAdmin {
       validation(`${PLUGIN_MANAGER_CONSENT_COMMAND}: "permissions" must be an array of strings`);
     }
     if (!this.consent) throw new CommandError(AppError.configuration(`CONSENT_UNAVAILABLE: this Host has no consent ledger`));
-    if ((await this.packages?.list())?.some((entry) => entry.id === id)) await this.packages!.verify(id);
+    // 校验过的安装包记录：同意写给这份内容，而不只是写给 ID/版本/权限。
+    const release = (await this.packages?.list())?.some((entry) => entry.id === id) ? await this.packages!.verify(id) : undefined;
     const manifest = await this.manifestOf(id, await this.declaredEntry(id));
     if (!manifest) throw new CommandError(AppError.not_found(`PLUGIN_NOT_FOUND: plugin "${id}" is not a community package declared by the profile`));
     if (manifest.version !== version || !samePermissions(manifest.permissions, permissions as string[])) {
@@ -721,7 +754,7 @@ export class PluginAdmin {
     const stopped = trust !== undefined ? this.runtime.get(id) : undefined;
     if (stopped) await this.unloadOrConflict(id);
     try {
-      record = await this.consent.grant(subjectOf(manifest), trust === undefined ? {} : { trust });
+      record = await this.consent.grant(subjectOf(manifest, release), trust === undefined ? {} : { trust });
     } catch (error) {
       if (stopped && !this.runtime.get(id)) await this.runtime.installEntry(stopped);
       throw new CommandError(AppError.file_system(`CONSENT_WRITE_FAILED: ${errorText(error)}`));
@@ -825,11 +858,16 @@ export class PluginAdmin {
       if (stopped) await this.unloadOrConflict(record.id);
       await this.packages.setEnabled(record.id, false);
       previousConsent = (await this.consent?.read())?.find(entry => entry.id === record.id);
-      if (managed) await this.consent!.grant(subjectOf(manifest), {
+      // 工坊安装：用户在确认卡上点过头（`confirmed`），同意就在这里一次写给这份内容；之后停用/启用同一份不再问。
+      if (managed) await this.consent!.grant(subjectOf(manifest, record), {
         trust: previousConsent?.source === 'workshop' ? previousConsent.trust : 'full', source: 'workshop',
       });
-      else if (this.consent) {
-        if (previousConsent) await this.consent.grant(previousConsent, { trust: 'restricted', source: 'package' });
+      else if (this.consent && previousConsent) {
+        // 从文件导入的包不继承工坊的信任档位，也不沿用给别的内容的同意：旧记录留在它原来那份内容上
+        // （旧记录没绑定内容时补绑到被替换的那一版），所以同 ID/版本/权限的另一份文件启用前仍要确认。
+        const approved = previousConsent.contentDigest ?? (result.previous ? releaseContentDigest(result.previous.files) : undefined);
+        if (approved) await this.consent.grant({ ...previousConsent, contentDigest: approved }, { trust: 'restricted', source: 'package' });
+        else await this.consent.restore(record.id, undefined);
       }
       consentChanged = managed !== undefined || previousConsent !== undefined;
       const written = await this.store.mutate(revision, (file) => {
@@ -861,6 +899,16 @@ export class PluginAdmin {
       }
       throw new CommandError(AppError.with_details('Configuration', errorText(error), { code: error instanceof PluginLoadError ? error.code : 'PLUGIN_INSTALL_FAILED', rollback }));
     } finally { grant.revoke(); }
+  }
+
+  /** 当前安装包记录；锁文件读不出来时按“没有可识别的内容”处理（绑定了内容的同意因此不成立，fail closed）。 */
+  private async releases(): Promise<readonly PackageRecord[]> {
+    try {
+      return (await this.packages?.list()) ?? [];
+    } catch (error) {
+      this.runtime.ctx.logger('host').warn(`[plugin-manager] cannot read the package lock: ${errorText(error)}`);
+      return [];
+    }
   }
 
   private async unloadOrConflict(id: string): Promise<void> {

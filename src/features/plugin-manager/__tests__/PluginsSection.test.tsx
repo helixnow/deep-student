@@ -28,6 +28,8 @@ vi.mock('@/features/settings/api/pluginsApi', () => ({
   PLUGIN_EVENTS: { stateChanged: 'plugin-state-changed', qrcode: 'plugin-qrcode', activity: 'plugin-activity' },
 }));
 vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn(async () => () => {}) }));
+// The isolation notice is localized now; assert the real zh-CN copy like the other manager tests.
+vi.mock('react-i18next', async () => (await import('./i18nMock')).i18nMock());
 
 const wechatChannel = {
   id: 'ilinkbot', label: '微信 iLink Bot', blurb: '在微信里与 Deep Student 对话',
@@ -39,7 +41,7 @@ beforeEach(() => {
   channelApi.beginLogin.mockClear();
 });
 
-const warning = '检测到插件异常，系统已自动隔离该插件以保护主程序稳定运行';
+const warning = /已经先关掉了，你的笔记和资料不受影响。/;
 const faulty = () => managedPlugin({ id: 'user.words', origin: 'community', source: 'workshop', degraded: { reason: 'APPLY_FAILED: broken' } });
 const workshop = () => ({ onCreate: vi.fn(), onModify: vi.fn(), creations: null });
 
@@ -65,7 +67,7 @@ describe('PluginsSection recovery', () => {
     const onRollback = vi.fn().mockResolvedValue(undefined);
     render(<PluginsSection controller={new PluginManagerController(adapter)} onRollback={onRollback} />);
     expect(await screen.findByText(warning)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '一键回退上一可用版本' }));
+    fireEvent.click(screen.getByRole('button', { name: '回到上一版' }));
     await waitFor(() => expect(onRollback).toHaveBeenCalledWith('user.words'));
   });
 
@@ -78,8 +80,9 @@ describe('PluginsSection recovery', () => {
     await waitFor(() => expect(adapter.calls.list).toBeGreaterThan(0));
     expect(screen.queryByText(warning)).toBeNull();
     act(() => { budget.report({ pluginId: 'user.words', origin: 'community', phase: 'render', error: new Error('slot crash') }); });
-    expect(await screen.findByText(warning)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '一键回退上一可用版本' })).toBeDisabled();
+    expect(await screen.findByText('『user.words』出错太多次，已经先关掉了，你的笔记和资料不受影响。')).toBeInTheDocument();
+    // Nothing to go back to and nobody who could fix it: no dead buttons.
+    expect(screen.queryByRole('button', { name: '回到上一版' })).toBeNull();
   });
 
   it('waits for confirmed disable before entering the AI repair session', async () => {
@@ -93,9 +96,9 @@ describe('PluginsSection recovery', () => {
     const paired = workshop();
     render(<PluginsSection controller={new PluginManagerController(adapter)} workshop={paired} />);
     await screen.findByText(warning);
-    fireEvent.click(screen.getByRole('button', { name: '停用并让 AI 修复' }));
+    fireEvent.click(screen.getByRole('button', { name: '让 AI 修' }));
     expect(paired.onModify).not.toHaveBeenCalled();
-    expect(screen.getByRole('button', { name: '停用并让 AI 修复' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '让 AI 修' })).toBeDisabled();
     await act(async () => { finish(); });
     await waitFor(() => expect(paired.onModify).toHaveBeenCalledWith('user.words'));
   });
@@ -106,7 +109,7 @@ describe('PluginsSection recovery', () => {
     const paired = workshop();
     render(<PluginsSection controller={new PluginManagerController(adapter)} workshop={paired} />);
     await screen.findByText(warning);
-    fireEvent.click(screen.getByRole('button', { name: '停用并让 AI 修复' }));
+    fireEvent.click(screen.getByRole('button', { name: '让 AI 修' }));
     await waitFor(() => expect(screen.getAllByText(/无法停用插件/).length).toBeGreaterThan(0));
     expect(paired.onModify).not.toHaveBeenCalled();
   });

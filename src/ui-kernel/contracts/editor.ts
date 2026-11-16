@@ -12,8 +12,8 @@ import type { CrepePluginsOptions } from '@/components/crepe/plugins';
  *   handlers of earlier entries take precedence.
  * - `editor.slashMenu`: called with the slash menu builder after Crepe added its built-in groups, in `order`, each
  *   time the menu rebuilds its groups (Crepe recomputes them while the user filters), so changes apply to open editors.
- * - `editor.selectionToolbar`: called once per editor instance when Crepe builds its bubble toolbar; entry changes only
- *   affect editors created afterwards.
+ * - `editor.selectionToolbar`: called when Crepe builds an editor instance's bubble toolbar, and again on open editors
+ *   whenever the slot's entries change (install / unload), so `build` may run more than once per instance.
  * - `editor.blockMenu`: called every time a block menu opens, for the three surfaces (desktop handle, mobile insert,
  *   mobile block), with the target block.
  *
@@ -56,10 +56,26 @@ export interface EditorSlashMenuContribution {
   build(menu: SlashMenuBuilder, editor: EditorInstanceContext): void;
 }
 
-/** A bubble toolbar button. `active` is optional here; the host fills in `() => false` (Crepe requires one). */
+/**
+ * A bubble toolbar button. `active` is optional here; the host fills in `() => false` (Crepe requires one).
+ *
+ * By default the button shows only `icon` (an SVG string), and `label` becomes its tooltip and accessible name.
+ * Set `showLabel: true` to make it a labelled button: the host renders the icon followed by `label` as visible text,
+ * widens the button to fit it (long labels are cut off with an ellipsis; the full label stays in the tooltip and the
+ * accessible name) and sizes the icon to the toolbar. Do not add CSS of your own to resize toolbar buttons.
+ *
+ * ```ts
+ * toolbar.addGroup('my-group', '口诀').addItem('mnemonic', {
+ *   label: '编成口诀', icon: '<svg …/>', showLabel: true, onRun: () => { … },
+ * });
+ * ```
+ */
 export interface SelectionToolbarItem {
   label: string;
+  /** SVG markup (sanitized by the editor). With `showLabel`, may be `''` for a text-only button. */
   icon: string;
+  /** Show `label` as text next to the icon (keep it short: about 2–6 CJK characters or 1–2 words). */
+  showLabel?: boolean;
   active?: (ctx: Ctx) => boolean;
   onRun?: (ctx: Ctx) => void;
 }

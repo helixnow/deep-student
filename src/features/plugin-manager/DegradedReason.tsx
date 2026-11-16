@@ -44,10 +44,12 @@ export function DegradedReason({ reason, info, className }: DegradedReasonProps)
         </div>
         <div className="break-words text-muted-foreground">
           {code ? (
-            <>
+            // 人话在上面；原文收进「技术信息」，排查时还在。
+            <details>
+              <summary className="cursor-pointer rounded outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('manager.technical')}</summary>
               <span className="sr-only">{t('degraded.detail')}</span>
               {parsed.detail || t('degraded.noCode')}
-            </>
+            </details>
           ) : (
             parsed.detail
           )}

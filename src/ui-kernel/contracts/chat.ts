@@ -23,6 +23,11 @@ export interface ChatToolResultProps extends BlockComponentProps {
 export interface ChatToolResultContribution {
   placement: ChatToolResultPlacement;
   component: ComponentType<ChatToolResultProps>;
+  /**
+   * Optional stage shown in the tool header in place of the generic "done" text and duration (for tools whose
+   * result waits on the user, e.g. a workshop card that is waiting for confirmation). Rendered only on success.
+   */
+  status?: ComponentType<ChatToolResultProps>;
   when?: (props: ChatToolResultProps) => boolean;
   /**
    * `exact` (default): the key itself or `builtin-<key>`.

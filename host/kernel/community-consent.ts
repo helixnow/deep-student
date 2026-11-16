@@ -2,13 +2,20 @@
 // RUST-FIX(RF-W32-community-consent-ledger): Rust 没有社区插件安装流程与同意记录（src-tauri/src/plugins/manager.rs 只管内置插件的启停），
 // 任何能写 plugins 目录的人都能在下次启动时执行代码；这里新增 Host 侧的安装前同意账本。
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, open, readFile, rename, unlink } from 'node:fs/promises';
+import { mkdir, open, readFile, unlink } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
+import { renameWithRetry } from '../platform/util/durable-fs.ts';
 
 export interface ConsentSubject {
   readonly id: string;
   readonly version: string;
   readonly permissions: readonly string[];
+  /**
+   * SHA256 of the installed release's locked file hashes ({@link releaseContentDigest}). A record that carries
+   * one only matches that exact content: the same id/version/permissions with other bytes asks again.
+   * Records without it (written before content binding, or for a plugin that has no package) match as before.
+   */
+  readonly contentDigest?: string;
 }
 
 export interface CommunityConsentRecord extends ConsentSubject {
@@ -24,7 +31,7 @@ export type CommunityPluginSource = 'workshop' | 'package';
 export interface ConsentDecision {
   matched: boolean;
   code: 'CONSENT_REQUIRED' | null;
-  reason: 'missing' | 'version' | 'permissions' | null;
+  reason: 'missing' | 'version' | 'permissions' | 'content' | null;
   /** Intersection only; a non-matching decision still forbids loading. */
   grantedPermissions: readonly string[];
   trust?: PluginTrust;
@@ -42,6 +49,12 @@ export function permissionsDigest(permissions: readonly string[]): string {
   return createHash('sha256').update(JSON.stringify(canonicalPermissions(permissions))).digest('hex');
 }
 
+/** One digest for a whole release: its locked `{ file name: sha256 }` map, in canonical order. */
+export function releaseContentDigest(files: Readonly<Record<string, string>>): string {
+  const entries = Object.keys(files).sort().map(name => [name, files[name]]);
+  return createHash('sha256').update(JSON.stringify(entries)).digest('hex');
+}
+
 function recordFor(subject: ConsentSubject, options: { trust?: PluginTrust; source?: CommunityPluginSource } = {}): CommunityConsentRecord {
   if (typeof subject.id !== 'string' || !subject.id || typeof subject.version !== 'string' || !subject.version) {
     throw new TypeError('consent requires plugin id and version');
@@ -49,7 +62,11 @@ function recordFor(subject: ConsentSubject, options: { trust?: PluginTrust; sour
   const permissions = canonicalPermissions(subject.permissions);
   if (options.trust !== undefined && options.trust !== 'full' && options.trust !== 'restricted') throw new TypeError('invalid plugin trust');
   if (options.source !== undefined && options.source !== 'workshop' && options.source !== 'package') throw new TypeError('invalid plugin source');
-  return { id: subject.id, version: subject.version, permissions, permissionsDigest: permissionsDigest(permissions), trust: options.trust ?? 'restricted', source: options.source ?? 'package' };
+  if (subject.contentDigest !== undefined && (typeof subject.contentDigest !== 'string' || !/^[0-9a-f]{64}$/.test(subject.contentDigest))) {
+    throw new TypeError('invalid consent content digest');
+  }
+  return { id: subject.id, version: subject.version, permissions, permissionsDigest: permissionsDigest(permissions), trust: options.trust ?? 'restricted', source: options.source ?? 'package',
+    ...(subject.contentDigest !== undefined ? { contentDigest: subject.contentDigest } : {}) };
 }
 
 function parseRecords(text: string): CommunityConsentRecord[] {
@@ -90,7 +107,9 @@ export class CommunityConsentLedger {
     const previous = (await this.read()).find(record => record.id === requested.id);
     const approved = new Set(previous?.permissions ?? []);
     const reason = !previous ? 'missing' : previous.version !== requested.version ? 'version'
-      : previous.permissionsDigest !== requested.permissionsDigest ? 'permissions' : null;
+      : previous.permissionsDigest !== requested.permissionsDigest ? 'permissions'
+      // Consent bound to content never covers other bytes, nor a subject whose content cannot be identified.
+      : previous.contentDigest !== undefined && previous.contentDigest !== requested.contentDigest ? 'content' : null;
     return {
       matched: reason === null,
       code: reason === null ? null : 'CONSENT_REQUIRED',
@@ -130,7 +149,9 @@ export class CommunityConsentLedger {
         } finally {
           await file.close();
         }
-        await rename(temporary, this.path);
+        // RUST-FIX(RF-W07-windows-rename-retry): every inventory read opens the ledger; on Windows a plain rename over it
+        // fails with EPERM while a read is in flight.
+        await renameWithRetry(temporary, this.path);
       } finally {
         await unlink(temporary).catch(error => {
           if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;

@@ -22,7 +22,8 @@ it('B3 safe mode rejects validation/export/creation/installation before any cand
   new PluginAdmin({ runtime, store: new UserProfileStore(join(dataDir, 'user.profile.json'), official), official }).register();
   ops.bindAdmin(await injectedInstaller(runtime));
   await expect(ops.validate(card.id)).rejects.toThrow('SAFE_MODE_ACTIVE');
-  await expect(ops.export(card.id)).rejects.toThrow('SAFE_MODE_ACTIVE');
+  // Export only packs an installed version (it runs nothing); with nothing installed there is nothing to pack.
+  await expect(ops.export(card.id)).rejects.toThrow('WORKSHOP_STATE: no installed version');
   await expect(ops.create(card.id, card.revision)).rejects.toThrow('SAFE_MODE_ACTIVE');
   const pending = await ops.store.update(card.id, card.revision, { state: 'pending-confirmation' });
   await expect(ops.install(card.id, pending.revision)).rejects.toThrow('SAFE_MODE_ACTIVE');

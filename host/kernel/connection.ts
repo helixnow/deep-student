@@ -83,7 +83,7 @@ export function serveHost(transport: HostTransport, options: ServeHostOptions = 
             await packages.verify(manifest.id);
             if (!record.enabled || record.version !== manifest.version) return `package "${manifest.id}" is disabled or differs from the active lock version`;
           }
-          return consentProblem(consent, manifest);
+          return consentProblem(consent, manifest, record);
         } };
       }
       await loadStartupProfile(runtime, {

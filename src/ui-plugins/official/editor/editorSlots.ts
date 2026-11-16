@@ -48,7 +48,7 @@ export type {
 export const EDITOR_SLOTS: readonly SlotDefinition[] = [
   { name: 'editor.extensions', cardinality: 'list', description: '编辑器 Milkdown 插件：每个编辑器实例按 order 调用工厂' },
   { name: 'editor.slashMenu', cardinality: 'list', description: '编辑器斜杠菜单：内置分组之后按 order 追加或改写条目' },
-  { name: 'editor.selectionToolbar', cardinality: 'list', description: '编辑器选中浮条：每个编辑器实例按 order 追加按钮（构建后不再重算）' },
+  { name: 'editor.selectionToolbar', cardinality: 'list', description: '编辑器选中浮条：每个编辑器实例按 order 追加按钮（槽位变化时已打开的编辑器重建浮条）' },
   { name: 'editor.blockMenu', cardinality: 'list', description: '编辑器块菜单：每次打开时按 order 生成行（桌面句柄、移动插入、移动块菜单）' },
 ];
 
@@ -61,6 +61,25 @@ export type EditorAnnouncement =
 export const editorContributions = createLazyContributionPoint<EditorAnnouncement>('editor');
 
 export type EditorContributionError = (entry: SlotEntry<unknown>, error: unknown) => void;
+
+/**
+ * A community plugin used one group / item key twice. Said plainly and skipped; it is a declaration mistake, not a
+ * runtime failure, so it never counts toward the plugin's error budget (it does not go through `onError`).
+ */
+export type EditorKeyConflict = (entry: SlotEntry<unknown>, message: string) => void;
+const warnKeyConflict: EditorKeyConflict = (_entry, message) => console.warn(`[editor] ${message}`);
+
+/**
+ * Community group / item keys live in the contributing plugin's namespace (`<pluginId>:<key>`), so two plugins that
+ * both add a 'mnemonic' button both get one. Official keys are never prefixed; a plugin can still add to an official
+ * group by its plain key.
+ */
+export function communityEditorKey(owner: string, key: string): string {
+  return key.startsWith(`${owner}:`) ? key : `${owner}:${key}`;
+}
+function keyConflictMessage(entry: SlotEntry<unknown>, slot: string, kind: 'group' | 'item', key: string): string {
+  return `plugin "${entry.owner}" uses the ${slot} ${kind} key "${key}" twice; the second one was skipped (rename it to show both)`;
+}
 
 type Runner = ReturnType<MilkdownPlugin>;
 
@@ -138,6 +157,7 @@ export function buildEditorSlashMenu(
   menu: SlashMenuBuilder,
   editor: EditorInstanceContext,
   onError: EditorContributionError,
+  onConflict: EditorKeyConflict = warnKeyConflict,
 ): void {
   for (const entry of entries) {
     if (entry.origin === 'builtin') {
@@ -145,11 +165,43 @@ export function buildEditorSlashMenu(
       continue;
     }
     try {
-      entry.value.build(menu, editor);
+      entry.value.build(namespacedSlashMenu(menu, entry, onConflict), editor);
     } catch (error) {
       onError(entry, error);
     }
   }
+}
+
+/** The slash menu as one community entry sees it: its keys prefixed with its plugin id, duplicates skipped. */
+function namespacedSlashMenu(menu: SlashMenuBuilder, entry: SlotEntry<unknown>, onConflict: EditorKeyConflict): SlashMenuBuilder {
+  const groups = () => menu.build();
+  const handle = (groupKey: string, group: ReturnType<SlashMenuBuilder['getGroup']>) => ({
+    addItem(key: string, item: Parameters<ReturnType<SlashMenuBuilder['getGroup']>['addItem']>[1]) {
+      const scoped = communityEditorKey(entry.owner, key);
+      if (groups().find(candidate => candidate.key === groupKey)?.items.some(existing => existing.key === scoped)) {
+        onConflict(entry, keyConflictMessage(entry, 'editor.slashMenu', 'item', key));
+        return undefined;
+      }
+      return group.addItem(scoped, item);
+    },
+  });
+  return {
+    addGroup(key, label) {
+      const scoped = communityEditorKey(entry.owner, key);
+      if (groups().some(group => group.key === scoped)) {
+        onConflict(entry, keyConflictMessage(entry, 'editor.slashMenu', 'group', key));
+        return handle(scoped, menu.getGroup(scoped));
+      }
+      return handle(scoped, menu.addGroup(scoped, label));
+    },
+    getGroup(key) {
+      // Its own group first, then an official one by its plain key.
+      const scoped = communityEditorKey(entry.owner, key);
+      const own = groups().some(group => group.key === scoped);
+      return handle(own ? scoped : key, menu.getGroup(own ? scoped : key));
+    },
+    build: () => menu.build(),
+  };
 }
 
 /**
@@ -183,12 +235,40 @@ export interface CrepeSelectionToolbarBuilder {
 const alwaysInactive = () => false;
 
 /**
- * Adapts Crepe's GroupBuilder to the contract: a missing `active` becomes `() => false` (Crepe requires it), and
- * `build()` returns the live items so the official entry's `onRun` rewiring still applies to the rendered buttons.
+ * DOM hooks of a labelled bubble toolbar button (`SelectionToolbarItem.showLabel`). Crepe renders every item as
+ * `button.toolbar-item[data-toolbar-item=<key>][aria-label=<label>] > span.milkdown-icon` with the item's `icon` as
+ * sanitized HTML, so the host puts the label into that markup and CrepeEditor.css sizes buttons that contain it.
+ */
+export const LABELLED_TOOLBAR_ITEM_CLASS = 'crepe-toolbar-labelled';
+
+const escapeHtml = (text: string) => text.replace(/[&<>"']/g, (char) => `&#${char.charCodeAt(0)};`);
+
+/** The `icon` markup Crepe receives for a labelled item: the plugin's icon, then the label as visible text. */
+export function labelledToolbarIcon(key: string, item: Pick<SelectionToolbarItem, 'label' | 'icon'>): string {
+  const label = escapeHtml(String(item.label ?? ''));
+  const icon = item.icon ? `<span class="${LABELLED_TOOLBAR_ITEM_CLASS}__icon" aria-hidden="true">${item.icon}</span>` : '';
+  return `<span class="${LABELLED_TOOLBAR_ITEM_CLASS}" data-toolbar-label="${escapeHtml(key)}">${icon}`
+    + `<span class="${LABELLED_TOOLBAR_ITEM_CLASS}__text">${label}</span></span>`;
+}
+
+/** The item Crepe receives: `active` filled in, and a labelled item's label rendered into its icon markup. */
+function toCrepeToolbarItem(key: string, item: SelectionToolbarItem): SelectionToolbarItem & { active: (ctx: Ctx) => boolean } {
+  const { showLabel, ...rest } = item;
+  return {
+    ...rest,
+    ...(showLabel ? { icon: labelledToolbarIcon(key, item) } : {}),
+    active: item.active ?? alwaysInactive,
+  };
+}
+
+/**
+ * Adapts Crepe's GroupBuilder to the contract: a missing `active` becomes `() => false` (Crepe requires it), a
+ * `showLabel` item gets its label rendered next to the icon, and `build()` returns the live items so the official
+ * entry's `onRun` rewiring still applies to the rendered buttons.
  */
 export function adaptSelectionToolbar(builder: CrepeSelectionToolbarBuilder): SelectionToolbarBuilder {
   const group = (handle: { addItem(key: string, item: SelectionToolbarItem & { active: (ctx: Ctx) => boolean }): unknown }) => ({
-    addItem: (key: string, item: SelectionToolbarItem) => handle.addItem(key, { ...item, active: item.active ?? alwaysInactive }),
+    addItem: (key: string, item: SelectionToolbarItem) => handle.addItem(key, toCrepeToolbarItem(key, item)),
   });
   return {
     addGroup: (key, label) => group(builder.addGroup(key, label)),
@@ -198,8 +278,8 @@ export function adaptSelectionToolbar(builder: CrepeSelectionToolbarBuilder): Se
 }
 
 /**
- * The bubble toolbar of one instance: official entries then the slot, in order. Crepe builds the toolbar once when the
- * editor is created, so later slot changes only affect editors created afterwards.
+ * The bubble toolbar of one instance: official entries then the slot, in order. CrepeEditor runs this inside Crepe's
+ * toolbar build and re-runs it on open editors when the slot changes (components/crepe/liveSelectionToolbar.ts).
  */
 // RUST-FIX(RF-W18-selection-toolbar-contributions): stage builds and attribute community callbacks.
 export function buildEditorSelectionToolbar(
@@ -207,6 +287,7 @@ export function buildEditorSelectionToolbar(
   toolbar: SelectionToolbarBuilder,
   editor: EditorInstanceContext,
   onError: EditorContributionError,
+  onConflict: EditorKeyConflict = warnKeyConflict,
 ): void {
   for (const entry of entries) {
     if (entry.origin === 'builtin') {
@@ -218,17 +299,32 @@ export function buildEditorSelectionToolbar(
       type Item = SelectionToolbarItem & { key: string };
       const originals = toolbar.build();
       const staged = originals.map(group => ({ ...group, items: group.items.map(item => ({ ...item } as Item)) }));
+      // Keys are scoped to this plugin (communityEditorKey); a key it uses twice is skipped and reported, not thrown.
       const handle = (group: (typeof staged)[number]) => ({
-        addItem(key: string, item: SelectionToolbarItem) { group.items.push({ ...item, key }); },
+        addItem(key: string, item: SelectionToolbarItem) {
+          const scoped = communityEditorKey(entry.owner, key);
+          if (group.items.some(existing => existing.key === scoped)) {
+            onConflict(entry, keyConflictMessage(entry, 'editor.selectionToolbar', 'item', key));
+            return;
+          }
+          group.items.push({ ...item, key: scoped });
+        },
       });
       entry.value.build({
         addGroup(key, label) {
-          const group = { key, label, items: [] as Item[] };
+          const scoped = communityEditorKey(entry.owner, key);
+          const existing = staged.find(group => group.key === scoped);
+          if (existing) {
+            onConflict(entry, keyConflictMessage(entry, 'editor.selectionToolbar', 'group', key));
+            return handle(existing);
+          }
+          const group = { key: scoped, label, items: [] as Item[] };
           staged.push(group);
           return handle(group);
         },
         getGroup(key) {
-          const group = staged.find(group => group.key === key);
+          // Its own group first, then an official one by its plain key.
+          const group = staged.find(group => group.key === communityEditorKey(entry.owner, key)) ?? staged.find(group => group.key === key);
           if (!group) throw new Error(`Group with key ${key} not found`);
           return handle(group);
         },
@@ -280,6 +376,7 @@ export function collectEditorBlockMenuRows(
   target: EditorBlockMenuTarget,
   editor: EditorInstanceContext,
   onError: EditorContributionError,
+  onConflict: EditorKeyConflict = warnKeyConflict,
 ): Array<{ entry: SlotEntry<EditorBlockMenuContribution>; row: EditorBlockMenuRow }> {
   const rows: Array<{ entry: SlotEntry<EditorBlockMenuContribution>; row: EditorBlockMenuRow }> = [];
   for (const entry of entries) {
@@ -288,7 +385,17 @@ export function collectEditorBlockMenuRows(
       continue;
     }
     try {
-      for (const row of entry.value.rows(target, editor)) rows.push({ entry, row });
+      // Rows are told apart by their plugin (the menus key them by owner + id), so only a plugin repeating its own
+      // row id is a conflict: skipped and reported, never an error.
+      const own: Array<{ entry: SlotEntry<EditorBlockMenuContribution>; row: EditorBlockMenuRow }> = [];
+      for (const row of entry.value.rows(target, editor)) {
+        if (own.some(existing => existing.row.id === row.id)) {
+          onConflict(entry, keyConflictMessage(entry, 'editor.blockMenu', 'item', row.id));
+          continue;
+        }
+        own.push({ entry, row });
+      }
+      rows.push(...own);
     } catch (error) {
       onError(entry, error);
     }
