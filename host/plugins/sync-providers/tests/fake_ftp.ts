@@ -22,6 +22,8 @@ export interface FakeFtpOptions {
   intercept?: (command: string, server: FakeFtp) => FtpReply | null;
   /** Reset the data connection before replying to a selected transfer command. */
   resetDataBeforeReply?: (command: string) => boolean;
+  /** Return a callback to send a clean data FIN without a control reply, then notify the test. */
+  endDataWithoutReply?: (command: string) => (() => void) | undefined;
   /** Reject MLSD with this code to force the LIST fallback. */
   mlsdStatus?: number;
   /** Reject RNTO with this code. */
@@ -146,6 +148,14 @@ export class FakeFtp {
       const data = await this.takeDataSocket();
       data.resetAndDestroy();
       this.closePassive();
+      return;
+    }
+    const onDataEnded = this.options.endDataWithoutReply?.(line);
+    if (onDataEnded !== undefined) {
+      const data = await this.takeDataSocket();
+      await new Promise<void>(resolve => data.end(resolve));
+      this.closePassive();
+      onDataEnded();
       return;
     }
     const override = this.options.intercept?.(line, this);
