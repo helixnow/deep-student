@@ -2,54 +2,22 @@ import { createReadStream } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
-import { errorDisplay } from '../../kernel/error-model.ts';
 import type { LogService } from './api.ts';
 import { sanitizeDiagnosticMessage } from './diagnostics-sanitize.ts';
+import {
+  diagnosticLabel,
+  diagnosticRecord as diagnosticRecordWithPlatform,
+  type DiagnosticError,
+  type DiagnosticQuery,
+  type DiagnosticRecord,
+} from './incidents-core.ts';
 
-export interface DiagnosticError {
-  source: 'host' | 'frontend' | 'electron';
-  operation: string;
-  id?: string;
-  pluginId?: string;
-  window?: string;
-  code?: string;
-  error: unknown;
-}
+export type { DiagnosticError, DiagnosticQuery, DiagnosticRecord };
 
-export interface DiagnosticRecord {
-  source: DiagnosticError['source'];
-  operation: string;
-  id: string;
-  pluginId?: string;
-  window?: string;
-  message: string;
-  code?: string;
-  timestamp: string;
-}
-
-const label = (value: unknown): string | undefined =>
-  typeof value === 'string' && /^[\w.:|-]{1,160}$/.test(value) ? value : undefined;
+const label = diagnosticLabel;
 
 export function diagnosticRecord(event: DiagnosticError): DiagnosticRecord {
-  const message = event.error instanceof Error ? event.error.message : errorDisplay(event.error);
-  let code: string | undefined;
-  try { code = label((event.error as { details?: { code?: unknown } } | null)?.details?.code); } catch { /* boundary-allow empty-catch: hostile error value */ }
-  return {
-    code: label(event.code) ?? code,
-    id: label(event.id) ?? globalThis.crypto.randomUUID(),
-    source: event.source,
-    operation: label(event.operation) ?? 'unknown',
-    pluginId: label(event.pluginId),
-    window: label(event.window),
-    message: sanitizeDiagnosticMessage(message).slice(0, 1200),
-    timestamp: new Date().toISOString(),
-  };
-}
-
-export interface DiagnosticQuery {
-  id?: string;
-  operation?: string;
-  pluginId?: string;
+  return diagnosticRecordWithPlatform(event, process.platform);
 }
 
 export async function queryDiagnosticErrors(log: Pick<LogService, 'logDir' | 'structured'>, query: DiagnosticQuery) {

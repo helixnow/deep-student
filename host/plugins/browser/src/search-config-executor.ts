@@ -19,7 +19,7 @@ import type { SettingsStore } from '../../../platform/settings/api.ts';
 import {
   defaultProviderStrategies, normalizeProviderStrategies, parseProviderStrategies,
   serializeProviderStrategies, type ProviderStrategies,
-} from '../../mcp/api.ts';
+} from '../../mcp/portable.ts';
 
 export const SEARCH_CONFIG_GET_TOOL = 'dstu_config_search_get';
 export const SEARCH_CONFIG_SET_TOOL = 'dstu_config_search_set';

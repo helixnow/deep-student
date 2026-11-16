@@ -3,6 +3,8 @@ import { CommandError, definePlugin } from '../../kernel/core.ts';
 import { AppError } from '../errors/api.ts';
 import { registerUnsupportedCommands } from '../errors/unsupported-commands.ts';
 import { dirname } from '../util/path.ts';
+import type { PathsService } from '../paths/api.ts';
+import { defaultRecoveryBackupDirPortable } from './backup-config-core.ts';
 import { createFeatureFlagCommands } from './feature-flag-commands.ts';
 import { createSettingsService } from './index.ts';
 import { getMobileSecurityStatus } from './mobile-security-status.ts';
@@ -44,6 +46,7 @@ export default definePlugin({
       'get_mcp_stdio_allow_unapproved',
       'set_mcp_stdio_allow_unapproved',
       'plugin_list',
+      'get_default_backup_directory',
     ],
   },
   inject: ['storage', 'secrets', 'featureFlags'],
@@ -116,5 +119,10 @@ export default definePlugin({
     ctx.commands.register('get_mcp_stdio_allow_unapproved', () => false);
     registerUnsupportedCommands(ctx, ['set_mcp_stdio_allow_unapproved'], () => 'mcp.stdio');
     ctx.commands.register('plugin_list', () => []);
+    // Backup config and WebView settings live in `dstu.platform.storage` on mobile (OPFS files).
+    ctx.commands.register('get_default_backup_directory', () => {
+      const paths = ctx.reflect.get('paths', false) as PathsService | undefined;
+      return paths?.recoveryBackupsDir ?? defaultRecoveryBackupDirPortable(paths?.appDataDir ?? ctx.app.dataDir);
+    });
   },
 });

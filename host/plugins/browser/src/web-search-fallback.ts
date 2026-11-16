@@ -9,8 +9,8 @@
 import type { WebSearchFallback } from '../../llm/api.ts';
 import type { SettingsStore } from '../../../platform/settings/api.ts';
 import { charCount, f32ToJsonNumber, rustTrim, takeChars } from '../../../platform/util/portable.ts';
-import { CN_TRUSTED_SITES, createWebSearchToolRegistry, doSearch, hasValidKeys, loadToolConfig } from '../../mcp/api.ts';
-import type { RagSourceInfo, SearchInput, SearchResult, ToolConfig } from '../../mcp/api.ts';
+import { CN_TRUSTED_SITES, createWebSearchToolRegistry, doSearch, hasValidKeys, loadToolConfig } from '../../mcp/portable.ts';
+import type { RagSourceInfo, SearchInput, SearchResult, ToolConfig } from '../../mcp/portable.ts';
 import { readSettingOrNone } from './settings.ts';
 
 type LogLevel = 'debug' | 'info' | 'warn' | 'error';
@@ -20,6 +20,7 @@ export interface WebSearchFallbackDeps {
   log(level: LogLevel, message: string): void;
   /** Logger handed to mcp `doSearch` (provider diagnostics). */
   searchLog(message: string): void;
+  fetchImpl?: typeof globalThis.fetch;
 }
 
 const NO_ENGINE_SELECTED = '请在输入栏选择搜索引擎以启用外部搜索功能';
@@ -83,7 +84,7 @@ async function aggregatedSearch(
 ): Promise<SearchResult> {
   const started = performance.now();
   const outcomes = await Promise.allSettled(
-    engines.map(engine => doSearch(config, { ...input, engine }, deps.searchLog, signal)));
+    engines.map(engine => doSearch(config, { ...input, engine }, deps.searchLog, signal, deps.fetchImpl)));
   if (signal?.aborted) throw signal.reason;
   const items: AggregatedItem[] = [];
   const providers: Record<string, number> = {};
@@ -172,16 +173,16 @@ async function routedSearch(deps: WebSearchFallbackDeps, input: SearchInput, sig
     }
     if (usable.length === 1) {
       deps.log('info', `仅一个引擎有有效 API key，自动使用: ${usable[0]!}`);
-      return doSearch(config, { ...input, engine: usable[0]! }, deps.searchLog, signal);
+      return doSearch(config, { ...input, engine: usable[0]! }, deps.searchLog, signal, deps.fetchImpl);
     }
     deps.log('warn', '所有选中引擎均未配置 API key，回退到默认引擎');
-    return doSearch(config, input, deps.searchLog, signal);
+    return doSearch(config, input, deps.searchLog, signal, deps.fetchImpl);
   }
   if (engines.length === 1) {
     deps.log('info', `仅选择单个搜索引擎，自动使用 session 配置的引擎: ${engines[0]!}`);
-    return doSearch(config, { ...input, engine: engines[0]! }, deps.searchLog, signal);
+    return doSearch(config, { ...input, engine: engines[0]! }, deps.searchLog, signal, deps.fetchImpl);
   }
-  return doSearch(config, input, deps.searchLog, signal);
+  return doSearch(config, input, deps.searchLog, signal, deps.fetchImpl);
 }
 
 export function createWebSearchFallback(deps: WebSearchFallbackDeps): WebSearchFallback {

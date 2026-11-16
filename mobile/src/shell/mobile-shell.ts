@@ -24,6 +24,16 @@ import {
   type ShellRequest,
 } from '../../../host/kernel/protocol.ts';
 import { isWorkerExitReport } from '../worker/exit-report.ts';
+import { createMobileClipboardHandler } from './clipboard.ts';
+import { createMobileFsHandlers } from './fs.ts';
+import { createMobileHapticsHandler } from './haptics.ts';
+import { createMobileHttpHandler, type MobileHttpFetcher } from './http.ts';
+import { createMobileOpenerHandler, type OpfsFileExporter } from './opener.ts';
+import type { OpfsRootGetter } from './opfs.ts';
+import { createMobilePathHandler } from './path.ts';
+import type { MobilePluginHandler } from './plugin-args.ts';
+import { createMobileWebviewHandler } from './webview.ts';
+import { createMobileWindowHandler } from './window.ts';
 
 export interface MobileShellOptions {
   readonly handshake: Omit<Handshake, 'kind' | 'protocol'>;
@@ -31,6 +41,14 @@ export interface MobileShellOptions {
   readonly webviewLabel?: string;
   /** Host 请求主线程代办的平台操作；未提供或抛错时以错误回复 Host。 */
   readonly onShellRequest?: (request: ShellRequest) => Promise<unknown>;
+  /** 处理前端 `@tauri-apps/plugin-dialog` 命令；未提供时以非 ACL 错误回复。 */
+  readonly onDialogCommand?: (command: string, args: Record<string, unknown>) => Promise<unknown>;
+  /** 自定义 OPFS 根目录获取函数（用于单测注入内存 OPFS）。 */
+  readonly opfsRoot?: OpfsRootGetter;
+  /** 处理前端 `@tauri-apps/plugin-http` 请求（主线程可走 `CapacitorHttp` 或 `fetchWithTimeout`）。 */
+  readonly onHttpFetch?: MobileHttpFetcher;
+  /** 处理 `plugin:opener|open_path` / `reveal_item_in_dir` 对 OPFS 沙盒文件的导出。 */
+  readonly onExportFile?: OpfsFileExporter;
   /** 主线程原生能力；返回 undefined 时按常规命令路由。 */
   readonly onNativeInvoke?: (message: InvokeMessage) => Promise<unknown> | undefined;
   readonly log?: (message: string) => void;
@@ -68,6 +86,7 @@ export class MobileShell {
   private readonly options: MobileShellOptions;
   private readonly windowLabel: string;
   private readonly webviewLabel: string;
+  private readonly pluginHandlers: ReadonlyMap<string, MobilePluginHandler>;
   private readonly renderers = new Set<(message: MainToRenderer) => void>();
   private readonly pending = new Map<string, PendingInvoke>();
   private nextId = 0;
@@ -78,6 +97,24 @@ export class MobileShell {
     this.options = options;
     this.windowLabel = options.windowLabel ?? 'main';
     this.webviewLabel = options.webviewLabel ?? 'main';
+    const { fs, resources } = createMobileFsHandlers(options.opfsRoot);
+    this.pluginHandlers = new Map<string, MobilePluginHandler>([
+      ['path', createMobilePathHandler()],
+      ['fs', fs],
+      ['resources', resources],
+      ['http', createMobileHttpHandler(options.onHttpFetch)],
+      ['opener', createMobileOpenerHandler({ getRoot: options.opfsRoot, exportFile: options.onExportFile })],
+      ['clipboard-manager', createMobileClipboardHandler()],
+      ['webview', createMobileWebviewHandler(this.windowLabel, this.webviewLabel)],
+      ['haptics', createMobileHapticsHandler()],
+      ['window', createMobileWindowHandler(this.windowLabel)],
+      ['notification', ({ command }) => {
+        if (command === 'is_permission_granted') return false;
+        if (command === 'request_permission') return 'denied';
+        if (command === 'notify') return false;
+        throw new Error(`unsupported notification command "${command}"`);
+      }],
+    ]);
     this.ready = new Promise<void>((resolve, reject) => {
       this.resolveReady = resolve;
       this.rejectReady = reject;
@@ -169,20 +206,27 @@ export class MobileShell {
       this.reply(callbacks, false, encodeBody(error instanceof Error ? error.message : String(error)));
       return;
     }
-    const shellResults: Record<string, unknown> = {
-      'plugin:window|is_visible': true,
-      'plugin:window|is_focused': true,
-      'plugin:window|is_minimized': false,
-      'plugin:window|set_focus': null,
-      'plugin:window|show': null,
-      'plugin:window|unminimize': null,
-      'plugin:notification|is_permission_granted': false,
-      'plugin:notification|request_permission': 'denied',
-      'plugin:notification|notify': false,
-    };
-    if (Object.hasOwn(shellResults, message.cmd)) {
-      this.reply({ callback: message.callback, error: message.error }, true, encodeBody(shellResults[message.cmd]));
+    if (message.cmd.startsWith('plugin:dialog|')) {
+      this.handleDialogCommand(message);
       return;
+    }
+    if (message.cmd.startsWith('plugin:')) {
+      const separator = message.cmd.indexOf('|');
+      if (separator > 'plugin:'.length) {
+        const plugin = message.cmd.slice('plugin:'.length, separator);
+        const handler = this.pluginHandlers.get(plugin);
+        if (handler) {
+          const pending = { callback: message.callback, error: message.error };
+          const command = message.cmd.slice(separator + 1);
+          Promise.resolve()
+            .then(() => handler({ command, payload: message.payload, headers: message.headers }))
+            .then(
+              value => this.reply(pending, true, encodeBody(value)),
+              (error: unknown) => this.reply(pending, false, encodeBody(error instanceof Error ? error.message : String(error))),
+            );
+          return;
+        }
+      }
     }
     const notRunning = this.unavailableReason ?? (this.port === null ? 'Mobile Host is not running' : null);
     if (notRunning !== null) {
@@ -323,5 +367,37 @@ export class MobileShell {
     } catch (error) {
       this.reply(pending, false, encodeBody(error instanceof Error ? error.message : String(error)));
     }
+  }
+
+  /** `plugin:dialog|*`（`@tauri-apps/plugin-dialog`）：主线程代办，不转发给 Host ACL。 */
+  private handleDialogCommand(message: InvokeMessage): void {
+    const pending = { callback: message.callback, error: message.error };
+    if (message.payload.contentType !== 'application/json') {
+      this.reply(pending, false, encodeBody('dialog commands take JSON arguments'));
+      return;
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(message.payload.data);
+    } catch (error) {
+      this.reply(pending, false, encodeBody(`invalid args JSON: ${error instanceof Error ? error.message : String(error)}`));
+      return;
+    }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      this.reply(pending, false, encodeBody('invalid args for dialog command: expected object'));
+      return;
+    }
+    const command = message.cmd.slice('plugin:dialog|'.length);
+    const handler = this.options.onDialogCommand;
+    if (!handler) {
+      this.reply(pending, false, encodeBody(`dialog command "${command}" is not available on mobile`));
+      return;
+    }
+    Promise.resolve()
+      .then(() => handler(command, parsed as Record<string, unknown>))
+      .then(
+        value => this.reply(pending, true, encodeBody(value)),
+        (error: unknown) => this.reply(pending, false, encodeBody(error instanceof Error ? error.message : String(error))),
+      );
   }
 }
