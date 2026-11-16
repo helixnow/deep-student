@@ -3,7 +3,7 @@
  *
  * 卡片式题目展示，支持：
  * - 显示/隐藏答案切换（展开动画）
- * - 评分按钮：Again(0)/Hard(2)/Good(3)/Easy(5)，展示配色与预估间隔
+ * - 评分按钮：重来 / 困难 / 良好 / 简单（FSRS 四档，quality 0/3/4/5），展示配色与 FSRS 间隔预演
  * - 复习进度指示器
  * - 复习完成统计（对勾描画动画 + 本次复习数、通过率）
  * - 键盘流：空格/回车翻面，1-4 评分，→ 跳过（高频操作免鼠标）
@@ -38,11 +38,15 @@ import {
 import { useTranslation } from 'react-i18next';
 import {
   useReviewPlanStore,
-  type ReviewPlan,
   type ReviewQuality,
   type ReviewSessionQuestion,
 } from '@/stores/reviewPlanStore';
 import { getReviewQuestionTypeMeta } from '@/components/review/reviewQuestionTypeMeta';
+import {
+  REVIEW_QUALITY_BY_KEY,
+  REVIEW_RATING_QUALITY,
+  reviewIntervalLabels,
+} from '@/components/review/reviewRatingPreview';
 import {
   parseMatchingData,
   parseOrderingData,
@@ -92,30 +96,8 @@ interface RatingButtonProps {
 }
 
 // ============================================================================
-// SM-2 预估间隔（与后端 src-tauri/src/spaced_repetition.rs 保持同一公式）
+// 评分：FSRS 四档（D2）。间隔预演由后端随计划返回，见 review/reviewRatingPreview.ts
 // ============================================================================
-
-const SM2_MIN_EF = 1.3;
-const SM2_FIRST_INTERVAL = 1;
-const SM2_SECOND_INTERVAL = 6;
-const SM2_MAX_INTERVAL = 730;
-const SM2_PASSING_GRADE = 3;
-
-/** 预演某个评分后的下次间隔（天），用于评分按钮上的 Anki 式间隔标签 */
-const previewNextInterval = (quality: ReviewQuality, plan: ReviewPlan): number => {
-  const currentEf = Math.max(plan.ease_factor, SM2_MIN_EF);
-  if (quality < SM2_PASSING_GRADE) {
-    return SM2_FIRST_INTERVAL;
-  }
-  const q = Math.min(quality, 5);
-  const delta = 0.1 - (5 - q) * (0.08 + (5 - q) * 0.02);
-  const newEf = Math.max(currentEf + delta, SM2_MIN_EF);
-  const newReps = plan.repetitions + 1;
-  if (newReps === 1) return SM2_FIRST_INTERVAL;
-  if (newReps === 2) return SM2_SECOND_INTERVAL;
-  const calculated = Math.round(plan.interval_days * newEf);
-  return Math.min(Math.max(calculated, plan.interval_days + 1), SM2_MAX_INTERVAL);
-};
 
 // ============================================================================
 // 选择题选项
@@ -326,7 +308,7 @@ const RatingButton: React.FC<RatingButtonProps> = ({
     )}
     <div className="text-current">{icon}</div>
     <span className="text-sm font-semibold">{label}</span>
-    <span className="text-[10px] font-medium tabular-nums opacity-70">{sublabel}</span>
+    {sublabel ? <span className="text-[10px] font-medium tabular-nums opacity-70">{sublabel}</span> : null}
   </DsButton>
 );
 
@@ -549,7 +531,7 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
     showAnswer && selectedKeys.length > 0 && correctKeys.size > 0
       ? (selectedKeys.length === correctKeys.size && selectedKeys.every((key) => correctKeys.has(key)) ? 'correct' : 'wrong')
       : null;
-  const suggestedQuality: ReviewQuality | null = answerVerdict === 'correct' ? 3 : answerVerdict === 'wrong' ? 0 : null;
+  const suggestedQuality: ReviewQuality | null = answerVerdict === 'correct' ? REVIEW_RATING_QUALITY.good : answerVerdict === 'wrong' ? REVIEW_RATING_QUALITY.again : null;
   const userAnswer = selectedKeys.length > 0 ? [...selectedKeys].sort().join('') : draftAnswer.trim() || undefined;
   const toggleOption = useCallback((key: string) => {
     setSelectedKeys((prev) => {
@@ -671,13 +653,13 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
 
       // 答案已显示：1-4 评分（映射 Again/Hard/Good/Easy）；
       // 空格/回车 = 建议评分（作答可判对错时），否则良好（Anki 同款高频路径：一路空格过卡）
-      const qualityByKey: Record<string, ReviewQuality> = { '1': 0, '2': 2, '3': 3, '4': 5 };
+      const qualityByKey = REVIEW_QUALITY_BY_KEY;
       if (e.key in qualityByKey) {
         e.preventDefault();
         void handleRate(qualityByKey[e.key]);
       } else if (e.key === ' ' || e.key === 'Enter') {
         e.preventDefault();
-        void handleRate(suggestedQuality ?? 3);
+        void handleRate(suggestedQuality ?? REVIEW_RATING_QUALITY.good);
       }
     };
 
@@ -723,16 +705,6 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Anki 式预估间隔标签："1天 / 6天 / 2周 / 3个月"
-  const formatIntervalLabel = useCallback(
-    (days: number): string => {
-      if (days < 7) return t('review:estimate.days', { count: days });
-      if (days < 30) return t('review:estimate.weeks', { count: Math.max(1, Math.round(days / 7)) });
-      if (days < 365) return t('review:estimate.months', { count: Math.max(1, Math.round(days / 30)) });
-      return t('review:estimate.years', { count: Math.max(1, Math.round(days / 365)) });
-    },
-    [t]
-  );
 
   // ★ 多窗口隔离：全局会话属于另一个题目集时显示内联提示，不接管该会话
   if (belongsToOtherExam) {
@@ -817,12 +789,8 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
   const structuredAnswer = question ? renderStructuredAnswer(question, t) : null;
 
   // 四档评分的预估间隔（当前题的 plan 参数变化时重算）
-  const intervalPreview: Record<'again' | 'hard' | 'good' | 'easy', string> = {
-    again: formatIntervalLabel(previewNextInterval(0, plan)),
-    hard: formatIntervalLabel(previewNextInterval(2, plan)),
-    good: formatIntervalLabel(previewNextInterval(3, plan)),
-    easy: formatIntervalLabel(previewNextInterval(5, plan)),
-  };
+  // FSRS 预演由后端随计划返回：「1分钟 / 6分钟 / 10分钟 / 3天」（D2）
+  const intervalPreview = reviewIntervalLabels(t, plan);
 
   return (
     <div className={cn('flex flex-col h-full bg-background', className)}>
@@ -1075,44 +1043,44 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
             )}
             <div className="grid grid-cols-4 gap-2">
               <RatingButton
-                quality={0}
+                quality={REVIEW_RATING_QUALITY.again}
                 label={t('review:rating.again')}
                 sublabel={intervalPreview.again}
                 icon={<SmileySad size={18} />}
                 color="border-destructive/50 bg-destructive/5 text-destructive hover:bg-destructive/10 hover:border-destructive"
-                onClick={() => handleRate(0)}
+                onClick={() => handleRate(REVIEW_RATING_QUALITY.again)}
                 disabled={isProcessing}
                 shortcutKey="1"
-                suggested={suggestedQuality === 0}
+                suggested={suggestedQuality === REVIEW_RATING_QUALITY.again}
               />
               <RatingButton
-                quality={2}
+                quality={REVIEW_RATING_QUALITY.hard}
                 label={t('review:rating.hard')}
                 sublabel={intervalPreview.hard}
                 icon={<Smiley size={18} />}
                 color="border-warning/50 bg-warning/5 text-warning hover:bg-warning/10 hover:border-warning"
-                onClick={() => handleRate(2)}
+                onClick={() => handleRate(REVIEW_RATING_QUALITY.hard)}
                 disabled={isProcessing}
                 shortcutKey="2"
               />
               <RatingButton
-                quality={3}
+                quality={REVIEW_RATING_QUALITY.good}
                 label={t('review:rating.good')}
                 sublabel={intervalPreview.good}
                 icon={<CheckCircle size={18} />}
                 color="border-success/50 bg-success/5 text-success hover:bg-success/10 hover:border-success"
-                onClick={() => handleRate(3)}
+                onClick={() => handleRate(REVIEW_RATING_QUALITY.good)}
                 disabled={isProcessing}
                 shortcutKey="3"
-                suggested={suggestedQuality === 3}
+                suggested={suggestedQuality === REVIEW_RATING_QUALITY.good}
               />
               <RatingButton
-                quality={5}
+                quality={REVIEW_RATING_QUALITY.easy}
                 label={t('review:rating.easy')}
                 sublabel={intervalPreview.easy}
                 icon={<Lightning size={18} />}
                 color="border-info/50 bg-info/5 text-info hover:bg-info/10 hover:border-info"
-                onClick={() => handleRate(5)}
+                onClick={() => handleRate(REVIEW_RATING_QUALITY.easy)}
                 disabled={isProcessing}
                 shortcutKey="4"
               />

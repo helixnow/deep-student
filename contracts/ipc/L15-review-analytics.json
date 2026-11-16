@@ -6853,6 +6853,9 @@
         },
         "updated_at": {
           "type": "string"
+        },
+        "rating_previews": {
+          "$ref": "#/$defs/ReviewPlanRatingPreviews"
         }
       },
       "required": [
@@ -6874,6 +6877,49 @@
       ],
       "additionalProperties": false,
       "x-rust": "dstu_vfs::vfs::repos::review_plan_repo::ReviewPlan"
+    },
+    "ReviewPlanRatingPreview": {
+      "type": "object",
+      "description": "FSRS interval preview for one rating button (Node host addition, UX audit D2).",
+      "properties": {
+        "interval_minutes": {
+          "type": "number",
+          "x-float": "f64"
+        },
+        "next_review_date": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "interval_minutes",
+        "next_review_date"
+      ],
+      "additionalProperties": false
+    },
+    "ReviewPlanRatingPreviews": {
+      "type": "object",
+      "description": "FSRS interval previews for the again / hard / good / easy buttons (Node host addition, UX audit D2).",
+      "properties": {
+        "again": {
+          "$ref": "#/$defs/ReviewPlanRatingPreview"
+        },
+        "hard": {
+          "$ref": "#/$defs/ReviewPlanRatingPreview"
+        },
+        "good": {
+          "$ref": "#/$defs/ReviewPlanRatingPreview"
+        },
+        "easy": {
+          "$ref": "#/$defs/ReviewPlanRatingPreview"
+        }
+      },
+      "required": [
+        "again",
+        "hard",
+        "good",
+        "easy"
+      ],
+      "additionalProperties": false
     },
     "ReviewPlanStatus": {
       "type": "string",

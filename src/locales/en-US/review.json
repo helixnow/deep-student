@@ -67,6 +67,8 @@
   },
 
   "estimate": {
+    "minutes": "{{count}}m",
+    "hours": "{{count}}h",
     "days": "{{count}}d",
     "weeks": "{{count}}w",
     "months": "{{count}}mo",

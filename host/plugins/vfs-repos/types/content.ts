@@ -457,6 +457,19 @@ export interface ReviewPlan {
   last_review_date: string | null; status: ReviewPlanStatus; total_reviews: number;
   total_correct: number; consecutive_failures: number; is_difficult: boolean;
   created_at: string; updated_at: string;
+  /** 四档评分的 FSRS 预演（只由复习服务按需附上，仓储读出的行没有这一项）。 */
+  rating_previews?: ReviewPlanRatingPreviews;
+}
+export interface ReviewPlanRatingPreview { interval_minutes: number; next_review_date: string }
+export interface ReviewPlanRatingPreviews {
+  again: ReviewPlanRatingPreview; hard: ReviewPlanRatingPreview;
+  good: ReviewPlanRatingPreview; easy: ReviewPlanRatingPreview;
+}
+/** review_plans 的 FSRS 状态列（V20261115）。phase 为 null = SM-2 遗留行，下次评分时惰性换算。 */
+export interface ReviewPlanFsrsState {
+  stability: number | null; difficulty: number | null;
+  phase: 'new' | 'learning' | 'review' | 'relearning' | null;
+  learning_step: number; lapses: number; due_at: number | null; last_review_at: number | null;
 }
 export interface ReviewHistory {
   id: string; plan_id: string; question_id: string; quality: number; passed: boolean;
@@ -472,6 +485,8 @@ export interface UpdateReviewPlanParams {
   next_review_date: string; last_review_date: string; status: ReviewPlanStatus;
   total_reviews: number; total_correct: number; consecutive_failures: number;
   is_difficult: boolean; expected_updated_at: string;
+  /** 同一条 UPDATE 写入的 FSRS 状态；不传则不动这些列。 */
+  fsrs?: ReviewPlanFsrsState;
 }
 export interface CalendarHeatmapData { date: string; count: number; passed: number; failed: number }
 export interface RecordReviewHistoryParams {
@@ -499,6 +514,8 @@ export interface ReviewPlanRepository {
   listDueReviews(conn: SqlExecutor, filter: DueReviewsFilter): DueReviewsResult;
   listPlansByExam(conn: SqlExecutor, examId: string, limit?: number | null, offset?: number | null): DueReviewsResult;
   updatePlan(conn: SqlExecutor, planId: string, params: UpdateReviewPlanParams): ReviewPlan;
+  /** 批量读取 FSRS 状态（不存在的 id 不出现在结果里）。旧的测试替身可以不实现。 */
+  getFsrsStates?(conn: SqlExecutor, planIds: readonly string[]): Map<string, ReviewPlanFsrsState>;
   suspendPlan(conn: SqlExecutor, planId: string): ReviewPlan;
   suspendPlanIfUnchanged(conn: SqlExecutor, planId: string, expectedUpdatedAt: string): ReviewPlan;
   resumePlan(conn: SqlExecutor, planId: string): ReviewPlan;

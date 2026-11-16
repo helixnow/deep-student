@@ -75,7 +75,7 @@ describe('ReviewSession — answer before revealing', () => {
     expect(screen.getByTestId('review-verdict').textContent).toContain('答对了');
     expect(screen.getByRole('button', { name: /良好/ })).toHaveAttribute('data-suggested', 'true');
     fireEvent.click(screen.getByRole('button', { name: /良好/ }));
-    expect(submitReview).toHaveBeenCalledWith(3, 'AC');
+    expect(submitReview).toHaveBeenCalledWith(4, 'AC');
   });
 
   it('lets other question types jot an answer first and shows it next to the reference answer', () => {
@@ -85,7 +85,7 @@ describe('ReviewSession — answer before revealing', () => {
     reveal();
     expect(screen.getByTestId('review-your-answer').textContent).toContain('物体保持静止或匀速直线运动');
     fireEvent.click(screen.getByRole('button', { name: /困难/ }));
-    expect(submitReview).toHaveBeenCalledWith(2, '物体保持静止或匀速直线运动');
+    expect(submitReview).toHaveBeenCalledWith(3, '物体保持静止或匀速直线运动');
   });
 
   it('never judges sentence-style answers against option keys', () => {

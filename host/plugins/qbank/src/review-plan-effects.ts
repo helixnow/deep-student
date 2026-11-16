@@ -49,14 +49,18 @@ export function ensureReviewPlan(host: ReviewPlanHost, questionId: string, examI
 export function advanceDueReviewPlan(host: ReviewPlanHost, questionId: string): void {
   const review = host.reviewPlan;
   if (review === undefined) return;
-  let plan: { id: string; next_review_date: string } | null;
+  let plan: { id: string; next_review_date: string; last_review_date?: string | null } | null;
   try {
     // Rust `if let Ok(Some(plan))`：查询失败静默跳过，只告警推进失败。
     plan = review.getPlanByQuestion(questionId);
   } catch {
     return;
   }
-  if (plan === null || plan.next_review_date > localDate()) return;
+  const today = localDate();
+  if (plan === null || plan.next_review_date > today) return;
+  // D2（FSRS）：评过分的题可能因学习步（1 / 10 分钟）当天仍到期；同一天已复习过就不再用练习重复推进，
+  // 否则冲刺结算 / 复习会话之后的同题练习会把一次回忆记成两次。
+  if (plan.last_review_date === today) return;
   try {
     review.advanceFromPractice(plan.id);
   } catch (error) {

@@ -753,6 +753,17 @@ export const V20261111_STUDY_SPACE_PROFILES_AND_MOUNTS: MigrationDefSpec = {
   idempotent: true,
 };
 
+export const V20261115_REVIEW_PLANS_FSRS: MigrationDefSpec = {
+  refineryVersion: 20261115,
+  name: 'review_plans_fsrs',
+  file: 'vfs/V20261115__review_plans_fsrs.sql',
+  expectedColumns: [
+    ['review_plans', 'fsrs_stability'], ['review_plans', 'fsrs_difficulty'], ['review_plans', 'fsrs_phase'],
+    ['review_plans', 'fsrs_learning_step'], ['review_plans', 'fsrs_lapses'], ['review_plans', 'fsrs_due_at'],
+    ['review_plans', 'fsrs_last_review_at'],
+  ],
+};
+
 export const VFS_MIGRATIONS: readonly MigrationDefSpec[] = [
   V20260130_INIT,
   V20260131_CHANGE_LOG,
@@ -826,6 +837,7 @@ export const VFS_MIGRATIONS: readonly MigrationDefSpec[] = [
   V20261023_QUESTION_AUTHORING_V2,
   V20261027_PRACTICE_SESSIONS,
   V20261111_STUDY_SPACE_PROFILES_AND_MOUNTS,
+  V20261115_REVIEW_PLANS_FSRS,
 ];
 
 export const VFS_SCHEMA_VERSION: number = VFS_MIGRATIONS[VFS_MIGRATIONS.length - 1]!.refineryVersion;

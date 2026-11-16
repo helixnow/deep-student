@@ -1128,6 +1128,14 @@
       "path": "vfs/V20261111__study_space_profiles_and_mounts.sql",
       "sha256": "b7b175d069304f7885c3f6aa57aec1cc702c683ab6c9de6bc8dae6458904be63",
       "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20261115,
+      "name": "review_plans_fsrs",
+      "path": "vfs/V20261115__review_plans_fsrs.sql",
+      "sha256": "483b242fbf76ded1755644dbb0c6ad9391a91f73af1b32f5d7407a2614faa7d1",
+      "dangers": []
     }
   ]
 }
