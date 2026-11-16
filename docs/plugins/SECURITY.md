@@ -78,7 +78,7 @@ installer 的四个方法每次调用都同时核对注入授权及当前执行 
 | 智能体自己改源码（`write_source` / `validate`） | 智能体（medium） | 只接受用户点过「开始做」的作品；宿主生成期间拒绝，不再中断它 |
 | 安装（`install`） | 只有配对的工坊 UI | 卡片上的「安装」，绑定显示的候选版本 |
 
-实现：`host/plugins/plugin-workshop/src/tools.ts`（`needsUserStart`）、`src/operations.ts`（`create`）。回归：
+实现：`host/plugins/plugin-workshop/src/tools.ts`（`needsUserStart`）、`host/plugins/plugin-workshop/src/operations.ts`（`create`）。回归：
 `host/plugins/plugin-workshop/tests/card-consent-settings.test.ts`、`tests/autonomous.test.ts`、`tests/tools.test.ts`。
 
 ## 4. UI 半

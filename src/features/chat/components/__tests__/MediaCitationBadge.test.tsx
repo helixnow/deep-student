@@ -22,17 +22,18 @@ describe('MediaCitationBadge', () => {
     expect(invokeMock).toHaveBeenCalledWith('dstu_get', { path: '/file_1' });
   });
 
-  it('dispatches media-ref:open with resourceId and seconds on click', async () => {
+  it('dispatches media-ref:open with the resource, timestamp, and citing window', async () => {
     invokeMock.mockResolvedValue(null);
     const listener = vi.fn();
     document.addEventListener('media-ref:open', listener);
-    render(<MediaCitationBadge resourceId="file_2" seconds={65} />);
+    render(<div data-window-id="win_chat"><MediaCitationBadge resourceId="file_2" seconds={65} /></div>);
     fireEvent.click(screen.getByRole('button'));
     document.removeEventListener('media-ref:open', listener);
     expect(listener).toHaveBeenCalledTimes(1);
     expect((listener.mock.calls[0][0] as CustomEvent).detail).toEqual({
       resourceId: 'file_2',
       seconds: 65,
+      sourceWindowId: 'win_chat',
     });
   });
 });

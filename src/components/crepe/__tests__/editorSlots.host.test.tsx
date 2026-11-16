@@ -181,8 +181,8 @@ it('builds the slash menu from the live slot, so open editors pick up community 
   } }));
   const withCommunity = slashMenuKeys(record);
   expect(withCommunity).toEqual([
-    ...official.map(([key, items]) => [key, key === 'text' ? [...items, 'stamp'] : items]),
-    ['community', ['note']],
+    ...official.map(([key, items]) => [key, key === 'text' ? [...items, 'example.slash:stamp'] : items]),
+    ['example.slash:community', ['example.slash:note']],
   ]);
 
   await unload(k, 'example.slash');

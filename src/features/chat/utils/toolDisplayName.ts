@@ -1,5 +1,6 @@
 import i18nInstance from '@/i18n';
 import { getToolDisplayNameKey } from '@/mcp/builtinMcpServer';
+import { pluginAgentToolLocalName, pluginAgentToolTitle } from '@/ui-kernel/services/plugin-tools';
 
 type TranslateFn = (key: string, options?: Record<string, unknown>) => string;
 
@@ -374,8 +375,15 @@ export function getReadableToolName(
   options: ToolDisplayNameOptions = {},
 ): string {
   const source = options.source ?? 'auto';
+  const pluginTitle = pluginAgentToolTitle(toolName);
+  if (pluginTitle) return pluginTitle;
   if (source === 'external' || (source === 'auto' && isExternalToolName(toolName))) {
     return getExternalToolDisplayName(toolName, options);
+  }
+
+  const localToolName = pluginAgentToolLocalName(toolName);
+  if (localToolName) {
+    return isChineseLocale(t) ? humanizeToolNameZh(localToolName) : humanizeToolName(localToolName);
   }
 
   const displayNameKey = resolveToolDisplayNameKey(toolName);

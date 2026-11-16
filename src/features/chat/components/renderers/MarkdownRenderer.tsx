@@ -1,3 +1,4 @@
+import { resolveSourceWindowId } from '@/utils/sourceWindowId';
 import React, { useMemo, useEffect, useCallback, useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ImageBroken } from '@phosphor-icons/react';
@@ -620,6 +621,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
           detail: {
             sourceId: sourceId || undefined,
             pageNumber,
+            sourceWindowId: resolveSourceWindowId(target),
           },
         }));
       }

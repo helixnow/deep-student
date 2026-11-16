@@ -243,7 +243,7 @@ it('RF-W18-selection-toolbar-contributions B2: toolbar callbacks are attributed 
   ], builder, { options: {} }, report);
   const groups = builder.build();
   expect(groups.map(group => group.key)).toEqual(['formatting']);
-  expect(groups[0].items.map(item => item.key)).toEqual(['bold', 'throws']);
+  expect(groups[0].items.map(item => item.key)).toEqual(['bold', 'example.callbacks:throws']);
   expect(groups[0].items[0].onRun).toBe(officialRun);
   const item = groups[0].items[1];
   expect(() => item.onRun({})).not.toThrow();
@@ -304,7 +304,7 @@ it('merges community selection-toolbar entries by order and drops them on unload
   expect(toolbarGroups(first.options)).toEqual([
     { key: 'formatting', items: ['bold', 'italic'] },
     { key: 'function', items: ['code', 'link'] },
-    { key: 'community', items: ['stamp'] },
+    { key: 'example.toolbar:community', items: ['example.toolbar:stamp'] },
     { key: 'host-actions', items: ['add-to-chat'] },
   ]);
 
