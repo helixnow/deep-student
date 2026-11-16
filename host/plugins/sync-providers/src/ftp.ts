@@ -457,10 +457,19 @@ class FtpSession {
     try {
       if (data.error) throw data.error;
       awaitingReply = true;
-      const reply = await this.control.command(command);
+      const verb = command.split(' ')[0];
+      const reply = await withTimeout(
+        this.control.command(command),
+        FTP_DATA_TIMEOUT_MS,
+        `FTP ${verb} 等待传输初始响应超时（${Math.round(FTP_DATA_TIMEOUT_MS / 1000)} 秒）`,
+      ).catch((error: unknown) => {
+        // A pending transfer reply makes this control session unsafe to reuse.
+        this.control.destroy(error instanceof Error ? error : undefined);
+        throw error;
+      });
       if (data.error) throw data.error;
       if (reply.code !== 125 && reply.code !== 150) {
-        throw new CloudStorageError('FileSystem', `FTP ${command.split(' ')[0]} 失败：Invalid response: [${reply.code}] ${reply.text}`);
+        throw new CloudStorageError('FileSystem', `FTP ${verb} 失败：Invalid response: [${reply.code}] ${reply.text}`);
       }
     } catch (error) {
       socket.destroy();

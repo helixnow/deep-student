@@ -3,9 +3,10 @@ import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CloudStorageError } from '../src/errors.ts';
 import {
+  FTP_DATA_TIMEOUT_MS,
   FTP_LIST_MAX_DIRS,
   FtpStorage,
   absolutePath,
@@ -450,6 +451,34 @@ describe('ftp.rs', () => {
       expect(await storage.getRange('pack.bin', 1, 2)).toEqual(new Uint8Array([98, 99]));
       expect((await storage.list('')).map(file => file.key)).toEqual(['pack.bin']);
     });
+
+  it('retries on a fresh session when data ends without a transfer reply', async () => {
+    const command = 'RETR pack.bin';
+    let notifyDataEnd!: () => void;
+    const fin = new Promise<void>(resolve => { notifyDataEnd = resolve; });
+    let firstAttempt = true;
+    const { server, host, port } = await spawnFakeFtp({
+      files: { '/deep-student-sync/pack.bin': 'abcd' },
+      endDataWithoutReply: line => {
+        if (line !== command || !firstAttempt) return undefined;
+        firstAttempt = false;
+        return notifyDataEnd;
+      },
+    });
+    ftpServers.push(server);
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const result = expect(fakeStorage({ host, port }).get('pack.bin')).resolves.toEqual(new Uint8Array([97, 98, 99, 100]));
+      await fin;
+      await vi.advanceTimersByTimeAsync(FTP_DATA_TIMEOUT_MS + 1_000);
+      await result;
+      expect(server.commands.filter(line => line === command)).toHaveLength(2);
+      expect(server.commands.filter(line => line.startsWith('USER '))).toHaveLength(2);
+      expect(server.commands.filter(line => line === 'QUIT')).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 
   it('budget_is_rejected_before_the_data_channel_is_opened', async () => {
     const { server, host, port } = await spawnFakeFtp({
