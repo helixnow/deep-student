@@ -31,6 +31,14 @@
       "cardinality": "list",
       "entries": []
     },
+    "chat.composer.commands": {
+      "cardinality": "list",
+      "entries": []
+    },
+    "chat.message.actions": {
+      "cardinality": "list",
+      "entries": []
+    },
     "chat.toolResults": {
       "cardinality": "keyed",
       "entries": []
@@ -48,6 +56,10 @@
       "entries": []
     },
     "debug.panels": {
+      "cardinality": "list",
+      "entries": []
+    },
+    "desktop.widgets": {
       "cardinality": "list",
       "entries": []
     },
@@ -553,6 +565,10 @@
           }
         }
       ]
+    },
+    "pdf.selectionToolbar": {
+      "cardinality": "list",
+      "entries": []
     },
     "resource.contextMenu": {
       "cardinality": "list",
@@ -1434,6 +1450,10 @@
           }
         }
       ]
+    },
+    "review.cardActions": {
+      "cardinality": "list",
+      "entries": []
     },
     "settings.sections": {
       "cardinality": "keyed",
@@ -2389,6 +2409,14 @@
           }
         }
       ]
+    },
+    "statusbar.items": {
+      "cardinality": "list",
+      "entries": []
+    },
+    "theme.variants": {
+      "cardinality": "list",
+      "entries": []
     },
     "views": {
       "cardinality": "keyed",

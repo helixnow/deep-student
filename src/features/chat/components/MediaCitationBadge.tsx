@@ -6,6 +6,7 @@
  * 文件名经 dstu_get 解析并做模块级缓存（同一回答里多处引用同一资源只查一次）。
  */
 
+import { resolveSourceWindowId } from '@/utils/sourceWindowId';
 import React, { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
@@ -73,7 +74,7 @@ export const MediaCitationBadge: React.FC<MediaCitationBadgeProps> = ({
     (e: React.MouseEvent) => {
       e.preventDefault();
       e.stopPropagation();
-      dispatchOpenMediaRef(resourceId, seconds);
+      dispatchOpenMediaRef(resourceId, seconds, resolveSourceWindowId(e.currentTarget));
     },
     [resourceId, seconds],
   );
