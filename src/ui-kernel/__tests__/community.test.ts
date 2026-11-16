@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { defineUiPlugin, UiKernel } from '../kernel';
-import { resolveCommunityPluginUrl, startCommunityUiPlugins, type CommunityUiBridge } from '../community';
+import { COMMUNITY_SHARED_MODULES, resolveCommunityPluginUrl, startCommunityUiPlugins, type CommunityUiBridge } from '../community';
 import type { UiManifestEntry } from '../loader';
 
 const recorded = vi.hoisted(() => ({ shared: vi.fn(), sdk: vi.fn(), steps: [] as string[] }));
@@ -69,7 +69,7 @@ describe('production community UI boot channel', () => {
     await flush();
     expect(kernel.slots.list('nav').map((e) => e.owner)).toEqual(['community.test']);
     expect(recorded.steps).toEqual(['shared', 'ds-plugin://community.test/ui.js']);
-    expect(Object.keys(recorded.shared.mock.calls[0][0])).toEqual(['react', 'react-dom', '@deepstudent/ui', 'i18next']);
+    expect(Object.keys(recorded.shared.mock.calls[0][0])).toEqual([...COMMUNITY_SHARED_MODULES]);
     changed([]);
     await vi.waitFor(() => expect(kernel.slots.list('nav')).toEqual([]), { timeout: 10000 });
     changed([entry]);

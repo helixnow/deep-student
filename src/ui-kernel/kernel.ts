@@ -10,6 +10,7 @@
  * 插件定义与适配接口在 plugin.ts，`ctx.ui`（UiService）在 ui-service.ts；这里是内核本身（安装、跳过、卸载、Host 对账）
  * 和对外的统一导出。
  */
+import { createElement } from 'react';
 import { Context } from '@deepseek-ai/cordis';
 import { SlotStore, type UiPluginOrigin } from './slots';
 import { currentUiBuild, normalizeUiPluginMeta, pluginNamespace, requiredHostPlugins, UiPluginDependencyError, UiPluginMetaError, type NormalizedUiPluginMeta, type UiBuildKind, type UiPlatformKind } from './meta';
@@ -26,6 +27,7 @@ import { AnchorRegistry } from './services/anchors';
 import { ExcerptDndHub } from './services/excerpt-dnd';
 import type { UiAdapters, UiKernelRegistries, UiPlugin, UiPluginInstallOptions, UiPluginOwner } from './plugin';
 import { UiService } from './ui-service';
+import { UiKernelProvider } from './react';
 export type { UiPluginOrigin } from './slots';
 export type { LazyContributionPoint } from './lazy';
 export type { UiChatBlock, UiChatEventHandler, UiChatMode, UiCommand, UiWorkbenchApp } from './contracts/registries';
@@ -227,6 +229,7 @@ export class UiKernel {
       scopeOf: (ctx) => this.scopeOf(ctx),
       callerOf: (ctx) => this.nearest(ctx, (fiber) => this.halfFiber.get(fiber) ?? this.fiberOwner.get(fiber)?.id),
       pair: (ctx, half) => this.pairHalf(ctx, half),
+      provide: (children) => createElement(UiKernelProvider, { kernel: this, children }),
       skippedSlotOwner: (slot) => this.skippedSlots.get(slot),
       dropContribution: (contributor, slot, owner) => this.dropContribution(contributor, slot, owner),
     });

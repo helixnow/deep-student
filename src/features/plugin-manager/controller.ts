@@ -1,7 +1,8 @@
 /**
  * 插件管理页的状态容器：把 {@link PluginManagerAdapter}（Host 命令，W01 接线）与 React 视图隔开。
  *
- * - 所有动作都是“请求 → 等 Host 结果 → 重新拉清单”，不做乐观更新（同意、启停、卸载、保存配置都一样）。
+ * - 所有动作都是“请求 → 等 Host 结果 → 重新拉清单”；清单里的 `enabled`/`runtime` 只来自 Host，从不本地改写。
+ *   唯一的例外是开关本身：拨动后先按用户意图显示（`pendingEnabled`），Host 拒绝或失败就退回 Host 的值。
  * - `enabled` 与 `runtime` 永远分开存：已启用不代表正在运行，UI 必须各显示各的。
  * - `CONSENT_REQUIRED` 不是普通错误：结果里带着必须原样展示的 ID/版本/权限，确认后写账本并重载。
  * - 配置保存带 revision；冲突时保留表单内容并标记冲突，不静默覆盖。
@@ -56,6 +57,11 @@ export interface PluginManagerState {
   readonly error: PluginManagerError | null;
   /** 正在进行的动作键：插件 id、`consent`、`package` 等。 */
   readonly busy: readonly string[];
+  /**
+   * 正在向 Host 提交的开关意图（插件 id → 目标值）。只给开关用：状态文案与 `plugins[].enabled` 仍是 Host 的值；
+   * 请求结束（成功、失败或被拒绝）就移除，开关回到 Host 报告的状态。
+   */
+  readonly pendingEnabled: Readonly<Record<string, boolean>>;
   /** 待用户确认的同意请求；非空时必须展示弹窗，不能后台自动确认。 */
   readonly consent: PluginConsentSubject | null;
   readonly consentBusy: boolean;
@@ -70,6 +76,7 @@ const INITIAL_STATE: PluginManagerState = Object.freeze({
   plugins: [],
   error: null,
   busy: [],
+  pendingEnabled: Object.freeze({}),
   consent: null,
   consentBusy: false,
   config: null,
@@ -139,12 +146,26 @@ export class PluginManagerController {
 
   async setEnabled(id: string, enabled: boolean): Promise<void> {
     await this.withBusy(pluginBusyKey(id), async () => {
-      const result = await this._adapter.setEnabled(id, enabled);
-      if (result.ok) {
-        await this.refresh();
-        this.patch({ notice: { kind: 'enabled-changed', pluginId: id, enabled } });
+      const target = this._state.plugins.find((plugin) => plugin.id === id);
+      // 启用一个 Host 还没确认同意的社区插件，结果多半是同意弹窗：这时不抢先拨开关。
+      const predictable = !enabled || target?.origin === 'builtin' || target?.consent === 'granted';
+      if (target && target.enabled !== enabled && predictable) {
+        this.patch({ pendingEnabled: { ...this._state.pendingEnabled, [id]: enabled } });
       }
-      else this.applyOperationFailure(result);
+      try {
+        const result = await this._adapter.setEnabled(id, enabled);
+        if (result.ok) {
+          await this.refresh();
+          this.patch({ notice: { kind: 'enabled-changed', pluginId: id, enabled } });
+        }
+        else this.applyOperationFailure(result);
+      } finally {
+        if (id in this._state.pendingEnabled) {
+          const pendingEnabled = { ...this._state.pendingEnabled };
+          delete pendingEnabled[id];
+          this.patch({ pendingEnabled });
+        }
+      }
     });
   }
 

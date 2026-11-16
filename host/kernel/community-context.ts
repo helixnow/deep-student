@@ -5,7 +5,12 @@ import { PluginLoadError } from './plugin-load-error.ts';
 
 const INTERNALS = new Set(['root', 'registry', 'fiber', 'runtime', 'scope', 'parent', 'ctx', 'store', 'props', '_getImpl', '_kernel', 'plugin', 'inject']);
 
-export function communityContext(context: Context, kernel: KernelState, id: string): Context {
+/**
+ * @param mayGet — which service names `ctx.get` / `ctx.reflect.get` may return to this plugin. The runtime passes the
+ *   plugin's `inject` list, its `service:*` permissions and its own services for ordinary community plugins, so
+ *   reaching a service by name honours the same declaration as injecting it. Omitted: no name filter.
+ */
+export function communityContext(context: Context, kernel: KernelState, id: string, mayGet?: (name: string) => boolean): Context {
   const execute = <T>(callback: () => T): T => kernel.execution ? kernel.execution.run(context.fiber, callback) : callback();
   const callback = (fn: (...args: any[]) => any) => function (this: unknown, ...args: any[]) {
     const result = execute(() => fn.apply(this, args));
@@ -43,6 +48,9 @@ export function communityContext(context: Context, kernel: KernelState, id: stri
   };
   const lookup = (name: string, strict?: boolean) => {
     check(name, `ctx.get(${JSON.stringify(name)})`);
+    if (mayGet && !mayGet(name)) {
+      throw new PluginLoadError('PERMISSION_UNDECLARED', id, `ctx.get(${JSON.stringify(name)}) needs "${name}" in inject and "service:${name}" in deepStudent.permissions`);
+    }
     return service(context.get(name, strict), `ctx.${name}`);
   };
   const reflect = new Proxy(Object.create(null), {
@@ -64,7 +72,7 @@ export function communityContext(context: Context, kernel: KernelState, id: stri
         return context.provide(name, owned);
       };
       if (key === 'extend' || key === 'isolate' || key === 'intercept') {
-        return (...args: unknown[]) => communityContext((context[key] as (...args: unknown[]) => Context).apply(context, args), kernel, id);
+        return (...args: unknown[]) => communityContext((context[key] as (...args: unknown[]) => Context).apply(context, args), kernel, id, mayGet);
       }
       const member = Reflect.get(context, key, context);
       if (key === 'on' || key === 'once' || key === 'emit' || key === 'parallel' || key === 'serial' || key === 'waterfall' || key === 'bail') {

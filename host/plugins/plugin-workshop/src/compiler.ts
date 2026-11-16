@@ -4,16 +4,21 @@ import { join, resolve, relative, isAbsolute, dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { checkManifest, checkPluginModule, type PluginManifest } from '../../../kernel/manifest.ts';
+import { declaredCapabilities, detectPlaces } from './declared.ts';
+import { detectUse, SHARED_UI_MODULES } from './detect.ts';
 import { HostRuntime } from '../../../kernel/runtime.ts';
 import { ContractSet } from '../../../kernel/contract-set.ts';
 import type { AppInfo, HostPlugin } from '../../../kernel/api.ts';
-import type { WorkshopCheck } from '../api.ts';
+import type { WorkshopCheck, WorkshopPlace } from '../api.ts';
 import type { Plugin } from 'esbuild';
 import type { WorkshopSelfCheckContext } from '../../../kernel/plugin-admin.ts';
+import { pluginServiceName } from '../../../kernel/plugin-id.ts';
+import type {} from '../../../kernel/plugin-agent-tools.ts';
 
-export const uiExternals = ['react', 'react-dom', '@deepstudent/ui', 'i18next'] as const;
+/** The app's shared UI modules (import map); kept as imports in dist/ui.js. */
+export const uiExternals = SHARED_UI_MODULES;
 /** Resolve only source files. No npm resolution, tsconfig discovery or filesystem-backed externals. */
-async function sourceBoundary(source: string, ui: boolean): Promise<Plugin> {
+async function sourceBoundary(source: string, ui: boolean, sealed = false): Promise<Plugin> {
   const root = await realpath(source);
   const contained = (file: string) => {
     const rel = relative(root, file);
@@ -25,6 +30,7 @@ async function sourceBoundary(source: string, ui: boolean): Promise<Plugin> {
     api.onResolve({ filter: /.*/ }, async args => {
       const bare = !args.path.startsWith('.') && !isAbsolute(args.path);
       if (args.kind !== 'entry-point' && bare) {
+        if (sealed) throw new Error(`WORKSHOP_INVALID: a plugin that declares agentTools cannot import modules ("${args.path}"); network access is tool.fetch (net:<host> permission), the model is ctx.pluginModel (service:pluginModel)`);
         if (!ui || (uiExternals as readonly string[]).includes(args.path)) return { path: args.path, external: true };
         throw new Error(`Unsupported shared UI module: ${args.path}`);
       }
@@ -76,7 +82,35 @@ export async function sourceFiles(root: string): Promise<string[]> {
   await walk(root);
   return files;
 }
-export interface WorkshopBuild { check: WorkshopCheck; directory: string; sourceDirectory: string; manifest: PluginManifest | null; }
+export interface WorkshopBuild {
+  check: WorkshopCheck; directory: string; sourceDirectory: string; manifest: PluginManifest | null;
+  /** Host-derived, plain-language capability lines of this candidate (set by the lifecycle check). */
+  declared?: string[];
+  /** Where the user finds it once installed (set by the lifecycle check). */
+  places?: WorkshopPlace[];
+}
+
+/**
+ * Free globals a Host half that declares agentTools may not reference. Such a plugin runs when the model decides,
+ * so everything it reaches must be something the user saw at confirmation: its declared services, and
+ * `tool.fetch` for its declared hosts. esbuild `define` rewrites only unbound references (not properties, strings
+ * or shadowing locals), which is exactly the set to refuse. This is a misuse guard for generated code, not a
+ * sandbox: installed plugins still run in the application process (docs/plugins/SECURITY.md).
+ */
+export const sealedHostGlobals = ['fetch', 'XMLHttpRequest', 'WebSocket', 'EventSource', 'process', 'require', 'module',
+  'globalThis', 'global', 'eval', 'Function', 'WebAssembly', 'Worker', 'Deno', 'Bun'] as const;
+const SEALED_MARK = '__dstu_sealed_global_';
+function sealedGlobalProblems(code: string): string[] {
+  const used = new Set<string>();
+  for (const match of code.matchAll(new RegExp(`${SEALED_MARK}([A-Za-z]+)`, 'g'))) used.add(match[1]!);
+  const problems = [...used].map(name => `WORKSHOP_INVALID: a plugin that declares agentTools cannot use the global "${name}"; use tool.fetch for declared hosts and injected services for everything else`);
+  if (/\bimport\s*\(/.test(code) || code.includes('import.meta')) {
+    problems.push('WORKSHOP_INVALID: a plugin that declares agentTools cannot use dynamic import() or import.meta');
+  }
+  return problems;
+}
+
+export { declaredCapabilities } from './declared.ts';
 export interface WorkshopManifestDefaults {
   displayName?: string;
   description?: string;
@@ -114,9 +148,15 @@ export async function compileWorkshop(
     if (!manifest.host) throw new Error('WORKSHOP_INVALID: Host entry required');
     check.manifest = 'passed';
     await mkdir(join(directory, 'dist'), { recursive: true });
+    const sealed = (manifest.agentTools?.length ?? 0) > 0;
     await build({ entryPoints: [managedRelative(source, manifest.host)], outfile: join(directory, 'dist/host.js'),
       bundle: true, format: 'esm', platform: 'node', target: 'node24', packages: 'external', logLevel: 'silent',
-      tsconfigRaw: {}, plugins: [await sourceBoundary(source, false)] });
+      ...(sealed ? { define: Object.fromEntries(sealedHostGlobals.map(name => [name, `${SEALED_MARK}${name}`])) } : {}),
+      tsconfigRaw: {}, plugins: [await sourceBoundary(source, false, sealed)] });
+    if (sealed) {
+      const problems = sealedGlobalProblems(await readFile(join(directory, 'dist/host.js'), 'utf8'));
+      if (problems.length) throw new Error(problems.join('\n'));
+    }
     if (manifest.ui) await build({ entryPoints: [managedRelative(source, manifest.ui)], outfile: join(directory, 'dist/ui.js'),
       bundle: true, format: 'esm', platform: 'browser', target: 'es2022', external: [...uiExternals],
       jsx: 'transform', jsxFactory: 'React.createElement', jsxFragment: 'React.Fragment', logLevel: 'silent',
@@ -134,8 +174,16 @@ export async function compileWorkshop(
   return { check, directory, sourceDirectory: source, manifest };
 }
 /** Detached, read-only service facades: validation never calls live service methods. */
+/**
+ * Registration calls a plugin makes in apply that only record intent (a scheduled job): during validation they get a
+ * no-op disposer, so a plugin that schedules itself passes the self-check without anything being scheduled.
+ */
+const SELF_CHECK_REGISTRATIONS: Readonly<Record<string, readonly string[]>> = {
+  pluginSchedule: ['register', 'daily', 'weekly', 'every', 'onStartup'],
+};
 function selfCheckServices(services: Record<string, unknown>): Record<string, unknown> {
   const seen = new WeakMap<object, object>();
+  const registered = (): (() => void) => () => {};
   const denied = (): never => { throw new Error('WORKSHOP_SELF_CHECK_READ_ONLY: live service operations are disabled during validation'); };
   const isolate = (value: unknown): unknown => {
     if (typeof value === 'function') return denied;
@@ -160,7 +208,13 @@ function selfCheckServices(services: Record<string, unknown>): Record<string, un
     seen.set(value, facade);
     return facade;
   };
-  return Object.fromEntries(Object.entries(services).map(([name, service]) => [name, isolate(service)]));
+  return Object.fromEntries(Object.entries(services).map(([name, service]) => {
+    const registrations = SELF_CHECK_REGISTRATIONS[name];
+    if (!registrations || service === null || typeof service !== 'object') return [name, isolate(service)];
+    const facade = isolate(service) as object;
+    return [name, new Proxy(facade, { get: (target, key) => typeof key === 'string' && registrations.includes(key)
+      && typeof (service as Record<string, unknown>)[key] === 'function' ? registered : Reflect.get(target, key) })];
+  }));
 }
 
 /** Real kernel lifecycle with read-only service facades. Not a code sandbox. */
@@ -177,7 +231,8 @@ export async function checkWorkshopLifecycle(result: WorkshopBuild, app: AppInfo
     const pkg = JSON.parse(await readFile(join(directory, 'package.json'), 'utf8'));
     const screened = checkManifest(pkg, { appVersion: app.version, context: 'community-install', platform: 'desktop', expectedId: manifest.id });
     if (!screened.ok) throw screened.error;
-    if (screened.manifest.version !== manifest.version || JSON.stringify(screened.manifest.permissions) !== JSON.stringify(manifest.permissions)) {
+    if (screened.manifest.version !== manifest.version || JSON.stringify(screened.manifest.permissions) !== JSON.stringify(manifest.permissions)
+      || JSON.stringify(screened.manifest.agentTools ?? []) !== JSON.stringify(manifest.agentTools ?? [])) {
       throw new Error('WORKSHOP_INVALID: candidate subject changed after confirmation');
     }
     // Node 24 require(ESM) loads the actual built file, not Vite's development module graph.
@@ -197,7 +252,22 @@ export async function checkWorkshopLifecycle(result: WorkshopBuild, app: AppInfo
     const services = selfCheckServices(environment.services);
     for (const name of names) runtime.ctx.provide(name, services[name]);
     await runtime.installEntry({ plugin, packageRoot: directory, manifest: effectiveManifest });
+    // Every declared agent tool needs its handler on the primary service; the handlers themselves are not called.
+    const declaredTools = manifest.agentTools ?? [];
+    if (declaredTools.length) {
+      const offered = new Set((runtime.ctx.get('pluginAgentTools')?.list() ?? []).map(tool => tool.name));
+      const missingTools = declaredTools.filter(tool => !offered.has(tool.name)).map(tool => tool.name);
+      if (missingTools.length) {
+        throw new Error(`WORKSHOP_INVALID: agentTools ${missingTools.map(name => `"${name}"`).join(', ')} need a method of the same name on the primary service "${pluginServiceName(manifest.id)}" (listed in meta.provides)`);
+      }
+    }
     await runtime.unload(manifest.id);
+    let uiBundle: string | undefined;
+    if (manifest.ui) { try { uiBundle = await readFile(managedRelative(directory, manifest.ui), 'utf8'); } catch { uiBundle = undefined; } }
+    // The card's lines: the manifest and inject list, plus what the built code itself uses (information only).
+    const hostBundle = await readFile(managedRelative(directory, manifest.host), 'utf8');
+    result.declared = declaredCapabilities(manifest, names, detectUse({ host: hostBundle, ui: uiBundle }, names));
+    result.places = detectPlaces(manifest, uiBundle);
     check.lifecycle = 'passed';
     check.ok = true;
   } catch (error) {

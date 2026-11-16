@@ -130,6 +130,10 @@
       "module": "../plugins/notes/index.ts"
     },
     {
+      "id": "dstu.plugin-services",
+      "module": "../plugins/plugin-services/index.ts"
+    },
+    {
       "id": "dstu.plugin-workshop",
       "module": "../plugins/plugin-workshop/index.ts"
     },

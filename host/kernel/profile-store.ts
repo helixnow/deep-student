@@ -7,12 +7,14 @@
  * 不覆盖别人（或另一个窗口）刚写入的条目。
  *
  * 原子性：同目录临时文件 + fsync + rename；写失败保留原文件。同一进程内的写入按解析后的路径串行。
+ * Windows：读者（库存刷新、工坊卡片轮询）正打开着 profile 时 rename 替换会 EPERM，按 RF-W07 的策略退避重试。
  * 位置与格式由 `profile.ts` 决定（`extends: "official"`、条目字段），本模块不另写一份 schema。
  */
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, open, readFile, rename, unlink } from 'node:fs/promises';
+import { mkdir, open, readFile, unlink } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { validateProfileFile, type ProfileEntry, type ProfileFile } from './profile.ts';
+import { renameWithRetry } from '../platform/util/durable-fs.ts';
 
 /** 用户 profile 不存在时的修订号（首次写入的 CAS 期望值）。 */
 export const ABSENT_PROFILE_REVISION = 'no-user-profile';
@@ -115,7 +117,9 @@ export class UserProfileStore {
       } finally {
         await file.close();
       }
-      await rename(temporary, this.path);
+      // RUST-FIX(RF-W07-windows-rename-retry): a concurrent read of the profile holds it open on Windows; without the
+      // retry a plain 停用/启用 failed with PROFILE_WRITE_FAILED (EPERM) while the manager or a workshop card refreshed.
+      await renameWithRetry(temporary, this.path);
     } catch (error) {
       throw new ProfileStoreError(`cannot write user profile ${this.path}: ${(error as Error).message}`, { cause: error });
     } finally {

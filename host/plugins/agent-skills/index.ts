@@ -38,6 +38,7 @@ import { SkillMarketInstallToolExecutor, SkillMarketReadToolExecutor, type Skill
 import { WorkbenchChatToolExecutor, workbenchGateEnvironment } from './src/tools/workbench-chat-executor.ts';
 import { ConnectorChatToolExecutor } from './src/tools/connector-chat-executor.ts';
 import { FetchChatToolExecutor } from './src/tools/fetch-chat-executor.ts';
+import { PluginAgentToolExecutor } from './src/tools/plugin-tool-executor.ts';
 import { SkillInstallChatToolExecutor } from './src/tools/skill-install-chat-executor.ts';
 import { SkillLifecycleChatToolExecutor } from './src/tools/skill-lifecycle-chat-executor.ts';
 import type { FeatureFlagsService } from '../../platform/storage/api.ts';
@@ -254,6 +255,12 @@ export default definePlugin({
     // `admitted_tool_dispatcher`; script calls stay under central admission.
     // `SkillWorkshopExecutor` is the App roster entry from `pipeline/roster.rs:72`.
     tooling.registerToolExecutors([
+      // Tools declared by community / workshop plugins (manifest `agentTools`); the list is read from the kernel per call.
+      new PluginAgentToolExecutor({
+        tools: () => ctx.get('pluginAgentTools') ?? null,
+        http: () => (ctx.get('http') as HttpService | undefined) ?? null,
+        warn: message => ctx.logger.warn(message),
+      }),
       new PtcToolExecutor({
         logger: ctx.logger,
         nativeStarlark: () => {

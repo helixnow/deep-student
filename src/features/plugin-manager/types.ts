@@ -53,10 +53,21 @@ export interface ManagedPlugin {
   readonly degraded?: PluginDegradedState;
   /** 同意账本状态；`required` 时在行内提示需要同意。 */
   readonly consent?: PluginConsentState;
+  /** 同意对不上时 Host 给的原因：从没同意过（`missing`），或权限 / 内容 / 版本变了。 */
+  readonly consentReason?: 'missing' | 'version' | 'permissions' | 'content';
   /** Host 是否有可编辑的 Config schema；缺省视为未知（仍尝试读取）。 */
   readonly configurable?: boolean;
   /** 插件自带的一句话说明（可选）。 */
   readonly description?: string;
+  /**
+   * 正在使用它的服务的其他插件 id（Host 的真实依赖数据）。非空表示停用会被 Host 拒绝：
+   * 管理页把它显示为锁定的基础服务，而不是一个点了必然报错的开关。
+   */
+  readonly requiredBy?: readonly string[];
+  /** 已知的贡献点名称（`agent.tools`、`views`、`editor.selectionToolbar` …）；与 UI 内核的槽位归属合并后展示。 */
+  readonly contributes?: readonly string[];
+  /** 清单声明的智能体工具（给用户看的标题）。 */
+  readonly agentTools?: readonly { readonly name: string; readonly title: string }[];
 }
 
 /** `list()` 的返回值：一次完整的已安装清单 + 当前平台。 */
@@ -164,7 +175,8 @@ export type PluginPackageResult =
  * Host 适配器（W01 实现）。每个方法对应一个用户意图，命令名、参数与返回值映射都留在实现里；
  * UI 不点名任何命令，因此命令 SHA 发布后只需替换这个对象的实现。
  *
- * 约定：只有成功时才 resolve `{ ok: true }`；任何失败都返回结果对象或 reject，UI 都不做乐观更新。
+ * 约定：只有成功时才 resolve `{ ok: true }`；任何失败都返回结果对象或 reject。UI 不改写清单数据，
+ * 只有开关在等待结果时先显示用户意图，失败即退回。
  */
 export interface PluginManagerAdapter {
   /** 官方 + 社区已安装插件清单（含真实运行状态、平台与降级原因）。 */

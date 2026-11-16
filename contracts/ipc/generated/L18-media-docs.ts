@@ -151,6 +151,30 @@ export type MediaCheckpoint = {
   attemptCount: number;
   isCorrect: boolean | null;
 };
+/** MediaCompanionAnswer */
+export type MediaCompanionAnswer = {
+  requestId: string;
+  resourceId: string;
+  answer: string;
+  model: string;
+  coverage: "full" | "excerpt";
+  usedSegments: number;
+  totalSegments: number;
+  finishReason: string | null;
+  interrupted: boolean;
+};
+/** MediaCompanionAskDelta */
+export type MediaCompanionAskDelta = {
+  requestId: string;
+  resourceId: string;
+  seq: number;
+  delta: string;
+};
+/** MediaCompanionTurn */
+export type MediaCompanionTurn = {
+  role: "user" | "assistant";
+  content: string;
+};
 /** dstu_media::media::library::MediaLibraryItem */
 export type MediaLibraryItem = {
   id: string;
@@ -202,6 +226,20 @@ export type MediaRelatedNote = {
   title: string;
   createdAt: number;
   updatedAt: number;
+};
+/** MediaStudyCard */
+export type MediaStudyCard = {
+  id: string;
+  front: string;
+  back: string;
+  seconds: number | null;
+  createdAt: string;
+};
+/** MediaStudyCardList */
+export type MediaStudyCardList = {
+  resourceId: string;
+  total: number;
+  cards: MediaStudyCard[];
 };
 /** dstu_media::media::ledger::MediaStudyLedger */
 export type MediaStudyLedger = {
@@ -746,6 +784,26 @@ export interface Commands {
     result: MediaCheckpoint[];
     error: string;
   };
+  /** host/plugins/media/src/register-companion.ts */
+  media_companion_ask: {
+    args: {
+      resourceId: string;
+      question: string;
+      requestId: string;
+      history?: MediaCompanionTurn[] | null;
+      positionSec?: number | null;
+    };
+    result: MediaCompanionAnswer;
+    error: string;
+  };
+  /** host/plugins/media/src/register-companion.ts */
+  media_companion_cancel: {
+    args: {
+      requestId: string;
+    };
+    result: null;
+    error: string;
+  };
   /** crates/dstu-media/src/media/library.rs:410 `media_library_list` */
   media_library_list: {
     args: {
@@ -780,6 +838,16 @@ export interface Commands {
       resourceId: string;
     };
     result: MediaRelatedNote[];
+    error: string;
+  };
+  /** host/plugins/media/src/register-companion.ts */
+  media_study_cards: {
+    args: {
+      resourceId: string;
+      limit?: number | null;
+      offset?: number | null;
+    };
+    result: MediaStudyCardList;
     error: string;
   };
   /** src/media/ledger.rs:27 `media_study_ledger` */
@@ -1101,6 +1169,7 @@ export interface Events {
     attempt: number;
     message: string;
   };
+  "media_companion_ask_delta": MediaCompanionAskDelta;
   "pdf-annotations:changed": {
     textbook_id: string;
     resource_path: string;
@@ -1224,6 +1293,10 @@ export type MediaChaptersCommandArgs = Commands['media_chapters']['args'];
 export type MediaChaptersCommandResult = Commands['media_chapters']['result'];
 export type MediaCheckpointsCommandArgs = Commands['media_checkpoints']['args'];
 export type MediaCheckpointsCommandResult = Commands['media_checkpoints']['result'];
+export type MediaCompanionAskCommandArgs = Commands['media_companion_ask']['args'];
+export type MediaCompanionAskCommandResult = Commands['media_companion_ask']['result'];
+export type MediaCompanionCancelCommandArgs = Commands['media_companion_cancel']['args'];
+export type MediaCompanionCancelCommandResult = Commands['media_companion_cancel']['result'];
 export type MediaLibraryListCommandArgs = Commands['media_library_list']['args'];
 export type MediaLibraryListCommandResult = Commands['media_library_list']['result'];
 export type MediaProgressGetCommandArgs = Commands['media_progress_get']['args'];
@@ -1232,6 +1305,8 @@ export type MediaProgressSetCommandArgs = Commands['media_progress_set']['args']
 export type MediaProgressSetCommandResult = Commands['media_progress_set']['result'];
 export type MediaRelatedNotesCommandArgs = Commands['media_related_notes']['args'];
 export type MediaRelatedNotesCommandResult = Commands['media_related_notes']['result'];
+export type MediaStudyCardsCommandArgs = Commands['media_study_cards']['args'];
+export type MediaStudyCardsCommandResult = Commands['media_study_cards']['result'];
 export type MediaStudyLedgerCommandArgs = Commands['media_study_ledger']['args'];
 export type MediaStudyLedgerCommandResult = Commands['media_study_ledger']['result'];
 export type MediaTranscribeCancelCommandArgs = Commands['media_transcribe_cancel']['args'];

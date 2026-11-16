@@ -22,6 +22,8 @@ Crepe 的浮条只在编辑器初始化时构建一次（`CrepeEditor.tsx` 约 1
 export interface SelectionToolbarItem {
   label: string;
   icon: string;
+  /** 追加：true 时宿主在图标后显示 label 文字并统一尺寸（见下文“带文字的按钮”）。 */
+  showLabel?: boolean;
   active?: (ctx: Ctx) => boolean;
   onRun?: (ctx: Ctx) => void;
 }
@@ -49,6 +51,13 @@ export interface EditorSelectionToolbarContribution {
 | `toolbar:host-actions` | 20 | `selectionActionsRef` 非空时追加 `host-actions` 分组（“更多”） |
 
 社区条目的 order 落在 10 和 20 之间时，它的分组排在“更多”之前。这只在有社区条目时出现，官方顺序不变。
+
+带文字的按钮（`showLabel: true`）：Crepe 只渲染 `button.toolbar-item[data-toolbar-item][aria-label][title]` 加
+`span.milkdown-icon`（icon 经 DOMPurify 后作 innerHTML），没有文字位。宿主在 `adaptSelectionToolbar`
+（`ui-plugins/official/editor/editorSlots.ts` `labelledToolbarIcon`）把 icon 换成
+`span.crepe-toolbar-labelled[data-toolbar-label=<key>] > span.crepe-toolbar-labelled__icon[aria-hidden] + span.crepe-toolbar-labelled__text`，
+`showLabel` 本身不传给 Crepe；`CrepeEditor.css` 以 `.toolbar-item:has(.crepe-toolbar-labelled)` 放宽按钮（auto 宽、
+上限 168px、文字省略号、图标 14px、触屏 ≥44px）。不设 `showLabel` 的条目与之前完全相同。
 
 ## 2. `editor.blockMenu`（块菜单）
 

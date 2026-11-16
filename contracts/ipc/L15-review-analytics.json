@@ -4328,6 +4328,12 @@
           ],
           "x-option": "null"
         },
+        "averageCurve": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/FsrsAverageCurvePoint"
+          }
+        },
         "trueRetention": {
           "$ref": "#/$defs/FsrsTrueRetention"
         }
@@ -5287,6 +5293,26 @@
       ],
       "additionalProperties": false,
       "x-rust": "dstu_anki::fsrs_review_service::FsrsSuspendResult"
+    },
+    "FsrsAverageCurvePoint": {
+      "type": "object",
+      "properties": {
+        "days": {
+          "type": "integer",
+          "x-int": "u32",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "retention": {
+          "type": "number",
+          "x-float": "f64"
+        }
+      },
+      "required": [
+        "days",
+        "retention"
+      ],
+      "additionalProperties": false
     },
     "FsrsTrueRetention": {
       "type": "object",

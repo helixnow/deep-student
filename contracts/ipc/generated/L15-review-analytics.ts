@@ -212,6 +212,7 @@ export type FsrsMemoryOverview = {
   recent: FsrsMemoryCard[];
   memorizedCount: number;
   averageRetrievability: number | null;
+  averageCurve?: FsrsAverageCurvePoint[];
   trueRetention: FsrsTrueRetention;
 };
 /** dstu_anki::fsrs_review_service::FsrsMemoryReview */
@@ -380,6 +381,11 @@ export type FsrsStats = {
 export type FsrsSuspendResult = {
   state: FsrsCardState;
   changed: boolean;
+};
+/** FsrsAverageCurvePoint */
+export type FsrsAverageCurvePoint = {
+  days: number;
+  retention: number;
 };
 /** dstu_anki::fsrs_review_service::FsrsTrueRetention */
 export type FsrsTrueRetention = {

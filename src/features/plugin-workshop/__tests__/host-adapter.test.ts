@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { HostWorkshopAdapter, workshopItem, type WorkshopCard, type WorkshopRemote } from '../host-adapter';
+import { HostWorkshopAdapter, workshopCapabilities, workshopCardView, workshopInstallation, workshopItem, type WorkshopCard, type WorkshopRemote } from '../host-adapter';
 import { openWorkshopSession } from '../session';
 
 const card: WorkshopCard = {
@@ -42,9 +42,28 @@ describe('P3 wire adapter contract (transport double, not Host E2E)', () => {
     const { adapter, remote, manager } = fixture();
     vi.mocked(remote.list).mockResolvedValue([{ ...card, state: 'installed' }]);
     expect((await adapter.list())[0].phase).toBe('disabled');
-    await adapter.act('try', workshopItem({ ...card, state: 'installed' }));
+    await adapter.act('try', workshopItem({ ...card, state: 'installed' }, false));
     expect(manager.setEnabled).toHaveBeenCalledWith(card.pluginId, true);
     expect((await adapter.act('export', workshopItem(card))).exportPath).toBe('/managed/one.dstuplugin');
+  });
+  it('启用/停用 survives a profile written elsewhere since the port last read it (one resend after its refresh)', async () => {
+    const { adapter, remote, manager } = fixture();
+    vi.mocked(remote.list).mockResolvedValue([{ ...card, state: 'installed' }]);
+    vi.mocked(remote.status).mockResolvedValue({ ...card, state: 'installed' });
+    manager.setEnabled
+      .mockResolvedValueOnce({ ok: false, code: 'PROFILE_CONFLICT', detail: 'PROFILE_CONFLICT: profile changed since revision "a"' })
+      .mockResolvedValueOnce({ ok: true });
+    await adapter.act('try', workshopItem({ ...card, state: 'installed' }, false));
+    expect(manager.setEnabled.mock.calls).toEqual([[card.pluginId, true], [card.pluginId, true]]);
+    // Any other refusal (and a second conflict) still reaches the user.
+    manager.setEnabled.mockReset();
+    manager.setEnabled.mockResolvedValue({ ok: false, code: 'PROFILE_CONFLICT', detail: 'PROFILE_CONFLICT: again' });
+    await expect(adapter.act('disable', workshopItem({ ...card, state: 'installed' }, true))).rejects.toThrow('PROFILE_CONFLICT: again');
+    expect(manager.setEnabled).toHaveBeenCalledTimes(2);
+    manager.setEnabled.mockReset();
+    manager.setEnabled.mockResolvedValue({ ok: false, code: 'CONSENT_REQUIRED', detail: 'CONSENT_REQUIRED: x' });
+    await expect(adapter.act('try', workshopItem({ ...card, state: 'installed' }, false))).rejects.toThrow('CONSENT_REQUIRED: x');
+    expect(manager.setEnabled).toHaveBeenCalledTimes(1);
   });
   it('propagates stale confirmations instead of silently retrying with a new revision', async () => {
     const { adapter, remote } = fixture();
@@ -53,8 +72,46 @@ describe('P3 wire adapter contract (transport double, not Host E2E)', () => {
     expect(remote.install).toHaveBeenCalledTimes(1);
     expect(remote.status).not.toHaveBeenCalled();
   });
+  it('an installed work the manager no longer lists is 已卸载 (never offers 打开); a running one only opens on 试', async () => {
+    const { adapter, remote, manager } = fixture();
+    vi.mocked(remote.list).mockResolvedValue([{ ...card, state: 'installed', version: '1.0.0' }]);
+    vi.mocked(manager.list).mockResolvedValue({ plugins: [] });
+    expect((await adapter.list())[0].phase).toBe('undone');
+    const opened = vi.fn();
+    const running = new HostWorkshopAdapter(remote, { list: vi.fn().mockResolvedValue({ plugins: [{ id: card.pluginId, enabled: true }] }), setEnabled: vi.fn() }, opened);
+    vi.mocked(remote.status).mockResolvedValue({ ...card, state: 'installed', version: '1.0.0', places: [{ kind: 'selectionButton' }] });
+    await running.act('try', workshopItem({ ...card, state: 'installed', places: [{ kind: 'selectionButton' }] }, true));
+    expect(opened).toHaveBeenCalledWith(card.pluginId, { kind: 'selectionButton' });
+  });
+  it('maps progress to 正在做 / 正在自己检查 / 发现问题，正在修（第 n 次）', () => {
+    expect(workshopItem({ ...card, state: 'generating' }).progress).toEqual({ stage: 'making' });
+    expect(workshopItem({ ...card, state: 'generating', buildStage: 'checking' }).progress).toEqual({ stage: 'checking' });
+    expect(workshopItem({ ...card, state: 'generating', buildAttempt: 1, error: 'WORKSHOP_INVALID: x', buildStage: 'making' }).progress).toEqual({ stage: 'fixing', attempt: 2 });
+    expect(workshopItem({ ...card, state: 'pending-confirmation' }).progress).toBeUndefined();
+  });
+  it('places: Host places win; before a build the recipe expectation is marked 预计; an old built learning tool is an app', () => {
+    // Unbuilt and no expectation (older record): no guessed line.
+    expect(workshopItem(card).places).toBeUndefined();
+    expect(workshopItem({ ...card, state: 'installed', version: '1.0.0' }).places).toEqual([{ kind: 'app', title: '单词' }]);
+    const expected = workshopItem({ ...card, expectedPlaces: [{ kind: 'selectionButton' }] });
+    expect(expected).toMatchObject({ places: [{ kind: 'selectionButton' }], placesExpected: true });
+    expect(workshopItem({ ...card, expectedPlaces: [] }).places).toBeUndefined();
+    expect(workshopItem({ ...card, template: 'host-tool' }).places).toBeUndefined();
+    expect(workshopItem({ ...card, places: [{ kind: 'agentTool', title: '查课表' }] }).places).toEqual([{ kind: 'agentTool', title: '查课表' }]);
+  });
   it('does not infer rollback from the mere presence of an older version', () => {
     expect(workshopItem({ ...card, state: 'failed', previousVersion: '1' }).rollback).toBeUndefined();
+  });
+  it('lists what the Host read from the candidate before the Agent\'s own wording, each line once', () => {
+    // Before a build passed there is nothing Host-derived to show.
+    expect(workshopItem(card).capabilities).toEqual(['service:notes']);
+    const staged = workshopItem({ ...card, state: 'pending-confirmation', version: '1.0.0',
+      capabilities: ['让 AI 助手学会新本事「查课表」', ' 读取你订阅的教务日历（只读） ', ''],
+      declared: ['让 AI 助手学会新本事「查课表」', '联网读取 calendar.example.edu.cn（只读，仅限这个域名）'] });
+    expect(staged.capabilities).toEqual([
+      '让 AI 助手学会新本事「查课表」', '联网读取 calendar.example.edu.cn（只读，仅限这个域名）', '读取你订阅的教务日历（只读）',
+    ]);
+    expect(workshopCapabilities({ capabilities: [], declared: ['用当前对话模型生成文字'] })).toEqual(['用当前对话模型生成文字']);
   });
 });
 
@@ -71,7 +128,7 @@ describe('workshop session entry', () => {
   });
   it('shows skill readiness failure and keeps the new session reachable', async () => {
     const port = { bindSession: vi.fn().mockResolvedValue(undefined), create: vi.fn().mockResolvedValue({ id: 'new-session' }), activateSkill: vi.fn().mockResolvedValue(false), navigate: vi.fn() };
-    await expect(openWorkshopSession(port)).rejects.toThrow('技能未就绪');
+    await expect(openWorkshopSession(port)).rejects.toThrow('WORKSHOP_SKILL_MISSING');
     expect(port.navigate).toHaveBeenCalledWith('new-session');
   });
   it('does not activate or navigate when the precise edit binding is stale', async () => {
@@ -79,5 +136,118 @@ describe('workshop session entry', () => {
     await expect(openWorkshopSession(port, { pluginId: 'workshop.one', workshopId: 'work-1', version: '2', revision: 7 })).rejects.toThrow('WORKSHOP_CONFLICT');
     expect(port.activateSkill).not.toHaveBeenCalled();
     expect(port.navigate).not.toHaveBeenCalled();
+  });
+});
+
+describe('progress, honest states and the background result (transport double)', () => {
+  it('maps Host progress to files written, the check step and the repair round', () => {
+    const generating = { ...card, state: 'generating' as const };
+    expect(workshopItem({ ...generating, buildStage: 'making', buildFiles: ['package.json'] }).progress).toEqual({ stage: 'making', files: ['package.json'] });
+    expect(workshopItem({ ...generating, buildStage: 'checking', buildStep: 'link' }).progress).toEqual({ stage: 'checking', step: 'link' });
+    expect(workshopItem({ ...generating, buildStage: 'checking', buildStep: 'load', buildAttempt: 1, error: 'x' }).progress).toEqual({ stage: 'checking', step: 'load' });
+    expect(workshopItem({ ...generating, buildStage: 'making', buildAttempt: 1, error: 'x' }).progress).toEqual({ stage: 'fixing', attempt: 2 });
+  });
+  it('shows a started work the Agent is editing as 「AI 正在改」 (no 开始做), and falls back when the edit is stale', () => {
+    expect(workshopItem({ ...card, state: 'failed', agentEditing: new Date().toISOString() }).phase).toBe('editing');
+    expect(workshopItem({ ...card, state: 'failed', agentEditing: new Date(Date.now() - 60 * 60_000).toISOString() }).phase).toBe('failed');
+    expect(workshopItem({ ...card, state: 'pending-confirmation', agentEditing: new Date().toISOString() }).phase).toBe('ready');
+  });
+  it('sends the values entered on the card with 开始做 and reports the finished generation once, even with no card on screen', async () => {
+    vi.useFakeTimers();
+    try {
+      const { remote, manager } = fixture();
+      const onFinished = vi.fn();
+      const adapter = new HostWorkshopAdapter(remote, manager, undefined, onFinished);
+      vi.mocked(remote.status).mockResolvedValueOnce({ ...card, state: 'generating' }).mockResolvedValueOnce({ ...card, state: 'generating' })
+        .mockResolvedValue({ ...card, state: 'pending-confirmation', version: '1.0.0' });
+      await adapter.act('confirm', workshopItem(card), { calendarUrl: 'https://jw.school.edu.cn/a.ics' });
+      expect(remote.create).toHaveBeenCalledWith('work-1', 3, { calendarUrl: 'https://jw.school.edu.cn/a.ics' });
+      await vi.advanceTimersByTimeAsync(6000);
+      expect(onFinished).toHaveBeenCalledTimes(1);
+      expect(onFinished.mock.calls[0]![0]).toMatchObject({ phase: 'ready', name: '单词' });
+    } finally { vi.useRealTimers(); }
+  });
+  it('polls faster while a work is being made', async () => {
+    vi.useFakeTimers();
+    try {
+      const { remote, adapter } = fixture();
+      vi.mocked(remote.list).mockResolvedValue([{ ...card, state: 'generating' }]);
+      await adapter.list();
+      const listener = vi.fn();
+      const stop = adapter.subscribe(listener);
+      await vi.advanceTimersByTimeAsync(1300);
+      expect(listener).toHaveBeenCalledTimes(2);
+      stop();
+    } finally { vi.useRealTimers(); }
+  });
+});
+
+describe('installed version apart from the proposal (F3)', () => {
+  const installedV1 = { ...card, state: 'installed' as const, version: '1.0.0', revision: 5, proposalRevision: 1,
+    installation: { state: 'installed' as const, version: '1.0.0', previousVersion: null }, usableVersion: '1.0.0' };
+  // The AI proposed v2 at revision 6 and the user turned it down.
+  const cancelledV2 = { ...installedV1, state: 'cancelled' as const, version: null, previousVersion: '1.0.0', revision: 7, proposalRevision: 6 };
+
+  it('turning down v2 leaves the old v1 card installed, says 不要了 only on the v2 card, and lists v1 as installed', () => {
+    const item = workshopItem(cancelledV2, true, undefined, true);
+    expect(item.phase).toBe('installed');
+    expect(item.installed).toEqual({ phase: 'installed', version: '1.0.0' });
+    // The v1 card (made at revision 1) still shows the installed plugin.
+    expect(workshopCardView(item, 1)).toMatchObject({ phase: 'installed', version: '1.0.0' });
+    expect(workshopCardView(item, 1).elsewhere).toBeUndefined();
+    // The v2 card says it was turned down.
+    expect(workshopCardView(item, 6).phase).toBe('cancelled');
+  });
+
+  it('while v2 waits, the v1 card stays installed with one line about it; the v2 card shows the proposal', () => {
+    const proposed = workshopItem({ ...cancelledV2, state: 'draft' }, true, undefined, true);
+    expect(proposed.phase).toBe('proposed');
+    expect(workshopCardView(proposed, 1)).toMatchObject({ phase: 'installed', elsewhere: 'proposed' });
+    expect(workshopCardView(proposed, 6)).toMatchObject({ phase: 'proposed', installed: { phase: 'installed', version: '1.0.0' } });
+  });
+
+  it('uninstall acts on the installed version even after a modification was turned down', async () => {
+    const { adapter, remote } = fixture();
+    vi.mocked(remote.status).mockResolvedValue({ ...cancelledV2, state: 'revoked', installation: { state: 'revoked', version: '1.0.0' } });
+    await adapter.act('undo', workshopCardView(workshopItem(cancelledV2, true), 1));
+    expect(remote.revoke).toHaveBeenCalledWith('work-1', 7);
+  });
+
+  it('records from before the split derive the installed version from the last running one', () => {
+    const legacy = { ...card, state: 'cancelled' as const, version: null, usableVersion: '1.0.0', revision: 9 };
+    expect(workshopInstallation(legacy)).toEqual({ state: 'installed', version: '1.0.0', previousVersion: null });
+    // No proposal revision known: a turned-down change never turns an old card into 不要了.
+    expect(workshopCardView(workshopItem(legacy, true), 3).phase).toBe('installed');
+  });
+});
+
+describe('export (F4/F16) and the shared poll (F11)', () => {
+  it('offers the save dialog with the readable name; cancel exports nothing visible; no dialog keeps the Host file', async () => {
+    const { remote, manager } = fixture();
+    vi.mocked(remote.export).mockResolvedValue({ id: 'work-1', version: '1.0.0', path: '/managed/单词-v1.0.0.dstuplugin', fileName: '单词-v1.0.0.dstuplugin' });
+    const save = vi.fn().mockResolvedValueOnce('D:/桌面/单词-v1.0.0.dstuplugin').mockResolvedValueOnce(null).mockRejectedValueOnce(new Error('no dialog'));
+    const adapter = new HostWorkshopAdapter(remote, manager, undefined, undefined, { save, reveal: vi.fn() });
+    const installed = workshopItem({ ...card, state: 'installed', version: '1.0.0' });
+    expect((await adapter.act('export', installed)).exportPath).toBe('D:/桌面/单词-v1.0.0.dstuplugin');
+    expect(save).toHaveBeenCalledWith('/managed/单词-v1.0.0.dstuplugin', '单词-v1.0.0.dstuplugin');
+    expect((await adapter.act('export', installed)).exportPath).toBeUndefined();
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect((await adapter.act('export', installed)).exportPath).toBe('/managed/单词-v1.0.0.dstuplugin');
+    expect(adapter.reveal).toBeTypeOf('function');
+  });
+
+  it('many cards share one timer and one Host read per tick', async () => {
+    vi.useFakeTimers();
+    try {
+      const { remote, adapter } = fixture();
+      const listeners = Array.from({ length: 5 }, () => vi.fn(() => { void adapter.list(); }));
+      const stops = listeners.map(listener => adapter.subscribe(listener));
+      await vi.advanceTimersByTimeAsync(2100);
+      expect(listeners.every(listener => listener.mock.calls.length === 1)).toBe(true);
+      expect(remote.list).toHaveBeenCalledTimes(1);
+      stops.forEach(stop => stop());
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(remote.list).toHaveBeenCalledTimes(1);
+    } finally { vi.useRealTimers(); }
   });
 });

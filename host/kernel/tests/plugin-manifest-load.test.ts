@@ -203,7 +203,7 @@ describe('W01 plugin manifest v1 at startup', () => {
     runtime.ctx.provide('log', {});
     const result = await loadProfile(runtime, await profile([OFFICIAL, undeclared, unknownKind, implicit]), { platform: 'desktop' });
     expect(result.degraded).toEqual([
-      { id: 'alice.network', reason: 'PERMISSION_UNKNOWN_KIND: unknown permission kind in "network:example.com" (v1 only knows "service")' },
+      { id: 'alice.network', reason: 'PERMISSION_UNKNOWN_KIND: unknown permission kind in "network:example.com" (v1 knows "service", "net", "agent")' },
       { id: 'alice.sneaky', reason: 'PERMISSION_UNDECLARED: injects "manifestOfficial" without declaring "service:manifestOfficial" in deepStudent.permissions' },
     ]);
     expect(result.installed.map(p => p.id)).toEqual(['fixture.manifest-official', 'alice.logger']);
