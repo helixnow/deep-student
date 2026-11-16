@@ -10,6 +10,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.20.4](https://github.com/helixnow/deep-student/compare/v0.20.3...v0.20.4) (2026-11-16)
+
+
+### Features
+
+* **plugins:** port plugin services and workshop lifecycle ([20b60c2](https://github.com/helixnow/deep-student/commit/20b60c2ecf7c316c9e1b6f1806aa165456172a1b))
+* **review:** port FSRS question review plans ([ccdda39](https://github.com/helixnow/deep-student/commit/ccdda39dcabb521fa232e85d11722f6ad977b2b8))
+* **workshop:** port proposal details, editing and plugin data controls ([bc833db](https://github.com/helixnow/deep-student/commit/bc833db794c7ddb065e75bfd57fe9fe4430159b8))
+
+
+### Bug Fixes
+
+* **android:** avoid duplicate mobile command registrations ([b3543d3](https://github.com/helixnow/deep-student/commit/b3543d3206fe905068e70b3ccb0ca3327800837b))
+* **android:** port mobile bridge and OPFS file commands ([648ff46](https://github.com/helixnow/deep-student/commit/648ff465ee4877888425812579d5a63717f5267c))
+* **ftp:** confirm ambiguous SIZE failures with MLST ([a4071cb](https://github.com/helixnow/deep-student/commit/a4071cb4a5f18992f9145eb1badf7bc6f9a7c4cd))
+* **ftp:** fail safely on ambiguous replies and data resets ([8cb9f31](https://github.com/helixnow/deep-student/commit/8cb9f316626870d340aa8a98c805d9ebf3bbc769))
+* **ftp:** handle missing objects during bounded retrieval ([9df77cb](https://github.com/helixnow/deep-student/commit/9df77cb98ad2a8fe7cc58076828601b03435ce09))
+* **ftp:** time out waiting for transfer reply ([2d2831f](https://github.com/helixnow/deep-student/commit/2d2831fc30a7a462b7707eb58f36af65a77efb49))
+* **review:** honor FSRS due times and mixed-client sync ([08929c5](https://github.com/helixnow/deep-student/commit/08929c5dc7d278e1cad351fdae8c736ae6a0c484))
+* **review:** keep synced schedules atomic across offline ratings ([835a90c](https://github.com/helixnow/deep-student/commit/835a90cb2d71fe87b90fbbcc1f29736691eaa911))
+* **sync:** apply new reviews while legacy history is unavailable ([0077555](https://github.com/helixnow/deep-student/commit/0077555815cfa84569e90e565d0826a519c62702))
+* **sync:** preserve review history and recover legacy schedules ([2ff1898](https://github.com/helixnow/deep-student/commit/2ff18989315816c2504ed61276252f5dda8a0e4d))
+* **sync:** preserve review plan identity through offline deletes ([3e7dacf](https://github.com/helixnow/deep-student/commit/3e7dacf719fd37283c3d1e79e13a33695ddee06e))
+* **sync:** reconcile offline review plans for the same question ([7f10920](https://github.com/helixnow/deep-student/commit/7f10920b45f0072421ac5e0b8a6710dca680c37a))
+* **ui:** complete plugin and workbench integration ([652ec34](https://github.com/helixnow/deep-student/commit/652ec3469c9d99951d7c0f4821b18a51fc023ad3))
+* **workshop:** preserve activation state on profile conflicts ([8d56727](https://github.com/helixnow/deep-student/commit/8d567270cbb84f455d23ef3425db4702d7da6e32))
+
 ## [0.20.3](https://github.com/helixnow/deep-student/compare/v0.20.2...v0.20.3) (2026-11-15)
 
 ### Android
