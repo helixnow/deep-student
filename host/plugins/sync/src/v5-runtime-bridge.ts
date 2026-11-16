@@ -21,9 +21,10 @@ import {
   type RangeReader,
   type RuntimeCloudStorageConfig,
 } from '../../sync-providers/api.ts';
-import { appendUnknownOp, applyRowWithColumnLifecycle, recordReceivedOp, transitionOpMaterializationState } from '../repository/v5-vaults.ts';
+import { appendUnknownOp, applyRowWithColumnLifecycle, listV5MaterializedOpIds, recordReceivedOp, transitionOpMaterializationState } from '../repository/v5-vaults.ts';
 import {
-  hasMaterializedV5ReviewPlan, projectV5ReviewPlan, recordV5ReviewPlanChange, v5ReviewPlanDeleteData,
+  hasMaterializedV5ReviewPlan, listV5ReviewRecoveryTargets, projectV5ReviewPlan, recordV5ReviewPlanChange,
+  restoreV5ReviewMembers, v5ReviewPlanDeleteData,
 } from '../repository/v5-review-plans.ts';
 import {
   deleteV5ColumnVersion,
@@ -40,6 +41,7 @@ import {
   insertV5RuntimeOp,
   insertV5RuntimeReceipt,
   isolateV5OversizeOutboxOps,
+  listV5CapturedLocalOps,
   listV5ColumnVersionNames,
   listV5PendingChangeLogRows,
   listV5PendingGcKeys,
@@ -106,6 +108,16 @@ function reviewScheduleVersions(table: string, data: DbJson, versions: Versions,
     for (const col of FSRS_SCHEDULE_COLUMNS) grouped[col] = revision;
   }
   return grouped;
+}
+
+function validateColumnHlc(versions: Versions): void {
+  for (const version of Object.values(versions)) {
+    try {
+      const hlc = Hlc.parse(version.hlc);
+      if (!hlc) throw new Error('Invalid HLC');
+      hlc.toU64();
+    } catch { throw new Error('Invalid remote V5 column HLC'); }
+  }
 }
 
 export interface V5RuntimeOperation {
@@ -363,13 +375,7 @@ export class SyncV5RuntimeCoordinator {
     const parsedHlc = Hlc.parse(change.changed_at);
     if (!parsedHlc) throw new Error('Invalid remote V5 HLC');
     parsedHlc.toU64();
-    for (const version of Object.values(op.versions)) {
-      try {
-        const hlc = Hlc.parse(version.hlc);
-        if (!hlc) throw new Error('Invalid HLC');
-        hlc.toU64();
-      } catch { throw new Error('Invalid remote V5 column HLC'); }
-    }
+    validateColumnHlc(op.versions);
     const databaseName = change.database_name ?? 'vfs';
     const db = this.options.databases.get(databaseName);
     if (!db) throw new Error(`No database route: ${change.database_name}`);
@@ -637,10 +643,24 @@ export class SyncV5RuntimeCoordinator {
   }
   pullAndApplyFromV5Cloud(): Promise<{ applied: number; downloadedEntries: number }> {
     return this.exclusive(async () => {
+      const reviewDb = this.options.databases.get('vfs');
+      const recoveryTargets = reviewDb ? listV5ReviewRecoveryTargets(reviewDb) : [];
+      const reviewed = new Map<string, { change: EngineChange; versions: Versions }>();
       this.captureUnboundLocalChangeLogs();
+      const identity = (op: { deviceId: string; incarnationId: string; seq: bigint | string }) => `${writer(op)}:${op.seq}`;
+      // The receipts do not identify the table. Account for them all before
+      // replacing a legacy schedule so a missing writer cannot hide a rating.
+      const missingHistory = new Set(reviewDb && recoveryTargets.length ? listV5MaterializedOpIds(reviewDb).map(identity) : []);
       // Re-run schema materialization locally without downloading an already received frame.
       const pending = new Map<string, V5RuntimeOperation>();
-      const identity = (op: V5RuntimeOperation) => `${writer(op)}:${op.seq}`;
+      const rememberReview = (op: V5RuntimeOperation, change: EngineChange): void => {
+        const key = identity(op);
+        missingHistory.delete(key);
+        if (change.table_name !== 'review_plans' || (change.database_name ?? 'vfs') !== 'vfs') return;
+        validateColumnHlc(op.versions);
+        reviewed.set(key, { change, versions: reviewScheduleVersions(change.table_name, change.data, op.versions,
+          { hlc: change.changed_at, dev: op.deviceId }) });
+      };
       for (const [databaseName, db] of this.options.databases) {
         for (const row of listV5QuarantinePayloads(db)) {
           const op = decode<V5RuntimeOperation>(row.payload); op.seq = BigInt(op.seq);
@@ -660,8 +680,11 @@ export class SyncV5RuntimeCoordinator {
         }
         const headers = new Map<string, { bytes: Uint8Array; size: number | bigint }>();
         for (const ref of head!.refs) {
-          if (this.intervals.has(writer(ref), ref.seq)) continue;
-          if (pending.has(`${writer(ref)}:${ref.seq}`)) continue;
+          const observed = this.intervals.has(writer(ref), ref.seq);
+          const key = identity(ref);
+          const neededForRecovery = missingHistory.has(key);
+          if (observed && !neededForRecovery) continue;
+          if (pending.has(key) || reviewed.has(key)) continue;
           let header = headers.get(ref.packKey);
           if (!header) {
             const stat = await this.options.storage.stat(ref.packKey);
@@ -678,7 +701,8 @@ export class SyncV5RuntimeCoordinator {
           const hlc = Hlc.parse(change.changed_at);
           if (!hlc) throw new Error('Invalid remote V5 HLC');
           hlc.toU64();
-          pending.set(identity(op), op);
+          if (neededForRecovery) rememberReview(op, change);
+          if (!observed) pending.set(key, op);
         }
       }
       const ordered = [...pending.values()].sort((a, b) => {
@@ -690,8 +714,24 @@ export class SyncV5RuntimeCoordinator {
       });
       // A review can be saved while remote I/O is in flight. Capture it
       // before materialization can rekey its row or replace its schedule.
-      if (ordered.some(op => parseSyncChange(op.change).table_name === 'review_plans')) {
+      if (recoveryTargets.length || ordered.some(op => parseSyncChange(op.change).table_name === 'review_plans')) {
         this.captureUnboundLocalChangeLogs('review_plans');
+      }
+      if (reviewDb && recoveryTargets.length) {
+        // The local outbox also holds authored changes whose cloud head may
+        // be absent, including ratings captured while this pull was in flight.
+        const { stateDb, repoId, deviceId } = this.options;
+        for (const { payload } of listV5CapturedLocalOps(stateDb, repoId, deviceId)) {
+          const op = decode<V5RuntimeOperation>(payload);
+          rememberReview(op, parseSyncChange(op.change));
+        }
+        if (!missingHistory.size) reviewDb.transaction(tx => {
+          const preLogMax = changeLogMaxId(tx);
+          for (const questionId of restoreV5ReviewMembers(tx, recoveryTargets, [...reviewed.values()])) {
+            projectV5ReviewPlan(tx, 'vfs', questionId);
+          }
+          if (preLogMax !== null) suppressEchoChangeLog(tx, Math.floor(this.now() / 1000), preLogMax);
+        });
       }
       let retry = ordered;
       while (retry.length) {

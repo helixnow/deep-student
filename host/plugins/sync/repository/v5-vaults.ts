@@ -5,7 +5,7 @@ import type { ChangeOperation, EngineChange } from '../src/change-payload.ts';
 import { serializeSyncChange } from '../src/change-payload.ts';
 import { compareLwwTimestamps, timestampValueToLwwString } from '../src/lww.ts';
 import { readUnknownFieldsForRoundTrip, vaultUnknownFieldsWithVersion, type UnknownFieldVersion, type VersionedUnknownField } from './unknown-fields.ts';
-import { buildPrimaryKeyPredicate, ensureTableAllowedAndExists, getSafe, jsonValueToSqlParam, parseRecordKeyValues, primaryKeyColumns, quoteIdentifier, rowToJson, selectWithTypes, tableColumnNames } from './sqlite-values.ts';
+import { buildPrimaryKeyPredicate, ensureTableAllowedAndExists, getSafe, jsonValueToSqlParam, parseRecordKeyValues, primaryKeyColumns, quoteIdentifier, rowToJson, selectWithTypes, tableColumnNames, tableExists } from './sqlite-values.ts';
 
 export type MaterializationState = 'materialized' | 'pending_schema' | 'pending_fk' | 'deferred_skew' | 'quarantined';
 export interface OpIdentity {
@@ -27,6 +27,22 @@ function identityParams(op: OpIdentity): SqlParam[] {
 }
 
 export function ensureV5SyncTables(db: SqlExecutor): void {
+  // Capture pre-membership V5 aliases before creating the new table. The
+  // targets persist across an offline restart until their originals are read.
+  if (!tableExists(db, '__sync_v5_review_plan_members') && tableExists(db, 'review_plans')
+      && tableExists(db, '__sync_id_aliases') && tableExists(db, '__sync_row_meta')) {
+    db.exec(`CREATE TABLE IF NOT EXISTS __sync_v5_review_plan_recovery (
+      record_id TEXT PRIMARY KEY NOT NULL, question_id TEXT NOT NULL REFERENCES questions(id) ON DELETE CASCADE);
+      WITH RECURSIVE originals(record_id,question_id) AS (
+        SELECT p.id,p.question_id FROM review_plans p
+          JOIN __sync_row_meta m ON m.table_name='review_plans' AND m.record_id=p.id
+          WHERE EXISTS (SELECT 1 FROM __sync_id_aliases a WHERE a.table_name='review_plans' AND a.canonical_id=p.id)
+        UNION
+        SELECT a.remote_id,o.question_id FROM __sync_id_aliases a JOIN originals o ON a.canonical_id=o.record_id
+          WHERE a.table_name='review_plans'
+      )
+      INSERT OR IGNORE INTO __sync_v5_review_plan_recovery(record_id,question_id) SELECT record_id,question_id FROM originals;`);
+  }
   db.exec(`
     CREATE TABLE IF NOT EXISTS __sync_applied_ops (
       source_device_id TEXT NOT NULL, incarnation_id TEXT NOT NULL, source_seq INTEGER NOT NULL,
@@ -64,6 +80,11 @@ export function ensureV5SyncTables(db: SqlExecutor): void {
   if (!tableColumnNames(db, '__sync_unknown_fields').includes('source_schema_version')) {
     db.exec('ALTER TABLE __sync_unknown_fields ADD COLUMN source_schema_version INTEGER NOT NULL DEFAULT 0');
   }
+}
+
+export function listV5MaterializedOpIds(db: SqlExecutor): Array<{ deviceId: string; incarnationId: string; seq: string }> {
+  return db.all(`SELECT source_device_id AS deviceId, incarnation_id AS incarnationId, CAST(source_seq AS TEXT) AS seq
+    FROM __sync_applied_ops WHERE materialization_state='materialized' AND op_ordinal=0`);
 }
 
 /** Only isNew contributes a Log Merkle leaf. Pending duplicates remain replayable. */
