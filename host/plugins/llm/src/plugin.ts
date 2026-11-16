@@ -51,6 +51,7 @@ import { createEssayGradingService } from './essay_grading/service.ts';
 import { CustomModeManager } from './essay_grading/custom_modes.ts';
 import { createEssayTransport } from './essay_grading/transport.ts';
 import { createRawPromptService } from './raw_prompt_service.ts';
+import { createPluginModelService } from './plugin_model.ts';
 import { buildDebugPersistConfig, setDebugLogFiles } from './audit_log.ts';
 import { runQuestionJson } from './question_authoring.ts';
 import { testApiConnection } from './connection_test.ts';
@@ -123,7 +124,7 @@ export function createLlmPlugin(options: LlmPluginOptions = {}): HostPlugin {
         'opencode_go_get_usage', 'check_api_config_status', 'restore_default_api_configs',
         'fetch_vendor_models', 'call_llm_for_boundary', 'test_api_connection', 'test_deepseek_capability',
       ],
-      provides: ['llm', 'embedding@1', 'llmReranker', 'essayGrading', 'llmStreaming', 'llmAdapterInfos', 'llmEmbeddingModels', 'llmOcrModels', 'llmRag', 'llmOcrRegions', 'llmOcrHedge', 'llmQuestionParsing', 'llmModel2Messages', 'llmProviderRequests', 'llmStreamEvents', 'llmAnkiRouting', 'llmMcpTools', 'llmModel2Streaming', 'llmHttp', 'llmRawPrompt', 'llmQuestionAuthoring', 'llmOcrPages', 'llmFileOcr', 'llmContextCompiler'],
+      provides: ['llm', 'embedding@1', 'llmReranker', 'essayGrading', 'llmStreaming', 'llmAdapterInfos', 'llmEmbeddingModels', 'llmOcrModels', 'llmRag', 'llmOcrRegions', 'llmOcrHedge', 'llmQuestionParsing', 'llmModel2Messages', 'llmProviderRequests', 'llmStreamEvents', 'llmAnkiRouting', 'llmMcpTools', 'llmModel2Streaming', 'llmHttp', 'llmRawPrompt', 'pluginModel', 'llmQuestionAuthoring', 'llmOcrPages', 'llmFileOcr', 'llmContextCompiler'],
       ...(options.platforms === undefined ? {} : { platforms: options.platforms }),
     },
     inject: mobile
@@ -176,18 +177,23 @@ export function createLlmPlugin(options: LlmPluginOptions = {}): HostPlugin {
         emit: (event, payload) => ctx.backendEvents.emit(event, payload),
       });
       ctx.provide('llmMcpTools', mcp);
-      ctx.provide('llmModel2Streaming', createModel2StreamingService({ manager: service, settings: ctx.settings,
+      const model2Streaming = createModel2StreamingService({ manager: service, settings: ctx.settings,
         requests, events, mcp, codex: ctx.llmCodexAuth, fetch: http.fetch,
         candidateApiKeysFor: config => store.candidateApiKeysFor(config), dataDir: ctx.app.dataDir, log: logService,
         usage: () => ctx.reflect.get('llmUsage', false) as Model2UsageRecorder | undefined,
         webSearch: () => ctx.reflect.get('llmWebSearchFallback', false) as WebSearchFallback | null ?? null,
-      }));
+      });
+      ctx.provide('llmModel2Streaming', model2Streaming);
       const rawPrompt = createRawPromptService({ manager: service,
         candidateApiKeysFor: config => store.candidateApiKeysFor(config), adapters: ctx.llmAdapters,
         codex: ctx.llmCodexAuth, fetch: http.fetch, emit: (channel, payload) => ctx.backendEvents.emit(channel, payload),
         debugPersistConfig: () => buildDebugPersistConfig(ctx.settings, logService, ctx.app.dataDir),
         usage: () => ctx.reflect.get('llmUsage', false) as LlmUsageRecorder | undefined });
       ctx.provide('llmRawPrompt', rawPrompt);
+      // The narrow entry for community / workshop plugins (`service:pluginModel`): text in, text out, user's dialogue model.
+      ctx.provide('pluginModel', createPluginModelService({ rawPrompt, streaming: {
+        model2: model2Streaming, events, cancel: (streamEvent) => control.requestCancelStream(streamEvent),
+      }, log: (message) => ctx.logger('pluginModel').warn(message) }));
       ctx.provide('llmQuestionAuthoring', {
         async runQuestionJson(config, systemPrompt, userContent, cancel = null) {
           try {

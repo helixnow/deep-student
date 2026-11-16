@@ -54,8 +54,11 @@ export interface WorkshopAdmin {
   onFault?(listener: (id: string, reason: string) => Promise<void>): () => void;
 }
 export interface WorkshopGeneration {
-  /** `progress` receives the source files the model has written so far in this attempt (best effort). */
-  generate(card: WorkshopCard, source: string, signal: AbortSignal, progress?: (files: string[]) => void): Promise<void>;
+  /**
+   * `progress` receives the source files the model has written so far in this attempt (best effort). May report the
+   * tokens the attempt used (from the generation conversation's message usage) for the card's 「用了多少」 line.
+   */
+  generate(card: WorkshopCard, source: string, signal: AbortSignal, progress?: (files: string[]) => void): Promise<void | { tokens?: number }>;
 }
 export class WorkshopOperations implements Omit<PluginWorkshopService, 'developmentSkill'> {
   readonly store: WorkshopStore;
@@ -204,6 +207,23 @@ export class WorkshopOperations implements Omit<PluginWorkshopService, 'developm
     });
   }
   /**
+   * 「把需求砍成最小版再试」 after repeated failures: a new proposal of the same work that keeps only its core (the first
+   * acceptance item), with the generation told to leave everything else out. The user presses 开始做 again.
+   */
+  reduce(id: string, revision: number): Promise<WorkshopCard> {
+    return this.serial(id, async () => {
+      const card = await this.store.read(id);
+      if (card.revision !== revision) throw new Error('WORKSHOP_CONFLICT: confirmation is stale');
+      if (isOpenProposal(card.state) && card.state !== 'draft') throw new Error(`WORKSHOP_STATE: cannot act in ${card.state}`);
+      const core = card.changes.find(item => item.trim()) ?? card.description;
+      return this.store.propose({ sessionId: card.sessionId, title: card.title,
+        description: `最小版：只做最核心的一件事——${core.replace(/^最小版：只做最核心的一件事——/, '')}。其余功能先不做，界面和代码尽量简单（少于 3 个文件）。`,
+        template: card.template, pluginId: card.pluginId,
+        changes: [core, '只保留这一项，其余功能以后再加'], capabilities: [...card.capabilities],
+        ...(card.settings?.length ? { settings: card.settings } : {}) });
+    });
+  }
+  /**
    * Delete a work that was never installed, with its sources and builds (「删除」 on a failed or abandoned work).
    * Anything that was installed at some point keeps its retained versions: it is removed with 卸载 instead.
    */
@@ -252,7 +272,8 @@ export class WorkshopOperations implements Omit<PluginWorkshopService, 'developm
       // only a failed attempt is continued where it stopped (「让 AI 接着修」 / 「继续做」).
       if (current.state !== 'failed') await this.startFromInstalled(current);
       const card = await this.store.update(id, revision, { state: 'generating', check: null, error: null, generationApproved: true,
-        agentEditing: null, buildAttempt: 0, buildStage: null, buildFiles: null, buildStep: null, ...(settings ? { settings } : {}) });
+        agentEditing: null, buildAttempt: 0, buildStage: null, buildFiles: null, buildStep: null, ...(settings ? { settings } : {}),
+        generation: { startedAt: new Date().toISOString() } });
       const controller = new AbortController();
       this.jobs.set(id, controller);
       void this.run(card, controller, generation).catch(error => {
@@ -282,6 +303,12 @@ export class WorkshopOperations implements Omit<PluginWorkshopService, 'developm
     await cp(retained, source, { recursive: true });
   }
   private async run(card: WorkshopCard, controller: AbortController, generation: WorkshopGeneration): Promise<void> {
+    // Time and tokens of this run, written with the final state (the card shows them after it finished).
+    const started = Date.now();
+    let tokens: number | undefined;
+    let attempts = 0;
+    const stats = () => ({ generation: { startedAt: card.generation?.startedAt ?? new Date(started).toISOString(), durationMs: Date.now() - started,
+      attempts, ...(tokens !== undefined ? { tokens } : {}) } });
     try {
       let built: WorkshopBuild | undefined;
       // A bounded repair conversation: exact compiler/lifecycle errors become the next task.
@@ -297,12 +324,14 @@ export class WorkshopOperations implements Omit<PluginWorkshopService, 'developm
         try {
           await this.progressOf(card.id, controller, { buildStage: 'making', buildStep: null, buildFiles: [] });
           let reported = '';
-          await generation.generate(task, source, controller.signal, files => {
+          attempts = attempt;
+          const used = await generation.generate(task, source, controller.signal, files => {
             const key = files.join('|');
             if (key === reported) return;
             reported = key;
             void this.progressOf(card.id, controller, { buildFiles: [...files] });
           });
+          if (used && typeof used.tokens === 'number' && used.tokens > 0) tokens = (tokens ?? 0) + used.tokens;
           if (controller.signal.aborted) return;
           // Host bookkeeping (a version above the retained one, net:<host> of the user's address) is not a repair round.
           await normalizeWorkshopSource(source, card);
@@ -331,13 +360,13 @@ export class WorkshopOperations implements Omit<PluginWorkshopService, 'developm
         const current = await this.status(card.id);
         await this.store.update(card.id, current.revision, { state: built.check.ok ? 'pending-confirmation' : 'failed',
           check: built.check, version: built.manifest?.version ?? null, error: built.check.ok ? null : built.check.errors.join('\n'),
-          buildStage: null, buildStep: null, buildFiles: null, ...(built.check.ok ? { declared: built.declared ?? [], places: built.places ?? [] } : {}) });
+          buildStage: null, buildStep: null, buildFiles: null, ...stats(), ...(built.check.ok ? { declared: built.declared ?? [], places: built.places ?? [] } : {}) });
       });
     } catch (error) {
       await this.serial(card.id, async () => {
         if (controller.signal.aborted) return;
         const current = await this.status(card.id);
-        await this.store.update(card.id, current.revision, { state: 'failed', buildStage: null, buildStep: null, buildFiles: null, error: error instanceof Error ? error.message : String(error) });
+        await this.store.update(card.id, current.revision, { state: 'failed', buildStage: null, buildStep: null, buildFiles: null, ...stats(), error: error instanceof Error ? error.message : String(error) });
       });
     } finally { if (this.jobs.get(card.id) === controller) this.jobs.delete(card.id); }
   }

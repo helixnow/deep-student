@@ -27,6 +27,8 @@ export interface SystemNotificationDeps {
     body: string;
     silent?: boolean;
     icon?: string;
+    /** Tauri notification `extra`; `extra.dsAction` comes back to the renderer on click. */
+    extra?: { dsAction: unknown };
   }): Promise<void>;
 }
 
@@ -74,6 +76,7 @@ export function createSystemNotificationService(deps: SystemNotificationDeps): S
           body: request.body,
           ...(request.silent === true ? { silent: true } : {}),
           ...(request.icon === undefined ? {} : { icon: request.icon }),
+          ...(request.action === undefined ? {} : { extra: { dsAction: request.action } }),
         });
         return { delivered: true, suppressed: null, error: null };
       } catch (error) {

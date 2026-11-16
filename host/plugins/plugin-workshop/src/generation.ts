@@ -34,7 +34,7 @@ export class PipelineWorkshopGeneration implements WorkshopGeneration {
   constructor(chat: ChatSessionService, pipeline: ChatPipelineService, tools: WorkshopToolExecutor, events: WorkshopGenerationEvents | null = null) {
     this.chat = chat; this.pipeline = pipeline; this.tools = tools; this.events = events;
   }
-  async generate(card: WorkshopCard, source: string, signal: AbortSignal, progress?: (files: string[]) => void): Promise<void> {
+  async generate(card: WorkshopCard, source: string, signal: AbortSignal, progress?: (files: string[]) => void): Promise<void | { tokens?: number }> {
     if ((await sourceFiles(source)).length === 0) await seedTemplate(source, card);
     const templates: Record<string, string> = {};
     for (const file of await sourceFiles(source)) templates[file] = await readFile(join(source, file), 'utf8');
@@ -64,6 +64,11 @@ export class PipelineWorkshopGeneration implements WorkshopGeneration {
           + `Preserve plugin id ${card.pluginId} and exact service name ${pluginServiceName(card.pluginId)} (use ${JSON.stringify(card.title)} for zh-CN title). Goal: ${card.description}\nAcceptance/changes: ${JSON.stringify(card.changes)}`
           // The recipe covers what the seed template does not show. The current source stays last, as before.
           + `\nRecipe "${recipe.name}" (adapt it only if the goal needs ${RECIPE_PURPOSE[recipe.name] ?? recipe.name}; otherwise ignore it): ${JSON.stringify(recipe.files)}`
+          // F20: a modification must still read what the previous version stored.
+          + '\nStored data: keep every persisted record readable across versions. Store a schema version field with the data '
+          + '(e.g. { v: 1, ... }); when reading, accept records without it or with an older v and migrate them in code (never throw on or drop them); '
+          + 'in a modification never rename or delete existing storage keys, only add new ones.'
+          + '\nCredentials: never copy API keys or tokens into source or ordinary configuration. Use the user-provided secret setting and ctx.pluginSecrets.get(key), or the declared plugin model service.'
           + (settings.length ? `\nUser settings: the Host stores the values the user entered as this plugin's config. Never hard-code them; read config[key] in apply(ctx, config) and report clearly when one is missing: ${JSON.stringify(settings)}` : '')
           + `\nTemplate: ${JSON.stringify(templates)}`
           + (card.error ? `\nPrevious attempt failed. Repair the exact diagnostics, preserving working code: ${card.error}\nChecks: ${JSON.stringify(card.check)}` : ''),
@@ -75,6 +80,11 @@ export class PipelineWorkshopGeneration implements WorkshopGeneration {
     const blocks = this.chat.getMessageBlocks(messageId);
     const text = blocks.filter(block => block.type === 'content').map(block => block.content ?? '').join('');
     await materializeGeneratedFiles(source, text, signal);
+    // Tokens the generation conversation used (its message usage), for the card's 「用了多少」 line. Best effort.
+    try {
+      const total = this.chat.getMessage(messageId)?._meta?.usage?.totalTokens;
+      return typeof total === 'number' && total > 0 ? { tokens: total } : undefined;
+    } catch { return undefined; }
   }
 }
 
@@ -100,7 +110,33 @@ function parseGeneratedFilesPayload(text: string): { files: SourceFile[] } {
       lastError = error;
     }
   }
+  // An answer that opens a JSON object but never closes it was cut off (the output limit): say so, so the card can
+  // explain it and the repair round writes less instead of guessing at a syntax error.
+  if (looksTruncated(trimmed, lastError)) {
+    throw new Error(`WORKSHOP_TRUNCATED: the answer was cut off before the JSON ended (${trimmed.length} characters). Write fewer and shorter files: keep only what the goal needs, no comments, no sample data beyond a few items.`);
+  }
   throw lastError instanceof Error ? lastError : new Error('WORKSHOP_INVALID: invalid JSON from model');
+}
+
+/** The model's JSON answer ended early (unterminated string, more opening than closing brackets, "Unexpected end"). */
+export function looksTruncated(text: string, error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  if (/Unexpected end of JSON|Unterminated string|end of data/i.test(message)) return true;
+  const start = text.indexOf('{');
+  if (start < 0) return false;
+  let depth = 0, inString = false, escaped = false;
+  for (const char of text.slice(start)) {
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (char === '\\') escaped = true;
+      else if (char === '"') inString = false;
+      continue;
+    }
+    if (char === '"') inString = true;
+    else if (char === '{' || char === '[') depth++;
+    else if (char === '}' || char === ']') depth--;
+  }
+  return inString || depth > 0;
 }
 
 export async function materializeGeneratedFiles(source: string, text: string, signal: AbortSignal): Promise<void> {

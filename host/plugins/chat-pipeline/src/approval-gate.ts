@@ -13,6 +13,7 @@ import { ToolAdmission } from './hooks.ts';
 import { budgetExceededMessage, ONE_TOOL_CALL, treeKeyForSession, tryConsume } from './budget.ts';
 import type { ShellCommandGuardDecision } from '../../agent-workspace/api.ts';
 import * as chatApi from '../../chat/api.ts';
+import { externalPluginDataSource } from '../../agent-skills/portable.ts';
 
 /** grants.rs registry published by L04 (chat api.ts lookupGrantForSession/ensureGrantLive/grantDenialMessage).
  * The registry is process state owned by L04; before that export is integrated nothing can register a
@@ -222,14 +223,17 @@ export class ApprovalGateHook {
     const guardAsks = guard?.effect === 'ask';
     const privilege = ports.isPrivilegeEscalation(call.name, call.arguments);
     const planCovers = planBindingSatisfiesToolApproval(authority, planKey, privilege, planJustApproved, new Date());
-    const approvalRequired = planCovers ? false
-      : requiresToolApproval(authority, sensitivity, effective, guardAsks, isExternalMcp, privilege);
+    // F17: a user plugin's tool read external data earlier in this turn; a high-sensitivity call now always asks.
+    const tainted = sensitivity === 'high' || effective === 'high' ? externalPluginDataSource(ctx.sessionId, ctx.messageId) : null;
+    if (tainted !== null) log.info(`[ChatV2::pipeline] external plugin data in this turn (${tainted}): approval forced for high-sensitivity tool '${call.name}'`);
+    const approvalRequired = tainted !== null || (planCovers ? false
+      : requiresToolApproval(authority, sensitivity, effective, guardAsks, isExternalMcp, privilege));
     if (privilege && approvalRequired && authority.authorityMode === 'craft'
       && (authority.permissionPreset === 'full_access' || authority.permissionPreset === 'danger_full_access')) {
       log.info(`[ChatV2::audit] privilege_escalation=true approval_forced=true permission_preset=${authority.permissionPreset} session=${ctx.sessionId} tool_call_id=${call.id} tool=${call.name}`);
     }
     let satisfied = false;
-    const trusted = !guardAsks && ports.trustedAutomationPreauthorized(ctx.sessionId, call.name, call.arguments);
+    const trusted = !guardAsks && tainted === null && ports.trustedAutomationPreauthorized(ctx.sessionId, call.name, call.arguments);
     if (trusted && approvalRequired) {
       satisfied = true;
       log.info(`[ChatV2::pipeline] trusted_automation_preauthorized: skipping ApprovalManager for tool '${call.name}' (session=${ctx.sessionId}, tool_call_id=${call.id}, sensitivity=${effective === null ? 'None' : `Some(${cap(effective)})`})`);
@@ -241,7 +245,7 @@ export class ApprovalGateHook {
         return block('审批服务不可用，已阻止中高风险工具执行');
       }
       const irreversible = ports.neverRememberApproval(call.name, approvalArguments);
-      const canRemember = !guardAsks && authority.authorityMode === 'craft' && authority.permissionPreset === 'relaxed'
+      const canRemember = !guardAsks && tainted === null && authority.authorityMode === 'craft' && authority.permissionPreset === 'relaxed'
         && sensitivity === 'medium' && effective === 'medium' && !irreversible;
       const remembered = canRemember ? manager.checkSessionRemembered(ctx.sessionId, call.name, approvalArguments) : null;
       if (remembered !== null) {
@@ -282,8 +286,8 @@ export class ApprovalGateHook {
       return block('执行前无法复核会话权限，已安全阻止工具执行');
     }
     const currentCovers = planBindingSatisfiesToolApproval(current, planKey, privilege, planJustApproved, new Date());
-    const currentRequired = !currentCovers
-      && requiresToolApproval(current, sensitivity, effective, guardAsks, isExternalMcp, privilege);
+    const currentRequired = tainted !== null || (!currentCovers
+      && requiresToolApproval(current, sensitivity, effective, guardAsks, isExternalMcp, privilege));
     if (currentRequired && !satisfied) return block('会话审批策略在执行前发生变化，当前调用需要重新审批');
     const recheck = evaluateAuthorityGate(current, call.name, effective, planKey, new Date());
     if (recheck.kind === 'allow') {

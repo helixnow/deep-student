@@ -215,8 +215,8 @@ export function PluginCard({
       <div className="flex min-h-8 min-w-0 items-center gap-2">
         {primary ? (
           <DsButton variant="outline" size="sm" data-testid={`plugin-card-${primary.key}`} aria-label={primary.a11y}
-            // 卡片是灰底：主操作用一块浅色的面托住（和「它增加了什么」标签同一种面），读作按钮而不是散落的文字。
-            className={cn('!h-8 shrink-0 gap-1.5 !rounded-lg !bg-background/80 !px-2.5 text-foreground hover:!bg-background dark:!bg-background/40 dark:hover:!bg-background/70', COARSE_TOUCH)}
+            // 卡片网格里不放实色按钮（D1：一个视图一个实色主按钮；详情页才用实色）。
+            className={cn('!h-8 shrink-0 gap-1.5 !rounded-lg !px-2.5', COARSE_TOUCH)}
             disabled={primary.disabled} onClick={primary.run}>
             <primary.icon className="size-4" aria-hidden="true" />{primary.label}
           </DsButton>

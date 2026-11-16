@@ -35,7 +35,8 @@ export function useWorkshop(adapter: WorkshopAdapter) {
   }, [adapter, refresh]);
 
   const act = useCallback(async (action: WorkshopAction, item: WorkshopItem, input?: Record<string, string>) => {
-    if (busy.current || !workshopActions(item.phase).includes(action)) return;
+    // 「在这个对话里修改」 is about the conversation, not a step of the work: the Host checks the state itself.
+    if (busy.current || (action !== 'bind' && !workshopActions(item.phase).includes(action))) return;
     busy.current = true;
     setBusyId(item.id);
     setError(undefined);

@@ -30,15 +30,30 @@ export type WorkshopTemplate = 'learning-tool' | 'host-tool';
 export interface WorkshopSetting {
   key: string; title: string; kind: 'ics-url' | 'https-url' | 'text' | 'secret'; value?: string; saved?: boolean;
 }
-export interface WorkshopBrief {
+/**
+ * What the assistant found out before proposing (shown on the card): `limits` the parts of the request that cannot be
+ * done (「做不到的部分」), `alternatives` what it proposes instead (「改成这样」), `builtinDifference` how the work
+ * differs from a built-in feature that does something similar (「和内置『X』的区别」).
+ */
+export interface WorkshopFeasibility {
+  limits?: string[]; alternatives?: string[]; builtinDifference?: string;
+}
+export interface WorkshopBrief extends WorkshopFeasibility {
   sessionId: string; title: string; description: string; template: WorkshopTemplate;
   pluginId?: string; changes: string[]; capabilities: string[]; settings?: WorkshopSetting[];
 }
+/** A rough time a generation takes, from the recipe and the size of the request (「预计 1–3 分钟」). */
+export interface WorkshopEstimate { minMinutes: number; maxMinutes: number }
+/**
+ * The last generation run: when it started, how long it took and the tokens the generation conversation used
+ * (summed from its messages' usage; absent when the provider reported none).
+ */
+export interface WorkshopGenerationStats { startedAt: string; durationMs?: number; tokens?: number; attempts?: number }
 export interface WorkshopCheck {
   ok: boolean; manifest: 'passed' | 'failed'; compile: 'passed' | 'failed';
   lifecycle: 'passed' | 'failed' | 'not-run'; visual: 'not-verified'; errors: string[];
 }
-export interface WorkshopCard {
+export interface WorkshopCard extends WorkshopFeasibility {
   kind: 'dstu-plugin-workshop'; id: string; pluginId: string; sessionId: string;
   title: string; description: string; template: WorkshopTemplate; state: WorkshopState;
   revision: number; version: string | null; capabilities: string[]; changes: string[];
@@ -86,6 +101,10 @@ export interface WorkshopCard {
   installation?: WorkshopInstallation | null;
   /** The record revision at which the current proposal was made: tells a chat card whether it shows this proposal. */
   proposalRevision?: number;
+  /** Rough generation time, shown on the proposal card before 开始做. */
+  estimate?: WorkshopEstimate;
+  /** The last generation run (time and tokens), shown once it finished. */
+  generation?: WorkshopGenerationStats | null;
 }
 export type WorkshopPlace =
   | { kind: 'app'; title: string }
@@ -112,6 +131,8 @@ export interface PluginWorkshopService {
   discard(id: string, revision: number): Promise<{ id: string; discarded: true }>;
   /** 「按新版重做」: a new modification proposal with the work's original description, for the current app version. */
   redo(id: string, revision: number): Promise<WorkshopCard>;
+  /** 「把需求砍成最小版再试」 after repeated failures: a new proposal that keeps only the core of the request. */
+  reduce(id: string, revision: number): Promise<WorkshopCard>;
   reportFault(id: string, error: string): Promise<WorkshopCard>;
 }
 declare module '@deepseek-ai/cordis' {

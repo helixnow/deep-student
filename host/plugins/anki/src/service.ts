@@ -28,7 +28,10 @@ import type {
   TemplateConfig,
 } from '../api.ts';
 import type { AnkiCard } from '../../../../contracts/ipc/generated/_shared.ts';
-import type { AnkiSyncReport, CustomAnkiTemplate } from '../../../../contracts/ipc/generated/L16-anki.ts';
+import type {
+  AnkiSyncReport, CustomAnkiTemplate, SaveAnkiCardsRequest, SaveAnkiCardsResponse,
+} from '../../../../contracts/ipc/generated/L16-anki.ts';
+import { saveAnkiCardsInDatabase } from './save-cards.ts';
 import * as ankiConnect from './anki-connect.ts';
 import { addNotesToAnkiDetailed, templateModelName } from './anki-sync.ts';
 import { writeAnkiExportReceipts } from '../repository/anki-review-state.ts';
@@ -117,6 +120,10 @@ export class AnkiHostService extends Service implements AnkiService {
 
   insertAnkiCard(card: AnkiCard): boolean {
     return insertCard(this._options.db(), card);
+  }
+
+  saveCards(request: SaveAnkiCardsRequest): SaveAnkiCardsResponse {
+    return saveAnkiCardsInDatabase(this._options.db(), request);
   }
 
   listAnkiAgentLibraryCards(

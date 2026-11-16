@@ -452,7 +452,7 @@ it('RF-P5-workshop-assembly: proposal card → 开始做 → 安装 → opens on
     expect((await rpc.status(draft.id)).revision).toBe(installed.revision); // no rebinding for the owner conversation
     expect(requests).toHaveLength(modelRequests);
 
-    // Another conversation cannot take the work over through the Agent.
+    // Another conversation cannot take the work over through the Agent (it gets a bind card instead).
     resetChatNavigationHandshakeForTest();
     fireEvent.click(managerScreen.getByTestId('plugin-create'));
     await waitFor(() => expect(peekPendingChatNavigation()?.kind).toBe('session'));
@@ -464,7 +464,9 @@ it('RF-P5-workshop-assembly: proposal card → 开始做 → 安装 → opens on
     parentTurn = 0;
     const unauthorizedMessage = await execute(otherNav.sessionId, '另一个会话尝试修改作品', ['dstu-plugin-development']);
     const rejectedTool = service.getMessageBlocks(unauthorizedMessage).find(block => block.toolName?.includes('dstu_plugin_propose_install'));
-    expect(rejectedTool?.error).toContain('another conversation');
+    // F19: no takeover and no error: the card offers 「在这个对话里修改」 and only the user's click binds it.
+    expect(rejectedTool?.error ?? null).toBeNull();
+    expect(rejectedTool?.toolOutput).toMatchObject({ kind: 'dstu-plugin-workshop', id: draft.id, bindRequired: { sessionId: otherNav.sessionId } });
     expect((await rpc.status(draft.id)).sessionId).toBe(sessionId);
 
     // The user deleted the original conversation: 让 AI 改 opens a new one and the user's click binds it.
