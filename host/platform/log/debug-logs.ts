@@ -6,16 +6,23 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSyn
 import { mkdir, open, readdir, rename, rm, unlink } from 'node:fs/promises';
 import { extname, join, sep } from 'node:path';
 import type { DebugLogFiles, DebugLogsInfo } from './api.ts';
-import { redactSensitiveFields, redactSensitiveText } from './redact.ts';
 import { compareRustPaths } from '../paths/index.ts';
-import { charCount, decodeUtf8Strict, Utf8DecodeError } from '../util/index.ts';
-import { chronoRfc3339, chronoStamp, civilTime, nowEpochNanos } from '../time/index.ts';
+import { decodeUtf8Strict, Utf8DecodeError } from '../util/index.ts';
 import { ioMessage } from '../paths/compat.ts';
+import {
+  AUTO_CLEANUP_THRESHOLD,
+  buildDebugLogFilename,
+  buildRequestDebugEntry,
+  buildResponseDebugEntry,
+  DEBUG_LOGS_DIR,
+  FLUSH_TIMEOUT_MS,
+  formatSize,
+  pathStartsWith as pathStartsWithPlatform,
+  safeModelComponent,
+  safeTagComponent,
+} from './debug-logs-core.ts';
 
-const DEBUG_LOGS_DIR = 'debug-logs';
-const MAX_DEBUG_LOG_BYTES = 5 * 1024 * 1024;
-const AUTO_CLEANUP_THRESHOLD = 500;
-const FLUSH_TIMEOUT_MS = 10_000;
+export { safeModelComponent, safeTagComponent, formatSize };
 
 export interface DebugLogFilesOptions {
   logDir: string;
@@ -24,53 +31,12 @@ export interface DebugLogFilesOptions {
   unix?: boolean;
 }
 
-/** `safe_model_component`：取最后一个 `/` 段，Unicode 字母数字与 `-_.` 保留，其余 `_`，最多 80 字符。 */
-export function safeModelComponent(model: string): string {
-  const short = model.split('/').pop() ?? model;
-  let out = '';
-  let i = 0;
-  for (const ch of short) {
-    if (i++ >= 80) break;
-    out += /^[\p{Alphabetic}\p{N}]$/u.test(ch) || ch === '-' || ch === '_' || ch === '.' ? ch : '_';
-  }
-  return out;
-}
-
-/** `safe_tag_component`：ASCII 字母数字与 `-_`。 */
-export function safeTagComponent(tag: string): string {
-  let out = '';
-  let i = 0;
-  for (const ch of tag) {
-    if (i++ >= 80) break;
-    out += /^[A-Za-z0-9_-]$/.test(ch) ? ch : '_';
-  }
-  return out;
-}
-
-/** `format_size`：f64 除以 2 的幂是精确值，按 Rust `{:.N}`（四舍六入五成双）格式化。 */
-export function formatSize(bytes: number): string {
-  const fmt = (divisor: bigint, digits: number) => {
-    const scale = 10n ** BigInt(digits);
-    const num = BigInt(bytes) * scale;
-    let q = num / divisor;
-    const r = num % divisor;
-    if (r * 2n > divisor || (r * 2n === divisor && q % 2n === 1n)) q += 1n;
-    const s = q.toString().padStart(digits + 1, '0');
-    return `${s.slice(0, -digits)}.${s.slice(-digits)}`;
-  };
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${fmt(1024n, 1)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${fmt(1024n * 1024n, 1)} MB`;
-  return `${fmt(1024n * 1024n * 1024n, 2)} GB`;
-}
-
 function listLogFilesIn(dir: string): string[] {
   if (!existsSync(dir)) return [];
   let names: string[];
   try {
     names = readdirSync(dir);
   } catch {
-    // Rust `read_dir(dir).ok().into_iter().flatten()`：读取失败视为空目录。
     return [];
   }
   return names
@@ -109,17 +75,9 @@ export class DebugLogFileService implements DebugLogFiles {
   }
 
   private nextFilename(model: string, tag: string): { filename: string; seq: number; timestamp: string } {
-    const now = nowEpochNanos();
-    const time = chronoStamp(civilTime(now, true), '-', true);
-    const seq = this.seq % 10000;
+    const built = buildDebugLogFilename(model, tag, this.seq);
     this.seq = (this.seq + 1) >>> 0;
-    const m = safeModelComponent(model);
-    const t = safeTagComponent(tag);
-    return {
-      filename: `${time}_${String(seq).padStart(4, '0')}_${m === '' ? 'unknown' : m}_${t === '' ? 'unknown' : t}.json`,
-      seq,
-      timestamp: chronoRfc3339(now, true),
-    };
+    return built;
   }
 
   private spawnWrite(logDir: string, filename: string, json: string, seq: number): string {
@@ -164,31 +122,11 @@ export class DebugLogFileService implements DebugLogFiles {
     return filepath;
   }
 
-  private serialize(full: Record<string, unknown>, truncatedKey: string, reason: string): string {
-    const json = JSON.stringify(full, null, 2);
-    const size = Buffer.byteLength(json, 'utf8');
-    if (size <= MAX_DEBUG_LOG_BYTES) return json;
-    const truncated: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(full)) {
-      truncated[k] = k === truncatedKey ? { _truncated: true, _reason: reason, _serialized_bytes: size } : v;
-    }
-    return JSON.stringify(truncated, null, 2);
-  }
-
   writeRequestEntry(logDir: string, tag: string, model: string, url: string, streamEvent: string, requestBody: unknown): string | null {
     const { filename, seq, timestamp } = this.nextFilename(model, tag);
-    const entry = {
-      version: 1,
-      timestamp,
-      tag: redactSensitiveText(tag),
-      model: redactSensitiveText(model),
-      url: redactSensitiveText(url),
-      stream_event: redactSensitiveText(streamEvent),
-      request_body: redactSensitiveFields(requestBody) ?? null,
-    };
     let json: string;
     try {
-      json = this.serialize(entry, 'request_body', 'request log exceeded 5 MiB');
+      json = buildRequestDebugEntry(timestamp, tag, model, url, streamEvent, requestBody);
     } catch (error) {
       this.options.report('warn', `[DebugLog] Serialize failed: ${String(error)}`);
       return null;
@@ -198,16 +136,8 @@ export class DebugLogFileService implements DebugLogFiles {
 
   writeResponseEntry(logDir: string, tag: string, model: string, streamEvent: string, rawResponse: string): string | null {
     const { filename, seq, timestamp } = this.nextFilename(model, tag);
-    const entry = {
-      version: 1,
-      timestamp,
-      tag: redactSensitiveText(tag),
-      model: redactSensitiveText(model),
-      stream_event: redactSensitiveText(streamEvent),
-      raw_response_chars: charCount(rawResponse),
-      raw_response: redactSensitiveText(rawResponse),
-    };
-    return this.spawnWrite(logDir, filename, this.serialize(entry, 'raw_response', 'response log exceeded 5 MiB'), seq);
+    const json = buildResponseDebugEntry(timestamp, tag, model, streamEvent, rawResponse);
+    return this.spawnWrite(logDir, filename, json, seq);
   }
 
   flushPending(): Promise<boolean> {
@@ -323,10 +253,7 @@ export class DebugLogFileService implements DebugLogFiles {
 
 /** `Path::starts_with`：按组件比较。 */
 function pathStartsWith(path: string, prefix: string): boolean {
-  const separators = process.platform === 'win32' ? /[\\/]+/ : /\/+/;
-  const a = path.split(separators).filter(Boolean);
-  const b = prefix.split(separators).filter(Boolean);
-  return b.length <= a.length && b.every((c, i) => a[i] === c);
+  return pathStartsWithPlatform(path, prefix, process.platform === 'win32');
 }
 
 function tryUnlink(path: string): boolean {

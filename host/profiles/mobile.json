@@ -58,6 +58,10 @@
       "module": "../plugins/browser/mobile-search.ts"
     },
     {
+      "id": "dstu.browser",
+      "module": "../plugins/browser/mobile.ts"
+    },
+    {
       "id": "dstu.chat",
       "module": "../plugins/chat/mobile.ts"
     },

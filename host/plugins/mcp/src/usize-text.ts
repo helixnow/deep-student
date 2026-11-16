@@ -2,7 +2,8 @@
 // std/core num: optional '+', ASCII digits, checked multiply/add; ParseIntError Display.
 // Electron desktop architectures are 64-bit except ia32/arm (other Node 32-bit ports listed too).
 const ARCH_32 = ['ia32', 'arm', 'mips', 'mipsel', 'ppc', 's390'];
-export const USIZE_BITS = ARCH_32.includes(process.arch) ? 32 : 64;
+const RUNTIME_ARCH = (globalThis as { process?: { arch?: string } }).process?.arch ?? 'x64';
+export const USIZE_BITS = ARCH_32.includes(RUNTIME_ARCH) ? 32 : 64;
 export const USIZE_MAX = (1n << BigInt(USIZE_BITS)) - 1n;
 
 type IntegerError = 'Empty' | 'InvalidDigit' | 'PosOverflow';

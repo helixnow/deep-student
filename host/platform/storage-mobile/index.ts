@@ -57,8 +57,11 @@ import { importLegacyNativeData } from './legacy.ts';
 import { MobileBackupCancelled, MobileBackupService, type MobileBackupSelection } from './backup.ts';
 import { beginMobileStagedUpload, appendMobileStagedUpload, abortMobileStagedUpload } from '../files/mobile-local-runtime.ts';
 import { catalog } from '../../plugins/backup/src/asset-catalog.ts';
-import { FileError } from '../files/api.ts';
+import { FileError, type FilesService } from '../files/api.ts';
+import { cleanupMobileAuditLogs, queryMobileAuditLogs } from './audit.ts';
 import { AppError } from '../errors/api.ts';
+import { posix } from '../util/path.ts';
+import { decodeUtf8Strict, Utf8DecodeError } from '../util/portable.ts';
 
 /** 桌面由 backup 插件的这个 finalizer 发迁移状态事件；它在场时移动端不重复发。 */
 const BACKUP_STATUS_FINALIZER = 'backup.restore-activation';
@@ -101,6 +104,7 @@ export default definePlugin<{ recoveryOnly?: boolean }>({
       'data_governance_get_schema_registry',
       'data_governance_run_health_check',
       'data_governance_get_audit_logs',
+      'data_governance_cleanup_audit_logs',
       'data_governance_cancel_backup',
       'data_governance_delete_backup',
       'data_governance_list_resumable_jobs',
@@ -123,6 +127,15 @@ export default definePlugin<{ recoveryOnly?: boolean }>({
       'load_webview_settings',
       'get_backup_config',
       'set_backup_config',
+      'export_unified_backup_data',
+      'get_app_data_dir',
+      'get_app_version',
+      'get_file_size',
+      'hash_file',
+      'read_file_text',
+      'read_file_bytes',
+      'save_text_to_file',
+      'copy_file',
     ],
   },
   inject: ['sqliteRuntime', 'files', 'crypto'],
@@ -395,10 +408,24 @@ export default definePlugin<{ recoveryOnly?: boolean }>({
         audit_log_error_at: null,
       };
     }));
-    ctx.commands.register('data_governance_get_audit_logs', () => guard(() => ({
-      logs: [],
-      total: 0,
-    })));
+    ctx.commands.register<{
+      operationType?: string | null;
+      status?: string | null;
+      limit?: number | null;
+      offset?: number | null;
+    }>('data_governance_get_audit_logs', (args) => guard(() =>
+      queryMobileAuditLogs(storage.database('audit'), args)));
+    ctx.commands.register<{
+      keepRecent?: number | null;
+      beforeDays?: number | null;
+      confirmationToken: string;
+    }>('data_governance_cleanup_audit_logs', (args) => guard(() =>
+      cleanupMobileAuditLogs(storage.database('audit'), {
+        keepRecent: args.keepRecent,
+        beforeDays: args.beforeDays,
+        confirmationToken: args.confirmationToken,
+        generateId: () => ctx.crypto.randomUUID(),
+      })));
     // `data_governance_run_backup` / `_backup_tiered` / `_export_zip` write `<backupRoot>/<id>.zip`
     // in OPFS. The list is the actual directory content, not an in-memory placeholder.
     const listBackups = async () => {
@@ -703,6 +730,211 @@ export default definePlugin<{ recoveryOnly?: boolean }>({
       }
       return null;
     }));
+
+    // ---------------------------------------------------------------- OPFS 文件命令（前端通用文件 API）
+    const MAX_READ_FILE_BYTES = 200 * 1024 * 1024;
+    const requireFiles = (): FilesService => ctx.files;
+    const normalizeOpfsPath = (raw: string): string => {
+      const trimmed = String(raw ?? '').replace(/^\0+|\0+$/g, '').trim();
+      if (trimmed === '') throw new CommandError(AppError.validation('路径不能为空'));
+      if (trimmed.includes('://') || /^(primary|secondary|raw):/i.test(trimmed)) {
+        throw new CommandError(AppError.file_system(`读取文件失败: ${trimmed} (URL is not a valid path)`));
+      }
+      if (!trimmed.startsWith('/')) throw new CommandError(AppError.validation(`路径必须是绝对路径: ${trimmed}`));
+      const segments = trimmed.split('/');
+      if (segments.includes('..')) throw new CommandError(AppError.validation(`非法路径: ${trimmed}`));
+      const normalized = posix.normalize(trimmed);
+      const base = posix.normalize(ctx.app.dataDir);
+      if (normalized !== base && !normalized.startsWith(`${base}/`)) {
+        throw new CommandError(AppError.validation(`路径超出应用目录范围: ${trimmed}`));
+      }
+      return normalized;
+    };
+    const wrapFileOpError = (prefix: string, path: string, error: unknown): never => {
+      if (error instanceof CommandError) throw error;
+      const msg = error instanceof Error ? error.message : String(error);
+      const kind = (error as { kind?: string } | null)?.kind;
+      if (kind === 'OutsideRoots' || kind === 'InvalidPath') throw new CommandError(AppError.validation(`${prefix}: ${path} (${msg})`));
+      throw new CommandError(AppError.file_system(`${prefix}: ${path} (${msg})`));
+    };
+
+    ctx.commands.register('get_app_data_dir', () => ctx.app.dataDir);
+    ctx.commands.register('get_app_version', () => ctx.app.version);
+
+    ctx.commands.register<{ path: string }>('get_file_size', async ({ path }) => {
+      const normalized = normalizeOpfsPath(path);
+      const files = requireFiles();
+      try {
+        const stat = await files.stat(normalized);
+        if (stat.kind !== 'file') throw new CommandError(AppError.file_system(`获取文件信息失败: ${normalized} (不是文件)`));
+        return stat.size;
+      } catch (error) {
+        wrapFileOpError('获取文件信息失败', normalized, error);
+      }
+    });
+
+    ctx.commands.register<{ path: string }>('hash_file', async ({ path }) => {
+      const normalized = normalizeOpfsPath(path);
+      const files = requireFiles();
+      try {
+        const stat = await files.stat(normalized);
+        if (stat.kind !== 'file') throw new CommandError(AppError.file_system(`读取文件失败: ${normalized} (不是文件)`));
+        const cryptoSvc = ctx.reflect.get('crypto', false) as {
+          createHasher?(algo: 'SHA-256'): { update(chunk: Uint8Array): void; digestHex(): string };
+        } | undefined;
+        if (cryptoSvc && typeof cryptoSvc.createHasher === 'function') {
+          const hasher = cryptoSvc.createHasher('SHA-256');
+          const stream = await files.openRead(normalized);
+          const reader = stream.getReader();
+          try {
+            for (;;) {
+              const next = await reader.read();
+              if (next.done) break;
+              hasher.update(next.value);
+            }
+          } finally {
+            reader.releaseLock();
+          }
+          return hasher.digestHex();
+        }
+        const bytes = await files.readBytes(normalized);
+        const copy = new Uint8Array(bytes.byteLength);
+        copy.set(bytes);
+        const digest = await globalThis.crypto.subtle.digest('SHA-256', copy.buffer);
+        return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
+      } catch (error) {
+        wrapFileOpError('读取文件失败', normalized, error);
+      }
+    });
+
+    ctx.commands.register<{ path: string }>('read_file_text', async ({ path }) => {
+      const normalized = normalizeOpfsPath(path);
+      const files = requireFiles();
+      let bytes!: Uint8Array;
+      try {
+        const stat = await files.stat(normalized);
+        if (stat.kind !== 'file') throw new CommandError(AppError.file_system(`读取文件失败: ${normalized} (不是文件)`));
+        if (stat.size > MAX_READ_FILE_BYTES) {
+          throw new CommandError(AppError.validation(`文件过大: ${stat.size} 字节，超过读取上限 ${MAX_READ_FILE_BYTES} 字节: ${normalized}`));
+        }
+        bytes = await files.readBytes(normalized);
+      } catch (error) {
+        wrapFileOpError('读取文件失败', normalized, error);
+      }
+      try {
+        return decodeUtf8Strict(bytes);
+      } catch (error) {
+        if (error instanceof Utf8DecodeError) throw new CommandError(AppError.file_system('文件编码不是有效的 UTF-8'));
+        throw new CommandError(AppError.file_system(`读取文件失败: ${error instanceof Error ? error.message : String(error)}`));
+      }
+    });
+
+    ctx.commands.register<{ path: string; maxBytes?: number | null }>('read_file_bytes', async ({ path, maxBytes }) => {
+      const normalized = normalizeOpfsPath(path);
+      const files = requireFiles();
+      const limit = Math.min(maxBytes ?? MAX_READ_FILE_BYTES, MAX_READ_FILE_BYTES);
+      try {
+        const stat = await files.stat(normalized);
+        if (stat.kind !== 'file') throw new CommandError(AppError.file_system(`读取文件失败: ${normalized} (不是文件)`));
+        if (stat.size > limit) {
+          throw new CommandError(AppError.validation(`文件过大: ${stat.size} 字节，超过读取上限 ${limit} 字节: ${normalized}`));
+        }
+        return await files.readBytes(normalized);
+      } catch (error) {
+        wrapFileOpError('读取文件失败', normalized, error);
+      }
+    });
+
+    ctx.commands.register<{ path: string; content: string }>('save_text_to_file', async ({ path, content }) => {
+      const normalized = normalizeOpfsPath(path);
+      const files = requireFiles();
+      try {
+        await files.writeText(normalized, String(content ?? ''), { createParents: true });
+        return null;
+      } catch (error) {
+        wrapFileOpError('写入文件失败', normalized, error);
+      }
+    });
+
+    ctx.commands.register<{ sourcePath: string; destPath: string }>('copy_file', async ({ sourcePath, destPath }) => {
+      const src = normalizeOpfsPath(sourcePath);
+      const dst = normalizeOpfsPath(destPath);
+      if (src === dst) throw new CommandError(AppError.validation('源路径与目标路径不能相同'));
+      const files = requireFiles();
+      try {
+        const stat = await files.stat(src);
+        if (stat.kind !== 'file') throw new CommandError(AppError.file_system(`复制文件失败: ${src} (不是文件)`));
+        const stream = await files.openRead(src);
+        const reader = stream.getReader();
+        const sink = await files.openFile(dst, { mode: 'truncate', createParents: true });
+        let pos = 0;
+        try {
+          for (;;) {
+            const next = await reader.read();
+            if (next.done) break;
+            await sink.write(next.value, pos);
+            pos += next.value.byteLength;
+          }
+          await sink.sync();
+        } finally {
+          reader.releaseLock();
+          await sink.close().catch(() => undefined);
+        }
+        return null;
+      } catch (error) {
+        wrapFileOpError('复制文件失败', src, error);
+      }
+    });
+
+    ctx.commands.register<{ options: unknown }>('export_unified_backup_data', async ({ options }) => {
+      const includeSettings = options !== null && typeof options === 'object'
+        && (options as Record<string, unknown>).include_settings === true;
+      const systemSettings: Record<string, string> = {};
+      let apiConfigurations: unknown[] = [];
+      let modelAssignments: unknown | null = null;
+      if (includeSettings) {
+        try {
+          const settingsSvc = ctx.reflect.get('settings', false) as { listByPrefix?(prefix: string): readonly { key: string; value: string }[] } | undefined;
+          const rows = typeof settingsSvc?.listByPrefix === 'function'
+            ? settingsSvc.listByPrefix('')
+            : storage.database('mistakes').all<{ key: string; value: string }>('SELECT key, value FROM settings ORDER BY key');
+          for (const row of rows) systemSettings[row.key] = row.value;
+        } catch (error) {
+          throw new CommandError(AppError.database(`读取设置失败: ${error instanceof Error ? error.message : String(error)}`));
+        }
+        const llm = ctx.reflect.get('llm', false) as {
+          getApiConfigs?(): Promise<unknown[]>;
+          getModelAssignments?(): Promise<unknown>;
+        } | undefined;
+        if (!llm || typeof llm.getApiConfigs !== 'function' || typeof llm.getModelAssignments !== 'function') {
+          throw new CommandError(AppError.database('导出API配置失败: LLM manager service is not available'));
+        }
+        try {
+          apiConfigurations = await llm.getApiConfigs();
+        } catch (error) {
+          throw new CommandError(AppError.database(`导出API配置失败: ${error instanceof Error ? error.message : String(error)}`));
+        }
+        try {
+          modelAssignments = await llm.getModelAssignments();
+        } catch (error) {
+          throw new CommandError(AppError.database(`导出模型分配失败: ${error instanceof Error ? error.message : String(error)}`));
+        }
+      }
+      return {
+        version: '3.0' as const,
+        timestamp: new Date().toISOString(),
+        backup_type: 'unified' as const,
+        traditional_data: {
+          reviews: [],
+          settings: {
+            system_settings: systemSettings,
+            api_configurations: apiConfigurations,
+            model_assignments: modelAssignments,
+          },
+        },
+        metadata: { export_options: options },
+      };
+    });
   },
 });
 
