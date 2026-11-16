@@ -8,7 +8,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 const mockStartListening = vi.hoisted(() => vi.fn());
 const mockStopListening = vi.hoisted(() => vi.fn());
 const mockSaveDialog = vi.hoisted(() => vi.fn());
-const mockIsMobilePlatform = vi.hoisted(() => vi.fn(() => true));
+const mockReadShellPlatform = vi.hoisted(() => vi.fn<{ (): { kind: 'mobile' | 'desktop'; os: 'android' | 'macos' } }>());
 const mockShowGlobalNotification = vi.hoisted(() => vi.fn());
 const mockOverviewProps = vi.hoisted(() => ({ current: null as Record<string, unknown> | null }));
 
@@ -46,10 +46,9 @@ vi.mock('@/api/dataGovernance', () => ({
     status === 'completed' || status === 'failed' || status === 'cancelled',
 }));
 
-vi.mock('@/utils/platform', () => ({
-  isMobilePlatform: mockIsMobilePlatform,
-  isAndroid: () => mockIsMobilePlatform(),
-  isIOS: () => false,
+vi.mock('@/ui-kernel/services/shell-platform', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/ui-kernel/services/shell-platform')>()),
+  readShellPlatform: mockReadShellPlatform,
 }));
 
 vi.mock('@/components/UnifiedNotification', () => ({
@@ -131,7 +130,7 @@ describe('DataGovernanceDashboard mobile export and guards', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockOverviewProps.current = null;
-    mockIsMobilePlatform.mockReturnValue(true);
+    mockReadShellPlatform.mockReturnValue({ kind: 'mobile', os: 'android' });
     mockDataGovernanceApi.getMigrationStatus.mockResolvedValue({
       global_version: 10,
       all_healthy: true,
@@ -250,7 +249,7 @@ describe('DataGovernanceDashboard mobile export and guards', () => {
   });
 
   it('keeps desktop save() dialog and verify/delete actions intact when not on mobile', async () => {
-    mockIsMobilePlatform.mockReturnValue(false);
+    mockReadShellPlatform.mockReturnValue({ kind: 'desktop', os: 'macos' });
 
     render(<DataGovernanceDashboard embedded />);
 
