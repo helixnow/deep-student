@@ -18,7 +18,7 @@ import {
   type UpdateReviewPlanParams,
 } from '../api.ts';
 import { databaseResult } from './errors.ts';
-import { resolvePersistedIdAlias } from './id-alias.ts';
+import { resolvePersistedIdAlias, tableExists } from './id-alias.ts';
 import { utcNow } from './timestamps.ts';
 
 const DEFAULT_EASE_FACTOR = 2.5;
@@ -270,6 +270,12 @@ export class ReviewPlanRepo implements ReviewPlanRepository {
 
   updatePlan(conn: SqlExecutor, planId: string, params: UpdateReviewPlanParams): ReviewPlan {
     return databaseResult(() => {
+      // Upgrade recovery can keep a visible plan for its history after the
+      // wire ID has been deleted. A new score on this row would never sync.
+      if (tableExists(conn, '__sync_v5_review_plan_members') && conn.get(`SELECT 1
+        FROM __sync_v5_review_plan_members WHERE record_id=? AND fields_json IS NULL`, [planId])) {
+        throw notFound('review_plan', planId);
+      }
       const now = utcNow();
       const fsrs = params.fsrs;
       const affected = conn.run(`UPDATE review_plans SET

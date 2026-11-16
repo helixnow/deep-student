@@ -4,7 +4,7 @@
  * `dstu-qbank/src/review_plan_service.rs` + `dstu-vfs/src/vfs/repos/review_plan_repo.rs`。
  */
 import type { DatabaseHandle, SqlExecutor } from '../../../platform/storage/api.ts';
-import type { QuestionFilters, ReviewPlanFsrsState, VfsReposService } from '../../vfs-repos/api.ts';
+import { VfsRepositoryError, type QuestionFilters, type ReviewPlanFsrsState, type VfsReposService } from '../../vfs-repos/api.ts';
 import type { MasteryService } from '../api.ts';
 import { eventConcept } from '../repository/mastery.ts';
 import { utcNow } from './clock.ts';
@@ -452,7 +452,13 @@ export class ReviewPlanService {
         return updated;
       }, { behavior: operationId === undefined ? 'deferred' : 'immediate' });
     } catch (error) {
-      if (error instanceof ReviewPlanContextError) throw error;
+      if (error instanceof ReviewPlanContextError) {
+        if (error.cause instanceof VfsRepositoryError && error.cause.code === 'VFS_NOT_FOUND'
+            && error.cause.data?.resourceType === 'review_plan') {
+          throw new Error(`Review plan not found: ${requestedPlanId}`, { cause: error });
+        }
+        throw error;
+      }
       throw new Error('Failed to commit process_review transaction');
     }
 
