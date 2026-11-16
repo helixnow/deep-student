@@ -171,6 +171,7 @@ class FtpControl {
   }
 
   async write(line: string): Promise<void> {
+    if (this.destroyed) throw new CloudStorageError('Network', 'FTP 连接已断开');
     if (!this.socket.write(`${line}\r\n`)) await once(this.socket, 'drain');
   }
 
@@ -200,14 +201,17 @@ class FtpControl {
     return this.readReply();
   }
 
-  destroy(): void {
-    this.socket.destroy();
+  get destroyed(): boolean { return this.socket.destroyed; }
+
+  destroy(error?: Error): void {
+    this.socket.destroy(error);
   }
 }
 
 // ------------------------------------------------------------------ data channel
 
-async function openDataSocket(control: FtpControl, host: string, secure: boolean): Promise<Socket | TLSSocket> {
+async function openDataSocket(control: FtpControl, host: string, secure: boolean,
+  onError: (error: Error) => void): Promise<Socket | TLSSocket> {
   const epsv = await control.command('EPSV');
   let targetHost = host;
   let targetPort: number;
@@ -224,6 +228,7 @@ async function openDataSocket(control: FtpControl, host: string, secure: boolean
     targetPort = Number(match[5]) * 256 + Number(match[6]);
   }
   const socket = netConnect({ host: targetHost, port: targetPort });
+  socket.on('error', onError);
   await withTimeout(
     once(socket, 'connect').then(() => undefined),
     FTP_DATA_TIMEOUT_MS,
@@ -235,6 +240,7 @@ async function openDataSocket(control: FtpControl, host: string, secure: boolean
   socket.setNoDelay(true);
   if (!secure) return socket;
   const tlsSocket = tlsConnect({ socket, servername: host, minVersion: 'TLSv1.2' });
+  tlsSocket.on('error', onError);
   await withTimeout(
     once(tlsSocket, 'secureConnect').then(() => undefined),
     FTP_DATA_TIMEOUT_MS,
@@ -427,6 +433,7 @@ class FtpSession {
   }
 
   async quit(): Promise<void> {
+    if (this.control.destroyed) return;
     try {
       await this.control.command('QUIT');
     } catch (error) {
@@ -439,16 +446,28 @@ class FtpSession {
   close(): void { this.control.destroy(); }
 
   private async beginData(command: string): Promise<Retrieval> {
-    const socket = await openDataSocket(this.control, this.host, this.secure);
+    let awaitingReply = false;
+    const data: { error?: Error } = {};
+    const socket = await openDataSocket(this.control, this.host, this.secure, error => {
+      data.error ??= error;
+      // A failed data connection can leave the server silent on the control
+      // connection. Close it to wake the outstanding command before retrying.
+      if (awaitingReply) this.control.destroy(error);
+    });
     try {
+      if (data.error) throw data.error;
+      awaitingReply = true;
       const reply = await this.control.command(command);
+      if (data.error) throw data.error;
       if (reply.code !== 125 && reply.code !== 150) {
-        socket.destroy();
         throw new CloudStorageError('FileSystem', `FTP ${command.split(' ')[0]} 失败：Invalid response: [${reply.code}] ${reply.text}`);
       }
     } catch (error) {
       socket.destroy();
+      if (data.error) throw new CloudStorageError('Network', `FTP 数据通道连接失败：${data.error.message}`);
       throw error;
+    } finally {
+      awaitingReply = false;
     }
     return {
       socket,
@@ -492,7 +511,8 @@ class FtpSession {
     try {
       return await this.readAll(`LIST ${path}`, 'LIST');
     } catch (error) {
-      if (error instanceof CloudStorageError && error.message.startsWith('FTP LIST 失败')) throw error;
+      if (error instanceof CloudStorageError
+          && (error.value.error_type === 'Network' || error.message.startsWith('FTP LIST 失败'))) throw error;
       throw new CloudStorageError('FileSystem', `FTP LIST 失败：${error instanceof Error ? error.message : String(error)}`);
     }
   }
@@ -501,7 +521,8 @@ class FtpSession {
     try {
       return await this.readAll(`MLSD ${path}`, 'MLSD');
     } catch (error) {
-      if (error instanceof CloudStorageError && error.message.startsWith('FTP MLSD 失败')) throw error;
+      if (error instanceof CloudStorageError
+          && (error.value.error_type === 'Network' || error.message.startsWith('FTP MLSD 失败'))) throw error;
       throw new CloudStorageError('FileSystem', `FTP MLSD 失败：${error instanceof Error ? error.message : String(error)}`);
     }
   }
@@ -510,6 +531,7 @@ class FtpSession {
     try {
       return await this.beginData(`RETR ${filename}`);
     } catch (error) {
+      if (error instanceof CloudStorageError && error.value.error_type === 'Network') throw error;
       throw new CloudStorageError('FileSystem', `FTP 下载失败：${error instanceof Error ? error.message : String(error)}`);
     }
   }
@@ -696,7 +718,7 @@ export class FtpStorage extends CloudStorageBase {
         try {
           await client.cwd(absolutePath(fullParent));
         } catch (error) {
-          if (isNotFoundError(error)) return null;
+          if (isNotFoundError(error, { explicitOnly: true })) return null;
           throw error;
         }
 
@@ -704,7 +726,7 @@ export class FtpStorage extends CloudStorageBase {
         try {
           size = await client.size(filename);
         } catch (error) {
-          if (isNotFoundError(error)) return null;
+          if (isNotFoundError(error, { explicitOnly: true })) return null;
           throw error;
         }
 
@@ -715,7 +737,7 @@ export class FtpStorage extends CloudStorageBase {
           try {
             await client.mdtm(filename);
           } catch (error) {
-            if (isNotFoundError(error)) return null;
+            if (isNotFoundError(error, { explicitOnly: true })) return null;
             throw error;
           }
         }
@@ -780,11 +802,12 @@ export class FtpStorage extends CloudStorageBase {
           try {
             rawEntries = await client.mlsd(fullDirAbs);
           } catch (mlsdError) {
-            if (isNotFoundError(mlsdError)) continue;
+            if (mlsdError instanceof CloudStorageError && mlsdError.value.error_type === 'Network') throw mlsdError;
+            if (isNotFoundError(mlsdError, { explicitOnly: true })) continue;
             try {
               rawEntries = await client.list(fullDirAbs);
             } catch (listError) {
-              if (isNotFoundError(listError)) continue;
+              if (isNotFoundError(listError, { explicitOnly: true })) continue;
               throw listError;
             }
           }
@@ -852,7 +875,7 @@ export class FtpStorage extends CloudStorageBase {
         try {
           await client.cwd(absolutePath(fullParent));
         } catch (error) {
-          if (isNotFoundError(error)) return null;
+          if (isNotFoundError(error, { explicitOnly: true })) return null;
           throw error;
         }
 
@@ -860,7 +883,7 @@ export class FtpStorage extends CloudStorageBase {
         try {
           size = await client.size(filename);
         } catch (error) {
-          if (isNotFoundError(error)) return null;
+          if (isNotFoundError(error, { explicitOnly: true })) return null;
           throw error;
         }
 
@@ -868,7 +891,7 @@ export class FtpStorage extends CloudStorageBase {
         try {
           modified = await client.mdtm(filename);
         } catch (error) {
-          if (isNotFoundError(error)) return null;
+          if (isNotFoundError(error, { explicitOnly: true })) return null;
           throw error;
         }
 
@@ -934,7 +957,7 @@ export class FtpStorage extends CloudStorageBase {
           try {
             await client.cwd(absolutePath(fullParent));
           } catch (error) {
-            if (isNotFoundError(error)) throw new CloudStorageError('NotFound', '云端文件不存在');
+            if (isNotFoundError(error, { explicitOnly: true })) throw new CloudStorageError('NotFound', '云端文件不存在');
             throw error;
           }
         }

@@ -115,6 +115,14 @@ describe('ftp.rs', () => {
     }
   });
 
+  it('strict missing replies allow an absolute path but reject an access qualifier', () => {
+    const explicit = { explicitOnly: true };
+    const missing = new CloudStorageError('FileSystem', 'FTP SIZE 失败：Invalid response: [550] 550 /a/b: No such file.');
+    const ambiguous = new CloudStorageError('FileSystem', 'FTP SIZE 失败：Invalid response: [550] 550 /a/b (no access): No such file.');
+    expect(isNotFoundError(missing, explicit)).toBe(true);
+    expect(isNotFoundError(ambiguous, explicit)).toBe(false);
+  });
+
   it('explicit_missing_parent_directory_cwd_is_treated_as_absent', () => {
     for (const message of [
       'FTP CWD 失败：Invalid response: [550] 550 /root/data_governance/assets: No such file or directory',
@@ -374,6 +382,7 @@ describe('ftp.rs', () => {
     { reply: 'Permission denied.', errorType: 'FileSystem' },
     { reply: 'File is not retrievable: access denied.', errorType: 'FileSystem' },
     { reply: 'File not found or access denied.', errorType: 'FileSystem' },
+    { reply: 'File unavailable (file not found, no access).', errorType: 'FileSystem' },
     { reply: 'File is not retrievable.', errorType: 'FileSystem' },
   ])('classifies RETR 550 "$reply" after a successful SIZE', async ({ reply, errorType }) => {
     let blockDownload = true;
@@ -393,6 +402,54 @@ describe('ftp.rs', () => {
     blockDownload = false;
     expect(await storage.getRange('pack.bin', 1, 2)).toEqual(new Uint8Array([98, 99]));
   });
+
+  it.each(['File is not retrievable.', 'File unavailable (file not found, no access).'])(
+    'keeps ambiguous SIZE 550 "%s" as an error for stat and reads', async reply => {
+      const { server, host, port } = await spawnFakeFtp({
+        files: { '/deep-student-sync/pack.bin': 'abcd' },
+        intercept: command => command === 'SIZE pack.bin' ? { code: 550, text: reply } : null,
+      });
+      ftpServers.push(server);
+      const storage = fakeStorage({ host, port });
+      for (const operation of [() => storage.stat('pack.bin'), () => storage.getRange('pack.bin', 0, 4)]) {
+        const error = await failure(operation());
+        expect(error).toMatchObject({ value: { error_type: 'FileSystem' } });
+        expect(error.message).toContain(reply);
+      }
+      expect(server.commands).not.toContain('RETR pack.bin');
+    });
+
+  it('does not treat an ambiguous directory listing as an empty directory', async () => {
+    const reply = 'Directory unavailable (directory not found, no access).';
+    const { server, host, port } = await spawnFakeFtp({
+      files: { '/deep-student-sync/pack.bin': 'abcd' },
+      intercept: command => /^(MLSD|LIST) /.test(command) ? { code: 550, text: reply } : null,
+    });
+    ftpServers.push(server);
+    const error = await failure(fakeStorage({ host, port }).list(''));
+    expect(error).toMatchObject({ value: { error_type: 'FileSystem' } });
+    expect(error.message).toContain(reply);
+  });
+
+  it.each(['RETR pack.bin', 'MLSD /deep-student-sync'])(
+    'returns a network error when data resets before any reply to %s', async command => {
+      let reset = true;
+      const { server, host, port } = await spawnFakeFtp({
+        files: { '/deep-student-sync/pack.bin': 'abcd' },
+        resetDataBeforeReply: line => reset && line === command,
+      });
+      ftpServers.push(server);
+      const storage = fakeStorage({ host, port });
+      const operation = command.startsWith('RETR') ? () => storage.getRange('pack.bin', 1, 2) : () => storage.list('');
+      const error = await failure(operation());
+      expect(error).toMatchObject({ value: { error_type: 'Network' } });
+      expect(error.message).toContain('ECONNRESET');
+      expect(server.commands).not.toContain('QUIT');
+
+      reset = false;
+      expect(await storage.getRange('pack.bin', 1, 2)).toEqual(new Uint8Array([98, 99]));
+      expect((await storage.list('')).map(file => file.key)).toEqual(['pack.bin']);
+    });
 
   it('budget_is_rejected_before_the_data_channel_is_opened', async () => {
     const { server, host, port } = await spawnFakeFtp({

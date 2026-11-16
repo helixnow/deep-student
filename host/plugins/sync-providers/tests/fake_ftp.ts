@@ -20,6 +20,8 @@ export interface FakeFtpOptions {
   dirs?: string[];
   /** Intercept a command before the default handler. Return null to fall through. */
   intercept?: (command: string, server: FakeFtp) => FtpReply | null;
+  /** Reset the data connection before replying to a selected transfer command. */
+  resetDataBeforeReply?: (command: string) => boolean;
   /** Reject MLSD with this code to force the LIST fallback. */
   mlsdStatus?: number;
   /** Reject RNTO with this code. */
@@ -140,6 +142,12 @@ export class FakeFtp {
   }
 
   private async handle(line: string, socket: Socket): Promise<void> {
+    if (this.options.resetDataBeforeReply?.(line)) {
+      const data = await this.takeDataSocket();
+      data.resetAndDestroy();
+      this.closePassive();
+      return;
+    }
     const override = this.options.intercept?.(line, this);
     if (override !== undefined && override !== null) {
       this.reply(socket, override);
