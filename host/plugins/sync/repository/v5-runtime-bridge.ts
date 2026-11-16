@@ -357,6 +357,13 @@ export function listV5PendingLocalCaptureOps(
   );
 }
 
+export function listV5CapturedLocalOps(db: SqlExecutor, repoId: string, deviceId: string): Array<{ payload: string }> {
+  return db.all<{ payload: string }>(
+    'SELECT payload FROM __sync_v5_runtime_ops WHERE repo=? AND device=? AND local_captured=1',
+    [repoId, deviceId],
+  );
+}
+
 export function markV5OpLocalCaptured(
   db: SqlExecutor,
   repoId: string,
