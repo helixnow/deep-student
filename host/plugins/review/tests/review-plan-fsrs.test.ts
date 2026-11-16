@@ -2,7 +2,7 @@
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createStorageService } from '../../../platform/storage/service.ts';
 import { ReviewPlanRepo } from '../../vfs-repos/repository/review-plans.ts';
 import type { ReviewPlan } from '../../vfs-repos/api.ts';
@@ -13,6 +13,10 @@ import {
 } from '../src/review-plan-fsrs.ts';
 import { ReviewPlanService } from '../src/review-plan.ts';
 import { createReviewPlanStore } from './vfs-repo-double.ts';
+import { getRecordData } from '../../sync/repository/record-data.ts'; // boundary-allow cross-plugin-impl: FSRS sync integration test
+import { ensureV5TargetDatabaseTables } from '../../sync/repository/v5-runtime-bridge.ts'; // boundary-allow cross-plugin-impl: FSRS sync integration test
+import { applyIncomingRowV5, mergeKnownRowWithUnknownVault } from '../../sync/src/v5-runtime-bridge.ts'; // boundary-allow cross-plugin-impl: FSRS sync integration test
+import { Hlc } from '../../sync/src/hlc.ts'; // boundary-allow cross-plugin-impl: FSRS sync integration test
 
 const DAY = 86_400_000;
 // 固定在本地正午，避开 4 点日切与午夜的边界。
@@ -91,14 +95,20 @@ describe('SM-2 → FSRS migration', () => {
 
 describe('ReviewPlanService with the real repository', () => {
   const cleanups: (() => void)[] = [];
-  afterEach(() => { for (const cleanup of cleanups.splice(0)) cleanup(); });
+  afterEach(() => {
+    vi.useRealTimers();
+    for (const cleanup of cleanups.splice(0)) cleanup();
+  });
 
-  function setup() {
+  function setup(legacy = false) {
     const root = mkdtempSync(join(tmpdir(), 'review-plan-fsrs-'));
     const storage = createStorageService({ baseDir: root, dataLocalDir: root });
     const db = storage.database('vfs');
     const dir = 'resources/app/migrations/vfs';
-    for (const file of readdirSync(dir).filter(name => name.endsWith('.sql')).sort()) db.exec(readFileSync(join(dir, file), 'utf8'));
+    for (const file of readdirSync(dir).filter(name => name.endsWith('.sql')).sort()) {
+      if (legacy && file >= 'V20261115__review_plans_fsrs.sql') break;
+      db.exec(readFileSync(join(dir, file), 'utf8'));
+    }
     cleanups.push(() => { storage.dispose(); rmSync(root, { recursive: true, force: true }); });
     db.run(`INSERT INTO exam_sheets (id, exam_name, status, temp_id, metadata_json, preview_json, created_at, updated_at)
       VALUES ('e1', 'Exam', 'completed', 'tmp_e1', '{}', '{"pages":[]}', '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00')`);
@@ -109,7 +119,9 @@ describe('ReviewPlanService with the real repository', () => {
     return { db, repo, service };
   }
 
-  it('writes FSRS state, keeps "again" due today and returns previews with due lists', () => {
+  it('lists a one-minute learning step only when due, including counts and explicit horizons', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
     const { db, repo, service } = setup();
     const created = service.createReviewPlan('q1', 'e1');
     const listed = service.attachRatingPreviews(service.getDueReviews('e1', null));
@@ -122,9 +134,16 @@ describe('ReviewPlanService with the real repository', () => {
     const state = repo.getFsrsStates(db, [created.id]).get(created.id)!;
     expect(state.phase).toBe('learning');
     expect(state.stability).toBeGreaterThan(0);
-    expect(state.last_review_at).not.toBeNull();
-    // 重来 = 当天再见：仍在今天的到期列表里。
-    expect(service.getDueReviews('e1', null).plans.map(item => item.id)).toEqual([created.id]);
+    expect(state.last_review_at).toBe(NOW);
+    expect(state.due_at).toBe(NOW + 60_000);
+    expect(service.getDueReviews('e1', localDateKey()).total).toBe(0);
+    expect(service.getDueReviews('e1', localDateKey(new Date(NOW + DAY))).total).toBe(1);
+    expect(service.getReviewStats('e1').due_today).toBe(0);
+    vi.setSystemTime(NOW + 59_999);
+    expect(service.getDueReviews('e1', null).plans).toEqual([]);
+    vi.setSystemTime(NOW + 60_000);
+    expect(service.getDueReviewsWithFilter({ exam_id: 'e1' }).plans.map(item => item.id)).toEqual([created.id]);
+    expect(service.getReviewStats('e1').due_today).toBe(1);
 
     const easy = service.processReview(created.id, 5, null, null);
     expect(easy.passed).toBe(true);
@@ -140,12 +159,71 @@ describe('ReviewPlanService with the real repository', () => {
     db.run(`UPDATE review_plans SET ease_factor = 2.5, interval_days = 10, repetitions = 3, total_reviews = 3,
       status = 'reviewing', last_review_date = ?1, next_review_date = ?2 WHERE id = ?3`,
     [localDateKey(new Date(Date.now() - 10 * DAY)), localDateKey(), created.id]);
-    expect(repo.getFsrsStates(db, [created.id]).get(created.id)!.phase).toBeNull();
+    expect(repo.getFsrsStates(db, [created.id]).get(created.id)?.phase ?? null).toBeNull();
     const previews = service.attachPlanPreviews(service.getPlan(created.id))!.rating_previews!;
     expect(previews.good.interval_minutes).toBeGreaterThan(previews.hard.interval_minutes);
     expect(previews.easy.interval_minutes).toBeGreaterThan(previews.good.interval_minutes);
     const good = service.processReview(created.id, 4, null, null);
     expect(good.new_interval * 1440).toBe(previews.good.interval_minutes);
     expect(repo.getFsrsStates(db, [created.id]).get(created.id)!.phase).toBe('review');
+  });
+
+  it('resumes a paused plan immediately without discarding its FSRS memory', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+    const { db, repo, service } = setup();
+    const created = service.createReviewPlan('q1', 'e1');
+    const rated = service.processReview(created.id, 0, null, null);
+    const state = repo.getFsrsStates(db, [created.id]).get(created.id)!;
+
+    const suspended = service.suspendPlanIfUnchanged(created.id, rated.plan.updated_at);
+    expect(repo.getFsrsStates(db, [created.id]).get(created.id)).toEqual(state);
+    expect(service.getDueReviews('e1', null).total).toBe(0);
+    service.resumePlanIfUnchanged(created.id, suspended.updated_at);
+    expect(repo.getFsrsStates(db, [created.id]).get(created.id)).toEqual({ ...state, due_at: null });
+    expect(service.getDueReviews('e1', null).plans.map(item => item.id)).toEqual([created.id]);
+  });
+
+  it('uses the newer legacy review when an older V5 client relays opaque FSRS fields', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+    const modern = setup();
+    const legacy = setup(true);
+    const fresh = setup();
+    for (const client of [modern, legacy, fresh]) ensureV5TargetDatabaseTables(client.db);
+    const created = modern.service.createReviewPlan('q1', 'e1');
+    modern.service.processReview(created.id, 0, null, null);
+
+    function transfer(source: typeof modern, target: typeof modern, sender: string, operation: 'Insert' | 'Update') {
+      const data = getRecordData(source.db, 'review_plans', created.id, 'id');
+      const stamp = new Hlc(BigInt(Date.now()), 1).toString();
+      const change = { table_name: 'review_plans', database_name: 'vfs', record_id: created.id,
+        operation, data, changed_at: stamp, source_device_id: sender };
+      const payload = mergeKnownRowWithUnknownVault(source.db, change, { hlc: stamp, dev: sender });
+      expect(applyIncomingRowV5(target.db, { ...change, data: payload.data }, payload.versions)).toBe(true);
+    }
+
+    transfer(modern, legacy, 'modern', 'Insert');
+    transfer(modern, fresh, 'modern', 'Insert');
+    expect(fresh.repo.getFsrsStates(fresh.db, [created.id]).get(created.id)?.phase).toBe('learning');
+
+    // The old client's real schema can update its SM-2 schedule on the same day,
+    // while its sync vault still holds the earlier FSRS learning state.
+    vi.setSystemTime(NOW + 1_000);
+    legacy.db.run(`UPDATE review_plans SET interval_days = 7, repetitions = 2, total_reviews = 3,
+      total_correct = 2, consecutive_failures = 0, status = 'reviewing', next_review_date = ?1, updated_at = ?2
+      WHERE id = ?3`, [localDateKey(new Date(NOW + 7 * DAY)), new Date(Date.now()).toISOString(), created.id]);
+    transfer(legacy, modern, 'legacy', 'Update');
+    transfer(legacy, fresh, 'legacy', 'Update');
+
+    for (const client of [modern, fresh]) {
+      const synced = client.service.getPlan(created.id)!;
+      expect(synced.interval_days).toBe(7);
+      expect(client.repo.getFsrsStates(client.db, [created.id]).get(created.id)?.phase ?? null).toBeNull();
+      expect(client.service.attachPlanPreviews(synced)?.rating_previews).toEqual(planRatingPreviews(synced, null, Date.now()));
+      const rerated = client.service.processReview(created.id, 5, null, null);
+      expect(rerated.plan.total_reviews).toBe(4);
+      expect(client.repo.getFsrsStates(client.db, [created.id]).get(created.id)?.phase).toBe('review');
+    }
   });
 });
