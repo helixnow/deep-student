@@ -90,7 +90,9 @@ export class WorkshopOperations implements Omit<PluginWorkshopService, 'developm
       if (card.version !== result.attemptedVersion) return;
       const installed = installationOf(card);
       if (result.success) {
-        await this.store.update(card.id, card.revision, { usableVersion: result.actualVersion, error: null,
+        const recovered = card.state === 'failed' && installed?.state === 'failed';
+        await this.store.update(card.id, card.revision, { usableVersion: result.actualVersion,
+          ...(recovered ? { state: 'installed' as const, error: null, lastFault: null } : {}),
           lastGoodPackageDir: join(this.store.directory(card.id), 'versions', result.actualVersion!, 'package'),
           ...(result.actualVersion ? { installation: { previousVersion: null, ...installed, state: 'installed' as const, version: result.actualVersion } } : {}) });
         return;
