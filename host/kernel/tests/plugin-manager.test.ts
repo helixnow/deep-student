@@ -194,6 +194,9 @@ describe('RF-W01-trusted-plugin-admin: plugin manager commands', () => {
           results.push(result);
         }));
       } });
+      expect(await err(h, PLUGIN_MANAGER_SET_ENABLED_COMMAND, { id: demo.id, enabled: true, revision: 'stale' }))
+        .toContain('PROFILE_CONFLICT');
+      expect(results).toEqual([]);
       await ok(h, PLUGIN_MANAGER_SET_ENABLED_COMMAND, { id: demo.id, enabled: true, revision: installed.revision });
       expect(results).toEqual([{ id: demo.id, attemptedVersion: '1.0.0', actualVersion: '1.0.0', success: true, error: null }]);
       const capability = await builtinInstaller(h);

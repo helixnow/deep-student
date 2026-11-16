@@ -341,7 +341,11 @@ export class PluginAdmin {
       };
       let result;
       try { result = await this.setEnabled(args, call); }
-      catch (error) { await notify(false, error); throw error; }
+      catch (error) {
+        // A stale profile revision never ran the plugin, so it is not an activation failure.
+        if (!(error instanceof ProfileConflictError)) await notify(false, error);
+        throw error;
+      }
       await notify(true); return result;
     }));
     commands._registerKernel(PLUGIN_MANAGER_UNINSTALL_COMMAND, (args, call) => mutation(() => this.uninstall(args, call)));
@@ -572,7 +576,7 @@ export class PluginAdmin {
     const enabled = booleanArg(document, PLUGIN_MANAGER_SET_ENABLED_COMMAND, 'enabled');
     const revision = this.revisionArg(document, PLUGIN_MANAGER_SET_ENABLED_COMMAND);
     const current = await this.store.read();
-    if (current.revision !== revision) throw conflict(new ProfileConflictError(revision, current.revision));
+    if (current.revision !== revision) throw new ProfileConflictError(revision, current.revision);
 
     const effective = await this.effectiveEntry(id);
     const installed = this.runtime.get(id);
