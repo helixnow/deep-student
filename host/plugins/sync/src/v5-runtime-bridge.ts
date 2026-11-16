@@ -21,7 +21,10 @@ import {
   type RangeReader,
   type RuntimeCloudStorageConfig,
 } from '../../sync-providers/api.ts';
-import { appendUnknownOp, applyRowWithColumnLifecycle, recordReceivedOp, transitionOpMaterializationState } from '../repository/v5-vaults.ts';
+import {
+  appendUnknownOp, applyRowWithColumnLifecycle, reconcileV5ReviewPlanId, recordReceivedOp,
+  resolveV5RecordId, transitionOpMaterializationState,
+} from '../repository/v5-vaults.ts';
 import {
   deleteV5ColumnVersion,
   deleteV5PendingGcKey,
@@ -313,7 +316,8 @@ export class SyncV5RuntimeCoordinator {
     const change = parseSyncChange(op.change);
     recordReceivedOp(tx, { source_device_id: op.deviceId, incarnation_id: op.incarnationId, source_seq: op.seq,
       op_hash: this.opHash(op, change) }, 'materialized');
-    const meta = getV5RowMetaRow(tx, change.table_name, change.record_id);
+    const recordId = resolveV5RecordId(tx, change);
+    const meta = getV5RowMetaRow(tx, change.table_name, recordId);
     const versions = meta ? decode<Versions>(meta.col_versions_json) : {};
     let floor = meta?.floor_deleted_hlc ?? null, floorDev = meta?.floor_deleted_dev ?? null;
     if (change.operation === 'Delete') {
@@ -324,7 +328,7 @@ export class SyncV5RuntimeCoordinator {
         const v = versions[col]!;
         if (compareLwwTimestamps(v.hlc, v.dev, '', floor!, floorDev ?? '', '') <= 0) {
           delete versions[col];
-          deleteV5ColumnVersion(tx, change.database_name ?? 'vfs', change.table_name, change.record_id, col);
+          deleteV5ColumnVersion(tx, change.database_name ?? 'vfs', change.table_name, recordId, col);
         }
       }
     } else if (isJsonObject(change.data)) {
@@ -338,19 +342,19 @@ export class SyncV5RuntimeCoordinator {
           || (floor && compareLwwTimestamps(v.hlc, v.dev, '', floor, floorDev ?? '', '') <= 0)) continue;
         versions[col] = v;
         if (known.has(col)) {
-          upsertV5ColumnVersion(tx, change.database_name ?? 'vfs', change.table_name, change.record_id, col, v.hlc, valueHash(value), v.dev);
+          upsertV5ColumnVersion(tx, change.database_name ?? 'vfs', change.table_name, recordId, col, v.hlc, valueHash(value), v.dev);
         }
       }
     }
-    upsertV5RowMeta(tx, change.table_name, change.record_id, floor, floorDev, encode(versions));
+    upsertV5RowMeta(tx, change.table_name, recordId, floor, floorDev, encode(versions));
   }
   private opHash(op: V5RuntimeOperation, change: EngineChange): Uint8Array {
     return computeCanonicalOpHash({ ...op, ordinal: 0, db: change.database_name ?? 'vfs', table: change.table_name,
       recordId: change.record_id, op: change.operation === 'Delete' ? 2 : 1, hlc: change.changed_at, canonicalPayload: encode(op) });
   }
   private materializeRemote(op: V5RuntimeOperation): boolean {
-    const change = parseSyncChange(op.change);
-    const parsedHlc = Hlc.parse(change.changed_at);
+    const wireChange = parseSyncChange(op.change);
+    const parsedHlc = Hlc.parse(wireChange.changed_at);
     if (!parsedHlc) throw new Error('Invalid remote V5 HLC');
     parsedHlc.toU64();
     for (const version of Object.values(op.versions)) {
@@ -360,22 +364,29 @@ export class SyncV5RuntimeCoordinator {
         hlc.toU64();
       } catch { throw new Error('Invalid remote V5 column HLC'); }
     }
-    const db = this.options.databases.get(change.database_name ?? 'vfs');
-    if (!db) throw new Error(`No database route: ${change.database_name}`);
+    const db = this.options.databases.get(wireChange.database_name ?? 'vfs');
+    if (!db) throw new Error(`No database route: ${wireChange.database_name}`);
     const identity = { source_device_id: op.deviceId, incarnation_id: op.incarnationId, source_seq: op.seq };
-    const opHash = this.opHash(op, change);
+    const opHash = this.opHash(op, wireChange);
     // Older senders still stamp by column. Materialize their schedule as a unit
     // without changing the persisted operation or opaque field versions.
-    const incoming = reviewScheduleVersions(change.table_name, change.data, op.versions, { hlc: change.changed_at, dev: op.deviceId });
+    const incoming = reviewScheduleVersions(wireChange.table_name, wireChange.data, op.versions, { hlc: wireChange.changed_at, dev: op.deviceId });
     try { db.transaction(tx => {
       const received = recordReceivedOp(tx, { ...identity, op_hash: opHash });
       if (!received.shouldMaterialize) return;
-      if (!tableExists(tx, change.table_name)) {
-        appendUnknownOp(tx, identity, change);
+      if (!tableExists(tx, wireChange.table_name)) {
+        appendUnknownOp(tx, identity, wireChange);
         insertV5QuarantineRecord(tx, op.deviceId, op.incarnationId, op.seq.toString(), encode(op));
         return;
       }
       const preLogMax = changeLogMaxId(tx);
+      const recordId = reconcileV5ReviewPlanId(tx, wireChange);
+      // Receipt and business writes share the transaction; the original wire
+      // identity still determines the operation hash and deduplication.
+      transitionOpMaterializationState(tx, identity, 'materialized');
+      deleteV5QuarantineRecord(tx, op.deviceId, op.incarnationId, op.seq.toString());
+      if (recordId === null) return;
+      const change = { ...wireChange, record_id: recordId };
       if (change.operation === 'Delete') applyIncomingTombstoneV5(tx, change);
       else applyIncomingRowV5(tx, change, incoming);
       if (preLogMax !== null) suppressEchoChangeLog(tx, Math.floor(this.now() / 1000), preLogMax);
@@ -396,8 +407,6 @@ export class SyncV5RuntimeCoordinator {
         if (compareLwwTimestamps(a.hlc, a.dev, '', b.hlc, b.dev, '') !== 0) continue;
         upsertV5ColumnVersion(tx, change.database_name ?? 'vfs', change.table_name, change.record_id, col, a.hlc, valueHash(value), a.dev);
       }
-      transitionOpMaterializationState(tx, identity, 'materialized');
-      deleteV5QuarantineRecord(tx, op.deviceId, op.incarnationId, op.seq.toString());
     }); } catch (error) {
       if (!(error instanceof Error) || !/FOREIGN KEY constraint failed/i.test(error.message)) throw error;
       db.transaction(tx => {

@@ -157,17 +157,25 @@ export function persistIdAliases(db: SqlExecutor, aliases: IdAliasMap): void {
     const separator = key.indexOf('\u001f');
     const tableName = key.slice(0, separator);
     const remoteId = key.slice(separator + 1);
-    try {
-      db.run(
-        `INSERT INTO __sync_id_aliases (table_name, remote_id, canonical_id)
-         VALUES (?1, ?2, ?3)
-         ON CONFLICT(table_name, remote_id) DO UPDATE SET
-            canonical_id = excluded.canonical_id`,
-        [tableName, remoteId, canonicalId],
-      );
-    } catch (error) {
-      databaseError(`写入 ID 别名失败: ${message(error)}`);
-    }
+    writeIdAlias(db, tableName, remoteId, canonicalId);
+  }
+}
+
+export function persistIdAlias(db: SqlExecutor, tableName: string, remoteId: string, canonicalId: string): void {
+  ensureIdAliasTable(db);
+  writeIdAlias(db, tableName, remoteId, canonicalId);
+}
+
+function writeIdAlias(db: SqlExecutor, tableName: string, remoteId: string, canonicalId: string): void {
+  try {
+    db.run(
+      `INSERT INTO __sync_id_aliases (table_name, remote_id, canonical_id)
+       VALUES (?1, ?2, ?3)
+       ON CONFLICT(table_name, remote_id) DO UPDATE SET canonical_id = excluded.canonical_id`,
+      [tableName, remoteId, canonicalId],
+    );
+  } catch (error) {
+    databaseError(`写入 ID 别名失败: ${message(error)}`);
   }
 }
 
