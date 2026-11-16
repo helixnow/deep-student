@@ -114,7 +114,7 @@ export function ConsentDialog({ subject, agentTools, name, busy = false, error, 
             <DsButton variant="outline" size="sm" className="[@media(pointer:coarse)]:!min-h-[var(--touch-target-size)]" onClick={onCancel} disabled={busy}>
               {t('consent.cancel')}
             </DsButton>
-            <DsButton size="sm" className="[@media(pointer:coarse)]:!min-h-[var(--touch-target-size)]" onClick={onConfirm} disabled={busy}>
+            <DsButton variant="primary" size="sm" className="[@media(pointer:coarse)]:!min-h-[var(--touch-target-size)]" onClick={onConfirm} disabled={busy}>
               {busy ? t('consent.working') : t('consent.confirm')}
             </DsButton>
           </DsDialogFooter>

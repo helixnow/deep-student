@@ -10,7 +10,9 @@
  * - sensitivity is never `low`: every call goes through the same approval gate as other medium / high tools;
  * - the handler gets a JSON copy of the arguments, an abort signal and a `fetch` limited to HTTPS GET on the
  *   hosts the manifest declares (`net:<host>`), through the pinned public transport;
- * - results must be plain JSON and are clipped by the registry's result budget.
+ * - results must be plain JSON and are clipped by the registry's result budget;
+ * - the model gets the result inside a data boundary (`externalDataBoundary`): what a plugin read from outside is data,
+ *   not instructions, and the turn is marked so the approval gate asks before any high-sensitivity call after it (F17).
  */
 import type { ExecutionContext, ToolCall, ToolResultInfo } from '../../../chat/api.ts';
 import type {
@@ -18,6 +20,7 @@ import type {
 } from '../../../../kernel/plugin-agent-tools.ts';
 import type { HttpService } from '../../../../platform/http/api.ts';
 import type { AgentSchemaTool, AgentToolConcurrency, AgentToolExecutor, AgentToolSensitivity } from './executor-registry.ts';
+import { externalDataBoundary, markExternalPluginData } from './external-data-taint.ts';
 
 export const PLUGIN_AGENT_TOOL_EXECUTOR_NAME = 'PluginAgentToolExecutor';
 /** Response body cap for a tool's `fetch` (bytes). A calendar or a small JSON document fits; a download does not. */
@@ -121,7 +124,10 @@ export class PluginAgentToolExecutor implements AgentToolExecutor {
       const signal = ctx.cancellation_token ?? new AbortController().signal;
       const output = await tools.call(tool.qualifiedName, call.arguments, { signal, fetch: pluginToolFetch(tool, this.deps.http(), signal) });
       ctx.emitToolCallEnd(output);
-      return { ...base, output, success: true, durationMs: Math.trunc(performance.now() - started) } as ToolResultInfo;
+      markExternalPluginData(ctx.session_id, ctx.message_id, tool.pluginTitle);
+      // The card shows the plugin's own result; the model reads it inside the data boundary.
+      const bounded = { notice: externalDataBoundary(tool.pluginTitle), plugin: tool.pluginTitle, tool: tool.title, data: output };
+      return { ...base, output: bounded, success: true, durationMs: Math.trunc(performance.now() - started) } as ToolResultInfo;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       ctx.emitToolCallError(message);

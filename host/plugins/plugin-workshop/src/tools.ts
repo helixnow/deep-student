@@ -29,8 +29,11 @@ const specs = {
       type: 'string',
       description: 'Omit when creating a new plugin (the Host assigns workshop.plugin-<uuid> automatically). Only pass an existing workshop.plugin-... pluginId returned by dstu_plugin_status when editing an existing managed work.',
     },
+    limits: { type: 'array', items: { type: 'string' }, description: 'Parts of the request that really cannot be done (no slot in that built-in screen, mobile only …), in plain words. Shown as 「做不到的部分」.' },
+    alternatives: { type: 'array', items: { type: 'string' }, description: 'The nearest feasible version you propose instead of the limits. Shown as 「改成这样」.' },
+    builtinDifference: { type: 'string', description: 'When a built-in feature already does something similar (dstu_plugin_inventory), one sentence on how this work differs, e.g. 「内置专注计时只计时；这个还会把番茄数记进学习记录」.' },
   }, required: ['title', 'description', 'template', 'changes', 'capabilities'] },
-  status: { description: 'Read workshop works belonging to this conversation.', properties: { id: { type: 'string' } }, required: [] },
+  status: { description: 'Read ALL workshop works (every conversation). ownedHere=false works can be changed here only after the user presses 「在这个对话里修改」 on the card propose_install returns for them.', properties: { id: { type: 'string' } }, required: [] },
   export: { description: 'Export the approved installed version of a work to a Host-owned .dstuplugin file (named after its title and version). Does not publish.', properties: { id: { type: 'string' } }, required: ['id'] },
   inventory: { description: 'List all installed plugins (builtin, workshop, community) with their running state, trust tier, and whether they have configurable settings (hasConfig). Read-only.', properties: {}, required: [] },
   config_get: { description: 'Read a plugin\'s configuration schema and current values by pluginId (e.g. workshop.plugin-xxx or builtin plugin id). Read-only.', properties: { pluginId: { type: 'string' } }, required: ['pluginId'] },
@@ -50,6 +53,7 @@ const confirmTools = new Set(['dstu_plugin_configure', 'dstu_plugin_set_enabled'
  * test load of model-written code, 安装 approves installation. Agent source edits are refused until 开始做.
  */
 const needsUserStart = new Set(['dstu_plugin_write_source', 'dstu_plugin_validate']);
+const BIND_NOTE = 'This work was made in another conversation. The card asks the user to press 「在这个对话里修改『…』」; tell them in one sentence, then stop. After they press it, call propose_install again with the same pluginId and the requested changes.';
 const PROPOSAL_NOTE = 'The card is waiting for the user. Tell them in one short sentence to check it and press 开始做 (and fill in what it asks for); do not write source, validate or poll. The Host writes, checks and repairs the plugin, then the card asks for 安装.';
 export class WorkshopToolExecutor {
   readonly operations: WorkshopOperations;
@@ -88,6 +92,10 @@ export class WorkshopToolExecutor {
           const matched = works.find(
             w => w.pluginId === rawPluginId || w.id === rawPluginId || w.pluginId === `workshop.plugin-${rawPluginId}`,
           );
+          if (matched && !ownsSession(matched, sessionId)) {
+            // A work of another conversation (F19): no error; the card offers to move editing here with one click.
+            return { ...matched, serviceName: pluginServiceName(matched.pluginId), bindRequired: { sessionId }, note: BIND_NOTE };
+          }
           if (matched) {
             resolvedPluginId = matched.pluginId;
           } else if (await this.operations.isInstalledNonWorkshopPlugin(rawPluginId)) {
@@ -99,15 +107,19 @@ export class WorkshopToolExecutor {
         description: args.description as string, template: args.template as WorkshopTemplate,
         changes: args.changes as string[], capabilities: args.capabilities as string[],
         ...(args.settings === undefined ? {} : { settings: args.settings as WorkshopSetting[] }),
+        ...(args.limits === undefined ? {} : { limits: args.limits as string[] }),
+        ...(args.alternatives === undefined ? {} : { alternatives: args.alternatives as string[] }),
+        ...(typeof args.builtinDifference === 'string' ? { builtinDifference: args.builtinDifference } : {}),
         ...(resolvedPluginId === undefined ? {} : { pluginId: resolvedPluginId }) });
         // `autoGenerate` (older prompts) is ignored: only the user's 开始做 starts generation.
         return { ...card, serviceName: pluginServiceName(card.pluginId), note: PROPOSAL_NOTE };
       }
       case 'dstu_plugin_status': {
         const filterId = args.id === undefined ? undefined : String(args.id).trim().replace(/^workshop\.plugin-/, '');
+        // Every work, not only this conversation's (F19): a new conversation can find and offer to change any of them.
         const works = (await this.operations.list())
-          .filter(card => ownsSession(card, sessionId) && (filterId === undefined || card.id === filterId))
-          .map(card => ({ ...card, serviceName: pluginServiceName(card.pluginId) }));
+          .filter(card => (filterId === undefined ? card.state !== 'superseded' : card.id === filterId))
+          .map(card => ({ ...card, serviceName: pluginServiceName(card.pluginId), ownedHere: ownsSession(card, sessionId) }));
         return { works };
       }
       case 'dstu_plugin_validate':

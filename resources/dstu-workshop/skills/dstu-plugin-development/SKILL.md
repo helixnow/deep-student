@@ -7,29 +7,33 @@ description: Create or modify a dstu plugin using real SDK discovery, managed so
 
 <!-- RUST-FIX(RF-P3-workshop-compiler): shipped progressive plugin-development guidance. -->
 
-The learner asks in plain words ("给我做个公式速查的小应用", "选中一段话时多一个『编成口诀』的按钮",
-"以后我说『查课表』，就去读…"). There is ONE path; follow it, do not ask follow-up questions first unless a
-value only the user knows is missing and cannot go into `settings`.
+The learner asks in plain words ("给我做个公式速查的小应用", "以后我说『查课表』，就去读…").
+
+## Before proposing
+
+- Check the available services, slots and recipes with `dstu_plugin_api_list`. Use the declared capabilities and public SDK.
+  What cannot be done (no slot in a built-in screen, mobile only) goes in `limits`, the nearest
+  feasible version in `alternatives`; still propose it.
+- `dstu_plugin_inventory`: if a built-in feature is similar, say how this differs in `builtinDifference`.
+- If a decision only the user can make is needed, ask for it; otherwise propose directly.
+- Third-party APIs: prefer `service:pluginModel`; otherwise a `secret` setting. Never copy a key the user pasted
+  into the plan or source. Ask the user to enter it in the secret field on the card.
 
 ## The one path
 
 1. **Propose** with `dstu_plugin_propose_install` right away: `title` (short Chinese name), `description` (the goal
    and one observable acceptance criterion), `template` (`learning-tool` = Host + UI; `host-tool` = Host only, e.g. a
    new Agent tool), `changes`, `capabilities` (honest, plain words). Omit `pluginId` for a new plugin; pass the existing
-   `workshop.plugin-...` id from `dstu_plugin_status` to modify one. Values only the user knows (a calendar .ics address,
-   a site address, a name) go in `settings`: `[{ "key": "calendarUrl", "title": "课表日历地址（.ics）", "kind": "ics-url" }]`
-   (`ics-url` / `https-url` / `text` / `secret`; add `value` only if the user already said it, never for `secret`). Never
-   invent addresses. An API key is `secret`: the Host keeps it in the secure store; read it with `ctx.pluginSecrets.get(key)`.
-2. **Stop.** The chat shows a card. Tell the user in one short sentence to check it and press 「开始做」 (and fill in what
-   it asks). Pressing it is the user's approval to generate the code and test-load it in the app; until then
-   `write_source` and `validate` are refused. Do not poll.
-3. **The Host makes it**: it writes the source with the model, compiles, test-loads/unloads it, and repairs exact
-   errors up to three rounds, showing progress on the card. It checks a calendar address for real (it must return a
-   VCALENDAR) and declares `net:<host>` for user addresses itself. A modification gets its new version from the Host;
-   you never bump versions.
-4. **One click installs.** The card then shows 「等你确认」 with what it can do, where to find it and 「安装」. The user's
-   click installs the frozen candidate and hot-loads it (no restart, no folder dragging). Agent tools can never install,
-   enable, disable, revoke or restore.
+   `workshop.plugin-...` id from `dstu_plugin_status` to modify one. Values only the user knows go in `settings`:
+   `[{ "key": "calendarUrl", "title": "课表日历地址（.ics）", "kind": "ics-url" }]` (`ics-url` / `https-url` / `text` / `secret`;
+   `value` only if the user said it, never for `secret`, never invented). A `secret` is read with `ctx.pluginSecrets.get(key)`.
+2. **Stop.** Tell the user in one sentence to check the card and press 「开始做」 (filling in what it asks): their
+   approval to generate and test-load the code; until then `write_source` and `validate` are refused. Do not poll.
+3. **The Host makes it**: writes the source with the model, compiles, test-loads/unloads, repairs exact errors up to
+   three rounds. It checks a calendar address for real (VCALENDAR), declares `net:<host>` for user addresses and sets
+   a modification's version; you never bump versions.
+4. **One click installs.** The card shows 「等你确认」, what it can do, where to find it and 「安装」, which hot-loads
+   the frozen candidate. Agent tools can never install, enable, disable, revoke or restore.
 5. **To change or fix it**, propose again with the same `pluginId` and the requested `changes`; the user presses
    开始做 again. Only when a started work has failed may you repair it yourself: `dstu_plugin_diagnose`, then
    `dstu_plugin_write_source` (minimal fix) and `dstu_plugin_validate`; the card says the AI is editing meanwhile.
@@ -81,3 +85,5 @@ value only the user knows is missing and cannot go into `settings`.
   rechecks retained files without asking a model.
 - `dstu_plugin_export` writes a local .dstuplugin only, never publishes. `dstu_plugin_app_restart` only when the user
   explicitly asks for an app restart.
+- Stored data must stay readable across versions: keep a version field (`{ v: 1, … }`), migrate older records on read,
+  never rename or drop existing keys in a modification.

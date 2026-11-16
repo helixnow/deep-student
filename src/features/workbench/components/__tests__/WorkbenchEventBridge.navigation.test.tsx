@@ -52,3 +52,49 @@ describe('WorkbenchEventBridge classic navigation events (previously dead in wor
     }));
   });
 });
+
+describe('WorkbenchEventBridge pdf-ref:open (sole handler for known resource ids on the desktop)', () => {
+  it('opens one reader window and re-sends the page jump until the reader acknowledges it', () => {
+    vi.useFakeTimers();
+    try {
+      const focuses: Array<{ sourceId?: string; pageNumber?: number; quote?: string; acknowledge?: (ok: boolean) => void }> = [];
+      const documentDispatch = document.dispatchEvent.bind(document);
+      const dispatchSpy = vi.spyOn(document, 'dispatchEvent').mockImplementation((event) => {
+        if (event.type === 'pdf-ref:focus') focuses.push((event as CustomEvent).detail);
+        return documentDispatch(event);
+      });
+      render(<WorkbenchEventBridge />);
+
+      act(() => {
+        document.dispatchEvent(new CustomEvent('pdf-ref:open', { detail: { sourceId: 'tb_42', pageNumber: 12, quote: '特征值' } }));
+      });
+      expect(launch).toHaveBeenCalledTimes(1);
+      expect(launch).toHaveBeenCalledWith(expect.objectContaining({ typeId: 'textbook', instanceKey: 'tb_42' }));
+
+      // 资源窗冷开：前几次派发没有阅读器接（旧的 0/250/800ms 三连发到这里就全部落空了）
+      act(() => { vi.advanceTimersByTime(1000); });
+      expect(focuses).toHaveLength(3);
+      // 阅读器挂上后的下一次重发被接住并确认
+      act(() => { vi.advanceTimersByTime(700); });
+      expect(focuses).toHaveLength(4);
+      expect(focuses[3]).toEqual(expect.objectContaining({ sourceId: 'tb_42', pageNumber: 12, quote: '特征值', path: '/tb_42' }));
+      focuses[3]!.acknowledge?.(true);
+      // 确认之后不再重发
+      act(() => { vi.advanceTimersByTime(10_000); });
+      expect(focuses).toHaveLength(4);
+      dispatchSpy.mockRestore();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('leaves legacy refs (no sourceId, or an id without a resource prefix) to the chat page', () => {
+    render(<WorkbenchEventBridge />);
+    act(() => {
+      document.dispatchEvent(new CustomEvent('pdf-ref:open', { detail: { pageNumber: 3 } }));
+      document.dispatchEvent(new CustomEvent('pdf-ref:open', { detail: { sourceId: 'sha256:abcdef', pageNumber: 7 } }));
+    });
+    // 对话页从会话附件里解析这类引用；桌面这边不另开一扇（打不开的）'file' 窗
+    expect(launch).not.toHaveBeenCalled();
+  });
+});

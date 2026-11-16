@@ -139,7 +139,7 @@ describe('plugin workshop UI (adapter component tests, not Host E2E)', () => {
 
   it('action vocabulary per phase', () => {
     expect(workshopActions('installed')).toEqual(['try', 'disable', 'undo', 'restore', 'export', 'redo']);
-    expect(workshopActions('failed')).toEqual(['restore', 'undo', 'confirm', 'discard', 'redo']);
+    expect(workshopActions('failed')).toEqual(['restore', 'undo', 'confirm', 'discard', 'redo', 'reduce']);
     expect(workshopActions('editing')).toEqual([]);
     // A turned-down or replaced proposal can only be deleted (the card offers it only when nothing was installed).
     expect(workshopActions('cancelled')).toEqual(['discard']);

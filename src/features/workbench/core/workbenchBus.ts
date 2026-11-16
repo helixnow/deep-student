@@ -15,10 +15,14 @@ import type {
   AgentAppContext,
   AgentWaitForRequest,
   AgentWindowTarget,
+  DisplayMode,
   LaunchRequest,
   ProjectRequest,
+  Size,
 } from './types';
 import { appRegistry } from './appRegistry';
+import { planBesidePlacement } from './besidePlacement';
+import { tilingPairKey } from './tiling';
 import {
   actOnAgentWindow,
   getAgentCapabilities,
@@ -56,6 +60,7 @@ const activationWaiters = new Map<string, Set<ActivationWaiter>>();
 const ACTIVATION_READY_TIMEOUT_MS = 10_000;
 const NOTES_WORKSPACE_TYPE_ID = 'notes';
 const RESOURCE_WORKSPACE_TYPE_IDS = new Set(['exam', 'essay', 'translation']);
+const BESIDE_FALLBACK_MIN_SIZE: Size = { w: 420, h: 320 };
 
 function toWorkspaceResource(typeId: string, resourceId?: string): NotesWorkspaceResourceRef | null {
   if ((typeId !== 'note' && typeId !== 'mindmap') || !resourceId?.trim()) return null;
@@ -213,6 +218,54 @@ function withLegacyAgentExecutor(options: AgentRuntimeOptions): AgentRuntimeOpti
   };
 }
 
+/** launch 去重口径（同 windowStore.openWindow）：已存在的窗口只聚焦，不参与落位 */
+function findExistingLaunchTarget(typeId: string, instanceKey: string | null): string | null {
+  const windows = Object.values(useWindowStore.getState().windows);
+  if (instanceKey != null) {
+    const hit = windows.find((win) => win.typeId === typeId && win.instanceKey === instanceKey);
+    if (hit) return hit.id;
+  }
+  if (appRegistry.get(typeId)?.instanceMode === 'single') {
+    return windows.find((win) => win.typeId === typeId)?.id ?? null;
+  }
+  return null;
+}
+
+/**
+ * placement:'beside'（L1）：新建的资源窗开在来源窗旁边。资源窗已存在 → 只聚焦
+ * （调用方随后跳页），绝不挪动用户已经摆好的窗口。
+ */
+function launchBeside(req: LaunchRequest): string {
+  const store = useWindowStore.getState();
+  const instanceKey = req.instanceKey ?? null;
+  const base = { typeId: req.typeId, instanceKey, payload: req.payload };
+  if (findExistingLaunchTarget(req.typeId, instanceKey)) return store.openWindow(base);
+  const anchorId = req.placement?.anchorWindowId
+    || store.focusStack[store.focusStack.length - 1]
+    || null;
+  const anchor = anchorId ? store.windows[anchorId] : undefined;
+  const plan = planBesidePlacement({
+    anchor,
+    desktopSize: store.desktopSize,
+    resourceMinSize: appRegistry.get(req.typeId)?.minSize ?? BESIDE_FALLBACK_MIN_SIZE,
+    anchorMinSize: (anchor && appRegistry.get(anchor.typeId)?.minSize) || BESIDE_FALLBACK_MIN_SIZE,
+  });
+  const id = store.openWindow({
+    ...base,
+    ...(plan?.resourceFrame ? { initialFrame: plan.resourceFrame } : {}),
+  });
+  if (!plan || !anchor) return id;
+  const entries: Array<{ id: string; mode: DisplayMode }> = [{ id, mode: plan.resourceMode }];
+  if (plan.anchorMode) entries.push({ id: anchor.id, mode: plan.anchorMode });
+  const latest = useWindowStore.getState();
+  if (latest.batchSetDisplayModes) latest.batchSetDisplayModes(entries);
+  else for (const entry of entries) latest.setDisplayMode(entry.id, entry.mode);
+  if (plan.ratio != null && plan.anchorMode === 'tiled-left') {
+    latest.setTilingRatio(tilingPairKey(anchor.id, id), plan.ratio);
+  }
+  return id;
+}
+
 export const workbenchBus = {
   /** 由设置层（P10）在开关变化时调用 */
   setEnabled(value: boolean): void {
@@ -261,6 +314,9 @@ export const workbenchBus = {
       });
       if (resourceId) requestResourceWorkspace(req.typeId as ResourceWorkspaceType, resourceId);
       return windowId;
+    }
+    if (req.placement?.mode === 'beside' && !req.dropPoint) {
+      return launchBeside(req);
     }
     return store.openWindow({
       typeId: req.typeId,

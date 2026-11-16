@@ -26,3 +26,4 @@ export { MCP_SERVER_REMOVE, MCP_SERVER_SET_ENABLED, MCP_SERVER_UPDATE, mcpEntryR
 export { readMcpToolsList } from './src/tools/mcp-settings-store.ts';
 export type { McpMaterializationTarget, McpOutputMaterialization } from './src/tools/mcp-materialization-port.ts';
 export type { AgentToolExecutor } from './src/tools/executor-registry.ts';
+export { externalPluginDataSource, markExternalPluginData } from './src/tools/external-data-taint.ts';

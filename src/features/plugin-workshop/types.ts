@@ -63,6 +63,17 @@ export interface WorkshopItem {
   /** On an older chat card: the step of a newer proposal of this work, shown as one line. */
   elsewhere?: WorkshopPhase;
   updatedAt?: string;
+  /** 「做不到的部分」 / 「改成这样」: what the AI found it cannot do and what it proposes instead. */
+  limits?: string[];
+  alternatives?: string[];
+  /** 「和内置『X』的区别」: one sentence when a built-in feature does something similar. */
+  builtinDifference?: string;
+  /** 「预计 1–3 分钟」 on the proposal. */
+  estimate?: { minMinutes: number; maxMinutes: number };
+  /** The last generation: how long it took, the tokens it used (when known) and how many rounds ran. */
+  generation?: { durationMs?: number; tokens?: number; attempts?: number };
+  /** Earlier conversations bound to the work (`sessionId` is the current one). */
+  boundSessions?: string[];
 }
 
 export interface WorkshopActionResult {
@@ -79,7 +90,11 @@ export interface WorkshopActionResult {
  * it on first when off); disable: 停用; undo: 卸载; restore: 恢复 (uninstalled) / 回到上一版 (installed or failed);
  * export: 导出; discard: 删除 a never-installed work; redo: 按新版重做 (a new proposal with the original description).
  */
-export type WorkshopAction = 'confirm' | 'cancel' | 'try' | 'disable' | 'undo' | 'restore' | 'export' | 'discard' | 'redo';
+export type WorkshopAction = 'confirm' | 'cancel' | 'try' | 'disable' | 'undo' | 'restore' | 'export' | 'discard' | 'redo'
+  /** 「把需求砍成最小版再试」: a new proposal keeping only the core of the request (after repeated failures). */
+  | 'reduce'
+  /** 「在这个对话里修改『X』」: move editing to this conversation (`input.sessionId`). */
+  | 'bind';
 
 export interface WorkshopAdapter {
   list(): Promise<WorkshopItem[]>;
@@ -101,7 +116,7 @@ export function workshopActions(phase: WorkshopPhase): WorkshopAction[] {
     case 'disabled': return ['try', 'undo', 'restore', 'export', 'redo'];
     case 'undone': return ['restore', 'export'];
     // confirm on a failed work = try again (继续做 after an interruption, or with corrected settings).
-    case 'failed': return ['restore', 'undo', 'confirm', 'discard', 'redo'];
+    case 'failed': return ['restore', 'undo', 'confirm', 'discard', 'redo', 'reduce'];
     case 'cancelled':
     case 'superseded': return ['discard'];
     default: return [];

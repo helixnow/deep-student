@@ -18,6 +18,8 @@ export const MEDIA_REF_FOCUS_EVENT = 'media-ref:focus';
 export interface MediaRefOpenDetail {
   resourceId: string;
   seconds: number;
+  /** 点击所在的学习桌面窗口 id：资源窗开在它旁边（L1）；缺省取焦点窗 */
+  sourceWindowId?: string;
 }
 
 export interface MediaFocusEventDetail {
@@ -74,12 +76,12 @@ export function clearPendingMediaFocus(resourceId: string): void {
 }
 
 /** 点击引用徽章 / 笔记锚点 → 打开资源并跳转 */
-export function dispatchOpenMediaRef(resourceId: string, seconds: number): void {
+export function dispatchOpenMediaRef(resourceId: string, seconds: number, sourceWindowId?: string): void {
   if (!isValidTarget(resourceId, seconds)) return;
   rememberPendingMediaFocus(resourceId, seconds);
   document.dispatchEvent(
     new CustomEvent<MediaRefOpenDetail>(MEDIA_REF_OPEN_EVENT, {
-      detail: { resourceId, seconds },
+      detail: sourceWindowId ? { resourceId, seconds, sourceWindowId } : { resourceId, seconds },
     }),
   );
 }

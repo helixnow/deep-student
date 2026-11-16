@@ -56,6 +56,8 @@ import {
   forwardShortcutToHost,
   globalShortcutPlugin,
   notificationPlugin,
+  electronNotificationHooks,
+  NOTIFICATION_ACTION_EVENT,
   openerPlugin,
   processPlugin,
   type ProcessHooks,
@@ -73,8 +75,9 @@ import { WindowManager, type ShellWindow } from './shell/windows.ts';
 import { BROWSER_CONTENT_LABEL, BrowserContentSurface } from './shell/browser-surface.ts';
 import { AgentNavigationGuard } from './shell/browser-agent-guard.ts';
 import { forwardBrowserContentEvents, nativeBrowserContentEvent } from './shell/browser-content-events.ts';
-import { getAppVersion } from './build-info.ts';
+import { getAppVersion, runtimeBuildInfo } from './build-info.ts';
 import { imagePlugin } from './shell/images.ts';
+import { installAppUserModelId } from './shell/app-user-model-id.ts';
 
 const repoRoot = resolve(import.meta.dirname, '..');
 const tauriDir = join(repoRoot, 'resources/app');
@@ -102,6 +105,9 @@ const migrationsDir = process.env.DS_MIGRATIONS_DIR
   ?? (app.isPackaged ? join(process.resourcesPath, 'migrations') : join(tauriDir, 'migrations'));
 process.env.DS_MIGRATIONS_DIR = migrationsDir;
 registerSchemePrivileges();
+
+// Windows 系统通知按 AUMID 归属应用；不设置时打包版通知可能不显示或显示成 electron.app（G16）。
+installAppUserModelId(app, platform, config.identifier, process.execPath);
 
 // Electron 自身的 userData（Chromium 配置、缓存）放在独立目录，不混入 Tauri 版的 app data。
 app.setPath('userData', process.env.DS_ELECTRON_USER_DATA ?? join(app.getPath('appData'), `${config.identifier}.electron`));
@@ -215,7 +221,16 @@ function registerBuiltinPlugins(runtime: ShellRuntime, scopes: ShellScopes, proc
   runtime.registerPlugin('clipboard-manager', clipboardPlugin());
   runtime.registerPlugin('image', imagePlugin());
   runtime.registerPlugin('opener', openerPlugin({ urlAllow: derived.openerUrlAllow, paths: scopes.openerPaths, pathApps: derived.openerPathAllow.map((entry) => entry.app) }, process.platform));
-  runtime.registerPlugin('notification', notificationPlugin());
+  runtime.registerPlugin('notification', notificationPlugin(electronNotificationHooks, (action) => {
+    // A clicked plugin notification brings the app forward and lets the renderer open the plugin's view.
+    const win = runtime.windows.get('main')?.browserWindow;
+    if (win && !win.isDestroyed()) {
+      if (win.isMinimized()) win.restore();
+      win.show();
+      win.focus();
+    }
+    runtime.emitJs(NOTIFICATION_ACTION_EVENT, JSON.stringify(action ?? null), null);
+  }));
   runtime.registerPlugin('process', processPlugin(processHooks));
   runtime.registerPlugin('updater', updaterPlugin({
     appName: app.getName(),
@@ -300,7 +315,7 @@ function createHostSupervisor(
       appDataDir,
       osDirs: scopes.osDirs,
       migrationsDir,
-      fullVersion: getAppVersion,
+      fullVersion: () => getAppVersion(runtimeBuildInfo((error) => log(`[launch] build number unavailable in this source checkout: ${describeError(error)}`))),
       windows: runtime.windows,
       paths: scopes.paths,
       browserSurface,

@@ -1,12 +1,14 @@
 import type {} from '@deepseek-ai/cordis';
 import type {
   AnkiDocumentGenerationRequest, AnkiSyncReport, CreateTemplateRequest, CustomAnkiTemplate, UpdateTemplateRequest,
+  SaveAnkiCardsRequest, SaveAnkiCardsResponse,
 } from '../../../contracts/ipc/generated/L16-anki.ts';
 import type { AnkiCard, DocumentTask, TaskStatus } from '../../../contracts/ipc/generated/_shared.ts';
 
 export type {
   AnkiDocumentGenerationRequest, AnkiGenerationOptions, AnkiSyncReport, ApkgExportReport, ApkgImportResult,
   ApkgMediaReport, CustomAnkiTemplate, CreateTemplateRequest, UpdateTemplateRequest,
+  SaveAnkiCardPayload, SaveAnkiCardsRequest, SaveAnkiCardsResponse,
 } from '../../../contracts/ipc/generated/L16-anki.ts';
 export type { AnkiCard } from '../../../contracts/ipc/generated/_shared.ts';
 export type {
@@ -477,6 +479,13 @@ export interface AnkiService {
   readonly pipeline: AnkiDocumentPipeline;
   /** F3 `insert_anki_card`: returns whether the row was inserted. */
   insertAnkiCard(card: AnkiCard): boolean;
+  /**
+   * Storage step of `save_anki_cards` (`src/save-cards.ts`; the card library's "new card" button uses it):
+   * one document task plus its cards in one transaction. Throws on validation / database failure.
+   * Emits nothing and does not enqueue for review; callers do both, as the command and the UI do.
+   * Optional so existing consumer doubles keep typechecking; the production service implements it.
+   */
+  saveCards?(request: SaveAnkiCardsRequest): SaveAnkiCardsResponse;
   /** F3 `list_anki_library_cards_filtered` page surface. */
   listAnkiAgentLibraryCards(
     request: AnkiAgentLibraryListRequest,

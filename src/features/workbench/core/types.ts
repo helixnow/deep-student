@@ -522,7 +522,18 @@ export interface LaunchRequest {
   payload?: unknown;
   /** 桌面坐标系落点；仅新建窗口生效，窗口以该点为中心并钳制进桌面。 */
   dropPoint?: { x: number; y: number };
+  /**
+   * 落位策略（仅新建窗口生效；窗口已存在时只聚焦，绝不移动）。
+   * 'beside'：开在来源窗旁边，不遮住来源窗（对话里点页码开阅读器等），见 core/besidePlacement。
+   */
+  placement?: LaunchPlacement;
   reason: LaunchReason;
+}
+
+export interface LaunchPlacement {
+  mode: 'beside';
+  /** 来源窗 id；缺省取当前焦点窗 */
+  anchorWindowId?: string | null;
 }
 
 export interface ActivateRequest {

@@ -8,6 +8,7 @@ import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { AppSelect, type AppSelectGroup } from '@/components/ui/app-menu';
 import { SettingSection } from './SettingsCommon';
 import { AccentPicker } from './AccentPicker';
+import { ThemeVariantPicker } from './ThemeVariantPicker';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { saveSetting } from '@/utils/settingsApi';
@@ -638,6 +639,7 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
                 onSelectCustomColor={handleCustomColorChange}
               />
             </div>
+            <ThemeVariantPicker />
         </SettingsGroup>
       </SettingSection>
     </div>

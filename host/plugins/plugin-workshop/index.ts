@@ -44,7 +44,7 @@ function linkReader(http: () => HttpService | null): WorkshopLinkReader {
 
 export default definePlugin({
   meta: { id: 'dstu.plugin-workshop', version: '1.0.0', platforms: ['desktop'], provides: ['pluginWorkshop'],
-    remote: { pluginWorkshop: ['developmentSkill', 'bindSession', 'propose', 'list', 'status', 'create', 'cancel', 'validate', 'install', 'revoke', 'restore', 'export', 'reportFault', 'discard', 'redo'] } },
+    remote: { pluginWorkshop: ['developmentSkill', 'bindSession', 'propose', 'list', 'status', 'create', 'cancel', 'validate', 'install', 'revoke', 'restore', 'export', 'reportFault', 'discard', 'redo', 'reduce'] } },
   inject: ['paths', 'agentTools', 'chatSession', 'chatPipeline', 'dstuPluginInstaller'],
   async apply(ctx) {
     const operations = new WorkshopOperations({ ...ctx.app, dataDir: ctx.paths.appDataDir });
@@ -79,7 +79,7 @@ export default definePlugin({
       consumeWorkshopUiReceipt(args.pop(), 'pluginWorkshop', 'developmentSkill');
       return { ...await developmentSkillResource(args[0] === true), schemaToolIds: executor.schemaTools().map(tool => tool.id) };
     });
-    for (const method of ['bindSession', 'propose', 'list', 'status', 'create', 'cancel', 'validate', 'install', 'revoke', 'restore', 'export', 'reportFault', 'discard', 'redo'] as const) {
+    for (const method of ['bindSession', 'propose', 'list', 'status', 'create', 'cancel', 'validate', 'install', 'revoke', 'restore', 'export', 'reportFault', 'discard', 'redo', 'reduce'] as const) {
       facade[method] = Object.freeze(async (...args: unknown[]) => {
         const context = consumeWorkshopUiReceipt(args.pop(), 'pluginWorkshop', method);
         return (operations[method] as (...params: unknown[]) => Promise<unknown>).apply(operations, [...args, context]);

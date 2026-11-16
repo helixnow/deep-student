@@ -3,8 +3,22 @@ import { useTranslation } from 'react-i18next';
 import { ArrowCounterClockwise, ArrowSquareOut, ChatCircleText, DotsThree, Export, NotePencil, Power, Sparkle, Trash } from '@phosphor-icons/react';
 import { AppMenu, AppMenuContent, AppMenuItem, AppMenuSeparator, AppMenuTrigger } from '@/components/ui/app-menu/AppMenu';
 import { DsButton } from '@/components/ui/DsButton';
-import { WORKSHOP_PRIMARY, WorkshopConfirmationCard, WorkshopErrorNotice, type WorkshopConfirmationCardProps } from '../WorkshopConfirmationCard';
+import { WorkshopConfirmationCard, workshopRetryable, WorkshopErrorNotice, type WorkshopConfirmationCardProps } from '../WorkshopConfirmationCard';
 import { primaryPlace, type WorkshopItem, type WorkshopPlace } from '../types';
+import { describeWorkshopError, isEnvironmentErrorKey } from '../errors';
+
+/** Technical information a learner can paste into a bug report (「导出诊断」): no settings values, no secrets. */
+export function workshopDiagnostics(item: WorkshopItem): string {
+  return [
+    `work: ${item.name} (${item.id}, record ${item.proposalId}, revision ${item.revision ?? '?'})`,
+    `phase: ${item.phase}${item.version ? `, version ${item.version}` : ''}${item.installed ? `, installed ${item.installed.version} (${item.installed.phase})` : ''}`,
+    item.generation ? `last run: ${item.generation.attempts ?? '?'} round(s), ${Math.round((item.generation.durationMs ?? 0) / 1000)} s${item.generation.tokens ? `, ${item.generation.tokens} tokens` : ''}` : '',
+    `description: ${item.description ?? ''}`,
+    `changes: ${item.changes.join(' | ')}`,
+    `error key: ${item.error ? describeWorkshopError(item.error).key : 'none'}`,
+    '--- error ---', item.error ?? '',
+  ].filter(Boolean).join('\n');
+}
 
 
 export interface WorkshopProposalCardProps extends WorkshopConfirmationCardProps {
@@ -50,6 +64,13 @@ export function WorkshopProposalCard({ onRepair, exportPath, onReveal, ...props 
     </DsButton>
   ) : null;
   const live = item.phase === 'installed' || item.phase === 'disabled';
+  // Offer a smaller version when the work itself failed, rather than for environment errors.
+  const canReduce = item.phase === 'failed'
+    && !isEnvironmentErrorKey(describeWorkshopError(item.error ?? '').key);
+  const [copied, setCopied] = useState(false);
+  const copyDiagnostics = () => {
+    void navigator.clipboard?.writeText(workshopDiagnostics(item)).then(() => setCopied(true), () => setCopied(false));
+  };
   const more = live ? (
     <AppMenu>
       <AppMenuTrigger asChild>
@@ -59,7 +80,7 @@ export function WorkshopProposalCard({ onRepair, exportPath, onReveal, ...props 
       </AppMenuTrigger>
       <AppMenuContent align="end" width={200}>
         {item.phase === 'installed' ? <AppMenuItem icon={<Power size={16} />} data-testid="workshop-menu-disable" onClick={() => onAction('disable')}>{t('workshop.actions.disable')}</AppMenuItem> : null}
-        {canGoBack ? <AppMenuItem icon={<ArrowCounterClockwise size={16} />} data-testid="workshop-menu-restore-previous" onClick={() => onAction('restore')}>{t('workshop.actions.restorePrevious')}</AppMenuItem> : null}
+        {canGoBack ? <AppMenuItem icon={<ArrowCounterClockwise size={16} />} data-testid="workshop-menu-restore-previous" title={t('workshop.restoreDataHint')} onClick={() => onAction('restore')}>{t('workshop.actions.restorePrevious')}</AppMenuItem> : null}
         <AppMenuItem icon={<Export size={16} />} data-testid="workshop-menu-export" onClick={() => onAction('export')}>{t('workshop.actions.export')}</AppMenuItem>
         <AppMenuSeparator />
         <AppMenuItem destructive icon={<Trash size={16} />} data-testid="workshop-menu-uninstall" onClick={() => onAction('undo')}>{t('workshop.actions.uninstall')}</AppMenuItem>
@@ -75,20 +96,20 @@ export function WorkshopProposalCard({ onRepair, exportPath, onReveal, ...props 
     <WorkshopConfirmationCard {...props} onRepair={onRepair} />
     {item.phase === 'installed' && <p role="status" data-testid="workshop-installed" className="text-sm text-success">{busy && opening ? t('workshop.opening') : t('workshop.installed')}</p>}
     {item.phase === 'disabled' && !item.error && <p role="status" className="text-sm text-muted-foreground">{t('workshop.disabled')}</p>}
-    {item.phase === 'disabled' && item.error && <WorkshopErrorNotice raw={item.error} name={item.name} busy={busy} onRepair={onRepair} onRedo={() => onAction('redo')} />}
+    {item.phase === 'disabled' && item.error && <WorkshopErrorNotice raw={item.error} name={item.name} busy={busy} emphasis={false} onRepair={onRepair} onRedo={() => onAction('redo')} />}
     {item.phase === 'undone' && <p role="status" data-testid="workshop-undone" className="text-sm text-muted-foreground">{t('workshop.undone')}</p>}
     {(live || item.phase === 'undone') && (
       <div className="flex flex-wrap items-center gap-2 pt-0.5" data-testid="workshop-installed-actions">
         {item.phase === 'installed' && (
-          <DsButton size="sm" variant="primary" disabled={busy} className={`gap-1.5 ${WORKSHOP_PRIMARY}`} data-testid="workshop-primary" data-place={place?.kind ?? 'app'} onClick={tryIt}>
+          <DsButton size="sm" variant="primary" disabled={busy} className="gap-1.5" data-testid="workshop-primary" data-place={place?.kind ?? 'app'} onClick={tryIt}>
             <PrimaryIcon place={place} />{workshopPrimaryLabel(t, item, place)}
           </DsButton>
         )}
         {item.phase === 'disabled' && (
-          <DsButton size="sm" variant="primary" disabled={busy} className={WORKSHOP_PRIMARY} data-testid="workshop-enable" onClick={() => onAction('try')}>{t('workshop.actions.enable')}</DsButton>
+          <DsButton size="sm" variant="primary" disabled={busy} data-testid="workshop-enable" onClick={() => onAction('try')}>{t('workshop.actions.enable')}</DsButton>
         )}
         {item.phase === 'undone' && (
-          <DsButton size="sm" variant="primary" disabled={busy} className={WORKSHOP_PRIMARY} data-testid="workshop-restore" onClick={() => onAction('restore')}>{t('workshop.actions.restore')}</DsButton>
+          <DsButton size="sm" variant="primary" disabled={busy} data-testid="workshop-restore" onClick={() => onAction('restore')}>{t('workshop.actions.restore')}</DsButton>
         )}
         {modify}
         {more}
@@ -103,7 +124,7 @@ export function WorkshopProposalCard({ onRepair, exportPath, onReveal, ...props 
     {item.phase === 'cancelled' && discard ? <div className="flex flex-wrap items-center gap-2">{discard}</div> : null}
     {item.phase === 'failed' && (
       <div className="space-y-2 text-sm" data-testid="workshop-failed">
-        <WorkshopErrorNotice raw={item.error ?? ''} name={item.name} busy={busy} onRepair={onRepair}
+        <WorkshopErrorNotice raw={item.error ?? ''} name={item.name} busy={busy} emphasis={!workshopRetryable(item)} onRepair={onRepair}
           onRetry={() => onAction('confirm')} onRedo={() => onAction('redo')}
           extra={<>
             {canGoBack && item.rollback !== 'restored' && (!item.installed || item.installed.phase === 'failed') ? (
@@ -111,8 +132,21 @@ export function WorkshopProposalCard({ onRepair, exportPath, onReveal, ...props 
                 {t('workshop.actions.restorePrevious')}
               </DsButton>
             ) : null}
+            {canReduce ? (
+              <DsButton size="sm" variant="outline" disabled={busy} data-testid="workshop-reduce" onClick={() => onAction('reduce')}>
+                {t('workshop.actions.reduce')}
+              </DsButton>
+            ) : null}
+            {canReduce ? (
+              <DsButton size="sm" variant="ghost" disabled={busy} data-testid="workshop-diagnostics" onClick={copyDiagnostics}>
+                {t(copied ? 'workshop.actions.diagnosticsCopied' : 'workshop.actions.diagnostics')}
+              </DsButton>
+            ) : null}
             {discard}
           </>} />
+        {canGoBack && item.rollback !== 'restored' && (!item.installed || item.installed.phase === 'failed')
+          ? <p data-testid="workshop-restore-data-hint" className="text-xs text-muted-foreground">{t('workshop.restoreDataHint')}</p>
+          : null}
         {/* A failed modification: the installed version is untouched and keeps running. */}
         {item.installed && item.installed.phase !== 'failed' && item.installed.phase !== 'undone'
           ? <p role="status" data-testid="workshop-installed-untouched" className="text-muted-foreground">{t('workshop.installedUntouched', { version: item.installed.version })}</p>

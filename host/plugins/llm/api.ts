@@ -457,6 +457,10 @@ export type LlmService = LLMManager;
 /** 服务版本描述（`docs/plugins/ARCHITECTURE.md` 附录 A）。 */
 export const llmService = { name: 'llm', version: '1.0.0' } as const;
 
+export type { PluginModelImage, PluginModelRequest, PluginModelResult, PluginModelService, PluginModelStreamOptions } from './src/plugin_model.ts';
+/** `pluginModel`：开放给社区 / 工坊插件的窄模型入口（`docs/plugins/SDK.md` §3.5）。 */
+export const pluginModelService = { name: 'pluginModel', version: '1.0.0' } as const;
+
 declare module '@deepseek-ai/cordis' {
   interface Context {
     llm: LLMManager;
@@ -477,6 +481,7 @@ declare module '@deepseek-ai/cordis' {
     llmModel2Streaming: LlmModel2Streaming;
     llmAnkiRouting: LlmAnkiRouting;
     llmRawPrompt: LlmRawPrompt;
+    pluginModel: import('./src/plugin_model.ts').PluginModelService;
     llmContextCompiler: ContextCompilerLlmOwner;
     llmOcrPages: LlmOcrPages;
     llmFileOcr: LlmFileOcr;

@@ -19,6 +19,11 @@ export interface SystemNotificationRequest {
    * OS 通知，由前端 in-app toast 兜底。`notify` 类到点提醒应传 false/省略。
    */
   suppressIfWindowActive?: boolean;
+  /**
+   * Plain JSON handed back to the renderer when the user clicks the notification (`ds://notification-action`), after the
+   * main window is shown; plugin notifications use `{ kind: 'plugin', pluginId, view?, params? }` to open the plugin view.
+   */
+  action?: unknown;
 }
 
 export type SystemNotificationOutcome =

@@ -27,11 +27,7 @@ export interface WorkshopConfirmationCardProps {
 }
 
 
-/**
- * The one decision of a stage. DsButton paints every variant as ghost (2026-09 ruling), so the primary action gets
- * a quiet filled surface (the same treatment as the plugin manager card's primary) to read as the thing to press.
- */
-export const WORKSHOP_PRIMARY = '!bg-muted !text-foreground hover:!bg-[var(--button-plain-hover-bg)] dark:!bg-muted/80';
+// The one decision of a stage is DsButton variant="primary" (solid, 2026-11 ruling D1: one primary per card/view).
 
 /** Section label inside the card: small, quiet, never larger than the card title. */
 export function WorkshopSectionLabel({ children }: { children: React.ReactNode }) {
@@ -107,6 +103,40 @@ function WorkshopSettingsForm({ settings, values, busy, onChange }: {
   );
 }
 
+/**
+ * What the AI checked before proposing: 「和内置功能的区别」, 「做不到的部分」 and 「改成这样」. Each only when the
+ * proposal says something about it.
+ */
+export function WorkshopFeasibilityLines({ item }: { item: Pick<WorkshopItem, 'limits' | 'alternatives' | 'builtinDifference'> }) {
+  const { t } = useTranslation('plugin_manager');
+  return <>
+    {item.builtinDifference ? (
+      <p data-testid="workshop-builtin-difference" className="break-words">
+        <span className="text-muted-foreground">{t('workshop.builtinDifference')}：</span>{item.builtinDifference}
+      </p>
+    ) : null}
+    {item.limits?.length ? (
+      <div className="space-y-1" data-testid="workshop-limits">
+        <WorkshopSectionLabel>{t('workshop.limits')}</WorkshopSectionLabel>
+        <ul className="list-inside list-disc break-words">{item.limits.map((line, index) => <li key={index}>{line}</li>)}</ul>
+      </div>
+    ) : null}
+    {item.alternatives?.length ? (
+      <div className="space-y-1" data-testid="workshop-alternatives">
+        <WorkshopSectionLabel>{t('workshop.alternatives')}</WorkshopSectionLabel>
+        <ul className="list-inside list-disc break-words">{item.alternatives.map((line, index) => <li key={index}>{line}</li>)}</ul>
+      </div>
+    ) : null}
+  </>;
+}
+
+/** 「这次用了 2 分 10 秒，约 12,300 tokens」 (tokens only when the provider reported usage). */
+export function workshopGenerationText(t: (key: string, options?: Record<string, unknown>) => string, generation: NonNullable<WorkshopItem['generation']>): string {
+  const seconds = Math.max(1, Math.round((generation.durationMs ?? 0) / 1000));
+  const duration = seconds >= 60 ? t('workshop.durationMinutes', { minutes: Math.floor(seconds / 60), seconds: seconds % 60 }) : t('workshop.durationSeconds', { seconds });
+  return generation.tokens ? t('workshop.tookWithTokens', { duration, tokens: generation.tokens.toLocaleString() }) : t('workshop.took', { duration });
+}
+
 export function workshopPlaceText(t: (key: string, options?: Record<string, unknown>) => string, place: WorkshopPlace): string {
   return place.kind === 'selectionButton' ? t('workshop.where.selectionButton') : t(`workshop.where.${place.kind}`, { title: place.title });
 }
@@ -135,8 +165,10 @@ export function workshopErrorText(t: (key: string, options?: Record<string, unkn
 }
 
 /** A plain sentence, the next step, and the raw text folded away. */
-export function WorkshopErrorNotice({ raw, name, busy, tone = 'error', onRepair, onRefresh, onRetry, onRedo, extra }: {
+export function WorkshopErrorNotice({ raw, name, busy, tone = 'error', emphasis = true, onRepair, onRefresh, onRetry, onRedo, extra }: {
   raw: string; name: string; busy?: boolean; tone?: 'error' | 'quiet';
+  /** The next step is the solid primary button unless the surrounding view already shows one (one primary per view). */
+  emphasis?: boolean;
   onRepair?: () => void; onRefresh?: () => void;
   /** 继续做: run the same proposal again (an interrupted generation). */
   onRetry?: () => void;
@@ -150,15 +182,15 @@ export function WorkshopErrorNotice({ raw, name, busy, tone = 'error', onRepair,
   const isolated = described.key === 'crashed' || described.key === 'activationFailed' || described.key === 'incompatible';
   const next: WorkshopNextStep = described.next;
   const nextButton = (next === 'repair' || next === 'continue') && onRepair
-    ? <DsButton size="sm" variant="primary" disabled={busy} className={WORKSHOP_PRIMARY} data-testid="workshop-error-next" onClick={onRepair}>
+    ? <DsButton size="sm" variant={emphasis ? 'primary' : 'outline'} disabled={busy} data-testid="workshop-error-next" onClick={onRepair}>
       {t(next === 'continue' ? 'workshop.actions.continue' : 'workshop.actions.repair')}
     </DsButton>
     : next === 'retry' && (onRetry ?? onRepair)
-      ? <DsButton size="sm" variant="primary" disabled={busy} className={WORKSHOP_PRIMARY} data-testid="workshop-error-next" data-next="retry" onClick={onRetry ?? onRepair}>
+      ? <DsButton size="sm" variant={emphasis ? 'primary' : 'outline'} disabled={busy} data-testid="workshop-error-next" data-next="retry" onClick={onRetry ?? onRepair}>
         {t(onRetry ? 'workshop.actions.resume' : 'workshop.actions.continue')}
       </DsButton>
       : next === 'redo' && onRedo
-        ? <DsButton size="sm" variant="primary" disabled={busy} className={WORKSHOP_PRIMARY} data-testid="workshop-error-next" data-next="redo" onClick={onRedo}>
+        ? <DsButton size="sm" variant={emphasis ? 'primary' : 'outline'} disabled={busy} data-testid="workshop-error-next" data-next="redo" onClick={onRedo}>
           {t('workshop.actions.redo')}
         </DsButton>
         : next === 'refresh' && onRefresh
@@ -217,6 +249,13 @@ export function WorkshopConfirmationCard({ item, busy, error, embedded = false, 
             : <p className="text-muted-foreground">{t('workshop.changesNone')}</p>}
         </div>
       )}
+      {showPlan && <WorkshopFeasibilityLines item={item} />}
+      {item.phase === 'proposed' && item.estimate && (
+        <p data-testid="workshop-estimate" className="text-muted-foreground">{t('workshop.estimate', { min: item.estimate.minMinutes, max: item.estimate.maxMinutes })}</p>
+      )}
+      {(item.phase === 'ready' || item.phase === 'failed') && item.generation?.durationMs !== undefined && (
+        <p data-testid="workshop-generation-stats" className="text-xs text-muted-foreground">{workshopGenerationText(t, item.generation)}</p>
+      )}
       {askSettings && item.settings && <WorkshopSettingsForm settings={item.settings} values={values} busy={busy}
         onChange={(key, value) => setValues(current => ({ ...current, [key]: value }))} />}
       {/* 开始做 is the approval to have code written and test-loaded; said where the user gives it. */}
@@ -234,7 +273,7 @@ export function WorkshopConfirmationCard({ item, busy, error, embedded = false, 
         {item.rollback === 'restored' && item.phase !== 'failed' && <p className="text-muted-foreground">{t('workshop.restored')}</p>}
         {item.rollback === 'failed' && <p className="text-destructive">{t('workshop.restoreFailed')}</p>}
       </div>
-      {error && <WorkshopErrorNotice raw={error} name={item.name} busy={busy} onRepair={onRepair} onRefresh={onRefresh} />}
+      {error && <WorkshopErrorNotice raw={error} name={item.name} busy={busy} emphasis={!actions.includes('confirm')} onRepair={onRepair} onRefresh={onRefresh} />}
     </>
   );
   const actionButtons = actions.map(action => {
@@ -245,7 +284,6 @@ export function WorkshopConfirmationCard({ item, busy, error, embedded = false, 
     const input = action === 'confirm' && askSettings ? Object.fromEntries(Object.entries(values).map(([key, value]) => [key, value.trim()])) : undefined;
     return (
       <DsButton key={action} size="sm" variant={action === 'confirm' ? 'primary' : 'outline'} disabled={busy || (action === 'confirm' && !settingsReady)}
-        className={action === 'confirm' ? WORKSHOP_PRIMARY : undefined}
         data-testid={`workshop-action-${action === 'confirm' ? confirmKind : (deciding ? 'decline' : 'stop')}`}
         onClick={() => (input ? onAction(action, input) : onAction(action))}>
         {label}

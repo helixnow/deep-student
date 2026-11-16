@@ -12,6 +12,29 @@ export function appBuildInfo(): BuildInfo {
   return buildInfo(APP_ROOT, packageJson.version);
 }
 
+/**
+ * Host 运行时使用的构建信息。打包产物带 `electron/.build/version.json`，坏了就是打包缺陷，照常抛错。
+ * 源码检出（Electron 开发态、WebUI）没有该文件，build number 要靠 git 历史里的基线提交推算；
+ * 浅克隆或改写过历史的仓库没有那个提交时 {@link buildInfo} 会抛错。版本号算不出来不能连带外壳插件
+ * （startupGate、系统通知……）一起装载失败——那样前端会永远卡在启动画面「启动完成闸门服务未注册」。
+ * 这种情况下回报 `onFallback` 并给出开发态构建信息：buildNumber 0（不在发布号区间内，一眼可辨），
+ * gitHash/gitRevision 仍取真实 HEAD。
+ */
+export function runtimeBuildInfo(onFallback: (error: unknown) => void, root: string = APP_ROOT, version: string = packageJson.version): BuildInfo {
+  if (existsSync(join(root, 'electron', '.build', 'version.json'))) return buildInfo(root, version);
+  try {
+    return buildInfo(root, version);
+  } catch (error) {
+    onFallback(error);
+    let gitRevision = 'unknown';
+    try {
+      const revision = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim().toLowerCase();
+      if (FULL_REVISION.test(revision)) gitRevision = revision;
+    } catch { /* 不在 git 检出中 */ }
+    return { version, buildNumber: 0, gitHash: shortHash(gitRevision), gitRevision };
+  }
+}
+
 /** commands.rs:500-507: build metadata, independent of an AppHandle or Shell bridge. */
 export function getAppVersion(info: BuildInfo = appBuildInfo()): string {
   return `${info.version} (Build ${info.buildNumber}, ${info.gitHash})`;

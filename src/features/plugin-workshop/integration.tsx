@@ -38,6 +38,8 @@ const proposalRevisionOf = (output: unknown): number | undefined => {
   const value = record?.proposalRevision ?? record?.revision;
   return typeof value === 'number' ? value : undefined;
 };
+/** The work belongs to another conversation: the card offers 「在这个对话里修改『X』」 (F19). */
+const bindRequiredOf = (output: unknown): boolean => Boolean(workshopRecord(output)?.bindRequired);
 const stageKey = (id: string, revision: number | undefined) => `${id}@${revision ?? ''}`;
 /** Failed works untouched for this long collapse into one line in 「工坊创作记录」. */
 const OLD_FAILURE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -99,9 +101,24 @@ interface ProposalProps {
   sessionId?: string;
   sessions: WorkshopSessionPort;
   modify: (pluginId: string) => void;
+  /** The AI wants to change a work made in another conversation: offer to move editing here. */
+  bindRequired?: boolean;
 }
 
-function Proposal({ adapter, id, viewRevision, sessionId, sessions, modify }: ProposalProps) {
+/** 「在这个对话里修改『X』」: the user's click binds the work to this conversation; then the AI can propose the change. */
+function BindHere({ item, sessionId, busy, onBind }: { item: WorkshopItem; sessionId: string; busy?: boolean; onBind: () => void }) {
+  const { t } = useTranslation('plugin_manager');
+  const bound = item.sessionId === sessionId || (item.boundSessions ?? []).includes(sessionId);
+  if (bound) return <p role="status" data-testid="workshop-bound-here" className="text-sm text-muted-foreground">{t('workshop.boundHere', { name: item.name })}</p>;
+  return (
+    <div className="space-y-1.5" data-testid="workshop-bind">
+      <p className="text-sm text-muted-foreground">{t('workshop.bindExplain', { name: item.name })}</p>
+      <DsButton size="sm" variant="outline" disabled={busy} data-testid="workshop-bind-here" onClick={onBind}>{t('workshop.actions.bindHere', { name: item.name })}</DsButton>
+    </div>
+  );
+}
+
+function Proposal({ adapter, id, viewRevision, sessionId, sessions, modify, bindRequired }: ProposalProps) {
   const { t } = useTranslation('plugin_manager');
   const state = useWorkshop(adapter);
   useRefreshOnReturn(state.refresh, !state.loading);
@@ -123,6 +140,17 @@ function Proposal({ adapter, id, viewRevision, sessionId, sessions, modify }: Pr
     void Promise.resolve(sessions.prefill(sessionId, text)).then(() => sessions.focus?.(sessionId));
   };
   const reveal = adapter.reveal;
+  if (bindRequired && sessionId) {
+    const bind = () => {
+      void state.act('bind', item, { sessionId }).then(() => {
+        if (!sessions.prefill) return;
+        return Promise.resolve(sessions.prefill(sessionId, workshopEditPrompt(t, item))).then(() => sessions.focus?.(sessionId));
+      });
+    };
+    return <div className="space-y-2.5">
+      <BindHere item={item} sessionId={sessionId} busy={state.busyId === item.id} onBind={bind} />
+    </div>;
+  }
   return <WorkshopProposalCard embedded item={item} busy={state.busyId === item.id} error={state.error} exportPath={state.exportPath}
     onReveal={reveal ? path => { void reveal(path).catch(cause => console.error('[plugin-workshop] reveal failed', cause)); } : undefined}
     onAction={(action, input) => {
@@ -226,7 +254,8 @@ export function createWorkshopIntegration({ adapter, sessions, reportError, tran
   const ToolResult = (props: ChatToolResultProps) => {
     const id = proposalId(props.toolOutput);
     const sessionId = (props.store?.getState() as { sessionId?: string } | undefined)?.sessionId;
-    return id ? <Proposal key={id} adapter={adapter} id={id} viewRevision={proposalRevisionOf(props.toolOutput)} sessionId={sessionId} sessions={sessions} modify={onModify} /> : null;
+    return id ? <Proposal key={id} adapter={adapter} id={id} viewRevision={proposalRevisionOf(props.toolOutput)} sessionId={sessionId} sessions={sessions} modify={onModify}
+      bindRequired={bindRequiredOf(props.toolOutput)} /> : null;
   };
   const toolResult: ChatToolResultContribution = {
     placement: 'output', component: ToolResult, status: ToolStatus, match: 'qualified',
