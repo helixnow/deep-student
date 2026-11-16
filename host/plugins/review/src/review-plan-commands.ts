@@ -1,6 +1,8 @@
 /**
  * `review_plan_*` 命令层（Rust `src-tauri/src/cmd` 中的薄包装）。
  *
+ * 读取类命令给计划附上 rating_previews（FSRS 四档间隔预演，D2）。
+ *
  * Rust 这些命令返回 `Result<_, String>`：错误值就是纯字符串，不经过 AppError。
  */
 import type { Context } from '@deepseek-ai/cordis';
@@ -60,10 +62,10 @@ export function registerReviewPlanCommands(ctx: Context): void {
   });
 
   ctx.commands.register<DueArgs>('review_plan_get_due', ({ examId, untilDate }) =>
-    wrap(() => service(ctx).getDueReviews(examId ?? null, untilDate ?? null)));
+    wrap(() => { const svc = service(ctx); return svc.attachRatingPreviews(svc.getDueReviews(examId ?? null, untilDate ?? null)); }));
 
   ctx.commands.register<FilterArgs>('review_plan_get_due_with_filter', ({ filter }) =>
-    wrap(() => service(ctx).getDueReviewsWithFilter(filter)));
+    wrap(() => { const svc = service(ctx); return svc.attachRatingPreviews(svc.getDueReviewsWithFilter(filter)); }));
 
   ctx.commands.register<ExamArgs>('review_plan_get_stats', ({ examId }) =>
     wrap(() => service(ctx).getReviewStats(examId ?? null)));
@@ -72,10 +74,10 @@ export function registerReviewPlanCommands(ctx: Context): void {
     wrap(() => service(ctx).refreshReviewStats(examId ?? null)));
 
   ctx.commands.register<QuestionArgs>('review_plan_get_by_question', ({ questionId }) =>
-    wrap(() => service(ctx).getPlanByQuestion(questionId)));
+    wrap(() => { const svc = service(ctx); return svc.attachPlanPreviews(svc.getPlanByQuestion(questionId)); }));
 
   ctx.commands.register<PlanArgs>('review_plan_get', ({ planId }) =>
-    wrap(() => service(ctx).getPlan(planId)));
+    wrap(() => { const svc = service(ctx); return svc.attachPlanPreviews(svc.getPlan(planId)); }));
 
   ctx.commands.register<PlanArgs>('review_plan_suspend', ({ planId }) =>
     wrap(() => service(ctx).suspendPlan(planId)));
@@ -96,10 +98,10 @@ export function registerReviewPlanCommands(ctx: Context): void {
     wrap(() => service(ctx).createPlansForExam(examId)));
 
   ctx.commands.register<ListArgs>('review_plan_list_by_exam', ({ examId, limit, offset }) =>
-    wrap(() => service(ctx).listPlansByExam(examId, limit ?? null, offset ?? null)));
+    wrap(() => { const svc = service(ctx); return svc.attachRatingPreviews(svc.listPlansByExam(examId, limit ?? null, offset ?? null)); }));
 
   ctx.commands.register<CreateArgs>('review_plan_get_or_create', ({ questionId, examId }) =>
-    wrap(() => service(ctx).getOrCreatePlan(questionId, examId)));
+    wrap(() => { const svc = service(ctx); return svc.attachPlanPreviews(svc.getOrCreatePlan(questionId, examId)); }));
 
   ctx.commands.register<CalendarArgs>('review_plan_get_calendar_data', ({ startDate, endDate, examId }) =>
     wrap(() => service(ctx).getCalendarData(startDate ?? null, endDate ?? null, examId ?? null)));

@@ -1,14 +1,16 @@
 /**
- * 复习计划服务（SM-2）。Rust 源：
+ * 复习计划服务。调度自 2026-11（UX 审计 D2）起改用 FSRS（review-plan-fsrs.ts，与闪卡同一实现）；
+ * 下面的 SM-2 纯函数只留给旧调用方与等价测试。Rust 源：
  * `dstu-qbank/src/review_plan_service.rs` + `dstu-vfs/src/vfs/repos/review_plan_repo.rs`。
  */
 import type { DatabaseHandle, SqlExecutor } from '../../../platform/storage/api.ts';
-import type { QuestionFilters, VfsReposService } from '../../vfs-repos/api.ts';
+import type { QuestionFilters, ReviewPlanFsrsState, VfsReposService } from '../../vfs-repos/api.ts';
 import type { MasteryService } from '../api.ts';
 import { eventConcept } from '../repository/mastery.ts';
 import { utcNow } from './clock.ts';
 import { errorText } from './errors.ts';
 import { addLocalDays, localDateKey } from './local-date.ts';
+import { planRatingPreviews, schedulePlanReview, type PlanFsrsOutcome } from './review-plan-fsrs.ts';
 import type {
   BatchCreateResult, DueReviewsFilter, DueReviewsResult, ProcessReviewResult, ReviewHistory,
   ReviewPlan, ReviewPlanStatus, ReviewStats, CalendarHeatmapData,
@@ -372,14 +374,18 @@ export class ReviewPlanService {
     } catch {
       tags = null;
     }
-    const [newInterval, newEase, newReps] = calculateNextReview(
-      quality, plan.repetitions, plan.ease_factor, plan.interval_days,
-    );
+    // D2：调度改用 FSRS（与闪卡同一实现，见 review-plan-fsrs.ts）；SM-2 遗留状态在这里惰性换算。
+    const nowMs = utcNow().ms;
+    const fsrsOutcome = schedulePlanReview(plan, this.fsrsStateOf(plan.id), quality, nowMs);
+    const newInterval = fsrsOutcome.intervalDays;
+    const newEase = fsrsOutcome.easeFactor;
+    const passed = fsrsOutcome.passed;
+    // repetitions 保持「连续答对次数」的旧语义（恢复暂停时的状态推断仍按它）。
+    const newReps = passed ? plan.repetitions + 1 : 0;
     const today = localDateKey();
-    const nextReviewDate = calculateNextReviewDate(newInterval);
-    const passed = quality >= PASSING_GRADE;
-    const { status, consecutiveFailures, isDifficult } = this.calculateNewStatus(
-      plan, passed, newInterval, newReps,
+    const nextReviewDate = fsrsOutcome.nextReviewDate;
+    const { status, consecutiveFailures, isDifficult } = this.calculateFsrsStatus(
+      plan, passed, newInterval, fsrsOutcome.phase,
     );
     const expected = expectedUpdatedAt ?? plan.updated_at;
     const history: { value: ReviewHistory | null } = { value: null };
@@ -410,6 +416,7 @@ export class ReviewPlanService {
             consecutive_failures: consecutiveFailures,
             is_difficult: isDifficult,
             expected_updated_at: expected,
+            fsrs: fsrsOutcome.fsrs,
           }),
         );
         updatedPlan.value = updated;
@@ -475,17 +482,51 @@ export class ReviewPlanService {
     };
   }
 
-  private calculateNewStatus(
-    plan: ReviewPlan, passed: boolean, newInterval: number, newRepetitions: number,
+  private fsrsStateOf(planId: string): ReviewPlanFsrsState | null {
+    const read = this.repos.reviewPlans.getFsrsStates;
+    if (typeof read !== 'function') return null;
+    try {
+      return read.call(this.repos.reviewPlans, this.db, [planId]).get(planId) ?? null;
+    } catch (error) {
+      // 读不到 FSRS 列（例如旧库还没迁移）时按 SM-2 遗留行换算，不阻断复习。
+      this.warn(`[ReviewPlanService] FSRS state unavailable for plan ${planId}: ${errorText(error)}`);
+      return null;
+    }
+  }
+
+  /** 给计划附上四档评分的 FSRS 间隔预演（评分按钮上的「1 分钟 / 10 分钟 / 1 天 / 4 天」）。 */
+  attachRatingPreviews<T extends { plans: ReviewPlan[] }>(result: T): T {
+    if (result.plans.length === 0) return result;
+    let states: Map<string, ReviewPlanFsrsState> | null = null;
+    const read = this.repos.reviewPlans.getFsrsStates;
+    if (typeof read === 'function') {
+      try {
+        states = read.call(this.repos.reviewPlans, this.db, result.plans.map(plan => plan.id));
+      } catch (error) {
+        this.warn(`[ReviewPlanService] FSRS states unavailable: ${errorText(error)}`);
+      }
+    }
+    const nowMs = utcNow().ms;
+    return {
+      ...result,
+      plans: result.plans.map(plan => ({ ...plan, rating_previews: planRatingPreviews(plan, states?.get(plan.id), nowMs) })),
+    };
+  }
+
+  attachPlanPreviews(plan: ReviewPlan | null): ReviewPlan | null {
+    return plan === null ? null : this.attachRatingPreviews({ plans: [plan] }).plans[0]!;
+  }
+
+  private calculateFsrsStatus(
+    plan: ReviewPlan, passed: boolean, newInterval: number, phase: PlanFsrsOutcome['phase'],
   ): { status: ReviewPlanStatus; consecutiveFailures: number; isDifficult: boolean } {
     const consecutiveFailures = passed ? 0 : plan.consecutive_failures + 1;
     const isDifficult = consecutiveFailures >= this.config.difficult_threshold;
     let status: ReviewPlanStatus;
     if (plan.status === 'suspended') status = 'suspended';
-    else if (newRepetitions === 0) status = 'new';
-    else if (newRepetitions < 2) status = 'learning';
-    else if (newInterval >= this.config.graduation_interval_threshold
-      && newRepetitions >= this.config.graduation_repetitions_threshold) status = 'graduated';
+    else if (phase === 'new') status = 'new';
+    else if (phase === 'learning' || phase === 'relearning') status = 'learning';
+    else if (newInterval >= this.config.graduation_interval_threshold) status = 'graduated';
     else status = 'reviewing';
     return { status, consecutiveFailures, isDifficult };
   }

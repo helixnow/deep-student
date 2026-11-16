@@ -650,6 +650,19 @@ export type ReviewPlan = {
   is_difficult: boolean;
   created_at: string;
   updated_at: string;
+  rating_previews?: ReviewPlanRatingPreviews;
+};
+/** ReviewPlanRatingPreview */
+export type ReviewPlanRatingPreview = {
+  interval_minutes: number;
+  next_review_date: string;
+};
+/** ReviewPlanRatingPreviews */
+export type ReviewPlanRatingPreviews = {
+  again: ReviewPlanRatingPreview;
+  hard: ReviewPlanRatingPreview;
+  good: ReviewPlanRatingPreview;
+  easy: ReviewPlanRatingPreview;
 };
 /** dstu_vfs::vfs::repos::review_plan_repo::ReviewPlanStatus */
 export type ReviewPlanStatus = "new" | "learning" | "reviewing" | "graduated" | "suspended";

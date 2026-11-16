@@ -137,7 +137,8 @@ it('review_plan_commands_round_trip_through_host', async () => {
     'review_plan_process', { planId: created.id, quality: 5 },
   );
   expect(processed.passed).toBe(true);
-  expect(processed.new_interval).toBe(1);
+  // D2：FSRS 下新题直接「简单」毕业到按日间隔（不再是 SM-2 的固定 1 天）。
+  expect(processed.new_interval).toBeGreaterThan(1);
   const got = await host.invoke<{ total_reviews: number }>('review_plan_get', { planId: created.id });
   expect(got.total_reviews).toBe(1);
   const dueAfter = await host.invoke<{ total: number; plans: unknown[] }>(
@@ -279,5 +280,7 @@ it('l14_review_plan_port_resolves_published_service_and_advances_plan', async ()
   const advanced = port.advanceFromPractice(plan.id);
   expect(advanced.plan.total_reviews).toBe(1);
   expect(advanced.passed).toBe(true);
-  expect(advanced.plan.next_review_date).not.toBe(plan.next_review_date);
+  // D2：练习答对 = FSRS「良好」；新题先走 10 分钟学习步，状态进入 learning、仍当天到期。
+  expect(advanced.plan.status).toBe('learning');
+  expect(advanced.plan.repetitions).toBe(1);
 });
