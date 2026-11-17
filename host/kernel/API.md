@@ -999,7 +999,7 @@ id 语法与保留 publisher 取自契约 `$defs/id`、`$defs/reservedPublishers
 否则 `PERMISSION_UNDECLARED`；不认识的 `kind` 在装载第 4 步就拒绝。`storage` **不**隐式授予：在按插件隔离的存储服务
 （W07）出现之前，`storage` 是全局数据库，需要显式声明并在审核时看见。官方插件不受限制（同一代码库内审查，`inject`
 本身就是声明）。约束目前只在装载时检查声明；进程隔离之前，运行时对未注入服务的访问（Cordis `internal/get`）尚不拦截（P1）。
-kernel 专有服务（`commands`、`protocols`、`backendEvents`、`shell`、`dstuPluginInstaller`，`kernel.ts::KERNEL_ONLY_SERVICES`）即使写进
+kernel 专有服务（`commands`、`protocols`、`backendEvents`、`shell`、`dstuPluginInstaller`、`pluginAgentTools`，`kernel.ts::KERNEL_ONLY_SERVICES`）即使写进
 `permissions` 也不能注入（`KERNEL_API_FORBIDDEN`）；它们挂在根上、不注入也能取到，所以运行时另有检查（§16.7 第 2 项）。
 
 **这是防误用，不是安全边界（SEC-E06）。** 社区 Host 半与内核同进程（`profile.ts` 直接 `import()` 模块），插件代码可以自己

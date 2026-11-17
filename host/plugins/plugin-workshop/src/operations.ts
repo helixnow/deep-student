@@ -306,7 +306,7 @@ export class WorkshopOperations implements Omit<PluginWorkshopService, 'developm
       if (present.pendingRestore) throw new Error('WORKSHOP_STATE: finish the pending rollback first');
       if (!resume && present.state === 'installed' && present.execution?.stage === 'blocked'
         && present.validation?.status === 'pending' && installationOf(present)?.version === present.validation.version) {
-        // The candidate is already installed. Retry only its interrupted acceptance with the same attempt identity.
+        // Keep the installed candidate, but give the new verifier its own attempt identity.
         if (!this.generation?.verify) throw new Error('WORKSHOP_VERIFICATION_UNAVAILABLE: runtime verification is not available');
         const settings = present.settings?.length ? await storeSecretSettings(present.pluginId, fillSettings(present.settings, values), this.secretStore) : present.settings;
         const changed = JSON.stringify(settings) !== JSON.stringify(present.settings);
@@ -316,7 +316,7 @@ export class WorkshopOperations implements Omit<PluginWorkshopService, 'developm
         }
         this.jobs.get(id)?.abort(); this.jobs.delete(id);
         const retry = await this.store.update(id, revision, { error: null, ...(changed ? { settings } : {}),
-          validation: { ...present.validation, detail: undefined }, execution: { ...present.execution, stage: 'validating', reason: undefined } });
+          validation: { ...present.validation, revision: revision + 1, detail: undefined }, execution: { ...present.execution, stage: 'validating', reason: undefined } });
         this.startVerification(retry);
         return retry;
       }
@@ -354,8 +354,11 @@ export class WorkshopOperations implements Omit<PluginWorkshopService, 'developm
   async resumeDelegated(): Promise<void> {
     for (const card of await this.store.list()) {
       if (this.disposed || this.jobs.has(card.id) || card.pendingRestore) continue;
-      if (!card.execution && card.state === 'installed' && card.validation?.status === 'pending') {
-        this.startVerification(card); continue;
+      if (card.state === 'installed' && card.validation?.status === 'pending' && (!card.execution || card.execution.stage === 'validating')) {
+        // A renderer may still have a report in flight from before the Host restarted.
+        const resumed = await this.store.update(card.id, card.revision, { validation: { ...card.validation, revision: card.revision + 1 } });
+        this.startVerification(resumed);
+        continue;
       }
       if (card.execution?.mode !== 'delegated' || ['complete', 'blocked'].includes(card.execution.stage)
         || ['cancelled', 'revoked', 'superseded'].includes(card.state)) continue;
@@ -365,7 +368,7 @@ export class WorkshopOperations implements Omit<PluginWorkshopService, 'developm
           await this.recoverAndRepair(repairing, card.error ?? card.lastFault ?? 'Candidate activation was interrupted', card.validation?.version ?? card.version);
         } else if (card.state === 'generating') {
           await this.startGeneration(card.id, card.revision, undefined, undefined, true);
-        } else if (card.state === 'pending-confirmation' || card.state === 'installed' && card.validation?.status === 'pending') {
+        } else if (card.state === 'pending-confirmation') {
           const controller = new AbortController();
           this.jobs.set(card.id, controller);
           void this.finishDelegated(card, controller).catch(error => this.blockExecution(card.id, String(error), controller))
@@ -871,7 +874,8 @@ export class WorkshopOperations implements Omit<PluginWorkshopService, 'developm
     let directory: string | undefined;
     for (const candidate of candidates) {
       if (!isManagedChild(root, candidate)) continue;
-      try { if ((await stat(join(candidate, 'package.json'))).isFile()) { directory = candidate; break; } } catch { /* try the next one */ }
+      const manifest = await stat(join(candidate, 'package.json')).catch(() => null);
+      if (manifest?.isFile()) { directory = candidate; break; }
     }
     if (!directory) throw new Error('WORKSHOP_STATE: no installed version to export yet; install it first');
     const pkg = JSON.parse(await readFile(join(directory, 'package.json'), 'utf8')) as { version?: unknown };

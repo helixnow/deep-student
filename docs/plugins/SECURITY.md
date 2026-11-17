@@ -42,7 +42,7 @@ Host 启动时先读社区条目旁边的 `package.json#deepStudent`（`host/ker
 |---|---|---|
 | 提供 id 派生命名空间之外的服务（例如 `settings`），也不能顶替其他插件已提供的服务 | `SERVICE_NAME_INVALID`、`SERVICE_CONFLICT` | `host/kernel/tests/plugin-manifest-load.test.ts`、`examples/testing/security.test.ts` |
 | `inject` 没在 `permissions` 里声明的服务（`log` 隐式授予，`storage` 不隐式授予） | `PERMISSION_UNDECLARED` | `host/kernel/tests/plugin-manifest-load.test.ts`、`examples/testing/security.test.ts` |
-| 声明 `meta.commands`（应用命令），或注入 kernel 专有服务（`commands`、`protocols`、`backendEvents`、`shell`、`dstuPluginInstaller`） | `KERNEL_API_FORBIDDEN` | `host/kernel/tests/community-kernel-surface.test.ts` |
+| 声明 `meta.commands`（应用命令），或注入 kernel 专有服务（`commands`、`protocols`、`backendEvents`、`shell`、`dstuPluginInstaller`、`pluginAgentTools`） | `KERNEL_API_FORBIDDEN` | `host/kernel/tests/community-kernel-surface.test.ts` |
 | 读取或调用智能体工具表（`pluginAgentTools`，只给注册执行器的官方插件） | `KERNEL_API_FORBIDDEN` | `host/kernel/tests/plugin-agent-tools.test.ts` |
 | 声明了 `agentTools` 时注入没声明的服务：完全信任的工坊作品也不例外，工具由模型触发，用到的服务必须是用户在确认卡片上看到的 | `PERMISSION_UNDECLARED` | `host/kernel/tests/plugin-agent-tools.test.ts` |
 | 调用 `ctx.commands.register`、`ctx.protocols.register`、`ctx.backendEvents` 的收发、`ctx.shell.request`（在 `apply` 里调用即降级；只读的 `ctx.commands.has()` 不限制） | `KERNEL_API_FORBIDDEN` | `host/kernel/tests/community-kernel-surface.test.ts` |

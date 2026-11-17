@@ -4,7 +4,6 @@ import { Sparkle } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { Textarea } from '@/components/ui/shad/Textarea';
 import type { PluginManagerWorkshop } from '@/features/plugin-manager/workshop';
-import { getErrorMessage } from '@/utils/errorUtils';
 
 /** The user's own send action delegates the request; example prompts remain editable drafts. */
 export function WorkshopComposer({ workshop, disabled = false }: { workshop?: PluginManagerWorkshop; disabled?: boolean }) {
@@ -22,6 +21,7 @@ export function WorkshopComposer({ workshop, disabled = false }: { workshop?: Pl
       await workshop.onSubmit(text);
       setPrompt(current => current.trim() === text ? '' : current);
     } catch (cause) {
+      const { getErrorMessage } = await import('@/utils/errorUtils');
       const raw = getErrorMessage(cause);
       setError(workshop.describeError?.(raw) ?? raw);
     } finally { setSending(false); }

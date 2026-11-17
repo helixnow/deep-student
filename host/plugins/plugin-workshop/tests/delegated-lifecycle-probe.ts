@@ -182,7 +182,7 @@ await test('resumes pending verification, then resumes a durable rollback before
     ops = new WorkshopOperations(f.app); ops.bindAdmin(f.installer); await ops.ready();
     ops.bindGeneration({ generate: f.generate, verify: f.verify }); await ops.resumeDelegated();
     card = await settled(ops, card.id, 'complete');
-    assert.equal(card.validation?.revision, validationRevision); assert.equal(card.usableVersion, '1.0.1');
+    assert(card.validation!.revision > validationRevision); assert.equal(card.usableVersion, '1.0.1');
     interrupted.resolve({ status: 'failed', evidence: [], error: 'late pre-restart failure' });
     ops.dispose();
     // Startup can recover before the generation dependency is bound. Recovery remains resumable on disk.
@@ -331,12 +331,14 @@ await test('startup finishes isolation when cancellation was persisted before ca
   } finally { interrupted.resolve({ status: 'passed', evidence: ['late'] }); ops.dispose(); await f.runtime.dispose(); }
 });
 
-await test('retrying a blocked installed candidate reapplies changed settings and resumes the same validation only', async () => {
+await test('retrying a blocked candidate keeps its installation, reapplies settings and rejects the old attempt', async () => {
   const f = await fixture(); const { ops } = f; let generations = 0, checks = 0;
+  const finish = gate<void>();
   ops.bindGeneration({ generate: async (card, source) => { generations++; await f.generate(card, source); }, verify: async card => {
     await f.verify(card); checks++;
     if (checks === 1) return { status: 'blocked', evidence: [], error: 'Acceptance prerequisite unavailable' };
     assert.equal(((await f.installer.configOf(card.pluginId)).values as Record<string, unknown>)?.label, 'new');
+    await finish.promise;
     return f.verify(card);
   } });
   try {
@@ -344,10 +346,16 @@ await test('retrying a blocked installed candidate reapplies changed settings an
     await ops.delegate(card.id, card.revision); card = await settled(ops, card.id, 'blocked');
     const attempt = card.validation!.revision; const version = card.validation!.version;
     assert.equal(card.state, 'installed'); assert.equal(card.usableVersion, null);
-    await ops.create(card.id, card.revision, { label: 'new' }); card = await settled(ops, card.id, 'complete');
-    assert.equal(card.validation?.revision, attempt); assert.equal(card.validation?.version, version);
+    const retry = await ops.create(card.id, card.revision, { label: 'new' });
+    assert(retry.validation!.revision > attempt);
+    await waitFor(() => checks === 2, () => ops.status(card.id));
+    const retryOnDisk = await ops.status(card.id);
+    const afterLateReport = await ops.reportValidation(card.id, version, attempt, { ok: false, detail: 'Prior window failure' });
+    assert.deepEqual(afterLateReport, retryOnDisk);
+    finish.resolve(); card = await settled(ops, card.id, 'complete');
+    assert.equal(card.validation?.revision, retry.validation?.revision); assert.equal(card.validation?.version, version);
     assert.equal(card.usableVersion, version); assert.equal(generations, 1); assert.equal(checks, 2);
-  } finally { ops.dispose(); await f.runtime.dispose(); }
+  } finally { finish.resolve(); ops.dispose(); await f.runtime.dispose(); }
 });
 
 await test('delegated generation uses explicit blockedReason instead of the legacy error keyword stop', async () => {

@@ -38,13 +38,13 @@ it('agentTools service publishes executors registered by other plugins', async (
     host.ctx.agentTools.registerToolExecutors([canvas]);
     host.ctx.agentTools.registerToolExecutors([chatanki]);
     expect(host.ctx.agentTools.toolExecutors().map(candidate => candidate.name())).toEqual([
-      'PtcExecutor', 'SkillWorkshopExecutor', 'SkillsExecutor', 'LlmUsageToolExecutor', 'McpProposeExecutor',
+      'PluginAgentToolExecutor', 'PtcExecutor', 'SkillWorkshopExecutor', 'SkillsExecutor', 'LlmUsageToolExecutor', 'McpProposeExecutor',
       'McpManageExecutor', 'SkillMarketReadToolExecutor', 'SkillMarketInstallToolExecutor', 'WorkbenchToolExecutor',
       'ConnectorToolExecutor', 'FetchExecutor', 'SkillInstallExecutor', 'SkillLifecycleExecutor',
       'CanvasToolExecutor', 'ChatAnkiToolExecutor',
     ]);
-    expect(host.ctx.agentTools.toolExecutors()[13]!.canHandle('builtin-note_read')).toBe(true);
-    expect(host.ctx.agentTools.toolExecutors()[12]!.canHandle('builtin-note_read')).toBe(false);
+    expect(host.ctx.agentTools.toolExecutors().at(-2)!.canHandle('builtin-note_read')).toBe(true);
+    expect(host.ctx.agentTools.toolExecutors().at(-3)!.canHandle('builtin-note_read')).toBe(false);
   } finally {
     await host.dispose();
   }
