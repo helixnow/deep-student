@@ -10,6 +10,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.20.5](https://github.com/helixnow/deep-student/compare/v0.20.4...v0.20.5) (2026-11-17)
+
+
+### Features
+
+* **workshop:** automate plugin delivery and recover verified versions ([e888dcf](https://github.com/helixnow/deep-student/commit/e888dcffa17320e08d277ef0947c33f8c79adb6e))
+
+
+### Bug Fixes
+
+* **workshop:** isolate verification retries and repair release checks ([#529](https://github.com/helixnow/deep-student/issues/529)) ([2b92d67](https://github.com/helixnow/deep-student/commit/2b92d678610273ff15a31cd89aab49f0178cf214))
+* **workshop:** reconcile interrupted rollbacks and stop stale verification ([f482e23](https://github.com/helixnow/deep-student/commit/f482e23bc3eff7098bacb336b9459bd9323cd1b9))
+
 ## [0.20.4](https://github.com/helixnow/deep-student/compare/v0.20.3...v0.20.4) (2026-11-16)
 
 
