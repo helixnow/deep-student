@@ -7,7 +7,7 @@
  */
 export { PluginManagerPanel } from './PluginManagerPanel';
 export type { PluginManagerPanelProps } from './PluginManagerPanel';
-export { registerPluginManagerWorkshop } from './workshop';
+export { registerPluginManagerWorkshop, usePluginManagerWorkshop } from './workshop';
 export type { PluginManagerWorkshop } from './workshop';
 
 export { PluginRow } from './PluginRow';

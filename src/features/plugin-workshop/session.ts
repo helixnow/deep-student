@@ -8,6 +8,8 @@ export interface WorkshopSessionPort {
   navigate(sessionId: string): void;
   /** Put a starter sentence in the session's input box. It is never sent on the user's behalf. */
   prefill?(sessionId: string, text: string): void | Promise<void>;
+  /** Send text the user explicitly submitted in the workshop composer. */
+  submit?(sessionId: string, text: string): Promise<void>;
   /** Move keyboard focus to that session's composer. */
   focus?(sessionId: string): void;
   /** Whether a conversation still exists (it may have been deleted). */

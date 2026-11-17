@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { defineUiPlugin, UiKernel } from '../kernel';
-import { COMMUNITY_SHARED_MODULES, resolveCommunityPluginUrl, startCommunityUiPlugins, type CommunityUiBridge } from '../community';
+import { COMMUNITY_SHARED_MODULES, resolveCommunityPluginUrl, startCommunityUiPlugins, subscribeCommunityUiLoadFailures, type CommunityUiBridge } from '../community';
 import type { UiManifestEntry } from '../loader';
 
 const recorded = vi.hoisted(() => ({ shared: vi.fn(), sdk: vi.fn(), steps: [] as string[] }));
@@ -22,6 +22,37 @@ afterEach(() => {
 });
 
 describe('production community UI boot channel', () => {
+  it('forwards versioned load failures, isolates subscribers and allows recovery to publish a new manifest', async () => {
+    vi.stubGlobal('window', {});
+    const kernel = new UiKernel();
+    let changed!: (manifest: UiManifestEntry[]) => void;
+    const broken = { id: 'community.broken', version: '2.0.0', file: '/broken/ui.js' };
+    const recovered = { id: 'community.recovered', version: '1.0.0', file: '/recovered/ui.js' };
+    const listener = vi.fn(async () => {
+      changed([recovered]);
+      await vi.waitFor(() => expect(kernel.list()).toEqual([recovered.id]));
+    });
+    const unsubscribe = subscribeCommunityUiLoadFailures(listener);
+    const unsubscribeBad = subscribeCommunityUiLoadFailures(() => { throw new Error('observer failed'); });
+    const stop = await startCommunityUiPlugins(kernel, {
+      invoke: async () => [broken], listen: async fn => { changed = fn; return () => {}; },
+    }, async url => {
+      if (url.includes(broken.id)) throw new Error('module unavailable');
+      return { default: defineUiPlugin({ meta: { id: recovered.id, version: recovered.version }, apply() {} }) };
+    });
+    try {
+      await vi.waitFor(() => expect(kernel.list()).toEqual([recovered.id]));
+      expect(listener).toHaveBeenCalledWith({ id: broken.id, version: broken.version, error: 'module unavailable' });
+      unsubscribe();
+      unsubscribeBad();
+      changed([broken]);
+      await flush();
+      expect(listener).toHaveBeenCalledOnce();
+    } finally {
+      unsubscribe(); unsubscribeBad(); await stop(); await kernel.dispose();
+    }
+  });
+
   it('uses the demo marker, skipping even the transport and shared SDK', async () => {
     vi.stubGlobal('window', { __DS_DEMO_SHELL__: true });
     const bridge = { invoke: vi.fn(), listen: vi.fn() };

@@ -14,6 +14,7 @@ vi.mock('@/command-palette/CommandPaletteProvider', () => ({ useCommandPaletteSa
 import { defineUiPlugin, UiKernel } from '@/ui-kernel/kernel';
 import { UiKernelProvider, useT } from '@/ui-kernel/react';
 import { appRegistry } from '../../../core/appRegistry';
+import { observeAgentWindow, waitForAgentCondition } from '../../../core/agentRuntime';
 import { useWindowStore } from '../../../core/windowStore';
 import { workbenchBus } from '../../../core/workbenchBus';
 import { AppsPanel } from '../../../components/AppsPanel';
@@ -26,7 +27,7 @@ import {
   resolvePluginViewAppTypeId,
 } from '../register';
 import { PluginViewAppWindow } from '../PluginViewAppWindow';
-import type { AppWindowProps } from '../../../core/types';
+import type { AgentAppContext, AppWindowProps } from '../../../core/types';
 
 const PLUGIN_ID = 'workshop.plugin-recall';
 const VIEW_KEY = 'recall';
@@ -96,6 +97,87 @@ afterEach(async () => {
 });
 
 describe('plugin view apps (learning desktop)', () => {
+  it('supports the existing Workbench observe and state_equals wait path for the exact mounted candidate', async () => {
+    stopMirror = mirrorPluginViewApps(kernel);
+    await kernel.install(recallPlugin);
+    const windowId = useWindowStore.getState().openWindow({ typeId: TYPE_ID, instanceKey: null, title: 'Recall' });
+    render(<div data-wb-window="" data-wb-window-id={windowId} data-window-id={windowId}>
+      <PluginViewAppWindow {...windowProps} windowId={windowId} viewKey={VIEW_KEY} kernel={kernel} />
+    </div>);
+    const observation = await observeAgentWindow({ windowId });
+    expect(observation.state).toMatchObject({ pluginId: PLUGIN_ID, version: '1.0.0', status: 'ready' });
+    expect(observation.availableActions).toEqual([]);
+    const result = await waitForAgentCondition({ windowId, conditions: [
+      { kind: 'state_equals', path: 'pluginId', value: PLUGIN_ID },
+      { kind: 'state_equals', path: 'version', value: '1.0.0' },
+      { kind: 'state_equals', path: 'status', value: 'ready' },
+    ], timeoutMs: 0 });
+    expect(result.matched).toBe(true);
+    expect(result.observation.state.text).toBe(observation.state.text);
+  });
+
+  it('observes the rendered candidate and live control state without exposing write capabilities', async () => {
+    function InteractiveView() {
+      const [name, setName] = React.useState('Ada');
+      const [mode, setMode] = React.useState('daily');
+      const [count, setCount] = React.useState(0);
+      return <section>
+        <label>Name<input value={name} onChange={event => setName(event.target.value)} /></label>
+        <label>Mode<select value={mode} onChange={event => setMode(event.target.value)}><option value="daily">Daily</option><option value="weekly">Weekly</option></select></label>
+        <label>Secret<input type="password" defaultValue="do-not-expose" /></label>
+        <button onClick={() => setCount(value => value + 1)}>Review</button>
+        <button disabled>Unavailable</button><button hidden>Hidden action</button>
+        <output>{name}:{mode}:{count}</output>
+      </section>;
+    }
+    stopMirror = mirrorPluginViewApps(kernel);
+    await kernel.install(defineUiPlugin({ meta: { id: PLUGIN_ID, version: '2.0.0' }, apply(ctx) {
+      ctx.ui.views.register({ id: VIEW_KEY, titleKey: 'title', component: InteractiveView });
+    } }));
+    const manifest = appRegistry.get(TYPE_ID)!.agentManifest!;
+    const ctx: AgentAppContext = { windowId: 'w1', typeId: TYPE_ID, instanceKey: null };
+    expect((await manifest.observe!(ctx)).state).toMatchObject({ status: 'missing', version: null });
+    render(<div data-wb-window="" data-window-id="w1"><PluginViewAppWindow {...windowProps} viewKey={VIEW_KEY} kernel={kernel} /></div>);
+    const first = await manifest.observe!(ctx);
+    expect(first.state).toMatchObject({ pluginId: PLUGIN_ID, viewId: VIEW_KEY, version: '2.0.0', status: 'ready', errors: [] });
+    expect(first.state?.text).toContain('Ada:daily:0');
+    expect(first.affordances?.find(control => control.label === 'Name')).toMatchObject({ value: 'Ada', actions: [] });
+    expect(first.affordances?.find(control => control.label === 'Secret')).not.toHaveProperty('value');
+    expect(JSON.stringify(first)).not.toContain('do-not-expose');
+    expect(first.affordances?.some(control => control.label === 'Hidden action')).toBe(false);
+    expect(first.affordances?.find(control => control.label === 'Unavailable')?.disabled).toBe(true);
+    expect(first.availableActions).toEqual([]);
+    expect(manifest.capabilities).toEqual([]);
+    expect(manifest.execute).toBeUndefined();
+    expect((await manifest.observe!(ctx)).revision).toBe(first.revision);
+
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Grace' } });
+    fireEvent.change(screen.getByLabelText('Mode'), { target: { value: 'weekly' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Review' }));
+    const next = await manifest.observe!(ctx);
+    expect(next.state?.text).toContain('Grace:weekly:1');
+    expect(next.revision).not.toBe(first.revision);
+    expect(next.affordances?.find(control => control.label === 'Name')?.ref).toBe(first.affordances?.find(control => control.label === 'Name')?.ref);
+    expect((await manifest.observe!({ ...ctx, windowId: 'other-window' })).state).toMatchObject({ status: 'missing', version: null, text: '' });
+
+    // A version marker from a prior mounted page must never certify the newly loaded candidate.
+    screen.getByTestId('wb-plugin-view-window').dataset.pluginVersion = '1.0.0';
+    expect((await manifest.observe!(ctx)).state).toMatchObject({ status: 'loading', version: '1.0.0', controls: [] });
+  });
+
+  it('reports a real render boundary failure instead of claiming that the candidate is ready', async () => {
+    stopMirror = mirrorPluginViewApps(kernel);
+    await kernel.install(defineUiPlugin({ meta: { id: PLUGIN_ID, version: '3.0.0' }, apply(ctx) {
+      ctx.ui.views.register({ id: VIEW_KEY, titleKey: 'title', component: () => { throw new Error('render exploded'); } });
+    } }));
+    const manifest = appRegistry.get(TYPE_ID)!.agentManifest!;
+    render(<div data-wb-window="" data-window-id="w1"><PluginViewAppWindow {...windowProps} viewKey={VIEW_KEY} kernel={kernel} /></div>);
+    await screen.findByTestId('wb-plugin-view-failed');
+    const observation = await manifest.observe!({ windowId: 'w1', typeId: TYPE_ID, instanceKey: null });
+    expect(observation.state).toMatchObject({ status: 'failed', version: '3.0.0', controls: [], errors: ['render exploded'] });
+    expect(observation.availableActions).toEqual([]);
+  });
+
   it('mirrors community views into the app registry and drops them when the plugin unloads', async () => {
     stopMirror = mirrorPluginViewApps(kernel);
     expect(appRegistry.get(TYPE_ID)).toBeUndefined();

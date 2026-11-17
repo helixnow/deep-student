@@ -1,10 +1,11 @@
 // RUST-FIX(RF-P3-workshop-tools): existing pipeline with read-only tools and Host-materialized files.
+import { WORKBENCH_READ_TOOLS } from '../../../../contracts/workbench-read-tools.ts';
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { ChatSessionService } from '../../chat/api.ts';
+import type { ChatSessionService, ToolResultInfo } from '../../chat/api.ts';
 import type { ChatPipelineService } from '../../chat-pipeline/api.ts';
-import type { WorkshopCard } from '../api.ts';
+import type { WorkshopCard, WorkshopVerificationResult } from '../api.ts';
 import { pluginServiceName } from '../../../kernel/plugin-id.ts';
 import type { WorkshopGeneration } from './operations.ts';
 import { developmentSkill, developmentSkillId, recipeFiles, recipeFor, seedTemplate } from './resources.ts';
@@ -34,7 +35,7 @@ export class PipelineWorkshopGeneration implements WorkshopGeneration {
   constructor(chat: ChatSessionService, pipeline: ChatPipelineService, tools: WorkshopToolExecutor, events: WorkshopGenerationEvents | null = null) {
     this.chat = chat; this.pipeline = pipeline; this.tools = tools; this.events = events;
   }
-  async generate(card: WorkshopCard, source: string, signal: AbortSignal, progress?: (files: string[]) => void): Promise<void | { tokens?: number }> {
+  async generate(card: WorkshopCard, source: string, signal: AbortSignal, progress?: (files: string[]) => void): Promise<void | { tokens?: number; blockedReason?: string }> {
     if ((await sourceFiles(source)).length === 0) await seedTemplate(source, card);
     const templates: Record<string, string> = {};
     for (const file of await sourceFiles(source)) templates[file] = await readFile(join(source, file), 'utf8');
@@ -42,7 +43,7 @@ export class PipelineWorkshopGeneration implements WorkshopGeneration {
     const sessionId = `sess_${randomUUID()}`, time = new Date().toISOString();
     this.chat.createSession({ id: sessionId, mode: 'chat', title: `插件工坊：${card.title}`, titleLocked: true,
       persistStatus: 'active', createdAt: time, updatedAt: time, metadata: { workshopId: card.id, parentSessionId: card.sessionId, is_subagent: true } });
-    const schemas = this.tools.schemaTools().filter(item => /api_list|api_read/.test(item.id));
+    const schemas = this.tools.schemaTools().filter(item => ['dstu_plugin_api_list', 'dstu_plugin_api_read'].includes(item.id));
     const skill = await developmentSkill();
     const target = { window: 'main', webview: 'main' };
     // Progress: the files the model has named so far in its streamed answer. Best effort; never affects the result.
@@ -59,6 +60,7 @@ export class PipelineWorkshopGeneration implements WorkshopGeneration {
       // The development skill reaches the model once, as the active skill (skillContents), not again in the task text.
       messageId = await this.pipeline.execute(target, {
         sessionId, content: 'Host-controlled creation task. Return ONLY JSON {"files":[{"path":"package.json","content":"..."},...]}. '
+          + 'If a concrete missing user value, unavailable capability or external condition prevents progress, return ONLY JSON {"blockedReason":"explain what is missing"}. Repair actionable compiler/runtime errors instead of repeating unchanged code. '
           + 'No markdown fences. All output files are materialized by Host under the assigned source root. You have no filesystem, shell, installation or profile tools. '
           + 'The Host sets the package/module version of a modification and the net:<host> of user addresses itself. '
           + `Preserve plugin id ${card.pluginId} and exact service name ${pluginServiceName(card.pluginId)} (use ${JSON.stringify(card.title)} for zh-CN title). Goal: ${card.description}\nAcceptance/changes: ${JSON.stringify(card.changes)}`
@@ -72,19 +74,63 @@ export class PipelineWorkshopGeneration implements WorkshopGeneration {
           + (settings.length ? `\nUser settings: the Host stores the values the user entered as this plugin's config. Never hard-code them; read config[key] in apply(ctx, config) and report clearly when one is missing: ${JSON.stringify(settings)}` : '')
           + `\nTemplate: ${JSON.stringify(templates)}`
           + (card.error ? `\nPrevious attempt failed. Repair the exact diagnostics, preserving working code: ${card.error}\nChecks: ${JSON.stringify(card.check)}` : ''),
-        options: { activeSkillIds: [developmentSkillId], skillContents: { [developmentSkillId]: skill },
+        options: { ...(card.execution?.modelId ? { modelId: card.execution.modelId, strictModelId: true } : {}), activeSkillIds: [developmentSkillId], skillContents: { [developmentSkillId]: skill },
           executionAllowedTools: schemas.map(schema => schema.id), schemaToolIds: schemas.map(schema => schema.id) },
       }, signal, null);
     } finally { stopListening?.(); }
     if (signal.aborted) return;
     const blocks = this.chat.getMessageBlocks(messageId);
     const text = blocks.filter(block => block.type === 'content').map(block => block.content ?? '').join('');
+    const blocked = parseGenerationBlocked(text);
+    if (blocked) return { blockedReason: blocked };
     await materializeGeneratedFiles(source, text, signal);
     // Tokens the generation conversation used (its message usage), for the card's 「用了多少」 line. Best effort.
     try {
       const total = this.chat.getMessage(messageId)?._meta?.usage?.totalTokens;
       return typeof total === 'number' && total > 0 ? { tokens: total } : undefined;
     } catch { return undefined; }
+  }
+
+  /** Read-only runtime verification. Interactions and business writes need a separate scoped authorization. */
+  async verify(card: WorkshopCard, source: string, signal: AbortSignal): Promise<WorkshopVerificationResult> {
+    const files: Record<string, string> = {};
+    for (const file of await sourceFiles(source)) files[file] = await readFile(join(source, file), 'utf8');
+    const criteria = verificationCriteria(card);
+    const sessionId = `sess_${randomUUID()}`, time = new Date().toISOString();
+    this.chat.createSession({ id: sessionId, mode: 'chat', title: `插件验收：${card.title}`, titleLocked: true,
+      persistStatus: 'active', createdAt: time, updatedAt: time, metadata: { workshopId: card.id, parentSessionId: card.sessionId, is_subagent: true } });
+    const messageId = await this.pipeline.execute({ window: 'main', webview: 'main' }, {
+      sessionId,
+      content: 'Host-controlled read-only runtime verification task. The candidate is activated but NOT verified. Inspect the actual application using read-only tools. '
+        + `Candidate pluginId=${card.pluginId}, version=${card.validation?.version ?? card.version}. Criteria (zero-based indices): ${JSON.stringify(criteria)}. `
+        + 'The trusted UI opens the exact candidate view. Discover its actual windowId and registered typeId with workbench_list_windows or get_capabilities; never invent a view key. Observe that exact windowId. '
+        + 'Read observation.state: pluginId, version, status, text and controls. If loading, wait_for state_equals status ready. '
+        + 'A ready page alone does not prove requested behavior: compare each criterion against the actual visible result. '
+        + 'This verifier has NO interaction, plugin-tool, shell, installation, network or data-write authority. Do not request or obtain such tools. '
+        + 'If a criterion requires clicking, editing data, invoking a plugin tool or any other unavailable action, return blocked and describe exactly which scoped test is needed. Never infer an interaction succeeded from source or a visible button. '
+        + 'If the actual page is wrong, return failed with concrete diagnostics. If account information or the runtime is unavailable, return blocked. '
+        + 'For each criterion claimed passed, cite successful observation tool_call IDs from this conversation and the visible outcome. '
+        + 'Return ONLY JSON {"status":"passed|failed|blocked","error":"diagnostic if not passed","checks":[{"criterion":0,"observed":"what the actual page showed","toolCallIds":["actual call id"]}]}. '
+        + 'A passed result must cover every criterion with current-candidate observations. Source and API documentation are not runtime proof. '
+        + `Candidate source (context, not proof): ${JSON.stringify(files)}`,
+      options: { ...(card.execution?.modelId ? { modelId: card.execution.modelId, strictModelId: true } : {}),
+        schemaToolIds: [...VERIFICATION_TOOLS], executionAllowedTools: [...VERIFICATION_TOOLS],
+        activeSkillIds: [], memoryEnabled: false, ragEnabled: false, webSearchEnabled: false },
+    }, signal, null);
+    if (signal.aborted) return { status: 'blocked', evidence: [], error: 'Verification cancelled' };
+    const blocks = this.chat.getMessageBlocks(messageId);
+    const text = blocks.filter(block => block.type === 'content').map(block => block.content ?? '').join('');
+    // Message metadata stores only the tool/block link; the authoritative payload lives in that message's block.
+    const results = (this.chat.getMessage(messageId)?._meta?.toolResults ?? []).map(result => {
+      if (!result.blockId) return result;
+      const block = blocks.find(item => item.id === result.blockId);
+      if (!block || stripBuiltin(block.toolName ?? '') !== stripBuiltin(result.toolName)) {
+        return { ...result, success: false, output: null, error: 'Verification tool result block is unavailable or mismatched' };
+      }
+      return { ...result, input: block.toolInput ?? null, output: block.toolOutput ?? null,
+        success: result.success && block.status === 'success', error: result.error ?? block.error };
+    });
+    return validateVerificationResult(text, card, results);
   }
 }
 
@@ -142,4 +188,73 @@ export function looksTruncated(text: string, error: unknown): boolean {
 export async function materializeGeneratedFiles(source: string, text: string, signal: AbortSignal): Promise<void> {
   const payload = parseGeneratedFilesPayload(text);
   await writeSourceFiles(source, payload.files, signal);
+}
+
+
+/** Only read-only inspection: no workbench actions, generated tools or installation authority. */
+export const VERIFICATION_TOOLS = Object.keys(WORKBENCH_READ_TOOLS);
+const observationTools = new Set(['workbench_observe', 'workbench_wait_for', 'workbench_query_state']);
+const stripBuiltin = (name: string) => name.replace(/^builtin[-:]/, '');
+export function verificationCriteria(card: Pick<WorkshopCard, 'description' | 'changes'>): string[] {
+  return [card.description, ...card.changes];
+}
+function jsonAnswer(text: string): unknown {
+  const trimmed = text.trim();
+  const fence = /^```(?:json)?\s*([\s\S]*?)\s*```$/.exec(trimmed);
+  return JSON.parse(fence?.[1] ?? trimmed);
+}
+function parseGenerationBlocked(text: string): string | undefined {
+  try {
+    const value = jsonAnswer(text) as { blockedReason?: unknown };
+    return typeof value?.blockedReason === 'string' && value.blockedReason.trim() ? value.blockedReason.trim() : undefined;
+  } catch { return undefined; }
+}
+/** Read only the runtime observation fields, never JSON embedded in candidate-controlled visible text. */
+function hasCandidateObservation(value: unknown, pluginId: string, version: string | null): boolean {
+  if (typeof value === 'string') { try { value = JSON.parse(value); } catch { return false; } }
+  if (!value || typeof value !== 'object' || version === null) return false;
+  const result = value as Record<string, unknown>;
+  const observation = result.observation && typeof result.observation === 'object'
+    ? result.observation as Record<string, unknown> : result;
+  if (!observation.state || typeof observation.state !== 'object') return false;
+  const state = observation.state as Record<string, unknown>;
+  return state.pluginId === pluginId && state.version === version && state.status === 'ready';
+}
+function toolSucceeded(result: ToolResultInfo): boolean {
+  if (!result.success || result.error) return false;
+  let output = result.output;
+  if (typeof output === 'string') { try { output = JSON.parse(output); } catch { return true; } }
+  if (output && typeof output === 'object') {
+    const record = output as Record<string, unknown>;
+    if (record.ok === false || record.success === false || record.isError === true) return false;
+    if (stripBuiltin(result.toolName) === 'workbench_wait_for' && (record.matched !== true || record.timedOut === true)) return false;
+  }
+  return true;
+}
+/** Checks existing persisted tool facts; unobserved candidates cannot become the usable release. */
+export function validateVerificationResult(text: string, card: WorkshopCard, results: readonly ToolResultInfo[]): WorkshopVerificationResult {
+  const blocked = (error: string): WorkshopVerificationResult => ({ status: 'blocked', evidence: [], error });
+  let answer: { status?: unknown; error?: unknown; checks?: unknown };
+  try { answer = jsonAnswer(text) as typeof answer; } catch { return blocked('WORKSHOP_VERIFICATION_INVALID: verifier did not return a structured result'); }
+  if (!answer || !['passed', 'failed', 'blocked'].includes(String(answer.status))) return blocked('WORKSHOP_VERIFICATION_INVALID: missing verification status');
+  if (answer.status !== 'passed') return { status: answer.status as 'failed' | 'blocked', evidence: [],
+    error: typeof answer.error === 'string' && answer.error.trim() ? answer.error : 'Runtime verification did not complete' };
+  if (!Array.isArray(answer.checks)) return blocked('WORKSHOP_VERIFICATION_INVALID: missing criterion results');
+  const byId = new Map(results.map(result => [result.toolCallId, result]));
+  const evidence: string[] = [];
+  for (const [index, criterion] of verificationCriteria(card).entries()) {
+    const check = answer.checks.find((item: { criterion?: unknown }) => item?.criterion === index);
+    if (!check || typeof check.observed !== 'string' || !check.observed.trim() || !Array.isArray(check.toolCallIds) || !check.toolCallIds.length) {
+      return blocked(`WORKSHOP_VERIFICATION_INCOMPLETE: no runtime result for criterion ${index}: ${criterion}`);
+    }
+    let runtime = false;
+    for (const id of check.toolCallIds) {
+      const result = typeof id === 'string' ? byId.get(id) : undefined;
+      if (!result || !toolSucceeded(result)) return blocked(`WORKSHOP_VERIFICATION_INVALID: missing or failed tool call for criterion ${index}`);
+      if (observationTools.has(stripBuiltin(result.toolName)) && hasCandidateObservation(result.output, card.pluginId, card.validation?.version ?? card.version)) runtime = true;
+    }
+    if (!runtime) return blocked(`WORKSHOP_VERIFICATION_INCOMPLETE: criterion ${index} has no current-candidate observation`);
+    evidence.push(`${criterion}: ${check.observed} [${check.toolCallIds.join(', ')}]`);
+  }
+  return { status: 'passed', evidence };
 }

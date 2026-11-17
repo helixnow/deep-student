@@ -44,7 +44,7 @@ function linkReader(http: () => HttpService | null): WorkshopLinkReader {
 
 export default definePlugin({
   meta: { id: 'dstu.plugin-workshop', version: '1.0.0', platforms: ['desktop'], provides: ['pluginWorkshop'],
-    remote: { pluginWorkshop: ['developmentSkill', 'bindSession', 'propose', 'list', 'status', 'create', 'cancel', 'validate', 'install', 'revoke', 'restore', 'export', 'reportFault', 'discard', 'redo', 'reduce'] } },
+    remote: { pluginWorkshop: ['developmentSkill', 'bindSession', 'propose', 'list', 'status', 'create', 'cancel', 'validate', 'install', 'revoke', 'restore', 'export', 'reportFault', 'reportValidation', 'discard', 'redo', 'reduce'] } },
   inject: ['paths', 'agentTools', 'chatSession', 'chatPipeline', 'dstuPluginInstaller'],
   async apply(ctx) {
     const operations = new WorkshopOperations({ ...ctx.app, dataDir: ctx.paths.appDataDir });
@@ -57,6 +57,7 @@ export default definePlugin({
     // Registration is owned by this builtin. Agent dispatch may run in chat's fiber, not this one.
     const executor = new WorkshopToolExecutor(operations, catalog);
     operations.bindGeneration(new PipelineWorkshopGeneration(ctx.chatSession, ctx.chatPipeline, executor, ctx.backendEvents));
+    operations.bindCandidatePreview(candidate => ctx.backendEvents.emitTo({ kind: 'Window', label: 'main' }, 'plugin-workshop:verify-candidate', candidate));
     operations.bindLinkReader(linkReader(() => (ctx.get('http') as HttpService | undefined) ?? null));
     // Card secrets: the same secure-store key pluginSecrets.get(key) reads for that plugin.
     operations.bindSecretStore(async (pluginId, key, value) => {
@@ -79,12 +80,14 @@ export default definePlugin({
       consumeWorkshopUiReceipt(args.pop(), 'pluginWorkshop', 'developmentSkill');
       return { ...await developmentSkillResource(args[0] === true), schemaToolIds: executor.schemaTools().map(tool => tool.id) };
     });
-    for (const method of ['bindSession', 'propose', 'list', 'status', 'create', 'cancel', 'validate', 'install', 'revoke', 'restore', 'export', 'reportFault', 'discard', 'redo', 'reduce'] as const) {
+    for (const method of ['bindSession', 'propose', 'list', 'status', 'create', 'cancel', 'validate', 'install', 'revoke', 'restore', 'export', 'reportFault', 'reportValidation', 'discard', 'redo', 'reduce'] as const) {
       facade[method] = Object.freeze(async (...args: unknown[]) => {
         const context = consumeWorkshopUiReceipt(args.pop(), 'pluginWorkshop', method);
         return (operations[method] as (...params: unknown[]) => Promise<unknown>).apply(operations, [...args, context]);
       });
     }
     ctx.provide('pluginWorkshop', Object.freeze(facade));
+    // Resume only after generation, settings and authorization dependencies are installed.
+    await operations.resumeDelegated();
   },
 });

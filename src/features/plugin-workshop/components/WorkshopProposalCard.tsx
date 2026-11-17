@@ -94,7 +94,11 @@ export function WorkshopProposalCard({ onRepair, exportPath, onReveal, ...props 
   );
   return <div className="space-y-2.5">
     <WorkshopConfirmationCard {...props} onRepair={onRepair} />
-    {item.phase === 'installed' && <p role="status" data-testid="workshop-installed" className="text-sm text-success">{busy && opening ? t('workshop.opening') : t('workshop.installed')}</p>}
+    {item.phase === 'installed' && <p role="status" data-testid="workshop-installed" className="text-sm text-success">{busy && opening ? t('workshop.opening')
+      : t(item.validation?.status === 'passed' && item.validation.version === item.version ? 'workshop.verified' : 'workshop.installedUnverified')}</p>}
+    {item.validation?.status === 'passed' && item.validation.version === item.version && item.validation.evidence?.length
+      ? <details className="text-xs text-muted-foreground" data-testid="workshop-verification-evidence"><summary>{t('workshop.verifiedDetails')}</summary>
+        <ul className="mt-2 list-inside list-disc">{item.validation.evidence.map((evidence, index) => <li key={index}>{evidence}</li>)}</ul></details> : null}
     {item.phase === 'disabled' && !item.error && <p role="status" className="text-sm text-muted-foreground">{t('workshop.disabled')}</p>}
     {item.phase === 'disabled' && item.error && <WorkshopErrorNotice raw={item.error} name={item.name} busy={busy} emphasis={false} onRepair={onRepair} onRedo={() => onAction('redo')} />}
     {item.phase === 'undone' && <p role="status" data-testid="workshop-undone" className="text-sm text-muted-foreground">{t('workshop.undone')}</p>}
@@ -122,7 +126,11 @@ export function WorkshopProposalCard({ onRepair, exportPath, onReveal, ...props 
       </div>
     )}
     {item.phase === 'cancelled' && discard ? <div className="flex flex-wrap items-center gap-2">{discard}</div> : null}
-    {item.phase === 'failed' && (
+    {item.phase === 'failed' && item.execution?.stage === 'blocked' && <div className="space-y-2 text-sm">
+      {item.validation?.status === 'pending' && <p className="text-muted-foreground">{t('workshop.installedUnverified')}</p>}
+      {modify}
+    </div>}
+    {item.phase === 'failed' && item.execution?.stage !== 'blocked' && (
       <div className="space-y-2 text-sm" data-testid="workshop-failed">
         <WorkshopErrorNotice raw={item.error ?? ''} name={item.name} busy={busy} emphasis={!workshopRetryable(item)} onRepair={onRepair}
           onRetry={() => onAction('confirm')} onRedo={() => onAction('redo')}

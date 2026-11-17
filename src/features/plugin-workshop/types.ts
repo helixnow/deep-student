@@ -33,6 +33,8 @@ export type WorkshopProgress =
 export interface WorkshopSetting { key: string; title: string; kind: 'ics-url' | 'https-url' | 'text' | 'secret'; value?: string; saved?: boolean }
 
 export interface WorkshopItem {
+  execution?: { mode: 'delegated'; stage: 'generating' | 'installing' | 'validating' | 'repairing' | 'complete' | 'blocked'; modelId?: string; reason?: string };
+  validation?: { version: string; revision: number; status: 'pending' | 'passed' | 'failed'; detail?: string; evidence?: string[] };
   id: string;
   proposalId: string;
   revision?: number;
@@ -111,6 +113,7 @@ export function workshopActions(phase: WorkshopPhase): WorkshopAction[] {
     case 'proposed': return ['confirm', 'cancel'];
     case 'ready': return ['confirm', 'cancel'];
     case 'generating':
+    case 'installing':
     case 'validating': return ['cancel'];
     case 'installed': return ['try', 'disable', 'undo', 'restore', 'export', 'redo'];
     case 'disabled': return ['try', 'undo', 'restore', 'export', 'redo'];

@@ -37,6 +37,8 @@ export interface SlotEntry<T> extends Required<Omit<SlotContribution<T>, 'key'>>
   owner: string;
   /** Set by the installing kernel fiber, not by contribution metadata. */
   origin: UiPluginOrigin;
+  /** Version captured by the registering scope; retained with detached entries and callbacks. */
+  version?: string;
 }
 
 export class SlotError extends Error {
@@ -90,7 +92,7 @@ export class SlotStore {
   }
 
   /** 添加贡献，返回撤销函数。 */
-  contribute<T>(name: string, owner: string, contribution: SlotContribution<T>, origin: UiPluginOrigin = 'community'): () => void {
+  contribute<T>(name: string, owner: string, contribution: SlotContribution<T>, origin: UiPluginOrigin = 'community', version?: string): () => void {
     const def = this.defs.get(name);
     if (!def) throw new SlotError(`slot "${name}" is not declared`);
     if (def.cardinality === 'keyed' && !contribution.key) throw new SlotError(`slot "${name}" is keyed: contribution "${contribution.id}" needs a key`);
@@ -105,7 +107,7 @@ export class SlotStore {
     if (def.cardinality === 'single' && list.length) {
       throw new SlotError(`slot "${name}" accepts a single contribution and already has one from "${list[0]!.owner}"`);
     }
-    const entry: SlotEntry<T> = { id: contribution.id, key: contribution.key, order: contribution.order ?? 0, value: contribution.value, owner, origin };
+    const entry: SlotEntry<T> = { id: contribution.id, key: contribution.key, order: contribution.order ?? 0, value: contribution.value, owner, origin, ...(version === undefined ? {} : { version }) };
     list.push(entry as SlotEntry<unknown>);
     list.sort((a, b) => a.order - b.order || compareCodePoints(a.id, b.id));
     this.entries.set(name, list);

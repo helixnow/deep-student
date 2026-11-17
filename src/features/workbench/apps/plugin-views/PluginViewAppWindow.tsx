@@ -41,6 +41,7 @@ const PluginViewBody: React.FC<{ viewKey: string }> = ({ viewKey }) => {
       data-testid="wb-plugin-view-window"
       data-plugin-view={viewKey}
       data-plugin-owner={entry.owner}
+      data-plugin-version={entry.version ?? ''}
     >
       <SlotOutlet
         name="views"

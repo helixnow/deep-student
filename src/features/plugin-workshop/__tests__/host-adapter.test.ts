@@ -180,6 +180,28 @@ describe('progress, honest states and the background result (transport double)',
       stop();
     } finally { vi.useRealTimers(); }
   });
+  it('follows delegated work through actual validation and reports completion once after leaving the card', async () => {
+    vi.useFakeTimers();
+    try {
+      const { remote, manager } = fixture();
+      manager.list.mockResolvedValue({ plugins: [{ id: card.pluginId, enabled: true }] });
+      const onFinished = vi.fn();
+      const adapter = new HostWorkshopAdapter(remote, manager, undefined, onFinished);
+      const pending = { ...card, state: 'installed' as const, version: '1.0.0',
+        execution: { mode: 'delegated' as const, stage: 'validating' as const },
+        validation: { version: '1.0.0', revision: 4, status: 'pending' as const } };
+      vi.mocked(remote.list).mockResolvedValue([pending]);
+      vi.mocked(remote.status).mockResolvedValue(pending);
+      await adapter.list();
+      await vi.advanceTimersByTimeAsync(1600);
+      expect(onFinished).not.toHaveBeenCalled();
+      vi.mocked(remote.status).mockResolvedValue({ ...pending,
+        execution: { mode: 'delegated', stage: 'complete' }, validation: { ...pending.validation, status: 'passed' } });
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(onFinished).toHaveBeenCalledTimes(1);
+      expect(onFinished.mock.calls[0]![0]).toMatchObject({ phase: 'installed', validation: { status: 'passed' } });
+    } finally { vi.useRealTimers(); }
+  });
 });
 
 describe('installed version apart from the proposal (F3)', () => {

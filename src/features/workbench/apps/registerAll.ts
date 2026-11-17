@@ -22,6 +22,7 @@ import { registerSystemApps } from './system/register';
 import { registerSandboxApp } from './sandbox/register';
 import { registerBrowserApp } from './browser/register';
 import { registerDesktopAgentTarget } from './desktop/register';
+import { registerPluginViewApps } from './plugin-views/register';
 import './ai-dashboard/register';
 
 /** Dock 固定区默认值（编排文档 P11：chat/files/settings/todo）
@@ -37,6 +38,7 @@ export function registerAllWorkbenchApps(): void {
   registerSystemApps();
   registerSandboxApp();
   registerBrowserApp();
+  registerPluginViewApps();
   // ACR 4.0（A2）：desktop 虚拟目标（仅 agent 能力面，不进 appRegistry）
   registerDesktopAgentTarget();
 }

@@ -8,6 +8,8 @@ const AGENT_EDIT_STALE_MS = 15 * 60_000;
 
 /** P3 workshop.md v1 wire contract. Kept separate from display state. */
 export interface WorkshopCard {
+  execution?: { mode: 'delegated'; stage: 'generating' | 'installing' | 'validating' | 'repairing' | 'complete' | 'blocked'; modelId?: string; reason?: string } | null;
+  validation?: { version: string; revision: number; status: 'pending' | 'passed' | 'failed'; detail?: string; evidence?: string[] } | null;
   kind: 'dstu-plugin-workshop'; id: string; pluginId: string; sessionId: string;
   title: string; description: string; template: 'learning-tool' | 'host-tool';
   state: 'draft' | 'generating' | 'cancelled' | 'pending-confirmation' | 'installed' | 'failed' | 'revoked' | 'superseded';
@@ -46,7 +48,8 @@ export interface WorkshopInstallation { state: 'installed' | 'failed' | 'revoked
 
 /** Must be supplied by the real paired dstu.plugin-workshop UI context. */
 export interface WorkshopRemote {
-  reportFault?(id: string, error: string): Promise<WorkshopCard>;
+  reportFault?(id: string, error: string, version?: string): Promise<WorkshopCard>;
+  reportValidation?(id: string, version: string, revision: number, outcome: { ok: boolean; detail?: string; evidence?: string[] }): Promise<WorkshopCard>;
   bindSession(id: string, revision: number, sessionId: string): Promise<WorkshopCard>;
   list(): Promise<WorkshopCard[]>;
   status(id: string): Promise<WorkshopCard>;
@@ -148,8 +151,10 @@ export function workshopItem(card: WorkshopCard, enabled?: boolean, degradedReas
   // The proposal's own step; none while the latest step is an install / uninstall, or when the installed version is
   // what failed (a fault, not a proposal).
   const installationFault = card.state === 'failed' && installation?.state === 'failed';
-  const proposalPhase: WorkshopPhase | undefined = card.state === 'installed' || card.state === 'revoked' || installationFault ? undefined
-    : agentEditing(card) ? 'editing' : phases[card.state];
+  const executionPhase: WorkshopPhase | undefined = card.execution?.stage === 'validating' ? 'validating'
+    : card.execution?.stage === 'installing' ? 'installing' : card.execution?.stage === 'blocked' ? 'failed' : undefined;
+  const proposalPhase: WorkshopPhase | undefined = executionPhase ?? (card.state === 'installed' || card.state === 'revoked' || installationFault ? undefined
+    : agentEditing(card) ? 'editing' : phases[card.state]);
   // Lists (manager, creations) show an open or failed proposal; otherwise what is installed.
   const showsProposal = !installed || (proposalPhase !== undefined && (OPEN_PHASES.includes(proposalPhase) || proposalPhase === 'failed'));
   const phase: WorkshopPhase = showsProposal ? proposalPhase ?? installed?.phase ?? phases[card.state] : installed!.phase;
@@ -162,7 +167,9 @@ export function workshopItem(card: WorkshopCard, enabled?: boolean, degradedReas
     description: card.description, capabilities: workshopCapabilities(card), changes: card.changes, trust: card.trust,
     // Showing the installed version: its own problem (degraded reason, or the fault that turned it off), not an
     // older proposal's error. Showing a proposal: the proposal's error.
-    phase, error: atInstalled ? degradedReason ?? (installed.phase === 'failed' ? card.error ?? undefined : undefined) : card.error ?? undefined,
+    phase, error: atInstalled ? degradedReason ?? (installed.phase === 'failed' ? card.error ?? undefined : undefined) : card.execution?.reason ?? card.error ?? undefined,
+    ...(card.execution ? { execution: { ...card.execution } } : {}),
+    ...(card.validation ? { validation: { ...card.validation } } : {}),
     rollback: card.rollback,
     progress: workshopProgress(card),
     ...(places ? { places } : {}),
@@ -247,7 +254,11 @@ export class HostWorkshopAdapter implements WorkshopAdapter {
     if (this.inflight) return this.inflight;
     const read = (async () => {
       const [cards, inventory] = await Promise.all([this.remote.list(), this.manager.list()]);
-      this.active = cards.some(card => card.state === 'generating');
+      this.active = cards.some(card => card.state === 'generating'
+        || card.execution && !['complete', 'blocked'].includes(card.execution.stage));
+      for (const card of cards) {
+        if (card.execution && !['complete', 'blocked'].includes(card.execution.stage)) this.watch(card.id);
+      }
       return cards.map(card => this.item(card, inventory));
     })();
     this.inflight = read;
@@ -288,9 +299,10 @@ export class HostWorkshopAdapter implements WorkshopAdapter {
     const poll = async (): Promise<void> => {
       try {
         const item = await this.get(id);
-        if (item.phase === 'generating') { setTimeout(() => { void poll(); }, 1500); return; }
+        if (['generating', 'installing', 'validating'].includes(item.phase)) { setTimeout(() => { void poll(); }, 1500); return; }
         this.watching.delete(id);
-        if (item.phase === 'ready' || item.phase === 'failed') this.onFinished?.(item);
+        if (item.phase === 'ready' || item.phase === 'failed'
+          || item.phase === 'installed' && item.validation?.status === 'passed' && item.validation.version === item.version) this.onFinished?.(item);
       } catch { this.watching.delete(id); }
     };
     setTimeout(() => { void poll(); }, 1500);

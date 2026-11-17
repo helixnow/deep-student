@@ -64,7 +64,8 @@ try {
   const brief = { sessionId: 'test', title: 'Test', description: 'Test', template: 'host-tool', changes: [], capabilities: [] };
   let card = await ops.propose(brief);
   card = await generate(card, '1.0.0'); assert.equal((await enable(card.pluginId)).kind, 'ok');
-  assert.equal((await ops.status(card.id)).usableVersion, '1.0.0');
+  // Manual activation alone has no runtime behavior evidence and must remain unverified.
+  assert.equal((await ops.status(card.id)).usableVersion, null);
   card = await ops.propose({ ...brief, pluginId: card.pluginId });
   card = await generate(card, '2.0.0');
   ops.dispose(); await runtime.dispose();

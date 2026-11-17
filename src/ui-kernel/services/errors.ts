@@ -11,6 +11,8 @@ export type UiErrorPhase = 'render' | 'filter' | 'report';
 
 export interface UiPluginErrorReport {
   pluginId: string;
+  /** Version of the scope or contribution that produced the error; never inferred on delivery. */
+  version?: string;
   origin: UiPluginOrigin;
   phase: UiErrorPhase;
   slot?: string;
@@ -43,12 +45,14 @@ export class UiErrorBudget {
   private readonly _counts = new Map<string, number>();
   private readonly _disabled = new Map<string, UiDisabledPlugin>();
   private readonly _listeners = new Set<() => void>();
+  private readonly _reportListeners = new Set<(report: UiPluginErrorReport) => void>();
   private _version = 0;
 
   constructor(
     private readonly _options: UiErrorBudgetOptions,
     private readonly _onExhausted: (pluginId: string) => void,
     private readonly _now: () => number = Date.now,
+    private readonly _isCurrentReport: (report: UiPluginErrorReport) => boolean = () => true,
   ) {}
 
   budget(origin: UiPluginOrigin): number {
@@ -64,17 +68,32 @@ export class UiErrorBudget {
     list.push(report);
     list.splice(0, Math.max(0, list.length - (this._options.keep ?? 20)));
     this._reports.set(input.pluginId, list);
-    const count = (this._counts.get(input.pluginId) ?? 0) + 1;
-    this._counts.set(input.pluginId, count);
-    const exhausted = count >= this.budget(input.origin) && !this._disabled.has(input.pluginId);
-    if (exhausted) this._disabled.set(input.pluginId, { pluginId: input.pluginId, reason: 'error-budget', errors: count, at: report.at });
+    // Detached old-version callbacks remain visible in history, but cannot exhaust the replacement's budget.
+    let exhausted = false;
+    if (this._isCurrentReport(report)) {
+      const count = (this._counts.get(input.pluginId) ?? 0) + 1;
+      this._counts.set(input.pluginId, count);
+      exhausted = count >= this.budget(input.origin) && !this._disabled.has(input.pluginId);
+      if (exhausted) this._disabled.set(input.pluginId, { pluginId: input.pluginId, reason: 'error-budget', errors: count, at: report.at });
+    }
     this._bump();
-    if (exhausted) this._onExhausted(input.pluginId);
+    if (exhausted && this._isCurrentReport(report)) this._onExhausted(input.pluginId);
+    // Snapshot dispatch tolerates listeners subscribing/unsubscribing during notification.
+    for (const listener of [...this._reportListeners]) {
+      try { listener(report); }
+      catch (error) { console.error('[ui-plugins] error report observer failed', error); }
+    }
     return report;
   }
 
   count(pluginId: string): number {
     return this._counts.get(pluginId) ?? 0;
+  }
+
+  /** A runtime fault is observable immediately, independently of the circuit-breaker budget. */
+  onReport(listener: (report: UiPluginErrorReport) => void): () => void {
+    this._reportListeners.add(listener);
+    return () => { this._reportListeners.delete(listener); };
   }
 
   list(pluginId?: string): readonly UiPluginErrorReport[] {
@@ -102,6 +121,9 @@ export class UiErrorBudget {
 
   private _bump(): void {
     this._version++;
-    for (const fn of [...this._listeners]) fn();
+    for (const fn of [...this._listeners]) {
+      try { fn(); }
+      catch (error) { console.error('[ui-plugins] error budget observer failed', error); }
+    }
   }
 }

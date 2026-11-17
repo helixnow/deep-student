@@ -193,6 +193,9 @@ export class UiKernel {
     this.strictCommunityNamespaces = options.strictCommunityNamespaces ?? STRICT_COMMUNITY_NAMESPACES;
     this.errors = new UiErrorBudget(options.errorBudget ?? {}, (id) => {
       void this.unload(id).catch((error) => console.error(`[ui-plugins] failed to unload "${id}" after exhausting its error budget`, error));
+    }, undefined, report => {
+      const current = this.installed.get(report.pluginId);
+      return !!current && current.meta.version === report.version;
     });
     this.platform = new UiPlatformService(adapters.platform);
     this.navigation = new UiNavigationService((view) => !!this.slots.get('views', view), adapters.navigate);
@@ -308,7 +311,7 @@ export class UiKernel {
       failure ??= e;
     }
     if (failure) {
-      this.errors.report({ pluginId: id, origin: entry.origin, phase: 'report', slot: 'plugin.apply', error: failure });
+      this.errors.report({ pluginId: id, origin: entry.origin, version: meta.version, phase: 'report', slot: 'plugin.apply', error: failure });
       await this.release(id);
       throw failure;
     }

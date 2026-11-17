@@ -12,11 +12,25 @@ const item: WorkshopItem = {
 };
 
 describe('WorkshopProposalCard after the decision', () => {
+  it('shows a blocked candidate honestly and resumes verification without asking to regenerate', () => {
+    const onAction = vi.fn();
+    render(<WorkshopProposalCard item={{ ...item, phase: 'failed',
+      installed: { phase: 'installed', version: '2.0.0' },
+      execution: { mode: 'delegated', stage: 'blocked', reason: '需要交互验收环境' },
+      validation: { version: '2.0.0', revision: 9, status: 'pending' } }} onAction={onAction} onRepair={vi.fn()} />);
+    expect(screen.getByText('等待条件')).toBeInTheDocument();
+    expect(screen.getByTestId('workshop-blocked-reason').textContent).toBe('需要交互验收环境');
+    expect(screen.getByText('已安装，功能尚未完成验收。')).toBeInTheDocument();
+    expect(screen.queryByTestId('workshop-installed-untouched')).toBeNull();
+    expect(screen.queryByTestId('workshop-reduce')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '继续验收' }));
+    expect(onAction).toHaveBeenCalledWith('confirm');
+  });
   it('installed: one primary by kind, 「让 AI 改」, the rest in ⋯; no risk block and no file extension', () => {
     const onAction = vi.fn();
     const onRepair = vi.fn();
     render(<WorkshopProposalCard embedded item={item} onAction={onAction} onRepair={onRepair} />);
-    expect(screen.getByTestId('workshop-installed').textContent).toBe('装好了，现在就能用；重启应用后也会自动加载。');
+    expect(screen.getByTestId('workshop-installed').textContent).toBe('已安装，功能尚未完成验收。');
     expect(screen.queryByTestId('workshop-risk')).toBeNull();
     expect(screen.queryByText(/\.dstuplugin/)).toBeNull();
     for (const old of ['试用', '撤销', '导出 .dstuplugin', '让 AI 修改']) expect(screen.queryByRole('button', { name: old })).toBeNull();
@@ -25,6 +39,15 @@ describe('WorkshopProposalCard after the decision', () => {
     fireEvent.click(screen.getByRole('button', { name: '让 AI 改' }));
     expect(onRepair).toHaveBeenCalledTimes(1);
     expect(screen.getByRole('button', { name: '更多操作' })).toBeInTheDocument();
+  });
+
+  it('only calls the current installed version verified after runtime validation passes', () => {
+    const validation = { version: '2.0.0', revision: 9, status: 'passed' as const, evidence: ['真实页面显示公式内容'] };
+    const view = render(<WorkshopProposalCard item={{ ...item, validation }} onAction={vi.fn()} onRepair={vi.fn()} />);
+    expect(screen.getByTestId('workshop-installed').textContent).not.toContain('尚未完成验收');
+    expect(screen.getByText('真实页面显示公式内容')).toBeInTheDocument();
+    view.rerender(<WorkshopProposalCard item={{ ...item, version: '2.0.1', validation }} onAction={vi.fn()} onRepair={vi.fn()} />);
+    expect(screen.getByTestId('workshop-installed').textContent).toBe('已安装，功能尚未完成验收。');
   });
 
   it.each([

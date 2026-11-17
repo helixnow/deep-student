@@ -1,11 +1,12 @@
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { definePlugin, Schema, type AppInfo } from '../../../kernel/api.ts';
 import { WorkshopCatalog } from '../src/catalog.ts';
 import { WorkshopToolExecutor } from '../src/tools.ts';
 import { WorkshopOperations } from '../src/operations.ts';
+import type { ExecutionContext } from '../../chat/api.ts';
 
 it('discovers actual registered metadata and source contracts, exposes fourteen non-install tools', async () => {
   const plugin = definePlugin({ meta: { id: 'example.live', provides: ['exampleLive'], remote: { exampleLive: ['read'] } }, Config: Schema.object({ enabled: Schema.boolean() }), apply() {} });
@@ -32,7 +33,7 @@ it('discovers actual registered metadata and source contracts, exposes fourteen 
   expect(tools.sensitivityLevel('dstu_plugin_configure')).toBe('high');
   expect(tools.sensitivityLevel('dstu_plugin_set_enabled')).toBe('high');
   expect(tools.sensitivityLevel('dstu_plugin_app_restart')).toBe('high');
-  // A proposal only records a card; the consent to generate is the card's 开始做, to install its 安装.
+  // Proposal-only callers remain compatible; explicit execute=true delegates the implementation.
   expect(tools.sensitivityLevel('dstu_plugin_propose_install')).toBe('medium');
   expect(tools.sensitivityLevel('dstu_plugin_write_source')).toBe('medium');
   expect(tools.sensitivityLevel('dstu_plugin_validate')).toBe('medium');
@@ -101,4 +102,27 @@ it('ignores blank, null, or hallucinated new-work pluginId slugs while rejecting
   const statusByPrefixed = await tools.invoke('dstu_plugin_status', { id: fromEmpty.pluginId }, 'session-a') as { works: Array<{ id: string }> };
   expect(statusByPrefixed.works).toHaveLength(1);
   expect(statusByPrefixed.works[0]?.id).toBe(fromEmpty.id);
+});
+
+
+it('delegates an implementation request with the parent turn actual model and preserves proposal-only callers', async () => {
+  const ops = new WorkshopOperations({ version: '0.20.0', dataDir: await mkdtemp(join(tmpdir(), 'dstu-tools-delegate-')) } as AppInfo);
+  const tools = new WorkshopToolExecutor(ops, new WorkshopCatalog(() => []));
+  const delegate = vi.spyOn(ops, 'delegate').mockImplementation(async id => ({ ...(await ops.status(id)),
+    execution: { mode: 'delegated', stage: 'generating', modelId: 'actual-parent-model' },
+  }));
+  const args = { title: '实现公式表', description: '显示公式', template: 'learning-tool', changes: [], capabilities: [] };
+  const proposal = await tools.invoke('dstu_plugin_propose_install', args, 'proposal-session') as { state: string };
+  expect(proposal.state).toBe('draft');
+  await tools.invoke('dstu_plugin_propose_install', { ...args, execute: false }, 'discussion-session');
+  expect(delegate).not.toHaveBeenCalled();
+  const context = { session_id: 'actual-session', block_id: 'block', question_authoring_config: { id: 'actual-parent-model' },
+    emitToolCallStart: vi.fn(), emitToolCallEnd: vi.fn(), emitToolCallError: vi.fn(),
+  } as unknown as ExecutionContext;
+  const result = await tools.execute({ id: 'implementation-call', name: 'builtin-dstu_plugin_propose_install',
+    arguments: { ...args, execute: true, sessionId: 'spoofed-session' },
+  }, context);
+  expect(result.success).toBe(true);
+  expect(delegate).toHaveBeenCalledWith(expect.any(String), expect.any(Number), { modelId: 'actual-parent-model' });
+  expect(result.output).toMatchObject({ sessionId: 'actual-session', execution: { stage: 'generating' } });
 });

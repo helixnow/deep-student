@@ -94,7 +94,7 @@ describe('plugin workshop UI (adapter component tests, not Host E2E)', () => {
     expect(screen.queryByRole('button')).toBeNull();
   });
 
-  it('progress says what is happening: files written, the address check, compile, test load, the repair round; 「停下」 while generating; nothing once installing', () => {
+  it('progress explains generation and lets the user stop generation or delegated installation', () => {
     const onAction = vi.fn();
     const view = render(<WorkshopConfirmationCard item={{ ...item, phase: 'generating', progress: { stage: 'making' } }} onAction={onAction} />);
     expect(screen.getByTestId('workshop-progress').textContent).toBe('正在做：AI 正在写代码…');
@@ -112,7 +112,9 @@ describe('plugin workshop UI (adapter component tests, not Host E2E)', () => {
     fireEvent.click(screen.getByRole('button', { name: '停下' }));
     expect(onAction).toHaveBeenCalledWith('cancel');
     view.rerender(<WorkshopConfirmationCard item={{ ...item, phase: 'installing' }} onAction={onAction} />);
-    expect(screen.queryByRole('button')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '停下' }));
+    expect(onAction).toHaveBeenCalledTimes(2);
+    expect(onAction).toHaveBeenLastCalledWith('cancel');
   });
 
   it('action errors read as a plain sentence with a next step; raw text folded under 技术信息', () => {

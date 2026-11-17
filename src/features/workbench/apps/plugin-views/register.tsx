@@ -21,6 +21,7 @@ import { whenAppUiKernel } from '@/ui-kernel/app-kernel';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { appRegistry } from '../../core/appRegistry';
 import type { AppDefinition, AppWindowProps } from '../../core/types';
+import { createPluginViewAgentManifest } from './agentManifest';
 
 /** 插件视图应用 typeId 前缀（不用 ':'，agent targetRef 以 ':' 分段）。 */
 export const PLUGIN_VIEW_APP_PREFIX = 'plugin-view.';
@@ -87,6 +88,7 @@ function createPluginViewAppDefinition(entry: ViewEntry, kernel: UiKernel): AppD
     defaultFrame: { w: 960, h: 680 },
     minSize: { w: 420, h: 320 },
     render,
+    agentManifest: createPluginViewAgentManifest(entry.owner, viewKey, kernel),
   };
 }
 

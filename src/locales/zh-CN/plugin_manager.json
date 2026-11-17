@@ -539,12 +539,27 @@
     "navEntry": "侧栏多了一个入口"
   },
   "workshop": {
+    "verified": "已在应用中验收通过，现在可以使用。重启后会自动加载。",
+    "installedUnverified": "已安装，功能尚未完成验收。",
+    "allCreationsDescription": "在这里查看制作进度、验收结果，打开或继续修改已有作品。",
+    "verifying": "正在打开功能并核对实际结果，完成后会在这里告诉你。",
+    "repairingRestored": "已恢复上一个可用版本，正在修复这次修改。",
+    "verifiedDetails": "查看已验证的结果",
+    "composer": {
+      "title": "你想让 Deep Student 增加或改变什么？",
+      "placeholder": "例如：做一个可以搜索的公式速查表，放到学习桌面。",
+      "description": "描述需求后，AI 会制作、安装并核对结果；有问题时恢复旧版。需要你提供的信息会在任务里说明。",
+      "submit": "交给 AI 完成",
+      "sending": "正在发送…"
+    },
     "label": "插件工坊",
     "phase": {
+      "blocked": "等待条件",
       "proposed": "等你确认",
       "ready": "等你确认",
       "generating": "正在做",
-      "validating": "正在自己检查",
+      "validating": "正在验收",
+      "verified": "已验收",
       "installing": "正在安装",
       "installed": "已安装",
       "disabled": "已停用",
@@ -571,6 +586,7 @@
       }
     },
     "actions": {
+      "resumeVerification": "继续验收",
       "start": "开始做",
       "install": "安装",
       "decline": "不要了",
@@ -671,6 +687,8 @@
     },
     "notice": {
       "ready": "『{{name}}』做好了，回到对话里点「安装」就能用。",
+      "verified": "『{{name}}』已安装并通过验收，可以使用了。",
+      "blocked": "『{{name}}』需要补齐验收条件，请到工坊查看。",
       "failed": "『{{name}}』这次没做成，回到对话里看看原因。"
     },
     "whereLabelExpected": "预计装好后在哪里找到它",

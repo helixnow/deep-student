@@ -7,6 +7,28 @@ import { __resetSharedModulesForTest, installSharedModules, sharedModuleSource }
 const entry = (id: string, file = `/plugins/${id}/ui.js`, version?: string): UiManifestEntry => ({ id, file, version });
 
 describe('UiPluginLoader', () => {
+  it.each(['import', 'apply', 'handshake'])('reports %s failure with candidate identity without blocking a recovery sync', async (stage) => {
+    const kernel = new UiKernel();
+    let finish!: () => void;
+    const recovered = new Promise<void>(resolve => { finish = resolve; });
+    const failure = vi.fn(async () => { await loader.sync([]); finish(); });
+    const loader = new UiPluginLoader(kernel, {
+      importModule: async () => {
+        if (stage === 'import') throw new Error('module unavailable');
+        return { default: defineUiPlugin({ meta: { id: 'failed-candidate', version: '2.0.0' }, apply() {
+          if (stage === 'apply') throw new Error('apply failed');
+        } }) };
+      },
+      ready: async () => { throw new Error('handshake failed'); },
+      onLoadFailure: failure,
+    });
+    await loader.sync([entry('failed-candidate', '/candidate/ui.js', '2.0.0')]);
+    await recovered;
+    expect(failure).toHaveBeenCalledWith({ id: 'failed-candidate', version: '2.0.0', error: stage === 'import' ? 'module unavailable' : `${stage} failed` });
+    expect(kernel.list()).toEqual([]);
+    await loader.dispose();
+  });
+
   it('reports the real loaded UI version and unloads mismatches or failed handshakes', async () => {
     const kernel = new UiKernel();
     const ready = vi.fn().mockResolvedValueOnce({ id: 'paired', matched: false })
