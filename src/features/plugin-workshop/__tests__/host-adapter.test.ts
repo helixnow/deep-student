@@ -33,10 +33,25 @@ describe('P3 wire adapter contract (transport double, not Host E2E)', () => {
   });
   it('restore calls only Host restore, never model create', async () => {
     const { adapter, remote } = fixture();
-    await adapter.act('restore', workshopItem({ ...card, state: 'revoked' }));
+    const revoked = { ...card, state: 'revoked' as const, version: '1.0.0' };
+    vi.mocked(remote.status).mockResolvedValue(revoked);
+    await adapter.act('restore', workshopItem(revoked));
     expect(remote.restore).toHaveBeenCalledWith('work-1', 3);
     expect(remote.create).not.toHaveBeenCalled();
     expect(remote.install).not.toHaveBeenCalled();
+  });
+  it('accepts a newer revision for the same rollback target and rejects a changed target', async () => {
+    const { adapter, remote, manager } = fixture();
+    manager.list.mockResolvedValue({ plugins: [{ id: card.pluginId, enabled: true }] });
+    const installed: WorkshopCard = { ...card, state: 'installed', version: '1.0.1',
+      installation: { state: 'installed', version: '1.0.1', previousVersion: '1.0.0' } };
+    const item = workshopItem(installed);
+    vi.mocked(remote.status).mockResolvedValue({ ...installed, revision: 4 });
+    await adapter.act('restore', item);
+    expect(remote.restore).toHaveBeenCalledWith(card.id, 4);
+    vi.mocked(remote.status).mockResolvedValue({ ...installed, revision: 5, version: '1.0.2' });
+    await expect(adapter.act('restore', item)).rejects.toThrow('WORKSHOP_CONFLICT');
+    expect(remote.restore).toHaveBeenCalledTimes(1);
   });
   it('reads stopped intent from manager and exposes the exported managed file', async () => {
     const { adapter, remote, manager } = fixture();

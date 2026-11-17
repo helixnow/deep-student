@@ -2,10 +2,10 @@
  * F17: once a user plugin's tool brought external data into a turn, a high-sensitivity tool call in the same turn asks
  * the user even under full access; other turns and medium calls keep the preset's behaviour.
  */
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { ApprovalGateHook, type ApprovalGatePorts, type ToolHookContext } from '../src/approval-gate.ts';
 import { ToolAdmission } from '../src/hooks.ts';
-import { markExternalPluginData, resetExternalPluginDataForTest } from '../../agent-skills/src/tools/external-data-taint.ts';
+import { markExternalPluginData } from '../../agent-skills/api.ts';
 
 const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
 
@@ -33,14 +33,12 @@ function context(messageId: string): ToolHookContext {
 }
 
 describe('external plugin data forces approval of high-sensitivity calls in the same turn', () => {
-  afterEach(() => resetExternalPluginDataForTest());
-
   it('asks under full access after a plugin tool read external data in this turn', async () => {
     const register = vi.fn(async () => ({ approved: true, reason: null }));
     const gate = new ApprovalGateHook(ports('high', register), log);
-    markExternalPluginData('sess', 'msg_tainted', '课表');
+    markExternalPluginData('sess', 'msg_approval', '课表');
     const admission = new ToolAdmission();
-    await expect(gate.beforeTool(context('msg_tainted'), admission)).resolves.toEqual({ kind: 'proceed' });
+    await expect(gate.beforeTool(context('msg_approval'), admission)).resolves.toEqual({ kind: 'proceed' });
     expect(register).toHaveBeenCalledTimes(1);
   });
 
@@ -54,8 +52,8 @@ describe('external plugin data forces approval of high-sensitivity calls in the 
 
   it('blocks the call when the user rejects it', async () => {
     const register = vi.fn(async () => ({ approved: false, reason: null }));
-    markExternalPluginData('sess', 'msg_tainted', '课表');
-    const outcome = await new ApprovalGateHook(ports('high', register), log).beforeTool(context('msg_tainted'), new ToolAdmission());
+    markExternalPluginData('sess', 'msg_rejected', '课表');
+    const outcome = await new ApprovalGateHook(ports('high', register), log).beforeTool(context('msg_rejected'), new ToolAdmission());
     expect(outcome.kind).toBe('block');
   });
 });

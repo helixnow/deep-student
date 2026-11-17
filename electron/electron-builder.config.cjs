@@ -78,6 +78,7 @@ module.exports = {
     '!host/platform/native/sqlite-busy/{prebuilds,prebuilds/**,busy_handler.c,build.sh}',
     'dist/**/*',
     'contracts/ipc/**/*',
+    'contracts/workbench-read-tools.ts',
     'contracts/plugin-manifest/*.schema.json',
     'resources/dstu-workshop/**/*',
     // Read-only SDK discovery resources, not executed by the renderer.

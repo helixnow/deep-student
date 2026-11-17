@@ -1,4 +1,5 @@
 import zh from '../../../locales/zh-CN/plugin_manager.json';
+import { vi } from 'vitest';
 
 type Dict = Record<string, unknown>;
 
@@ -31,4 +32,7 @@ export const t = (key: string, options?: Record<string, unknown> | string): stri
 };
 
 /** `vi.mock('react-i18next', ...)` 的工厂体；useTranslation 返回上面的 t。 */
-export const i18nMock = () => ({ useTranslation: () => ({ t }) });
+export const i18nMock = async () => ({
+  ...await vi.importActual<typeof import('react-i18next')>('react-i18next'),
+  useTranslation: () => ({ t }),
+});

@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { WorkshopProposalCard } from '../components/WorkshopProposalCard';
 import type { WorkshopItem } from '../types';
 
-vi.mock('react-i18next', async (importOriginal) => ({ ...(await importOriginal<object>()), ...(await import('../../plugin-manager/__tests__/i18nMock')).i18nMock() }));
+vi.mock('react-i18next', async () => (await import('../../plugin-manager/__tests__/i18nMock')).i18nMock());
 
 const item: WorkshopItem = {
   id: 'user.words', proposalId: 'proposal', name: '公式速查', version: '2.0.0', previousVersion: '1.0.0',

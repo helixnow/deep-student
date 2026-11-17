@@ -19,7 +19,7 @@ describe('Host-shipped workshop skill', () => {
     expect(hostSkillSchemaToolIds(['tutor-mode'])).toEqual([]);
     await ensureHostSkillContent(id);
     expect(read).toHaveBeenCalledTimes(1);
-    expect(skillRegistry.get(id)?.content).toContain('approval to generate and test-load the code');
+    expect(skillRegistry.get(id)?.content).toBe(markdown.slice(metadata.length).trim());
     expect(hostSkillSchemaToolIds([id])).toEqual(schemaToolIds);
     await ensureHostSkillContent(id);
     expect(read).toHaveBeenCalledTimes(1);

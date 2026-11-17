@@ -64,7 +64,8 @@ describe('dstu.ui.workbench', () => {
     const { DEFAULT_DOCK_PINNED } = await import('@/features/workbench/apps/registerAll');
     expect(DEFAULT_DOCK_PINNED).toEqual(['chat', 'files', 'settings', 'todo']);
     expect(typeIds(appRegistry.list())).toEqual(typeIds(workbenchAppContributions.values()));
-    expect(appRegistry.list()).toHaveLength(22);
+    expect(appRegistry.list()).toHaveLength(23);
+    expect(appRegistry.get('pluginWorkshop')).toBeDefined();
 
     await kernel.install(defineUiPlugin({ meta: { id: 'community.timer' }, apply(ctx) {
       ctx.ui.workbench.registerApp({ ...appRegistry.get('pomodoro')!, typeId: 'community-timer' });
