@@ -130,7 +130,7 @@ describe('Workbench app manifest (FE-B4 golden)', () => {
 
   afterAll(async () => { await dispose(); });
 
-  it('matches the pre-refactor registry, launcher and Dock', () => {
+  it('matches the registry, launcher and Dock snapshot', () => {
     if (process.env.FE_B4_CAPTURE_GOLDEN === '1') {
       fs.mkdirSync('src/features/workbench/apps/__golden__', { recursive: true });
       fs.writeFileSync(GOLDEN, `${JSON.stringify(result, null, 2)}\n`, { flag: 'wx' });
@@ -144,6 +144,6 @@ describe('Workbench app manifest (FE-B4 golden)', () => {
     const golden = JSON.parse(fs.readFileSync(GOLDEN, 'utf8'));
     expect(golden.dockDefaultPinned).toEqual(['chat', 'files', 'settings', 'todo']);
     expect(golden.registry.every((app: { render: string }) => app.render === 'lazy')).toBe(true);
-    expect(golden.registry).toHaveLength(22);
+    expect(golden.registry).toHaveLength(23);
   });
 });

@@ -4,7 +4,6 @@ import { createTestHost, type TestHost } from '../../../kernel/testing.ts';
 import { checkModulesClosure } from '../../../../scripts/portability/lib/portability.mjs';
 import browserMobile, { BROWSER_PORTABLE_COMMANDS } from '../mobile.ts';
 import mobileCompat from '../../mobile-compat/index.ts';
-import { COMPAT_COMMANDS } from '../../mobile-compat/commands.ts';
 
 const ROOT = fileURLToPath(new URL('../../../../', import.meta.url));
 const hosts: TestHost[] = [];
@@ -130,7 +129,7 @@ describe('dstu.browser mobile plugin', () => {
       browser_list_task_downloads: { chatSessionId: 'c1' },
       browser_scroll: { sessionId: 's1' },
     };
-    for (const cmd of COMPAT_COMMANDS.filter(name => name.startsWith('browser_'))) {
+    for (const cmd of mobileCompat.meta.commands!.filter(name => name.startsWith('browser_'))) {
       await expect(host.invoke(cmd, sampleArgs[cmd] ?? {})).rejects.toMatch(/^UNSUPPORTED_ON_PLATFORM:/);
     }
   });

@@ -66,7 +66,7 @@ const timed = vi.hoisted(() => async <T,>(label: string, run: () => Promise<T>):
 vi.mock('@tauri-apps/api/core', () => ({ invoke: bridge.invoke, convertFileSrc: (path: string) => path }));
 vi.mock('react-i18next', async importOriginal => ({
   ...await importOriginal<typeof import('react-i18next')>(),
-  ...(await import('@/features/plugin-manager/__tests__/i18nMock')).i18nMock(),
+  ...await (await import('@/features/plugin-manager/__tests__/i18nMock')).i18nMock(),
 }));
 // Timing probes only: the real compiler and lifecycle self-check run unchanged.
 vi.mock('../../../host/plugins/plugin-workshop/src/compiler.ts', async importOriginal => {
@@ -285,7 +285,7 @@ it('RF-P5-workshop-assembly: proposal card → 开始做 → 安装 → opens on
     expect((await ledger.read()).find(entry => entry.id === pluginId)).toMatchObject({ trust: 'full', source: 'workshop' });
     expect(running(), 'running').toBe(true);
     await waitFor(() => expect(card).toHaveAttribute('data-phase', 'installed'), { timeout: 5000 });
-    expect(chat.getByTestId('workshop-installed')).toHaveTextContent('装好了');
+    expect(chat.getByTestId('workshop-installed')).toHaveTextContent('已安装，功能尚未完成验收。');
     expect(chat.getByTestId('workshop-tool-stage')).toHaveTextContent('已安装');
     expect(within(card).getByTestId('workshop-where')).toHaveTextContent('装好后在哪里找到它：全部应用 → 每日回忆');
     const primary = chat.getByTestId('workshop-primary');

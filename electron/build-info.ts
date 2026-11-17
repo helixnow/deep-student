@@ -30,7 +30,7 @@ export function runtimeBuildInfo(onFallback: (error: unknown) => void, root: str
     try {
       const revision = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim().toLowerCase();
       if (FULL_REVISION.test(revision)) gitRevision = revision;
-    } catch { /* 不在 git 检出中 */ }
+    } catch { gitRevision = 'unknown'; }
     return { version, buildNumber: 0, gitHash: shortHash(gitRevision), gitRevision };
   }
 }

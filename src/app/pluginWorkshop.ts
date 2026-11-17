@@ -125,7 +125,7 @@ workshopContributions.announce(ctx => {
             }
             catch (error) {
               if (disposed) return;
-              await reportWorkshopRuntimeFailure(remote, { id: card.pluginId, version: card.validation.version, error: String(error) });
+              await remote.reportValidation?.(card.id, card.validation.version, card.validation.revision, { ok: false, detail: String(error) });
             }
           }
         } while (refreshAgain && !disposed);
@@ -136,12 +136,7 @@ workshopContributions.announce(ctx => {
     // A version upgrade does not change the Host's plugin-id set. Listen to the
     // actual validation transition, then reconcile once to cover startup races.
     void import('@tauri-apps/api/event').then(({ listen }) =>
-      listen<{ id: string; revision: number }>('plugin-workshop:verify-candidate', ({ payload }) => {
-        // Each verifier attempt needs a visible candidate, even if this same activation was opened before.
-        // launch reopens a closed window and focuses an existing one; a retry deliberately reuses its revision.
-        opened.delete(`${payload.id}:${payload.revision}`);
-        void refresh();
-      }),
+      listen('plugin-workshop:verify-candidate', () => { void refresh(); }),
     ).then(stop => {
       if (disposed) stop();
       else { stopCandidate = stop; void refresh(); }

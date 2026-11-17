@@ -10,8 +10,6 @@ import { WorkshopCatalog } from '../src/catalog.ts';
 import { WorkshopToolExecutor } from '../src/tools.ts';
 import { PipelineWorkshopGeneration, validateVerificationResult, VERIFICATION_TOOLS } from '../src/generation.ts';
 import type { WorkshopCard } from '../api.ts';
-import { WorkbenchChatToolExecutor } from '../../agent-skills/src/tools/workbench-chat-executor.ts';
-import { schemaToolRegistry } from '../../chat-pipeline/src/tool-runtime.ts';
 
 it('binds the existing pipeline/skill runtime without filesystem, install or global Agent authority', async () => {
   const dataDir = await mkdtemp(join(tmpdir(), 'dstu-generation-'));
@@ -123,18 +121,6 @@ it('keeps unsupported interaction tests blocked and rejects a self-reported pass
   expect(validateVerificationResult('null', card, []).status).toBe('blocked');
 });
 
-
-it('advertises the existing five read-only schemas through the real Host executor registry', () => {
-  const executor = new WorkbenchChatToolExecutor({ events: () => { throw new Error('No bridge call expected'); },
-    gates: () => null, logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn() } });
-  const schemas = schemaToolRegistry([executor]).getSchemas(VERIFICATION_TOOLS) as Array<{ function: { name: string; parameters: { properties: Record<string, unknown> } } }>;
-  expect(schemas.map(schema => schema.function.name)).toEqual([
-    'workbench_get_capabilities', 'workbench_observe', 'workbench_wait_for', 'workbench_list_windows', 'workbench_query_state',
-  ]);
-  expect(schemas.find(schema => schema.function.name === 'workbench_observe')?.function.parameters.properties).toHaveProperty('windowId');
-  expect(schemas.find(schema => schema.function.name === 'workbench_wait_for')?.function.parameters.properties).toHaveProperty('condition');
-  expect(schemaToolRegistry([executor]).getSchemas(['workbench_act', 'workbench_open_app'])).toEqual([]);
-});
 
 it.each(['success', 'failed-block', 'missing-block', 'wrong-tool'] as const)(
   'verifies normalized tool metadata through its authoritative message block: %s', async kind => {

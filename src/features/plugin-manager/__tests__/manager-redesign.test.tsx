@@ -27,7 +27,7 @@ describe('plugin manager redesign', () => {
     expect(screen.queryByTestId('plugin-section-builtin')).toBeNull();
     expect(screen.queryByTestId('plugin-starters')).toBeNull();
     expect(screen.getByText('学习笔记')).toBeInTheDocument();
-    await user.clear(screen.getByRole('textbox'));
+    await user.clear(screen.getByRole('textbox', { name: '搜索名称或作者' }));
     await user.click(screen.getByRole('radio', { name: '有问题' }));
     expect(screen.getAllByTestId('plugin-card')).toHaveLength(1);
     expect(screen.getByText('导出')).toBeInTheDocument();

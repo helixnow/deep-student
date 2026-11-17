@@ -8,7 +8,7 @@ import type { Block } from '@/features/chat/core/types/block';
 import { createWorkshopIntegration } from '../integration';
 import type { WorkshopAdapter, WorkshopItem } from '../types';
 
-vi.mock('react-i18next', async (importOriginal) => ({ ...(await importOriginal<object>()), ...(await import('../../plugin-manager/__tests__/i18nMock')).i18nMock() }));
+vi.mock('react-i18next', async () => (await import('../../plugin-manager/__tests__/i18nMock')).i18nMock());
 
 const item: WorkshopItem = { id: 'workshop.one', proposalId: 'work-1', revision: 5, name: '真实状态标题', version: '1', capabilities: ['在插件自己的数据目录里保存数据'], changes: ['增加复习入口'], trust: 'full', phase: 'ready', sessionId: 'chat-a' };
 function fixture(items: WorkshopItem[] = [item]) {

@@ -342,7 +342,7 @@ export class HostWorkshopAdapter implements WorkshopAdapter {
       return { item: updated };
     }
     if (item.revision === undefined) throw new Error('WORKSHOP_CONFLICT: card has no revision; refresh it');
-    // Do not read a fresh revision here: consent belongs to the candidate displayed to the user.
+    // Installation and generation consent belongs to the exact proposal displayed to the user.
     switch (action) {
       case 'confirm':
         if (item.phase === 'proposed' || item.phase === 'failed') {
@@ -370,7 +370,18 @@ export class HostWorkshopAdapter implements WorkshopAdapter {
         await this.remote.bindSession(id, item.revision, input.sessionId);
         break;
       case 'undo': await this.remote.revoke(id, item.revision); break;
-      case 'restore': await this.remote.restore(id, item.revision); break;
+      case 'restore': {
+        // Verification can update the card while the menu is open. Refresh the revision only if the
+        // installed release and the predecessor the user chose are still the same.
+        const current = await this.get(id);
+        if (current.revision === undefined || current.installed?.version !== item.installed?.version
+          || current.installed?.previousVersion !== item.installed?.previousVersion
+          || current.installed?.phase !== item.installed?.phase) {
+          throw new Error('WORKSHOP_CONFLICT: restore target changed; refresh status');
+        }
+        await this.remote.restore(id, current.revision);
+        break;
+      }
     }
     return { item: await this.get(id) };
   }

@@ -7,7 +7,7 @@ import { describeWorkshopError } from '../errors';
 import { workshopItem, type WorkshopCard } from '../host-adapter';
 import type { WorkshopItem } from '../types';
 
-vi.mock('react-i18next', async (importOriginal) => ({ ...(await importOriginal<object>()), ...(await import('../../plugin-manager/__tests__/i18nMock')).i18nMock() }));
+vi.mock('react-i18next', async () => (await import('../../plugin-manager/__tests__/i18nMock')).i18nMock());
 
 const item: WorkshopItem = {
   id: 'workshop.plugin-1', proposalId: 'p1', revision: 3, name: '番茄钟', version: '', description: '25 分钟专注计时',

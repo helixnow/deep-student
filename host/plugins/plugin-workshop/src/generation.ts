@@ -7,6 +7,7 @@ import type { ChatSessionService, ToolResultInfo } from '../../chat/api.ts';
 import type { ChatPipelineService } from '../../chat-pipeline/api.ts';
 import type { WorkshopCard, WorkshopVerificationResult } from '../api.ts';
 import { pluginServiceName } from '../../../kernel/plugin-id.ts';
+import { writeHostStderr } from '../../../kernel/kernel.ts';
 import type { WorkshopGeneration } from './operations.ts';
 import { developmentSkill, developmentSkillId, recipeFiles, recipeFor, seedTemplate } from './resources.ts';
 import { sourceFiles } from './compiler.ts';
@@ -52,7 +53,8 @@ export class PipelineWorkshopGeneration implements WorkshopGeneration {
       const event = raw as { type?: string; phase?: string; chunk?: unknown } | null;
       if (event?.type !== 'content' || event.phase !== 'chunk' || typeof event.chunk !== 'string') return;
       streamed += event.chunk;
-      try { progress(streamedPaths(streamed)); } catch { /* progress is best effort */ }
+      try { progress(streamedPaths(streamed)); }
+      catch (error) { writeHostStderr(`[plugin-workshop] could not report file progress: ${String(error)}\n`); }
     }) : null;
     const settings = (card.settings ?? []).filter(setting => setting.value).map(({ key, title, kind }) => ({ key, title, kind }));
     let messageId: string;
