@@ -10,7 +10,7 @@ import { FakePluginManagerAdapter } from './fixtures';
 
 vi.mock('react-i18next', async (importOriginal) => ({
   ...await importOriginal<typeof import('react-i18next')>(),
-  ...(await import('./i18nMock')).i18nMock(),
+  ...await (await import('./i18nMock')).i18nMock(),
 }));
 
 describe('P2/P4 composition', () => {
