@@ -1,9 +1,11 @@
 // RUST-FIX(RF-P3-workshop-tools): user-owned generation, cancellation and retained-version recovery.
-import { cp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readFile, readdir, rename, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { randomUUID } from 'node:crypto';
 import JSZip from 'jszip';
 import { CommandError, type AppInfo, type PluginManagerConfigView, type PluginManagerInventory, type PluginManagerInstallResult } from '../../../kernel/api.ts';
-import type { PluginWorkshopService, WorkshopBrief, WorkshopCard, WorkshopCheck, WorkshopExport, WorkshopInstallation } from '../api.ts';
+import type { PluginWorkshopService, WorkshopBrief, WorkshopCard, WorkshopCheck, WorkshopExport, WorkshopInstallation, WorkshopDelegationOptions, WorkshopValidationOutcome, WorkshopVerificationResult } from '../api.ts';
 import { OPEN_PROPOSAL_STATES, WorkshopStore, installationOf, withBoundSession } from './store.ts';
 import { compileWorkshop, checkWorkshopLifecycle, sourceFiles, type WorkshopBuild } from './compiler.ts';
 import { parseDegradedReason } from '../../../kernel/plugin-load-error.ts';
@@ -12,7 +14,7 @@ import { isManagedChild } from './paths.ts';
 import { realpath } from 'node:fs/promises';
 import { writeSourceFiles, type SourceFile } from './source.ts';
 import type { WorkshopActivationResult, WorkshopSelfCheckContext } from '../../../kernel/plugin-admin.ts';
-import { checkSettingLinks, fillSettings, normalizeWorkshopSource, settingValues, storeSecretSettings, type WorkshopLinkReader, type WorkshopSecretStore } from './settings.ts';
+import { checkSettingLinks, fillSettings, normalizeWorkshopSource, versionGreater, settingValues, storeSecretSettings, type WorkshopLinkReader, type WorkshopSecretStore } from './settings.ts';
 
 // Compatibility failures belong to the running app version. Keep the
 // installed revision enabled on disk so another app version can load it.
@@ -58,7 +60,9 @@ export interface WorkshopGeneration {
    * `progress` receives the source files the model has written so far in this attempt (best effort). May report the
    * tokens the attempt used (from the generation conversation's message usage) for the card's 「用了多少」 line.
    */
-  generate(card: WorkshopCard, source: string, signal: AbortSignal, progress?: (files: string[]) => void): Promise<void | { tokens?: number }>;
+  generate(card: WorkshopCard, source: string, signal: AbortSignal, progress?: (files: string[]) => void): Promise<void | { tokens?: number; blockedReason?: string }>;
+  /** Runs actual application tools against the activated candidate; evidence is required for success. */
+  verify?(card: WorkshopCard, source: string, signal: AbortSignal): Promise<WorkshopVerificationResult>;
 }
 export class WorkshopOperations implements Omit<PluginWorkshopService, 'developmentSkill'> {
   readonly store: WorkshopStore;
@@ -66,10 +70,12 @@ export class WorkshopOperations implements Omit<PluginWorkshopService, 'developm
   private admin: WorkshopAdmin | null = null;
   private restart: (() => Promise<unknown>) | null = null;
   private generation: WorkshopGeneration | null = null;
+  private candidatePreview: ((candidate: { id: string; pluginId: string; version: string; revision: number }) => void | Promise<void>) | null = null;
   private linkReader: WorkshopLinkReader | null = null;
   private readonly jobs = new Map<string, AbortController>();
   private readonly candidates = new Map<string, WorkshopBuild>();
   private readonly locks = new Map<string, Promise<unknown>>();
+  private disposed = false;
   private unobserve: (() => void) | null = null;
   private unobserveFaults: (() => void) | null = null;
   constructor(app: AppInfo) { this.app = app; this.store = new WorkshopStore(app.dataDir); }
@@ -90,11 +96,12 @@ export class WorkshopOperations implements Omit<PluginWorkshopService, 'developm
       if (card.version !== result.attemptedVersion) return;
       const installed = installationOf(card);
       if (result.success) {
+        // Activation is not behavior verification. Only the verifier may advance the usable pointer.
         const recovered = card.state === 'failed' && installed?.state === 'failed';
-        await this.store.update(card.id, card.revision, { usableVersion: result.actualVersion,
-          ...(recovered ? { state: 'installed' as const, error: null, lastFault: null } : {}),
-          lastGoodPackageDir: join(this.store.directory(card.id), 'versions', result.actualVersion!, 'package'),
-          ...(result.actualVersion ? { installation: { previousVersion: null, ...installed, state: 'installed' as const, version: result.actualVersion } } : {}) });
+        if (result.actualVersion && recovered) await this.store.update(card.id, card.revision, {
+          state: 'installed', error: null,
+          installation: { previousVersion: null, ...installed, state: 'installed', version: result.actualVersion },
+        });
         return;
       }
       // The kernel put the retained version back: that one is installed; otherwise the attempted one is off.
@@ -105,6 +112,7 @@ export class WorkshopOperations implements Omit<PluginWorkshopService, 'developm
     });
   }
   bindGeneration(generation: WorkshopGeneration): void { this.generation = generation; }
+  bindCandidatePreview(preview: NonNullable<WorkshopOperations['candidatePreview']>): void { this.candidatePreview = preview; }
   /** HTTPS reader for the calendar-address check (WorkshopSetting `ics-url`). */
   bindLinkReader(reader: WorkshopLinkReader): void { this.linkReader = reader; }
   private secretStore: WorkshopSecretStore | null = null;
@@ -160,19 +168,27 @@ export class WorkshopOperations implements Omit<PluginWorkshopService, 'developm
     for (const card of await this.store.list()) {
       const installed = inventory.plugins.find(entry => entry.id === card.pluginId);
       const installation = installationOf(card);
-      if (installed?.state === 'running' && installed.version === card.version && card.usableVersion !== card.version) {
-        await this.store.update(card.id, card.revision, { usableVersion: card.version,
-          lastGoodPackageDir: join(this.store.directory(card.id), 'versions', card.version!, 'package'),
-          ...(installation?.version === card.version ? { installation: { ...installation, state: 'installed' as const } } : {}) });
+      if (card.state === 'cancelled' && card.validation?.status === 'pending' && installation?.version === card.validation.version) {
+        await this.reportFault(card.id, 'WORKSHOP_CANCELLED: candidate verification cancelled', card.validation.version);
+        const current = await this.status(card.id);
+        await this.store.update(card.id, current.revision, { state: 'cancelled', execution: null });
+      } else if ((card.execution?.stage === 'installing' || card.state === 'pending-confirmation' && card.validation?.status === 'pending')
+        && installed?.state === 'running' && installed.version
+        && installed.version === card.validation?.version) {
+        await this.store.update(card.id, card.revision, { state: 'installed', version: installed.version,
+          installation: { state: 'installed', version: installed.version, previousVersion: card.usableVersion ?? null },
+          ...(card.execution ? { execution: { ...card.execution, stage: 'validating' } } : {}) });
       } else if (installed?.state === 'degraded' && installation?.state === 'installed' && !isCompatibilityFailure(installed.reason)) {
         await this.reportFault(card.id, installed.reason ?? 'Plugin activation failed');
       } else if (installed?.state === 'running' && installed.version && installed.version === card.previousVersion && card.state === 'installed' && installed.version !== card.version) {
-        await this.store.update(card.id, card.revision, { state: 'failed', error: 'Installed candidate is not active; retained version is running', usableVersion: installed.version,
-          installation: { previousVersion: null, ...installation, state: 'installed', version: installed.version } });
+        await this.store.update(card.id, card.revision, { state: 'failed', error: 'Installed candidate is not active; retained version is running',
+          installation: { previousVersion: null, ...installation, state: 'installed', version: installed.version },
+          ...(card.execution ? { execution: { ...card.execution, stage: 'repairing' } } : {}),
+          ...(card.validation ? { validation: { ...card.validation, status: 'failed', detail: 'Candidate was not active after Host restart' } } : {}) });
       }
     }
   }
-  dispose(): void { this.unobserve?.(); this.unobserveFaults?.(); for (const controller of this.jobs.values()) controller.abort(); }
+  dispose(): void { this.disposed = true; this.unobserve?.(); this.unobserveFaults?.(); for (const controller of this.jobs.values()) controller.abort(); }
   private serial<T>(id: string, operation: () => Promise<T>): Promise<T> {
     const previous = this.locks.get(id) ?? Promise.resolve();
     const next = previous.then(operation, operation);
@@ -187,7 +203,11 @@ export class WorkshopOperations implements Omit<PluginWorkshopService, 'developm
    * are untouched.
    */
   async propose(brief: WorkshopBrief): Promise<WorkshopCard> {
-    const card = await this.store.propose(brief);
+    const existing = brief.pluginId ? (await this.store.list()).find(item => item.pluginId === brief.pluginId) : undefined;
+    const card = existing ? await this.serial(existing.id, async () => {
+      if (this.jobs.has(existing.id)) throw new Error('WORKSHOP_STATE: existing work is busy');
+      return this.store.propose(brief);
+    }) : await this.store.propose(brief);
     for (const other of await this.store.list()) {
       if (other.id === card.id || other.state !== 'draft' || other.sessionId !== card.sessionId) continue;
       await this.serial(other.id, async () => {
@@ -237,7 +257,7 @@ export class WorkshopOperations implements Omit<PluginWorkshopService, 'developm
       if (card.state === 'generating') throw new Error('WORKSHOP_STATE: cannot act in generating');
       this.jobs.get(id)?.abort();
       this.candidates.delete(id);
-      await rm(this.store.directory(id), { recursive: true, force: true, maxRetries: 3 });
+      await rename(this.store.directory(id), join(tmpdir(), `dstu-workshop-discarded-${id}-${randomUUID()}`));
       return { id, discarded: true as const };
     });
   }
@@ -264,24 +284,144 @@ export class WorkshopOperations implements Omit<PluginWorkshopService, 'developm
    * passed there (e.g. the remote call context) is ignored.
    */
   create(id: string, revision: number, values?: unknown): Promise<WorkshopCard> {
+    return this.startGeneration(id, revision, values);
+  }
+  delegate(id: string, revision: number, options: WorkshopDelegationOptions = {}): Promise<WorkshopCard> {
+    return this.startGeneration(id, revision, options.settings, options);
+  }
+  private startGeneration(id: string, revision: number, values?: unknown, delegation?: WorkshopDelegationOptions,
+    resume = false): Promise<WorkshopCard> {
     return this.serial(id, async () => {
       await this.assertExecutionAllowed();
-      const current = await this.expected(id, revision, ['draft', 'cancelled', 'failed']);
+      if (this.disposed) throw new Error('WORKSHOP_UNAVAILABLE: Host is shutting down');
+      const present = await this.status(id);
+      if (present.revision !== revision) throw new Error('WORKSHOP_CONFLICT: confirmation is stale');
+      if (!resume && present.state === 'installed' && present.execution?.stage === 'blocked'
+        && present.validation?.status === 'pending' && installationOf(present)?.version === present.validation.version) {
+        // The candidate is already installed. Retry only its interrupted acceptance with the same attempt identity.
+        if (!this.generation?.verify) throw new Error('WORKSHOP_VERIFICATION_UNAVAILABLE: runtime verification is not available');
+        const settings = present.settings?.length ? await storeSecretSettings(present.pluginId, fillSettings(present.settings, values), this.secretStore) : present.settings;
+        const changed = JSON.stringify(settings) !== JSON.stringify(present.settings);
+        if (changed) {
+          const config = settingValues(settings);
+          if (config) await this.configure(present.pluginId, config);
+        }
+        this.jobs.get(id)?.abort(); this.jobs.delete(id);
+        const retry = await this.store.update(id, revision, { error: null, ...(changed ? { settings } : {}),
+          validation: { ...present.validation, detail: undefined }, execution: { ...present.execution, stage: 'validating', reason: undefined } });
+        this.startVerification(retry);
+        return retry;
+      }
+      const current = await this.expected(id, revision, resume ? ['generating', 'failed', 'installed'] : ['draft', 'cancelled', 'failed']);
+      if (this.jobs.has(id)) throw new Error('WORKSHOP_STATE: this work already has an active task');
       const generation = this.generation;
       if (!generation) throw new Error('WORKSHOP_GENERATION_UNAVAILABLE: chat pipeline is not ready');
-      const settings = current.settings?.length ? await storeSecretSettings(current.pluginId, fillSettings(current.settings, values), this.secretStore) : undefined;
-      // A new (or restarted) modification starts from the version in use, not from the last attempt's leftovers;
-      // only a failed attempt is continued where it stopped (「让 AI 接着修」 / 「继续做」).
-      if (current.state !== 'failed') await this.startFromInstalled(current);
+      const execution = delegation ? { mode: 'delegated' as const, stage: 'generating' as const,
+        ...(delegation.modelId ? { modelId: delegation.modelId } : {}) }
+        : current.execution?.mode === 'delegated' ? { ...current.execution, stage: 'generating' as const, reason: undefined } : undefined;
+      let settings;
+      try {
+        settings = current.settings?.length ? await storeSecretSettings(current.pluginId, fillSettings(current.settings, values), this.secretStore) : undefined;
+      } catch (error) {
+        if (!execution) throw error;
+        return this.store.update(id, revision, { state: 'failed', generationApproved: true,
+          execution: { ...execution, stage: 'blocked', reason: String(error) }, error: String(error) });
+      }
+      if (!resume && current.state !== 'failed') await this.startFromInstalled(current);
       const card = await this.store.update(id, revision, { state: 'generating', check: null, error: null, generationApproved: true,
+        ...(execution ? { execution } : {}), validation: null,
         agentEditing: null, buildAttempt: 0, buildStage: null, buildFiles: null, buildStep: null, ...(settings ? { settings } : {}),
         generation: { startedAt: new Date().toISOString() } });
       const controller = new AbortController();
       this.jobs.set(id, controller);
-      void this.run(card, controller, generation).catch(error => {
+      // Runtime/compiler diagnostics survive into the new repair generation, even though the progress card clears its error.
+      const task = { ...card, ...(current.state === 'failed' || resume ? { error: current.error, check: current.check } : {}) };
+      void this.run(task, controller, generation).catch(error => {
         writeHostStderr(`[plugin-workshop] background task ${id} failed to persist: ${String(error)}\n`);
       });
       return card;
+    });
+  }
+  /** Called once after every dependency is bound. Reconcile disk state before resuming the unfinished phase. */
+  async resumeDelegated(): Promise<void> {
+    for (const card of await this.store.list()) {
+      if (this.disposed || this.jobs.has(card.id)) continue;
+      if (!card.execution && card.state === 'installed' && card.validation?.status === 'pending') {
+        this.startVerification(card); continue;
+      }
+      if (card.execution?.mode !== 'delegated' || ['complete', 'blocked'].includes(card.execution.stage)
+        || ['cancelled', 'revoked', 'superseded'].includes(card.state)) continue;
+      try {
+        if (card.execution.stage === 'repairing' || card.state === 'failed' && ['installing', 'validating'].includes(card.execution.stage)) {
+          const repairing = card.execution.stage === 'repairing' ? card : await this.store.update(card.id, card.revision, { execution: { ...card.execution, stage: 'repairing' } });
+          await this.recoverAndRepair(repairing, card.error ?? card.lastFault ?? 'Candidate activation was interrupted', card.validation?.version ?? card.version);
+        } else if (card.state === 'generating') {
+          await this.startGeneration(card.id, card.revision, undefined, undefined, true);
+        } else if (card.state === 'pending-confirmation' || card.state === 'installed' && card.validation?.status === 'pending') {
+          const controller = new AbortController();
+          this.jobs.set(card.id, controller);
+          void this.finishDelegated(card, controller).catch(error => this.blockExecution(card.id, String(error), controller))
+            .finally(() => { if (this.jobs.get(card.id) === controller) this.jobs.delete(card.id); });
+        }
+      } catch (error) { await this.blockExecution(card.id, String(error)); }
+    }
+  }
+  private async blockExecution(id: string, reason: string, controller?: AbortController): Promise<WorkshopCard> {
+    return this.serial(id, async () => {
+      const card = await this.store.read(id);
+      if (controller?.signal.aborted || controller && this.jobs.get(id) !== controller
+        || ['cancelled', 'revoked'].includes(card.state)) return card;
+      return this.store.update(id, card.revision, { error: reason, buildStage: null, buildStep: null, buildFiles: null,
+        ...(card.state === 'generating' ? { state: 'failed' } : {}),
+        ...(card.execution ? { execution: { ...card.execution, stage: 'blocked', reason } } : {}),
+        ...(card.validation?.status === 'pending' ? { validation: { ...card.validation, detail: reason } } : {}) });
+    });
+  }
+  private startVerification(card: WorkshopCard): void {
+    if (this.disposed || this.jobs.has(card.id) || !this.generation?.verify) return;
+    const controller = new AbortController();
+    this.jobs.set(card.id, controller);
+    void this.finishDelegated(card, controller).catch(error => this.blockExecution(card.id, String(error), controller))
+      .finally(() => { if (this.jobs.get(card.id) === controller) this.jobs.delete(card.id); });
+  }
+  private async finishDelegated(card: WorkshopCard, controller: AbortController): Promise<void> {
+    if (controller.signal.aborted || this.disposed) return;
+    let installed: WorkshopCard;
+    try { installed = card.state === 'pending-confirmation' ? await this.install(card.id, card.revision) : card; }
+    catch (error) {
+      if (controller.signal.aborted || this.disposed) return;
+      const failed = await this.serial(card.id, async () => {
+        const current = await this.status(card.id);
+        if (this.jobs.get(card.id) !== controller || current.execution?.mode !== 'delegated') return null;
+        controller.abort(); this.jobs.delete(card.id);
+        return this.store.update(card.id, current.revision, { state: 'failed', error: String(error),
+          execution: { ...current.execution, stage: 'repairing', reason: String(error) } });
+      });
+      if (failed) await this.recoverAndRepair(failed, String(error), failed.validation?.version ?? failed.version);
+      return;
+    }
+    if (controller.signal.aborted || this.disposed) return;
+    const verification = this.generation?.verify;
+    if (!verification) { await this.blockExecution(card.id, 'WORKSHOP_VERIFICATION_UNAVAILABLE: runtime verification is not available', controller); return; }
+    const validation = installed.validation;
+    if (!validation || validation.status !== 'pending') return;
+    let result: WorkshopVerificationResult;
+    try {
+      // Host installation is already committed. The paired UI opens only this exact pending candidate.
+      await this.candidatePreview?.({ id: installed.id, pluginId: installed.pluginId, version: validation.version, revision: validation.revision });
+      if (controller.signal.aborted || this.disposed) return;
+      result = await verification.call(this.generation, installed, join(this.store.directory(card.id), 'source'), controller.signal);
+    }
+    catch (error) { await this.blockExecution(card.id, String(error), controller); return; }
+    if (controller.signal.aborted || this.disposed) return;
+    if (result.status === 'blocked') {
+      await this.blockExecution(card.id, result.error ?? 'Runtime verification needs information or an unavailable application capability', controller);
+      return;
+    }
+    await this.completeValidation(card.id, validation.version, validation.revision, {
+      ok: result.status === 'passed' && result.evidence.length > 0,
+      detail: result.error ?? (result.status === 'passed' && !result.evidence.length ? 'Verification returned no actual operation evidence' : undefined),
+      evidence: result.evidence,
     });
   }
   /**
@@ -289,7 +429,8 @@ export class WorkshopOperations implements Omit<PluginWorkshopService, 'developm
    * under `drafts/<revision>` (never deleted), so nothing the AI wrote is lost, but none of it leaks into this change.
    */
   private async startFromInstalled(card: WorkshopCard): Promise<void> {
-    const version = card.usableVersion ?? installationOf(card)?.version;
+    const installed = installationOf(card);
+    const version = installed?.state === 'installed' ? installed.version : card.usableVersion;
     if (!version) return;
     const root = this.store.directory(card.id);
     const retained = join(root, 'versions', version, 'source');
@@ -297,12 +438,21 @@ export class WorkshopOperations implements Omit<PluginWorkshopService, 'developm
     const source = join(root, 'source');
     if ((await sourceFiles(source).catch(() => [])).length) {
       const draft = join(root, 'drafts', String(card.revision));
-      await rm(draft, { recursive: true, force: true });
       await mkdir(join(root, 'drafts'), { recursive: true });
-      await cp(source, draft, { recursive: true });
+      // Preserve earlier attempts if the same record is resumed more than once.
+      const target = await stat(draft).then(() => `${draft}-${randomUUID()}`, () => draft);
+      await rename(source, target);
     }
-    await rm(source, { recursive: true, force: true, maxRetries: 3 });
     await cp(retained, source, { recursive: true });
+  }
+  private async normalizeSource(source: string, card: WorkshopCard): Promise<void> {
+    // Retained folders include failed activation attempts. Do not reuse their versions or overwrite recovery sources.
+    // Keep card.previousVersion as the previous usable release; it is also consumed by recovery and older clients.
+    const entries = await readdir(join(this.store.directory(card.id), 'versions'), { withFileTypes: true });
+    let previousVersion = card.previousVersion;
+    for (const entry of entries) if (entry.isDirectory() && (versionGreater(entry.name, previousVersion ?? '0.0.0')
+      || !previousVersion && entry.name === '0.0.0')) previousVersion = entry.name;
+    await normalizeWorkshopSource(source, { ...card, previousVersion });
   }
   private async run(card: WorkshopCard, controller: AbortController, generation: WorkshopGeneration): Promise<void> {
     // Time and tokens of this run, written with the final state (the card shows them after it finished).
@@ -322,7 +472,7 @@ export class WorkshopOperations implements Omit<PluginWorkshopService, 'developm
         await checkSettingLinks(card.settings, this.linkReader, controller.signal);
         if (controller.signal.aborted) return;
       }
-      for (let attempt = 1; attempt <= 3; attempt++) {
+      for (let attempt = 1; card.execution?.mode === 'delegated' || attempt <= 3; attempt++) {
         try {
           await this.progressOf(card.id, controller, { buildStage: 'making', buildStep: null, buildFiles: [] });
           let reported = '';
@@ -335,8 +485,9 @@ export class WorkshopOperations implements Omit<PluginWorkshopService, 'developm
           });
           if (used && typeof used.tokens === 'number' && used.tokens > 0) tokens = (tokens ?? 0) + used.tokens;
           if (controller.signal.aborted) return;
+          if (used?.blockedReason) { await this.blockExecution(card.id, used.blockedReason, controller); return; }
           // Host bookkeeping (a version above the retained one, net:<host> of the user's address) is not a repair round.
-          await normalizeWorkshopSource(source, card);
+          await this.normalizeSource(source, card);
           await this.progressOf(card.id, controller, { buildStage: 'checking', buildStep: 'compile' });
           built = await this.build(card.id, controller.signal, () => this.progressOf(card.id, controller, { buildStep: 'load' }));
           task = { ...task, check: built.check, error: built.check.errors.join('\n') };
@@ -347,8 +498,8 @@ export class WorkshopOperations implements Omit<PluginWorkshopService, 'developm
         await this.progressOf(card.id, controller, { buildAttempt: attempt, check: task.check, error: task.error });
         if (controller.signal.aborted) return;
         if (built?.check.ok) break;
-        // Safe mode, an app feature that is turned off, …: the code is not the problem, so no repair round.
-        if (isEnvironmentError(task.error)) break;
+        // Preserve legacy manual behavior; delegated tasks use the generator's explicit blockedReason contract.
+        if (card.execution?.mode !== 'delegated' && isEnvironmentError(task.error)) break;
       }
       if (!built) throw new Error(task.error ?? 'WORKSHOP_INVALID: generation failed');
       if (built.check.ok) {
@@ -362,13 +513,18 @@ export class WorkshopOperations implements Omit<PluginWorkshopService, 'developm
         const current = await this.status(card.id);
         await this.store.update(card.id, current.revision, { state: built.check.ok ? 'pending-confirmation' : 'failed',
           check: built.check, version: built.manifest?.version ?? null, error: built.check.ok ? null : built.check.errors.join('\n'),
-          buildStage: null, buildStep: null, buildFiles: null, ...stats(), ...(built.check.ok ? { declared: built.declared ?? [], places: built.places ?? [] } : {}) });
+          buildStage: null, buildStep: null, buildFiles: null, ...stats(),
+          ...(current.execution ? { execution: { ...current.execution, stage: built.check.ok ? 'installing' : 'blocked', ...(built.check.ok ? {} : { reason: built.check.errors.join('\n') }) } } : {}), ...(built.check.ok ? { declared: built.declared ?? [], places: built.places ?? [] } : {}) });
       });
+      if (card.execution?.mode === 'delegated' && built.check.ok && !controller.signal.aborted) {
+        await this.finishDelegated(await this.status(card.id), controller);
+      }
     } catch (error) {
       await this.serial(card.id, async () => {
         if (controller.signal.aborted) return;
         const current = await this.status(card.id);
-        await this.store.update(card.id, current.revision, { state: 'failed', buildStage: null, buildStep: null, buildFiles: null, ...stats(), error: error instanceof Error ? error.message : String(error) });
+        await this.store.update(card.id, current.revision, { state: 'failed', buildStage: null, buildStep: null, buildFiles: null, ...stats(), error: error instanceof Error ? error.message : String(error),
+          ...(current.execution ? { execution: { ...current.execution, stage: 'blocked', reason: String(error) } } : {}) });
       });
     } finally { if (this.jobs.get(card.id) === controller) this.jobs.delete(card.id); }
   }
@@ -382,12 +538,22 @@ export class WorkshopOperations implements Omit<PluginWorkshopService, 'developm
     });
   }
   /** Stop generating, or turn down a candidate waiting for installation ("不要了"); nothing is installed either way. */
-  cancel(id: string, revision: number): Promise<WorkshopCard> {
-    return this.serial(id, async () => {
-      await this.expected(id, revision, ['draft', 'generating', 'pending-confirmation']);
-      this.jobs.get(id)?.abort();
-      return this.store.update(id, revision, { state: 'cancelled', agentEditing: null, buildStage: null, buildStep: null, buildFiles: null });
+  async cancel(id: string, revision: number): Promise<WorkshopCard> {
+    const cancelled = await this.serial(id, async () => {
+      const card = await this.expected(id, revision, ['draft', 'generating', 'pending-confirmation', 'installed', 'failed']);
+      if (card.state === 'installed' && card.validation?.status !== 'pending') throw new Error('WORKSHOP_STATE: no active task to cancel');
+      this.jobs.get(id)?.abort(); this.jobs.delete(id);
+      return this.store.update(id, revision, { state: 'cancelled', execution: null, agentEditing: null, buildStage: null, buildStep: null, buildFiles: null });
     });
+    // An activated candidate may not become the usable release merely because its verification was cancelled.
+    if (cancelled.validation?.status === 'pending' && installationOf(cancelled)?.version === cancelled.validation.version) {
+      await this.reportFault(id, 'WORKSHOP_CANCELLED: candidate verification cancelled', cancelled.validation.version);
+      return this.serial(id, async () => {
+        const current = await this.status(id);
+        return this.store.update(id, current.revision, { state: 'cancelled', execution: null });
+      });
+    }
+    return cancelled;
   }
   private async build(id: string, signal?: AbortSignal, compiled?: () => Promise<unknown>): Promise<WorkshopBuild> {
     await this.assertExecutionAllowed();
@@ -418,7 +584,7 @@ export class WorkshopOperations implements Omit<PluginWorkshopService, 'developm
   async validate(id: string): Promise<WorkshopCheck> { return (await this.build(id)).check; }
   async stageValidated(id: string): Promise<WorkshopCheck> {
     const before = await this.status(id);
-    if (['draft', 'failed', 'cancelled'].includes(before.state)) await normalizeWorkshopSource(join(this.store.directory(id), 'source'), before);
+    if (['draft', 'failed', 'cancelled'].includes(before.state)) await this.normalizeSource(join(this.store.directory(id), 'source'), before);
     const built = await this.build(id);
     await this.serial(id, async () => {
       const card = await this.status(id);
@@ -456,28 +622,76 @@ export class WorkshopOperations implements Omit<PluginWorkshopService, 'developm
       safeMode: inventory?.safeMode ?? false,
       files: await Promise.all(files.map(async path => ({ path, content: await readFile(join(source, path), 'utf8') }))) };
   }
-  async reportFault(id: string, error: string): Promise<WorkshopCard> {
+  /** Renderer failures may reject a candidate; only Host-owned verification may certify it. */
+  async reportValidation(id: string, version: string, revision: number, outcome: WorkshopValidationOutcome): Promise<WorkshopCard> {
+    if (outcome?.ok !== false) throw new Error('WORKSHOP_VERIFICATION_REQUIRED: only runtime verification can mark a version usable');
+    return this.completeValidation(id, version, revision, outcome);
+  }
+  private async completeValidation(id: string, version: string, revision: number, outcome: WorkshopValidationOutcome): Promise<WorkshopCard> {
+    const validated = await this.serial(id, async () => {
+      const card = await this.status(id);
+      if (card.validation?.version !== version || card.validation.revision !== revision
+        || card.validation.status !== 'pending' || installationOf(card)?.version !== version
+        || installationOf(card)?.state !== 'installed' || card.state === 'cancelled') return null;
+      const validation = { ...card.validation, status: outcome.ok ? 'passed' as const : 'failed' as const,
+        detail: outcome.detail, evidence: outcome.evidence };
+      return this.store.update(id, card.revision, outcome.ok ? {
+        validation, usableVersion: version, lastGoodPackageDir: join(this.store.directory(id), 'versions', version, 'package'),
+        verifiedVersions: { ...card.verifiedVersions, [version]: validation },
+        error: null, ...(card.execution ? { execution: { ...card.execution, stage: 'complete' as const, reason: undefined } } : {}),
+      } : { validation, error: outcome.detail ?? 'Runtime verification failed' });
+    });
+    if (!validated) return this.status(id);
+    return outcome.ok ? validated : this.reportFault(id, outcome.detail ?? 'Runtime verification failed', version);
+  }
+  async reportFault(id: string, error: string, version?: string): Promise<WorkshopCard> {
     const failed = await this.serial(id, async () => {
       const card = await this.status(id);
       const installed = installationOf(card);
-      if (installed?.state !== 'installed') return null;
+      if (installed?.state !== 'installed' || typeof version === 'string' && installed.version !== version) return null;
+      this.jobs.get(id)?.abort();
+      this.jobs.delete(id);
       await this.admin?.isolateManaged?.(card.pluginId);
-      // A proposal in progress keeps its own state; the installed version is what failed.
+      const verifiedVersions = { ...card.verifiedVersions };
+      delete verifiedVersions[installed.version];
       return this.store.update(id, card.revision, { ...(isOpenProposal(card.state) ? {} : { state: 'failed' as const, error }), lastFault: error,
-        installation: { ...installed, state: 'failed' } });
+        verifiedVersions,
+        installation: { ...installed, state: 'failed' },
+        ...(card.usableVersion === installed.version ? { usableVersion: null, lastGoodPackageDir: null } : {}),
+        ...(card.validation?.version === installed.version ? { validation: { ...card.validation, status: 'failed', detail: error } } : {}),
+        ...(card.execution && card.state !== 'cancelled' ? { execution: { ...card.execution, stage: 'repairing', reason: error } } : {}) });
     });
     if (!failed) return this.status(id);
-    // Never retry the same bad release. Recovery only runs an earlier approved source snapshot.
-    const failedInstallation = installationOf(failed);
-    const previous = failedInstallation?.previousVersion ?? (isOpenProposal(failed.state) ? null : failed.previousVersion);
-    if (previous && previous !== failedInstallation?.version) {
-      try { return await this.restore(id, failed.revision); }
+    return this.recoverAndRepair(failed, error, installationOf(failed)?.version);
+  }
+  private async recoverAndRepair(failed: WorkshopCard, error: string, badVersion?: string | null): Promise<WorkshopCard> {
+    const id = failed.id;
+    // The verified pointer is authoritative for new records; legacy/manual installations still retain their predecessor.
+    const previous = failed.usableVersion && failed.usableVersion !== badVersion ? failed.usableVersion
+      : installationOf(failed)?.previousVersion ?? (isOpenProposal(failed.state) ? null : failed.previousVersion);
+    let recovered = failed;
+    if (previous && previous !== badVersion && !(installationOf(failed)?.state === 'installed' && installationOf(failed)?.version === previous)) {
+      try { recovered = await this.restore(id, failed.revision); }
       catch (cause) {
         const current = await this.status(id);
-        return this.store.update(id, current.revision, { state: 'failed', rollback: 'failed', error: `${error}\nRecovery: ${String(cause)}` });
+        return this.store.update(id, current.revision, { state: 'failed', rollback: 'failed', error: `${error}\nRecovery: ${String(cause)}`,
+          ...(current.execution ? { execution: { ...current.execution, stage: 'blocked', reason: String(cause) } } : {}) });
       }
     }
-    return failed;
+    if (recovered.execution?.mode === 'delegated' && this.generation && !this.disposed && !['cancelled', 'revoked'].includes(recovered.state)) {
+      // Keep the original goal and failed source. Recovery must not silently replace the requested change with the old version.
+      const repair = await this.serial(id, async () => {
+        const current = await this.status(id);
+        if (current.execution?.stage !== 'repairing') return null;
+        return this.store.update(id, current.revision, { state: 'failed', error,
+          execution: { ...current.execution, stage: 'repairing', reason: error } });
+      });
+      if (repair) {
+        try { return await this.startGeneration(id, repair.revision, undefined, undefined, true); }
+        catch (cause) { return this.blockExecution(id, String(cause)); }
+      }
+    }
+    return recovered;
   }
   writeSource(id: string, revision: number, files: SourceFile[]): Promise<WorkshopCard> {
     return this.serial(id, async () => {
@@ -519,6 +733,10 @@ export class WorkshopOperations implements Omit<PluginWorkshopService, 'developm
       await cp(built.directory, join(versionRoot, 'package'), { recursive: true });
       await cp(built.sourceDirectory, join(versionRoot, 'source'), { recursive: true });
       await writeFile(join(versionRoot, 'manifest.json'), JSON.stringify(built.manifest));
+      const pending = await this.store.update(id, revision, {
+        validation: { version: built.manifest.version, revision: revision + 1, status: 'pending' },
+        ...(card.execution ? { execution: { ...card.execution, stage: 'installing' } } : {}),
+      });
       try {
         const result = await owner.installManagedDirectory({ id: card.pluginId, directory: built.directory, revision: inventory.revision,
           version: built.manifest.version, permissions: built.manifest.permissions, confirmed: true });
@@ -526,18 +744,28 @@ export class WorkshopOperations implements Omit<PluginWorkshopService, 'developm
       } catch (error) {
         const value = error instanceof CommandError ? error.value : error;
         const rollback = (value as { details?: { rollback?: string } } | null)?.details?.rollback;
-        await this.store.update(id, revision, { state: 'failed', error: error instanceof Error ? error.message : String(error), previousVersion: card.previousVersion,
+        const actual = (await owner.inventory()).plugins.find(item => item.id === card.pluginId);
+        if (actual?.version === built.manifest.version) await owner.isolateManaged?.(card.pluginId);
+        const before = installationOf(card);
+        const installation: WorkshopInstallation | null = actual?.state === 'running' && actual.version && actual.version !== built.manifest.version
+          ? { state: 'installed', version: actual.version, previousVersion: null }
+          : { state: 'failed', version: built.manifest.version, previousVersion: card.usableVersion ?? before?.version ?? null };
+        await this.store.update(id, pending.revision, { state: 'failed', error: error instanceof Error ? error.message : String(error), previousVersion: card.previousVersion, installation,
+          validation: { ...pending.validation!, status: 'failed', detail: String(error) },
           ...(rollback === 'not-needed' || rollback === 'restored' || rollback === 'failed' ? { rollback } : {}) });
         throw error;
       }
       await this.applySettings(card);
-      const active = (await owner.inventory()).plugins.find(item => item.id === card.pluginId);
       const before = installationOf(card);
       const installation: WorkshopInstallation = { state: 'installed', version: built.manifest.version,
-        previousVersion: before && before.version !== built.manifest.version ? before.version : before?.previousVersion ?? null };
-      return this.store.update(id, revision, { state: 'installed', version: built.manifest.version, check: built.check, error: null, installation,
-        declared: built.declared ?? [], places: built.places ?? [],
-        ...(active?.state === 'running' ? { usableVersion: built.manifest.version, lastGoodPackageDir: join(versionRoot, 'package') } : {}) });
+        previousVersion: card.usableVersion && card.usableVersion !== built.manifest.version ? card.usableVersion
+          : before && before.version !== built.manifest.version ? before.version : before?.previousVersion ?? null };
+      return this.store.update(id, pending.revision, { state: 'installed', version: built.manifest.version, check: built.check, error: null, installation,
+        validation: pending.validation, declared: built.declared ?? [], places: built.places ?? [],
+        ...(card.execution ? { execution: { ...card.execution, stage: 'validating' } } : {}) });
+    }).then(card => {
+      if (!card.execution) this.startVerification(card);
+      return card;
     });
   }
   /**
@@ -553,12 +781,13 @@ export class WorkshopOperations implements Omit<PluginWorkshopService, 'developm
       if (card.revision !== revision) throw new Error('WORKSHOP_CONFLICT: confirmation is stale');
       const installed = installationOf(card);
       if (!(installed && installed.state !== 'revoked') && card.state !== 'failed') throw new Error(`WORKSHOP_STATE: cannot act in ${installed?.state ?? card.state}`);
+      this.jobs.get(id)?.abort(); this.jobs.delete(id);
       const owner = this.owner(), inventory = await owner.inventory();
       if (inventory.plugins.some(entry => entry.id === card.pluginId)) {
         if (!inventory.revision) throw new Error('WORKSHOP_INSTALL_UNAVAILABLE: profile is read-only');
         await owner.uninstall(card.pluginId, inventory.revision);
       }
-      return this.store.update(id, revision, { ...(isOpenProposal(card.state) ? {} : { state: 'revoked' as const }),
+      return this.store.update(id, revision, { execution: null, validation: null, ...(isOpenProposal(card.state) ? {} : { state: 'revoked' as const }),
         installation: installed ? { ...installed, state: 'revoked' } : null });
     });
   }
@@ -573,7 +802,7 @@ export class WorkshopOperations implements Omit<PluginWorkshopService, 'developm
       // Installed in the record but gone from the manager (removed outside the workshop): bring back this version.
       const removed = installed?.state === 'revoked' || (installed?.state === 'installed' && !inventory.plugins.some(entry => entry.id === card.pluginId));
       const retainedVersion = removed ? card.usableVersion ?? installed?.version
-        : installed?.previousVersion ?? (isOpenProposal(card.state) ? null : card.previousVersion) ?? card.usableVersion;
+        : card.usableVersion && card.usableVersion !== installed?.version ? card.usableVersion : installed?.previousVersion ?? (isOpenProposal(card.state) ? null : card.previousVersion) ?? card.usableVersion;
       if (!retainedVersion) throw new Error('WORKSHOP_STATE: no successful version retained');
       if (!inventory.revision) throw new Error('WORKSHOP_INSTALL_UNAVAILABLE: profile is read-only');
       const versionRoot = join(this.store.directory(id), 'versions', retainedVersion);
@@ -592,14 +821,20 @@ export class WorkshopOperations implements Omit<PluginWorkshopService, 'developm
       await this.applySettings(card);
       const installation: WorkshopInstallation = { state: 'installed', version: retainedVersion,
         previousVersion: removed ? installed?.previousVersion ?? null : null };
+      // Activation alone cannot certify a legacy/manual release. Restore the behavior check of the release
+      // actually running, and never leave recovery pointing at the newer version the user just withdrew.
+      const validation = card.verifiedVersions?.[retainedVersion]
+        ?? (card.validation?.version === retainedVersion && card.validation.status === 'passed' ? card.validation : null);
+      const usable = validation?.status === 'passed' || card.usableVersion === retainedVersion;
+      const recovery = { usableVersion: usable ? retainedVersion : null,
+        lastGoodPackageDir: usable ? join(versionRoot, 'package') : null };
       // A proposal in progress keeps its own step and candidate; only the installed version changes.
       if (isOpenProposal(card.state)) {
-        return this.store.update(id, revision, { installation, rollback: 'restored',
-          ...(owner.activateManaged ? { usableVersion: retainedVersion, lastGoodPackageDir: join(versionRoot, 'package') } : {}) });
+        return this.store.update(id, revision, { installation, rollback: 'restored', ...recovery });
       }
       return this.store.update(id, revision, { state: 'installed', version: retainedVersion, check: built.check, error: null, rollback: 'restored', installation,
-        declared: built.declared ?? [], places: built.places ?? [],
-        ...(owner.activateManaged ? { usableVersion: retainedVersion, lastGoodPackageDir: join(versionRoot, 'package') } : {}) });
+        declared: built.declared ?? [], places: built.places ?? [], validation, previousVersion: installation.previousVersion ?? null,
+        ...(card.execution?.stage === 'complete' && !validation ? { execution: null } : {}), ...recovery });
     });
   }
   /**

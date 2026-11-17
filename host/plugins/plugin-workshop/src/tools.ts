@@ -1,4 +1,4 @@
-// RUST-FIX(RF-P3-workshop-tools): managed tools with no installation authority.
+// Managed delegation: installation stays with the Host, never with generated plugin code.
 import type { ToolCall, ExecutionContext, ToolResultInfo } from '../../chat/api.ts';
 import type { AgentSchemaTool } from '../../agent-skills/api.ts';
 import { pluginServiceName } from '../../../kernel/plugin-id.ts';
@@ -17,7 +17,8 @@ const specs = {
   api_list: { description: 'List real dstu SDK, live Host services (service:<name>, every one a plugin can inject: notes, anki, qbank, review, vfs, agentTodo, pluginModel, settings …), slots, config, theme and shipped resources. Read-only.', properties: { category: { type: 'string', enum: ['sdk', 'services', 'slots', 'config', 'theme', 'examples', 'resources'] } }, required: [] },
   api_read: { description: 'Read an exact API/resource id from api_list (service:<name> gives the real method signatures and docs from the app api.ts types); never executes business methods.', properties: { id: { type: 'string' } }, required: ['id'] },
   validate: { description: 'Compile and test-load/unload a managed work. Does not install. Visual remains unverified.', properties: { id: { type: 'string' } }, required: ['id'] },
-  propose_install: { description: 'Propose a managed work: shows the user a card. Their 开始做 on it approves generation; the Host then writes, compiles, test-loads and repairs it (up to three rounds) and stops at one 安装 confirmation. Never generates or installs by itself.', properties: {
+  propose_install: { description: 'Describe a managed work. Set execute=true when the user requests implementation: delegate generation, installation, real runtime verification and reversible recovery to the Host without repeated clicks. For discussion or a proposal only, omit execute or set false. Never claim delivery until status reports verification passed.', properties: {
+    execute: { type: 'boolean', description: 'True only when the user asked to implement this goal. Discussion and feasibility questions do not authorize execution. Missing credentials or newly required irreversible actions must be resolved explicitly.' },
     title: { type: 'string' }, description: { type: 'string' }, template: { type: 'string', enum: ['learning-tool', 'host-tool'] },
     changes: { type: 'array', items: { type: 'string' } }, capabilities: { type: 'array', items: { type: 'string' } },
     settings: {
@@ -48,12 +49,12 @@ const readOnlyTools = new Set(['dstu_plugin_api_list', 'dstu_plugin_api_read', '
 /** Irreversible or execution-authority tools: the chat pipeline must ask the user first. */
 const confirmTools = new Set(['dstu_plugin_configure', 'dstu_plugin_set_enabled', 'dstu_plugin_app_restart']);
 /**
- * A proposal only records a draft card (no code is written or run), so it is medium like a source edit: in the default
- * relaxed preset it needs no approval bar. The consent moved onto the card: 开始做 approves generation and the Host
- * test load of model-written code, 安装 approves installation. Agent source edits are refused until 开始做.
+ * Implementation requests delegate the described task to the Host. Proposal-only calls remain drafts.
+ * Existing tool-approval policy still applies; generated plugins never receive the installation authority.
  */
 const needsUserStart = new Set(['dstu_plugin_write_source', 'dstu_plugin_validate']);
 const BIND_NOTE = 'This work was made in another conversation. The card asks the user to press 「在这个对话里修改『…』」; tell them in one sentence, then stop. After they press it, call propose_install again with the same pluginId and the requested changes.';
+const EXECUTION_NOTE = 'The Host is carrying out the requested goal, including installation and real runtime verification. The card shows progress and allows cancellation. Do not ask for 开始做 or 安装, duplicate source edits, or claim success before execution.stage=complete and validation.status=passed. If execution is blocked, explain its concrete reason and request only missing information.';
 const PROPOSAL_NOTE = 'The card is waiting for the user. Tell them in one short sentence to check it and press 开始做 (and fill in what it asks for); do not write source, validate or poll. The Host writes, checks and repairs the plugin, then the card asks for 安装.';
 export class WorkshopToolExecutor {
   readonly operations: WorkshopOperations;
@@ -73,7 +74,7 @@ export class WorkshopToolExecutor {
         required: spec.required, additionalProperties: false },
     } } }));
   }
-  async invoke(name: string, args: Record<string, unknown>, sessionId: string): Promise<unknown> {
+  async invoke(name: string, args: Record<string, unknown>, sessionId: string, modelId?: string): Promise<unknown> {
     switch (normalized(name)) {
       case 'dstu_plugin_api_list': return this.catalog.list(args.category as ApiCategory | undefined);
       case 'dstu_plugin_api_read': return this.catalog.read(String(args.id), this.operations.app.version);
@@ -111,8 +112,9 @@ export class WorkshopToolExecutor {
         ...(args.alternatives === undefined ? {} : { alternatives: args.alternatives as string[] }),
         ...(typeof args.builtinDifference === 'string' ? { builtinDifference: args.builtinDifference } : {}),
         ...(resolvedPluginId === undefined ? {} : { pluginId: resolvedPluginId }) });
-        // `autoGenerate` (older prompts) is ignored: only the user's 开始做 starts generation.
-        return { ...card, serviceName: pluginServiceName(card.pluginId), note: PROPOSAL_NOTE };
+        // The explicit implementation flag represents the user's task delegation; old proposal-only callers stay drafts.
+        const work = args.execute === true ? await this.operations.delegate(card.id, card.revision, { ...(modelId ? { modelId } : {}) }) : card;
+        return { ...work, serviceName: pluginServiceName(card.pluginId), note: args.execute === true ? EXECUTION_NOTE : PROPOSAL_NOTE };
       }
       case 'dstu_plugin_status': {
         const filterId = args.id === undefined ? undefined : String(args.id).trim().replace(/^workshop\.plugin-/, '');
@@ -130,7 +132,7 @@ export class WorkshopToolExecutor {
         const id = String(args.id ?? '').trim().replace(/^workshop\.plugin-/, ''), card = await this.operations.status(id);
         if (!ownsSession(card, sessionId)) throw new Error('WORKSHOP_INVALID: work belongs to another conversation');
         if (needsUserStart.has(normalized(name)) && card.generationApproved !== true) {
-          throw new Error('WORKSHOP_NOT_STARTED: the user has not pressed 开始做 on this card yet. Do not write or validate source; ask the user to check the card and press 开始做. The Host then generates it.');
+          throw new Error('WORKSHOP_NOT_STARTED: this work has not been authorized for implementation. Do not write or validate source until the user requests implementation or starts the proposal.');
         }
         if (normalized(name) === 'dstu_plugin_diagnose') return this.operations.diagnose(id);
         if (normalized(name) === 'dstu_plugin_write_source') {
@@ -151,7 +153,7 @@ export class WorkshopToolExecutor {
     const started = performance.now();
     ctx.emitToolCallStart(call.name, call.arguments, call.id);
     try {
-      const output = await this.invoke(call.name, call.arguments as Record<string, unknown>, ctx.session_id);
+      const output = await this.invoke(call.name, call.arguments as Record<string, unknown>, ctx.session_id, ctx.question_authoring_config?.id);
       const json = JSON.parse(JSON.stringify(output));
       ctx.emitToolCallEnd(json);
       return { toolCallId: call.id, blockId: ctx.block_id, toolName: call.name, input: call.arguments,

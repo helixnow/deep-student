@@ -20,10 +20,16 @@ export interface UiPluginLoadError {
   error: string;
 }
 
+/** The manifest version identifies the candidate that failed, even before its module can load. */
+export interface UiPluginLoadFailure extends UiPluginLoadError {
+  version?: string;
+}
+
 export interface LoaderDeps {
   importModule(url: string): Promise<{ default?: unknown }>;
   /** Report the loaded module's version, never the inventory's advertised version. */
   ready?(id: string, version: string | undefined): Promise<{ id: string; matched: boolean }>;
+  onLoadFailure?(failure: UiPluginLoadFailure): void | Promise<void>;
   log?: { warn(message: string): void; error(message: string): void };
 }
 
@@ -107,9 +113,15 @@ export class UiPluginLoader {
         this.current.set(entry.id, entry);
         this.errors.delete(entry.id);
       } catch (e) {
+        if (this.disposed) return;
         const message = e instanceof Error ? e.message : String(e);
         this.errors.set(entry.id, message);
         this.deps.log?.error(`[ui-plugins] failed to load "${entry.id}": ${message}`);
+        // Recovery may publish another manifest. Do not wait for it while holding this loader's sync queue.
+        if (this.deps.onLoadFailure) {
+          void Promise.resolve().then(() => this.deps.onLoadFailure!({ id: entry.id, version: entry.version, error: message }))
+            .catch((error) => this.deps.log?.error(`[ui-plugins] failed to report load failure for "${entry.id}": ${String(error)}`));
+        }
       }
     }
   }

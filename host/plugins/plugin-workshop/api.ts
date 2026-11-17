@@ -53,7 +53,28 @@ export interface WorkshopCheck {
   ok: boolean; manifest: 'passed' | 'failed'; compile: 'passed' | 'failed';
   lifecycle: 'passed' | 'failed' | 'not-run'; visual: 'not-verified'; errors: string[];
 }
+/** One explicit implementation request covers generation, activation, verification and reversible repair. */
+export interface WorkshopExecution {
+  mode: 'delegated';
+  stage: 'generating' | 'installing' | 'validating' | 'repairing' | 'complete' | 'blocked';
+  modelId?: string;
+  reason?: string;
+}
+/** The revision identifies the activation attempt, even when the package version is reused. */
+export interface WorkshopValidation {
+  version: string; revision: number; status: 'pending' | 'passed' | 'failed';
+  detail?: string; evidence?: string[];
+}
+export interface WorkshopValidationOutcome { ok: boolean; detail?: string; evidence?: string[] }
+export interface WorkshopDelegationOptions { settings?: Record<string, string>; modelId?: string }
+export interface WorkshopVerificationResult {
+  status: 'passed' | 'failed' | 'blocked'; evidence: string[]; error?: string;
+}
 export interface WorkshopCard extends WorkshopFeasibility {
+  execution?: WorkshopExecution | null;
+  validation?: WorkshopValidation | null;
+  /** Successful behavior checks retained with their release; a runtime fault removes that release's check. */
+  verifiedVersions?: Record<string, WorkshopValidation>;
   kind: 'dstu-plugin-workshop'; id: string; pluginId: string; sessionId: string;
   title: string; description: string; template: WorkshopTemplate; state: WorkshopState;
   revision: number; version: string | null; capabilities: string[]; changes: string[];
@@ -65,9 +86,9 @@ export interface WorkshopCard extends WorkshopFeasibility {
   trust: 'full'; source: 'workshop'; risk: string; check: WorkshopCheck | null;
   error: string | null; previousVersion: string | null; createdAt: string; updatedAt: string;
   rollback?: 'not-needed' | 'restored' | 'failed';
-  /** Last version observed running in the real application, not merely self-checked/installed. */
+  /** Last version whose requested behavior was verified in the real application, not merely activated. */
   usableVersion?: string | null;
-  /** Immutable managed package last observed running; failed candidates never replace it. */
+  /** Immutable managed package last verified; unverified or failed candidates never replace it. */
   lastGoodPackageDir?: string | null;
   buildAttempt?: number;
   /** What the background job is doing within the current attempt; progress only, never part of consent. */
@@ -120,6 +141,7 @@ export interface PluginWorkshopService {
   status(id: string): Promise<WorkshopCard>;
   /** 开始做. `settings` fills the values the card asked for (keys of `card.settings`). */
   create(id: string, revision: number, settings?: Record<string, string>): Promise<WorkshopCard>;
+  delegate(id: string, revision: number, options?: WorkshopDelegationOptions): Promise<WorkshopCard>;
   cancel(id: string, revision: number): Promise<WorkshopCard>;
   validate(id: string): Promise<WorkshopCheck>;
   install(id: string, revision: number): Promise<WorkshopCard>;
@@ -133,7 +155,8 @@ export interface PluginWorkshopService {
   redo(id: string, revision: number): Promise<WorkshopCard>;
   /** 「把需求砍成最小版再试」 after repeated failures: a new proposal that keeps only the core of the request. */
   reduce(id: string, revision: number): Promise<WorkshopCard>;
-  reportFault(id: string, error: string): Promise<WorkshopCard>;
+  reportValidation(id: string, version: string, revision: number, outcome: WorkshopValidationOutcome): Promise<WorkshopCard>;
+  reportFault(id: string, error: string, version?: string): Promise<WorkshopCard>;
 }
 declare module '@deepseek-ai/cordis' {
   interface Context { pluginWorkshop: PluginWorkshopService; }

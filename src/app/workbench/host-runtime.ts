@@ -6,6 +6,7 @@
  * 丢掉指向本模块的 dynamic import，因此不会包含这些模块。
  */
 import { useWindowStore } from '@/features/workbench/core/windowStore';
+import { appRegistry } from '@/features/workbench/core/appRegistry';
 import {
   openAppsPanel,
   toggleAppsPanel,
@@ -29,6 +30,7 @@ import {
 } from '@/shared/workbenchHost';
 
 let unsubscribeWindowStore: (() => void) | null = null;
+let unsubscribeApps: (() => void) | null = null;
 
 /** 注册宿主桥；重复调用幂等。 */
 export function installWorkbenchHost(): void {
@@ -44,9 +46,8 @@ export function installWorkbenchHost(): void {
     openAppsPanel,
     toggleAppsPanel,
     activate: (request) => workbenchBus.activate(request),
-    launch: (request) => {
-      workbenchBus.launch(request);
-    },
+    launch: (request) => workbenchBus.launch(request),
+    hasApp: (typeId) => !!appRegistry.get(typeId),
     isPdfPageActivationType: (typeId) =>
       (PDF_PAGE_ACTIVATION_TYPE_IDS as readonly string[]).includes(typeId),
     openPdfPage: (request) => workbenchBus.openPdfPage(request),
@@ -68,11 +69,14 @@ export function installWorkbenchHost(): void {
   };
   setWorkbenchHostBridge(implementation);
   unsubscribeWindowStore = useWindowStore.subscribe(() => notifyWorkbenchHostChanged());
+  unsubscribeApps = appRegistry.subscribe(notifyWorkbenchHostChanged);
 }
 
 /** 仅测试与 HMR 使用：撤销注册，回到安全缺省值。 */
 export function uninstallWorkbenchHost(): void {
   unsubscribeWindowStore?.();
   unsubscribeWindowStore = null;
+  unsubscribeApps?.();
+  unsubscribeApps = null;
   setWorkbenchHostBridge(null);
 }

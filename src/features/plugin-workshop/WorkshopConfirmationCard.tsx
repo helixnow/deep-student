@@ -35,7 +35,9 @@ export function WorkshopSectionLabel({ children }: { children: React.ReactNode }
 }
 
 /** Stage label key; a work turned off after crashing reads 「已先关掉」, not 「没做成」. */
-export function workshopPhaseKey(item: Pick<WorkshopItem, 'phase' | 'error'>): string {
+export function workshopPhaseKey(item: Pick<WorkshopItem, 'phase' | 'error'> & Partial<Pick<WorkshopItem, 'validation' | 'version' | 'execution'>>): string {
+  if (item.execution?.stage === 'blocked') return 'workshop.phase.blocked';
+  if (item.phase === 'installed' && item.validation?.status === 'passed' && item.validation.version === item.version) return 'workshop.phase.verified';
   if (item.phase === 'failed' && item.error) {
     const key = describeWorkshopError(item.error).key;
     if (key === 'crashed' || key === 'activationFailed') return 'workshop.phase.isolated';
@@ -61,8 +63,13 @@ export function workshopProgressDetail(t: (key: string, options?: Record<string,
 }
 
 /** A failed start the user can fix on the card: an address that could not be read or a missing / unusable value. */
-export function workshopRetryable(item: Pick<WorkshopItem, 'phase' | 'error' | 'settings'>): boolean {
-  return item.phase === 'failed' && Boolean(item.settings?.length) && /WORKSHOP_(?:LINK|SETTING_(?:MISSING|INVALID))\b/.test(item.error ?? '');
+export function workshopValidationBlocked(item: Pick<WorkshopItem, 'phase' | 'execution' | 'validation' | 'installed'>): boolean {
+  return item.phase === 'failed' && item.execution?.stage === 'blocked' && item.validation?.status === 'pending'
+    && item.installed?.phase === 'installed' && item.validation.version === item.installed.version;
+}
+
+export function workshopRetryable(item: Pick<WorkshopItem, 'phase' | 'error' | 'settings'> & Partial<Pick<WorkshopItem, 'execution' | 'validation' | 'installed'>>): boolean {
+  return workshopValidationBlocked(item) || item.phase === 'failed' && Boolean(item.settings?.length) && /WORKSHOP_(?:LINK|SETTING_(?:MISSING|INVALID))\b/.test(item.error ?? '');
 }
 
 const settingReady = (setting: Pick<WorkshopSetting, 'kind' | 'saved'>, value: string) =>
@@ -263,6 +270,9 @@ export function WorkshopConfirmationCard({ item, busy, error, embedded = false, 
       {item.phase === 'editing' && <p data-testid="workshop-editing" className="text-muted-foreground">{t('workshop.agentEditing')}</p>}
       {/* The risk is said once, where the user decides to install. */}
       {item.phase === 'ready' && <p data-testid="workshop-risk" className="text-muted-foreground">{t('workshop.risk')}</p>}
+      {item.phase === 'validating' && <p data-testid="workshop-validating" className="text-muted-foreground">{t('workshop.verifying')}</p>}
+      {item.execution?.stage === 'blocked' && item.execution.reason && <p role="status" data-testid="workshop-blocked-reason" className="text-muted-foreground">{item.execution.reason}</p>}
+      {item.execution?.stage === 'repairing' && item.rollback === 'restored' && <p role="status" className="text-muted-foreground">{t('workshop.repairingRestored')}</p>}
       <div role="status" aria-live="polite" className="space-y-1 break-words empty:hidden">
         {item.progress && <p data-testid="workshop-progress" data-stage={item.progress.stage}>{workshopProgressDetail(t, item.progress)}</p>}
         {item.phase === 'installing' && <p>{t('workshop.installing')}</p>}
@@ -277,7 +287,7 @@ export function WorkshopConfirmationCard({ item, busy, error, embedded = false, 
     </>
   );
   const actionButtons = actions.map(action => {
-    const confirmKind = item.phase === 'ready' ? 'install' : item.phase === 'failed' ? 'retry' : 'start';
+    const confirmKind = workshopValidationBlocked(item) ? 'resumeVerification' : item.phase === 'ready' ? 'install' : item.phase === 'failed' ? 'retry' : 'start';
     const label = action === 'confirm'
       ? t(`workshop.actions.${confirmKind}`)
       : t(deciding ? 'workshop.actions.decline' : 'workshop.actions.stop');

@@ -2,6 +2,7 @@
 // RUST-FIX(RF-P2-manager-redesign): 单状态摘要、详情与显式信任确认。
 // RUST-FIX(RF-P6-manager-cards): 我的插件（卡片）→ 做一个新的（对话开场白）→ 内置能力（安静分组）→ 渠道插件；详情进侧边抽屉。
 import { useRefreshOnReturn } from '@/hooks/useRefreshOnReturn';
+import { WorkshopComposer } from '@/features/plugin-workshop';
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -367,6 +368,8 @@ export function PluginManagerPanel({ controller, errorBudget, uiStatus, models, 
         {state.notice?.kind === 'package' ? (
           <InstallFeedback result={state.notice.result} onDismiss={() => controller.dismissNotice()} />
         ) : null}
+
+        <WorkshopComposer workshop={workshop} disabled={safeMode} />
 
         {/* 一条轻的工具栏：搜索 + 范围。没有底板，不抢「我的插件」的位置。 */}
         <div role="search" data-testid="plugin-toolbar" className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">

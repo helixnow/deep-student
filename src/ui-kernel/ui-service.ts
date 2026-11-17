@@ -281,7 +281,17 @@ export class UiService extends Service {
   /** 插件自报错误（例如后台同步失败），计入该插件的错误预算。 */
   reportError(error: unknown, info: { slot?: string; entryId?: string } = {}): void {
     const scope = this._pluginScope('reportError');
-    this._runtime.errors.report({ pluginId: scope.id, origin: scope.origin, phase: 'report', error, ...info });
+    this._runtime.errors.report({ pluginId: scope.id, origin: scope.origin, version: scope.meta.version, phase: 'report', error, ...info });
+  }
+
+  /** Official recovery UI observes the release that failed, before any asynchronous replacement. */
+  onPluginError(handler: (failure: { id: string; version?: string; error: string }) => void): UiDisposer {
+    if (this._scope()?.origin !== 'builtin') throw new Error('Only builtin UI may observe plugin recovery');
+    return this._runtime.errors.onReport(report => {
+      if (report.origin === 'builtin') return;
+      handler({ id: report.pluginId, version: report.version,
+        error: `${report.phase}: ${report.message}` });
+    });
   }
 
   /** Official recovery UI may observe circuit breakers, never change their budget. */
@@ -347,6 +357,7 @@ export class UiService extends Service {
   contribute<T = unknown, S extends string = string>(slot: OpenSlotName<S>, contribution: SlotContribution<T>): UiDisposer;
   contribute(slot: string, contribution: SlotContribution<unknown>): UiDisposer {
     const { id, origin } = this._ownerOf(this.ctx);
+    const version = this._scope()?.meta.version;
     const skippedOwner = this.slots.definition(slot) ? undefined : this._runtime.skippedSlotOwner(slot);
     if (skippedOwner) {
       this._runtime.dropContribution(id, slot, skippedOwner);
@@ -354,7 +365,7 @@ export class UiService extends Service {
     }
     const value = slot === 'resource.contextMenu' ? scopeResourceMenuRow(contribution.value) : contribution.value;
     const entry = value === contribution.value ? contribution : { ...contribution, value };
-    return this._revocable(`ui.contribute(${slot}:${contribution.id})`, () => this.slots.contribute(slot, id, entry, origin));
+    return this._revocable(`ui.contribute(${slot}:${contribution.id})`, () => this.slots.contribute(slot, id, entry, origin, version));
   }
 
   /** v1 领域快捷方式的入口：参数形状沿用 v1 的宽松声明，不参与 SlotMap 检查。 */
@@ -371,7 +382,7 @@ export class UiService extends Service {
     const scope = this._scope();
     const errors = this._runtime.errors;
     const onError = (error: unknown) => {
-      if (scope) errors.report({ pluginId: scope.id, origin: scope.origin, phase: 'report', error, slot: `lazy:${point.name}` });
+      if (scope) errors.report({ pluginId: scope.id, origin: scope.origin, version: scope.meta.version, phase: 'report', error, slot: `lazy:${point.name}` });
       else console.error(`[ui-plugins] ${point.name}: contribution rejected`, error);
     };
     return this._revocable(`ui.attach(${point.name})`, () => point.attach(register, onError));
@@ -609,7 +620,7 @@ export class UiService extends Service {
         id: item.id,
         order: item.order,
         value: toContentMenuContribution(item, scope?.namespace, (error) => {
-          if (scope) errors.report({ pluginId: scope.id, origin: scope.origin, phase: 'report', error, slot: 'resource.contextMenu', entryId: item.id });
+          if (scope) errors.report({ pluginId: scope.id, origin: scope.origin, version: scope.meta.version, phase: 'report', error, slot: 'resource.contextMenu', entryId: item.id });
           else console.error(`[ui-plugins] context menu item "${item.id}" failed`, error);
         }),
       }),
@@ -661,7 +672,7 @@ export class UiService extends Service {
         {
           pluginId: scope.id,
           isActive: () => scope.active,
-          report: (error) => errors.report({ pluginId: scope.id, origin: scope.origin, phase: 'report', error, slot: `host.on:${event}` }),
+          report: (error) => errors.report({ pluginId: scope.id, origin: scope.origin, version: scope.meta.version, phase: 'report', error, slot: `host.on:${event}` }),
         },
         event,
         handler as (payload: unknown) => void,

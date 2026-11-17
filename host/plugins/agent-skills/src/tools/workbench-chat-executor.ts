@@ -1,4 +1,6 @@
 /** roster.rs:126 `WorkbenchToolExecutor` bound to the chat ExecutionContext (workbench_bridge.rs transport). */
+import { WORKBENCH_READ_TOOLS } from '../../../../../contracts/workbench-read-tools.ts';
+import type { AgentSchemaTool } from '../../api.ts';
 import type { BackendEvents, WindowRef } from '../../../../kernel/api.ts';
 import type { SettingsStore } from '../../../../platform/settings/api.ts';
 import type { FeatureFlagsService } from '../../../../platform/storage/api.ts';
@@ -56,6 +58,12 @@ export class WorkbenchChatToolExecutor implements ToolExecutor {
   private readonly deps: WorkbenchChatToolDeps;
   constructor(deps: WorkbenchChatToolDeps) { this.deps = deps; }
 
+  /** Advertise the existing read-only tools to Host-created conversations as well as the frontend. */
+  schemaTools(): AgentSchemaTool[] {
+    return Object.entries(WORKBENCH_READ_TOOLS).map(([id, tool]) => ({ id, schema: { type: 'function', function: {
+      name: id, description: tool.description, parameters: tool.inputSchema,
+    } } }));
+  }
   name(): string { return this.core.name(); }
   canHandle(toolName: string): boolean { return this.core.canHandle(toolName); }
   sensitivityLevel(toolName: string): 'low' | 'medium' | 'high' { return this.core.sensitivityLevel(toolName); }

@@ -5,6 +5,7 @@ import { requestChatSessionNavigation } from './navigation/pendingChatNavigation
 import { setWorkshopEditing } from './workshopEditing';
 import { invoke } from '@tauri-apps/api/core';
 import { sessionTitleFromText } from './utils/sessionTitleFromText';
+import { adapterManager } from './adapters/AdapterManager';
 
 export const workshopSessions = {
   create(options: { mode: 'chat'; title: string; metadata: Record<string, unknown> }) {
@@ -29,15 +30,35 @@ export const workshopSessions = {
    */
   async prefill(sessionId: string, text: string) {
     const store = sessionManager.getOrCreate(sessionId);
-    store.getState().setInputValue(text);
-    const title = sessionTitleFromText(text);
-    if (!title) return;
+    const { entry, lease } = await adapterManager.getOrCreate(sessionId, store);
     try {
-      await invoke('chat_v2_update_session_settings', { sessionId, settings: { title } });
-      store.setState({ title });
-      if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('chat-v2:sessions-updated'));
-    } catch (error) {
-      console.warn('[workshop] failed to title the starter conversation:', error);
+      if (!entry.isReady || entry.error) throw new Error(entry.error ?? 'Chat connection is not ready');
+      await adapterManager.waitForListenersReady(sessionId);
+      // A cold adapter restores the persisted composer. Apply this new draft after that restore, so it cannot erase it.
+      store.getState().setInputValue(text);
+      const title = sessionTitleFromText(text);
+      if (!title) return;
+      try {
+        await invoke('chat_v2_update_session_settings', { sessionId, settings: { title } });
+        store.setState({ title });
+        if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('chat-v2:sessions-updated'));
+      } catch (error) {
+        console.warn('[workshop] failed to title the starter conversation:', error);
+      }
+    } finally {
+      adapterManager.release(sessionId, lease);
+    }
+  },
+  /** Submit the user's explicit workshop request through the normal chat adapter. */
+  async submit(sessionId: string, text: string) {
+    const store = sessionManager.getOrCreate(sessionId);
+    const { entry, lease } = await adapterManager.getOrCreate(sessionId, store);
+    try {
+      if (!entry.isReady || entry.error) throw new Error(entry.error ?? 'Chat connection is not ready');
+      await adapterManager.waitForListenersReady(sessionId);
+      await store.getState().sendMessage(text);
+    } finally {
+      adapterManager.release(sessionId, lease);
     }
   },
   /** Focus that session's composer (after navigation settles). */

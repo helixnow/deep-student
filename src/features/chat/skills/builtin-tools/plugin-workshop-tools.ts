@@ -4,8 +4,8 @@
  * 让普通会话里的主 Chat Agent 拿到插件工坊的全部 `dstu_plugin_*` schema。用户一句“给我做个…小应用 /
  * 选中时多一个…按钮 / 以后我说…就…”就能进入工坊：发送前的意图预加载见 `../workshopIntent.ts`。
  *
- * 唯一路径：Agent 提出作品（卡片）→ 用户在卡片上点「开始做」（批准生成与试装载）→ Host 生成、编译、自检、修复
- * → 卡片「等你确认」→ 用户点「安装」。Agent 工具没有安装权限，也不能在用户点「开始做」之前写或校验源码。
+ * 明确实施请求：execute=true → Host 生成、编译、激活、独立验收与故障恢复。
+ * 仅讨论方案：execute=false → 保留手动开始和安装。验收所需能力不可用时明确阻塞，不宣称完成。
  *
  * 后端 executor：`host/plugins/plugin-workshop/src/tools.ts`（前端工具名带 `builtin-` 前缀，路由时剥离）。
  *
@@ -38,8 +38,8 @@ export const pluginWorkshopToolsSkill: BuiltinToolSkill = {
   id: 'plugin-workshop-tools',
   name: 'plugin-workshop-tools',
   description:
-    'DSTU 插件工坊：把用户想要的、能留下来反复用的功能做成插件并装进应用。用户说“给我做个…小应用/小工具/插件”“想要一个…工具”“给…加个按钮/选中文字时多一个…按钮”“以后我说『…』就去…”“每次…自动…”“每天晚上帮我…”，或“改这个插件/把『X』改成…/调整插件配置”时使用（一次性的讲解、图表、练习不用它）。用户在卡片上点「开始做」才生成，点「安装」才安装。',
-  version: '1.2.0',
+    'DSTU 插件工坊：把用户想要的、能留下来反复用的功能做成插件并装进应用。用户说“给我做个…小应用/小工具/插件”“想要一个…工具”“给…加个按钮/选中文字时多一个…按钮”“以后我说『…』就去…”“每次…自动…”“每天晚上帮我…”，或“改这个插件/把『X』改成…/调整插件配置”时使用（一次性的讲解、图表、练习不用它）。明确实施委托使用 execute=true，由 Host 自动执行并显示进度；仅讨论时保留提案。',
+  version: '1.3.0',
   author: 'Deep Student',
   priority: 3,
   location: 'builtin',
@@ -50,7 +50,7 @@ export const pluginWorkshopToolsSkill: BuiltinToolSkill = {
   relatedSkills: ['ask-user'],
   content: `# DSTU 插件工坊技能
 
-插件在应用进程内运行，安装即授予完整信任——这不是沙箱。只有用户在卡片上点击才会生成（「开始做」）和安装（「安装」）。
+插件在应用进程内运行，安装即授予完整信任——这不是沙箱。依据用户语义判断是否明确委托实现目标；已委托时由 Host 持续执行，无需重复点击开始和安装。
 
 ## 先判断，再提
 
@@ -66,20 +66,26 @@ export const pluginWorkshopToolsSkill: BuiltinToolSkill = {
    - **改已有作品**：\`builtin-dstu_plugin_status\` 列出所有对话的作品（\`ownedHere\`）。用户说「把『X』改成…」「那个按钮…」「X 插件…」时找到它，
      用它的 \`pluginId\` 提出修改；不属于本对话时卡片会显示「在这个对话里修改『X』」，请用户点一下，再用同一个 \`pluginId\` 重新提出。
 
-## 唯一路径（和用户看到的卡片一致）
+## 从需求到可用作品
 
-1. **马上提出作品**：调用 \`builtin-dstu_plugin_propose_install\`，写清 \`title\`（简短中文名）、\`description\`（目标 + 一个可观察的验收标准）、
-   \`template\`（\`learning-tool\` = Host + 界面；\`host-tool\` = 仅 Host，例如教 AI 助手一个新工具）、\`changes\`、\`capabilities\`（照实写）。
-   新作品不传 \`pluginId\`；修改已有工坊作品时传 \`dstu_plugin_status\` 里的 \`workshop.plugin-...\`。
-   只有用户知道的值（如课表 .ics 地址）放进 \`settings\`：\`[{"key":"calendarUrl","title":"课表日历地址（.ics）","kind":"ics-url"}]\`；
-   用户已经说过才带 \`value\`，绝不编造地址。卡片会在里面向用户要缺的值。
-2. **然后停下**：用一句话请用户看卡片并点「开始做」（有输入框就先填）。点「开始做」就是批准生成代码并在应用里试装载；
-   在那之前 \`write_source\` / \`validate\` 会被拒绝。不要轮询。
-3. **Host 来做**：用模型写源码、编译、试装载/卸载，按确切错误最多修三轮，卡片上实时显示进度；课表地址会被真实读取一次
-   （必须是 VCALENDAR），用户地址的 \`net:<主机>\` 由 Host 声明，修改作品的新版本号也由 Host 生成——你不用改版本号。
-4. **一次点击安装**：卡片显示「等你确认」、能做什么、装好后在哪里找到它和「安装」；用户点击后立即热加载，不需要重启。
-5. **改或修**：用同一个 \`pluginId\` 再提一次（写清 \`changes\`），用户再点「开始做」。只有已经开始过、失败了的作品，才可以自己
-   \`builtin-dstu_plugin_diagnose\` → \`builtin-dstu_plugin_write_source\`（最小修改）→ \`builtin-dstu_plugin_validate\`；期间卡片会显示“AI 正在改代码”。
+1. **判断委托范围**：根据完整对话语义判断用户是否要求实现、修改或修复具体目标。明确实施时调用
+   \`builtin-dstu_plugin_propose_install\`，传 \`execute: true\`；仅询问可行性或希望看方案时省略或传 false。
+   不按关键词决定授权。既有工具审批策略仍生效；缺失密钥、新的不可逆动作需说明具体条件。
+2. **写清目标**：\`title\`（简短中文名）、\`description\`（目标和可观察标准）、\`template\`
+   （\`learning-tool\` = Host + 界面；\`host-tool\` = 仅 Host）、\`changes\`（可观察的要求）和真实 \`capabilities\`。
+   新作品省略 \`pluginId\`；修改使用 status 返回的 \`workshop.plugin-...\`。只有用户知道的值放入 \`settings\`；
+   用户已给出的非密钥值可以带 \`value\`，绝不编造地址，密钥只能通过卡片密码框填写。
+3. **Host 持续执行**：委托后继承父会话实际模型，生成、编译、试装载、激活候选并独立验收，卡片显示进度和取消入口。
+   不重复要求开始或安装，不并行改同一份源码，不创建重复任务。仅提案的旧流程仍保留手动开始和安装。
+   Host 检查日历地址的 VCALENDAR、声明用户地址的 \`net:<主机>\` 并分配版本号。
+4. **根据诊断修复**：可修的编译或运行错误继续修；缺少用户值、能力或外部条件时明确阻塞并说明所缺内容，
+   不设置固定重试轮数。安装失败可恢复最后验收通过的版本，再继续修复既有委托；不能承诺回滚外部数据或网络副作用。
+5. **如实验收**：生成和激活成功不等于可用。当前独立验收只读观察确切候选的真实页面，逐条核对目标并引用本轮成功工具调用。
+   页面已挂载、源码写好了、按钮可见均不能证明点击或数据写入成功。需要交互、插件工具调用等当前不可执行的验证时，
+   明确列出缺少的具体测试并保持 blocked。只有 \`execution.stage=complete\` 且 \`validation.status=passed\` 才报告交付。
+6. **改或修已有作品**：使用同一 \`pluginId\` 并按语义委托规则设置 execute。已授权但失败且 Host 未在生成的作品，可先
+   \`builtin-dstu_plugin_diagnose\`，再最小修改 \`builtin-dstu_plugin_write_source\`、\`builtin-dstu_plugin_validate\`；
+   编译和试装载通过仍不替代实际目标验收。
 
 ## 三类常见作品（Host 生成时照配方写）
 
@@ -99,7 +105,7 @@ export const pluginWorkshopToolsSkill: BuiltinToolSkill = {
 ## 工具与敏感度
 
 - Low（只读）：\`api_list\` / \`api_read\` / \`status\` / \`diagnose\` / \`inventory\` / \`config_get\`。
-- Medium：\`propose_install\`（只建卡片，不写不跑代码；真正的批准在卡片上）、\`write_source\` / \`validate\` / \`rollback\` / \`export\`。
+- Medium：\`propose_install\`（execute=true 委托 Host 实施；省略或 false 只建提案卡片）、\`write_source\` / \`validate\` / \`rollback\` / \`export\`。
   “问一问”模式会拦下它们；“想一想”模式按计划确认；谨慎预设会逐次询问；默认预设不弹审批条。
 - High（需要用户批准）：\`configure\` / \`set_enabled\` / \`app_restart\`。
 
@@ -140,10 +146,11 @@ export const pluginWorkshopToolsSkill: BuiltinToolSkill = {
     {
       name: 'builtin-dstu_plugin_propose_install',
       description:
-        '提出一个托管插件作品，在对话里显示卡片（Medium，只建卡片）。用户点「开始做」后 Host 生成、编译、试装载、最多三轮修复，停在「安装」确认。Agent 永不生成后直接安装。',
+        '创建或修改托管插件（Medium）。用户明确要求实施时 execute=true，Host 自动生成、安装、独立验收与恢复；仅讨论时省略或 false。未验收不能宣称交付。',
       inputSchema: {
         type: 'object',
         properties: {
+          execute: { type: 'boolean', description: '用户明确委托实施该目标时为 true；仅讨论可行性或方案时省略或 false。依据语义判断，不按关键词匹配。' },
           title: { type: 'string', minLength: 1, description: '插件名称' },
           description: { type: 'string', minLength: 1, description: '要解决的问题与一个可观察的验收标准' },
           template: {
@@ -190,7 +197,7 @@ export const pluginWorkshopToolsSkill: BuiltinToolSkill = {
     {
       name: 'builtin-dstu_plugin_validate',
       description:
-        '编译并试装载/卸载一个托管作品（Medium）。只用于用户点过「开始做」、后来失败的作品；不安装；视觉仍未验证。',
+        '编译并试装载/卸载一个托管作品（Medium）。只用于用户已授权实施、后来失败的作品；不安装；视觉仍未验证。',
       inputSchema: {
         type: 'object',
         properties: { id: { type: 'string', minLength: 1, description: '作品 id' } },
@@ -210,7 +217,7 @@ export const pluginWorkshopToolsSkill: BuiltinToolSkill = {
     {
       name: 'builtin-dstu_plugin_write_source',
       description:
-        '只修改本会话中用户点过「开始做」、后来失败的作品的源码（Medium）。Host 生成期间不可用；不能安装，也不能改动已冻结的候选构建。',
+        '只修改本会话中用户已授权实施、后来失败的作品的源码（Medium）。Host 生成期间不可用；不能安装，也不能改动已冻结的候选构建。',
       inputSchema: {
         type: 'object',
         properties: {

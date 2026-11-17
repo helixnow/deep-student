@@ -61,7 +61,7 @@ function renderDefault(slot: string, entry: SlotEntry<unknown>, props: object | 
 }
 
 function report(kernel: UiKernel | null, slot: string, entry: SlotEntry<unknown>, phase: 'render' | 'filter', error: unknown): void {
-  if (kernel) kernel.errors.report({ pluginId: entry.owner, origin: entry.origin, phase, slot, entryId: entry.id, error });
+  if (kernel) kernel.errors.report({ pluginId: entry.owner, origin: entry.origin, version: entry.version, phase, slot, entryId: entry.id, error });
   else console.error(`[ui-plugins] ${entry.owner} failed (${phase} in ${slot}):`, error);
 }
 
@@ -191,7 +191,7 @@ export function SlotEntryScope({ slot, entry, fallback, children }: {
  */
 export function runSlotCallback(kernel: UiKernel | null, slot: string, entry: SlotEntry<unknown>, call: () => unknown): void {
   const fail = (error: unknown) => {
-    if (kernel) kernel.errors.report({ pluginId: entry.owner, origin: entry.origin, phase: 'report', slot, entryId: entry.id, error });
+    if (kernel) kernel.errors.report({ pluginId: entry.owner, origin: entry.origin, version: entry.version, phase: 'report', slot, entryId: entry.id, error });
     else console.error(`[ui-plugins] ${entry.owner} failed (${slot}):`, error);
   };
   try {

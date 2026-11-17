@@ -15,6 +15,8 @@ export interface PluginManagerWork {
 export interface PluginManagerWorkshop {
   /** Open a new workshop conversation; `prompt` is put in the input box, never sent on the user's behalf. */
   onCreate(prompt?: string): void;
+  /** Submit the user's implementation request directly from the workshop entrance. */
+  onSubmit?(prompt: string): Promise<void>;
   onModify(pluginId: string): void;
   onRollback?(pluginId: string): Promise<void>;
   /** Managed works by plugin id. Optional: without it the manager offers no version actions. */
@@ -31,7 +33,10 @@ export interface PluginManagerWorkshop {
   onUninstall?(pluginId: string): Promise<void>;
   /** Works waiting for the user; 「工坊创作记录」 opens by itself when there are any. */
   pending?(): Promise<readonly { pluginId: string; name: string; phase: string }[]>;
+  /** Activity and recoverable works; installed works are shown separately by the manager. */
   creations: ReactNode;
+  /** Complete managed list for standalone workshop entrances, including installed and disabled works. */
+  allCreations?: ReactNode;
 }
 
 let current: PluginManagerWorkshop | undefined;

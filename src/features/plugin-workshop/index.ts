@@ -1,4 +1,5 @@
 export { WorkshopConfirmationCard } from './WorkshopConfirmationCard';
+export { WorkshopComposer } from './WorkshopComposer';
 export { WorkshopCreations } from './WorkshopCreations';
 export { HostWorkshopAdapter, workshopInstallation } from './host-adapter';
 export type { WorkshopRemote, WorkshopCard, WorkshopManagerPort, WorkshopFilesPort } from './host-adapter';

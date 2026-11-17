@@ -40,7 +40,9 @@ export interface WorkbenchHostBridge {
   openAppsPanel(): void;
   toggleAppsPanel(): void;
   activate(request: WorkbenchActivateRequest): Promise<boolean>;
-  launch(request: WorkbenchLaunchRequest): void;
+  /** Actual created/focused window id; null means no desktop window was opened. */
+  launch(request: WorkbenchLaunchRequest): string | null;
+  hasApp(typeId: string): boolean;
   isPdfPageActivationType(typeId: string): boolean;
   openPdfPage(request: WorkbenchOpenPdfRequest): Promise<{ delivered: boolean }>;
   consumeHandoff(): WorkbenchHandoffSnapshot | null;

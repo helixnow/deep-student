@@ -189,7 +189,9 @@ export class WorkshopStore {
     const feasibility = proposalFeasibility(brief);
     if (brief.pluginId !== undefined && !existing) throw new Error('WORKSHOP_INVALID: only managed works can be edited (omit pluginId when creating a new plugin, or pass an existing workshop.plugin-... pluginId)');
     if (existing && !ownsSession(existing, brief.sessionId)) throw new Error('WORKSHOP_INVALID: work belongs to another conversation; user must bind the editing session first');
-    if (existing && ['generating', 'pending-confirmation'].includes(existing.state)) throw new Error('WORKSHOP_STATE: existing work is busy');
+    if (existing && (['generating', 'pending-confirmation'].includes(existing.state) || existing.validation?.status === 'pending' && existing.execution && existing.execution.stage !== 'blocked')) throw new Error('WORKSHOP_STATE: existing work is busy');
+    const installed = existing ? installationOf(existing) : null;
+    const previousVersion = existing?.usableVersion ?? (installed?.state === 'installed' ? installed.version : installed?.previousVersion) ?? existing?.previousVersion ?? null;
     const id = existing?.id ?? randomUUID();
     for (const sub of ['source', 'build', 'versions', 'exports']) await mkdir(join(this.directory(id), sub), { recursive: true });
     const timestamp = new Date().toISOString();
@@ -202,7 +204,11 @@ export class WorkshopStore {
       generationApproved: false, agentEditing: null, state: 'draft', revision, proposalRevision: revision,
       installation: existing?.installation ?? null,
       version: null, usableVersion: existing?.usableVersion ?? null,
-      previousVersion: existing?.usableVersion ?? existing?.previousVersion ?? null, trust: 'full', source: 'workshop',
+      // Preserve the current successful check from records written before per-version retention existed.
+      verifiedVersions: { ...existing?.verifiedVersions,
+        ...(existing?.validation?.status === 'passed' && existing.usableVersion === existing.validation.version
+          ? { [existing.validation.version]: existing.validation } : {}) },
+      previousVersion, trust: 'full', source: 'workshop',
       lastGoodPackageDir: existing?.lastGoodPackageDir ?? null,
       lastFault: existing?.lastFault ?? null,
       risk: '完全信任插件与应用同进程运行，可访问应用能力；不是隔离沙箱。',
@@ -211,7 +217,7 @@ export class WorkshopStore {
   async update(id: string, revision: number, patch: Partial<Pick<WorkshopCard,
     'state' | 'version' | 'previousVersion' | 'usableVersion' | 'lastGoodPackageDir' | 'buildAttempt' | 'buildStage' | 'buildFiles' | 'buildStep'
     | 'settings' | 'generationApproved' | 'agentEditing' | 'lastFault' | 'sessionId' | 'boundSessions' | 'check' | 'error' | 'rollback' | 'declared' | 'places'
-    | 'installation' | 'generation'>>): Promise<WorkshopCard> {
+    | 'installation' | 'generation' | 'execution' | 'validation' | 'verifiedVersions'>>): Promise<WorkshopCard> {
     const card = await this.read(id);
     if (revision !== card.revision) throw new Error('WORKSHOP_CONFLICT: confirmation is stale; refresh status');
     return this.write({ ...card, ...patch, revision: card.revision + 1, updatedAt: new Date().toISOString() });
@@ -227,7 +233,7 @@ export class WorkshopStore {
     return this.write({ ...card, ...patch, updatedAt: new Date().toISOString() });
   }
   async recoverInterrupted(): Promise<void> {
-    for (const card of await this.list()) if (card.state === 'generating') {
+    for (const card of await this.list()) if (card.state === 'generating' && card.execution?.mode !== 'delegated') {
       await this.update(card.id, card.revision, { state: 'failed', error: 'WORKSHOP_STATE: background generation interrupted by Host shutdown' });
     }
   }

@@ -5,7 +5,7 @@
  * Official UI plugins are already installed optimistically before this runs; nothing here blocks the first frame.
  */
 import type { UiKernel } from './kernel';
-import { UiPluginLoader, type LoaderDeps, type UiManifestEntry } from './loader';
+import { UiPluginLoader, type LoaderDeps, type UiManifestEntry, type UiPluginLoadFailure } from './loader';
 import type { HostDegradedPlugin } from './services/host-status';
 import { recordPluginAgentTools } from './services/plugin-tools';
 
@@ -111,6 +111,19 @@ export function resolveCommunityPluginUrl(url: string, origin?: string): string 
   return `${resolvedOrigin.replace(/\/+$/, '')}/api/protocol/ds-plugin/${rest}`;
 }
 
+const loadFailureListeners = new Set<(failure: UiPluginLoadFailure) => void | Promise<void>>();
+
+/** Official recovery assembly observes UI failures, including failures before a plugin could register a view. */
+export function subscribeCommunityUiLoadFailures(listener: (failure: UiPluginLoadFailure) => void | Promise<void>): () => void {
+  loadFailureListeners.add(listener);
+  return () => { loadFailureListeners.delete(listener); };
+}
+
+async function publishLoadFailure(failure: UiPluginLoadFailure): Promise<void> {
+  const results = await Promise.allSettled([...loadFailureListeners].map(listener => Promise.resolve().then(() => listener(failure))));
+  for (const result of results) if (result.status === 'rejected') console.error('[ui-plugins] load failure observer failed', result.reason);
+}
+
 export async function startCommunityUiPlugins(
   kernel: UiKernel,
   bridge?: CommunityUiBridge,
@@ -121,6 +134,7 @@ export async function startCommunityUiPlugins(
   let shared: Promise<unknown> | undefined;
   const loader = new UiPluginLoader(kernel, {
     ready: transport.ready?.bind(transport),
+    onLoadFailure: publishLoadFailure,
     async importModule(url) {
       shared ??= installCommunitySharedModules();
       await shared;

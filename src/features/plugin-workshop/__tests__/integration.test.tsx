@@ -135,3 +135,23 @@ describe('工坊创作记录 reads as one thing', () => {
     expect(text).toContain('旧口诀');
   });
 });
+
+
+describe('standalone workshop creations', () => {
+  it('retains installed and disabled works with modify actions after creation completes', async () => {
+    const f = fixture([
+      { ...item, name: '已完成公式表', phase: 'installed', installed: { phase: 'installed', version: '1' } },
+      { ...item, id: 'workshop.two', proposalId: 'work-2', name: '已停用单词表', phase: 'disabled', installed: { phase: 'disabled', version: '1' } },
+    ]);
+    render(f.integration.workshop.allCreations);
+    await screen.findByText('已完成公式表');
+    expect(screen.getByText('已停用单词表')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '打开已完成公式表' })).toBeInTheDocument();
+    expect(screen.queryByText('还没有作品')).toBeNull();
+    const modify = screen.getAllByRole('button', { name: '让 AI 改' });
+    expect(modify).toHaveLength(2);
+    fireEvent.click(modify[0]!);
+    await waitFor(() => expect(f.sessions.navigate).toHaveBeenCalledWith('chat-a'));
+    expect(f.sessions.prefill).toHaveBeenCalledWith('chat-a', '把『已完成公式表』改成：');
+  });
+});

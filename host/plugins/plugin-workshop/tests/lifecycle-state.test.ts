@@ -119,7 +119,7 @@ describe('workshop lifecycle state', () => {
     const file = join(ops.store.directory(v1.id), 'workshop.json');
     const legacy = JSON.parse(await readFile(file, 'utf8')) as Record<string, unknown>;
     delete legacy.installation; delete legacy.proposalRevision;
-    await writeFile(file, JSON.stringify({ ...legacy, state: 'cancelled', version: null, previousVersion: '1.0.0' }));
+    await writeFile(file, JSON.stringify({ ...legacy, state: 'cancelled', version: null, previousVersion: '1.0.0', usableVersion: '1.0.0', lastGoodPackageDir: join(ops.store.directory(v1.id), 'versions/1.0.0/package') }));
     const migrated = await ops.status(v1.id);
     expect(migrated.installation).toMatchObject({ state: 'installed', version: '1.0.0' });
     expect((await ops.revoke(v1.id, migrated.revision)).installation?.state).toBe('revoked');

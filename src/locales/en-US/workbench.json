@@ -1,4 +1,9 @@
 {
+  "pluginViewApp": {
+    "unavailable": "This plugin is currently unavailable. Check Plugin Workshop for recovery progress or enable it again.",
+    "loading": "Opening plugin…",
+    "failed": "The plugin page encountered a problem and cannot be displayed. Check Plugin Workshop for details and recovery progress."
+  },
   "appName": "Study Desktop",
   "agent": {
     "core": {

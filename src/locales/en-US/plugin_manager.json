@@ -539,12 +539,27 @@
     "navEntry": "A new sidebar entry"
   },
   "workshop": {
+    "verified": "Verified in the app and ready to use. It will load again after restart.",
+    "installedUnverified": "Installed. Functional verification is not complete.",
+    "allCreationsDescription": "Follow progress and verification results, open your creations, or continue changing them.",
+    "verifying": "Opening the feature and checking its actual results. The outcome will appear here.",
+    "repairingRestored": "The last working version has been restored. Repairing this change.",
+    "verifiedDetails": "See verified results",
+    "composer": {
+      "title": "What would you like Deep Student to add or change?",
+      "placeholder": "For example: add a searchable formula reference app to my desktop.",
+      "description": "Describe your request. AI will build, install and check it, restoring the previous version if needed. The task will explain any information it needs from you.",
+      "submit": "Build it with AI",
+      "sending": "Sending…"
+    },
     "label": "Plugin Workshop",
     "phase": {
+      "blocked": "Needs attention",
       "proposed": "Waiting for you",
       "ready": "Waiting for you",
       "generating": "Building",
-      "validating": "Checking itself",
+      "validating": "Verifying",
+      "verified": "Verified",
       "installing": "Installing",
       "installed": "Installed",
       "disabled": "Turned off",
@@ -571,6 +586,7 @@
       }
     },
     "actions": {
+      "resumeVerification": "Resume verification",
       "start": "Start building",
       "install": "Install",
       "decline": "Not this one",
@@ -671,6 +687,8 @@
     },
     "notice": {
       "ready": "“{{name}}” is ready. Go back to the chat and press Install to use it.",
+      "verified": "“{{name}}” is installed and verified. It is ready to use.",
+      "blocked": "“{{name}}” needs something before verification can continue. Check the workshop.",
       "failed": "“{{name}}” could not be made this time. See why in the chat."
     },
     "whereLabelExpected": "Probably found here once installed",

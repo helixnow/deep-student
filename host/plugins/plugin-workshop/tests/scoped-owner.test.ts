@@ -67,6 +67,11 @@ it('P1 scope composition: paired UI background generation, Agent validation/expo
     // Export packs the installed version, so it works once something is installed.
     const exported = await run('dstu_plugin_export');
     expect(exported.success, exported.error).toBe(true);
+    // Installation now starts asynchronous acceptance; use its settled revision for the next user mutation.
+    await vi.waitFor(async () => {
+      card = await ui<WorkshopCard>('status', [card.id]);
+      expect(Boolean(card.error) || card.validation?.status !== 'pending').toBe(true);
+    });
     card = await ui<WorkshopCard>('revoke', [card.id, card.revision]);
     card = await ui<WorkshopCard>('restore', [card.id, card.revision]);
     expect(card.state).toBe('installed');

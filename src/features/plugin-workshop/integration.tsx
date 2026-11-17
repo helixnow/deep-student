@@ -57,7 +57,7 @@ const ACTIVE_PHASES = ['proposed', 'ready', 'generating', 'editing', 'validating
  * Waiting / in-progress / failed works are full cards; uninstalled ones are rows with 恢复. Installed and turned-off
  * works are not repeated here — 「我的插件」 above already shows them as cards.
  */
-function Creations({ adapter, modify }: { adapter: WorkshopAdapter; modify: (id: string) => void }) {
+function Creations({ adapter, modify, includeInstalled = false }: { adapter: WorkshopAdapter; modify: (id: string) => void; includeInstalled?: boolean }) {
   const { t } = useTranslation('plugin_manager');
   const state = useWorkshop(adapter);
   const [showOld, setShowOld] = useState(false);
@@ -66,11 +66,12 @@ function Creations({ adapter, modify }: { adapter: WorkshopAdapter; modify: (id:
   const old = (item: WorkshopItem) => item.phase === 'failed' && !item.installed && item.updatedAt !== undefined
     && now - Date.parse(item.updatedAt) > OLD_FAILURE_MS;
   const oldFailures = state.items.filter(old);
-  const active = state.items.filter(item => ACTIVE_PHASES.includes(item.phase) && (showOld || !old(item)));
-  const restorable = state.items.filter(item => item.phase === 'undone');
+  const active = state.items.filter(item => (ACTIVE_PHASES.includes(item.phase)
+    || includeInstalled && ['installed', 'disabled'].includes(item.phase)) && (showOld || !old(item)));
+  const rows = state.items.filter(item => item.phase === 'undone');
   const clearOld = async () => { for (const item of oldFailures) await state.act('discard', item); };
   return <div className="min-w-0 space-y-3" data-testid="workshop-creations-section">
-    <p className="px-1 text-xs leading-relaxed text-muted-foreground">{t('workshop.creationsDescription')}</p>
+    <p className="px-1 text-xs leading-relaxed text-muted-foreground">{t(includeInstalled ? 'workshop.allCreationsDescription' : 'workshop.creationsDescription')}</p>
     {oldFailures.length > 0 && (
       <div className="flex flex-wrap items-center gap-2 px-1 text-xs text-muted-foreground" data-testid="workshop-old-failures">
         <span>{t('workshop.oldFailures', { count: oldFailures.length })}</span>
@@ -85,8 +86,8 @@ function Creations({ adapter, modify }: { adapter: WorkshopAdapter; modify: (id:
     {active.map(item =>
       <WorkshopProposalCard key={item.proposalId} item={item} busy={state.busyId === item.id} onAction={(action, input) => { void (input ? state.act(action, item, input) : state.act(action, item)); }}
         onRepair={() => modify(item.id)} onRefresh={() => { void state.refresh(); }} />)}
-    {restorable.length > 0 || state.loading || state.error || !active.length
-      ? <WorkshopCreations {...state} items={restorable} showDescription={false} emptyHidden={active.length > 0}
+    {rows.length > 0 || state.loading || state.error || !active.length
+      ? <WorkshopCreations {...state} items={rows} showDescription={false} emptyHidden={active.length > 0}
         onAction={(action, item) => { void state.act(action, item); }} onModify={item => modify(item.id)} />
       : null}
   </div>;
@@ -191,11 +192,21 @@ export function createWorkshopIntegration({ adapter, sessions, reportError, tran
     if (!item) throw new Error('WORKSHOP_ONLY_MANAGED: only workshop-managed works can be changed here');
     return item;
   };
-  const enter = async (pluginId?: string, prompt?: string) => {
-    if (entering) return;
+  const enter = async (pluginId?: string, prompt?: string, submit = false) => {
+    if (entering) {
+      if (submit) throw new Error('WORKSHOP_STATE: a workshop conversation is already opening');
+      return;
+    }
     entering = true;
     try {
-      if (!pluginId) { await openWorkshopSession(sessions, undefined, prompt); return; }
+      if (!pluginId) {
+        const id = await openWorkshopSession(sessions, undefined, prompt);
+        if (submit && prompt?.trim()) {
+          if (!sessions.submit) throw new Error('WORKSHOP_UNAVAILABLE: direct submission is unavailable');
+          await sessions.submit(id, prompt.trim());
+        }
+        return;
+      }
       const item = await managed(pluginId);
       if (item.revision === undefined) throw new Error('WORKSHOP_CONFLICT: card has no revision; refresh it');
       const text = workshopEditPrompt(translate, item);
@@ -212,7 +223,10 @@ export function createWorkshopIntegration({ adapter, sessions, reportError, tran
       const sessionId = await openWorkshopSession(sessions, { pluginId: item.id, version: item.version, workshopId: item.proposalId, revision: item.revision }, text);
       sessions.setEditing?.(sessionId, editing);
       sessions.focus?.(sessionId);
-    } catch (error) { reportError(getErrorMessage(error)); }
+    } catch (error) {
+      if (submit) throw error;
+      reportError(getErrorMessage(error));
+    }
     finally { entering = false; }
   };
   const onCreate = (prompt?: string) => { void enter(undefined, prompt); };
@@ -262,8 +276,9 @@ export function createWorkshopIntegration({ adapter, sessions, reportError, tran
     when: props => Boolean(proposalId(props.toolOutput)),
   };
   return {
-    workshop: { onCreate, onModify, onRollback, works, pending, onRestorePrevious, onUninstall, onExport, describeError,
-      ...(onReveal ? { onReveal } : {}), creations: <Creations adapter={adapter} modify={onModify} /> },
+    workshop: { onCreate, ...(sessions.submit ? { onSubmit: (prompt: string) => enter(undefined, prompt, true) } : {}), onModify, onRollback, works, pending, onRestorePrevious, onUninstall, onExport, describeError,
+      ...(onReveal ? { onReveal } : {}), creations: <Creations adapter={adapter} modify={onModify} />,
+      allCreations: <Creations adapter={adapter} modify={onModify} includeInstalled /> },
     toolResult,
   };
 }

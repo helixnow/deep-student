@@ -21,6 +21,7 @@ import type {
   Size,
 } from './types';
 import { appRegistry } from './appRegistry';
+import { notifyWorkbenchHostChanged } from '@/shared/workbenchHost';
 import { planBesidePlacement } from './besidePlacement';
 import { tilingPairKey } from './tiling';
 import {
@@ -269,7 +270,9 @@ function launchBeside(req: LaunchRequest): string {
 export const workbenchBus = {
   /** 由设置层（P10）在开关变化时调用 */
   setEnabled(value: boolean): void {
+    if (enabled === value) return;
     enabled = value;
+    notifyWorkbenchHostChanged();
   },
 
   isEnabled(): boolean {
