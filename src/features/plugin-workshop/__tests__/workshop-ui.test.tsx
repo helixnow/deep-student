@@ -7,7 +7,7 @@ import { useWorkshop } from '../useWorkshop';
 import { describeWorkshopError } from '../errors';
 import { workshopActions, type WorkshopAdapter, type WorkshopItem } from '../types';
 
-vi.mock('react-i18next', async (importOriginal) => ({ ...(await importOriginal<object>()), ...(await import('../../plugin-manager/__tests__/i18nMock')).i18nMock() }));
+vi.mock('react-i18next', async () => (await import('../../plugin-manager/__tests__/i18nMock')).i18nMock());
 
 const item: WorkshopItem = {
   id: 'vocabulary', proposalId: 'proposal-1', name: '每日单词', version: '2', previousVersion: '1',

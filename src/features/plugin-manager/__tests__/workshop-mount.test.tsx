@@ -8,10 +8,7 @@ import { PluginManagerController } from '../controller';
 import { registerPluginManagerWorkshop } from '../workshop';
 import { FakePluginManagerAdapter } from './fixtures';
 
-vi.mock('react-i18next', async (importOriginal) => ({
-  ...await importOriginal<typeof import('react-i18next')>(),
-  ...await (await import('./i18nMock')).i18nMock(),
-}));
+vi.mock('react-i18next', async () => (await import('./i18nMock')).i18nMock());
 
 describe('P2/P4 composition', () => {
   it('mounts the actual P4 creations and session callbacks when root ports arrive, then revokes them', async () => {
