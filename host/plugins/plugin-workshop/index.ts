@@ -2,6 +2,7 @@
 import { definePlugin } from '../../kernel/api.ts';
 import type { DstuPluginInstaller } from '../../kernel/plugin-admin.ts';
 import type {} from '../../platform/paths/api.ts';
+import type { StartupFinalizerOptions } from '../../platform/storage/api.ts';
 import type {} from '../agent-skills/api.ts';
 import type {} from '../chat/api.ts';
 import type {} from '../chat-pipeline/api.ts';
@@ -52,7 +53,6 @@ export default definePlugin({
     operations.bindAdmin(installer);
     // App process lifecycle belongs to the shell; plugin install/config never needs a restart.
     operations.bindRestart(() => ctx.shell.request('plugin:process|restart'));
-    await operations.ready();
     const catalog = new WorkshopCatalog(() => installer.plugins(), undefined, name => ctx.get(name) !== undefined);
     // Registration is owned by this builtin. Agent dispatch may run in chat's fiber, not this one.
     const executor = new WorkshopToolExecutor(operations, catalog);
@@ -73,7 +73,8 @@ export default definePlugin({
       execute: Object.freeze((call: unknown, context: unknown) => pluginExecution.run(ctx.fiber, () => executor.execute(call as ToolCall, context as ExecutionContext))),
     });
     const tools = ctx.agentTools.registerToolExecutors([dispatcher]);
-    ctx.effect(() => () => { tools.dispose(); operations.dispose(); });
+    const startup = new AbortController();
+    ctx.effect(() => () => { startup.abort(); tools.dispose(); operations.dispose(); });
     // Plain facade: private compiler/admin/generation ports are not remotely reachable.
     const facade: Record<string, (...args: unknown[]) => Promise<unknown>> = {};
     facade.developmentSkill = Object.freeze(async (...args: unknown[]) => {
@@ -87,7 +88,19 @@ export default definePlugin({
       });
     }
     ctx.provide('pluginWorkshop', Object.freeze(facade));
-    // Resume only after generation, settings and authorization dependencies are installed.
-    await operations.resumeDelegated();
+    // The user profile must finish loading before its running versions can reconcile workshop records.
+    const reconcile = () => pluginExecution.run(ctx.fiber, async () => {
+      if (startup.signal.aborted) return;
+      await operations.ready();
+      await operations.resumeDelegated();
+    });
+    const storage = ctx.get('storage');
+    if (typeof storage?.registerFinalizer === 'function') {
+      const options: StartupFinalizerOptions & { late: 'run'; signal: AbortSignal } = { late: 'run', signal: startup.signal };
+      storage.registerFinalizer('plugin-workshop.reconcile', async () => {
+        try { await reconcile(); }
+        catch (error) { ctx.logger('plugin-workshop').warn(`Startup reconciliation failed: ${String(error)}`); }
+      }, options);
+    } else await reconcile();
   },
 });

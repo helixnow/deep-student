@@ -6,5 +6,5 @@ import { expect, it } from 'vitest';
 
 it('delegated lifecycle uses the real package manager, activated service, recovery and persisted state', async () => {
   const result = await promisify(execFile)(process.execPath, ['--test-reporter=tap', fileURLToPath(new URL('./delegated-lifecycle-probe.ts', import.meta.url))], { timeout: 35_000 });
-  expect(result.stdout).toContain('# pass 10');
+  expect(result.stdout).toContain('# pass 12');
 }, 40_000);

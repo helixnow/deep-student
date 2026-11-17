@@ -93,7 +93,7 @@ export class WorkshopOperations implements Omit<PluginWorkshopService, 'developm
     if (!work) return;
     await this.serial(work.id, async () => {
       const card = await this.store.read(work.id);
-      if (card.version !== result.attemptedVersion) return;
+      if (card.pendingRestore || card.version !== result.attemptedVersion) return;
       const installed = installationOf(card);
       if (result.success) {
         // Activation is not behavior verification. Only the verifier may advance the usable pointer.
@@ -165,10 +165,14 @@ export class WorkshopOperations implements Omit<PluginWorkshopService, 'developm
     await this.store.recoverInterrupted();
     if (!this.admin) return;
     const inventory = await this.admin.inventory();
+    if (inventory.safeMode) return;
     for (const card of await this.store.list()) {
       const installed = inventory.plugins.find(entry => entry.id === card.pluginId);
       const installation = installationOf(card);
-      if (card.state === 'cancelled' && card.validation?.status === 'pending' && installation?.version === card.validation.version) {
+      if (card.pendingRestore) {
+        try { await this.restoreVersion(card.id, card.revision, card.pendingRestore.repair); }
+        catch (error) { writeHostStderr(`[plugin-workshop] could not finish rollback of ${card.id}: ${String(error)}\n`); }
+      } else if (card.state === 'cancelled' && card.validation?.status === 'pending' && installation?.version === card.validation.version) {
         await this.reportFault(card.id, 'WORKSHOP_CANCELLED: candidate verification cancelled', card.validation.version);
         const current = await this.status(card.id);
         await this.store.update(card.id, current.revision, { state: 'cancelled', execution: null });
@@ -180,11 +184,14 @@ export class WorkshopOperations implements Omit<PluginWorkshopService, 'developm
           ...(card.execution ? { execution: { ...card.execution, stage: 'validating' } } : {}) });
       } else if (installed?.state === 'degraded' && installation?.state === 'installed' && !isCompatibilityFailure(installed.reason)) {
         await this.reportFault(card.id, installed.reason ?? 'Plugin activation failed');
-      } else if (installed?.state === 'running' && installed.version && installed.version === card.previousVersion && card.state === 'installed' && installed.version !== card.version) {
-        await this.store.update(card.id, card.revision, { state: 'failed', error: 'Installed candidate is not active; retained version is running',
-          installation: { previousVersion: null, ...installation, state: 'installed', version: installed.version },
-          ...(card.execution ? { execution: { ...card.execution, stage: 'repairing' } } : {}),
-          ...(card.validation ? { validation: { ...card.validation, status: 'failed', detail: 'Candidate was not active after Host restart' } } : {}) });
+      } else if (card.state === 'installed' && installed?.source === 'workshop' && installed.state === 'running' && installed.version
+        && installed.version !== card.version && [installation?.previousVersion, card.previousVersion, card.usableVersion].includes(installed.version)) {
+        // Older builds could switch the package without recording the rollback. Adopt the known running release.
+        await this.recordRestore(card, { version: installed.version, previousVersion: null, repair: card.execution?.stage === 'repairing' });
+      } else if (card.state === 'installed' && card.rollback === 'restored' && card.validation?.status !== 'pending'
+        && (card.execution?.stage === 'validating' || card.execution?.stage === 'blocked')) {
+        // Older successful rollbacks could leave the superseded candidate's task attached on disk.
+        await this.store.update(card.id, card.revision, { execution: null, error: null });
       }
     }
   }
@@ -296,6 +303,7 @@ export class WorkshopOperations implements Omit<PluginWorkshopService, 'developm
       if (this.disposed) throw new Error('WORKSHOP_UNAVAILABLE: Host is shutting down');
       const present = await this.status(id);
       if (present.revision !== revision) throw new Error('WORKSHOP_CONFLICT: confirmation is stale');
+      if (present.pendingRestore) throw new Error('WORKSHOP_STATE: finish the pending rollback first');
       if (!resume && present.state === 'installed' && present.execution?.stage === 'blocked'
         && present.validation?.status === 'pending' && installationOf(present)?.version === present.validation.version) {
         // The candidate is already installed. Retry only its interrupted acceptance with the same attempt identity.
@@ -345,7 +353,7 @@ export class WorkshopOperations implements Omit<PluginWorkshopService, 'developm
   /** Called once after every dependency is bound. Reconcile disk state before resuming the unfinished phase. */
   async resumeDelegated(): Promise<void> {
     for (const card of await this.store.list()) {
-      if (this.disposed || this.jobs.has(card.id)) continue;
+      if (this.disposed || this.jobs.has(card.id) || card.pendingRestore) continue;
       if (!card.execution && card.state === 'installed' && card.validation?.status === 'pending') {
         this.startVerification(card); continue;
       }
@@ -422,7 +430,7 @@ export class WorkshopOperations implements Omit<PluginWorkshopService, 'developm
       ok: result.status === 'passed' && result.evidence.length > 0,
       detail: result.error ?? (result.status === 'passed' && !result.evidence.length ? 'Verification returned no actual operation evidence' : undefined),
       evidence: result.evidence,
-    });
+    }, controller);
   }
   /**
    * Put the source of the version in use back into `source/` before a modification is made. The previous draft is kept
@@ -627,10 +635,11 @@ export class WorkshopOperations implements Omit<PluginWorkshopService, 'developm
     if (outcome?.ok !== false) throw new Error('WORKSHOP_VERIFICATION_REQUIRED: only runtime verification can mark a version usable');
     return this.completeValidation(id, version, revision, outcome);
   }
-  private async completeValidation(id: string, version: string, revision: number, outcome: WorkshopValidationOutcome): Promise<WorkshopCard> {
+  private async completeValidation(id: string, version: string, revision: number, outcome: WorkshopValidationOutcome, controller?: AbortController): Promise<WorkshopCard> {
     const validated = await this.serial(id, async () => {
       const card = await this.status(id);
-      if (card.validation?.version !== version || card.validation.revision !== revision
+      if (card.pendingRestore || controller && (controller.signal.aborted || this.jobs.get(id) !== controller)
+        || card.validation?.version !== version || card.validation.revision !== revision
         || card.validation.status !== 'pending' || installationOf(card)?.version !== version
         || installationOf(card)?.state !== 'installed' || card.state === 'cancelled') return null;
       const validation = { ...card.validation, status: outcome.ok ? 'passed' as const : 'failed' as const,
@@ -648,7 +657,7 @@ export class WorkshopOperations implements Omit<PluginWorkshopService, 'developm
     const failed = await this.serial(id, async () => {
       const card = await this.status(id);
       const installed = installationOf(card);
-      if (installed?.state !== 'installed' || typeof version === 'string' && installed.version !== version) return null;
+      if (card.pendingRestore || installed?.state !== 'installed' || typeof version === 'string' && installed.version !== version) return null;
       this.jobs.get(id)?.abort();
       this.jobs.delete(id);
       await this.admin?.isolateManaged?.(card.pluginId);
@@ -671,7 +680,7 @@ export class WorkshopOperations implements Omit<PluginWorkshopService, 'developm
       : installationOf(failed)?.previousVersion ?? (isOpenProposal(failed.state) ? null : failed.previousVersion);
     let recovered = failed;
     if (previous && previous !== badVersion && !(installationOf(failed)?.state === 'installed' && installationOf(failed)?.version === previous)) {
-      try { recovered = await this.restore(id, failed.revision); }
+      try { recovered = await this.restoreVersion(id, failed.revision, true); }
       catch (cause) {
         const current = await this.status(id);
         return this.store.update(id, current.revision, { state: 'failed', rollback: 'failed', error: `${error}\nRecovery: ${String(cause)}`,
@@ -718,6 +727,7 @@ export class WorkshopOperations implements Omit<PluginWorkshopService, 'developm
   install(id: string, revision: number): Promise<WorkshopCard> {
     return this.serial(id, async () => {
       const card = await this.expected(id, revision, ['pending-confirmation']);
+      if (card.pendingRestore) throw new Error('WORKSHOP_STATE: finish the pending rollback first');
       await this.assertExecutionAllowed();
       const owner = this.owner();
       // User approved the frozen build, not whatever source the Agent edited afterwards.
@@ -787,13 +797,16 @@ export class WorkshopOperations implements Omit<PluginWorkshopService, 'developm
         if (!inventory.revision) throw new Error('WORKSHOP_INSTALL_UNAVAILABLE: profile is read-only');
         await owner.uninstall(card.pluginId, inventory.revision);
       }
-      return this.store.update(id, revision, { execution: null, validation: null, ...(isOpenProposal(card.state) ? {} : { state: 'revoked' as const }),
+      return this.store.update(id, revision, { execution: null, validation: null, pendingRestore: null, ...(isOpenProposal(card.state) ? {} : { state: 'revoked' as const }),
         installation: installed ? { ...installed, state: 'revoked' } : null });
     });
   }
   restore(id: string, revision: number): Promise<WorkshopCard> {
+    return this.restoreVersion(id, revision, false);
+  }
+  private restoreVersion(id: string, revision: number, repair: boolean): Promise<WorkshopCard> {
     return this.serial(id, async () => {
-      const card = await this.store.read(id);
+      let card = await this.store.read(id);
       if (card.revision !== revision) throw new Error('WORKSHOP_CONFLICT: confirmation is stale');
       const installed = installationOf(card);
       if (!installed && !['revoked', 'failed', 'installed'].includes(card.state)) throw new Error(`WORKSHOP_STATE: cannot act in ${card.state}`);
@@ -801,41 +814,49 @@ export class WorkshopOperations implements Omit<PluginWorkshopService, 'developm
       const owner = this.owner(), inventory = await owner.inventory();
       // Installed in the record but gone from the manager (removed outside the workshop): bring back this version.
       const removed = installed?.state === 'revoked' || (installed?.state === 'installed' && !inventory.plugins.some(entry => entry.id === card.pluginId));
-      const retainedVersion = removed ? card.usableVersion ?? installed?.version
-        : card.usableVersion && card.usableVersion !== installed?.version ? card.usableVersion : installed?.previousVersion ?? (isOpenProposal(card.state) ? null : card.previousVersion) ?? card.usableVersion;
+      let pending = card.pendingRestore;
+      const retainedVersion = pending?.version ?? (removed ? card.usableVersion ?? installed?.version
+        : card.usableVersion && card.usableVersion !== installed?.version ? card.usableVersion : installed?.previousVersion ?? (isOpenProposal(card.state) ? null : card.previousVersion) ?? card.usableVersion);
       if (!retainedVersion) throw new Error('WORKSHOP_STATE: no successful version retained');
       if (!inventory.revision) throw new Error('WORKSHOP_INSTALL_UNAVAILABLE: profile is read-only');
-      const versionRoot = join(this.store.directory(id), 'versions', retainedVersion);
-      const built = await compileWorkshop(
-        join(versionRoot, 'source'),
-        join(this.store.directory(id), 'build'),
-        card.pluginId,
-        this.app,
-        { displayName: card.title, description: card.description },
-      );
+      const active = inventory.plugins.find(entry => entry.id === card.pluginId);
+      if (pending && active?.source === 'workshop' && active.version === retainedVersion && active.state === 'running') {
+        await this.applySettings(card);
+        return this.recordRestore(card, pending);
+      }
+      const built = await compileWorkshop(join(this.store.directory(id), 'versions', retainedVersion, 'source'),
+        join(this.store.directory(id), 'build'), card.pluginId, this.app, { displayName: card.title, description: card.description });
       await this.checkLifecycle(built);
-      if (!built.check.ok || !built.manifest) throw new Error(`WORKSHOP_INVALID: ${built.check.errors.join('\n')}`);
+      if (!built.check.ok || built.manifest?.version !== retainedVersion) throw new Error(`WORKSHOP_INVALID: cannot restore ${retainedVersion}: ${built.check.errors.join('\n')}`);
+      if (!pending) {
+        pending = { version: retainedVersion, previousVersion: removed ? installed?.previousVersion ?? null : null,
+          repair, check: built.check, declared: built.declared ?? [], places: built.places ?? [] };
+        card = await this.store.update(id, revision, { pendingRestore: pending });
+      }
+      if (!isOpenProposal(card.state)) { this.jobs.get(id)?.abort(); this.jobs.delete(id); }
       const result = await owner.installManagedDirectory({ id: card.pluginId, directory: built.directory, revision: inventory.revision,
-        version: built.manifest.version, permissions: built.manifest.permissions, confirmed: true });
+        version: retainedVersion, permissions: built.manifest.permissions, confirmed: true });
       if (owner.activateManaged) await owner.activateManaged(card.pluginId, result.revision);
       await this.applySettings(card);
-      const installation: WorkshopInstallation = { state: 'installed', version: retainedVersion,
-        previousVersion: removed ? installed?.previousVersion ?? null : null };
-      // Activation alone cannot certify a legacy/manual release. Restore the behavior check of the release
-      // actually running, and never leave recovery pointing at the newer version the user just withdrew.
-      const validation = card.verifiedVersions?.[retainedVersion]
-        ?? (card.validation?.version === retainedVersion && card.validation.status === 'passed' ? card.validation : null);
-      const usable = validation?.status === 'passed' || card.usableVersion === retainedVersion;
-      const recovery = { usableVersion: usable ? retainedVersion : null,
-        lastGoodPackageDir: usable ? join(versionRoot, 'package') : null };
-      // A proposal in progress keeps its own step and candidate; only the installed version changes.
-      if (isOpenProposal(card.state)) {
-        return this.store.update(id, revision, { installation, rollback: 'restored', ...recovery });
-      }
-      return this.store.update(id, revision, { state: 'installed', version: retainedVersion, check: built.check, error: null, rollback: 'restored', installation,
-        declared: built.declared ?? [], places: built.places ?? [], validation, previousVersion: installation.previousVersion ?? null,
-        ...(card.execution?.stage === 'complete' && !validation ? { execution: null } : {}), ...recovery });
+      return this.recordRestore(card, pending);
     });
+  }
+  private recordRestore(card: WorkshopCard, restored: Pick<NonNullable<WorkshopCard['pendingRestore']>, 'version' | 'previousVersion' | 'repair'> & Partial<Pick<WorkshopCard, 'check' | 'declared' | 'places'>>): Promise<WorkshopCard> {
+    const { id } = card;
+    const { version, previousVersion, repair } = restored;
+    const installation: WorkshopInstallation = { state: 'installed', version, previousVersion };
+    const validation = card.verifiedVersions?.[version]
+      ?? (card.validation?.version === version && card.validation.status === 'passed' ? card.validation : null);
+    const usable = validation?.status === 'passed' || card.usableVersion === version;
+    const recovery = { installation, rollback: 'restored' as const, pendingRestore: null,
+      usableVersion: usable ? version : null,
+      lastGoodPackageDir: usable ? join(this.store.directory(id), 'versions', version, 'package') : null };
+    // A separate proposal may still be in progress. Preserve its step and source.
+    if (isOpenProposal(card.state)) return this.store.update(id, card.revision, { ...recovery, previousVersion: version });
+    this.jobs.get(id)?.abort(); this.jobs.delete(id);
+    return this.store.update(id, card.revision, { state: 'installed', version, previousVersion, validation,
+      check: restored.check ?? null, declared: restored.declared, places: restored.places, error: repair ? card.error : null,
+      execution: repair && card.execution ? { ...card.execution, stage: 'repairing' } : null, ...recovery });
   }
   /**
    * The package of the approved version in use (the immutable `versions/<v>/package` the user installed), never a
