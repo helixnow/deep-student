@@ -259,6 +259,63 @@ await test('restoring an unverified predecessor clears newer recovery pointers w
   } finally { ops.dispose(); await f.runtime.dispose(); }
 });
 
+for (const interruptFinalWrite of [false, true]) {
+  await test(interruptFinalWrite ? 'reconciles a rollback interrupted after activating its retained release'
+    : 'manual rollback aborts validation and ignores a late blocked result', async () => {
+    const f = await fixture(); let ops = f.ops; let generations = 0;
+    const late = gate<WorkshopVerificationResult>();
+    let oldSignal: AbortSignal | undefined;
+    const generate = async (work: WorkshopCard, source: string) => {
+      await f.generate(work, source);
+      const path = join(source, 'index.ts');
+      const text = await readFile(path, 'utf8');
+      if (++generations === 2) await writeFile(path, text.replace('Recall: ${word}', 'Withdrawn: ${word}'));
+      if (generations === 3) assert.match(text, /Recall: \$\{word\}/);
+    };
+    try {
+      ops.bindGeneration({ generate, verify: f.verify });
+      let card = await ops.propose(brief); await ops.delegate(card.id, card.revision); card = await settled(ops, card.id, 'complete');
+      const previousValidation = card.validation;
+      ops.bindGeneration({ generate, verify: async (work, _source, signal) => {
+        if (!interruptFinalWrite) { oldSignal = signal; return late.promise; }
+        const service = f.runtime.ctx.get(pluginServiceName(work.pluginId)) as { review(words: string[]): unknown };
+        assert.deepEqual(service.review(['orbit']), [{ word: 'orbit', prompt: 'Withdrawn: orbit' }]);
+        return { status: 'passed', evidence: ['Actual service returned Withdrawn: orbit'] };
+      } });
+      card = await ops.propose({ ...brief, pluginId: card.pluginId }); await ops.delegate(card.id, card.revision);
+      if (interruptFinalWrite) {
+        card = await settled(ops, card.id, 'complete');
+        const update = ops.store.update.bind(ops.store);
+        ops.store.update = (id, revision, patch) => {
+          if (patch.rollback === 'restored') return Promise.reject(new Error('interrupted final rollback write'));
+          return update(id, revision, patch);
+        };
+        await assert.rejects(ops.restore(card.id, card.revision), /interrupted final rollback write/);
+        card = await ops.status(card.id);
+        assert.equal(card.pendingRestore?.version, '1.0.0'); assert.equal(card.usableVersion, '1.0.1');
+        assert.equal((await f.installer.inventory()).plugins.find(item => item.id === card.pluginId)?.version, '1.0.0');
+      } else {
+        await waitFor(() => Boolean(oldSignal), () => ops.status(card.id));
+        card = await ops.status(card.id); card = await ops.restore(card.id, card.revision);
+        assert.equal(oldSignal?.aborted, true); assert.equal(card.execution, null);
+        late.resolve({ status: 'blocked', evidence: [], error: 'Withdrawn verification came back late' });
+        await new Promise(resolve => setImmediate(resolve));
+        assert.deepEqual(await ops.status(card.id), card);
+      }
+      ops.dispose(); ops = new WorkshopOperations(f.app); ops.bindAdmin(f.installer); await ops.ready();
+      ops.bindGeneration({ generate, verify: f.verify }); await ops.resumeDelegated();
+      card = await ops.status(card.id);
+      assert.equal(card.pendingRestore, null); assert.equal(card.execution, null);
+      assert.equal(card.version, '1.0.0'); assert.equal(card.installation?.version, '1.0.0'); assert.equal(card.usableVersion, '1.0.0');
+      assert.equal(card.lastGoodPackageDir, join(ops.store.directory(card.id), 'versions/1.0.0/package'));
+      assert.deepEqual(card.validation, previousValidation); await f.verify(card);
+      card = await ops.propose({ ...brief, pluginId: card.pluginId }); await ops.delegate(card.id, card.revision);
+      card = await settled(ops, card.id, 'complete');
+      assert.equal(card.version, '1.0.2'); assert.equal(card.installation?.previousVersion, '1.0.0');
+    } finally { late.resolve({ status: 'blocked', evidence: [] }); ops.dispose(); await f.runtime.dispose(); }
+  });
+}
+
 await test('startup finishes isolation when cancellation was persisted before candidate cleanup', async () => {
   const f = await fixture(); let ops = f.ops;
   const interrupted = gate<WorkshopVerificationResult>(); let verifying = false;

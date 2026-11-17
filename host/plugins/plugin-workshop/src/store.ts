@@ -189,7 +189,7 @@ export class WorkshopStore {
     const feasibility = proposalFeasibility(brief);
     if (brief.pluginId !== undefined && !existing) throw new Error('WORKSHOP_INVALID: only managed works can be edited (omit pluginId when creating a new plugin, or pass an existing workshop.plugin-... pluginId)');
     if (existing && !ownsSession(existing, brief.sessionId)) throw new Error('WORKSHOP_INVALID: work belongs to another conversation; user must bind the editing session first');
-    if (existing && (['generating', 'pending-confirmation'].includes(existing.state) || existing.validation?.status === 'pending' && existing.execution && existing.execution.stage !== 'blocked')) throw new Error('WORKSHOP_STATE: existing work is busy');
+    if (existing && (existing.pendingRestore || ['generating', 'pending-confirmation'].includes(existing.state) || existing.validation?.status === 'pending' && existing.execution && existing.execution.stage !== 'blocked')) throw new Error('WORKSHOP_STATE: existing work is busy');
     const installed = existing ? installationOf(existing) : null;
     const previousVersion = existing?.usableVersion ?? (installed?.state === 'installed' ? installed.version : installed?.previousVersion) ?? existing?.previousVersion ?? null;
     const id = existing?.id ?? randomUUID();
@@ -217,7 +217,7 @@ export class WorkshopStore {
   async update(id: string, revision: number, patch: Partial<Pick<WorkshopCard,
     'state' | 'version' | 'previousVersion' | 'usableVersion' | 'lastGoodPackageDir' | 'buildAttempt' | 'buildStage' | 'buildFiles' | 'buildStep'
     | 'settings' | 'generationApproved' | 'agentEditing' | 'lastFault' | 'sessionId' | 'boundSessions' | 'check' | 'error' | 'rollback' | 'declared' | 'places'
-    | 'installation' | 'generation' | 'execution' | 'validation' | 'verifiedVersions'>>): Promise<WorkshopCard> {
+    | 'installation' | 'generation' | 'execution' | 'validation' | 'verifiedVersions' | 'pendingRestore'>>): Promise<WorkshopCard> {
     const card = await this.read(id);
     if (revision !== card.revision) throw new Error('WORKSHOP_CONFLICT: confirmation is stale; refresh status');
     return this.write({ ...card, ...patch, revision: card.revision + 1, updatedAt: new Date().toISOString() });

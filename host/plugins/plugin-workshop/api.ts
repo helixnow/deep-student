@@ -86,6 +86,11 @@ export interface WorkshopCard extends WorkshopFeasibility {
   trust: 'full'; source: 'workshop'; risk: string; check: WorkshopCheck | null;
   error: string | null; previousVersion: string | null; createdAt: string; updatedAt: string;
   rollback?: 'not-needed' | 'restored' | 'failed';
+  /** The requested rollback, saved before changing the package manager's active release. */
+  pendingRestore?: {
+    version: string; previousVersion: string | null; repair: boolean;
+    check: WorkshopCheck; declared: string[]; places: WorkshopPlace[];
+  } | null;
   /** Last version whose requested behavior was verified in the real application, not merely activated. */
   usableVersion?: string | null;
   /** Immutable managed package last verified; unverified or failed candidates never replace it. */
