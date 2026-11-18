@@ -1,9 +1,13 @@
+import { invoke } from '@tauri-apps/api/core';
+import { normalizeSandboxPath, opfsReadFile, inferMimeType } from './opfs.ts';
 import { Capacitor, registerPlugin, type PluginListenerHandle } from '@capacitor/core';
 import type { InvokeMessage } from '../../../electron/shell/bridge-messages.ts';
 
 type Permission = 'granted' | 'denied' | 'prompt';
 type NotificationOptions = { title: string; body: string; target?: string; pomodoroDeadline?: number };
-type ChosenDocument = { id: string; name: string } | { cancelled: true };
+export type ShareFile = { id: string; name: string; mime: string };
+export type IncomingShare = { id: string; receivedAt: number; files?: ShareFile[]; text?: string; error?: string; canRetry?: boolean };
+type ChosenDocument = { id: string; name: string; path?: string } | { cancelled: true };
 type DocumentChunk = { data: string } | { done: true };
 type WriterCommand = { kind: 'open'; path: string } | { kind: 'write'; bytes: Uint8Array } | { kind: 'close' } | { kind: 'abort' };
 
@@ -15,6 +19,13 @@ interface DeepStudentNativePlugin {
   setNotificationPolicy(options: { policy: string }): Promise<void>;
   setPomodoroAlarm(options: { deadline: number; title?: string; body?: string }): Promise<void>;
   addListener(event: 'notificationAction', listener: (payload: { target: string }) => void): Promise<PluginListenerHandle>;
+  addListener(event: 'receivedShare', listener: (payload: IncomingShare) => void): Promise<PluginListenerHandle>;
+  openIncomingFile(options: { id: string }): Promise<{ id: string; size: number }>;
+  retryIncomingShare(options: { id: string }): Promise<IncomingShare>;
+  finishIncomingShare(options: { id: string }): Promise<void>;
+  startShareListener(): Promise<{ shares: IncomingShare[] }>;
+  prepareExternalFile(options: { name: string }): Promise<{ id: string }>;
+  openExternal(options: { id: string; mode: string }): Promise<{ action: string }>;
   decodeHeic(options: { data: string }): Promise<{ data: string }>;
   createDocument(options: { fileName: string; mimeType: string }): Promise<ChosenDocument>;
   openDocument(): Promise<ChosenDocument>;
@@ -105,6 +116,16 @@ export function createAndroidInvokeHandler(
         if (input.length === 0 || input.length > MAX_HEIC_BYTES) throw new Error('HEIC attachment is empty or larger than 24 MiB');
         return native.decodeHeic({ data: encodeBase64(input) }).then(({ data }) => decodeBase64(data));
       }
+      case 'mobile_export_resource': {
+        const { path, name } = jsonArgs(message);
+        if (typeof path !== 'string' || typeof name !== 'string') throw new Error('Invalid file');
+        return readShareableFile(path).then(file => saveAndroidDocument(file, name, inferMimeType(name)));
+      }
+      case 'open_file_externally': {
+        const { path, mode } = jsonArgs(message);
+        if (typeof path !== 'string' || !(mode === 'view' || mode === 'share')) throw new Error('Invalid external file request');
+        return openAndroidFile(path, mode);
+      }
       case 'mobile_save_document': {
         if (message.payload.contentType === 'application/octet-stream') {
           const fileName = decodeURIComponent(message.headers['x-file-name'] ?? '');
@@ -137,11 +158,16 @@ async function saveStagedSubtitle(name: string, fileName: string, mimeType: stri
   }
 }
 
-export async function saveAndroidDocument(file: Blob, fileName: string, mimeType: string): Promise<{ method: string } | null> {
+export async function saveAndroidDocument(file: Blob, fileName: string, mimeType: string): Promise<{ method: string; path?: string } | null> {
   if (fileName.trim() === '' || /[/\\\x00]/.test(fileName)) throw new Error('A file name is required');
   const selection = await native.createDocument({ fileName, mimeType });
   if ('cancelled' in selection) return null;
   const { id } = selection;
+  await writeDocument(id, file);
+  return { method: 'android-saf', path: selection.path };
+}
+
+async function writeDocument(id: string, file: Blob) {
   try {
     for (let offset = 0; offset < file.size; offset += CHUNK_SIZE) {
       const chunk = new Uint8Array(await file.slice(offset, offset + CHUNK_SIZE).arrayBuffer());
@@ -152,13 +178,15 @@ export async function saveAndroidDocument(file: Blob, fileName: string, mimeType
     throw error;
   }
   await native.closeDocument({ id });
-  return { method: 'android-saf' };
 }
 
 export async function pickAndroidBackup(targetPath: string): Promise<{ path: string; name: string; size: number } | null> {
   const selection = await native.openDocument();
   if ('cancelled' in selection) return null;
-  const { id, name } = selection;
+  return copyAndroidDocument(selection.id, selection.name, targetPath);
+}
+
+async function copyAndroidDocument(id: string, name: string, targetPath: string) {
   let worker: Worker | undefined;
   try {
     const writer = worker = new Worker(new URL('./backup-writer.worker.ts', import.meta.url), { type: 'module', name: 'dstu-android-backup-writer' });
@@ -214,4 +242,54 @@ export async function pickAndroidBackup(targetPath: string): Promise<{ path: str
   } finally {
     worker?.terminate();
   }
+}
+
+async function openAndroidFile(raw: string, mode: 'view' | 'share') {
+  if (/^android-saf:[0-9a-f-]{36}$/i.test(raw)) return (await native.openExternal({ id: raw.slice("android-saf:".length), mode })).action;
+  const file = await readShareableFile(raw);
+  const { id } = await native.prepareExternalFile({ name: file.name });
+  await writeDocument(id, file);
+  return (await native.openExternal({ id, mode })).action;
+}
+export async function listenAndroidShares(listener: (share: IncomingShare) => void) {
+  const handle = await native.addListener('receivedShare', listener);
+  try {
+    const { shares } = await native.startShareListener();
+    for (const share of shares) listener(share);
+    return handle;
+  } catch (error) { await handle.remove(); throw error; }
+}
+export const retryIncomingShare = (id: string) => native.retryIncomingShare({ id });
+
+/** The native copy remains the retry source until the library acknowledges the share. */
+export async function stageIncomingFile(file: ShareFile) {
+  const { id, size } = await native.openIncomingFile({ id: file.id });
+  let uploadId: string | undefined;
+  try {
+    try {
+      uploadId = await invoke<string>('staged_upload_begin', { name: file.name, totalSize: size });
+      let offset = 0;
+      for (;;) {
+        const chunk = await native.readDocumentChunk({ id });
+        if ('done' in chunk) break;
+        offset = await invoke<number>('staged_upload_append', decodeBase64(chunk.data), {
+          headers: { 'x-upload-id': uploadId, 'x-upload-offset': String(offset) },
+        });
+      }
+      if (offset !== size) throw new Error('Incomplete incoming file');
+    } finally {
+      await native.closeDocument({ id });
+    }
+    return { uploadId, size };
+  } catch (error) {
+    if (uploadId) await invoke('staged_upload_abort', { uploadId }).catch(reason => console.warn('Could not abort incoming upload', reason));
+    throw error;
+  }
+}
+export const finishIncomingShare = (id: string) => native.finishIncomingShare({ id });
+
+function readShareableFile(raw: string) {
+  const path = normalizeSandboxPath(raw);
+  if (!/^\/deep-student\/(?:slots\/slot[AB]\/(?:vfs_blobs|anki_media)|textbooks|notes_assets|attachments|chat_v2_artifacts|tmp\/(?:dialog-picks|dialog-saves)|recovery\/exports|cache\/shared)\//.test(path)) throw new Error('请选择资料库文件或已导出的文件');
+  return opfsReadFile(path);
 }

@@ -5,6 +5,7 @@ import { rustTrim } from '../../../platform/util/portable.ts';
 import { toBase64, fromBase64 } from '../../../platform/crypto/encoding.ts';
 import { CommandError } from '../../../kernel/api.ts';
 import type { VfsDatabase } from '../api.ts';
+import type { VfsReposService } from '../../vfs-repos/api.ts';
 import type { DstuCreateOptions, DstuNode } from '../api.ts';
 import { DstuFailure } from './dstu-error.ts';
 import {
@@ -44,13 +45,14 @@ const MAX_FILE_SIZE = 200 * 1024 * 1024;
 
 export interface DstuCreateDeps {
   readonly database: VfsDatabase;
+  readonly blobs: VfsReposService['blobs'];
   readonly log: { warn(message: string, ...args: unknown[]): void };
   readonly emit?: (event: string, payload: unknown) => void;
 }
 
-function command<T>(operation: () => T): T {
+async function command<T>(operation: () => Promise<T>): Promise<T> {
   try {
-    return operation();
+    return await operation();
   } catch (error) {
     if (error instanceof CommandError) throw error;
     throw new CommandError(error instanceof Error ? error.message : String(error));
@@ -165,13 +167,13 @@ function essayNodeFromCreate(
   );
 }
 
-function createMedia(
+async function createMedia(
   deps: DstuCreateDeps,
   resourceType: 'images' | 'files',
   options: DstuCreateOptions,
   metadata: Record<string, unknown>,
   folderId: string | undefined,
-): DstuNode {
+): Promise<DstuNode> {
   const maxFileSize = resourceType === 'images' ? MAX_IMAGE_SIZE : MAX_FILE_SIZE;
 
   let staged: ReturnType<typeof fs.takeStagedUpload> | undefined;
@@ -211,25 +213,37 @@ function createMedia(
   const extension = extensionForMime(mimeType);
 
   const conn = deps.database.getConnSafe();
-  let blob;
+  const dir = deps.database.blobsDir();
+  let persisted: string | undefined;
   try {
-    blob = storeBlobWithConn(conn, deps.database.blobsDir(), fileData, mimeType, extension);
+    persisted = await deps.blobs.persistBlob(conn, dir, fileData, extension);
   } catch (error) {
     throw new Error(`Failed to store blob: ${error instanceof Error ? error.message : String(error)}`);
   }
-
-  const fileType = resourceType === 'images' ? 'image' : 'file';
-  const fileName = rustTrim(options.name) === '' ? `unnamed.${extension}` : options.name;
-  const file = createFileInFolderWithConn(conn, {
-    sha256: blob.hash,
-    fileName,
-    size: fileData.length,
-    fileType,
-    mimeType,
-    blobHash: blob.hash,
-    originalPath: null,
-  }, folderId);
-  return fileToDstuNode(file);
+  return conn.transaction(tx => {
+    let blob;
+    try {
+      blob = persisted === undefined
+        ? storeBlobWithConn(tx, dir, fileData, mimeType, extension)
+        : deps.blobs.storeBlob(tx, dir, fileData, mimeType, extension, persisted);
+    } catch (error) {
+      throw new Error(`Failed to store blob: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    // A content-identical import reuses the file row, so it acquires no second blob reference.
+    if (blob.refCount > 1 && tx.get('SELECT 1 FROM files WHERE sha256 = ?1 AND blob_hash = ?1', [blob.hash])) {
+      deps.blobs.decrementRef(tx, blob.hash);
+    }
+    const fileName = rustTrim(options.name) === '' ? `unnamed.${extension}` : options.name;
+    return fileToDstuNode(createFileInFolderWithConn(tx, {
+      sha256: blob.hash,
+      fileName,
+      size: fileData.length,
+      fileType: resourceType === 'images' ? 'image' : 'file',
+      mimeType,
+      blobHash: blob.hash,
+      originalPath: null,
+    }, folderId));
+  }, { behavior: 'immediate' });
 }
 
 /** `dstu_create` (handlers.rs:727-1437). `path` only feeds the folderId fallback. */
@@ -237,8 +251,8 @@ export function createCommand(
   deps: DstuCreateDeps,
   path: string,
   options: DstuCreateOptions,
-): DstuNode {
-  return command(() => {
+): Promise<DstuNode> {
+  return command(async () => {
     if (byteLength(options.name) > MAX_NAME_LENGTH) {
       throw new Error(
         `名称长度超出限制: ${byteLength(options.name)} 字符 (最大允许: ${MAX_NAME_LENGTH} 字符)`,
@@ -311,7 +325,12 @@ export function createCommand(
           }
           tags = rawTags as string[];
         }
-        node = noteToDstuNode(createNoteInFolderWithConn(conn, { title, content, tags }, folderId));
+        const shareId = metadata.incomingShareId;
+        if (shareId !== undefined && (typeof shareId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(shareId))) {
+          throw new Error('INVALID_ARGUMENT: invalid incoming share ID');
+        }
+        const noteId = typeof shareId === 'string' ? 'note_' + shareId.toLowerCase().replaceAll('-', '') : undefined;
+        node = noteToDstuNode(createNoteInFolderWithConn(conn, { title, content, tags }, folderId, noteId));
         break;
       }
       case 'textbooks':
@@ -377,7 +396,7 @@ export function createCommand(
       }
       case 'images':
       case 'files':
-        node = createMedia(deps, resourceType, options, metadata, folderId);
+        node = await createMedia(deps, resourceType, options, metadata, folderId);
         break;
       default:
         throw new DstuFailure('InvalidNodeType', resourceType);

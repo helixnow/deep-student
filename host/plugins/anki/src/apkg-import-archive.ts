@@ -453,7 +453,11 @@ export async function parseArchiveWithNativeCompression(
   const predecoded = compression === null || compression === undefined
     ? undefined
     : await predecodeArchiveZstdEntries(archiveBytes, limits, compression, runtime.logger);
-  return parseArchive(archiveBytes, limits, runtime, mediaDir, predecoded);
+  const files = new Set<string>();
+  const parsed = parseArchive(archiveBytes, limits, runtime, mediaDir, predecoded, files);
+  const local = ankiLocalRuntime();
+  if (local.persistFile) for (const path of files) await local.persistFile(path);
+  return parsed;
 }
 
 export function parseArchive(
@@ -462,6 +466,7 @@ export function parseArchive(
   runtime: ApkgImportRuntime,
   mediaDir: string | null,
   predecoded: ReadonlyMap<number, Uint8Array> = new Map(),
+  mediaToPersist?: Set<string>,
 ): ParsedPackage {
   let archive: ZipArchiveReader;
   try {
@@ -673,6 +678,7 @@ export function parseArchive(
     mediaDir: mediaDir !== null && declaredMedia.size > 0 ? mediaDir : null,
   };
 
+  for (const path of mediaPaths.values()) mediaToPersist?.add(path);
   const collectionPath = writeTemporaryCollection(runtime.tempDir, collectionBytes);
   let packageResult: ParsedPackage;
   try {
@@ -685,7 +691,9 @@ export function parseArchive(
     );
   } finally {
     try {
-      ankiLocalRuntime().remove(collectionPath);
+      const local = ankiLocalRuntime();
+      if (local.collections) local.collections.remove(collectionPath);
+      else local.remove(collectionPath);
     } catch (error) {
       runtime.logger.warn(`[apkg_import] 清理临时集合文件失败: ${ioErrorText(error)}`);
     }
@@ -706,7 +714,9 @@ function writeTemporaryCollection(tempDir: string, bytes: Uint8Array): string {
   }
   const filePath = path.join(tempDir, `apkg_collection_${globalThis.crypto.randomUUID()}.anki2`);
   try {
-    ankiLocalRuntime().writeBytes(filePath, bytes);
+    const local = ankiLocalRuntime();
+    if (local.collections) local.collections.write(filePath, bytes);
+    else local.writeBytes(filePath, bytes);
   } catch (error) {
     throw fileError(`Failed to write temporary APKG collection file: ${ioErrorText(error)}`);
   }

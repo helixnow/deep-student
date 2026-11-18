@@ -1,4 +1,15 @@
 {
+  "incomingShare": {
+    "title": "接收分享",
+    "library": "存入资料库",
+    "chat": "添加到对话",
+    "close": "关闭",
+    "noteName": "分享的文本.md",
+    "openChat": "请先打开一个对话，再点添加到对话。",
+    "attachError": "添加引用失败。",
+    "unreadable": "此分享没有可读取的图片、PDF 或文本。",
+    "storageError": "无法在设备上保存此次分享。"
+  },
   "app": {
     "name": "Deep Student",
     "title": "Deep Student",

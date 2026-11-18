@@ -8,4 +8,15 @@ import { createSyncPlugin } from './src/plugin.ts';
 
 export type { SyncPluginOptions } from './src/plugin.ts';
 
-export default createSyncPlugin({ platforms: ['mobile'], localRuntime: ctx => mobileLocalRuntime(ctx).sync });
+export default createSyncPlugin({
+  platforms: ['mobile'],
+  localRuntime(ctx) {
+    const files = mobileLocalRuntime(ctx).sync;
+    const sqlite = ctx.sqliteRuntime;
+    return {
+      ...files,
+      existsSync: path => files.existsSync(path) || (typeof path === 'string' && sqlite.exists(path)),
+      readFileSync: path => typeof path === 'string' && sqlite.exists(path) ? sqlite.exportFile(path) : files.readFileSync(path),
+    };
+  },
+});

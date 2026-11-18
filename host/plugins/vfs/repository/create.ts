@@ -163,6 +163,7 @@ export function createNoteInFolderWithConn(
   conn: SqlExecutor,
   params: CreateNoteParams,
   folderId: string | undefined,
+  noteId?: string,
 ): VfsNote {
   validateNoteTitle(params.title);
   validateNoteTags(params.tags);
@@ -170,6 +171,7 @@ export function createNoteInFolderWithConn(
     { title: params.title, content: params.content, tags: params.tags },
     folderId ?? null,
     conn,
+    noteId,
   ));
 }
 
@@ -627,7 +629,9 @@ export function createFileInFolderWithConn(
       throw new VfsError('NotFound', { resource_type: 'Folder', id: folderId });
     }
     const file = createFileWithConn(conn, params);
-    addItemToFolderWithConn(conn, createFolderItemRecord(folderId, 'file', file.id));
+    if (!conn.get("SELECT 1 FROM folder_items WHERE item_type='file' AND item_id=?1 AND folder_id IS ?2 AND deleted_at IS NULL", [file.id, folderId ?? null])) {
+      addItemToFolderWithConn(conn, createFolderItemRecord(folderId, 'file', file.id));
+    }
     return file;
   });
 }

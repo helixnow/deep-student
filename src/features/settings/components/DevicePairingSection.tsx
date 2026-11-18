@@ -27,7 +27,6 @@ import { SettingsGroup, SwitchRow } from './settingsTabPrimitives';
 import {
   QrCodeSvg,
   renderQrCodeSvgString,
-  extractPairingCodeFromText,
 } from '../utils/qrCodeSvg';
 import {
   applyPairingCode,
@@ -36,20 +35,7 @@ import {
   type PairingSummary as Summary,
 } from '../../../../host/plugins/sync/src/device-pairing';
 
-interface BarcodeDetectorLike {
-  detect: (source: ImageBitmapSource) => Promise<Array<{ rawValue?: string }>>;
-}
-
-type BarcodeDetectorConstructor = new (options?: {
-  formats?: string[];
-}) => BarcodeDetectorLike;
-
-function getBarcodeDetectorCtor(): BarcodeDetectorConstructor | null {
-  if (typeof window === 'undefined') return null;
-  const candidate = (window as unknown as { BarcodeDetector?: BarcodeDetectorConstructor })
-    .BarcodeDetector;
-  return typeof candidate === 'function' ? candidate : null;
-}
+import { decodePairingFrame, decodePairingImage } from '../utils/decodePairingQr';
 
 export const ipcPairingSettings: PairingSettingsStore = {
   get: (key) => invoke<string | null>('get_setting', { key }),
@@ -133,7 +119,9 @@ export function DevicePairingSection({
   const scanTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
+  const cameraSession = useRef(0);
   const stopCamera = useCallback(() => {
+    cameraSession.current++;
     if (scanTimerRef.current) {
       clearInterval(scanTimerRef.current);
       scanTimerRef.current = null;
@@ -244,48 +232,44 @@ export function DevicePairingSection({
       return;
     }
 
+    const session = ++cameraSession.current;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'environment' },
         audio: false,
       });
-      mediaStreamRef.current = stream;
-      setCameraActive(true);
-
-      requestAnimationFrame(() => {
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          void videoRef.current.play().catch(() => {});
-        }
-      });
-
-      const DetectorCtor = getBarcodeDetectorCtor();
-      if (!DetectorCtor) {
-        setCameraHint(
-          '当前系统 WebView 暂不支持实时 BarcodeDetector 解码，您可截图保存二维码后点击「从二维码图片导入」或直接粘贴配对码。',
-        );
+      if (session !== cameraSession.current) {
+        stream.getTracks().forEach(track => track.stop());
         return;
       }
-
-      const detector = new DetectorCtor({ formats: ['qr_code'] });
+      mediaStreamRef.current = stream;
+      setCameraActive(true);
+      const canvas = document.createElement('canvas');
+      let decoding = false;
       scanTimerRef.current = setInterval(async () => {
-        if (!videoRef.current || videoRef.current.readyState < 2) return;
+        const video = videoRef.current;
+        if (!video || decoding) return;
+        if (video.srcObject !== stream) video.srcObject = stream;
+        if (video.readyState < 2) return;
+        decoding = true;
         try {
-          const barcodes = await detector.detect(videoRef.current);
-          for (const item of barcodes) {
-            const extracted = extractPairingCodeFromText(item.rawValue ?? '');
-            if (extracted) {
-              setIncoming(extracted);
-              setStatus('已通过摄像头识别到同步二维码，请输入 6 位 PIN 完成接入');
-              stopCamera();
-              return;
-            }
+          const code = await decodePairingFrame(canvas, video, video.videoWidth, video.videoHeight);
+          if (code && cameraSession.current === session) {
+            setIncoming(code);
+            setStatus('已通过摄像头识别到同步二维码，请输入 6 位 PIN 完成接入');
+            stopCamera();
           }
-        } catch {
-          // 忽略单帧识别错误
+        } catch (e) {
+          if (cameraSession.current === session) {
+            stopCamera();
+            setCameraHint('无法解码摄像头画面：' + getErrorMessage(e));
+          }
+        } finally {
+          decoding = false;
         }
       }, 350);
     } catch (e) {
+      if (cameraSession.current !== session) return;
       stopCamera();
       setCameraHint(
         `无法开启摄像头（${getErrorMessage(e)}），请使用「从二维码图片导入」或直接粘贴配对码。`,
@@ -302,35 +286,12 @@ export function DevicePairingSection({
     setStatus('');
 
     try {
-      // 1. 优先检查文本/SVG 内嵌的 DSPAIR1 元数据（对本应用导出的二维码 100% 离线零依赖识别）
-      const textContent = await file.text().catch(() => '');
-      const fromText = extractPairingCodeFromText(textContent);
-      if (fromText) {
-        setIncoming(fromText);
-        setStatus('已从二维码文件中读取配对码，请输入 6 位 PIN 完成接入');
+      const code = await decodePairingImage(file);
+      if (code) {
+        setIncoming(code);
+        setStatus('已从二维码图片识别配对码，请输入 6 位 PIN 完成接入');
         return;
       }
-
-      // 2. 若是普通光栅截图（PNG/JPG/WebP），使用浏览器 BarcodeDetector 解码
-      const DetectorCtor = getBarcodeDetectorCtor();
-      if (DetectorCtor && typeof createImageBitmap === 'function') {
-        const bitmap = await createImageBitmap(file);
-        try {
-          const detector = new DetectorCtor({ formats: ['qr_code'] });
-          const results = await detector.detect(bitmap);
-          for (const res of results) {
-            const extracted = extractPairingCodeFromText(res.rawValue ?? '');
-            if (extracted) {
-              setIncoming(extracted);
-              setStatus('已从二维码图片识别配对码，请输入 6 位 PIN 完成接入');
-              return;
-            }
-          }
-        } finally {
-          bitmap.close?.();
-        }
-      }
-
       setError('未能从所选图片中识别出 DSPAIR1 同步配对码，请优先导入本应用下载的 SVG 二维码或直接粘贴配对码文本。');
     } catch (e) {
       setError(`读取二维码图片失败：${getErrorMessage(e)}`);
@@ -664,6 +625,7 @@ export function DevicePairingSection({
               {cameraActive && (
                 <div className="rounded-xl border border-border/40 bg-background/70 p-3 space-y-2 max-w-sm">
                   <video
+                    autoPlay
                     ref={videoRef}
                     muted
                     playsInline

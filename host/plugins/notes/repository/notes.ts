@@ -388,11 +388,10 @@ export const noteRepository = {
     return this.createNoteWithConn(connection(conn), params);
   },
 
-  createNoteWithConn(conn: SqlExecutor, params: { title: string; content: string; tags?: string[] }): VfsNote {
+  createNoteWithConn(conn: SqlExecutor, params: { title: string; content: string; tags?: string[] }, noteId = `note_${nanoid(10)}`): VfsNote {
     validateTitle(params.title);
     const tags = params.tags ?? [];
     validateTags(tags);
-    const noteId = `note_${nanoid(10)}`;
     const hash = computeHashWithSalt(params.content, noteId);
     try {
       conn.exec('SAVEPOINT create_note');
@@ -938,17 +937,24 @@ export const noteRepository = {
     return Number(connection(conn).get<{ count: number }>('SELECT COUNT(*) AS count FROM notes WHERE deleted_at IS NOT NULL')?.count ?? 0);
   },
 
-  createNoteInFolder(params: { title: string; content: string; tags?: string[] }, folderId: string | null, conn?: SqlExecutor): VfsNote {
+  createNoteInFolder(params: { title: string; content: string; tags?: string[] }, folderId: string | null, conn?: SqlExecutor, noteId?: string): VfsNote {
     const executor = connection(conn);
-    return noteTransaction(executor, () => this.createNoteInFolderUncommitted(executor, params, folderId));
+    return noteTransaction(executor, () => {
+      if (noteId) {
+        const existing = this.getNoteIncludingDeleted(noteId, executor);
+        if (existing?.deletedAt) notFound('Note', noteId);
+        if (existing) return existing;
+      }
+      return this.createNoteInFolderUncommitted(executor, params, folderId, noteId);
+    });
   },
 
-  createNoteInFolderUncommitted(conn: SqlExecutor, params: { title: string; content: string; tags?: string[] }, folderId: string | null): VfsNote {
+  createNoteInFolderUncommitted(conn: SqlExecutor, params: { title: string; content: string; tags?: string[] }, folderId: string | null, noteId?: string): VfsNote {
     // note_repo.rs delegates folder validation and membership to VfsFolderRepo.
     if (folderId !== null && !vfsRepoCall(() => noteResourceRepos().folders.folderExists(conn, folderId))) {
       notFound('Folder', folderId);
     }
-    const note = this.createNoteWithConn(conn, params);
+    const note = this.createNoteWithConn(conn, params, noteId);
     vfsRepoCall(() => noteResourceRepos().folders.addItemToFolder(conn, {
       id: `fi_${nanoid(10)}`,
       ...(folderId === null ? {} : { folderId }),

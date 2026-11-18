@@ -1,3 +1,4 @@
+import { syncGovernance } from '../../backup/api.ts';
 /**
  * 同步命令的云运行时接线。
  *
@@ -21,7 +22,7 @@ export function assertNotInMaintenance(ctx: SyncContext): void {
 /** 补全云端凭据并创建传输实例。错误文案由调用方按 Rust 命令上下文包装。 */
 export async function createCloudStorage(ctx: SyncContext, config: CloudStorageConfig): Promise<CloudStorage> {
   const runtimeConfig = config as RuntimeCloudStorageConfig;
-  await ctx.backup.hydrateCloudConfig(runtimeConfig);
+  await syncGovernance(ctx).hydrateCloudConfig(runtimeConfig);
   return ctx.syncProvider.createStorage(runtimeConfig);
 }
 

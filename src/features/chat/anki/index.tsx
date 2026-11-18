@@ -12,6 +12,7 @@ import React from 'react';
 import { DsButton } from '@/components/ui/DsButton';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
+import { readShellPlatform } from '@/ui-kernel/services/shell-platform';
 import { save as dialogSave } from '@tauri-apps/plugin-dialog';
 import type { AnkiCard, AnkiGenerationOptions, CustomAnkiTemplate } from '@/types';
 import {
@@ -380,6 +381,10 @@ export async function exportCardsAsApkg(
     const { path: filePath, missingMedia } = parseApkgExportResponse(rawResult);
 
     if (filePath) {
+      if (readShellPlatform()?.kind === 'mobile') {
+        const result = await invoke<{ method: string } | null>('mobile_export_picked_document', { path: filePath });
+        if (!result) return { success: false, cancelled: true };
+      }
       console.log('[anki] exportCardsAsApkg success:', filePath);
       if (missingMedia.length > 0) {
         console.warn(

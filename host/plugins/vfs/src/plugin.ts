@@ -467,7 +467,7 @@ export function createVfsPlugin(options: VfsPluginOptions = {}): HostPlugin {
     ctx.commands.register<{ path: string; options: DstuCreateOptions }>(
       'dstu_create',
       ({ path, options }) => createCommand(
-        { database, log: ctx.logger, emit: (event, payload) => ctx.backendEvents.emit(event, payload) },
+        { database, blobs: ctx.vfsRepo.blobs, log: ctx.logger, emit: (event, payload) => ctx.backendEvents.emit(event, payload) },
         path,
         options,
       ),

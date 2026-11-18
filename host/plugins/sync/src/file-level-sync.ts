@@ -64,31 +64,34 @@ export async function runFileLevelSync(
   const append = (text: string) => { report.failed = true; report.warning = report.warning ? `${report.warning}；${text}` : text; };
   const rateLimited = () => report.warning !== null && isCloudRateLimited(report.warning);
   const transfer = (step: number) => progress?.transferCallback(direction, step, 3, '文件级传输');
-  progress?.emit(direction, 0, 3, '文件级同步：工作区数据库');
-  let entered = false;
-  try {
-    if (coordinator === null) throw new Error('WorkspaceCoordinator 尚未初始化，无法取得一致性屏障');
-    try { await coordinator.enterMaintenanceMode(); }
-    catch (error) { throw new Error(`进入工作区维护模式失败: ${message(error)}`); }
-    entered = true;
-  } catch (error) {
-    const detail = `工作区数据库同步已跳过: ${message(error)}`;
-    logger.warn(`[data_governance] ${detail}`); append(detail);
-  }
-  if (entered) {
+  // The mobile profile has no Agent Workspace service. Leave desktop workspace files and their tombstones to a host that owns them.
+  if (!options.mobile || coordinator !== null) {
+    progress?.emit(direction, 0, 3, '文件级同步：工作区数据库');
+    let entered = false;
     try {
-      if (direction !== 'Download') {
-        try { await drainDeletionQueue(options.localStorage, cloud, 'workspace', options); }
-        catch (error) { logger.warn(`[data_governance] ${message(error)}`); append(message(error)); if (rateLimited()) return report; }
-      }
-      try { await syncWorkspaceDatabases(cloud, active, direction, options, transfer(0)); }
-      catch (error) { const detail = `工作区数据库同步失败: ${message(error)}`; logger.warn(`[data_governance] ${detail}`); append(detail); }
-    } finally {
-      for (let attempt = 1; attempt <= 3; attempt++) {
-        try { coordinator!.exitMaintenanceMode(); break; }
-        catch (error) {
-          if (attempt < 3) await sleep(50 * attempt);
-          else logger.error(`[data_governance] 退出工作区维护模式连续失败，工作区保持只读以避免写入内存池丢失: ${message(error)}`);
+      if (coordinator === null) throw new Error('WorkspaceCoordinator 尚未初始化，无法取得一致性屏障');
+      try { await coordinator.enterMaintenanceMode(); }
+      catch (error) { throw new Error(`进入工作区维护模式失败: ${message(error)}`); }
+      entered = true;
+    } catch (error) {
+      const detail = `工作区数据库同步已跳过: ${message(error)}`;
+      logger.warn(`[data_governance] ${detail}`); append(detail);
+    }
+    if (entered) {
+      try {
+        if (direction !== 'Download') {
+          try { await drainDeletionQueue(options.localStorage, cloud, 'workspace', options); }
+          catch (error) { logger.warn(`[data_governance] ${message(error)}`); append(message(error)); if (rateLimited()) return report; }
+        }
+        try { await syncWorkspaceDatabases(cloud, active, direction, options, transfer(0)); }
+        catch (error) { const detail = `工作区数据库同步失败: ${message(error)}`; logger.warn(`[data_governance] ${detail}`); append(detail); }
+      } finally {
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          try { coordinator!.exitMaintenanceMode(); break; }
+          catch (error) {
+            if (attempt < 3) await sleep(50 * attempt);
+            else logger.error(`[data_governance] 退出工作区维护模式连续失败，工作区保持只读以避免写入内存池丢失: ${message(error)}`);
+          }
         }
       }
     }

@@ -140,10 +140,11 @@ export function loadTauriConfig(tauriDir: string, platform: ShellPlatform, devOv
     const lead = scope.requireLiteralLeadingDot;
     assetScope = typeof lead === 'boolean' ? { allow, deny, requireLiteralLeadingDot: lead } : { allow, deny };
   }
-  if (app.windows !== undefined && !Array.isArray(app.windows)) {
+  const windowConfigs = app.windows === undefined ? [] : app.windows;
+  if (!Array.isArray(windowConfigs)) {
     throw new Error(`invalid tauri config: app.windows: invalid type: ${app.windows === null ? 'null' : typeof app.windows}, expected a sequence`);
   }
-  const windows = (app.windows ?? []).map((window, index) => {
+  const windows = windowConfigs.map((window, index) => {
     try {
       return decodeWindowConfig(window);
     } catch (error) {

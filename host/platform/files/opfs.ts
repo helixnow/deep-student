@@ -444,11 +444,12 @@ export function createOpfsFiles(options: OpfsFilesOptions): FilesService {
     } finally {
       destSah.close();
     }
+    if ((await destHandle.getFile()).size !== file.size) throw new Error('Incomplete OPFS copy');
     await sourceParent.removeEntry(sourceName);
   }
 
   /** 写同目录临时文件后 `move()` 覆盖目标；失败删除临时文件，目标保持原样。 */
-  async function atomicReplace(target: Target, operation: FileOperation, createParents: boolean, write: (handle: OpfsSyncAccessHandle) => Promise<void>): Promise<void> {
+  async function atomicReplace(target: Target, operation: FileOperation, createParents: boolean, expectedSize: number, write: (handle: OpfsSyncAccessHandle) => Promise<void>): Promise<void> {
     const name = lastName(target);
     if (name === undefined) throw fault('IsADirectory', operation, target.input);
     const parent = await parentDir(target, createParents, operation);
@@ -469,6 +470,7 @@ export function createOpfsFiles(options: OpfsFilesOptions): FilesService {
       } finally {
         sah.close();
       }
+      if ((await temp.getFile()).size !== expectedSize) throw new Error('Incomplete OPFS write');
       await moveFileWithWebViewFallback(parent, tempName, temp, parent, name, operation, target.input);
     } catch (error) {
       await removeQuietly(parent, tempName);
@@ -584,7 +586,7 @@ export function createOpfsFiles(options: OpfsFilesOptions): FilesService {
 
       async writeAtomic(path, data, options = {}) {
         const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : data;
-        await atomicReplace(resolve(path, 'writeAtomic'), 'writeAtomic', options.createParents ?? false, async (sah) => {
+        await atomicReplace(resolve(path, 'writeAtomic'), 'writeAtomic', options.createParents ?? false, bytes.length, async (sah) => {
           writeAll(sah, bytes, 0);
         });
       },
@@ -657,6 +659,7 @@ export function createOpfsFiles(options: OpfsFilesOptions): FilesService {
               try {
                 sah.flush();
                 sah.close();
+                if ((await temp.getFile()).size !== position) throw new Error('Incomplete OPFS write');
                 await moveFileWithWebViewFallback(parent, tempName, temp, parent, name, 'openWrite', target.input);
               } catch (error) {
                 await removeQuietly(parent, tempName);
@@ -880,7 +883,19 @@ export function createOpfsFiles(options: OpfsFilesOptions): FilesService {
     };
   }
 
+  const Reader = (globalThis as { FileReaderSync?: new () => { readAsArrayBuffer(blob: ReturnType<OpfsFile['slice']>): ArrayBuffer } }).FileReaderSync;
   return {
+    ...(Reader && { async openLocalSnapshot(path: string) {
+      const target = lexicalTarget(path, 'read');
+      const entry = await entryAt(target, 'read');
+      if (entry.kind === 'directory') throw fault('IsADirectory', 'read', path);
+      const file = await entry.handle.getFile();
+      return {
+        size: file.size,
+        modifiedMs: file.lastModified,
+        read: (start?: number, end?: number) => new Uint8Array(new Reader().readAsArrayBuffer(file.slice(start, end))),
+      };
+    } }),
     ...makeOperations(lexicalTarget, (parsed) => formatPath(parsed, flavor)),
     flavor,
     get roots() {

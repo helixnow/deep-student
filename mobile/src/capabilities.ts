@@ -21,7 +21,7 @@ const SHELL_CAPABILITIES: readonly PlatformCapability[] = [
   { id: 'http.destination.publicPinned', status: 'partial', note: 'Android 直连已校验 IP，证书和 SNI 仍使用原域名；iOS 和浏览器外壳拒绝该请求' },
   { id: 'files', status: 'partial', note: 'ctx.files 在 OPFS 上实现（host/platform/files/opfs.ts），允许根都在 /deep-student 下；没有符号链接与权限位，目录 stat 的 size / modifiedMs 为 0；同一文件同时只能有一个写入者' },
   { id: 'files.grant', status: 'unsupported', note: '用户选择的文件经外壳以内容传入 Worker，不是 OPFS 路径；ctx.files.grant 以 UNSUPPORTED_ON_PLATFORM 拒绝' },
-  { id: 'files.rename', status: 'partial', note: '目录改名需要 FileSystemDirectoryHandle.move()（Chromium 没有），缺少时以 UNSUPPORTED_ON_PLATFORM 拒绝；文件改名与原子写入用 FileSystemFileHandle.move()' },
+  { id: 'files.rename', status: 'partial', note: '目录改名需要 FileSystemDirectoryHandle.move()（Chromium 没有），缺少时以 UNSUPPORTED_ON_PLATFORM 拒绝；文件优先使用 FileSystemFileHandle.move()，Android WebView 拒绝覆盖已有文件时复制并校验写入长度' },
   // 桌面独占的业务命令：`dstu.mobile.compat` 会注册占位处理函数，调用返回
   // `UNSUPPORTED_ON_PLATFORM: <id> is not available on mobile: …`，而不是 kernel 的 ACL 错误。
   { id: 'media', status: 'partial', note: '媒体库、进度、章节、台账、字幕导入与导出可用；Android 使用系统文件选择器保存' },
@@ -37,8 +37,8 @@ const SHELL_CAPABILITIES: readonly PlatformCapability[] = [
   { id: 'agent.skills', status: 'partial', note: '通过 OPFS 支持技能包管理；桌面运行时能力仍有限制' },
   { id: 'agent.workspace', status: 'unsupported', note: '运行时工作区根目录、文件写入与回滚基于桌面文件系统与批准范围' },
   { id: 'plugin.manager', status: 'unsupported', note: '插件管理器的安装 / 配置 / 登录要求 Node 模块加载与包校验；移动端只装内置 profile' },
-  { id: 'secrets', status: 'partial', note: '设置里的密钥可用；云存储凭据与 keystore 保护依赖原生密钥库' },
-  { id: 'cloud.config', status: 'unsupported', note: '云端 SSOT 配置发布依赖桌面外壳与凭据存储' },
+  { id: 'secrets', status: 'partial', note: '设置密钥和 WebDAV 凭据保存在应用沙箱，使用 AES-GCM 加密。密钥材料保存在应用存储中。' },
+  { id: 'cloud.config', status: 'partial', note: 'WebDAV 支持草稿连接测试、发布配置和加密同步。此构建只提供 WebDAV 传输。' },
   { id: 'log.debug', status: 'partial', note: 'Host 日志经 Worker console 输出；调试日志文件、导出包与打开日志目录需要桌面文件系统' },
   { id: 'desktop.command', status: 'unsupported', note: '未在移动端实现的桌面命令（窗口 / 更新器 / 测试槽位等），统一以 UNSUPPORTED_ON_PLATFORM 拒绝' },
 ];

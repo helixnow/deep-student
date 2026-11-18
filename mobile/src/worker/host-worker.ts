@@ -9,6 +9,7 @@
  * （构建期静态导入）+ 原型诊断插件（只在开发服务器与 `vite build --mode diagnostics` 中）。
  */
 import '../shell/webview-compat.ts';
+import { mobileCompression } from './compression.ts';
 import { createStartupGate } from '../../../electron/startup-gate.ts';
 import { webImage } from '../../../host/platform/native/image/web.ts';
 import { adjustImageQualityBase64, adjustImageQualityBytes } from '../../../host/platform/storage/image-quality.ts';
@@ -44,12 +45,13 @@ const RECOVERY_COMMANDS = {
 /** 外壳绑定插件：相当于桌面 Electron 打包进 Host 进程的原生驱动。 */
 function shellPlugin(runtime: SqliteRuntime, timings: SqliteRuntimeTimings) {
   return definePlugin({
-    meta: { id: 'dstu.mobile.shell', lane: 'W14-portable', provides: ['sqliteRuntime', 'nativeImage', 'nativeOfficeText', 'nativePdfium', 'imageQuality', 'startupGate'], platforms: ['mobile'] },
+    meta: { id: 'dstu.mobile.shell', lane: 'W14-portable', provides: ['nativeCompression', 'sqliteRuntime', 'nativeImage', 'nativeOfficeText', 'nativePdfium', 'imageQuality', 'startupGate'], platforms: ['mobile'] },
     apply(ctx) {
       if (timings.poolError !== null) {
         ctx.logger('storage').error(`SQLite pool unavailable after ${timings.poolAttempts} attempts; databases open as locked: ${timings.poolError}`);
       }
       ctx.provide('sqliteRuntime', runtime);
+      ctx.provide('nativeCompression', mobileCompression);
       ctx.provide('nativeImage', webImage);
       ctx.provide('nativeOfficeText', officeText);
       ctx.provide('nativePdfium', webPdf);

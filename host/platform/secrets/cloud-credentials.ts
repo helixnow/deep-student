@@ -3,15 +3,9 @@
  * 实例方法见 secure-store.ts。
  */
 import { charCount, JsonReader, rustTrim } from '../util/portable.ts';
-import {
-  CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT_CODE,
-  CLOUD_ENCRYPTION_PASSWORD_TOO_WEAK_CODE,
-  MIN_CLOUD_ENCRYPTION_PASSWORD_CHARS,
-  MIN_CLOUD_ENCRYPTION_PASSWORD_DISTINCT_CHARS,
-  SecureStoreError,
-  type CloudStorageCredentialStatus,
-  type CloudStorageCredentials,
-} from './api.ts';
+import { CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT_CODE, CLOUD_ENCRYPTION_PASSWORD_TOO_WEAK_CODE, MIN_CLOUD_ENCRYPTION_PASSWORD_CHARS, MIN_CLOUD_ENCRYPTION_PASSWORD_DISTINCT_CHARS, SecureStoreError } from './errors.ts';
+import type { CloudStorageCredentialStatus, CloudStorageCredentials } from './api.ts';
+
 
 export const U64_MAX = (1n << 64n) - 1n;
 

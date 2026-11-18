@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import { defineQuery, type SqlExecutor, type SqlParams, type SqlValue } from '../../../platform/storage/api.ts';
 import { parseRfc3339, toRfc3339 } from '../../../platform/time/index.ts';
 import {
@@ -79,7 +78,7 @@ const INSERT_SQL = `
 
 export function newAuditLog(operation: AuditOperation, target: string): AuditLogEntry {
   return {
-    id: randomUUID(),
+    id: globalThis.crypto.randomUUID(),
     timestamp: toRfc3339(),
     operation,
     target,

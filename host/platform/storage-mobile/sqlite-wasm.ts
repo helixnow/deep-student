@@ -77,6 +77,7 @@ export interface SqliteRuntime {
   unlink(path: string): void;
   /** 导出整个库文件的字节（`VACUUM INTO` 之后的备份文件下载 / 分享）。 */
   exportFile(path: string): Uint8Array;
+  importTemporaryDb?(path: string, bytes: Uint8Array): void;
   /**
    * 用一个 SQLite 数据库文件完整替换 pool 中同名库及其事务日志，返回写入字节数。
    * 数据库连接必须先关闭：sahpool 对已打开文件的导入结果未定义。

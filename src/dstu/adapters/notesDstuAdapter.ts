@@ -272,6 +272,7 @@ export const notesDstuAdapter = {
     fileName: string,
     content: string,
     folderId?: string | null,
+    incomingShareId?: string,
   ): Promise<Result<DstuNode, VfsError>> {
     const path = '/';
     // 开头就是一级标题：它作笔记标题、正文去掉这一行（与路径导入 notes_import_markdown 同口径）
@@ -294,7 +295,7 @@ export const notesDstuAdapter = {
       type: 'note',
       name: title,
       content: normalizeMarkdownContent(content),
-      metadata: folderId ? { folderId } : undefined,
+      metadata: folderId || incomingShareId ? { ...(folderId && { folderId }), ...(incomingShareId && { incomingShareId }) } : undefined,
     });
 
     if (!result.ok) {

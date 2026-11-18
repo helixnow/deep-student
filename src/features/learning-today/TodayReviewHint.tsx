@@ -54,7 +54,7 @@ export const TodayReviewHint: React.FC = () => {
         <button
           type="button"
           onClick={openResourceLibrary}
-          className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-foreground transition-colors hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
+          className="native-touch-target inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-foreground transition-colors hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
         >
           <Books size={14} aria-hidden="true" />
           {t('today_center.starter_action', { defaultValue: '打开资源库' })}
@@ -64,7 +64,7 @@ export const TodayReviewHint: React.FC = () => {
           onClick={dismiss}
           aria-label={t('today_center.starter_dismiss', { defaultValue: '不再显示' })}
           title={t('today_center.starter_dismiss', { defaultValue: '不再显示' })}
-          className="inline-flex items-center rounded-full p-1 transition-colors hover:bg-[var(--interactive-hover)] hover:text-foreground [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:min-w-[var(--touch-target-size)] [@media(pointer:coarse)]:justify-center"
+          className="native-touch-target inline-flex items-center rounded-full p-1 transition-colors hover:bg-[var(--interactive-hover)] hover:text-foreground [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:min-w-[var(--touch-target-size)] [@media(pointer:coarse)]:justify-center"
         >
           <X size={12} aria-hidden="true" />
         </button>
@@ -106,7 +106,7 @@ export const TodayReviewHint: React.FC = () => {
               key={item.key}
               type="button"
               onClick={item.onClick}
-              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 transition-colors hover:bg-[var(--interactive-hover)] hover:text-foreground [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
+              className="native-touch-target inline-flex items-center gap-1 rounded-full px-2 py-0.5 transition-colors hover:bg-[var(--interactive-hover)] hover:text-foreground [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
             >
               {item.icon}
               <span>{item.label}</span>

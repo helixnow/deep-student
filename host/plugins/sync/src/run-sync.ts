@@ -1,3 +1,4 @@
+import { syncGovernance } from '../../backup/api.ts';
 /** commands_sync.rs:1586-2317,2859-3364. Registered through the published command-level ports. */
 import { join } from '../../../platform/util/path.ts';
 import { fromHex } from '../../../platform/crypto/encoding.ts';
@@ -61,7 +62,7 @@ export async function runSyncV5(
     checkCancelled();
     const config = cloudConfig ?? await ports.loadHydratedCloudConfig();
     if (!config) throw new Error(notConfigured);
-    await ctx.backup.hydrateCloudConfig(config);
+    await syncGovernance(ctx).hydrateCloudConfig(config);
     deviceId = await ctx.paths.deviceId();
     ports.saveSyncAudit({ direction: parsed, recordsAffected: 0, target, outcome: { kind: 'started' }, details: { device_id: deviceId, protocol: 'v5' } });
     const settings = ctx.reflect.get('settings') as PairingSettings;
@@ -143,7 +144,7 @@ export async function runSync(
     const loaded = cloudConfig ?? await ports.loadHydratedCloudConfig();
     if (loaded === null) throw new Error(notConfigured); config = loaded;
   } catch (error) { throw new CommandError(message(error)); }
-  await ctx.backup.hydrateCloudConfig(config);
+  await syncGovernance(ctx).hydrateCloudConfig(config);
   const deviceId = await ctx.paths.deviceId();
   ports.saveSyncAudit({ direction: parsed, recordsAffected: 0, target: `cloud_sync/${parsed.toLowerCase()}`, outcome: { kind: 'started' }, details: {
     device_id: deviceId, direction, strategy: strategy ?? 'keep_latest', provider: { webdav: 'WebDav', s3: 'S3', ftp: 'Ftp' }[providerKey(config.provider ?? 'webdav')], root: config.root ?? null,
@@ -211,7 +212,7 @@ export async function runSyncWithProgress(
     if (loaded === null) throw new Error(notConfigured);
     config = loaded;
   } catch (error) { return fail(error); }
-  await ctx.backup.hydrateCloudConfig(config);
+  await syncGovernance(ctx).hydrateCloudConfig(config);
   const deviceId = await ctx.paths.deviceId();
   ports.saveSyncAudit({ direction: parsed, recordsAffected: 0, target: `cloud_sync/${parsed.toLowerCase()}`, outcome: { kind: 'started' }, details: {
     device_id: deviceId, direction, strategy: strategy ?? 'keep_latest',

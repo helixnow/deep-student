@@ -123,7 +123,7 @@ export function VoiceInputControl({
       onPointerLeave={handlePointerUp}
       onPointerCancel={handlePointerUp}
       className={cn(
-        'inline-flex h-8 items-center gap-2 rounded-full border px-2.5 text-sm font-medium transition-colors motion-reduce:transition-none',
+        'native-touch-target inline-flex h-8 items-center gap-2 rounded-full border px-2.5 text-sm font-medium transition-colors motion-reduce:transition-none',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]',
         // 触屏直接给 44px 物理最小高（px 固定，不受 rem 锚点 14px 缩水影响），
         // 与输入栏其余工具按钮（发送/添加均为 44px）对齐

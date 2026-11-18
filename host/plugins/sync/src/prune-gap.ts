@@ -1,3 +1,4 @@
+import { syncGovernance } from '../../backup/api.ts';
 /** commands_sync.rs:5071-5141; diagnostic publication versions never replace cursors. */
 import { fs } from '../src/local-runtime.ts';
 import { CommandError } from '../../../kernel/api.ts';
@@ -13,7 +14,7 @@ import { changeLogGapDiagnostic } from './change-keys.ts';
 
 export async function detectPruneGap(ctx: SyncContext, config: CloudStorageConfig): Promise<PruneGapResponse> {
   assertNotInMaintenance(ctx);
-  await ctx.backup.hydrateCloudConfig(config);
+  await syncGovernance(ctx).hydrateCloudConfig(config);
   const deviceId = await ctx.paths.deviceId();
   let sinceVersion: bigint | null = null;
   const names: readonly CoordinatedDatabaseName[] = ['vfs', 'llm_usage', 'chat_v2', 'mistakes'];

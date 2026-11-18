@@ -12,7 +12,7 @@ import type { AnkiCard } from '../../../../contracts/ipc/generated/_shared.ts';
 import type { CustomAnkiTemplate } from '../../../../contracts/ipc/generated/L16-anki.ts';
 import type { DatabaseHandle } from '../../../platform/storage/api.ts';
 import type { AnkiLogger } from './logger.ts';
-import { ioErrorText } from './files.ts';
+import { ioErrorText, resolveSyncedAnkiMedia } from './files.ts';
 import { ankiLocalRuntime } from './local-runtime.ts';
 import {
   createAnkiSchema,
@@ -75,6 +75,7 @@ export * from './apkg-export-model.ts';
 
 export interface ApkgExportRuntime {
   logger: Pick<AnkiLogger, 'warn'>;
+  mediaRoot?: string;
   openDatabase(filePath: string): DatabaseHandle;
   closeDatabase(handle: DatabaseHandle): void;
   /** `std::env::temp_dir()`。 */
@@ -355,14 +356,22 @@ export interface CollectedMedia {
 }
 
 /** `collect_media_entries`（`apkg_exporter_service.rs:1723-1780`）。 */
-export function collectMediaEntries(cards: readonly AnkiCard[], logger?: Pick<AnkiLogger, 'warn'>): CollectedMedia {
+export function collectMediaEntries(cards: readonly AnkiCard[], logger?: Pick<AnkiLogger, 'warn'>, mediaRoot?: string): CollectedMedia {
   const entries: Array<{ name: string; data: Uint8Array }> = [];
   const missing: string[] = [];
   const warnings: string[] = [];
   const seenSources = new Map<string, string>();
 
   for (const card of cards) {
-    for (const imagePath of card.images) {
+    for (const reference of card.images) {
+      let imagePath = reference;
+      try {
+        if (mediaRoot) imagePath = resolveSyncedAnkiMedia(mediaRoot, reference);
+      } catch {
+        logger?.warn(`已导入的媒体不可用: ${reference}`);
+        missing.push(reference);
+        continue;
+      }
       const fileName = fileNameOf(imagePath);
       if (fileName === null) {
         logger?.warn(`媒体路径无有效文件名，跳过: ${imagePath}`);
@@ -430,6 +439,7 @@ function createTempDir(runtime: ApkgExportRuntime): string {
 /** Rust 单模板清理失败 warn，multi-report 的 `let _ = remove_dir_all` 只忽略同一错误。 */
 function cleanupTempDir(tempDir: string): string | null {
   try {
+    ankiLocalRuntime().collections?.remove(path.join(tempDir, 'collection.anki2'));
     ankiLocalRuntime().removeDir(tempDir);
     return null;
   } catch (error) {
@@ -540,9 +550,9 @@ function writeExport(
       runtime.closeDatabase(db);
     }
 
-    const media = collectMediaEntries(cardsForMedia, runtime.logger);
+    const media = collectMediaEntries(cardsForMedia, runtime.logger, runtime.mediaRoot);
     const entries: ZipEntry[] = [
-      { name: 'collection.anki2', data: ankiLocalRuntime().readBytes(dbPath) },
+      { name: 'collection.anki2', data: ankiLocalRuntime().collections?.read(dbPath) ?? ankiLocalRuntime().readBytes(dbPath) },
       ...mediaZipEntries(media),
     ];
     const size = writeZipFile(outputPath, entries);
@@ -723,9 +733,9 @@ export function exportMultiTemplateApkgReport(
       runtime.closeDatabase(db);
     }
 
-    const media = collectMediaEntries(cardsForMedia, runtime.logger);
+    const media = collectMediaEntries(cardsForMedia, runtime.logger, runtime.mediaRoot);
     const entries: ZipEntry[] = [
-      { name: 'collection.anki2', data: ankiLocalRuntime().readBytes(dbPath) },
+      { name: 'collection.anki2', data: ankiLocalRuntime().collections?.read(dbPath) ?? ankiLocalRuntime().readBytes(dbPath) },
       ...mediaZipEntries(media),
     ];
     writeZipFile(outputPath, entries);

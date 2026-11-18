@@ -1,3 +1,4 @@
+import { syncGovernance } from '../../backup/api.ts';
 /** Command-level ports: L21 owns shared permits/SSOT/audit; sync owns database routing. */
 import type { WorkspaceCoordinator } from '../../agent-workspace/api.ts';
 import type { BackupSyncCommandPorts } from '../../backup/api.ts';
@@ -17,7 +18,7 @@ export interface SyncCommandPorts extends Pick<BackupSyncCommandPorts, 'loadHydr
 export type LocalSyncCommandPorts = Pick<SyncCommandPorts, 'tombstones' | 'workspaceCoordinator'>;
 /** L21 owns permits/config/audit; no service cycle and no duplicate coordinator. */
 export function assembleSyncCommandPorts(ctx: SyncContext, local: LocalSyncCommandPorts): SyncCommandPorts {
-  const shared = ctx.backup.syncCommandPorts();
+  const shared = syncGovernance(ctx).syncCommandPorts();
   return {
     limiter: shared.limiter,
     loadHydratedCloudConfig: () => shared.loadHydratedCloudConfig(),

@@ -72,6 +72,7 @@ export interface StorageTransports {
 export interface SyncProvidersPlatform {
   capabilities: Readonly<PlatformStorageCapabilities>;
   transports: StorageTransports;
+  bufferedWebDavUploads?: boolean;
 }
 
 /**
@@ -92,7 +93,7 @@ export async function createPlatformStorage(
     case 'webdav': {
       const webdav = config.webdav;
       if (!webdav) throw new CloudStorageError('Validation', '缺少 WebDAV 配置');
-      return new WebDavStorage(webdav, root, { rateLimitEnv: pluginConfig.webdavRateLimit });
+      return new WebDavStorage(webdav, root, { rateLimitEnv: pluginConfig.webdavRateLimit, bufferedUploads: platform.bufferedWebDavUploads });
     }
     case 's3': {
       const s3 = config.s3;
@@ -143,13 +144,13 @@ export async function applySyncProviders(
   const backup: BackupCrypto = ctx.secrets.backup;
 
   const hydrate = async (config: RuntimeCloudStorageConfig): Promise<RuntimeCloudStorageConfig> => {
-    const backupService = ctx.reflect.get('backup', false) as typeof ctx.backup | undefined;
+    const backupService = (ctx.reflect.get('mobileSyncGovernance', false) ?? ctx.reflect.get('backup', false)) as typeof ctx.backup | undefined;
     if (backupService) await backupService.hydrateCloudConfig(config);
     return config;
   };
 
   const acquireOperation = (kind: DataGovernanceOperationKind): BackupOperationGuard => {
-    const backupService = ctx.reflect.get('backup', false) as typeof ctx.backup | undefined;
+    const backupService = (ctx.reflect.get('mobileSyncGovernance', false) ?? ctx.reflect.get('backup', false)) as typeof ctx.backup | undefined;
     if (backupService) return backupService.tryAcquireOperation(kind);
     const id = globalThis.crypto.randomUUID();
     return {

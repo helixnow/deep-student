@@ -1,3 +1,4 @@
+import type { Context } from '@deepseek-ai/cordis';
 /**
  * L23-sync-providers 插件本体（可移植）：入口按平台在 `index.ts` / `mobile.ts` 之间选择。
  *
@@ -42,7 +43,7 @@ export interface SyncProvidersPluginOptions {
   /** 能力矩阵与链接的传输；FTP 只在桌面入口链接。 */
   platform: SyncProvidersPlatform;
   /** `() => port` 在 apply 时求值并安装；缺省用无本地文件系统的端口。 */
-  localFs?: () => LocalFs;
+  localFs?: (ctx: Context) => LocalFs;
   /** Sync V5 的 AES-GCM 实现；缺省用纯 JS（`src/aes-gcm.ts`），桌面入口注入 OpenSSL。 */
   aesGcm?: () => AesGcm;
 }
@@ -73,9 +74,9 @@ export function createSyncProvidersPlugin(options: SyncProvidersPluginOptions): 
       ...(options.platforms === undefined ? {} : { platforms: options.platforms }),
       commands: COMMANDS,
     },
-    inject: options.platforms?.includes('mobile') ? ['secrets', 'paths'] : ['secrets', 'backup', 'paths'],
+    inject: options.platforms?.includes('mobile') ? ['secrets', 'paths', 'files'] : ['secrets', 'backup', 'paths'],
     apply(ctx, pluginConfig = {}) {
-      setLocalFs(options.localFs?.() ?? null);
+      setLocalFs(options.localFs?.(ctx) ?? null);
       ctx.effect(() => () => setLocalFs(null));
       setAesGcm(options.aesGcm?.() ?? null);
       ctx.effect(() => () => setAesGcm(null));

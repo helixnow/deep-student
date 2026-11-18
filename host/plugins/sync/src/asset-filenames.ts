@@ -135,7 +135,7 @@ export function sanitizeRelPath(raw: string): string | null {
 }
 /** Top-level directories the asset scan uploads, mod.rs:10217 ACTIVE_ASSET_DIRS and :11634 pdf_ocr_sessions. */
 export const SYNCED_ASSET_DIRS: ReadonlyMap<string, readonly string[]> = new Map([
-  ['active', ['images', 'notes_assets', 'documents', 'subjects', 'textbooks', 'audio', 'videos']],
+  ['active', ['images', 'notes_assets', 'documents', 'subjects', 'textbooks', 'audio', 'videos', 'anki_media']],
   ['app_data', ['pdf_ocr_sessions', 'skills', 'plugins', 'dstu-workshop']],
 ]);
 // RUST-FIX(RF-W32-asset-top-allowlist): Rust only scans these directories but maps any cloud key's top directory to a local path (mod.rs:12315), so a remote entry can overwrite or delete databases/ in the active slot.

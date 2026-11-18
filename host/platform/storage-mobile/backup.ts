@@ -1,3 +1,4 @@
+import { mobileOperations } from './operation-guard.ts';
 /**
  * 移动端数据迁移：标准 Deep Student ZIP 备份的导出 / 导入 / 恢复。
  *
@@ -169,6 +170,7 @@ class MobileBackupJobs {
   create(kind: 'export' | 'import'): { id: string; update(update: Partial<JobState>): void; complete(result: JobResultPayload): void; check(): void; fail(message: string, cause?: unknown): void } {
     if (this.busy) throw new CommandError('已有备份任务运行，请等待完成');
     const id = `mobile-${this.ctx.crypto.randomUUID()}`;
+    const permit = mobileOperations.tryAcquire(kind === 'export' ? 'backup' : 'restore');
     const state: JobState = {
       job_id: id, kind, status: 'queued', phase: 'queued', progress: 0, message: null,
       processed_items: 0, total_items: 0, created_at: now(), cancellable: true,
@@ -187,6 +189,7 @@ class MobileBackupJobs {
     const finish = (status: JobStatus, message: string, result: JobResultPayload): void => {
       const current = this.states.get(id);
       if (!current) return;
+      permit.release();
       Object.assign(current, { status, phase: status === 'completed' ? 'completed' : 'failed', progress: 100, message, finished_at: now(), result, cancellable: false });
       this.emit(current);
     };

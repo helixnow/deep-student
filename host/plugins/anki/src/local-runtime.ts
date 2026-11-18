@@ -29,6 +29,10 @@ export interface LocalTcpError {
 }
 
 export interface AnkiLocalRuntime {
+  /** Browser SQLite keeps database images in its own VFS, separate from user files. */
+  collections?: { read(path: string): Uint8Array; write(path: string, bytes: Uint8Array): void; remove(path: string): void };
+  readPickedArchive?(path: string, maxBytes: number): Promise<Uint8Array>;
+  persistFile?(path: string): Promise<void>;
   // ---------------------------------------------------------------- 同步文件系统
   exists(path: string): boolean;
   /** `statSync`：跟随符号链接。 */

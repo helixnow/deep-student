@@ -1,3 +1,4 @@
+import { syncGovernance } from '../../backup/api.ts';
 /** commands_sync.rs:4033-4133. Registered through the real L21/L20b owner ports. */
 import { join } from '../../../platform/util/path.ts';
 import { CommandError } from '../../../kernel/api.ts';
@@ -19,7 +20,7 @@ async function markDeletedCommand(
   ctx: SyncContext, limiter: SyncGlobalLimiter, tombstones: AsyncTombstoneWriter, config: RuntimeCloudStorageConfig,
   kind: 'blob' | 'asset', key: string, path: string | null, size: bigint | null,
 ): Promise<void> {
-  await ctx.backup.hydrateCloudConfig(config);
+  await syncGovernance(ctx).hydrateCloudConfig(config);
   const permit = acquireTombstonePermit(limiter);
   try {
     let storage;

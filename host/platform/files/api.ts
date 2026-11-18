@@ -293,7 +293,15 @@ export interface FileGrant {
   revoke(): void;
 }
 
+/** A disk-backed snapshot for synchronous readers inside a dedicated mobile Worker. */
+export interface LocalFileSnapshot {
+  readonly size: number;
+  readonly modifiedMs: number;
+  read(start?: number, end?: number): Uint8Array;
+}
+
 export interface FilesService extends FileOperations {
+  openLocalSnapshot?(path: string): Promise<LocalFileSnapshot>;
   readonly flavor: PathFlavor;
   /** 当前全部允许根（含 `grant()` 放行的路径）。 */
   readonly roots: readonly FileRoot[];

@@ -1,3 +1,4 @@
+import { syncGovernance } from '../../backup/api.ts';
 /** commands_sync.rs:5813-5908; internal sizes stay exact until the D3 JSON-number boundary. */
 import { CommandError } from '../../../kernel/api.ts';
 import type { RuntimeCloudStorageConfig } from '../../sync-providers/api.ts';
@@ -9,7 +10,7 @@ import { collectUnsyncedItems } from './unsynced-items.ts';
 
 export async function listUnsyncedItemsCommand(ctx: SyncContext, tombstones: AsyncTombstoneReader, config: RuntimeCloudStorageConfig) {
   assertNotInMaintenance(ctx);
-  await ctx.backup.hydrateCloudConfig(config);
+  await syncGovernance(ctx).hydrateCloudConfig(config);
   const activeDir = ctx.storage.locations.activeDir, appDataDir = ctx.app.dataDir;
   await ctx.paths.deviceId();
   const codec = await createPayloadCodec(ctx.secrets.backup, config.encryptionPassword);
