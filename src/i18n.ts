@@ -54,7 +54,7 @@ function getDeferredLocaleState(lang: SupportedLanguage): DeferredLocaleState {
 // 已同步加载的核心命名空间（延迟加载时跳过）
 const CORE_NS = new Set(['common', 'sidebar']);
 
-// 官网演示的构建（vite.demo.config.ts）由演示入口按语言把全部文案整包加进来（src/demo/locales），
+// 官网演示的构建（vite.demo.config.ts）由演示入口按语言把全部文案整包加进来（src/locales/bundles），
 // 这里既不打包按命名空间拆开的语言包，也不在启动后补载另一种语言
 const IS_DEMO_BUILD = import.meta.env.VITE_DS_DEMO === '1';
 const IS_MOBILE_BUILD = import.meta.env.VITE_DS_PLATFORM === 'mobile';
@@ -168,7 +168,7 @@ async function loadDeferredNamespaces(lang: string): Promise<void> {
   if (IS_MOBILE_BUILD && !IS_DEMO_BUILD) {
     // Each local HTTPS request crosses Android's WebView asset handler.
     // The grouped modules contain the same production namespace JSON.
-    const bundle = resolvedLang === 'zh-CN' ? import('./demo/locales/zh-CN') : import('./demo/locales/en-US');
+    const bundle = resolvedLang === 'zh-CN' ? import('./locales/bundles/zh-CN') : import('./locales/bundles/en-US');
     tasks.push(bundle.then(({ default: resources }) => {
       for (const [ns, data] of Object.entries(resources)) {
         if (CORE_NS.has(ns) || state.loadedNamespaces.has(ns)) continue;

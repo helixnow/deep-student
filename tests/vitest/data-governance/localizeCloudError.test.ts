@@ -4,6 +4,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT_CODE as hostShortPasswordCode } from '../../../host/platform/secrets/api';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/utils/cloudStorageApi', async (importOriginal) => {
@@ -37,16 +38,12 @@ const t = (key: string, options?: Record<string, unknown>) =>
   options?.min != null ? `${key}:${options.min}` : key;
 
 describe('短密码 / stored-password 稳定 code 跨层契约', () => {
-  it('Rust 与 TypeScript 使用同一对 code', () => {
-    const secureStore = readFileSync(
-      resolve(process.cwd(), 'host/platform/secrets/api.ts'),
-      'utf-8',
-    );
+  it('Host 与前端使用同一对 code', () => {
     const zipCommands = readFileSync(
       resolve(process.cwd(), 'host/plugins/backup/src/zip-commands.ts'),
       'utf-8',
     );
-    expect(secureStore).toContain(`'${CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT_CODE}'`);
+    expect(hostShortPasswordCode).toBe(CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT_CODE);
     expect(zipCommands).toContain(`'${STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED_CODE}'`);
   });
 });

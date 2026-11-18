@@ -39,7 +39,7 @@ Object.defineProperty(window, 'Notification', {
 });
 
 // 界面文案整包：只取当前语言那一块，和后面的 App 代码并行下载
-const localeBundle = demoLang === 'en-US' ? import('./locales/en-US') : import('./locales/zh-CN');
+const localeBundle = demoLang === 'en-US' ? import('../locales/bundles/en-US') : import('../locales/bundles/zh-CN');
 
 // ② localStorage 预置（早于 App 模块级读取）
 

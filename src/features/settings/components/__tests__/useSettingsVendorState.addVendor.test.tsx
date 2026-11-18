@@ -1,6 +1,7 @@
 import { act, renderHook } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
+import { convertApiConfigToProfile, convertProfileToApiConfig } from '../modelConverters';
 import { useSettingsVendorState } from '../useSettingsVendorState';
 import { getKnowledgeModelCapability } from '../knowledgeModelCapabilities';
 import type { ApiConfig, ModelAssignments, VendorConfig } from '@/types';
@@ -115,8 +116,14 @@ describe('useSettingsVendorState add vendor flow', () => {
       result.current.handleOpenModelEditor(vendor);
     });
 
-    expect((result.current.modelEditor?.api as ApiConfig | undefined)?.apiProtocol).toBe('openai_responses');
-    expect((result.current.modelEditor?.api as ApiConfig | undefined)?.supportsOpenAIResponses).toBe(true);
+    const draft = result.current.modelEditor?.api as ApiConfig;
+    expect(draft.apiProtocol).toBeUndefined();
+    expect(draft.supportsOpenAIResponses).toBe(true);
+    const profile = convertApiConfigToProfile(draft, vendor.id);
+    expect(profile.apiProtocol).toBeUndefined();
+    expect(convertProfileToApiConfig(profile, vendor).apiProtocol).toBe('openai_responses');
+    expect(convertProfileToApiConfig(profile, { ...vendor, apiProtocol: 'openai_chat_completions' }).apiProtocol)
+      .toBe('openai_chat_completions');
   });
 });
 

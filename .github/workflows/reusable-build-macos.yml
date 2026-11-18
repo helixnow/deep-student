@@ -10,7 +10,7 @@ on:
       targets:
         description: Native target matrix
         type: string
-        default: '[{"target":"aarch64-apple-darwin","arch":"arm64","runner":"macos-15"},{"target":"x86_64-apple-darwin","arch":"x64","runner":"macos-15-intel"}]'
+        default: '[{"target":"aarch64-apple-darwin","arch":"arm64","runner":"macos-26"},{"target":"x86_64-apple-darwin","arch":"x64","runner":"macos-15-intel"}]'
       source_sha:
         description: 'Immutable 40-char source commit SHA'
         required: false

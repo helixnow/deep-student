@@ -76,8 +76,8 @@ export async function observeBoot(input: BootCase, onKernel?: (kernel: UiKernel)
     './baseMocks': { installDemoAppMocks: () => trace.push(['mocks', 'pack']) },
     './locale': { loadDemoAppLocale: async () => { trace.push(['pack.locale']); } },
     './registry': { DEMO_APPS: [{ id: 'fixture', pack: async () => { trace.push(['pack']); return { default: pack }; } }] },
-    './locales/zh-CN': { default: { common: {} } },
-    './locales/en-US': { default: { common: {} } },
+    '../locales/bundles/zh-CN': { default: { common: {} } },
+    '../locales/bundles/en-US': { default: { common: {} } },
     './autoPlay': { installDemoAutoPlay: (options: any) => { trace.push(['autoplay', options]); return { activate() {}, continueScene() {} }; } },
     './fixtures': { DEMO_SESSIONS: scenes },
     './desktop': {

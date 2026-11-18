@@ -24,7 +24,7 @@ export async function loadDemoAppLocale(i18n: I18n, namespaces?: string[]): Prom
     );
     bundles = Object.fromEntries(entries);
   } else {
-    const mod = demoLang === 'en-US' ? await import('../locales/en-US') : await import('../locales/zh-CN');
+    const mod = demoLang === 'en-US' ? await import('../../locales/bundles/en-US') : await import('../../locales/bundles/zh-CN');
     bundles = mod.default;
   }
   for (const [ns, resources] of Object.entries(bundles)) {
