@@ -37,7 +37,7 @@ describe('staged mobile platform providers', () => {
     expect(await first.deviceId()).toBe(next);
   });
 
-  it('encrypts secrets at rest, reopens them and rejects unsupported keychain/backup operations', async () => {
+  it('encrypts secrets at rest, reopens them, rejects unsupported keychains and round-trips encrypted backups', async () => {
     const { files, data } = memoryFiles();
     const secrets = createMobileSecrets(files, createWebCrypto(), '/app');
     const store = secrets.openStore('/app');
@@ -53,7 +53,10 @@ describe('staged mobile platform providers', () => {
     expect(secrets.isSensitiveKey('openai.api_key')).toBe(true);
     expect(secrets.keystoreSupported()).toBe(false);
     await expect(store.setKeystoreProtection(true)).rejects.toThrow('UNSUPPORTED_ON_PLATFORM');
-    expect(() => secrets.backup.encryptBackup(new Uint8Array(), 'password')).toThrow('UNSUPPORTED_ON_PLATFORM');
+    const plaintext = new TextEncoder().encode('mobile backup');
+    const encrypted = await secrets.backup.encryptBackup(plaintext, 'password');
+    expect(encrypted).not.toEqual(plaintext);
+    expect(await secrets.backup.decryptBackup(encrypted, 'password')).toEqual(plaintext);
   });
 
   it('fetches through Web fetch with response limits and refuses unavailable public policy', async () => {

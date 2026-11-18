@@ -777,6 +777,88 @@
         "description": "A zero deadline cancels the alarm. A positive deadline is epoch milliseconds and requires title and body."
       },
       {
+        "name": "mobile_export_resource",
+        "args": [
+          {
+            "key": "path",
+            "optional": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "key": "name",
+            "optional": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "result": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "method": {
+                  "const": "android-saf"
+                },
+                "path": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "method"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "description": "Export a readable resource through the Android document picker. Cancellation returns null."
+      },
+      {
+        "name": "mobile_export_picked_document",
+        "args": [
+          {
+            "key": "path",
+            "optional": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "result": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "method": {
+                  "enum": [
+                    "android-saf",
+                    "share",
+                    "save-picker",
+                    "download"
+                  ]
+                },
+                "path": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "method"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "description": "Export a staged APKG from the mobile dialog sandbox through the system export flow. An Android picker cancellation returns null."
+      },
+      {
         "name": "mobile_save_document",
         "args": [
           {
@@ -811,6 +893,9 @@
               "properties": {
                 "method": {
                   "const": "android-saf"
+                },
+                "path": {
+                  "type": "string"
                 }
               },
               "required": [

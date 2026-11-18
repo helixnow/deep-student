@@ -1,6 +1,7 @@
 /**
  * Node-free subset of `sync-providers/api.ts` (E2EE error codes and pure predicates).
  */
+export { ANDROID_CAPABILITIES } from './src/config.ts';
 export {
   CLOUD_RATE_LIMITED_CODE,
   SYNC_E2EE_DOWNGRADE_REJECTED_CODE,

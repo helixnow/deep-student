@@ -451,6 +451,12 @@ describe('llm_manager/mod.rs', () => {
     expect(requestBody.reasoning_effort).toBeUndefined();
   });
 
+  it('offers both Mistral protocols and defaults according to the endpoint', () => {
+    expect(providerAllowedProtocols('mistral')).toEqual(expect.arrayContaining(['openai_responses', 'openai_chat_completions']));
+    expect(resolvePreferredProtocolForProvider('mistral', 'general', 'https://api.mistral.ai/v1', null)).toBe('openai_responses');
+    expect(resolvePreferredProtocolForProvider('mistral', 'general', 'https://gateway.example/v1', null)).toBe('openai_chat_completions');
+  });
+
   it('providers_without_responses_endpoint_no_longer_allow_openai_responses', () => {
     for (const provider of [
       'zhipu',
@@ -459,7 +465,6 @@ describe('llm_manager/mod.rs', () => {
       'mimo',
       'nvidia',
       'siliconflow',
-      'mistral',
     ]) {
       const allowed = providerAllowedProtocols(provider);
       expect(

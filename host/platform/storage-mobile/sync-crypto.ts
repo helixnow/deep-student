@@ -46,7 +46,11 @@ export function createMobileSyncCrypto(files: FilesService, crypto: CryptoServic
       const source = await files.openRead(input);
       let target;
       try { target = await files.openWrite(output, { mode: 'atomic', createParents: true }); }
-      catch (error) { await source.cancel().catch(() => {}); throw error; }
+      catch (error) {
+        try { await source.cancel(error); }
+        catch (cancelError) { throw new AggregateError([error, cancelError], 'Could not open destination or cancel its source', { cause: error }); }
+        throw error;
+      }
       await transform(source, target);
       await local?.loadPersistedFile(output);
     };

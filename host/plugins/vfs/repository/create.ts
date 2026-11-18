@@ -553,6 +553,10 @@ const CREATED_FILE_SELECT = `SELECT id, resource_id, blob_hash, sha256, file_nam
               "type" AS file_type, mime_type, created_at, updated_at
        FROM files`;
 
+export function fileReferencesBlob(conn: SqlExecutor, hash: string): boolean {
+  return conn.get('SELECT 1 FROM files WHERE sha256 = ?1 AND blob_hash = ?1', [hash]) !== undefined;
+}
+
 /** `VfsFileRepo::create_file_with_conn` (file_repo.rs:69-180). */
 export function createFileWithConn(conn: SqlExecutor, params: CreateFileParams): VfsFile {
   const existing = database(() => conn.get<{ id: string; status: string }>(
