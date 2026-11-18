@@ -177,12 +177,13 @@
     {
       "provider_type": "mistral",
       "allowed_protocols": [
-        "openai_chat_completions"
+        "openai_chat_completions",
+        "openai_responses"
       ],
-      "default_protocol": "openai_chat_completions",
+      "default_protocol": "openai_responses",
       "official": true,
-      "supports_openai_responses": false,
-      "notes": "仅 Chat Completions；无 Responses、无 Anthropic 端点（2026-07 调研 04 §3.2）。注意推理输出为 content 块数组（ThinkChunk/TextChunk）。"
+      "supports_openai_responses": true,
+      "notes": "官方 /v1/responses 默认使用无状态 Responses 协议，Chat Completions 仍可选。"
     },
     {
       "provider_type": "openrouter",

@@ -13,6 +13,7 @@ import { Textarea } from '@/components/ui/shad/Textarea';
 import { Label } from '@/components/ui/shad/Label';
 import { Badge } from '@/components/ui/shad/Badge';
 import { Switch } from '@/components/ui/shad/Switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/shad/Select';
 import { cn } from '@/lib/utils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { ProviderIcon } from '@/components/ui/ProviderIcon';
@@ -36,9 +37,9 @@ import { VendorModelFetcher, supportsModelFetching } from './VendorModelFetcher'
 import { ShadApiEditModal } from './ShadApiEditModal';
 import { OpenAICodexAccountSection } from './OpenAICodexAccountSection';
 import { useVendorSettings } from './VendorSettingsContext';
-import { convertProfileToApiConfig } from './modelConverters';
+import { convertProfileToApiConfig, getAllowedApiProtocolsForProviderType, normalizeApiProtocolForProviderType } from './modelConverters';
 import { groupByModelFamily } from './modelFamily';
-import type { VendorConfig } from '@/types';
+import type { ApiProtocol, VendorConfig } from '@/types';
 import { isOpenAICodexOAuthVendor } from '@/utils/vendorAuth';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
@@ -456,6 +457,7 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
 
   const providerLabel = getProviderDisplayName(selectedVendor.providerType, t);
   const vendorDisplayName = getVendorDisplayName(selectedVendor, providerLabel);
+  const vendorProtocolOptions = getAllowedApiProtocolsForProviderType(selectedVendor.providerType);
 
   const renderModelCard = ({ profile, api }: (typeof selectedVendorModels)[number]) => {
     const isEditing = !isAddingNewModel && inlineEditState?.profileId === profile.id;
@@ -474,7 +476,7 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
       } else {
         if (isAddingNewModel) handleCancelAddModel();
         const editApi = convertProfileToApiConfig(profile, selectedVendor);
-        setInlineEditState({ profileId: profile.id, api: editApi });
+        setInlineEditState({ profileId: profile.id, api: { ...editApi, apiProtocol: profile.apiProtocol ?? undefined } });
       }
     };
 
@@ -649,6 +651,7 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
                       name: selectedVendor.name,
                       baseUrl: selectedVendor.baseUrl,
                       providerType: selectedVendor.providerType,
+                      apiProtocol: selectedVendor.apiProtocol,
                     }}
                     embeddedMode={true}
                   />
@@ -860,6 +863,30 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
               </Label>
               <Input {...TECHNICAL_INPUT_PROPS} value={vendorFormData.baseUrl || ''} onChange={e => setVendorFormData(prev => ({ ...prev, baseUrl: e.target.value }))} placeholder="https://api.openai.com/v1" className="font-mono" />
             </div>
+            {vendorProtocolOptions.length > 1 && (
+              <div className="md:col-span-2 space-y-2">
+                <Label htmlFor={`vendor-default-protocol-${selectedVendor.id}`}>{t('settings:vendor_modal.protocol_label')}</Label>
+                <Select
+                  value={normalizeApiProtocolForProviderType(vendorFormData.apiProtocol, selectedVendor.providerType, {
+                    baseUrl: vendorFormData.baseUrl,
+                    supportsOpenAIResponses: vendorFormData.supportsOpenAIResponses,
+                  })}
+                  onValueChange={(value: ApiProtocol) => setVendorFormData(prev => ({
+                    ...prev,
+                    apiProtocol: value,
+                    supportsOpenAIResponses: value === 'openai_responses' ? true : prev.supportsOpenAIResponses,
+                  }))}
+                >
+                  <SelectTrigger id={`vendor-default-protocol-${selectedVendor.id}`}><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {vendorProtocolOptions.map(protocol => (
+                      <SelectItem key={protocol} value={protocol}>{t(`settings:vendor_modal.protocols.${protocol}`)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">{t('settings:vendor_modal.default_protocol_hint')}</p>
+              </div>
+            )}
             <div className="md:col-span-2 space-y-2">
               <Label className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
                 <NotePencil className="h-3.5 w-3.5" aria-hidden="true" />
@@ -1121,6 +1148,7 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
                               name: selectedVendor.name,
                               baseUrl: selectedVendor.baseUrl,
                               providerType: selectedVendor.providerType,
+                              apiProtocol: selectedVendor.apiProtocol,
                             }}
                             embeddedMode={true}
                           />

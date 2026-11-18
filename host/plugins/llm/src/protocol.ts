@@ -97,6 +97,10 @@ export function resolvePreferredProtocolForProvider(
   const nativeProtocol = adapter ? nativeProtocolForModelAdapter(adapter) : null;
   if (nativeProtocol !== null && allowed.includes(nativeProtocol)) return nativeProtocol;
 
+  if (normalizeProviderValue(providerType) === 'mistral') {
+    return URL.parse(baseUrl.trim())?.hostname === 'api.mistral.ai' ? 'openai_responses' : 'openai_chat_completions';
+  }
+
   const explicitlyPrefersResponses =
     supportsOpenaiResponses === true || resolvesToOfficialOpenai(providerType, baseUrl);
   if (explicitlyPrefersResponses && allowed.includes('openai_responses')) return 'openai_responses';

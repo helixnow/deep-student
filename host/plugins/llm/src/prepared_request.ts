@@ -8,12 +8,13 @@ import type { ApiConfig } from '../api.ts';
 import { AppError } from '../../../platform/errors/api.ts';
 import type { JsonValue } from '../../../platform/errors/api.ts';
 import { normalizeDeepseekChatRequest } from './adapters/deepseek.ts';
+import { normalizeMistralChatRequest } from './adapters/mistral.ts';
 import {
   VENDOR_ID, PROVIDER_TYPE, TASK_SESSION_ID, identityHeaders, isOpencodeGoConfig,
   sessionHeaderValue, userAgent,
 } from './opencode_go.ts';
 import { providerAcceptsPromptCacheKey, stablePromptCacheKey } from './prompt_cache.ts';
-import { effectiveApiProtocolForConfig, isOpenaiCodexOAuth } from './protocol.ts';
+import { baseUrlHost, effectiveApiProtocolForConfig, isOpenaiCodexOAuth } from './protocol.ts';
 
 /** 与 package.json 对齐的 DeepStudent 版本（身份头前缀）。 */
 export const APP_VERSION = '0.11.0';
@@ -105,6 +106,10 @@ export function preparePlainProviderRequest(
   const providerRequest = adapter.buildRequest(config.baseUrl, apiKey, config.model, requestBody);
   const prepared = preparedFromProvider(providerRequest);
   normalizeDeepseekChatRequest(prepared.body, config);
+  if (effectiveApiProtocolForConfig(config) === 'openai_chat_completions'
+    && (config.providerType?.toLowerCase() === 'mistral' || baseUrlHost(config.baseUrl) === 'api.mistral.ai')) {
+    normalizeMistralChatRequest(prepared.body);
+  }
   if (opencodeGoSession !== null) {
     for (const [name, value] of identityHeaders(opencodeGoSession, APP_VERSION)) {
       appendProviderHeaderIfAbsent(prepared.headers, name, value);

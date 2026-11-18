@@ -41,6 +41,15 @@ const baseProfile: ModelProfile = {
 };
 
 describe('settings modelConverters DeepSeek adapter normalization', () => {
+  it('inherits the Mistral vendor choice without saving it as a model override', () => {
+    const vendor = { ...baseVendor, providerType: 'mistral', baseUrl: 'https://api.mistral.ai/v1',
+      apiProtocol: 'openai_chat_completions' as const };
+    const model = { ...baseProfile, model: 'zai-glm-5-3', modelAdapter: 'mistral', providerScope: 'mistral' };
+    expect(convertProfileToApiConfig(model, vendor).apiProtocol).toBe('openai_chat_completions');
+    const draft = { ...convertProfileToApiConfig(model, vendor), apiProtocol: undefined };
+    expect(convertApiConfigToProfile(draft, vendor.id).apiProtocol).toBeUndefined();
+    expect(convertProfileToApiConfig({ ...model, apiProtocol: 'openai_responses' }, vendor).apiProtocol).toBe('openai_responses');
+  });
   it('normalizes legacy official DeepSeek profiles from openai adapter to deepseek', () => {
     const api = convertProfileToApiConfig(baseProfile, baseVendor);
 

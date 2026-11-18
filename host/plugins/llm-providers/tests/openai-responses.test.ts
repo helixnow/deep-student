@@ -22,6 +22,34 @@ const wireValue = (event: StreamEvent): Wire => wire((event as { value?: JsonVal
 const messages = (...items: JsonValue[]): JsonValue => ({ messages: items });
 
 describe('openai responses adapter', () => {
+  it('uses typed history and stateless tool replay on the official Mistral Responses endpoint', () => {
+    const reasoning = { type: 'reasoning', id: 'rs_mistral', summary: [],
+      content: [{ type: 'reasoning_text', text: 'Look up the task list.' }] };
+    const request = new OpenAIResponsesAdapter().buildRequest(
+      'https://api.mistral.ai/v1', 'test-key', 'deepseek-v4-1-flash-1017', {
+        stream: true, reasoning_effort: 'max', max_tokens: 2048,
+        messages: [
+          { role: 'user', content: 'Look up the task list.' },
+          { role: 'assistant', content: 'I will look.', response_reasoning_item: reasoning,
+            tool_calls: [{ id: 'call_lookup', type: 'function', function: { name: 'lookup', arguments: '{}' } }] },
+          { role: 'tool', tool_call_id: 'call_lookup', content: 'The list has one task.' },
+        ],
+      },
+    );
+    expect(request.url).toBe('https://api.mistral.ai/v1/responses');
+    expect(request.body).toEqual({
+      model: 'deepseek-v4-1-flash-1017', stream: true, store: false,
+      reasoning: { effort: 'max' }, max_output_tokens: 2048,
+      input: [
+        { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Look up the task list.' }] },
+        reasoning,
+        { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'I will look.' }] },
+        { type: 'function_call', call_id: 'call_lookup', name: 'lookup', arguments: '{}' },
+        { type: 'function_call_output', call_id: 'call_lookup', output: 'The list has one task.' },
+      ],
+    });
+  });
+
   it('openai_responses_adapter_converts_messages_and_reasoning', () => {
     const body = {
       messages: [

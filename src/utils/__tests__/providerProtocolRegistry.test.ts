@@ -32,7 +32,7 @@ describe('providerProtocolRegistry', () => {
   });
 
   it('no longer exposes the phantom responses protocol for providers without a responses endpoint', () => {
-    for (const provider of ['zhipu', 'moonshot', 'minimax', 'mimo', 'nvidia', 'siliconflow', 'mistral']) {
+    for (const provider of ['zhipu', 'moonshot', 'minimax', 'mimo', 'nvidia', 'siliconflow']) {
       expect(getAllowedProtocolsForProviderType(provider)).not.toContain('openai_responses');
     }
   });
@@ -75,11 +75,18 @@ describe('providerProtocolRegistry', () => {
     expect(getProviderProtocolRecord('grok')?.default_protocol).toBe('openai_responses');
     expect(getProviderProtocolRecord('xai')?.default_protocol).toBe('openai_responses');
     expect(getProviderProtocolRecord('ernie')?.default_protocol).toBe('openai_chat_completions');
-    expect(getProviderProtocolRecord('mistral')?.default_protocol).toBe('openai_chat_completions');
+    expect(getProviderProtocolRecord('mistral')?.default_protocol).toBe('openai_responses');
     expect(getProviderProtocolRecord('grok')?.supports_openai_responses).toBe(true);
     expect(getProviderProtocolRecord('xai')?.supports_openai_responses).toBe(true);
     expect(getProviderProtocolRecord('ernie')?.supports_openai_responses).toBe(true);
-    expect(getProviderProtocolRecord('mistral')?.supports_openai_responses).toBe(false);
+    expect(getProviderProtocolRecord('mistral')?.supports_openai_responses).toBe(true);
+    expect(getAllowedProtocolsForProviderType('mistral')).toContain('openai_chat_completions');
+  });
+
+  it('defaults Mistral gateways to Chat and the official endpoint to Responses', () => {
+    expect(resolvePreferredProtocol({ providerType: 'mistral', baseUrl: 'https://api.mistral.ai/v1' })).toBe('openai_responses');
+    expect(resolvePreferredProtocol({ providerType: 'mistral', baseUrl: 'https://relay.example/api.mistral.ai/v1',
+      supportsOpenAIResponses: false })).toBe('openai_chat_completions');
   });
 
   it('allows vendor-level explicit opt-in to switch unlocked providers onto responses', () => {

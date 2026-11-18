@@ -73,7 +73,7 @@ describe('providerProtocolRegistry contract', () => {
     const byType = new Map(registry.providers.map((provider) => [provider.provider_type, provider]));
 
     // 幻影协议清理：无 Responses 端点的厂商不得再暴露 openai_responses。
-    for (const providerType of ['zhipu', 'moonshot', 'minimax', 'mimo', 'nvidia', 'siliconflow', 'mistral']) {
+    for (const providerType of ['zhipu', 'moonshot', 'minimax', 'mimo', 'nvidia', 'siliconflow']) {
       expect(byType.get(providerType)?.allowed_protocols, providerType).not.toContain('openai_responses');
     }
 
@@ -95,14 +95,11 @@ describe('providerProtocolRegistry contract', () => {
     }
 
     // Grok/xAI 已迁移到官方主推的 Responses；其余新增条目保持 Chat Completions。
-    for (const providerType of ['grok', 'xai']) {
+    for (const providerType of ['grok', 'xai', 'mistral']) {
       expect(byType.get(providerType), providerType).toBeDefined();
       expect(byType.get(providerType)?.default_protocol, providerType).toBe('openai_responses');
     }
-    for (const providerType of ['ernie', 'mistral']) {
-      expect(byType.get(providerType), providerType).toBeDefined();
-      expect(byType.get(providerType)?.default_protocol, providerType).toBe('openai_chat_completions');
-    }
+    expect(byType.get('ernie')?.default_protocol).toBe('openai_chat_completions');
 
     expect(registry.updated_at).toBe('2026-09-10');
   });

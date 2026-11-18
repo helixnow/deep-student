@@ -80,6 +80,7 @@ export function SettingsMobileRightPanel({
               name: modelEditor.vendor.name,
               baseUrl: modelEditor.vendor.baseUrl,
               providerType: modelEditor.vendor.providerType,
+              apiProtocol: modelEditor.vendor.apiProtocol,
             }}
             embeddedMode={true}
             mobilePanelMode={true}

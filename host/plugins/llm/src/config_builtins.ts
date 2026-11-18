@@ -23,10 +23,11 @@ function builtinModelAdapter(vendorId: string): { adapter: string; geminiVersion
   if (vendorId === 'builtin-nvidia') return { adapter: 'general', geminiVersion: null };
   if (vendorId === 'builtin-mimo') return { adapter: 'mimo', geminiVersion: null };
   if (vendorId === 'builtin-anthropic') return { adapter: 'anthropic', geminiVersion: null };
+  if (vendorId === 'builtin-mistral') return { adapter: 'mistral', geminiVersion: null };
   return { adapter: 'general', geminiVersion: null };
 }
 function builtinModelReasoningEffort(model: BuiltinModelDef): string | null {
-  if (model.vendorId === 'builtin-deepseek' && model.isReasoning) return 'high';
+  if (['builtin-deepseek', 'builtin-mistral'].includes(model.vendorId) && model.isReasoning) return 'high';
   if ((model.vendorId === 'builtin-openai' || model.vendorId === 'builtin-openai-codex') && model.isReasoning) {
     if (['gpt-5.5-pro', 'gpt-5.4-pro', 'gpt-5.2-pro', 'gpt-5-pro', 'o3-pro'].includes(model.model)) return 'high';
     return model.model === 'gpt-5.4-nano' ? 'low' : 'medium';
@@ -55,7 +56,7 @@ function builtinModelToProfile(model: BuiltinModelDef): ModelProfile {
     enableThinking: null, minP: null, topK: null, geminiApiVersion: geminiVersion,
     isBuiltin: false, repetitionPenalty: null, reasoningSplit: null,
     effort: null, verbosity: builtinModelVerbosity(model), isFavorite: false,
-    maxTokensLimit: vendor?.maxTokensLimit ?? null, contextWindow: deepseekContextWindow(model.model),
+    maxTokensLimit: vendor?.maxTokensLimit ?? null, contextWindow: model.contextWindow ?? deepseekContextWindow(model.model),
     extraBody: null,
   };
 }

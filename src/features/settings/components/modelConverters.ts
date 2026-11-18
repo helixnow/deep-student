@@ -329,7 +329,7 @@ export const convertApiConfigToProfile = (api: ApiConfig, vendorId: string): Mod
     label: api.name,
     model: api.model,
     providerScope,
-    apiProtocol: resolveApiProtocol(api.apiProtocol, api.providerType, modelAdapter, {
+    apiProtocol: api.apiProtocol == null ? undefined : resolveApiProtocol(api.apiProtocol, api.providerType, modelAdapter, {
       model: api.model,
       baseUrl: api.baseUrl,
       supportsOpenAIResponses: api.supportsOpenAIResponses,

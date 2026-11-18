@@ -1,10 +1,50 @@
 import { describe, expect, it } from 'vitest';
 import { MistralAdapter } from '../src/adapters/mistral.ts';
+import { preparePlainProviderRequest } from '../src/prepared_request.ts';
+import { providerAdapterForConfig } from '../src/provider_adapter.ts';
+import { applyReasoningConfig } from '../src/question_authoring.ts';
 import { makeConfig, type Body } from './support.ts';
 
 const adapter = new MistralAdapter();
 
 describe('adapters/mistral.rs', () => {
+  it.each([
+    ['deepseek-v4-1-flash-1017', true, 'medium', 'high'],
+    ['deepseek-v4-1-flash-1017', true, 'max', 'max'],
+    ['deepseek-v4-1-flash-1017', false, 'max', 'none'],
+    ['zai-glm-5-3', true, 'max', 'max'],
+    ['zai-glm-5-3-flash', false, 'high', 'low'],
+  ])('sends the Mistral effort for %s (thinking %s, requested %s)', (model, enabled, requested, expected) => {
+    const config = makeConfig({ model, providerType: 'mistral', modelAdapter: 'mistral', reasoningEffort: requested });
+    const body: Record<string, never> = {};
+    applyReasoningConfig(body, config, enabled);
+    expect(body).toEqual({ reasoning_effort: expected });
+  });
+
+  it('replays thinking in content while keeping the assistant tool call and its result linked', () => {
+    const config = makeConfig({ model: 'deepseek-v4-1-flash-1017', providerType: 'mistral',
+      baseUrl: 'https://api.mistral.ai/v1', modelAdapter: 'mistral', apiProtocol: 'openai_chat_completions' });
+    const call = { id: 'Mistral01', type: 'function', function: { name: 'lookup', arguments: '{}' } };
+    const request = preparePlainProviderRequest(providerAdapterForConfig(config), config, { messages: [
+      { role: 'system', content: [{ type: 'text', text: 'System', cache_control: { type: 'ephemeral' } }] },
+      { role: 'assistant', content: 'Looking it up', reasoning_content: 'Need the tool', tool_calls: [call] },
+      { role: 'tool', content: '42', tool_call_id: call.id },
+      { role: 'assistant', content: 'The answer is 42', reasoning_content: 'Use the result' },
+    ] }, null, null, 'test');
+    expect(request.body).toMatchObject({ messages: [
+      { role: 'system', content: [{ type: 'text', text: 'System' }] },
+      { role: 'assistant', content: [
+        { type: 'thinking', thinking: [{ type: 'text', text: 'Need the tool' }] },
+        { type: 'text', text: 'Looking it up' },
+      ], tool_calls: [call] },
+      { role: 'tool', content: '42', tool_call_id: call.id },
+      { role: 'assistant', content: [
+        { type: 'thinking', thinking: [{ type: 'text', text: 'Use the result' }] },
+        { type: 'text', text: 'The answer is 42' },
+      ] },
+    ] });
+    expect(JSON.stringify(request.body)).not.toMatch(/reasoning_content|cache_control/);
+  });
   it('test_magistral_prompt_mode', () => {
     const body: Body = {};
     adapter.applyReasoningConfig(

@@ -322,11 +322,12 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
           onChange={e => {
             const baseUrl = e.target.value;
             setFormData(prev => {
-              if (protocolManuallySelected || (prev.providerType && prev.providerType !== 'custom')) {
+              if (protocolManuallySelected) {
                 return { ...prev, baseUrl };
               }
-              const inferredProvider = inferProviderTypeFromBaseUrl(baseUrl) ?? prev.providerType;
-              const nextProtocol = defaultApiProtocolForProvider(inferredProvider, { baseUrl });
+              const provider = prev.providerType && prev.providerType !== 'custom'
+                ? prev.providerType : inferProviderTypeFromBaseUrl(baseUrl) ?? prev.providerType;
+              const nextProtocol = defaultApiProtocolForProvider(provider, { baseUrl });
               return {
                 ...prev,
                 baseUrl,

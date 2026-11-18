@@ -218,6 +218,9 @@ export function resolveMoonshotChannel(input: ReasoningChannelInput): ReasoningC
 // ── Mistral 渠道 ─────────────────────────────────────────────────────────
 
 export function resolveMistralChannel(input: ReasoningChannelInput): ReasoningControl | null {
+  const hostedModel = channelModelId(input);
+  if (hostedModel === 'zai-glm-5-3' || hostedModel === 'zai-glm-5-3-flash') return unified(false, 'high');
+  if (hostedModel === 'deepseek-v4-1-flash-1017') return unified(true, 'high');
   const model = gate(input, 'mistral');
   if (!model || !isMistralEffortModelId(model)) return null;
   // 官方 reasoning 指南仅 high/none 两档；其余档由后端就近吸附。

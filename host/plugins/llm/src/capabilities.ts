@@ -142,7 +142,7 @@ export function inferCapabilityOverridesFromBuiltinCatalog(
       isMultimodal: model.isMultimodal,
       supportsTools: model.supportsTools,
       supportsReasoning: model.isReasoning,
-      contextWindow: deepseekContextWindow(model.model),
+      contextWindow: model.contextWindow ?? deepseekContextWindow(model.model),
     };
   }
   return null;
