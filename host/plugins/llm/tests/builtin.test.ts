@@ -70,6 +70,19 @@ describe('builtin_vendors.rs', () => {
     expect(vendor?.maxTokensLimit).toBe(393_216);
   });
 
+  it('Mistral ships only the three selected hosted models with its own adapter', () => {
+    expect(vendorById('builtin-mistral')).toMatchObject({
+      baseUrl: 'https://api.mistral.ai/v1', apiProtocol: 'openai_responses', apiKey: '',
+    });
+    const profiles = allProfiles().filter(profile => profile.vendorId === 'builtin-mistral');
+    expect(profiles.map(profile => profile.model)).toEqual([
+      'deepseek-v4-1-flash-1017', 'zai-glm-5-3', 'zai-glm-5-3-flash',
+    ]);
+    for (const profile of profiles) {
+      expect(profile).toMatchObject({ providerScope: 'mistral', modelAdapter: 'mistral', supportsTools: true });
+    }
+  });
+
   it('official_deepseek_builtin_profiles_include_multimodal_flash', () => {
     const flash = profileById('builtin-deepseek-flash');
     const v4Flash = profileById('builtin-deepseek-v4-flash');

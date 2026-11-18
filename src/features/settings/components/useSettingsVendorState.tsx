@@ -8,7 +8,6 @@ import {
   convertProfileToApiConfig,
   convertApiConfigToProfile,
   defaultApiProtocolForProvider,
-  defaultApiProtocolForModelAdapter,
   normalizeBaseUrl,
   providerTypeFromConfig,
 } from './modelConverters';
@@ -538,20 +537,13 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
     const baseAdapter = providerTypeFromConfig(vendor.providerType, vendor.providerType);
     const isGeneralAdapter = baseAdapter === 'general';
     const draftApi: ApiConfig = profile
-      ? convertProfileToApiConfig(profile, vendor)
+      ? { ...convertProfileToApiConfig(profile, vendor), apiProtocol: profile.apiProtocol ?? undefined }
       : {
           id: `model_${Date.now()}`,
           name: `${vendor.name} Model`,
           vendorId: vendor.id,
           vendorName: vendor.name,
           providerType: vendor.providerType,
-          apiProtocol:
-            vendor.apiProtocol ??
-            defaultApiProtocolForModelAdapter(baseAdapter, {
-              providerType: vendor.providerType,
-              baseUrl: vendor.baseUrl,
-              supportsOpenAIResponses: vendor.supportsOpenAIResponses,
-            }),
           supportsOpenAIResponses: vendor.supportsOpenAIResponses,
           apiKey: vendor.apiKey ?? '',
           baseUrl: vendor.baseUrl,
@@ -637,13 +629,6 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
       vendorId: vendor.id,
       vendorName: vendor.name,
       providerType: vendor.providerType,
-      apiProtocol:
-        vendor.apiProtocol ??
-        defaultApiProtocolForModelAdapter(baseAdapter, {
-          providerType: vendor.providerType,
-          baseUrl: vendor.baseUrl,
-          supportsOpenAIResponses: vendor.supportsOpenAIResponses,
-        }),
       supportsOpenAIResponses: vendor.supportsOpenAIResponses,
       apiKey: vendor.apiKey ?? '',
       baseUrl: vendor.baseUrl,

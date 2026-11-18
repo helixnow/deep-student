@@ -335,6 +335,7 @@ export class OpenAIResponsesAdapter implements ProviderAdapter {
     const inputBlocks: JsonValue[] = [];
     const instructions: string[] = [];
     const deepseekOfficial = isOfficialEndpoint(baseUrl, 'api.deepseek.com');
+    const mistralOfficial = isOfficialEndpoint(baseUrl, 'api.mistral.ai');
     const deepseekInHistorySystem = deepseekOfficial
       && ['deepseek-flash', 'deepseek-v4-flash', 'deepseek-v4-flash-vision-exp'].includes(asciiLowercase(rustTrim(model)));
 
@@ -377,11 +378,12 @@ export class OpenAIResponsesAdapter implements ProviderAdapter {
       const parts: JsonValue[] = [];
       const content = field(message, 'content');
       if (content !== undefined) pushMessageParts(parts, role, content);
-      if (parts.length) inputBlocks.push({ role, content: parts });
+      if (parts.length) inputBlocks.push(mistralOfficial ? { type: 'message', role, content: parts } : { role, content: parts });
       if (role === 'assistant') for (const item of assistantToolCallItems(message)) inputBlocks.push(item);
     }
 
-    if (!inputBlocks.length) inputBlocks.push({ role: 'user', content: [{ type: 'input_text', text: '' }] });
+    if (!inputBlocks.length) inputBlocks.push({ ...(mistralOfficial ? { type: 'message' } : {}),
+      role: 'user', content: [{ type: 'input_text', text: '' }] });
 
     const instructionsAsDeveloperBreakpoint = instructions.length > 0
       && OpenAIResponsesAdapter.modelSupportsPromptCacheBreakpoint(model)
@@ -404,12 +406,12 @@ export class OpenAIResponsesAdapter implements ProviderAdapter {
         const effort = field(source, 'reasoning_effort');
         if (effort !== undefined) reasoningObject.effort = structuredClone(effort);
       }
-      if (reasoningObject && !Object.hasOwn(reasoningObject, 'summary')) reasoningObject.summary = 'auto';
+      if (reasoningObject && !mistralOfficial && !Object.hasOwn(reasoningObject, 'summary')) reasoningObject.summary = 'auto';
       payload.reasoning = reasoningConfig;
     } else {
       const lower = model.toLowerCase();
       if (lower.includes('o1') || lower.includes('o3') || lower.includes('gpt-5') || field(source, 'reasoning_effort') !== undefined) {
-        const reasoningConfig: JsonObject = { summary: 'auto' };
+        const reasoningConfig: JsonObject = mistralOfficial ? {} : { summary: 'auto' };
         const effort = field(source, 'reasoning_effort');
         if (effort !== undefined) reasoningConfig.effort = structuredClone(effort);
         payload.reasoning = reasoningConfig;

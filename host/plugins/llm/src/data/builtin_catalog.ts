@@ -1,6 +1,4 @@
-// 自动生成，勿手改：scripts 静态目录的 Rust 目录镜像（生成于迁移，数据源见文件头）。
-
-/** src-tauri/crates/dstu-llm/src/llm_manager/builtin_vendors.rs BUILTIN_VENDORS / BUILTIN_MODELS */
+/** Built-in vendor and model catalog, originally ported from the Rust host. */
 export interface BuiltinVendorDef {
   id: string; name: string; providerType: string; authMode: string | null;
   baseUrl: string; notes: string; maxTokensLimit: number | null; websiteUrl: string;
@@ -8,7 +6,7 @@ export interface BuiltinVendorDef {
 export interface BuiltinModelDef {
   id: string; vendorId: string; label: string; model: string;
   isMultimodal: boolean; isReasoning: boolean; supportsTools: boolean;
-  maxOutputTokens: number; temperature: number;
+  maxOutputTokens: number; temperature: number; contextWindow?: number;
 }
 export const BUILTIN_VENDORS: readonly BuiltinVendorDef[] = [
   {
@@ -112,6 +110,16 @@ export const BUILTIN_VENDORS: readonly BuiltinVendorDef[] = [
     "websiteUrl": "https://platform.claude.com"
   },
   {
+    "id": "builtin-mistral",
+    "name": "Mistral",
+    "providerType": "mistral",
+    "authMode": null,
+    "baseUrl": "https://api.mistral.ai/v1",
+    "notes": "",
+    "maxTokensLimit": null,
+    "websiteUrl": "https://console.mistral.ai"
+  },
+  {
     "id": "builtin-nvidia",
     "name": "NVIDIA",
     "providerType": "nvidia",
@@ -143,6 +151,42 @@ export const BUILTIN_VENDORS: readonly BuiltinVendorDef[] = [
   }
 ];
 export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
+  {
+    "id": "builtin-mistral-deepseek-v4-1-flash-1017",
+    "vendorId": "builtin-mistral",
+    "label": "DeepSeek V4.1 Flash",
+    "model": "deepseek-v4-1-flash-1017",
+    "isMultimodal": true,
+    "isReasoning": true,
+    "supportsTools": true,
+    "maxOutputTokens": 65536,
+    "temperature": 1,
+    "contextWindow": 1048576
+  },
+  {
+    "id": "builtin-mistral-zai-glm-5-3",
+    "vendorId": "builtin-mistral",
+    "label": "GLM 5.3",
+    "model": "zai-glm-5-3",
+    "isMultimodal": false,
+    "isReasoning": true,
+    "supportsTools": true,
+    "maxOutputTokens": 65536,
+    "temperature": 1,
+    "contextWindow": 1048576
+  },
+  {
+    "id": "builtin-mistral-zai-glm-5-3-flash",
+    "vendorId": "builtin-mistral",
+    "label": "GLM 5.3 Flash",
+    "model": "zai-glm-5-3-flash",
+    "isMultimodal": true,
+    "isReasoning": true,
+    "supportsTools": true,
+    "maxOutputTokens": 65536,
+    "temperature": 1,
+    "contextWindow": 1048576
+  },
   {
     "id": "builtin-deepseek-flash",
     "vendorId": "builtin-deepseek",

@@ -1,5 +1,6 @@
 /** Mistral 适配器（adapters/mistral.rs）。 */
 import type { ApiConfig } from '../../api.ts';
+import type { JsonValue } from '../../../../platform/errors/api.ts';
 import {
   BaseAdapter, getTrimmedEffort, mergeExtraBody, resolveEnableThinking, type JsonObject,
 } from './base.ts';
@@ -8,10 +9,19 @@ function isMagistral(model: string): boolean {
   return model.toLowerCase().includes('magistral');
 }
 
+function modelSlug(model: string): string {
+  const lower = model.trim().toLowerCase();
+  return lower.split('/').at(-1) ?? lower;
+}
+
+function isMistralHostedGlm(model: string): boolean {
+  const slug = modelSlug(model);
+  return slug === 'zai-glm-5-3' || slug === 'zai-glm-5-3-flash';
+}
+
 function supportsReasoningEffort(model: string): boolean {
   if (isMagistral(model)) return false;
-  const lower = model.toLowerCase();
-  const slug = lower.split('/').at(-1) ?? lower;
+  const slug = modelSlug(model);
   return slug === 'mistral-medium-latest'
     || slug === 'mistral-small-latest'
     || slug === 'mistral-medium-3-5'
@@ -32,6 +42,16 @@ export class MistralAdapter extends BaseAdapter {
   override applyReasoningConfig(
     body: JsonObject, config: ApiConfig, enableThinking: boolean | null,
   ): boolean {
+    const hostedGlm = isMistralHostedGlm(config.model);
+    if (hostedGlm || modelSlug(config.model) === 'deepseek-v4-1-flash-1017') {
+      const requested = resolveEnableThinking(config, enableThinking)
+        ? getTrimmedEffort(config)?.toLowerCase() : 'none';
+      if (requested === 'none') body.reasoning_effort = hostedGlm ? 'low' : 'none';
+      else if (requested === 'minimal' || requested === 'low') body.reasoning_effort = 'low';
+      else body.reasoning_effort = requested === 'max' ? 'max' : 'high';
+      return false;
+    }
+
     if (supportsReasoningEffort(config.model)) {
       const requested = enableThinking === false ? 'none' : getTrimmedEffort(config);
       if (requested !== null) {
@@ -67,5 +87,27 @@ export class MistralAdapter extends BaseAdapter {
       body.repetition_penalty = config.repetitionPenalty;
     }
     mergeExtraBody(body, config);
+  }
+}
+
+export function normalizeMistralChatRequest(body: JsonValue): void {
+  if (body === null || typeof body !== 'object' || Array.isArray(body) || !Array.isArray(body.messages)) return;
+  for (const message of body.messages) {
+    if (message === null || typeof message !== 'object' || Array.isArray(message)) continue;
+    const { reasoning_content: reasoning, content } = message;
+    delete message.reasoning_content;
+    delete message.reasoning_details;
+    delete message.thought_signature;
+    delete message.response_reasoning_item;
+    delete message.response_web_search_items;
+    if (Array.isArray(content)) {
+      for (const part of content) {
+        if (part !== null && typeof part === 'object' && !Array.isArray(part)) delete part.cache_control;
+      }
+    }
+    if (message.role !== 'assistant' || typeof reasoning !== 'string' || !reasoning.trim()) continue;
+    const parts = Array.isArray(content) ? content : typeof content === 'string' && content !== ''
+      ? [{ type: 'text', text: content }] : [];
+    message.content = [{ type: 'thinking', thinking: [{ type: 'text', text: reasoning }] }, ...parts];
   }
 }

@@ -108,6 +108,10 @@ export const resolvePreferredProtocol = (args: {
     return nativeProtocol;
   }
 
+  if (normalize(args.providerType) === 'mistral') {
+    return resolveHostnameFromBaseUrl(args.baseUrl) === 'api.mistral.ai' ? 'openai_responses' : 'openai_chat_completions';
+  }
+
   // 仅「供应商级显式声明」或「官方 OpenAI 端点」才把默认路由切到 Responses。
   // 注册表级 supports_openai_responses=true 只解锁可选项（如 qwen/doubao 的白名单制
   // Responses 端点），默认路由仍由 default_protocol 决定。

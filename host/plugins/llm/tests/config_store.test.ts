@@ -372,7 +372,7 @@ describe('llm_manager/mod.rs configuration', () => {
     for (const provider of ['grok', 'xai', 'ernie', 'mistral']) {
       const record = getProviderProtocolRecord(provider);
       expect(record, `${provider} provider`).not.toBeNull();
-      const expectedDefault = provider === 'grok' || provider === 'xai' ? 'openai_responses' : 'openai_chat_completions';
+      const expectedDefault = provider === 'ernie' ? 'openai_chat_completions' : 'openai_responses';
       expect(record!.default_protocol).toBe(expectedDefault);
       expect(record!.allowed_protocols).not.toContain('anthropic_messages');
     }
@@ -383,6 +383,16 @@ describe('llm_manager/mod.rs configuration', () => {
     expect(providerSupportsOpenaiResponses('openai', '', null)).toBe(true);
     expect(providerSupportsOpenaiResponses('openai', 'https://myproxy.com/api.openai.com/v1', null)).toBe(false);
     expect(providerSupportsOpenaiResponses('openai', 'https://api.openai.com.evil.example/v1', null)).toBe(false);
+  });
+
+  it('defaults Mistral Responses only on its official hostname and keeps explicit protocol choices', () => {
+    const config = protocolOf(apiDefaults({ providerType: 'mistral', modelAdapter: 'mistral', apiProtocol: null,
+      supportsOpenaiResponses: false, baseUrl: 'https://api.mistral.ai/v1' }));
+    expect(effectiveApiProtocolForConfig(config)).toBe('openai_responses');
+    const proxy = { ...config, baseUrl: 'https://gateway.example.test/api.mistral.ai/v1' };
+    expect(effectiveApiProtocolForConfig(proxy)).toBe('openai_chat_completions');
+    expect(effectiveApiProtocolForConfig({ ...proxy, apiProtocol: 'openai_responses' })).toBe('openai_responses');
+    expect(effectiveApiProtocolForConfig({ ...config, apiProtocol: 'openai_chat_completions' })).toBe('openai_chat_completions');
   });
 
   it('provider_protocol_registry_contract_is_well_formed', () => {

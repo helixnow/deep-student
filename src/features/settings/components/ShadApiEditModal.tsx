@@ -40,7 +40,6 @@ import {
   resolveReasoningControl,
 } from '@/utils/reasoning';
 import {
-  defaultApiProtocolForModelAdapter,
   getAllowedApiProtocolsForModelAdapter,
   normalizeApiProtocolForModelAdapter,
 } from './modelConverters';
@@ -143,6 +142,7 @@ interface ApiEditModalProps {
     name?: string;
     baseUrl?: string;
     providerType?: string;
+    apiProtocol?: ApiProtocol;
   };
   /** 嵌入模式：不使用 Dialog 包裹，直接渲染内容（用于移动端三屏布局） */
   embeddedMode?: boolean;
@@ -200,7 +200,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
     isReranker: api.isReranker ?? false,
     isImageGeneration: api.isImageGeneration ?? false,
     modelAdapter: normalizedAdapter,
-    apiProtocol: normalizeApiProtocolForModelAdapter(api.apiProtocol, normalizedAdapter, api.providerType, {
+    apiProtocol: api.apiProtocol == null ? undefined : normalizeApiProtocolForModelAdapter(api.apiProtocol, normalizedAdapter, api.providerType, {
       model: api.model,
       baseUrl: api.baseUrl,
       supportsOpenAIResponses: api.supportsOpenAIResponses,
@@ -329,7 +329,14 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
     }));
   };
 
-  const protocolOptions = useMemo<Array<{ value: ApiProtocol; label: string; description?: string; disabled?: boolean }>>(() => {
+  const inheritedProtocol = normalizeApiProtocolForModelAdapter(
+    lockedVendorInfo?.apiProtocol, formData.modelAdapter, formData.providerType, {
+      model: formData.model,
+      baseUrl: formData.baseUrl,
+      supportsOpenAIResponses: formData.supportsOpenAIResponses,
+    });
+  const effectiveProtocol = formData.apiProtocol ?? inheritedProtocol;
+  const protocolOptions = useMemo<Array<{ value: string; label: string; description?: string; disabled?: boolean }>>(() => {
     const adapterProtocols = getAllowedApiProtocolsForModelAdapter(formData.modelAdapter);
     const allowed = new Set(getAllowedApiProtocolsForModelAdapter(formData.modelAdapter, {
       providerType: formData.providerType,
@@ -337,7 +344,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
       supportsOpenAIResponses: formData.supportsOpenAIResponses,
       model: formData.model,
     }));
-    return adapterProtocols.map(protocol => ({
+    const options = adapterProtocols.map(protocol => ({
       value: protocol,
       label: t(`settings:api.modal.protocols.${protocol}.label`, {
         defaultValue:
@@ -355,7 +362,13 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
           : t(`settings:api.modal.protocols.${protocol}.description`, { defaultValue: '' }) || undefined,
       disabled: !allowed.has(protocol),
     }));
-  }, [formData.modelAdapter, formData.providerType, formData.baseUrl, formData.supportsOpenAIResponses, formData.model, t]);
+    return lockedVendorInfo ? [
+      { value: 'inherit', label: t('settings:api.modal.protocol_inherit', {
+        protocol: t(`settings:api.modal.protocols.${inheritedProtocol}.label`),
+      }) },
+      ...options,
+    ] : options;
+  }, [formData.modelAdapter, formData.providerType, formData.baseUrl, formData.supportsOpenAIResponses, formData.model, lockedVendorInfo, inheritedProtocol, t]);
 
   const inferenceTimeoutRef = useRef<number | null>(null);
   const lastInferredModelRef = useRef<string | null>(api.model ?? null);
@@ -495,6 +508,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
 
   useEffect(() => {
     setFormData(prev => {
+      if (prev.apiProtocol == null) return prev;
       const normalizedProtocol = normalizeApiProtocolForModelAdapter(prev.apiProtocol, prev.modelAdapter, prev.providerType, {
         model: prev.model,
         baseUrl: prev.baseUrl,
@@ -854,7 +868,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
       const outcome = await invoke<ConnectionTestOutcome>('test_api_connection', {
         apiKey: formData.apiKey,
         apiBase: formData.baseUrl,
-        apiProtocol: formData.apiProtocol,
+        apiProtocol: effectiveProtocol,
         supportsOpenaiResponses: formData.supportsOpenAIResponses,
         providerType: formData.providerType,
         providerScope: formData.providerScope,
@@ -1017,7 +1031,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                                   const next: EditApiConfig = {
                                     ...prev,
                                     modelAdapter: option.value,
-                                    apiProtocol: normalizeApiProtocolForModelAdapter(prev.apiProtocol, option.value, prev.providerType, {
+                                    apiProtocol: prev.apiProtocol == null ? undefined : normalizeApiProtocolForModelAdapter(prev.apiProtocol, option.value, prev.providerType, {
                                       model: prev.model,
                                       baseUrl: prev.baseUrl,
                                       supportsOpenAIResponses: prev.supportsOpenAIResponses,
@@ -1057,16 +1071,11 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                           {t('settings:api.modal.protocol_label')}
                         </Label>
                         <AppSelect
-                          value={formData.apiProtocol ?? defaultApiProtocolForModelAdapter(formData.modelAdapter, {
-                            providerType: formData.providerType,
-                            model: formData.model,
-                            baseUrl: formData.baseUrl,
-                            supportsOpenAIResponses: formData.supportsOpenAIResponses,
-                          })}
+                          value={formData.apiProtocol ?? (lockedVendorInfo ? 'inherit' : effectiveProtocol)}
                           onValueChange={value =>
                             setFormData(prev => ({
                               ...prev,
-                              apiProtocol: normalizeApiProtocolForModelAdapter(value as ApiProtocol, prev.modelAdapter, prev.providerType, {
+                              apiProtocol: value === 'inherit' ? undefined : normalizeApiProtocolForModelAdapter(value as ApiProtocol, prev.modelAdapter, prev.providerType, {
                                 model: prev.model,
                                 baseUrl: prev.baseUrl,
                                 supportsOpenAIResponses: prev.supportsOpenAIResponses,

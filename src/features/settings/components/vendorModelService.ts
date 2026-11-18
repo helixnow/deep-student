@@ -461,11 +461,10 @@ export async function autoPostSaveFlow(
 
   // 3. 只添加尚未存在的新模型
   const existingSet = new Set(existingModelIds.map(id => id.toLowerCase()));
-  const newModels = fetchedModels.filter(m => !existingSet.has(m.id.toLowerCase()));
+  const newModels = vendor.id === 'builtin-mistral'
+    ? [] : fetchedModels.filter(m => !existingSet.has(m.id.toLowerCase()));
 
-  if (newModels.length === 0) {
-    console.log(`[autoPostSaveFlow] All ${fetchedModels.length} models already exist for vendor ${vendor.id}, skipping add.`);
-  } else {
+  if (newModels.length > 0) {
     try {
       await onAddModels(
         vendor,
