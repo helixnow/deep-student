@@ -82,7 +82,7 @@ function productionContext(f: ReturnType<typeof setup>, db: TestDatabase, stateD
   return {
     vfsDatabase: { isInMaintenanceMode: () => false },
     backup: { hydrateCloudConfig: vi.fn(), syncCommandPorts: () => ({ limiter: { tryAcquire: () => ({ release: vi.fn() }) }, saveSyncAudit: vi.fn(), loadHydratedCloudConfig: async () => ({ provider: 's3' }) }) },
-    paths: { deviceId: async () => 'production' }, reflect: { get: () => settings({ 'cloud_sync.v5_root': root }).store },
+    paths: { deviceId: async () => 'production' }, reflect: { get: (name: string) => name === 'settings' ? settings({ 'cloud_sync.v5_root': root }).store : undefined },
     syncProvider: { createStorage: async () => f.storage, setCancelToken: vi.fn(), clearCancelToken: vi.fn(), isSyncCancelled: () => false },
     storage: { database: (name: string) => databases.get(name),
       pathOf: (name: string) => name === 'vfs' ? path : `${path}.${name}`, openFile: (file: string) => reopen(file), close },
@@ -422,7 +422,7 @@ describe('Sync V5 production SQLite/Host bridge', () => {
     const ctx = {
       vfsDatabase: { isInMaintenanceMode: () => false },
       backup: { hydrateCloudConfig: vi.fn(), syncCommandPorts: () => ({ limiter: { tryAcquire: acquire }, saveSyncAudit: audit, loadHydratedCloudConfig: load }) },
-      paths: { deviceId: async () => 'production' }, reflect: { get: () => settings({ 'cloud_sync.v5_root': root }).store },
+      paths: { deviceId: async () => 'production' }, reflect: { get: (name: string) => name === 'settings' ? settings({ 'cloud_sync.v5_root': root }).store : undefined },
       syncProvider: { createStorage, setCancelToken: vi.fn(), clearCancelToken: vi.fn(), isSyncCancelled: () => false },
       storage: { database: () => db, pathOf: (name: string) => name === 'vfs' ? path : `${path}.${name}`,
         openFile: (file: string) => reopen(file), close },

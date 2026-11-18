@@ -27,6 +27,7 @@ import {
   createEssaySessionInFolderWithConn,
   createExamSheetInFolderWithConn,
   createFileInFolderWithConn,
+  fileReferencesBlob,
   createMindmapInFolderWithConn,
   createNoteInFolderWithConn,
   createTranslationInFolderWithConn,
@@ -230,7 +231,7 @@ async function createMedia(
       throw new Error(`Failed to store blob: ${error instanceof Error ? error.message : String(error)}`);
     }
     // A content-identical import reuses the file row, so it acquires no second blob reference.
-    if (blob.refCount > 1 && tx.get('SELECT 1 FROM files WHERE sha256 = ?1 AND blob_hash = ?1', [blob.hash])) {
+    if (blob.refCount > 1 && fileReferencesBlob(tx, blob.hash)) {
       deps.blobs.decrementRef(tx, blob.hash);
     }
     const fileName = rustTrim(options.name) === '' ? `unnamed.${extension}` : options.name;

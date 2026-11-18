@@ -2,7 +2,7 @@ import { CommandError, definePlugin } from '../../kernel/api.ts';
 import { mobileOperations } from '../../platform/storage-mobile/operation-guard.ts';
 import { registerCloudConfigCommands } from '../../platform/errors/cloud-config-commands.ts';
 import { cloudCredentialCommands, registerCloudCredentialCommands } from '../../platform/secrets/cloud-commands.ts';
-import { ANDROID_CAPABILITIES } from '../sync-providers/src/config.ts';
+import { ANDROID_CAPABILITIES } from '../sync-providers/portable.ts';
 import type { SyncGovernance } from './api.ts';
 import { createCloudConfigService, hydrateCloudConfig, testConnectionDraft, type CloudConfigDraftArgs } from './src/cloud-config.ts';
 import { createSyncCommandPorts } from './src/sync-ports.ts';
