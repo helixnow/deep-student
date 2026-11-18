@@ -10,6 +10,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.20.6](https://github.com/helixnow/deep-student/compare/v0.20.5...v0.20.6) (2026-11-18)
+
+
+### Features
+
+* **llm:** preset Mistral and preserve protocol choices ([4164950](https://github.com/helixnow/deep-student/commit/4164950c3cd76bf3719741415c8fe150b5f2ee17))
+* **mobile:** recover interrupted shares and preserve open file versions ([74d21d5](https://github.com/helixnow/deep-student/commit/74d21d5225aa0ba131bc3c7b99852a4d081806c2))
+
+
+### Bug Fixes
+
+* **ci:** restore mobile and release candidate checks ([36a1caa](https://github.com/helixnow/deep-student/commit/36a1caa2f4b50e2a2db317dca59a0b7144352300))
+* **mobile:** align export and sync contracts with host runtime ([f861786](https://github.com/helixnow/deep-student/commit/f86178658da932abb6df69add48ca2e6def6739f))
+
 ## [0.20.5](https://github.com/helixnow/deep-student/compare/v0.20.4...v0.20.5) (2026-11-17)
 
 
