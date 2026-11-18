@@ -1,7 +1,7 @@
 # 全平台打包（纯 Node.js / Electron / Capacitor，无任何 Rust、Cargo、Tauri 步骤）。
 #
 # 产物：
-#   - macOS（arm64）：release/*.dmg、release/*.zip（macos-15：私有的个人账户仓库不支持 macos-14 标签）
+#   - macOS（arm64）：release/*.dmg、release/*.zip
 #   - Windows（x64）：release/*.exe、release/*.zip
 #   - Linux（x64）：release/*.AppImage、release/*.deb
 #   - Android：mobile/dist/deep-student-debug.apk
@@ -28,7 +28,7 @@ env:
 jobs:
   build-macos:
     name: macOS arm64
-    runs-on: macos-15
+    runs-on: macos-26
     env:
       # GitHub release 下载在这些 runner 上常返回 504，走 npmmirror 的 Electron 镜像。
       ELECTRON_MIRROR: https://registry.npmmirror.com/-/binary/electron/
@@ -243,7 +243,7 @@ jobs:
 
   build-ios:
     name: iOS simulator app
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

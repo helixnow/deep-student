@@ -81,7 +81,8 @@ describe('chat v2 input bar radius contract', () => {
   });
 
   it('keeps only the primary send and stop affordances circular inside the composer', () => {
-    expect(toolbarSource).toContain("const studyUiSendButtonSizeClass =\n  'h-11 w-11 !rounded-full");
+    const sendClass = toolbarSource.match(/const studyUiSendButtonSizeClass\s*=\s*'([^']+)'/)?.[1].split(/\s+/);
+    expect(sendClass).toEqual(expect.arrayContaining(['h-11', 'w-11', '!rounded-full', 'native-touch-target']));
     const stopButtonStart = toolbarSource.indexOf('data-testid="btn-stop"');
     const stopButtonEnd = toolbarSource.indexOf('</DsButton>', stopButtonStart);
     const stopButton = toolbarSource.slice(stopButtonStart, stopButtonEnd);
