@@ -3,7 +3,7 @@
  * 拒绝（stderr + 退出码 126），不启动应用（不打开主进程日志、不拉起窗口与 Host）。
  * 对照组：开关不在第一个位置时照常启动，单实例锁文件出现（证明下面的观察手段是灵敏的）。
  */
-import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -15,14 +15,15 @@ const electronDir = join(import.meta.dirname, '..');
 
 // Chromium 的单实例锁在 macOS / Linux 上是 userData 下的 SingletonLock；Windows 用命名对象，观察不到。
 describe.skipIf(process.platform === 'win32')('shell sandbox helper self-invocation (real Electron main.ts)', () => {
-  const cleanups: Array<() => void> = [];
-  afterAll(() => {
-    for (const cleanup of cleanups.splice(0)) cleanup();
+  const cleanups: Array<() => Promise<void>> = [];
+  afterAll(async () => {
+    await Promise.all(cleanups.splice(0).map(stop => stop()));
   });
 
   async function launch(appArgs: string[]) {
     const tmp = mkdtempSync(join(tmpdir(), 'dstu-sandbox-helper-'));
-    cleanups.push(() => rmSync(tmp, { recursive: true, force: true }));
+    // Chromium subprocesses may finish profile writes after the main process closes.
+    // Leave this isolated profile in the OS temporary directory.
     const userData = join(tmp, 'userdata');
     const appData = join(tmp, 'appdata');
     const child = await spawnElectron(createRequire(import.meta.url)('electron') as string, [join(electronDir, 'main.ts'), ...appArgs], {
@@ -36,13 +37,19 @@ describe.skipIf(process.platform === 'win32')('shell sandbox helper self-invocat
       },
       stdio: 'pipe',
     });
-    cleanups.push(() => child.kill('SIGKILL'));
     let stdout = '';
     let stderr = '';
     child.stdout.on('data', (chunk) => (stdout += String(chunk)));
     child.stderr.on('data', (chunk) => (stderr += String(chunk)));
-    const exited = new Promise<number | null>((resolve) => child.once('exit', (code) => resolve(code)));
-    return { child, exited, userData, appData, output: () => ({ stdout, stderr }) };
+    const exited = new Promise<number | null>((resolve) => child.once('close', (code) => resolve(code)));
+    const stop = async () => {
+      if (child.exitCode !== null || child.signalCode !== null) { await exited; return; }
+      child.kill('SIGTERM');
+      const force = setTimeout(() => child.kill('SIGKILL'), 5_000);
+      try { await exited; } finally { clearTimeout(force); }
+    };
+    cleanups.push(stop);
+    return { child, exited, stop, userData, appData, output: () => ({ stdout, stderr }) };
   }
 
   it('RF-W06-shell-sandbox-helper-flag-all-platforms: the flag as the first app argument exits 126 before the lock and starts nothing', async () => {
@@ -69,8 +76,7 @@ describe.skipIf(process.platform === 'win32')('shell sandbox helper self-invocat
       if (Date.now() > deadline || run.child.exitCode !== null) throw new Error(`no SingletonLock or start(); stdout:\n${stdout}\nstderr:\n${stderr}`);
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
-    run.child.kill('SIGKILL');
-    await run.exited;
+    await run.stop();
     expect(existsSync(run.userData)).toBe(true);
   }, 40_000);
 });
